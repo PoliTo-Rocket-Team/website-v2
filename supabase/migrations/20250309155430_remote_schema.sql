@@ -8,8 +8,6 @@ alter table "public"."apply_positions" alter column "created_at" drop not null;
 
 alter table "public"."members" alter column "nda_signed_at" drop not null;
 
-alter table "public"."members" alter column "nda_signed_at" set data type time without time zone using "nda_signed_at"::time without time zone;
-
 alter table "public"."orders" alter column "created_at" drop not null;
 
 alter table "public"."orders" alter column "created_at" set data type date using "created_at"::date;
