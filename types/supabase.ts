@@ -133,6 +133,7 @@ export type Database = {
           id: number
           name: string | null
           started_at: string | null
+          subteam_id: number | null
         }
         Insert: {
           closed_at?: string | null
@@ -140,6 +141,7 @@ export type Database = {
           id: number
           name?: string | null
           started_at?: string | null
+          subteam_id?: number | null
         }
         Update: {
           closed_at?: string | null
@@ -147,8 +149,17 @@ export type Database = {
           id?: number
           name?: string | null
           started_at?: string | null
+          subteam_id?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "divisions_subteam_id_fkey"
+            columns: ["subteam_id"]
+            isOneToOne: false
+            referencedRelation: "subteams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       members: {
         Row: {
