@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { signOutAction } from "@/app/actions";
+import { signOutAction } from "@/app/actions/auth/signin-out";
 
 import {
   DropdownMenu,
@@ -30,7 +30,7 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
           <div className="flex flex-col space-y-1 leading-none">
             {user.name && <p className="font-medium">{user.name}</p>}
             {user.email && (
-              <p className="w-[200px] truncate text-sm text-muted-foreground">
+              <p className="truncate text-sm text-muted-foreground">
                 {user.email}
               </p>
             )}
@@ -43,10 +43,10 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
           <Link href="/dashboard">Dashboard</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/dashboard/billing">Billing</Link>
+          <Link href="/dashboard/members">Members</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/dashboard/settings">Settings</Link>
+          <Link href="/dashboard/positions">Positions</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

@@ -1,6 +1,6 @@
 "use client";
 
-import { signInWithGoogle } from "@/app/actions";
+import { signInWithGoogle } from "@/app/actions/auth/signin-out";
 import { Button } from "@/components/ui/button";
 
 export default function SignInPage() {
