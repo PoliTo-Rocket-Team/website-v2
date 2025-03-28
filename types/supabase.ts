@@ -36,7 +36,7 @@ export type Database = {
     Tables: {
       applications: {
         Row: {
-          applied_at: string | null
+          applied_at: string
           custom_answers: Json[] | null
           cv_name: string | null
           id: number
@@ -46,7 +46,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          applied_at?: string | null
+          applied_at?: string
           custom_answers?: Json[] | null
           cv_name?: string | null
           id: number
@@ -56,7 +56,7 @@ export type Database = {
           user_id: string
         }
         Update: {
-          applied_at?: string | null
+          applied_at?: string
           custom_answers?: Json[] | null
           cv_name?: string | null
           id?: number
@@ -85,7 +85,7 @@ export type Database = {
       apply_positions: {
         Row: {
           created_at: string | null
-          custom_questions: Json[] | null
+          custom_questions: string[] | null
           description: string | null
           desirable_skills: string[] | null
           division_id: number | null
@@ -96,7 +96,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          custom_questions?: Json[] | null
+          custom_questions?: string[] | null
           description?: string | null
           desirable_skills?: string[] | null
           division_id?: number | null
@@ -107,7 +107,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          custom_questions?: Json[] | null
+          custom_questions?: string[] | null
           description?: string | null
           desirable_skills?: string[] | null
           division_id?: number | null
@@ -309,7 +309,7 @@ export type Database = {
       users: {
         Row: {
           created_at: string
-          email: string | null
+          email: string
           first_name: string | null
           id: string
           last_name: string | null
@@ -322,8 +322,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          created_at: string
-          email?: string | null
+          created_at?: string
+          email: string
           first_name?: string | null
           id: string
           last_name?: string | null
@@ -337,7 +337,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          email?: string | null
+          email?: string
           first_name?: string | null
           id?: string
           last_name?: string | null
@@ -376,8 +376,21 @@ export type Database = {
         | "accepted"
         | "received"
         | "accepted_by_another_team"
-      "position type": "chief" | "lead" | "coordinator" | "core_member"
+      "position type":
+        | "chief"
+        | "lead"
+        | "coordinator"
+        | "core_member"
+        | "president"
       status: "pending" | "accepted" | "rejected"
+      status_type:
+        | "open"
+        | "closed"
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "in_progress"
+        | "completed"
     }
     CompositeTypes: {
       [_ in never]: never
