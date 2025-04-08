@@ -4,14 +4,16 @@ import {
     AccordionItem,
     AccordionTrigger,
   } from "@/components/ui/accordion";
+  import { UserRoleInfo } from "@/app/actions/user/get-user-role";
   
   type Application = any;
   
   interface ApplicationsListProps {
     applications: Application[];
+    userRoleInfo: UserRoleInfo;
   }
   
-  export default function ApplicationsList({ applications }: ApplicationsListProps) {
+  export default function ApplicationsList({ applications, userRoleInfo }: ApplicationsListProps) {
     // Function to format the date
     const formatDate = (dateString: string) => {
       const date = new Date(dateString);
@@ -39,6 +41,10 @@ import {
           return 'bg-gray-600 text-white';
       }
     };
+  
+    // Determine if the user can make accept/reject decisions
+    const canManageApplications = userRoleInfo.isPresident || userRoleInfo.isChief || 
+                                 userRoleInfo.isCoordinator || userRoleInfo.isLead;
   
     if (applications.length === 0) {
       return (
@@ -159,14 +165,17 @@ import {
                 </div>
               </div>
               
-              <div className="mt-6 flex justify-end gap-2">
-                <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm">
-                  Accept
-                </button>
-                <button className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm">
-                  Reject
-                </button>
-              </div>
+              {/* Only show action buttons if user has appropriate role */}
+              {canManageApplications && (
+                <div className="mt-6 flex justify-end gap-2">
+                  <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm">
+                    Accept
+                  </button>
+                  <button className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm">
+                    Reject
+                  </button>
+                </div>
+              )}
             </AccordionContent>
           </AccordionItem>
         ))}
