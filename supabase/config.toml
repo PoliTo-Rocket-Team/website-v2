@@ -301,8 +301,17 @@ client_id = "env(SUPABASE_AUTH_GOOGLE_ID)"
 secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
 redirect_uri = "http://localhost:54321/auth/v1/callback"
 
+[auth.external.keycloak]
+enabled = true
+client_id = "env(KEYCLOAK_CLIENT_ID)" 
+secret = "env(KEYCLOAK_AUTH_SECRET)" 
+redirect_uri = "env(KEYCLOAK_REDIRECT_URI)"
+url = "env(KEYCLOAK_URI)"
+skip_nonce_check = false
+
+
 [storage.buckets.images]
-public = false
+public = true
 file_size_limit = "50MiB"
 allowed_mime_types = ["image/png", "image/jpeg"]
 objects_path = "./images"
