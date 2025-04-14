@@ -10,16 +10,35 @@ export type Application = Database["public"]["Tables"]["applications"]["Row"] & 
   }) | null;
 };
 
+export type UserRoleInfo = {
+  highestRole: string | null;
+  isPresident: boolean;
+  isChief: boolean;
+  isCoordinator: boolean;
+  isLead: boolean;
+  isCoreOrUser: boolean;
+};
+
 export async function getApplicationsByUserRole() {
   console.log("⏳ getApplicationsByUserRole: Starting application fetching...");
   const supabase = await createClient();
+
+  // Default role information
+  const defaultRoleInfo: UserRoleInfo = {
+    highestRole: null,
+    isPresident: false,
+    isChief: false,
+    isCoordinator: false,
+    isLead: false,
+    isCoreOrUser: true,
+  };
 
   // Get current user
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {
     console.log("❌ getApplicationsByUserRole: No authenticated user found");
-    return { applications: [] };
+    return { applications: [], userRoleInfo: defaultRoleInfo };
   }
   
   console.log(`✅ getApplicationsByUserRole: Authenticated user with ID: ${user.id}`);
@@ -33,12 +52,12 @@ export async function getApplicationsByUserRole() {
 
   if (userError) {
     console.log(`❌ getApplicationsByUserRole: Error fetching user data: ${userError.message}`);
-    return { applications: [] };
+    return { applications: [], userRoleInfo: defaultRoleInfo };
   }
 
   if (!userData) {
     console.log("❌ getApplicationsByUserRole: User data not found");
-    return { applications: [] };
+    return { applications: [], userRoleInfo: defaultRoleInfo };
   }
   
   console.log(`✅ getApplicationsByUserRole: Found user ${userData.first_name} ${userData.last_name || ''}`);
@@ -75,12 +94,13 @@ export async function getApplicationsByUserRole() {
 
     if (userAppsError) {
       console.log(`❌ getApplicationsByUserRole: Error getting user applications: ${userAppsError.message}`);
-      return { applications: [] };
+      return { applications: [], userRoleInfo: defaultRoleInfo };
     }
 
     console.log(`✅ getApplicationsByUserRole: Found ${userApplications?.length || 0} applications for this user`);
     return {
-      applications: userApplications || []
+      applications: userApplications || [],
+      userRoleInfo: defaultRoleInfo
     };
   }
 
@@ -92,7 +112,7 @@ export async function getApplicationsByUserRole() {
 
   if (rolesError) {
     console.log(`❌ getApplicationsByUserRole: Error fetching roles: ${rolesError.message}`);
-    return { applications: [] };
+    return { applications: [], userRoleInfo: defaultRoleInfo };
   }
 
   if (!userRoles || userRoles.length === 0) {
@@ -126,25 +146,61 @@ export async function getApplicationsByUserRole() {
 
     if (memberAppsError) {
       console.log(`❌ getApplicationsByUserRole: Error getting member applications: ${memberAppsError.message}`);
-      return { applications: [] };
+      return { applications: [], userRoleInfo: defaultRoleInfo };
     }
 
     console.log(`✅ getApplicationsByUserRole: Found ${memberApplications?.length || 0} applications for this member`);
     return {
-      applications: memberApplications || []
+      applications: memberApplications || [],
+      userRoleInfo: defaultRoleInfo
     };
   }
+
+  // Determine user role information
+  // Determine highest role
+  const roleHierarchy = {
+    'president': 5,
+    'chief': 4,
+    'coordinator': 3,
+    'lead': 2,
+    'core_member': 1
+  };
+
+  let highestRoleType = null;
+  let highestRoleValue = 0;
+  
+  userRoles.forEach(role => {
+    const roleValue = roleHierarchy[role.type as keyof typeof roleHierarchy] || 0;
+    if (roleValue > highestRoleValue) {
+      highestRoleValue = roleValue;
+      highestRoleType = role.type;
+    }
+  });
+
+  const userRoleInfo: UserRoleInfo = {
+    highestRole: highestRoleType,
+    isPresident: userRoles.some(role => role.type === 'president'),
+    isChief: userRoles.some(role => role.type === 'chief'),
+    isCoordinator: userRoles.some(role => role.type === 'coordinator'),
+    isLead: userRoles.some(role => role.type === 'lead'),
+    isCoreOrUser: highestRoleValue <= 1 // core_member or no recognized role
+  };
   
   console.log(`✅ getApplicationsByUserRole: Found ${userRoles.length} roles for this member`);
   userRoles.forEach((role, index) => {
     console.log(`  Role ${index + 1}: Type=${role.type}, ID=${role.id}, Division=${role.division_id}, Subteam=${role.subteam_id}, Title=${role.title}`);
   });
+  console.log("🏁 getApplicationsByUserRole: Final role determination:", {
+    highestRole: userRoleInfo.highestRole,
+    isPresident: userRoleInfo.isPresident,
+    isChief: userRoleInfo.isChief,
+    isCoordinator: userRoleInfo.isCoordinator,
+    isLead: userRoleInfo.isLead,
+    isCoreOrUser: userRoleInfo.isCoreOrUser
+  });
 
   // Check if the user is a president
-  const isPresident = userRoles.some(role => role.type === 'president');
-
-  // If user is president, show all applications
-  if (isPresident) {
+  if (userRoleInfo.isPresident) {
     console.log("ℹ️ getApplicationsByUserRole: User is a president, showing all applications");
     
     const { data: allApplications, error: allAppsError } = await supabase
@@ -174,12 +230,13 @@ export async function getApplicationsByUserRole() {
 
     if (allAppsError) {
       console.log(`❌ getApplicationsByUserRole: Error getting all applications: ${allAppsError.message}`);
-      return { applications: [] };
+      return { applications: [], userRoleInfo };
     }
 
     console.log(`✅ getApplicationsByUserRole: Found ${allApplications?.length || 0} total applications`);
     return {
-      applications: allApplications || []
+      applications: allApplications || [],
+      userRoleInfo
     };
   }
 
@@ -233,12 +290,13 @@ export async function getApplicationsByUserRole() {
 
       if (userOwnAppsError) {
         console.log(`❌ getApplicationsByUserRole: Error getting user's own applications: ${userOwnAppsError.message}`);
-        return { applications: [] };
+        return { applications: [], userRoleInfo };
       }
 
       console.log(`✅ getApplicationsByUserRole: Found ${userOwnApps?.length || 0} of user's own applications`);
       return {
-        applications: userOwnApps || []
+        applications: userOwnApps || [],
+        userRoleInfo
       };
     }
 
@@ -271,7 +329,7 @@ export async function getApplicationsByUserRole() {
 
     if (chiefAppsError) {
       console.log(`❌ getApplicationsByUserRole: Error getting chief/coordinator applications: ${chiefAppsError.message}`);
-      return { applications: [] };
+      return { applications: [], userRoleInfo };
     }
 
     console.log(`✅ getApplicationsByUserRole: Found ${chiefApplications?.length || 0} applications for this chief/coordinator`);
@@ -280,7 +338,8 @@ export async function getApplicationsByUserRole() {
     });
     
     return {
-      applications: chiefApplications || []
+      applications: chiefApplications || [],
+      userRoleInfo
     };
   }
 
@@ -332,12 +391,13 @@ export async function getApplicationsByUserRole() {
 
       if (userOwnAppsError) {
         console.log(`❌ getApplicationsByUserRole: Error getting user's own applications: ${userOwnAppsError.message}`);
-        return { applications: [] };
+        return { applications: [], userRoleInfo };
       }
 
       console.log(`✅ getApplicationsByUserRole: Found ${userOwnApps?.length || 0} of user's own applications`);
       return {
-        applications: userOwnApps || []
+        applications: userOwnApps || [],
+        userRoleInfo
       };
     }
 
@@ -370,7 +430,7 @@ export async function getApplicationsByUserRole() {
 
     if (leadAppsError) {
       console.log(`❌ getApplicationsByUserRole: Error getting lead applications: ${leadAppsError.message}`);
-      return { applications: [] };
+      return { applications: [], userRoleInfo };
     }
 
     console.log(`✅ getApplicationsByUserRole: Found ${leadApplications?.length || 0} applications for this lead`);
@@ -379,7 +439,8 @@ export async function getApplicationsByUserRole() {
     });
     
     return {
-      applications: leadApplications || []
+      applications: leadApplications || [],
+      userRoleInfo
     };
   }
 
@@ -414,11 +475,12 @@ export async function getApplicationsByUserRole() {
 
   if (coreAppsError) {
     console.log(`❌ getApplicationsByUserRole: Error getting core member applications: ${coreAppsError.message}`);
-    return { applications: [] };
+    return { applications: [], userRoleInfo };
   }
 
   console.log(`✅ getApplicationsByUserRole: Found ${coreApplications?.length || 0} of core member's own applications`);
   return {
-    applications: coreApplications || []
+    applications: coreApplications || [],
+    userRoleInfo
   };
 }

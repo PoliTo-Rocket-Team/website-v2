@@ -1,10 +1,11 @@
+// applications-list.tsx
 import {
     Accordion,
     AccordionContent,
     AccordionItem,
     AccordionTrigger,
   } from "@/components/ui/accordion";
-  import { UserRoleInfo } from "@/app/actions/user/get-user-role";
+  import { UserRoleInfo } from "@/app/actions/user/get-applications";
   
   type Application = any;
   
