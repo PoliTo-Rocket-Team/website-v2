@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { submitApplication } from "@/app/actions/user/submit-application";
-// Import shadcn components
-import { Form } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,7 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 
-// Define interface for position data
+// Define interfaces for data structures
 interface Position {
   id: number;
   title: string;
@@ -30,6 +28,11 @@ interface FileInfo {
   name: string;
 }
 
+interface CustomAnswer {
+  question: string;
+  answer: string;
+}
+
 export default function ApplicationForm() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,11 +41,15 @@ export default function ApplicationForm() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customAnswers, setCustomAnswers] = useState<{[key: string]: string}>({});
-  const [cvFile, setCvFile] = useState<FileInfo>({ file: null, name: "" });
-  const [mlFile, setMlFile] = useState<FileInfo>({ file: null, name: "" });
+  const [files, setFiles] = useState({
+    cv: { file: null, name: "" } as FileInfo,
+    ml: { file: null, name: "" } as FileInfo
+  });
   
-  const cvInputRef = useRef<HTMLInputElement>(null);
-  const mlInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRefs = {
+    cv: useRef<HTMLInputElement>(null),
+    ml: useRef<HTMLInputElement>(null)
+  };
 
   // Fetch positions on component mount
   useEffect(() => {
@@ -52,14 +59,11 @@ export default function ApplicationForm() {
       try {
         const supabase = createClient();
         
-        // Fetch all positions
         const { data, error } = await supabase
           .from("apply_positions")
           .select("*");
 
-        if (error) {
-          throw new Error(error.message);
-        }
+        if (error) throw new Error(error.message);
 
         // Transform the data to ensure arrays and filter by status
         const formattedData = data
@@ -91,19 +95,14 @@ export default function ApplicationForm() {
     setCustomAnswers({});
   };
 
-  // Handle file selection for CV
-  const handleCvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file selection (generic function for both CV and ML)
+  const handleFileChange = (fileType: 'cv' | 'ml', e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setCvFile({ file, name: file.name });
-    }
-  };
-
-  // Handle file selection for Motivation Letter
-  const handleMlFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setMlFile({ file, name: file.name });
+      setFiles(prev => ({
+        ...prev,
+        [fileType]: { file, name: file.name }
+      }));
     }
   };
 
@@ -127,12 +126,12 @@ export default function ApplicationForm() {
     }
 
     // Validate file uploads
-    if (!cvFile.file) {
+    if (!files.cv.file) {
       setError("Please upload your CV");
       return;
     }
 
-    if (!mlFile.file) {
+    if (!files.ml.file) {
       setError("Please upload your Motivation Letter");
       return;
     }
@@ -146,13 +145,8 @@ export default function ApplicationForm() {
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
-      if (userError) {
-        throw new Error("Failed to authenticate user. Please sign in again.");
-      }
-      
-      if (!user) {
-        throw new Error("You need to be signed in to apply");
-      }
+      if (userError) throw new Error("Failed to authenticate user. Please sign in again.");
+      if (!user) throw new Error("You need to be signed in to apply");
 
       // Format answers to custom questions
       const formattedAnswers = selectedPosition.custom_questions.map((question, index) => ({
@@ -163,8 +157,8 @@ export default function ApplicationForm() {
       // Prepare application data
       const applicationData = {
         open_position_id: selectedPosition.id,
-        cv_name: cvFile.name,
-        ml_name: mlFile.name,
+        cv_name: files.cv.name,
+        ml_name: files.ml.name,
         applied_at: new Date().toISOString(),
         status: "pending",
         custom_answers: formattedAnswers,
@@ -176,9 +170,7 @@ export default function ApplicationForm() {
       // Submit application using server action
       const result = await submitApplication(applicationData);
       
-      if (!result.success) {
-        throw new Error(result.error || "Failed to submit application");
-      }
+      if (!result.success) throw new Error(result.error || "Failed to submit application");
 
       console.log("Application submitted successfully:", result.data);
       setIsSubmitted(true);
@@ -198,6 +190,38 @@ export default function ApplicationForm() {
     }));
   };
 
+  // Component for file upload to reduce repetition
+  const FileUploadField = ({ type, label }: { type: 'cv' | 'ml', label: string }) => (
+    <div>
+      <Label htmlFor={`${type}-upload`} className="block text-sm font-medium mb-2">
+        {label} (PDF)
+      </Label>
+      <div className="flex items-center gap-3">
+        <input
+          id={`${type}-upload`}
+          ref={fileInputRefs[type]}
+          type="file"
+          accept=".pdf"
+          onChange={(e) => handleFileChange(type, e)}
+          className="hidden"
+          disabled={isSubmitting}
+        />
+        <Button 
+          type="button" 
+          variant="outline"
+          onClick={() => fileInputRefs[type].current?.click()}
+          disabled={isSubmitting}
+        >
+          Choose File
+        </Button>
+        <span className="text-sm">
+          {files[type].name || "No file chosen"}
+        </span>
+      </div>
+    </div>
+  );
+
+  // Success message component
   if (isSubmitted) {
     return (
       <div className="max-w-2xl mx-auto py-8">
@@ -301,62 +325,8 @@ export default function ApplicationForm() {
             {/* File Upload Section */}
             <div className="space-y-6">
               <h2 className="text-xl font-semibold">Application Documents</h2>
-              
-              <div>
-                <Label htmlFor="cv-upload" className="block text-sm font-medium mb-2">
-                  CV (PDF)
-                </Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="cv-upload"
-                    ref={cvInputRef}
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleCvFileChange}
-                    className="hidden"
-                    disabled={isSubmitting}
-                  />
-                  <Button 
-                    type="button" 
-                    variant="outline"
-                    onClick={() => cvInputRef.current?.click()}
-                    disabled={isSubmitting}
-                  >
-                    Choose File
-                  </Button>
-                  <span className="text-sm">
-                    {cvFile.name ? cvFile.name : "No file chosen"}
-                  </span>
-                </div>
-              </div>
-              
-              <div>
-                <Label htmlFor="ml-upload" className="block text-sm font-medium mb-2">
-                  Motivation Letter (PDF)
-                </Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="ml-upload"
-                    ref={mlInputRef}
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleMlFileChange}
-                    className="hidden"
-                    disabled={isSubmitting}
-                  />
-                  <Button 
-                    type="button" 
-                    variant="outline"
-                    onClick={() => mlInputRef.current?.click()}
-                    disabled={isSubmitting}
-                  >
-                    Choose File
-                  </Button>
-                  <span className="text-sm">
-                    {mlFile.name ? mlFile.name : "No file chosen"}
-                  </span>
-                </div>
-              </div>
+              <FileUploadField type="cv" label="CV" />
+              <FileUploadField type="ml" label="Motivation Letter" />
             </div>
 
             {/* Custom Questions */}

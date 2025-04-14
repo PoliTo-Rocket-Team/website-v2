@@ -140,7 +140,7 @@ export async function getApplicationsByUserRole() {
     isChief: userRoles.some(role => role.type === 'chief'),
     isCoordinator: userRoles.some(role => role.type === 'coordinator'),
     isLead: userRoles.some(role => role.type === 'lead'),
-    isCoreOrUser: highestRoleValue <= 1 // core_member or no recognized role
+    isCoreOrUser: highestRoleValue <= 1
   };
 
   // Check if the user is a president
