@@ -1,10 +1,9 @@
 'use server'
 import { getApplicationsByUserRole } from "@/app/actions/user/get-applications";
 import ApplicationsList from "@/components/applications-list";
-import { Application } from "@/app/actions/user/get-applications";
 
 export default async function ApplicationsPage() {
-  // Server-side data fetching
+  
   const { applications, userRoleInfo } = await getApplicationsByUserRole();
   
   return (
