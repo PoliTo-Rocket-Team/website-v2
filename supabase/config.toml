@@ -105,9 +105,9 @@ file_size_limit = "50MiB"
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://localhost:3000"
+site_url = "env(NEXT_PUBLIC_SITE_URL)"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://localhost:3000"]
+additional_redirect_urls = ["env(NEXT_PUBLIC_SITE_URL)"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # If disabled, the refresh token will never expire.
@@ -301,8 +301,17 @@ client_id = "env(SUPABASE_AUTH_GOOGLE_ID)"
 secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
 redirect_uri = "http://localhost:54321/auth/v1/callback"
 
+[auth.external.keycloak]
+enabled = true
+client_id = "env(KEYCLOAK_CLIENT_ID)" 
+secret = "env(KEYCLOAK_AUTH_SECRET)" 
+redirect_uri = "env(KEYCLOAK_REDIRECT_URI)"
+url = "env(KEYCLOAK_URI)"
+skip_nonce_check = false
+
+
 [storage.buckets.images]
-public = false
+public = true
 file_size_limit = "50MiB"
 allowed_mime_types = ["image/png", "image/jpeg"]
 objects_path = "./images"
