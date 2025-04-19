@@ -14,7 +14,8 @@ INSERT INTO members (member_id, has_pp, prt_email, mobile_number, discord, nda_s
 (9, true, 'andrea.gallo@polito.it', '+39901234567', 'andrea#4567', '2023-04-20 14:30:00+02'::timestamptz, 'Andrea Gallo NDA'),
 (10, false, 'francesca.leone@polito.it', '+39012345678', 'fran#8901', '2023-05-01 09:20:00+02'::timestamptz, 'Francesca Leone NDA'),
 (11, true, 'simone.lombardi@polito.it', '+39123456780', 'simone#3456', '2023-05-10 10:15:00+02'::timestamptz, 'Simone Lombardi NDA'),
-(12, true, 'claudia.marino@polito.it', '+39234567891', 'claudia#7890', '2023-05-15 13:30:00+02'::timestamptz, 'Claudia Marino NDA');
+(12, true, 'claudia.marino@polito.it', '+39234567891', 'claudia#7890', '2023-05-15 13:30:00+02'::timestamptz, 'Claudia Marino NDA'),
+(13, true, 'claudia.marino@polito.it', '+39234567891', 'claudia#7890', '2023-05-15 13:30:00+02'::timestamptz, 'Claudia Marini NDA');
 
 -- Insert Users with timestamptz for created_at and NULL for updated_at
 INSERT INTO users (id, email, first_name, last_name, origin, level_of_study, linkedin, polito_id, program, member, created_at, updated_at) VALUES
@@ -31,7 +32,8 @@ INSERT INTO users (id, email, first_name, last_name, origin, level_of_study, lin
 ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'simone.lombardi@studenti.polito.it', 'Simone', 'Lombardi', 'Italy', 'Master', 'linkedin.com/in/simonelombardi', 's123457', 'Computer Engineering', 11, '2023-05-10 10:15:00+02'::timestamptz, NULL),
 ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'claudia.marino@studenti.polito.it', 'Claudia', 'Marino', 'Italy', 'Bachelor', 'linkedin.com/in/claudiamarino', 's234568', 'Biomedical Engineering', 12, '2023-05-15 13:30:00+02'::timestamptz, NULL),
 ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'chiara.verdi@studenti.polito.it', 'Chiara', 'Verdi', 'Italy', 'Master', 'linkedin.com/in/chiaraverdi', 's678902', 'Biomedical Engineering', NULL, '2023-03-05 10:30:00+01'::timestamptz, NULL),
-('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'davide.marino@studenti.polito.it', 'Davide', 'Marino', 'Italy', 'Bachelor', 'linkedin.com/in/davidemarino', 's789013', 'Aerospace Engineering', NULL, '2023-03-10 13:15:00+01'::timestamptz, NULL);
+('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'davide.marino@studenti.polito.it', 'Davide', 'Marino', 'Italy', 'Bachelor', 'linkedin.com/in/davidemarino', 's789013', 'Aerospace Engineering', NULL, '2023-03-10 13:15:00+01'::timestamptz, NULL),
+('eeeeee3e-e5ee-6eee-e7ee-eeeeee6eeee1', 'carmenaltieri02@gmail.com', 'Carmen', 'Marino', 'Italy', 'Bachelor', 'linkedin.com/in/davidemarino', 's789016', 'Aerospace Engineering', 13, '2023-03-10 13:15:00+01'::timestamptz, NULL);
 
 -- Insert Subteams (2 subteams)
 INSERT INTO subteams (id, name, started_at, closed_at, code) VALUES
@@ -39,11 +41,11 @@ INSERT INTO subteams (id, name, started_at, closed_at, code) VALUES
 (2, 'Mechanical Design', '2022-09-01'::date, NULL, 'MD');
 
 -- Insert Divisions (2 per subteam = 4 total)
-INSERT INTO divisions (id, name, started_at, closed_at, code) VALUES
-(1, 'Web Development', '2022-09-01'::date, NULL, 'WEB'),
-(2, 'Mobile Development', '2022-09-01'::date, NULL, 'MOB'),
-(3, 'CAD Design', '2022-09-01'::date, NULL, 'CAD'),
-(4, 'Prototyping', '2022-09-01'::date, NULL, 'PRO');
+INSERT INTO divisions (id, name, started_at, closed_at, code, subteam_id) VALUES
+(1, 'Web Development', '2022-09-01'::date, NULL, 'WEB', 1),
+(2, 'Mobile Development', '2022-09-01'::date, NULL, 'MOB', 1),
+(3, 'CAD Design', '2022-09-01'::date, NULL, 'CAD', 1),
+(4, 'Prototyping', '2022-09-01'::date, NULL, 'PRO', 1);
 
 -- Insert Roles with the required structure:
 -- For each division: a lead and core-member
@@ -55,7 +57,7 @@ INSERT INTO roles (id, member_id, subteam_id, division_id, title, started_at, le
 
 -- Software Development Subteam
 -- Chief and Coordinator for Software Development
-(2, 2, 1, NULL, 'Software Development Chief', '2022-09-10'::date, NULL, 'chief'),
+(2, 13, 1, NULL, 'Software Development Chief', '2022-09-10'::date, NULL, 'chief'),
 (3, 3, 1, NULL, 'Software Development Coordinator', '2022-09-15'::date, NULL, 'coordinator'),
 
 -- Web Development Division (under Software Dev)
@@ -91,29 +93,43 @@ INSERT INTO orders (id, status, requester, description, reason, quantity, price,
 
 -- Insert Apply Positions with text array for custom_questions
 INSERT INTO apply_positions (id, status, division_id, title, description, desirable_skills, required_skills, custom_questions, created_at) VALUES
-(1, 'true', 1, 'Frontend Developer', 'Join our web team to develop the frontend of our applications', 
-   ARRAY['React', 'Vue.js', 'UX/UI design', 'Responsive design'], 
-   ARRAY['HTML', 'CSS', 'JavaScript', 'Git'], 
-   ARRAY['Describe your experience with frontend frameworks', 'What React hooks do you use most frequently?']::text[], 
+(1, 'true', 1, 'Frontend Developer', 'Everything that goes up must eventually come down, hopefully without leaving a crater. You will play a key role in developing and validating Cavour s parachute deployment and recovery systems, working closely with other members of the division.
+
+Every system and subsystem will undergo rigorous ground testing before flight to ensure reliability. This will involve small-scale component tests and comprehensive full-scale evaluations of the entire recovery system. Your primary goal will be to ensure the successful recovery and reusability of rocket components', 
+   ARRAY['Possession of a firearm license','Experience and knowledge with gases and/or explosives ','Experience with parachutes aerodynamic and dynamic','Experience with matlab and simulink','Experience with microcontrollers such Arduino and Raspberry'], 
+   ARRAY['Basic CAD (Solidworks) knowledge','Intermediate English writing and speaking skills','Basic knowledge of Latex','Knowledge of Google Suite','Good manual skills'], 
+   ARRAY['Describe your experience with frontend frameworks', 'What React hooks do you use most frequently?', 'Describe your experience with frontend frameworks', 'Describe your experience with frontend frameworks']::text[], 
    '2023-02-01 10:00:00+01'::timestamptz),
+(2, 'true', 2, 'Frontend Developer', 'Everything that goes up must eventually come down, hopefully without leaving a crater. You will play a key role in developing and validating Cavour s parachute deployment and recovery systems, working closely with other members of the division.
+
+Every system and subsystem will undergo rigorous ground testing before flight to ensure reliability. This will involve small-scale component tests and comprehensive full-scale evaluations of the entire recovery system. Your primary goal will be to ensure the successful recovery and reusability of rocket components', 
+   ARRAY['Possession of a firearm license','Experience and knowledge with gases and/or explosives ','Experience with parachutes aerodynamic and dynamic','Experience with matlab and simulink','Experience with microcontrollers such Arduino and Raspberry'], 
+   ARRAY['Basic CAD (Solidworks) knowledge','Intermediate English writing and speaking skills','Basic knowledge of Latex','Knowledge of Google Suite','Good manual skills'], 
+   ARRAY['Describe your experience with frontend frameworks', 'What React hooks do you use most frequently?', 'Describe your experience with frontend frameworks', 'Describe your experience with frontend frameworks']::text[], 
+   '2023-02-01 10:00:00+01'::timestamptz),
+(3, 'true', 3, 'Frontend Developer', 'Everything that goes up must eventually come down, hopefully without leaving a crater. You will play a key role in developing and validating Cavour s parachute deployment and recovery systems, working closely with other members of the division.
+
+Every system and subsystem will undergo rigorous ground testing before flight to ensure reliability. This will involve small-scale component tests and comprehensive full-scale evaluations of the entire recovery system. Your primary goal will be to ensure the successful recovery and reusability of rocket components', 
+   ARRAY['Possession of a firearm license','Experience and knowledge with gases and/or explosives ','Experience with parachutes aerodynamic and dynamic','Experience with matlab and simulink','Experience with microcontrollers such Arduino and Raspberry'], 
+   ARRAY['Basic CAD (Solidworks) knowledge','Intermediate English writing and speaking skills','Basic knowledge of Latex','Knowledge of Google Suite','Good manual skills'], 
+   ARRAY['Describe your experience with frontend frameworks', 'What React hooks do you use most frequently?', 'Describe your experience with frontend frameworks', 'Describe your experience with frontend frameworks']::text[], 
+   '2023-02-01 10:00:00+01'::timestamptz),
+(4, 'true', 4, 'Frontend Developer', 'Everything that goes up must eventually come down, hopefully without leaving a crater. You will play a key role in developing and validating Cavour s parachute deployment and recovery systems, working closely with other members of the division.
+
+Every system and subsystem will undergo rigorous ground testing before flight to ensure reliability. This will involve small-scale component tests and comprehensive full-scale evaluations of the entire recovery system. Your primary goal will be to ensure the successful recovery and reusability of rocket components', 
+   ARRAY['Possession of a firearm license','Experience and knowledge with gases and/or explosives ','Experience with parachutes aerodynamic and dynamic','Experience with matlab and simulink','Experience with microcontrollers such Arduino and Raspberry'], 
+   ARRAY['Basic CAD (Solidworks) knowledge','Intermediate English writing and speaking skills','Basic knowledge of Latex','Knowledge of Google Suite','Good manual skills'], 
+   ARRAY['Describe your experience with frontend frameworks', 'What React hooks do you use most frequently?', 'Describe your experience with frontend frameworks', 'Describe your experience with frontend frameworks']::text[], 
+   '2023-02-01 10:00:00+01'::timestamptz),
+(5, 'true', 1, 'Frontend Developer', 'Everything that goes up must eventually come down, hopefully without leaving a crater. You will play a key role in developing and validating Cavour s parachute deployment and recovery systems, working closely with other members of the division.
+
+Every system and subsystem will undergo rigorous ground testing before flight to ensure reliability. This will involve small-scale component tests and comprehensive full-scale evaluations of the entire recovery system. Your primary goal will be to ensure the successful recovery and reusability of rocket components', 
+   ARRAY['Possession of a firearm license','Experience and knowledge with gases and/or explosives ','Experience with parachutes aerodynamic and dynamic','Experience with matlab and simulink','Experience with microcontrollers such Arduino and Raspberry'], 
+   ARRAY['Basic CAD (Solidworks) knowledge','Intermediate English writing and speaking skills','Basic knowledge of Latex','Knowledge of Google Suite','Good manual skills'], 
+   ARRAY['Describe your experience with frontend frameworks', 'What React hooks do you use most frequently?', 'Describe your experience with frontend frameworks', 'Describe your experience with frontend frameworks']::text[], 
+   '2023-02-01 10:00:00+01'::timestamptz);
    
-(2, 'true', 2, 'Mobile App Developer', 'Work on our mobile applications', 
-   ARRAY['Flutter', 'React Native', 'UI/UX for mobile', 'State management'], 
-   ARRAY['Java', 'Swift', 'Mobile development', 'REST APIs'], 
-   ARRAY['What mobile apps have you built?', 'Do you prefer native or cross-platform development?']::text[], 
-   '2023-02-15 11:30:00+01'::timestamptz),
-   
-(3, 'false', 3, 'CAD Designer', 'Design mechanical components for our projects', 
-   ARRAY['3D printing', 'Simulation', 'FEA analysis', 'GD&T'], 
-   ARRAY['SolidWorks', 'AutoCAD', '3D modeling', 'Technical drawing'], 
-   ARRAY['Describe your CAD design experience', 'Have you worked with parametric modeling?']::text[], 
-   '2023-03-01 09:15:00+01'::timestamptz),
-   
-(4, 'true', 4, 'Prototyping Engineer', 'Build and test prototypes', 
-   ARRAY['PCB design', 'Soldering', 'CNC machining', 'Microcontroller programming'], 
-   ARRAY['Mechanical assembly', 'Testing procedures', 'Prototype documentation', 'Basic electronics'], 
-   ARRAY['Have you built any physical prototypes before?', 'What fabrication tools are you familiar with?']::text[], 
-   '2023-03-15 14:20:00+01'::timestamptz);
+
 
 
 

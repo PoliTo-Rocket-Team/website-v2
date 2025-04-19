@@ -38,17 +38,6 @@ export function ApplyPositions({ className }: Props) {
     fetchPositions();
   }, []);
 
-  // Group positions by division for better organization
-  const positionsByDivision: Record<string, ApplyPosition[]> = {};
-
-  positions.forEach(position => {
-    const divisionName = position.divisions?.name || "Other";
-    if (!positionsByDivision[divisionName]) {
-      positionsByDivision[divisionName] = [];
-    }
-    positionsByDivision[divisionName].push(position);
-  });
-
   if (isLoading) {
     return (
       <div className="flex justify-center items-center p-8">
@@ -77,68 +66,44 @@ export function ApplyPositions({ className }: Props) {
     <div className={className}>
       <h2 className="text-2xl font-bold text-center m-4">Positions</h2>
 
-      {Object.entries(positionsByDivision).map(
-        ([divisionName, divisionPositions]) => (
-          <Accordion
-            key={divisionName}
-            type="single"
-            collapsible
-            className="mb-4"
-          >
-            <AccordionItem value={divisionName}>
-              <AccordionTrigger className="font-semibold text-lg">
-                {divisionName} - {divisionPositions[0]?.divisions?.code || ""}
-              </AccordionTrigger>
-              <AccordionContent>
-                <Accordion type="single" collapsible>
-                  {divisionPositions.map(position => (
-                    <AccordionItem
-                      className="ml-4"
-                      key={position.id}
-                      value={position.id.toString()}
-                    >
-                      <AccordionTrigger className="font-medium">
-                        {position.title}
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="p-4">
-                          {position.description && (
-                            <p className="mt-2 text-gray-700">
-                              {position.description}
-                            </p>
-                          )}
-                          <div className="mt-3">
-                            {position.required_skills && (
-                              <div className="mb-2">
-                                <h5 className="font-semibold text-sm">
-                                  Required Skills:
-                                </h5>
-                                <p className="text-gray-700 text-sm">
-                                  {position.required_skills}
-                                </p>
-                              </div>
-                            )}
-                            {position.desirable_skills && (
-                              <div>
-                                <h5 className="font-semibold text-sm">
-                                  Desirable Skills:
-                                </h5>
-                                <p className="text-gray-700 text-sm">
-                                  {position.desirable_skills}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        )
-      )}
+      <Accordion type="single" collapsible>
+        {positions.map((position) => (
+          <AccordionItem key={position.id} value={position.id.toString()}>
+            <AccordionTrigger className="font-semibold text-lg">
+              {position.title}
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="p-4">
+                {position.description && (
+                  <p className="mt-2 text-gray-700">{position.description}</p>
+                )}
+                <div className="mt-3">
+                  {position.required_skills && (
+                    <div className="mb-2">
+                      <h5 className="font-semibold text-sm">
+                        Required Skills:
+                      </h5>
+                      <p className="text-gray-700 text-sm">
+                        {position.required_skills}
+                      </p>
+                    </div>
+                  )}
+                  {position.desirable_skills && (
+                    <div>
+                      <h5 className="font-semibold text-sm">
+                        Desirable Skills:
+                      </h5>
+                      <p className="text-gray-700 text-sm">
+                        {position.desirable_skills}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        ))}
+      </Accordion>
     </div>
   );
 }
