@@ -24,20 +24,20 @@ export const signInWithGoogle = async () => {
     url = url.endsWith("/") ? url : `${url}/`;
     return url;
   };
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${getURL()}/auth/callback`,
+    }, 
+  });
+
   // const { data, error } = await supabase.auth.signInWithOAuth({
-  //   provider: "google",
+  //   provider: "keycloak",
   //   options: {
-  //     redirectTo: `${getURL()}/auth/callback`,
+  //     scopes: "openid",
+  //     redirectTo: `${getURL()}auth/callback`,
   //   },
   // });
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "keycloak",
-    options: {
-      scopes: "openid",
-      redirectTo: `${getURL()}auth/callback`,
-    },
-  });
 
   if (error) {
     console.error("Error signing in with Google:", error);
