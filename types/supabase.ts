@@ -126,14 +126,13 @@ export type Database = {
           },
         ]
       }
-      divisions: {
+      departments: {
         Row: {
           closed_at: string | null
           code: string | null
           id: number
           name: string | null
           started_at: string | null
-          subteam_id: number | null
         }
         Insert: {
           closed_at?: string | null
@@ -141,7 +140,6 @@ export type Database = {
           id: number
           name?: string | null
           started_at?: string | null
-          subteam_id?: number | null
         }
         Update: {
           closed_at?: string | null
@@ -149,14 +147,40 @@ export type Database = {
           id?: number
           name?: string | null
           started_at?: string | null
-          subteam_id?: number | null
+        }
+        Relationships: []
+      }
+      divisions: {
+        Row: {
+          closed_at: string | null
+          code: string | null
+          dept_id: number | null
+          id: number
+          name: string | null
+          started_at: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          code?: string | null
+          dept_id?: number | null
+          id: number
+          name?: string | null
+          started_at?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          code?: string | null
+          dept_id?: number | null
+          id?: number
+          name?: string | null
+          started_at?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "divisions_subteam_id_fkey"
-            columns: ["subteam_id"]
+            columns: ["dept_id"]
             isOneToOne: false
-            referencedRelation: "subteams"
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
         ]
@@ -164,32 +188,43 @@ export type Database = {
       members: {
         Row: {
           discord: string | null
-          has_pp: boolean
           member_id: number
           mobile_number: string | null
+          nda_confirmed_by: number | null
           nda_name: string | null
           nda_signed_at: string | null
+          picture: string | null
           prt_email: string | null
         }
         Insert: {
           discord?: string | null
-          has_pp: boolean
           member_id: number
           mobile_number?: string | null
+          nda_confirmed_by?: number | null
           nda_name?: string | null
           nda_signed_at?: string | null
+          picture?: string | null
           prt_email?: string | null
         }
         Update: {
           discord?: string | null
-          has_pp?: boolean
           member_id?: number
           mobile_number?: string | null
+          nda_confirmed_by?: number | null
           nda_name?: string | null
           nda_signed_at?: string | null
+          picture?: string | null
           prt_email?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "members_nda_confirmed_by_fkey"
+            columns: ["nda_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["member_id"]
+          },
+        ]
       }
       orders: {
         Row: {
@@ -240,34 +275,34 @@ export type Database = {
       }
       roles: {
         Row: {
+          dept_id: number | null
           division_id: number | null
           id: number
           leaved_at: string | null
           member_id: number | null
           started_at: string | null
-          subteam_id: number | null
           title: string | null
-          type: Database["public"]["Enums"]["position type"]
+          type: Database["public"]["Enums"]["position_type"] | null
         }
         Insert: {
+          dept_id?: number | null
           division_id?: number | null
           id: number
           leaved_at?: string | null
           member_id?: number | null
           started_at?: string | null
-          subteam_id?: number | null
           title?: string | null
-          type?: Database["public"]["Enums"]["position type"]
+          type?: Database["public"]["Enums"]["position_type"] | null
         }
         Update: {
+          dept_id?: number | null
           division_id?: number | null
           id?: number
           leaved_at?: string | null
           member_id?: number | null
           started_at?: string | null
-          subteam_id?: number | null
           title?: string | null
-          type?: Database["public"]["Enums"]["position type"]
+          type?: Database["public"]["Enums"]["position_type"] | null
         }
         Relationships: [
           {
@@ -286,39 +321,16 @@ export type Database = {
           },
           {
             foreignKeyName: "positions_subteam_id_fkey"
-            columns: ["subteam_id"]
+            columns: ["dept_id"]
             isOneToOne: false
-            referencedRelation: "subteams"
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
         ]
       }
-      subteams: {
-        Row: {
-          closed_at: string | null
-          code: string | null
-          id: number
-          name: string | null
-          started_at: string | null
-        }
-        Insert: {
-          closed_at?: string | null
-          code?: string | null
-          id: number
-          name?: string | null
-          started_at?: string | null
-        }
-        Update: {
-          closed_at?: string | null
-          code?: string | null
-          id?: number
-          name?: string | null
-          started_at?: string | null
-        }
-        Relationships: []
-      }
       users: {
         Row: {
+          access: string[] | null
           created_at: string
           email: string
           first_name: string | null
@@ -333,6 +345,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          access?: string[] | null
           created_at?: string
           email: string
           first_name?: string | null
@@ -347,6 +360,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          access?: string[] | null
           created_at?: string
           email?: string
           first_name?: string | null
@@ -387,12 +401,7 @@ export type Database = {
         | "accepted"
         | "received"
         | "accepted_by_another_team"
-      "position type":
-        | "chief"
-        | "lead"
-        | "coordinator"
-        | "core_member"
-        | "president"
+      position_type: "president" | "head" | "lead" | "core"
       status: "pending" | "accepted" | "rejected"
       status_type:
         | "open"
@@ -409,27 +418,29 @@ export type Database = {
   }
 }
 
-type PublicSchema = Database[Extract<keyof Database, "public">]
+type DefaultSchema = Database[Extract<keyof Database, "public">]
 
 export type Tables<
-  PublicTableNameOrOptions extends
-    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-        Database[PublicTableNameOrOptions["schema"]]["Views"])
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
-        PublicSchema["Views"])
-    ? (PublicSchema["Tables"] &
-        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -437,20 +448,22 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -458,20 +471,22 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -479,21 +494,23 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  PublicEnumNameOrOptions extends
-    | keyof PublicSchema["Enums"]
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof Database },
-  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = PublicEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
-    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof PublicSchema["CompositeTypes"]
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof Database },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof Database
@@ -502,7 +519,35 @@ export type CompositeTypes<
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
   ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
-    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {
+      application_status: [
+        "pending",
+        "rejected",
+        "accepted",
+        "received",
+        "accepted_by_another_team",
+      ],
+      position_type: ["president", "head", "lead", "core"],
+      status: ["pending", "accepted", "rejected"],
+      status_type: [
+        "open",
+        "closed",
+        "pending",
+        "approved",
+        "rejected",
+        "in_progress",
+        "completed",
+      ],
+    },
+  },
+} as const
 
