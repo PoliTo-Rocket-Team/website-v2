@@ -2,109 +2,103 @@ import { InfoIcon } from "lucide-react";
 import { MembersList } from "@/components/members-list";
 import { createClient } from "@/utils/supabase/server";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-type Member = {
-  first_name: string;
-  last_name: string;
-  role_type: string;
-  member_id: number;
-  role_id: number;
-  email: string;
-  linkedin: string | null;
-  role_title: string;
-  division_id: number;
-  department_id: number;
-  discord: string | null;
-  origin: string;
-  level_of_study: string | null;
-  polito_id: number | null;
-  program: string | null;
-  started_at: string; // Could use Date if you're parsing it later
-  mobile_number: string | null;
-  division_name: string;
-  division_code: string;
-  departments_name: string;
-  department_code: string;
-};
-
-type Division = {
-  name: string;
-  code: string;
-  id: number;
-};
+import { Member, Division } from "@/types/team-member-data";
+import team_meta_data from "@/app/actions/user/member";
+import DivisionMembers from "@/components/division-member";
 
 export default async function MembersPage() {
   const supabase = await createClient();
 
-  // const { data, error } = await supabase.rpc("get_user_info");
-  // console.log("data", data);
-  // console.log("error", error);
-  // ---------------------
-  const { data, error } = await supabase.rpc("get_subteam_data");
-  console.log("data", data);
-  console.log("error", error);
-
-  let subteam: string[] = [];
-  let dept = [];
-  let division_info: Division[] = [];
-  let department_info: Division[] = [];
-  let team: Member[] = data as Member[];
-
-  data.forEach((user) => {
-    if (!subteam.includes(user.division_id)) {
-      division_info.push({
-        name: user.division_name,
-        code: user.division_code,
-        id: user.division_id,
-      });
-      subteam.push(user.division_id);
-      if (!department_info.includes(user.department_id)) {
-        department_info.push({
-          name: user.departments_name,
-          code: user.department_code,
-          id: user.department_id,
-        });
-      }
+  const { data: team, error } = await supabase.rpc("get_subteam_data");
+  const newdata = [...team];
+  newdata.forEach((member, index, arr) => {
+    if (member.division_id == null) {
+      member.division_id = 0;
+      member.division_name = "Other";
     }
   });
-
-  // console.log("divisions : " , division_info );
-  // console.log("departments :" , department_info);
+  const division_info = team_meta_data(newdata);
 
   return (
-    <>
-      <h2 className="px-[5px] mx-[15px]">member page</h2>
-      <main className="px-[5px] mx-[15px]">
-        <Tabs defaultValue="account" className="w-[400px]">
-          <TabsList>
+    <section className="flex flex-col items-center w-full h-full  ">
+      <header className="flex items-center justify-between w-full  my-4 border-b-2 border-gray-300">
+        <h2 className="px-[5px] mx-[15px] text-xl  md:text-2xl font-bold">
+          member page
+        </h2>
+      </header>
+
+      <main className="  w-full h-full flex flex-col items-center justify-center">
+        <Tabs
+          defaultValue="all"
+          className="w-full flex flex-col items-center justify-center  "
+        >
+          <TabsList
+            className=" 
+            grid  h-auto grid-cols-1 w-full
+            sm:grid-cols-1 sm:w-full
+
+            md:grid-cols-2 min-w-[70%] max-w-[90%]
+            lg:grid-cols-3 min-w-[70%] max-w-[90%]
+            xl:grid-cols-4 min-w-[70%] max-w-[90%]
+            2xl:grid-cols-5 min-w-[70%] max-w-[90%]
+            "
+          >
+            <TabsTrigger value="all" className="font-semibold  ">
+              <p>all members</p>
+            </TabsTrigger>
             {division_info.map((div) => {
               return (
-                <TabsTrigger key={div.id} value={`${div.id}`}>
+                <TabsTrigger
+                  className="font-semibold"
+                  key={div.id}
+                  value={`${div.id}`}
+                >
                   {div.name}
                 </TabsTrigger>
               );
             })}
           </TabsList>
 
+          <TabsContent
+            className="
+          w-full h-auto
+          sm:w-full sm:h-auto
+          lg:max-w-[1000px]
+          xl:max-w-[1000px]
+          2xl:max-w-[1000px]
+          "
+            value="all"
+          >
+            {division_info.map((div) => {
+              return (
+                <DivisionMembers
+                  key={div.id}
+                  divisionMembers={[...newdata]}
+                  divID={div.id}
+                />
+              );
+            })}
+          </TabsContent>
+
           {division_info.map((div) => {
             return (
-              <TabsContent key={div.id} value={`${div.id}`}>
-                <ul>
-                  {team.map((member) => {
-                    if (member.division_id === div.id) {
-                      return (
-                        <li key={member.member_id}>
-                          <p>{member.first_name}</p>
-                        </li>
-                      );
-                    }
-                  })}
-                </ul>
+              <TabsContent
+                className="
+              w-full h-auto
+              sm:w-full sm:h-auto
+              lg:max-w-[1000px]
+              xl:max-w-[1000px]
+              2xl:max-w-[1000px]
+              "
+                key={div.id}
+                value={`${div.id}`}
+              >
+                <DivisionMembers divisionMembers={[...team]} divID={div.id} />
               </TabsContent>
             );
           })}
         </Tabs>
       </main>
-    </>
+    </section>
   );
 }

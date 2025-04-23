@@ -49,7 +49,7 @@ export default function RootLayout({
 
               {children}
 
-              <footer className=" bg-red-500   w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
+              <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
                 <p>Copyright text here</p>
               </footer>
             </div>
