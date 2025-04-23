@@ -16,7 +16,11 @@ RETURNS TABLE (
   polito_id text ,
   program text ,
   started_at date ,
-  mobile_number text
+  mobile_number text ,
+  division_name text ,
+  division_code text,
+  departments_name text,
+  department_code text
 
 )
 
