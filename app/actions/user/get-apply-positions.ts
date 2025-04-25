@@ -6,7 +6,9 @@ import { Database } from "@/types/supabase";
 export type ApplyPosition =
   Database["public"]["Tables"]["apply_positions"]["Row"] & {
     divisions?: Partial<
-      Database["public"]["Tables"]["divisions"]["Row"]
+      Database["public"]["Tables"]["divisions"]["Row"] & {
+        departments?: { name: string } | null;
+      }
     > | null;
   };
 
@@ -72,8 +74,10 @@ export async function getApplyPositionsByUserRole() {
   const { data: allPositions, error: positionsError } = await supabase.from(
     "apply_positions"
   ).select(`
+       *,
+    divisions(
       *,
-      divisions(*)
+      departments(name))
     `);
 
   if (positionsError) {
