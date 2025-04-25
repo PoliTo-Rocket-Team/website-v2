@@ -103,10 +103,7 @@ export function ApplyPositions({ className }: Props) {
     );
 
   return (
-    <div className={className}>
-      <h2 className="text-2xl font-bold text-center mb-6 text-primary">
-        Positions
-      </h2>
+    <div >
       <Accordion
         type="single"
         collapsible
