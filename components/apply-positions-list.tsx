@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import Switch from "@mui/material/Switch";
+import { Button } from "@/components/ui/button";
 import { styled } from "@mui/material/styles";
 import { useState, useEffect } from "react";
 import {
@@ -57,7 +58,6 @@ export function ApplyPositions({ className }: Props) {
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [switchStates, setSwitchStates] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -103,115 +103,109 @@ export function ApplyPositions({ className }: Props) {
     );
 
   return (
-    <div >
-      <Accordion
-        type="single"
-        collapsible
-        value={expandedId || undefined}
-        onValueChange={setExpandedId}
-        className="space-y-4">
-        {positions.map((position) => {
-          const idStr = position.id.toString();
-          const isExpanded = expandedId === idStr;
-          const switchChecked = !!switchStates[idStr];
+    <div className={`space-y-4 ${className}`}>
+      {positions.map((position) => {
+        const idStr = position.id.toString();
+        const switchChecked = !!switchStates[idStr];
 
-          return (
-            <AccordionItem
-              key={idStr}
-              value={idStr}
-              className="bg-card text-card-foreground rounded-lg shadow-md border border-border">
+        return (
+          <Accordion
+            key={idStr}
+            type="single"
+            collapsible
+            className="bg-card text-card-foreground rounded-lg shadow-md border border-border">
+            <AccordionItem value={idStr}>
               <AccordionTrigger className="flex items-center justify-between pl-6 pr-2 py-4 hover:bg-secondary transition-colors">
                 <span className="font-semibold text-lg">{position.title}</span>
-                {isExpanded && (
-                  <div className="flex items-center space-x-4">
-                    <span className="text-sm text-muted-foreground">
-                      {position.divisions?.departments?.name} -{" "}
-                      {position.divisions?.name}
-                    </span>
-                    <span className="text-sm font-medium text-orange-500">
-                      {position.id}
-                    </span>
-                    <OrangeSwitch
-                      checked={switchChecked}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(_, checked) => handleToggle(idStr, checked)}
-                      size="small"
-                      disableRipple
-                    />
-                  </div>
-                )}
+
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm text-muted-foreground">
+                    {position.divisions?.departments?.name} -{" "}
+                    {position.divisions?.name}
+                  </span>
+                  <span className="text-sm font-medium text-orange-500">
+                    {position.divisions?.code}
+                  </span>
+                  <OrangeSwitch
+                    checked={switchChecked}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(_, checked) => handleToggle(idStr, checked)}
+                    size="small"
+                    disableRipple
+                  />
+                </div>
               </AccordionTrigger>
 
-              {isExpanded && (
-                <>
-                  <div className="border-t border-border" />
-                  <AccordionContent className="px-6 py-6">
-                    <h3 className="font-semibold text-lg mb-2">Description</h3>
-                    {position.description && (
-                      <p className="mb-4">{position.description}</p>
+              <div>
+                <div className="border-t border-border" />
+                <AccordionContent className="px-6 py-6">
+                  <h3 className="font-semibold text-lg mb-2">Description</h3>
+                  {position.description && (
+                    <p className="mb-10">{position.description}</p>
+                  )}
+
+                  {Array.isArray(position.required_skills) &&
+                    position.required_skills.length > 0 && (
+                      <>
+                        <h4 className="font-semibold text-sm mb-1">
+                          Required Skills
+                        </h4>
+                        <ul className="list-disc list-inside mb-10">
+                          {position.required_skills.map((skill, idx) => (
+                            <li key={idx}>{skill}</li>
+                          ))}
+                        </ul>
+                      </>
                     )}
 
-                    {Array.isArray(position.required_skills) &&
-                      position.required_skills.length > 0 && (
-                        <>
-                          <h4 className="font-semibold text-sm mb-1">
-                            Required Skills
-                          </h4>
-                          <ul className="list-disc list-inside mb-4">
-                            {position.required_skills.map((skill, idx) => (
-                              <li key={idx}>{skill}</li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
+                  {Array.isArray(position.desirable_skills) &&
+                    position.desirable_skills.length > 0 && (
+                      <>
+                        <h4 className="font-semibold text-sm mb-1">
+                          Desirable Skills
+                        </h4>
+                        <ul className="list-disc list-inside mb-10">
+                          {position.desirable_skills.map((skill, idx) => (
+                            <li key={idx}>{skill}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
 
-                    {Array.isArray(position.desirable_skills) &&
-                      position.desirable_skills.length > 0 && (
-                        <>
-                          <h4 className="font-semibold text-sm mb-1">
-                            Desirable Skills
-                          </h4>
-                          <ul className="list-disc list-inside mb-4">
-                            {position.desirable_skills.map((skill, idx) => (
-                              <li key={idx}>{skill}</li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
+                  {Array.isArray(position.custom_questions) &&
+                    position.custom_questions.length > 0 && (
+                      <>
+                        <h4 className="font-semibold text-sm mb-1">
+                          Custom Questions
+                        </h4>
+                        <ul className="list-disc list-inside mb-10">
+                          {position.custom_questions.map((q, idx) => (
+                            <li key={idx}>{q}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
 
-                    {Array.isArray(position.custom_questions) &&
-                      position.custom_questions.length > 0 && (
-                        <>
-                          <h4 className="font-semibold text-sm mb-1">
-                            Custom Questions
-                          </h4>
-                          <ul className="list-disc list-inside mb-4">
-                            {position.custom_questions.map((q, idx) => (
-                              <li key={idx}>{q}</li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-
-                    <div className="mt-6 flex justify-center space-x-4">
-                      <button
-                        onClick={() => handleEdit(idStr)}
-                        className="px-4 py-2 border-2 border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white rounded">
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(idStr)}
-                        className="px-4 py-2 border-2 border-muted text-muted-foreground hover:bg-muted hover:text-white rounded">
-                        Delete
-                      </button>
-                    </div>
-                  </AccordionContent>
-                </>
-              )}
+                  <div className="mt-6 flex justify-center space-x-4">
+                    <Button
+                      onClick={() => handleEdit(idStr)}
+                      variant="outline"
+                      className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white">
+                      Edit
+                    </Button>
+                    <Button
+                      onClick={() => handleDelete(idStr)}
+                      variant="outline"
+                      className="border-muted text-muted-foreground hover:bg-muted hover:text-white">
+                      Delete
+                    </Button>
+                  </div>
+                </AccordionContent>
+              </div>
             </AccordionItem>
-          );
-        })}
-      </Accordion>
+          </Accordion>
+        );
+      })}
     </div>
   );
 }
