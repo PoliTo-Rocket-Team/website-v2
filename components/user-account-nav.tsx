@@ -13,7 +13,7 @@ import {
 import { UserAvatar } from "@/components/user-avatar";
 
 interface UserAccountNavProps extends React.HTMLAttributes<HTMLDivElement> {
-    user: { name: string, image: string , email: string };
+  user: { name: string; image: string; email: string };
 }
 
 export function UserAccountNav({ user }: UserAccountNavProps) {
@@ -36,7 +36,7 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
             )}
           </div>
         </div>
-              <DropdownMenuSeparator />
+        <DropdownMenuSeparator />
 
         {/* hardcoded for now, we need to render in reference to role.type */}
         <DropdownMenuItem asChild>
@@ -47,6 +47,9 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/dashboard/positions">Positions</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard/departments">Departments</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

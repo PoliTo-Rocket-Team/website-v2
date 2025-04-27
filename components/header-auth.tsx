@@ -43,7 +43,7 @@ export default async function AuthButton() {
     <UserAccountNav
       user={{
         name: user.user_metadata.full_name,
-        image: `https://avatar.iran.liara.run/public`,
+        image: "",
         email: user.user_metadata.email,
       }}
     />

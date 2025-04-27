@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import Link from "next/link";
 import "./globals.css";
 import MaxWidthWrapper from "@/components/MaxWidthWrapper";
+import { Toaster } from "@/components/ui/sonner"
 
 const defaultUrl =
   process?.env?.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000/";
@@ -61,6 +62,7 @@ export default function RootLayout({
             </footer>
             
           </main>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
