@@ -5,7 +5,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Member, Division } from "@/types/team-member-data";
 import team_meta_data from "@/app/actions/user/member";
 import DivisionMembers from "@/components/division-member";
-
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { UserModificationForm } from "@/components/user-modification-form";
 export default async function MembersPage() {
   const supabase = await createClient();
 
@@ -21,10 +29,23 @@ export default async function MembersPage() {
 
   return (
     <section className="flex flex-col items-center w-full h-full  ">
-      <header className="flex items-center justify-between w-full  my-4 border-b-2 border-gray-300">
+      <header className="flex items-start flex-col justify-between w-full  my-4 border-b-2 border-gray-300">
         <h2 className="px-[5px] mx-[15px] text-xl  md:text-2xl font-bold">
           member page
         </h2>
+        <Sheet>
+          <SheetTrigger>Open</SheetTrigger>
+          <SheetContent className="min-w-[50vw]">
+            <SheetHeader>
+              <SheetTitle>Are you absolutely sure?</SheetTitle>
+              <SheetDescription>
+                This action cannot be undone. This will permanently delete your
+                account and remove your data from our servers.
+                <UserModificationForm />
+              </SheetDescription>
+            </SheetHeader>
+          </SheetContent>
+        </Sheet>
       </header>
 
       <main className="  w-full h-full flex flex-col items-center justify-center">
