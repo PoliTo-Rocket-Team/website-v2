@@ -1,9 +1,9 @@
 "use client";
 import * as React from "react";
+import { useState, useEffect } from "react";
 import Switch from "@mui/material/Switch";
 import { Button } from "@/components/ui/button";
 import { styled } from "@mui/material/styles";
-import { useState, useEffect } from "react";
 import {
   getApplyPositionsByUserRole,
   ApplyPosition,
@@ -17,7 +17,19 @@ import {
 import "@/app/globals.css";
 
 type Props = {
-  className?: string;
+  handleDelete: (id: number) => void;
+  handleOpenClosePosition: (id: number, isOpen: boolean) => void;
+  handleEditPosition: (
+    id: number,
+    data: Partial<{
+      title: string;
+      description: string;
+      status: boolean;
+      required_skills: string[];
+      desirable_skills: string[];
+      custom_questions: string[];
+    }>
+  ) => void;
 };
 
 const OrangeSwitch = styled(Switch)(({ theme }) => ({
@@ -54,154 +66,350 @@ const OrangeSwitch = styled(Switch)(({ theme }) => ({
   },
 }));
 
-export function ApplyPositions({ className }: Props) {
+export function ApplyPositions({
+  handleDelete,
+  handleOpenClosePosition,
+  handleEditPosition,
+}: Props) {
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [switchStates, setSwitchStates] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formData, setFormData] = useState<{
+    title: string;
+    description: string;
+    required_skills: string[];
+    desirable_skills: string[];
+    custom_questions: string[];
+  }>({
+    title: "",
+    description: "",
+    required_skills: [],
+    desirable_skills: [],
+    custom_questions: [],
+  });
 
   useEffect(() => {
     async function fetchPositions() {
       try {
-        const { positions: fetchedPositions } =
-          await getApplyPositionsByUserRole();
-        setPositions(fetchedPositions);
+        const { positions: fetched } = await getApplyPositionsByUserRole();
+        setPositions(fetched);
       } catch (err) {
         console.error("Error fetching positions:", err);
-        setError("Failed to load positions. Please try again later.");
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     }
     fetchPositions();
   }, []);
 
-  const handleEdit = (id: string) => console.log(`Edit position ${id}`);
-  const handleDelete = (id: string) => console.log(`Delete position ${id}`);
-  const handleToggle = (id: string, checked: boolean) => {
-    setSwitchStates((prev) => ({ ...prev, [id]: checked }));
-    console.log(`Toggled ${id}:`, checked);
+  const handleTogglePosition = async (id: number, currentStatus: boolean) => {
+    try {
+      await handleOpenClosePosition(id, currentStatus);
+      setPositions((prev) =>
+        prev.map((pos) =>
+          pos.id === id ? { ...pos, status: !currentStatus } : pos
+        )
+      );
+    } catch (err) {
+      console.error("Failed to toggle position status:", err);
+      alert("Failed to update position status. Please try again.");
+    }
   };
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center items-center p-8">
-        Loading positions...
-      </div>
+  const handleDeletePosition = async (id: number) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this position? This action cannot be undone."
     );
-  if (error)
-    return (
-      <div className="text-destructive p-4 border border-destructive rounded">
-        {error}
-      </div>
-    );
+    if (!confirmed) return;
+
+    try {
+      await handleDelete(id);
+
+      setPositions((prev) => prev.filter((pos) => pos.id !== id));
+    } catch (err) {
+      console.error("Failed to delete position:", err);
+      alert("Failed to delete position. Please try again.");
+    }
+  };
+
+  const startEdit = (pos: ApplyPosition) => {
+    setEditingId(pos.id);
+    setFormData({
+      title: pos.title || " ",
+      description: pos.description || "",
+      required_skills: pos.required_skills ?? [],
+      desirable_skills: pos.desirable_skills ?? [],
+      custom_questions: pos.custom_questions ?? [],
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
+
+  const saveEdit = async () => {
+    if (editingId == null) return;
+    try {
+      await handleEditPosition(editingId, {
+        title: formData.title,
+        description: formData.description,
+        required_skills: formData.required_skills,
+        desirable_skills: formData.desirable_skills,
+        custom_questions: formData.custom_questions,
+      });
+      setPositions((prev) =>
+        prev.map((p) => (p.id === editingId ? { ...p, ...formData } : p))
+      );
+      setEditingId(null);
+    } catch (err) {
+      console.error("Save failed:", err);
+      alert("Failed to save changes. Please try again.");
+    }
+  };
+
+  const updateArrayField = (
+    field: "required_skills" | "desirable_skills" | "custom_questions",
+    index: number,
+    value: string
+  ) => {
+    setFormData((d) => {
+      const arr = [...d[field]];
+      arr[index] = value;
+      return { ...d, [field]: arr };
+    });
+  };
+  const addArrayField = (
+    field: "required_skills" | "desirable_skills" | "custom_questions"
+  ) => {
+    setFormData((d) => ({ ...d, [field]: [...d[field], ""] }));
+  };
+  const removeArrayField = (
+    field: "required_skills" | "desirable_skills" | "custom_questions",
+    index: number
+  ) => {
+    setFormData((d) => {
+      const arr = d[field].filter((_, i) => i !== index);
+      return { ...d, [field]: arr };
+    });
+  };
+
+  if (loading)
+    return <div className="p-8 text-center">Loading positions...</div>;
   if (!positions.length)
     return (
       <div className="text-muted-foreground p-4">
-        No open positions available at this time.
+        No positions available at this time.
       </div>
     );
 
   return (
-    <div className={`space-y-4 ${className}`}>
-      {positions.map((position) => {
-        const idStr = position.id.toString();
-        const switchChecked = !!switchStates[idStr];
+    <div className="space-y-4">
+      {positions.map((pos) => {
+        const isEditing = editingId === pos.id;
 
         return (
           <Accordion
-            key={idStr}
+            key={pos.id}
             type="single"
             collapsible
             className="bg-card text-card-foreground rounded-lg shadow-md border border-border">
-            <AccordionItem value={idStr}>
+            <AccordionItem value={pos.id.toString()}>
               <AccordionTrigger className="flex items-center justify-between pl-6 pr-2 py-4 hover:bg-secondary transition-colors">
-                <span className="font-semibold text-lg">{position.title}</span>
+                {isEditing ? (
+                  <input
+                    className="flex-1 border px-2 py-1 rounded"
+                    value={formData.title}
+                    onChange={(e) =>
+                      setFormData((d) => ({ ...d, title: e.target.value }))
+                    }
+                  />
+                ) : (
+                  <span className="font-semibold text-lg">{pos.title}</span>
+                )}
 
                 <div className="flex items-center space-x-4">
                   <span className="text-sm text-muted-foreground">
-                    {position.divisions?.departments?.name} -{" "}
-                    {position.divisions?.name}
+                    {pos.divisions?.departments?.name} – {pos.divisions?.name}
                   </span>
                   <span className="text-sm font-medium text-orange-500">
-                    {position.divisions?.code}
+                    {pos.divisions?.code}
                   </span>
                   <OrangeSwitch
-                    checked={switchChecked}
+                    checked={pos.status}
                     onClick={(e) => e.stopPropagation()}
-                    onChange={(_, checked) => handleToggle(idStr, checked)}
+                    onChange={() => handleTogglePosition(pos.id, pos.status)}
                     size="small"
                     disableRipple
                   />
                 </div>
               </AccordionTrigger>
 
-              <div>
-                <div className="border-t border-border" />
-                <AccordionContent className="px-6 py-6">
-                  <h3 className="font-semibold text-lg mb-2">Description</h3>
-                  {position.description && (
-                    <p className="mb-10">{position.description}</p>
-                  )}
+              <AccordionContent className="px-6 py-6">
+                <h3 className="font-semibold text-lg mb-2">Description</h3>
+                {isEditing ? (
+                  <textarea
+                    className="w-full border px-2 py-1 rounded mb-6"
+                    rows={4}
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData((d) => ({
+                        ...d,
+                        description: e.target.value,
+                      }))
+                    }
+                  />
+                ) : (
+                  <p className="mb-10">{pos.description}</p>
+                )}
 
-                  {Array.isArray(position.required_skills) &&
-                    position.required_skills.length > 0 && (
-                      <>
-                        <h4 className="font-semibold text-sm mb-1">
-                          Required Skills
-                        </h4>
-                        <ul className="list-disc list-inside mb-10">
-                          {position.required_skills.map((skill, idx) => (
-                            <li key={idx}>{skill}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-
-                  {Array.isArray(position.desirable_skills) &&
-                    position.desirable_skills.length > 0 && (
-                      <>
-                        <h4 className="font-semibold text-sm mb-1">
-                          Desirable Skills
-                        </h4>
-                        <ul className="list-disc list-inside mb-10">
-                          {position.desirable_skills.map((skill, idx) => (
-                            <li key={idx}>{skill}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-
-                  {Array.isArray(position.custom_questions) &&
-                    position.custom_questions.length > 0 && (
-                      <>
-                        <h4 className="font-semibold text-sm mb-1">
-                          Custom Questions
-                        </h4>
-                        <ul className="list-disc list-inside mb-10">
-                          {position.custom_questions.map((q, idx) => (
-                            <li key={idx}>{q}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-
-                  <div className="mt-6 flex justify-center space-x-4">
+                <h4 className="font-semibold text-sm mb-1">Required Skills</h4>
+                {isEditing ? (
+                  <div className="mb-4 space-y-2">
+                    {formData.required_skills.map((skill, i) => (
+                      <div key={i} className="flex space-x-2">
+                        <input
+                          className="flex-1 border px-2 py-1 rounded"
+                          value={skill}
+                          onChange={(e) =>
+                            updateArrayField(
+                              "required_skills",
+                              i,
+                              e.target.value
+                            )
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            removeArrayField("required_skills", i)
+                          }>
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
                     <Button
-                      onClick={() => handleEdit(idStr)}
-                      variant="outline"
-                      className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white">
-                      Edit
-                    </Button>
-                    <Button
-                      onClick={() => handleDelete(idStr)}
-                      variant="outline"
-                      className="border-muted text-muted-foreground hover:bg-muted hover:text-white">
-                      Delete
+                      size="sm"
+                      onClick={() => addArrayField("required_skills")}>
+                      + Add required skill
                     </Button>
                   </div>
-                </AccordionContent>
-              </div>
+                ) : (
+                  <ul className="list-disc list-inside mb-10">
+                    {pos.required_skills?.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                )}
+
+                <h4 className="font-semibold text-sm mb-1">Desirable Skills</h4>
+                {isEditing ? (
+                  <div className="mb-4 space-y-2">
+                    {formData.desirable_skills.map((skill, i) => (
+                      <div key={i} className="flex space-x-2">
+                        <input
+                          className="flex-1 border px-2 py-1 rounded"
+                          value={skill}
+                          onChange={(e) =>
+                            updateArrayField(
+                              "desirable_skills",
+                              i,
+                              e.target.value
+                            )
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            removeArrayField("desirable_skills", i)
+                          }>
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      size="sm"
+                      onClick={() => addArrayField("desirable_skills")}>
+                      + Add desirable skill
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="list-disc list-inside mb-10">
+                    {pos.desirable_skills?.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                )}
+
+                <h4 className="font-semibold text-sm mb-1">Custom Questions</h4>
+                {isEditing ? (
+                  <div className="mb-6 space-y-2">
+                    {formData.custom_questions.map((q, i) => (
+                      <div key={i} className="flex space-x-2">
+                        <input
+                          className="flex-1 border px-2 py-1 rounded"
+                          value={q}
+                          onChange={(e) =>
+                            updateArrayField(
+                              "custom_questions",
+                              i,
+                              e.target.value
+                            )
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            removeArrayField("custom_questions", i)
+                          }>
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      size="sm"
+                      onClick={() => addArrayField("custom_questions")}>
+                      + Add question
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="list-disc list-inside mb-10">
+                    {pos.custom_questions?.map((q, i) => <li key={i}>{q}</li>)}
+                  </ul>
+                )}
+
+                <div className="flex justify-center space-x-4">
+                  {isEditing ? (
+                    <>
+                      <Button
+                        onClick={saveEdit}
+                        className="bg-orange-500 text-white hover:bg-orange-600">
+                        Save
+                      </Button>
+                      <Button
+                        onClick={cancelEdit}
+                        variant="outline"
+                        className="border-muted text-muted-foreground">
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={() => startEdit(pos)}
+                        variant="outline"
+                        className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white">
+                        Edit
+                      </Button>
+                      <Button
+                        onClick={() => handleDeletePosition(pos.id)}
+                        variant="outline"
+                        className="border-muted text-muted-foreground">
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </AccordionContent>
             </AccordionItem>
           </Accordion>
         );
