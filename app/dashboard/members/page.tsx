@@ -14,7 +14,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { UserModificationForm } from "@/components/user-modification-form";
+
+// ----------------------------
 export default async function MembersPage() {
+  // ----------------------------
   const supabase = await createClient();
 
   const { data: team, error } = await supabase.rpc("get_subteam_data");
@@ -35,13 +38,15 @@ export default async function MembersPage() {
         </h2>
         <Sheet>
           <SheetTrigger>Open</SheetTrigger>
-          <SheetContent className="min-w-[50vw]">
+          <SheetContent className="min-w-[50vw] overflow-y-auto">
             <SheetHeader>
               <SheetTitle>Are you absolutely sure?</SheetTitle>
               <SheetDescription>
                 This action cannot be undone. This will permanently delete your
                 account and remove your data from our servers.
-                <UserModificationForm />
+                <section>
+                  <UserModificationForm />
+                </section>
               </SheetDescription>
             </SheetHeader>
           </SheetContent>
