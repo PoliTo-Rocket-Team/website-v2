@@ -14,10 +14,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { UserModificationForm } from "@/components/user-modification-form";
+import { departments_info } from "@/app/actions/user/update-user";
 
 // ----------------------------
 export default async function MembersPage() {
-  // ----------------------------
   const supabase = await createClient();
 
   const { data: team, error } = await supabase.rpc("get_subteam_data");
@@ -45,7 +45,9 @@ export default async function MembersPage() {
                 This action cannot be undone. This will permanently delete your
                 account and remove your data from our servers.
                 <section>
-                  <UserModificationForm />
+                  <UserModificationForm
+                    department_information={await departments_info()}
+                  />
                 </section>
               </SheetDescription>
             </SheetHeader>

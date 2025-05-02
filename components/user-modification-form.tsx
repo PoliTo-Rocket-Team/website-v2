@@ -1,46 +1,68 @@
 "use client";
-// import Form from "@/next/form";
 import updateUser from "@/app/actions/user/update-user";
-import { use, useActionState } from "react";
-export function UserModificationForm({}) {
-  // const [state, addUser, loading] = useActionState(updateUser);
+import { useState, useActionState } from "react";
+
+export interface Division {
+  id: number;
+  name: string;
+  code: string;
+}
+export interface Department {
+  id: number;
+  name: string;
+  divisions: Division[];
+}
+
+export function UserModificationForm({ department_information }) {
   const [formState, addUser, isloading] = useActionState(updateUser, null);
+  const [divisions, setdivisions] = useState([] as Division[]);
+  function ondeptChange(e) {
+    let new_div: Division[] = [];
+    department_information.forEach((dept: Department) => {
+      if (dept.id == e.target.value) {
+        dept.divisions.forEach((div) => {
+          new_div.push(div);
+          setdivisions(new_div);
+        });
+      }
+    });
+  }
+  console.log("department", department_information);
 
   return (
     <section>
       <form action={addUser}>
-        <div>
-          <section className="flex flex-col items-start justify-center">
-            <label htmlFor="">name</label>
-            <input
-              type="text"
-              name="name"
-              id="name"
-              placeholder="name"
-              className="border-2 border-gray-300 rounded-md p-2 m-2"
-            />
-          </section>
-          <section className="flex flex-col items-start justify-center">
-            <label htmlFor="">last name</label>
-            <input
-              type="text"
-              name="lastname"
-              id="lastname"
-              placeholder="name"
-              className="border-2 border-gray-300 rounded-md p-2 m-2"
-            />
-          </section>
-          <section className="flex flex-col items-start justify-center">
-            <label htmlFor="personal_email">Email</label>
-            <input
-              type="email"
-              name="personal_email"
-              id="personal_email"
-              placeholder=""
-              className="border-2 border-gray-300 rounded-md p-2 m-2"
-            />
-          </section>
-        </div>
+        <section className="flex flex-col items-start justify-center">
+          <label htmlFor="">name</label>
+          <input
+            type="text"
+            name="name"
+            id="name"
+            placeholder="name"
+            className="border-2 border-gray-300 rounded-md p-2 m-2"
+          />
+        </section>
+        <section className="flex flex-col items-start justify-center">
+          <label htmlFor="">last name</label>
+          <input
+            type="text"
+            name="lastname"
+            id="lastname"
+            placeholder="name"
+            className="border-2 border-gray-300 rounded-md p-2 m-2"
+          />
+        </section>
+        <section className="flex flex-col items-start justify-center">
+          <label htmlFor="personal_email">Email</label>
+          <input
+            type="email"
+            name="personal_email"
+            id="personal_email"
+            placeholder=""
+            className="border-2 border-gray-300 rounded-md p-2 m-2"
+          />
+        </section>
+
         <section className="flex flex-col items-start justify-center">
           <label htmlFor="mobile_number">Mobile Number</label>
           <input
@@ -103,23 +125,35 @@ export function UserModificationForm({}) {
         </section> */}
         <section className="flex flex-col items-start justify-center">
           <label htmlFor="department_id">Department</label>
-          <input
-            type="number"
+
+          <select
             name="department_id"
             id="department_id"
-            placeholder="Department ID"
-            className="border-2 border-gray-300 rounded-md p-2 m-2"
-          />
+            onChange={ondeptChange}
+          >
+            {department_information.map((department: Department) => {
+              return (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              );
+            })}
+            <option value={""}>No Department</option>
+          </select>
         </section>
         <section className="flex flex-col items-start justify-center">
           <label htmlFor="division">Division</label>
-          <input
-            type="number"
-            name="division"
-            id="division"
-            placeholder="Division ID"
-            className="border-2 border-gray-300 rounded-md p-2 m-2"
-          />
+
+          <select name="division_id" id="division_id" defaultValue={""}>
+            {divisions.map((div) => {
+              return (
+                <option key={div.id} value={div.id}>
+                  {div.name}
+                </option>
+              );
+            })}
+            <option value={""}>No Division</option>
+          </select>
         </section>
         <section className="flex flex-col items-start justify-center">
           <label htmlFor="program">Origin</label>
