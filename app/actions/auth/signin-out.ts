@@ -9,15 +9,32 @@ export const signInWithGoogle = async () => {
 
   const getURL = () => {
     let url =
-      process?.env?.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000/"; // Set this to your site URL in production.
+      process?.env?.NEXT_PUBLIC_SITE_URL; // Set this to your site URL in production env.
+    
+    // Guard against undefined URL
+    if (!url) {
+      throw new Error('NEXT_PUBLIC_SITE_URL environment variable is not set');
+      // Or provide a default value:
+      // url = 'localhost:3000';
+  }
+    
+    // Make sure to include `https://` when not localhost.
     url = url.startsWith("http") ? url : `https://${url}`;
+    // Make sure to include a trailing `/`.
     url = url.endsWith("/") ? url : `${url}/`;
     return url;
   };
+  // const { data, error } = await supabase.auth.signInWithOAuth({
+  //   provider: "google",
+  //   options: {
+  //     redirectTo: `${getURL()}/auth/callback`,
+  //   },
+  // });
 
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
+    provider: "keycloak",
     options: {
+      scopes: "openid",
       redirectTo: `${getURL()}auth/callback`,
     },
   });
@@ -33,5 +50,5 @@ export const signInWithGoogle = async () => {
 export const signOutAction = async () => {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return redirect("/sign-in");
+  return redirect("/");
 };
