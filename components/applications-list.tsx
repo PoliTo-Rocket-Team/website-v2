@@ -1,312 +1,308 @@
-// applications-list.tsx
 "use client";
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Accordion,
-  AccordionContent,
   AccordionItem,
   AccordionTrigger,
+  AccordionContent,
 } from "@/components/ui/accordion";
-import { UserRoleInfo } from "@/app/actions/user/get-applications";
-import { 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue 
+  SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { updateApplicationStatus } from "@/app/actions/user/update-application-status";
-// If you don't have the toast component, we'll use a simpler approach
-// import { useToast } from "@/components/ui/use-toast";
+import { Card } from "@/components/ui/card";
+import { useTransition } from "react";
+import { changeApplicationStatus } from "@/app/actions/user/change-application-status";
+import { createClient } from "@/utils/supabase/client";
 
-type Application = any;
-
-interface ApplicationsListProps {
-  applications: Application[];
-  userRoleInfo: UserRoleInfo;
-}
-
-export default function ApplicationsList({ applications, userRoleInfo }: ApplicationsListProps) {
-  // State to track status changes before submission
-  const [statusChanges, setStatusChanges] = useState<{ [key: number]: string }>({});
-  const [isSubmitting, setIsSubmitting] = useState<{ [key: number]: boolean }>({});
-  const [notification, setNotification] = useState<{
-    show: boolean;
+export function ApplicationsList({ 
+  applications: initialApplications, 
+  userRole 
+}: { 
+  applications: any[];
+  userRole: string | null;
+}) {
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [isPending, startTransition] = useTransition();
+  const [alert, setAlert] = useState<{
     message: string;
-    type: 'success' | 'error';
-  }>({ show: false, message: '', type: 'success' });
-
-  // Function to format the date
+    type: "success" | "error" | null;
+  }>({ message: "", type: null });
+  
+  // updated in real-time
+  const [applications, setApplications] = useState(initialApplications);
+  const [selectedStatuses, setSelectedStatuses] = useState<Record<string, string>>({});
+  
+  const supabase = createClient();
+  
+  // real-time
+  useEffect(() => {
+    setApplications(initialApplications);
+    const channel = supabase
+      .channel('application-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'applications',
+        },
+        async (payload) => {
+          console.log('Real-time update received:', payload);
+          if (payload.eventType === 'INSERT') {
+            const { data: newApplication } = await supabase
+              .from('applications')
+              .select(`
+                *,
+                user:user_id(id, first_name, last_name),
+                position:open_position_id(
+                  id, 
+                  title,
+                  division:division_id(id, name)
+                )
+              `)
+              .eq('id', payload.new.id)
+              .single();
+              
+            if (newApplication) {
+              setApplications(prev => [newApplication, ...prev]);
+            }
+          }
+          else if (payload.eventType === 'UPDATE') {
+            setApplications(prev => 
+              prev.map(app => 
+                app.id === payload.new.id 
+                  ? { ...app, ...payload.new } 
+                  : app
+              )
+            );
+          }
+          else if (payload.eventType === 'DELETE') {
+            setApplications(prev => 
+              prev.filter(app => app.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [initialApplications]);
+  const filteredApplications = applications?.filter(app => 
+    statusFilter === "all" ? true : app?.status === statusFilter
+  ) || [];
+  
+  const canEdit = userRole === "president" || userRole === "head" || userRole === "lead";
+  
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    }).format(date);
-  };
-
-  // Function to get status badge class
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case 'accepted':
-        return 'bg-green-600 text-white';
-      case 'rejected':
-        return 'bg-red-600 text-white';
-      case 'pending':
-        return 'bg-yellow-500 text-white';
-      case 'received':
-        return 'bg-blue-600 text-white';
-      case 'accepted_by_another_team':
-        return 'bg-purple-600 text-white';
-      default:
-        return 'bg-gray-600 text-white';
+    if (!dateString) return "Unknown date";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+    } catch {
+      return "Unknown date";
     }
   };
 
-  // Handle status change
-  const handleStatusChange = (applicationId: number, newStatus: string) => {
-    setStatusChanges(prev => ({
+  const handleStatusSelect = (applicationId: string, status: string) => {
+    setSelectedStatuses(prev => ({
       ...prev,
-      [applicationId]: newStatus
+      [applicationId]: status
     }));
   };
 
-  // Submit status change
-  const handleSubmitStatus = async (applicationId: number) => {
-    if (!statusChanges[applicationId]) return;
+  const handleStatusSubmit = (applicationId: string) => {
+    const newStatus = selectedStatuses[applicationId];
+
+    if (!newStatus) {
+      setAlert({
+        message: "Please select a status first",
+        type: "error"
+      });
+      setTimeout(() => setAlert({ message: "", type: null }), 1000);
+      return;
+    }
     
-    setIsSubmitting(prev => ({ ...prev, [applicationId]: true }));
-    
-    try {
-      const result = await updateApplicationStatus(applicationId, statusChanges[applicationId]);
+    startTransition(async () => {
+      const result = await changeApplicationStatus(applicationId, newStatus);
       
       if (result.success) {
-        setNotification({
-          show: true,
-          message: `Application status has been updated to ${statusChanges[applicationId]}`,
-          type: 'success'
+        setAlert({
+          message: "Application status updated successfully",
+          type: "success"
         });
         
-        // Update the application in the list (this would be better with context or state management)
-        for (let i = 0; i < applications.length; i++) {
-          if (applications[i].id === applicationId) {
-            applications[i].status = statusChanges[applicationId];
-            break;
-          }
-        }
-        
-        // Hide notification after 3 seconds
-        setTimeout(() => {
-          setNotification(prev => ({ ...prev, show: false }));
-        }, 3000);
+        setTimeout(() => setAlert({ message: "", type: null }), 1000);
       } else {
-        setNotification({
-          show: true,
-          message: result.error || "Failed to update status",
-          type: 'error'
+        setAlert({
+          message: result.error || "Failed to update application status",
+          type: "error"
         });
-        
-        // Hide notification after 3 seconds
-        setTimeout(() => {
-          setNotification(prev => ({ ...prev, show: false }));
-        }, 3000);
+        setTimeout(() => setAlert({ message: "", type: null }), 1000);
       }
-    } catch (error) {
-      setNotification({
-        show: true,
-        message: "An unexpected error occurred",
-        type: 'error'
-      });
-      
-      // Hide notification after 3 seconds
-      setTimeout(() => {
-        setNotification(prev => ({ ...prev, show: false }));
-      }, 3000);
-    } finally {
-      setIsSubmitting(prev => ({ ...prev, [applicationId]: false }));
-    }
+    });
   };
-
-  // Determine if the user can manage applications
-  const canManageApplications = userRoleInfo.isPresident || userRoleInfo.isChief || 
-                               userRoleInfo.isCoordinator || userRoleInfo.isLead;
-
-  if (applications.length === 0) {
-    return (
-      <div className="text-center p-6 border rounded bg-secondary">
-        No applications found
-      </div>
-    );
-  }
-
+  
   return (
-    <>
-      {/* Simple Notification */}
-      {notification.show && (
-        <div className={`mb-4 p-4 rounded-md ${
-          notification.type === 'success' 
-            ? 'bg-green-100 text-green-800 border border-green-200' 
-            : 'bg-red-100 text-red-800 border border-red-200'
-        }`}>
-          {notification.message}
-        </div>
-      )}
-      
-      <Accordion type="single" collapsible className="space-y-4">
-        {applications.map((application) => (
-        <AccordionItem 
-          key={application.id} 
-          value={`item-${application.id}`}
-          className="border rounded-lg shadow overflow-hidden"
-        >
-          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-accent data-[state=open]:bg-accent group">
-            <div className="flex flex-col sm:flex-row w-full justify-between items-start sm:items-center text-left gap-2">
-              <div className="flex-1">
-                <span className="font-semibold text-foreground group-hover:text-accent-foreground">
-                  {application.users?.first_name} {application.users?.last_name}
-                </span>
-                <span className="text-foreground ml-2 group-hover:text-accent-foreground">
-                  for <span className="font-medium">{application.apply_positions?.title || 'Unknown position'}</span>
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-foreground group-hover:text-accent-foreground">
-                  {formatDate(application.applied_at)}
-                </span>
-                <span className={`px-2 py-1 rounded text-xs ${getStatusClass(application.status)}`}>
-                  {application.status}
-                </span>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-6 py-4 bg-secondary">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left column */}
-              <div>
-                <div className="mb-6">
-                  <h3 className="text-lg font-medium mb-2 text-foreground">Applicant Information</h3>
-                  <div className="bg-background p-4 rounded border space-y-2">
-                    <p className="text-foreground"><span className="font-medium">Name:</span> {application.users?.first_name} {application.users?.last_name}</p>
-                    {application.users?.email && (
-                      <p className="text-foreground"><span className="font-medium">Email:</span> {application.users.email}</p>
-                    )}
-                    {application.users?.level_of_study && (
-                      <p className="text-foreground"><span className="font-medium">Level of Study:</span> {application.users.level_of_study}</p>
-                    )}
-                    {application.users?.program && (
-                      <p className="text-foreground"><span className="font-medium">Program:</span> {application.users.program}</p>
-                    )}
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-medium mb-2 text-foreground">Position Details</h3>
-                  <div className="bg-background p-4 rounded border space-y-2">
-                    <p className="text-foreground"><span className="font-medium">Position:</span> {application.apply_positions?.title || 'Unknown'}</p>
-                    <p className="text-foreground"><span className="font-medium">Division:</span> {application.apply_positions?.divisions?.name || 'Unknown'}</p>
-                    <p className="text-foreground"><span className="font-medium">Applied on:</span> {formatDate(application.applied_at)}</p>
-                    <p className="text-foreground">
-                      <span className="font-medium">Status:</span>
-                      <span className={`ml-2 px-2 py-1 rounded text-xs ${getStatusClass(application.status)}`}>
-                        {application.status}
+    <div className="px-4 py-4 relative">
+      {filteredApplications.length === 0 ? (
+        <Card className="p-8 text-center text-gray-500">
+          No applications found
+        </Card>
+      ) : (
+        <>
+          <div className="mb-4">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Applications</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="accepted">Accepted</SelectItem>
+                <SelectItem value="received">Received</SelectItem>
+                <SelectItem value="accepted_by_another_team">Accepted by Another Team</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <Accordion type="single" collapsible className="w-full">
+            {filteredApplications.map(application => (
+              <AccordionItem
+                key={application.id}
+                value={application.id.toString()}
+                className="border my-4 px-4 rounded-md shadow-sm"
+              >
+                <AccordionTrigger>
+                  <div className="flex justify-between items-center w-full mx-2">
+                    <div>
+                      Application #{typeof application.id === 'string' ? application.id.substring(0, 8) : application.id}
+                      {application.user && application.position && application.position.division && (
+                        <span> - {application.user.first_name} applied to {application.position.division.name}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge className={getStatusClass(application?.status || '')}>
+                        {application?.status || 'Unknown'}
+                      </Badge>
+                      <span className="text-sm text-gray-500">
+                        {formatDate(application.applied_at)}
                       </span>
-                    </p>
+                    </div>
                   </div>
-                </div>
-              </div>
-              
-              {/* Right column */}
-              <div>
-                <div className="mb-6">
-                  <h3 className="text-lg font-medium mb-2 text-foreground">Application Documents</h3>
-                  <div className="bg-background p-4 rounded border space-y-4">
-                    {application.cv_name && (
-                      <div>
-                        <span className="font-medium block mb-1 text-foreground">CV:</span>
-                        <div className="flex items-center">
-                          <span className="flex-1 truncate text-foreground">{application.cv_name}</span>
-                          <button className="text-primary-foreground hover:text-primary-foreground px-3 py-1 text-sm bg-primary rounded hover:bg-primary/90">
-                            View
-                          </button>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      {application.cv_name && (
+                        <div>
+                          <span className="font-medium">CV: </span>
+                          {application.cv_name}
                         </div>
+                      )}
+                      
+                      {application.ml_name && (
+                        <div>
+                          <span className="font-medium">Motivation Letter: </span>
+                          {application.ml_name}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {application?.custom_answers && Array.isArray(application.custom_answers) && application.custom_answers.length > 0 && (
+                      <div className="mt-4">
+                        <h4 className="font-medium mb-2">Questionnaire</h4>
+                        <Accordion type="single" collapsible className="mx-2">
+                          {application.custom_answers.map((qa: any, index: number) => (
+                            <AccordionItem
+                              key={index}
+                              value={`question-${index}`}
+                              className="border my-2 px-2 rounded"
+                            >
+                              <AccordionTrigger className="text-sm">
+                                {qa?.question || 'Question'}
+                              </AccordionTrigger>
+                              <AccordionContent className="text-sm">
+                                {qa?.answer || 'No answer provided'}
+                              </AccordionContent>
+                            </AccordionItem>
+                          ))}
+                        </Accordion>
                       </div>
                     )}
                     
-                    {application.ml_name && (
-                      <div>
-                        <span className="font-medium block mb-1 text-foreground">Motivation Letter:</span>
-                        <div className="flex items-center">
-                          <span className="flex-1 truncate text-foreground">{application.ml_name}</span>
-                          <button className="text-primary-foreground hover:text-primary-foreground px-3 py-1 text-sm bg-primary rounded hover:bg-primary/90">
-                            View
-                          </button>
-                        </div>
+                    {canEdit && (
+                      <div className="flex justify-center items-center w-full gap-4 pt-4">
+                        <Select 
+                          defaultValue={application.status}
+                          onValueChange={(value) => handleStatusSelect(application.id, value)}
+                        >
+                          <SelectTrigger className="w-[250px]">
+                            <SelectValue placeholder="Change status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                            <SelectItem value="accepted">Accepted</SelectItem>
+                            <SelectItem value="received">Received</SelectItem>
+                            <SelectItem value="accepted_by_another_team">Accepted by Another Team</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          variant="default"
+                          disabled={isPending}
+                          onClick={() => handleStatusSubmit(application.id)}
+                        >
+                          {isPending ? 'Updating...' : 'Submit'}
+                        </Button>
                       </div>
                     )}
                   </div>
-                </div>
-                
-                {application.custom_answers && application.custom_answers.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-medium mb-2 text-foreground">Custom Answers</h3>
-                    <div className="bg-background p-4 rounded border">
-                      {application.custom_answers.map((answer: any, index: number) => (
-                        <div key={index} className={index > 0 ? "mt-4 pt-4 border-t" : ""}>
-                          <p className="font-medium text-foreground">{answer.question}</p>
-                          <p className="text-foreground mt-1">{answer.answer}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+          
+          {alert.type && (
+            <div className="fixed bottom-4 right-4 z-50 max-w-md shadow-lg rounded-lg overflow-hidden transition-all duration-300 transform translate-y-0">
+              <Alert className={`${alert.type === "success" ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800"}`}>
+                <AlertDescription>
+                  {alert.message}
+                </AlertDescription>
+              </Alert>
             </div>
-            
-            {/* Status management section - Only show if user has appropriate role */}
-            {canManageApplications && (
-              <div className="mt-6 border-t pt-6">
-                <h3 className="text-lg font-medium mb-4 text-foreground">Update Application Status</h3>
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="w-64">
-                    <Select
-                      value={statusChanges[application.id] || application.status}
-                      onValueChange={(value) => handleStatusChange(application.id, value)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="received">Received</SelectItem>
-                        <SelectItem value="accepted">Accepted</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                        <SelectItem value="accepted_by_another_team">Accepted by Another Team</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <Button 
-                    onClick={() => handleSubmitStatus(application.id)}
-                    disabled={
-                      isSubmitting[application.id] || 
-                      !statusChanges[application.id] || 
-                      statusChanges[application.id] === application.status
-                    }
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  >
-                    {isSubmitting[application.id] ? "Updating..." : "Update Status"}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </AccordionContent>
-        </AccordionItem>
-      ))}
-    </Accordion>
-    </>
-
+          )}
+        </>
+      )}
+    </div>
   );
+}
+
+function getStatusClass(status: string): string {
+  switch (status) {
+    case "pending":
+      return "bg-yellow-100 text-yellow-800 hover:bg-yellow-100";
+    case "rejected":
+      return "bg-red-100 text-red-800 hover:bg-red-100";
+    case "accepted":
+      return "bg-green-100 text-green-800 hover:bg-green-100";
+    case "received":
+      return "bg-blue-100 text-blue-800 hover:bg-blue-100";
+    case "accepted_by_another_team":
+      return "bg-purple-100 text-purple-800 hover:bg-purple-100";
+    default:
+      return "bg-gray-100 text-gray-800 hover:bg-gray-100";
+  }
 }

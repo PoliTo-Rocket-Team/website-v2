@@ -1,224 +1,195 @@
 "use server";
-
 import { createClient } from "@/utils/supabase/server";
 import { Database } from "@/types/supabase";
 
-export type Application = Database["public"]["Tables"]["applications"]["Row"] & {
-  users?: Partial<Database["public"]["Tables"]["users"]["Row"]> | null;
-  apply_positions?: (Partial<Database["public"]["Tables"]["apply_positions"]["Row"]> & {
-    divisions?: Partial<Database["public"]["Tables"]["divisions"]["Row"]> | null;
-  }) | null;
+export type Application = Database["public"]["Tables"]["applications"]["Row"];
+
+type UserRole = Pick<
+  Database["public"]["Tables"]["roles"]["Row"],
+  "id" | "type" | "dept_id" | "division_id" | "title"
+>;
+
+type ApplicationResult = {
+  applications: any[];
+  role?: string | null;
 };
 
-export type UserRoleInfo = {
-  highestRole: string | null;
-  isPresident: boolean;
-  isChief: boolean;
-  isCoordinator: boolean;
-  isLead: boolean;
-  isCoreOrUser: boolean;
+type Division = {
+  id: number;
+  [key: string]: any;
 };
 
-export async function getApplicationsByUserRole() {
+type Position = {
+  id: number;
+  [key: string]: any;
+};
+
+const applicationSelectQuery = `
+  *,
+  user:user_id(id, first_name, last_name),
+  position:open_position_id(
+    id, 
+    title,
+    division:division_id(id, name)
+  )
+`;
+
+export async function getApplicationsByUserRole(): Promise<ApplicationResult> {
   const supabase = await createClient();
-
-  // Default role information
-  const defaultRoleInfo: UserRoleInfo = {
-    highestRole: null,
-    isPresident: false,
-    isChief: false,
-    isCoordinator: false,
-    isLead: false,
-    isCoreOrUser: true,
-  };
-
-  // Get current user
+  
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { applications: [], role: null };
   
-  if (!user) {
-    return { applications: [], userRoleInfo: defaultRoleInfo };
-  }
-  
-  // Get user member information
-  const { data: userData, error: userError } = await supabase
+  const { data: userData } = await supabase
     .from("users")
-    .select("member, id, first_name, last_name")
+    .select("member, id")
     .eq("id", user.id)
     .single();
-
-  if (userError || !userData) {
-    return { applications: [], userRoleInfo: defaultRoleInfo };
+  
+  if (!userData?.member) {
+    return getUserApplications(supabase, user.id);
   }
-
-  // Define standard query for applications
-  const standardApplicationQuery = `
-    *,
-    users (
-      id,
-      first_name,
-      last_name,
-      email,
-      level_of_study,
-      program
-    ),
-    apply_positions (
-      id,
-      title,
-      description,
-      division_id,
-      divisions (
-        id,
-        name,
-        subteam_id
-      )
-    )
-  `;
-
-  // Function to fetch applications with error handling
-  const fetchApplications = async (query: any) => {
-    const { data, error } = await query;
-    if (error) {
-      return [];
-    }
-    return data || [];
-  };
-
-  // If user is not a member, only show their own applications
-  if (!userData.member) {
-    const applications = await fetchApplications(
-      supabase
-        .from("applications")
-        .select(standardApplicationQuery)
-        .eq("user_id", userData.id)
-    );
-    
-    return { applications, userRoleInfo: defaultRoleInfo };
-  }
-
-  // Get user roles
-  const { data: userRoles, error: rolesError } = await supabase
+  
+  const { data: userRoles } = (await supabase
     .from("roles")
-    .select("id, type, subteam_id, division_id, title")
-    .eq("member_id", userData.member);
-
-  if (rolesError || !userRoles || userRoles.length === 0) {
-    // If member has no role, treat as regular user and show only their own applications
-    const applications = await fetchApplications(
-      supabase
-        .from("applications")
-        .select(standardApplicationQuery)
-        .eq("user_id", userData.id)
-    );
-    
-    return { applications, userRoleInfo: defaultRoleInfo };
-  }
-
-  // Determine user role information
-  // Determine highest role
-  const roleHierarchy = {
-    'president': 5,
-    'chief': 4,
-    'coordinator': 3,
-    'lead': 2,
-    'core_member': 1
-  };
-
-  let highestRoleType = null;
-  let highestRoleValue = 0;
+    .select("id, type, dept_id, division_id, title")
+    .eq("member_id", userData.member)) as { data: UserRole[] };
   
-  userRoles.forEach(role => {
-    const roleValue = roleHierarchy[role.type as keyof typeof roleHierarchy] || 0;
-    if (roleValue > highestRoleValue) {
-      highestRoleValue = roleValue;
-      highestRoleType = role.type;
-    }
-  });
-
-  const userRoleInfo: UserRoleInfo = {
-    highestRole: highestRoleType,
-    isPresident: userRoles.some(role => role.type === 'president'),
-    isChief: userRoles.some(role => role.type === 'chief'),
-    isCoordinator: userRoles.some(role => role.type === 'coordinator'),
-    isLead: userRoles.some(role => role.type === 'lead'),
-    isCoreOrUser: highestRoleValue <= 1
-  };
-
-  // Check if the user is a president
-  if (userRoleInfo.isPresident) {
-    const applications = await fetchApplications(
-      supabase
-        .from("applications")
-        .select(standardApplicationQuery)
-    );
-    
-    return { applications, userRoleInfo };
+  if (!userRoles || userRoles.length === 0) {
+    return getUserApplications(supabase, user.id);
   }
+  
+  if (userRoles.some(role => role.type === "president")) {
+    return getPresidentApplications(supabase);
+  }
+  
+  const headDeptIds = userRoles
+    .filter(role => role.type === "head")
+    .map(role => role.dept_id)
+    .filter((id): id is number => id !== null);
+  
+  if (headDeptIds.length > 0) {
+    const deptApplications = await getDepartmentHeadApplications(supabase, headDeptIds);
+    if (deptApplications.applications.length > 0) {
+      return deptApplications;
+    }
+  }
+  
+  const leadDivisionIds = userRoles
+    .filter(role => role.type === "lead")
+    .map(role => role.division_id)
+    .filter((id): id is number => id !== null);
+  
+  if (leadDivisionIds.length > 0) {
+    const divisionApplications = await getDivisionLeadApplications(supabase, leadDivisionIds);
+    if (divisionApplications.applications.length > 0) {
+      return divisionApplications;
+    }
+  }
+  
+  return getUserApplications(supabase, user.id);
+}
 
-  // Get applicable division IDs for chiefs, coordinators, or leads
-  const getApplicableDivisionIds = (roleTypes: string[]) => {
-    return userRoles
-      .filter(role => roleTypes.includes(role.type))
-      .map(role => role.division_id)
-      .filter(Boolean) as number[];
-  };
+async function getUserApplications(supabase: any, userId: string): Promise<ApplicationResult> {
+  const { data, error } = await supabase
+    .from("applications")
+    .select(applicationSelectQuery)
+    .eq("user_id", userId);
+  
+  if (error) {
+    return { applications: [], role: "core" };
+  }
+  
+  return { applications: data || [], role: "core" };
+}
 
-  // Check if user is a chief or coordinator
-  if (userRoleInfo.isChief || userRoleInfo.isCoordinator) {
-    const divisionIds = getApplicableDivisionIds(['chief', 'coordinator']);
+async function getPresidentApplications(supabase: any): Promise<ApplicationResult> {
+  const { data, error } = await supabase
+    .from("applications")
+    .select(applicationSelectQuery)
+    .order("applied_at", { ascending: false });
+  
+  if (error) {
+    return { applications: [], role: "president" };
+  }
+  
+  return { applications: data || [], role: "president" };
+}
+
+async function getDepartmentHeadApplications(supabase: any, deptIds: number[]): Promise<ApplicationResult> {
+  const { data: deptDivisions } = await supabase
+    .from("divisions")
+    .select("id")
+    .in("dept_id", deptIds);
+  
+  if (deptDivisions && deptDivisions.length > 0) {
+    const divisionIds = deptDivisions.map((div: Division) => div.id);
     
-    if (divisionIds.length === 0) {
-      const applications = await fetchApplications(
-        supabase
-          .from("applications")
-          .select(standardApplicationQuery)
-          .eq("user_id", userData.id)
+    const { data: deptPositions } = await supabase
+      .from("apply_positions")
+      .select("id")
+      .in("division_id", divisionIds);
+    
+    if (deptPositions && deptPositions.length > 0) {
+      const applications = await getApplicationsByPositionIds(
+        supabase, 
+        deptPositions.map((pos: Position) => pos.id), 
+        "head"
       );
       
-      return { applications, userRoleInfo };
+      if (applications.applications.length > 0) {
+        return applications;
+      }
     }
-
-    const applications = await fetchApplications(
-      supabase
-        .from("applications")
-        .select(standardApplicationQuery)
-        .or(`user_id.eq.${userData.id},open_position_id.in.(${divisionIds.join(',')})`)
-    );
-    
-    return { applications, userRoleInfo };
   }
-
-  // Check if user is a lead
-  if (userRoleInfo.isLead) {
-    const divisionIds = getApplicableDivisionIds(['lead']);
-    
-    if (divisionIds.length === 0) {
-      const applications = await fetchApplications(
-        supabase
-          .from("applications")
-          .select(standardApplicationQuery)
-          .eq("user_id", userData.id)
-      );
-      
-      return { applications, userRoleInfo };
-    }
-
-    const applications = await fetchApplications(
-      supabase
-        .from("applications")
-        .select(standardApplicationQuery)
-        .or(`user_id.eq.${userData.id},open_position_id.in.(${divisionIds.join(',')})`)
-    );
-    
-    return { applications, userRoleInfo };
-  }
-
-  // For core_member or other roles, only show their own applications
-  const applications = await fetchApplications(
-    supabase
-      .from("applications")
-      .select(standardApplicationQuery)
-      .eq("user_id", userData.id)
-  );
   
-  return { applications, userRoleInfo };
+  const { data: directDeptPositions } = await supabase
+    .from("apply_positions")
+    .select("id")
+    .in("dept_id", deptIds);
+  
+  if (directDeptPositions && directDeptPositions.length > 0) {
+    return getApplicationsByPositionIds(
+      supabase, 
+      directDeptPositions.map((pos: Position) => pos.id), 
+      "head"
+    );
+  }
+  
+  return { applications: [], role: "head" };
+}
+
+async function getDivisionLeadApplications(supabase: any, divisionIds: number[]): Promise<ApplicationResult> {
+  const { data: divisionPositions } = await supabase
+    .from("apply_positions")
+    .select("id")
+    .in("division_id", divisionIds);
+  
+  if (divisionPositions && divisionPositions.length > 0) {
+    return getApplicationsByPositionIds(
+      supabase, 
+      divisionPositions.map((pos: Position) => pos.id), 
+      "lead"
+    );
+  }
+  
+  return { applications: [], role: "lead" };
+}
+
+async function getApplicationsByPositionIds(
+  supabase: any, 
+  positionIds: number[], 
+  role: string
+): Promise<ApplicationResult> {
+  const { data, error } = await supabase
+    .from("applications")
+    .select(applicationSelectQuery)
+    .in("open_position_id", positionIds)
+    .order("applied_at", { ascending: false });
+  
+  if (error) {
+    return { applications: [], role };
+  }
+  
+  return { applications: data || [], role };
 }
