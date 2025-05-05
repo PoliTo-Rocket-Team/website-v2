@@ -2,41 +2,17 @@
 import { createClient } from "@/utils/supabase/server";
 import { Database } from "@/types/supabase";
 
-export type Application = Database["public"]["Tables"]["applications"]["Row"];
-
-type UserRole = Pick<
-  Database["public"]["Tables"]["roles"]["Row"],
-  "id" | "type" | "dept_id" | "division_id" | "title"
->;
-
-type ApplicationResult = {
-  applications: any[];
-  role?: string | null;
+export type Application = Database["public"]["Tables"]["applications"]["Row"] & {
+  user?: { id: string; first_name: string; last_name: string } | null;
+  position?: { 
+    id: number; 
+    title: string; 
+    division?: { id: number; name: string } | null 
+  } | null;
 };
 
-type Division = {
-  id: number;
-  [key: string]: any;
-};
-
-type Position = {
-  id: number;
-  [key: string]: any;
-};
-
-const applicationSelectQuery = `
-  *,
-  user:user_id(id, first_name, last_name),
-  position:open_position_id(
-    id, 
-    title,
-    division:division_id(id, name)
-  )
-`;
-
-export async function getApplicationsByUserRole(): Promise<ApplicationResult> {
+export async function getApplicationsByUserRole() {
   const supabase = await createClient();
-  
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { applications: [], role: null };
   
@@ -47,149 +23,99 @@ export async function getApplicationsByUserRole(): Promise<ApplicationResult> {
     .single();
   
   if (!userData?.member) {
-    return getUserApplications(supabase, user.id);
+    return getApplications(supabase, { user_id: user.id }, "core");
   }
-  
-  const { data: userRoles } = (await supabase
+
+  const { data: userRoles } = await supabase
     .from("roles")
-    .select("id, type, dept_id, division_id, title")
-    .eq("member_id", userData.member)) as { data: UserRole[] };
+    .select("id, type, dept_id, division_id")
+    .eq("member_id", userData.member);
   
   if (!userRoles || userRoles.length === 0) {
-    return getUserApplications(supabase, user.id);
+    return getApplications(supabase, { user_id: user.id }, "core");
   }
-  
+
   if (userRoles.some(role => role.type === "president")) {
-    return getPresidentApplications(supabase);
+    return getApplications(supabase, {}, "president");
   }
-  
-  const headDeptIds = userRoles
-    .filter(role => role.type === "head")
-    .map(role => role.dept_id)
-    .filter((id): id is number => id !== null);
-  
-  if (headDeptIds.length > 0) {
-    const deptApplications = await getDepartmentHeadApplications(supabase, headDeptIds);
-    if (deptApplications.applications.length > 0) {
-      return deptApplications;
-    }
-  }
-  
-  const leadDivisionIds = userRoles
-    .filter(role => role.type === "lead")
-    .map(role => role.division_id)
-    .filter((id): id is number => id !== null);
-  
-  if (leadDivisionIds.length > 0) {
-    const divisionApplications = await getDivisionLeadApplications(supabase, leadDivisionIds);
-    if (divisionApplications.applications.length > 0) {
-      return divisionApplications;
-    }
-  }
-  
-  return getUserApplications(supabase, user.id);
-}
 
-async function getUserApplications(supabase: any, userId: string): Promise<ApplicationResult> {
-  const { data, error } = await supabase
-    .from("applications")
-    .select(applicationSelectQuery)
-    .eq("user_id", userId);
+  const positionIds = await getPositionIdsByRole(supabase, userRoles);
   
-  if (error) {
-    return { applications: [], role: "core" };
+  if (positionIds.length > 0) {
+    const role = userRoles.some(r => r.type === "head") ? "head" : "lead";
+    return getApplications(supabase, { open_position_id: positionIds }, role);
   }
   
-  return { applications: data || [], role: "core" };
+  return getApplications(supabase, { user_id: user.id }, "core");
 }
-
-async function getPresidentApplications(supabase: any): Promise<ApplicationResult> {
-  const { data, error } = await supabase
+async function getApplications(supabase: any, filters: any, role: string) {
+  let query = supabase
     .from("applications")
-    .select(applicationSelectQuery)
+    .select(`
+      *,
+      user:user_id(id, first_name, last_name),
+      position:open_position_id(
+        id, 
+        title,
+        division:division_id(id, name)
+      )
+    `)
     .order("applied_at", { ascending: false });
   
-  if (error) {
-    return { applications: [], role: "president" };
-  }
+  Object.entries(filters).forEach(([key, value]) => {
+    if (Array.isArray(value) && value.length > 0) {
+      query = query.in(key, value);
+    } else if (value !== undefined) {
+      query = query.eq(key, value);
+    }
+  });
   
-  return { applications: data || [], role: "president" };
+  const { data, error } = await query;
+  return { applications: error ? [] : data || [], role };
 }
 
-async function getDepartmentHeadApplications(supabase: any, deptIds: number[]): Promise<ApplicationResult> {
-  const { data: deptDivisions } = await supabase
-    .from("divisions")
-    .select("id")
-    .in("dept_id", deptIds);
+async function getPositionIdsByRole(supabase: any, userRoles: any[]) {
+
+  const deptIds = userRoles
+    .filter(role => role.type === "head" && role.dept_id)
+    .map(role => role.dept_id);
   
-  if (deptDivisions && deptDivisions.length > 0) {
-    const divisionIds = deptDivisions.map((div: Division) => div.id);
-    
-    const { data: deptPositions } = await supabase
-      .from("apply_positions")
+  const divisionIds = userRoles
+    .filter(role => role.type === "lead" && role.division_id)
+    .map(role => role.division_id);
+  
+  if (deptIds.length === 0 && divisionIds.length === 0) {
+    return [];
+  }
+
+  let allDivisionIds = [...divisionIds];
+  if (deptIds.length > 0) {
+    const { data: deptDivisions } = await supabase
+      .from("divisions")
       .select("id")
-      .in("division_id", divisionIds);
+      .in("dept_id", deptIds);
     
-    if (deptPositions && deptPositions.length > 0) {
-      const applications = await getApplicationsByPositionIds(
-        supabase, 
-        deptPositions.map((pos: Position) => pos.id), 
-        "head"
-      );
-      
-      if (applications.applications.length > 0) {
-        return applications;
-      }
+    if (deptDivisions?.length) {
+      allDivisionIds = [...allDivisionIds, ...deptDivisions.map((d: {id: number}) => d.id)];
     }
   }
   
-  const { data: directDeptPositions } = await supabase
+  let orQuery = "";
+  if (deptIds.length > 0) {
+    orQuery += `dept_id.in.(${deptIds.join(',')})`;
+  }
+  
+  if (allDivisionIds.length > 0) {
+    if (orQuery) orQuery += ",";
+    orQuery += `division_id.in.(${allDivisionIds.join(',')})`;
+  }
+  
+  if (!orQuery) return [];
+  
+  const { data: positions } = await supabase
     .from("apply_positions")
     .select("id")
-    .in("dept_id", deptIds);
+    .or(orQuery);
   
-  if (directDeptPositions && directDeptPositions.length > 0) {
-    return getApplicationsByPositionIds(
-      supabase, 
-      directDeptPositions.map((pos: Position) => pos.id), 
-      "head"
-    );
-  }
-  
-  return { applications: [], role: "head" };
-}
-
-async function getDivisionLeadApplications(supabase: any, divisionIds: number[]): Promise<ApplicationResult> {
-  const { data: divisionPositions } = await supabase
-    .from("apply_positions")
-    .select("id")
-    .in("division_id", divisionIds);
-  
-  if (divisionPositions && divisionPositions.length > 0) {
-    return getApplicationsByPositionIds(
-      supabase, 
-      divisionPositions.map((pos: Position) => pos.id), 
-      "lead"
-    );
-  }
-  
-  return { applications: [], role: "lead" };
-}
-
-async function getApplicationsByPositionIds(
-  supabase: any, 
-  positionIds: number[], 
-  role: string
-): Promise<ApplicationResult> {
-  const { data, error } = await supabase
-    .from("applications")
-    .select(applicationSelectQuery)
-    .in("open_position_id", positionIds)
-    .order("applied_at", { ascending: false });
-  
-  if (error) {
-    return { applications: [], role };
-  }
-  
-  return { applications: data || [], role };
+  return positions?.length ? positions.map((p: {id: number}) => p.id) : [];
 }
