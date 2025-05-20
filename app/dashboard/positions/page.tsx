@@ -1,6 +1,10 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
+import {
+  getApplyPositionsByUserRole,
+  ApplyPosition,
+} from "@/app/actions/user/get-apply-positions";
 import { ApplyPositions } from "@/components/apply-positions-list";
 
 export async function handleDelete(id: number) {
@@ -54,6 +58,7 @@ export async function handleEditPosition(
 }
 
 export default async function PositionsPage() {
+  const { positions } = await getApplyPositionsByUserRole();
   return (
     <div className="w-full">
       <h2 className="text-2xl font-bold text-center mb-6 text-primary">
@@ -63,6 +68,7 @@ export default async function PositionsPage() {
         handleDelete={handleDelete}
         handleOpenClosePosition={handleOpenClosePosition}
         handleEditPosition={handleEditPosition}
+        positions={positions}
       />
     </div>
   );

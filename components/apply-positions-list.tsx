@@ -4,10 +4,7 @@ import { useState, useEffect } from "react";
 import Switch from "@mui/material/Switch";
 import { Button } from "@/components/ui/button";
 import { styled } from "@mui/material/styles";
-import {
-  getApplyPositionsByUserRole,
-  ApplyPosition,
-} from "@/app/actions/user/get-apply-positions";
+import { ApplyPosition } from "@/app/actions/user/get-apply-positions";
 import {
   Accordion,
   AccordionItem,
@@ -17,6 +14,7 @@ import {
 import "@/app/globals.css";
 
 type Props = {
+  positions: ApplyPosition[];
   handleDelete: (id: number) => void;
   handleOpenClosePosition: (id: number, isOpen: boolean) => void;
   handleEditPosition: (
@@ -70,9 +68,10 @@ export function ApplyPositions({
   handleDelete,
   handleOpenClosePosition,
   handleEditPosition,
+  positions: initialPositions,
 }: Props) {
-  const [positions, setPositions] = useState<ApplyPosition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [positionsState, setPositionsState] = useState<ApplyPosition[]>([]);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<{
@@ -90,23 +89,14 @@ export function ApplyPositions({
   });
 
   useEffect(() => {
-    async function fetchPositions() {
-      try {
-        const { positions: fetched } = await getApplyPositionsByUserRole();
-        setPositions(fetched);
-      } catch (err) {
-        console.error("Error fetching positions:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchPositions();
-  }, []);
+    setPositionsState(initialPositions);
+    setLoading(false);
+  }, [initialPositions]);
 
   const handleTogglePosition = async (id: number, currentStatus: boolean) => {
     try {
       await handleOpenClosePosition(id, currentStatus);
-      setPositions((prev) =>
+      setPositionsState((prev) =>
         prev.map((pos) =>
           pos.id === id ? { ...pos, status: !currentStatus } : pos
         )
@@ -126,7 +116,7 @@ export function ApplyPositions({
     try {
       await handleDelete(id);
 
-      setPositions((prev) => prev.filter((pos) => pos.id !== id));
+      setPositionsState((prev) => prev.filter((pos) => pos.id !== id));
     } catch (err) {
       console.error("Failed to delete position:", err);
       alert("Failed to delete position. Please try again.");
@@ -158,7 +148,7 @@ export function ApplyPositions({
         desirable_skills: formData.desirable_skills,
         custom_questions: formData.custom_questions,
       });
-      setPositions((prev) =>
+      setPositionsState((prev) =>
         prev.map((p) => (p.id === editingId ? { ...p, ...formData } : p))
       );
       setEditingId(null);
@@ -196,7 +186,7 @@ export function ApplyPositions({
 
   if (loading)
     return <div className="p-8 text-center">Loading positions...</div>;
-  if (!positions.length)
+  if (!positionsState.length)
     return (
       <div className="text-muted-foreground p-4">
         No positions available at this time.
@@ -205,7 +195,7 @@ export function ApplyPositions({
 
   return (
     <div className="space-y-4">
-      {positions.map((pos) => {
+      {positionsState.map((pos) => {
         const isEditing = editingId === pos.id;
 
         return (
