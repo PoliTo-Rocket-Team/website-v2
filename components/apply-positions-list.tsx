@@ -1,23 +1,23 @@
 "use client";
-import * as React from "react";
-import { useState, useEffect } from "react";
-import Switch from "@mui/material/Switch";
-import { Button } from "@/components/ui/button";
-import { styled } from "@mui/material/styles";
 import { ApplyPosition } from "@/app/actions/user/get-apply-positions";
+import "@/app/globals.css";
 import {
   Accordion,
+  AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  AccordionContent,
 } from "@/components/ui/accordion";
-import "@/app/globals.css";
+import { Button } from "@/components/ui/button";
+import { styled } from "@mui/material/styles";
+import Switch from "@mui/material/Switch";
+import * as React from "react";
+import { useEffect, useState } from "react";
 
 type Props = {
   positions: ApplyPosition[];
-  handleDelete: (id: number) => void;
-  handleOpenClosePosition: (id: number, isOpen: boolean) => void;
-  handleEditPosition: (
+  handleDelete?: (id: number) => void;
+  handleOpenClosePosition?: (id: number, isOpen: boolean) => void;
+  handleEditPosition?: (
     id: number,
     data: Partial<{
       title: string;
@@ -28,6 +28,8 @@ type Props = {
       custom_questions: string[];
     }>
   ) => void;
+  renderActionButtons?: (position: ApplyPosition) => React.ReactNode;
+  showStatusSwitch?: boolean;
 };
 
 const OrangeSwitch = styled(Switch)(({ theme }) => ({
@@ -69,6 +71,8 @@ export function ApplyPositions({
   handleOpenClosePosition,
   handleEditPosition,
   positions: initialPositions,
+  renderActionButtons,
+  showStatusSwitch = true,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [positionsState, setPositionsState] = useState<ApplyPosition[]>([]);
@@ -94,6 +98,7 @@ export function ApplyPositions({
   }, [initialPositions]);
 
   const handleTogglePosition = async (id: number, currentStatus: boolean) => {
+    if (!handleOpenClosePosition) return;
     try {
       await handleOpenClosePosition(id, currentStatus);
       setPositionsState((prev) =>
@@ -108,6 +113,7 @@ export function ApplyPositions({
   };
 
   const handleDeletePosition = async (id: number) => {
+    if (!handleDelete) return;
     const confirmed = window.confirm(
       "Are you sure you want to delete this position? This action cannot be undone."
     );
@@ -115,7 +121,6 @@ export function ApplyPositions({
 
     try {
       await handleDelete(id);
-
       setPositionsState((prev) => prev.filter((pos) => pos.id !== id));
     } catch (err) {
       console.error("Failed to delete position:", err);
@@ -139,7 +144,7 @@ export function ApplyPositions({
   };
 
   const saveEdit = async () => {
-    if (editingId == null) return;
+    if (editingId == null || !handleEditPosition) return;
     try {
       await handleEditPosition(editingId, {
         title: formData.title,
@@ -169,11 +174,13 @@ export function ApplyPositions({
       return { ...d, [field]: arr };
     });
   };
+  
   const addArrayField = (
     field: "required_skills" | "desirable_skills" | "custom_questions"
   ) => {
     setFormData((d) => ({ ...d, [field]: [...d[field], ""] }));
   };
+  
   const removeArrayField = (
     field: "required_skills" | "desirable_skills" | "custom_questions",
     index: number
@@ -225,17 +232,19 @@ export function ApplyPositions({
                   <span className="text-sm font-medium text-orange-500">
                     {pos.divisions?.code}
                   </span>
-                  <OrangeSwitch
-                    checked={pos.status}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() => handleTogglePosition(pos.id, pos.status)}
-                    size="small"
-                    disableRipple
-                  />
+                  {showStatusSwitch && (
+                    <OrangeSwitch
+                      checked={pos.status}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => handleTogglePosition(pos.id, pos.status)}
+                      size="small"
+                      disableRipple
+                    />
+                  )}
                 </div>
               </AccordionTrigger>
 
-              <AccordionContent className="px-6 py-6">
+              <AccordionContent className="px-6 pb-6">
                 <h3 className="font-semibold text-lg mb-2">Description</h3>
                 {isEditing ? (
                   <textarea
@@ -367,35 +376,39 @@ export function ApplyPositions({
                   </ul>
                 )}
 
-                <div className="flex justify-center space-x-4">
-                  {isEditing ? (
-                    <>
-                      <Button
-                        onClick={saveEdit}
-                        className="bg-orange-500 text-white hover:bg-orange-600">
-                        Save
-                      </Button>
-                      <Button
-                        onClick={cancelEdit}
-                        variant="outline"
-                        className="border-muted text-muted-foreground">
-                        Cancel
-                      </Button>
-                    </>
+                <div className="flex space-x-2">
+                  {renderActionButtons ? (
+                    renderActionButtons(pos)
                   ) : (
                     <>
-                      <Button
-                        onClick={() => startEdit(pos)}
-                        variant="outline"
-                        className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white">
-                        Edit
-                      </Button>
-                      <Button
-                        onClick={() => handleDeletePosition(pos.id)}
-                        variant="outline"
-                        className="border-muted text-muted-foreground">
-                        Delete
-                      </Button>
+                      {isEditing ? (
+                        <>
+                          <Button
+                            onClick={saveEdit}
+                            className="bg-orange-500 text-white hover:bg-orange-600">
+                            Save
+                          </Button>
+                          <Button
+                            onClick={cancelEdit}
+                            variant="outline">
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            onClick={() => startEdit(pos)}
+                            variant="outline"
+                            className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white">
+                            Edit
+                          </Button>
+                          <Button
+                            onClick={() => handleDeletePosition(pos.id)}
+                            variant="outline">
+                            Delete
+                          </Button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>

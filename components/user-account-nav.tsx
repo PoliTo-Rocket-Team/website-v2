@@ -1,14 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { signOutAction } from "@/app/actions/auth/signin-out";
+import Link from "next/link";
+import { useTransition } from "react";
 
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/user-avatar";
 
@@ -17,6 +18,14 @@ interface UserAccountNavProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function UserAccountNav({ user }: UserAccountNavProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleSignOut = () => {
+    startTransition(() => {
+      signOutAction();
+    });
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger>
@@ -53,10 +62,11 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
           className="cursor-pointer"
           onSelect={event => {
             event.preventDefault();
-            signOutAction();
+            handleSignOut();
           }}
+          disabled={isPending}
         >
-          Sign out
+          {isPending ? "Signing out..." : "Sign out"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
