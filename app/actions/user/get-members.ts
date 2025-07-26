@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
+import { createSupabaseClient } from "@/utils/supabase/client";
 import { Database } from "@/types/supabase";
 
 export type Member = Database["public"]["Tables"]["members"]["Row"] & {
@@ -25,7 +25,7 @@ export type Role = Database["public"]["Tables"]["roles"]["Row"] & {
 };
 
 export async function getMembersByUserRole() {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
 
   const {
     data: { user },
