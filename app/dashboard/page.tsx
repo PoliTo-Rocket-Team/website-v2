@@ -1,11 +1,7 @@
-import { createClient } from "@/utils/supabase/server";
 import { InfoIcon } from "lucide-react";
+import { auth } from "@/auth";
 export default async function ProtectedPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const session = await auth();
 
   return (
     <div className="flex-1 w-full flex flex-col gap-12 mt-10">
@@ -18,7 +14,7 @@ export default async function ProtectedPage() {
       </div>
       <div className="flex flex-col gap-2 items-center">
         <h2 className="font-bold text-2xl mb-4">Your user details</h2>
-          {JSON.stringify(user?.email, null, 2)}
+          {JSON.stringify(session?.email, null, 2)}
       </div>
     </div>
   );

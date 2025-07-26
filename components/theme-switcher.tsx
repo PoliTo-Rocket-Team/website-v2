@@ -16,13 +16,14 @@ const ThemeSwitcher = () => {
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
 
-  // useEffect only runs on the client, so now we can safely show the UI
   useEffect(() => {
     setMounted(true);
   }, []);
 
   if (!mounted) {
-    return null;
+    return (
+      <div className="w-[40px] h-[36px] px-3 animate-pulse bg-muted rounded-md gap-2" />
+    );
   }
 
   const ICON_SIZE = 16;
@@ -30,33 +31,33 @@ const ThemeSwitcher = () => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size={"sm"}>
+        <Button variant="ghost" size={"sm"} aria-label="Theme switcher">
           {theme === "light" ? (
             <Sun
               key="light"
               size={ICON_SIZE}
               className={"text-muted-foreground"}
+              aria-label="Light theme icon"
             />
           ) : theme === "dark" ? (
             <Moon
               key="dark"
               size={ICON_SIZE}
               className={"text-muted-foreground"}
+              aria-label="Dark theme icon"
             />
           ) : (
             <Laptop
               key="system"
               size={ICON_SIZE}
               className={"text-muted-foreground"}
+              aria-label="System theme icon"
             />
           )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-content" align="start">
-        <DropdownMenuRadioGroup
-          value={theme}
-          onValueChange={(e) => setTheme(e)}
-        >
+        <DropdownMenuRadioGroup value={theme} onValueChange={e => setTheme(e)}>
           <DropdownMenuRadioItem className="flex gap-2" value="light">
             <Sun size={ICON_SIZE} className="text-muted-foreground" />{" "}
             <span>Light</span>
