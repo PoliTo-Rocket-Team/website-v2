@@ -1,23 +1,15 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icons } from "@/components/icons";
 import { toast } from "sonner";
 
 export default function SignInMagic() {
-  const searchParams = useSearchParams();
-  const [callbackUrl, setCallbackUrl] = useState("/dashboard");
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState("");
-
-  useEffect(() => {
-    const url = searchParams.get("callbackUrl");
-    if (url) setCallbackUrl(url);
-  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -32,7 +24,6 @@ export default function SignInMagic() {
     try {
       const result = await signIn("resend", {
         email,
-        callbackUrl,
         redirect: false,
       });
 

@@ -15,7 +15,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   pages: {
-    signIn: "/signin",
+    signIn: "/sign-in",
     error: "/error", //! custom error page needed
   },
   adapter: SupabaseAdapter({
@@ -24,6 +24,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   }),
 
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      const targetUrl = new URL(url, baseUrl);
+
+      const isSignOut = targetUrl.pathname === "/"; // NextAuth default logout redirect
+
+      if (isSignOut) {
+        return baseUrl; // Redirect to home (/)
+      }
+
+      const callback = targetUrl.searchParams.get("callbackUrl");
+
+      if (callback && callback.startsWith("/")) {
+        const cleanPath = callback.split("?")[0]; // Strip oauth params
+        return `${baseUrl}${cleanPath}`;
+      }
+
+      return `${baseUrl}${targetUrl.pathname}`;
+    },
+
     async session({ session, user }) {
       const signingSecret = process.env.SUPABASE_JWT_SECRET;
       if (signingSecret) {
@@ -45,6 +64,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Flatten user data into session
       session.userId = user.id;
       session.email = user.email;
+
       return session;
     },
   },
