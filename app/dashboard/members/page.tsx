@@ -2,6 +2,7 @@ import { InfoIcon } from "lucide-react";
 import { MembersList } from "@/components/members-list";
 
 export default async function MembersPage() {
+  console.log("MembersPage rendered");
   return (
     <div>
       <div className="w-full">
