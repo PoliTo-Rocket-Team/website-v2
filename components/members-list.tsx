@@ -85,10 +85,10 @@ export function MembersList() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {member.roles?.[0]?.subteams &&
-                            member.roles?.[0]?.subteams?.name && (
+                          {member.roles?.[0]?.departments &&
+                            member.roles?.[0]?.departments?.name && (
                               <span className="text-sm border rounded p-1">
-                                {member.roles?.[0]?.subteams.name}
+                                {member.roles?.[0]?.departments.name}
                               </span>
                             )}
                           {member.roles?.[0]?.divisions?.code && (
@@ -144,10 +144,10 @@ export function MembersList() {
                             <span className="font-medium">Updated At:</span>{" "}
                             {member.users?.[0]?.updated_at || "N/A"}
                           </div>
-                          {member.roles?.[0]?.subteams?.name && (
+                          {member.roles?.[0]?.departments?.name && (
                             <div className="text-sm">
                               <span className="font-medium">Subteam:</span>{" "}
-                              {member.roles[0].subteams.name}
+                              {member.roles[0].departments.name}
                             </div>
                           )}
                           {member.roles?.[0]?.divisions?.code && (

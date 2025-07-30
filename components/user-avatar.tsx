@@ -20,4 +20,4 @@ export function UserAvatar({ user, ...props }: UserAvatarProps) {
       )}
     </Avatar>
   )
-}
+} 

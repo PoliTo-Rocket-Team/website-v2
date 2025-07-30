@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { signOutAction } from "@/app/actions/auth/signin-out";
+import { signOut } from "next-auth/react";
 
 import {
   DropdownMenu,
@@ -56,7 +56,7 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
           className="cursor-pointer"
           onSelect={event => {
             event.preventDefault();
-            signOutAction();
+            signOut({ redirectTo: "/" });
           }}
         >
           Sign out
