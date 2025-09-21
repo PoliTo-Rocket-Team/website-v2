@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
+import { createSupabaseClient } from "@/utils/supabase/client";
 import { Database } from "@/types/supabase";
 
 export type ApplyPosition =
@@ -13,7 +13,7 @@ export type ApplyPosition =
   };
 
 export async function getApplyPositionsByUserRole() {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
 
   // Get current user
   const {

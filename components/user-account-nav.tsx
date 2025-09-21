@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { signOutAction } from "@/app/actions/auth/signin-out";
+import { signOut } from "next-auth/react";
 
 import {
   DropdownMenu,
@@ -13,7 +13,7 @@ import {
 import { UserAvatar } from "@/components/user-avatar";
 
 interface UserAccountNavProps extends React.HTMLAttributes<HTMLDivElement> {
-    user: { name: string, image: string , email: string };
+  user: { name: string; image: string; email: string };
 }
 
 export function UserAccountNav({ user }: UserAccountNavProps) {
@@ -36,7 +36,7 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
             )}
           </div>
         </div>
-              <DropdownMenuSeparator />
+        <DropdownMenuSeparator />
 
         {/* hardcoded for now, we need to render in reference to role.type */}
         <DropdownMenuItem asChild>
@@ -53,7 +53,7 @@ export function UserAccountNav({ user }: UserAccountNavProps) {
           className="cursor-pointer"
           onSelect={event => {
             event.preventDefault();
-            signOutAction();
+            signOut({ redirectTo: "/" });
           }}
         >
           Sign out

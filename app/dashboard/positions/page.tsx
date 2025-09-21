@@ -60,16 +60,11 @@ export async function handleEditPosition(
 export default async function PositionsPage() {
   const { positions } = await getApplyPositionsByUserRole();
   return (
-    <div className="w-full">
-      <h2 className="text-2xl font-bold text-center mb-6 text-primary">
-        Positions
-      </h2>
-      <ApplyPositions
-        handleDelete={handleDelete}
-        handleOpenClosePosition={handleOpenClosePosition}
-        handleEditPosition={handleEditPosition}
-        positions={positions}
-      />
-    </div>
+      <div className="w-full">
+        <h2 className="text-2xl font-bold text-center mb-6 text-primary">
+          Positions
+        </h2>
+        <ApplyPositions />
+      </div>
   );
 }
