@@ -16,7 +16,7 @@ export default async function Login() {
       <div className="mx-auto flex w-full my-auto flex-col justify-center space-y-6 sm:w-[350px]">
         <div className="flex flex-col space-y-2 text-center">
           
-          {/* //! Add Icons.logo */}
+          {/* //! todo Add Icons.logo */}
           <Icons.logo className="mx-auto h-16 w-16" />
           <h1 className="text-2xl font-semibold tracking-tight">
             Welcome back
@@ -38,14 +38,14 @@ export default async function Login() {
 
         <p className="px-4 text-center text-sm text-muted-foreground">
           By signing in, you agree to our{" "}
-          {/* //! terms and conditions page to be added */}
+          {/* //! todo terms and conditions page to be added */}
           <Link
             href="/terms"
             className="hover:text-brand underline underline-offset-4"
           >
             Terms of Service
           </Link>{" "}
-          and {/* //! privacy policy page to be added */}
+          and {/* //! todo privacy policy page to be added */}
           <Link
             href="/privacy"
             className="hover:text-brand underline underline-offset-4"
