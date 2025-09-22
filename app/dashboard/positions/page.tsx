@@ -1,14 +1,11 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
-import {
-  getApplyPositionsByUserRole,
-  ApplyPosition,
-} from "@/app/actions/user/get-apply-positions";
+import { createSupabaseClient } from "@/utils/supabase/client";
+import { getPositionsByMemberScope } from "@/app/actions/get-apply-positions";
 import { ApplyPositions } from "@/components/apply-positions-list";
 
 export async function handleDelete(id: number) {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
 
   const { error: posError } = await supabase
     .from("apply_positions")
@@ -22,7 +19,7 @@ export async function handleDelete(id: number) {
 }
 
 export async function handleOpenClosePosition(id: number, isOpen: boolean) {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
 
   const { error: posError } = await supabase
     .from("apply_positions")
@@ -42,7 +39,7 @@ export async function handleEditPosition(
   id: number,
   updatedData: Partial<{ title: string; description: string; status: boolean }>
 ) {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
 
   const { error: posError } = await supabase
     .from("apply_positions")
@@ -57,14 +54,19 @@ export async function handleEditPosition(
   console.log(`Position ${id} updated successfully`);
 }
 
-export default async function PositionsPage() {
-  const { positions } = await getApplyPositionsByUserRole();
+export default async function Positions() {
+  const { positions } = await getPositionsByMemberScope();
   return (
-      <div className="w-full">
-        <h2 className="text-2xl font-bold text-center mb-6 text-primary">
-          Positions
-        </h2>
-        <ApplyPositions />
-      </div>
+    <div className="w-full">
+      <h2 className="text-2xl font-bold text-center mb-6 text-primary">
+        Positions
+      </h2>
+      <ApplyPositions
+        positions={positions}
+        handleDelete={handleDelete}
+        handleOpenClosePosition={handleOpenClosePosition}
+        handleEditPosition={handleEditPosition}
+      />
+    </div>
   );
 }
