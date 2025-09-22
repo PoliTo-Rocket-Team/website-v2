@@ -33,7 +33,7 @@ CREATE TABLE users (
 CREATE TABLE departments (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
-  started_at DATE,
+  started_at DATE NOT NULL DEFAULT now(),
   closed_at DATE,
   code TEXT
 );
@@ -43,7 +43,7 @@ CREATE TABLE divisions (
   id SERIAL PRIMARY KEY,
   dept_id INTEGER REFERENCES departments(id),
   name TEXT NOT NULL,
-  started_at DATE,
+  started_at DATE NOT NULL DEFAULT now(),
   closed_at DATE,
   code TEXT
 );
@@ -57,7 +57,7 @@ CREATE TABLE roles (
   dept_id INTEGER REFERENCES departments(id),
   division_id INTEGER REFERENCES divisions(id),
   title TEXT NOT NULL,
-  started_at DATE,
+  started_at DATE NOT NULL DEFAULT now(),
   leaved_at DATE,
   type position_type 
 );
@@ -107,7 +107,7 @@ CREATE TYPE public.application_status AS ENUM (
 -- APPLICATIONS
 CREATE TABLE applications (
   id SERIAL PRIMARY KEY,
-  open_position_id INTEGER REFERENCES apply_positions(id),
+  apply_position_id INTEGER REFERENCES apply_positions(id),
   user_id UUID REFERENCES users(id),
   ml_name TEXT,
   cv_name TEXT,

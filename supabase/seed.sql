@@ -169,7 +169,7 @@ What You will Do:
 
 
 -- Insert Applications with timestamptz for applied_at
-INSERT INTO applications (id, open_position_id, user_id, ml_name, cv_name, applied_at, status, custom_answers) VALUES
+INSERT INTO applications (id, apply_position_id, user_id, ml_name, cv_name, applied_at, status, custom_answers) VALUES
 (1, 1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 'chiara_ml.pdf', 'chiara_cv.pdf', '2023-02-05 16:45:00+01'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
