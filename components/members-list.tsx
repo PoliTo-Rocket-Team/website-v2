@@ -5,7 +5,7 @@ import {
   getMembersByUserRole,
   Member,
   Role,
-} from "@/app/actions/user/get-members";
+} from "@/app/actions/get-members";
 import {
   Accordion,
   AccordionItem,

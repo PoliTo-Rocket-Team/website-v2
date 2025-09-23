@@ -3,7 +3,7 @@ import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import Link from "next/link";
 import "./globals.css";
-import MaxWidthWrapper from "@/components/MaxWidthWrapper";
+import MaxWidthWrapper from "@/components/max-width-wrapper";
 import AuthButton from "@/components/header-auth";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/auth";
