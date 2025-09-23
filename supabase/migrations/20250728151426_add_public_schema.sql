@@ -93,7 +93,8 @@ CREATE TABLE apply_positions (
   required_skills TEXT[],
   desirable_skills TEXT[],
   custom_questions TEXT[],
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  requires_motivation_letter BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TYPE public.application_status AS ENUM (

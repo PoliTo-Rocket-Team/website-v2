@@ -17,10 +17,10 @@ export type Database = {
     Functions: {
       graphql: {
         Args: {
-          query?: string
           operationName?: string
-          variables?: Json
           extensions?: Json
+          variables?: Json
+          query?: string
         }
         Returns: Json
       }
@@ -240,6 +240,7 @@ export type Database = {
           division_id: number | null
           id: number
           required_skills: string[] | null
+          requires_motivation_letter: boolean
           status: boolean
           title: string | null
         }
@@ -251,6 +252,7 @@ export type Database = {
           division_id?: number | null
           id?: number
           required_skills?: string[] | null
+          requires_motivation_letter?: boolean
           status: boolean
           title?: string | null
         }
@@ -262,6 +264,7 @@ export type Database = {
           division_id?: number | null
           id?: number
           required_skills?: string[] | null
+          requires_motivation_letter?: boolean
           status?: boolean
           title?: string | null
         }
