@@ -2,7 +2,7 @@
 
 import { createSupabaseClient } from "@/utils/supabase/client";
 import { getPositionsByMemberScope } from "@/app/actions/get-apply-positions";
-import { ApplyPositions } from "@/components/apply-positions-list";
+import { ApplyPositionsList } from "@/components/apply-positions-list";
 
 export async function handleDelete(id: number) {
   const supabase = await createSupabaseClient();
@@ -61,7 +61,7 @@ export default async function Positions() {
       <h2 className="text-2xl font-bold text-center mb-6 text-primary">
         Positions
       </h2>
-      <ApplyPositions
+      <ApplyPositionsList
         positions={positions}
         handleDelete={handleDelete}
         handleOpenClosePosition={handleOpenClosePosition}
