@@ -13,6 +13,11 @@ export type ApplyPosition = Prettify<
   }
 >;
 
+export type Division = Prettify<
+  Database["public"]["Tables"]["divisions"]["Row"] & {
+    departments: Database["public"]["Tables"]["departments"]["Row"];
+  }
+>;
 
 // Scope type based on the scopes table schema
 export type Scope = Prettify<Database["public"]["Tables"]["scopes"]["Row"]>;
