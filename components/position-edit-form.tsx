@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { AutoGrowTextarea } from "@/components/ui/textarea";
 import { ApplyPosition } from "@/app/actions/types";
+import { toast } from "sonner";
 
 type PositionFormData = {
   title: string;
@@ -49,7 +51,15 @@ function ArrayField({
               onChange={e => onUpdate(i, e.target.value)}
               placeholder={placeholder}
             />
-            <Button size="sm" variant="ghost" onClick={() => onRemove(i)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onRemove(i)}
+              disabled={items.length <= 1}
+              className={
+                items.length <= 1 ? "opacity-50 cursor-not-allowed" : ""
+              }
+            >
               Remove
             </Button>
           </div>
@@ -59,40 +69,6 @@ function ArrayField({
         </Button>
       </div>
     </>
-  );
-}
-
-// Auto-growing textarea component
-function AutoGrowTextarea({
-  value,
-  onChange,
-  placeholder,
-  className,
-}: {
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  placeholder: string;
-  className: string;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = textarea.scrollHeight + "px";
-    }
-  }, [value]);
-
-  return (
-    <textarea
-      ref={textareaRef}
-      className={className}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      rows={1}
-    />
   );
 }
 
@@ -187,14 +163,14 @@ export function PositionEditForm({
 
   return (
     <>
-      <h3 className="font-semibold text-lg mb-2">Title</h3>
-      <input
+      <h3 className="font-semibold text-lg mb-2">Title *</h3>
+      <AutoGrowTextarea
         className="flex-1 border rounded px-2 py-2 mb-6 w-2/3"
         value={formData.title}
         onChange={e => setFormData(d => ({ ...d, title: e.target.value }))}
         onClick={e => e.stopPropagation()}
       />
-      <h3 className="font-semibold text-lg mb-2">Description</h3>
+      <h3 className="font-semibold text-lg mb-2">Description *</h3>
       <AutoGrowTextarea
         className="w-full border px-2 py-1 rounded mb-6 resize-none overflow-hidden"
         value={formData.description}
@@ -208,7 +184,7 @@ export function PositionEditForm({
       />
 
       <ArrayField
-        title="Required Skills"
+        title="Required Skills *"
         items={formData.required_skills}
         placeholder="Enter required skill"
         addButtonText="+ Add required skill"
@@ -218,7 +194,7 @@ export function PositionEditForm({
       />
 
       <ArrayField
-        title="Desirable Skills"
+        title="Desirable Skills *"
         items={formData.desirable_skills}
         placeholder="Enter desirable skill"
         addButtonText="+ Add desirable skill"
@@ -230,8 +206,8 @@ export function PositionEditForm({
       <div className="mb-4">
         <h4 className="font-semibold text-sm mb-1">Custom Questions</h4>
         <p className="text-xs text-gray-600 mb-3 w-3/4">
-          Default informations (CV, name, surname, email, major, graduation year,
-          etc.) will be asked automatically. If you want to ask specific
+          Default informations (CV, name, surname, email, major, graduation
+          year, etc.) will be asked automatically. If you want to ask specific
           questions to applicants for this position, add them to this box below.
         </p>
       </div>
@@ -267,9 +243,8 @@ export function PositionEditForm({
           <Button
             variant="default"
             onClick={() => {
-              clearSavedFormData();
-              // Filter out empty entries before saving
-              const cleanedData = {
+              // Filter out empty entries before validation
+              const filteredData = {
                 ...formData,
                 required_skills: formData.required_skills.filter(
                   skill => skill.trim() !== ""
@@ -280,6 +255,52 @@ export function PositionEditForm({
                 custom_questions: formData.custom_questions.filter(
                   question => question.trim() !== ""
                 ),
+              };
+
+              // Validate required fields
+              const validateRequiredFields = () => {
+                const missingFields = [];
+
+                if (!filteredData.title.trim()) {
+                  missingFields.push("title");
+                }
+                if (!filteredData.description.trim()) {
+                  missingFields.push("description");
+                }
+                if (filteredData.required_skills.length === 0) {
+                  missingFields.push("required skills");
+                }
+                if (filteredData.desirable_skills.length === 0) {
+                  missingFields.push("desirable skills");
+                }
+
+                if (missingFields.length > 1) {
+                  toast.error("Please fill in all required fields");
+                  return false;
+                } else if (missingFields.length === 1) {
+                  const field = missingFields[0];
+                  if (field === "required skills") {
+                    toast.error("At least one required skill must be provided");
+                  } else if (field === "desirable skills") {
+                    toast.error(
+                      "At least one desirable skill must be provided"
+                    );
+                  } else {
+                    toast.error(`Please fill in the ${field} field`);
+                  }
+                  return false;
+                }
+
+                return true;
+              };
+
+              if (!validateRequiredFields()) {
+                return;
+              }
+
+              clearSavedFormData();
+              const cleanedData = {
+                ...filteredData,
                 requires_motivation_letter: formData.requires_motivation_letter,
               };
               onSave(cleanedData);

@@ -118,3 +118,86 @@ export async function filterItemsByScope<
 
   return filteredItemsWithPermissions;
 }
+
+/**
+ * Get divisions that the current user can edit
+ * @returns Array of divisions the user has edit access to
+ */
+export async function getEditableDivisions() {
+  const { createSupabaseClient } = await import("@/utils/supabase/client");
+  const supabase = await createSupabaseClient();
+  const memberId = await getCurrentMemberId();
+
+  if (!memberId) {
+    return [];
+  }
+
+  const scopes = await getScopes(memberId);
+
+  // Get all active divisions first
+  const { data: allDivisions, error } = await supabase
+    .from("divisions")
+    .select(
+      `
+      id,
+      name,
+      code,
+      dept_id,
+      departments(
+        id,
+        name,
+        code
+      )
+    `
+    )
+    .is("closed_at", null) // Only active divisions
+    .order("id"); // Order by division name for consistent ordering
+
+  if (error) {
+    console.error("Error fetching divisions:", error);
+    return [];
+  }
+
+  if (!allDivisions) {
+    return [];
+  }
+
+  // Check if user has "all" edit access
+  const hasAllEditAccess = scopes.some(
+    s => s.scope === "all" && s.access_level === "edit"
+  );
+
+  if (hasAllEditAccess) {
+    return allDivisions;
+  }
+
+  // Filter divisions based on specific scopes (both division and department level)
+  const divisionIds = scopes
+    .filter(s => s.access_level === "edit" && s.scope === "division" && s.division_id !== null)
+    .map(s => s.division_id)
+    .filter(id => id !== null) as number[];
+
+  const departmentIds = scopes
+    .filter(s => s.access_level === "edit" && s.scope === "department" && s.dept_id !== null)
+    .map(s => s.dept_id)
+    .filter(id => id !== null) as number[];
+
+  // Filter divisions based on user's scopes
+  const editableDivisions = allDivisions.filter(division => {
+    // Check if user has direct division access
+    if (divisionIds.includes(division.id)) {
+      return true;
+    }
+    
+    // Check if user has department access (division belongs to accessible department)
+    if (division.dept_id && departmentIds.includes(division.dept_id)) {
+      return true;
+    }
+    
+    return false;
+  });
+
+  return editableDivisions;
+}
+
+
