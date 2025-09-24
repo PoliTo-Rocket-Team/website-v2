@@ -29,6 +29,7 @@ type PositionCardProps = {
   onToggleStatus?: (id: number, currentStatus: boolean) => void;
   onDelete?: (id: number) => void;
   onEdit?: (id: number, data: any) => void;
+  onAdd?: (position: ApplyPosition) => void;
 };
 
 export function PositionCard({
@@ -44,11 +45,7 @@ export function PositionCard({
   // Load editing state from localStorage
   useEffect(() => {
     const editingPositionId = localStorage.getItem("editingPositionId");
-    console.log(
-      `Checking editing state for position ${position.id}, saved: ${editingPositionId}`
-    );
     if (editingPositionId === position.id.toString()) {
-      console.log(`Setting position ${position.id} to editing mode`);
       setIsEditing(true);
     }
   }, [position.id]);
@@ -56,12 +53,10 @@ export function PositionCard({
   // Save editing state to localStorage
   useEffect(() => {
     if (isEditing) {
-      console.log(`Saving editing state for position ${position.id}`);
       localStorage.setItem("editingPositionId", position.id.toString());
     } else {
       const currentEditingId = localStorage.getItem("editingPositionId");
       if (currentEditingId === position.id.toString()) {
-        console.log(`Clearing editing state for position ${position.id}`);
         localStorage.removeItem("editingPositionId");
       }
     }

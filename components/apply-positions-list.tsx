@@ -4,13 +4,32 @@ import { useState, useEffect } from "react";
 import { ApplyPosition } from "@/app/actions/types";
 import { PositionCard } from "@/components/position-card";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { AddPositionDialog } from "@/components/add-position-dialog";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import "@/app/globals.css";
+import { localStorageUtils } from "@/lib/localStorage";
+import { Database } from "@/types/supabase";
+import { Prettify } from "@/lib/utils";
+
+
+//component-specific Division type with non-nullable code and departments.code
+type ComponentDivision = Prettify<
+  Pick<Database["public"]["Tables"]["divisions"]["Row"], "id" | "name"> & {
+    code: string; // Override to make non-nullable for component needs
+    departments:
+      | Prettify<
+          Pick<Database["public"]["Tables"]["departments"]["Row"], "id" | "name"> & {
+            code: string; // Override to make non-nullable for component needs
+          }
+        >[]
+      | null;
+  }
+>;
 
 type Props = {
   positions: ApplyPosition[];
   handleDelete?: (id: number) => void;
-  handleOpenClosePosition?: (id: number, isOpen: boolean) => void;
   handleEditPosition?: (
     id: number,
     data: Partial<{
@@ -22,41 +41,45 @@ type Props = {
       custom_questions: string[];
     }>
   ) => void;
+  handleAddPosition?: (data: {
+    title: string;
+    description: string;
+    required_skills: string[];
+    desirable_skills: string[];
+    custom_questions: string[];
+    requires_motivation_letter: boolean;
+    division_id: number;
+  }) => Promise<ApplyPosition>;
+  editableDivisions?: ComponentDivision[];
+  pageContext?: string;
 };
 
 export function ApplyPositionsList({
   handleDelete,
-  handleOpenClosePosition,
   handleEditPosition,
   positions: initialPositions,
+  handleAddPosition,
+  editableDivisions = [],
+  pageContext = "default",
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
 
-  // Load accordion states from localStorage
+  // Load accordion states from localStorage with page-specific key
   useEffect(() => {
-    const savedAccordionStates = localStorage.getItem("accordionStates");
-    if (savedAccordionStates) {
-      try {
-        const parsedStates = JSON.parse(savedAccordionStates);
-        setOpenAccordions(new Set(parsedStates));
-      } catch (error) {
-        console.error(
-          "Failed to parse accordion states from localStorage:",
-          error
-        );
-      }
+    const storageKey = `${pageContext}AccordionStates`;
+    const savedAccordionStates = localStorageUtils.load(storageKey, []);
+    if (savedAccordionStates && savedAccordionStates.length > 0) {
+      setOpenAccordions(new Set(savedAccordionStates));
     }
-  }, []);
+  }, [pageContext]);
 
   // Save accordion states to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem(
-      "accordionStates",
-      JSON.stringify(Array.from(openAccordions))
-    );
-  }, [openAccordions]);
+    const storageKey = `${pageContext}AccordionStates`;
+    localStorageUtils.save(storageKey, Array.from(openAccordions));
+  }, [openAccordions, pageContext]);
 
   useEffect(() => {
     // Sort positions: active (status = true) first, then inactive (status = false)
@@ -81,11 +104,56 @@ export function ApplyPositionsList({
 
   const isAccordionOpen = (id: string) => openAccordions.has(id);
 
+  const handleAddPositionWithUpdate = async (data: {
+    title: string;
+    description: string;
+    required_skills: string[];
+    desirable_skills: string[];
+    custom_questions: string[];
+    requires_motivation_letter: boolean;
+    division_id: number;
+  }): Promise<ApplyPosition> => {
+    if (!handleAddPosition) {
+      throw new Error("handleAddPosition is not provided");
+    }
+
+    // Call the server action to add the position
+    const newPosition = await handleAddPosition(data);
+
+    // Add the new position to the current list
+    setPositions(prev => {
+      const newPositions = [newPosition, ...prev];
+      // Sort positions: active (status = true) first, then inactive (status = false)
+      return newPositions.sort((a, b) => {
+        return Number(b.status) - Number(a.status);
+      });
+    });
+
+    return newPosition;
+  };
+
+  const addPosition = (position: ApplyPosition) => {
+    setPositions(prev => {
+      const newPositions = [...prev, position];
+
+      // Sort positions: active (status = true) first, then inactive (status = false)
+      return newPositions.sort((a, b) => {
+        return Number(b.status) - Number(a.status);
+      });
+    });
+
+    // Show success toast
+    toast.success("Position added successfully", {
+      description: `${position.title} has been created.`,
+      duration: 4000,
+    });
+  };
+
   const handleTogglePosition = async (id: number, currentStatus: boolean) => {
-    if (!handleOpenClosePosition) return;
+    if (!handleEditPosition) return;
 
     try {
-      await handleOpenClosePosition(id, currentStatus);
+      await handleEditPosition(id, { status: !currentStatus });
       setPositions(prev =>
         prev.map(pos =>
           pos.id === id ? { ...pos, status: !currentStatus } : pos
@@ -158,27 +226,42 @@ export function ApplyPositionsList({
 
   if (loading) return <LoadingSkeleton />;
 
-  if (!positions.length) {
-    return (
-      <div className="text-muted-foreground p-4">
-        No positions available at this time.
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      {positions.map(position => (
-        <PositionCard
-          key={position.id}
-          position={position}
-          isOpen={isAccordionOpen(position.id.toString())}
-          onToggleAccordion={toggleAccordion}
-          onToggleStatus={handleTogglePosition}
-          onDelete={handleDeletePosition}
-          onEdit={handleEditPositionLocal}
-        />
-      ))}
+    <div className="w-full relative">
+      {/* Add Position button - positioned absolutely to align with title */}
+      {editableDivisions.length > 0 && handleAddPosition && (
+        <div className="absolute top-0 right-0 -translate-y-12">
+          <AddPositionDialog
+            onAddPosition={handleAddPositionWithUpdate}
+            divisions={editableDivisions}
+          >
+            <Button className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Add Position
+            </Button>
+          </AddPositionDialog>
+        </div>
+      )}
+
+      {!positions.length ? (
+        <div className="text-muted-foreground p-4">
+          No positions available at this time.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {positions.map(position => (
+            <PositionCard
+              key={position.id}
+              position={position}
+              isOpen={isAccordionOpen(position.id.toString())}
+              onToggleAccordion={toggleAccordion}
+              onToggleStatus={handleTogglePosition}
+              onDelete={handleDeletePosition}
+              onEdit={handleEditPositionLocal}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,13 @@
+"use client";
+
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { AutoGrowTextarea } from "@/components/ui/textarea";
+import { ArrayField } from "@/components/ui/array-field";
 import { ApplyPosition } from "@/app/actions/types";
-import { toast } from "sonner";
+import { validateAndShowErrors, createValidationRules } from "@/lib/validation";
+import { localStorageUtils } from "@/lib/localStorage";
 
 type PositionFormData = {
   title: string;
@@ -19,58 +23,6 @@ type PositionEditFormProps = {
   onSave: (data: PositionFormData) => void;
   onCancel: () => void;
 };
-
-function ArrayField({
-  title,
-  items,
-  placeholder,
-  addButtonText,
-  onUpdate,
-  onAdd,
-  onRemove,
-  className = "mb-4",
-}: {
-  title: string;
-  items: string[];
-  placeholder: string;
-  addButtonText: string;
-  onUpdate: (index: number, value: string) => void;
-  onAdd: () => void;
-  onRemove: (index: number) => void;
-  className?: string;
-}) {
-  return (
-    <>
-      <h4 className="font-semibold text-base mb-1">{title}</h4>
-      <div className={`${className} space-y-2`}>
-        {items.map((item, i) => (
-          <div key={i} className="flex space-x-2">
-            <AutoGrowTextarea
-              className="flex-1 border px-2 py-2 rounded resize-none overflow-hidden"
-              value={item}
-              onChange={e => onUpdate(i, e.target.value)}
-              placeholder={placeholder}
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onRemove(i)}
-              disabled={items.length <= 1}
-              className={
-                items.length <= 1 ? "opacity-50 cursor-not-allowed" : ""
-              }
-            >
-              Remove
-            </Button>
-          </div>
-        ))}
-        <Button size="sm" onClick={onAdd}>
-          {addButtonText}
-        </Button>
-      </div>
-    </>
-  );
-}
 
 export function PositionEditForm({
   position,
@@ -90,19 +42,23 @@ export function PositionEditForm({
 
   // Load form data from localStorage on mount
   useEffect(() => {
-    const savedFormData = localStorage.getItem(`editFormData_${position.id}`);
-    console.log(
-      `Loading saved data for position ${position.id}:`,
-      savedFormData
+    const defaultFormData = {
+      title: position.title || "",
+      description: position.description || "",
+      required_skills: position.required_skills ?? [],
+      desirable_skills: position.desirable_skills ?? [],
+      custom_questions: position.custom_questions ?? [],
+      requires_motivation_letter:
+        (position as PositionFormData).requires_motivation_letter ?? false,
+    };
+
+    const savedFormData = localStorageUtils.load(
+      `editFormData_${position.id}`,
+      defaultFormData
     );
+
     if (savedFormData) {
-      try {
-        const parsedData = JSON.parse(savedFormData);
-        console.log("Parsed saved data:", parsedData);
-        setFormData(parsedData);
-      } catch (error) {
-        console.error("Failed to parse saved form data:", error);
-      }
+      setFormData(savedFormData);
     }
     setIsInitialized(true);
   }, [position.id]);
@@ -110,55 +66,13 @@ export function PositionEditForm({
   // Save form data to localStorage whenever it changes (but not on initial load)
   useEffect(() => {
     if (isInitialized) {
-      console.log(`Saving form data for position ${position.id}:`, formData);
-      localStorage.setItem(
-        `editFormData_${position.id}`,
-        JSON.stringify(formData)
-      );
+      localStorageUtils.save(`editFormData_${position.id}`, formData);
     }
   }, [formData, position.id, isInitialized]);
 
   // Clear form data from localStorage when saving or canceling
   const clearSavedFormData = () => {
-    localStorage.removeItem(`editFormData_${position.id}`);
-  };
-
-  // Generic array updater
-  const updateArrayItem = (
-    field: keyof Pick<
-      PositionFormData,
-      "required_skills" | "desirable_skills" | "custom_questions"
-    >,
-    index: number,
-    value: string
-  ) => {
-    setFormData(d => {
-      const updated = [...d[field]];
-      updated[index] = value;
-      return { ...d, [field]: updated };
-    });
-  };
-
-  const addArrayItem = (
-    field: keyof Pick<
-      PositionFormData,
-      "required_skills" | "desirable_skills" | "custom_questions"
-    >
-  ) => {
-    setFormData(d => ({ ...d, [field]: [...d[field], ""] }));
-  };
-
-  const removeArrayItem = (
-    field: keyof Pick<
-      PositionFormData,
-      "required_skills" | "desirable_skills" | "custom_questions"
-    >,
-    index: number
-  ) => {
-    setFormData(d => ({
-      ...d,
-      [field]: d[field].filter((_, i) => i !== index),
-    }));
+    localStorageUtils.remove(`editFormData_${position.id}`);
   };
 
   return (
@@ -184,41 +98,34 @@ export function PositionEditForm({
       />
 
       <ArrayField
-        title="Required Skills *"
-        items={formData.required_skills}
+        title="Required Skills"
+        required
+        value={formData.required_skills}
+        onChange={value => setFormData(d => ({ ...d, required_skills: value }))}
         placeholder="Enter required skill"
         addButtonText="+ Add required skill"
-        onUpdate={(i, value) => updateArrayItem("required_skills", i, value)}
-        onAdd={() => addArrayItem("required_skills")}
-        onRemove={i => removeArrayItem("required_skills", i)}
       />
 
       <ArrayField
-        title="Desirable Skills *"
-        items={formData.desirable_skills}
+        title="Desirable Skills"
+        required
+        value={formData.desirable_skills}
+        onChange={value =>
+          setFormData(d => ({ ...d, desirable_skills: value }))
+        }
         placeholder="Enter desirable skill"
         addButtonText="+ Add desirable skill"
-        onUpdate={(i, value) => updateArrayItem("desirable_skills", i, value)}
-        onAdd={() => addArrayItem("desirable_skills")}
-        onRemove={i => removeArrayItem("desirable_skills", i)}
       />
 
-      <div className="mb-4">
-        <h4 className="font-semibold text-sm mb-1">Custom Questions</h4>
-        <p className="text-xs text-gray-600 mb-3 w-3/4">
-          Default informations (CV, name, surname, email, major, graduation
-          year, etc.) will be asked automatically. If you want to ask specific
-          questions to applicants for this position, add them to this box below.
-        </p>
-      </div>
       <ArrayField
-        title=""
-        items={formData.custom_questions}
+        title="Custom Questions"
+        description="Default informations (CV, name, surname, email, major, graduation year, etc.) will be asked automatically. If you want to ask specific questions to applicants for this position, add them to this box below."
+        value={formData.custom_questions}
+        onChange={value =>
+          setFormData(d => ({ ...d, custom_questions: value }))
+        }
         placeholder="Enter question"
         addButtonText="+ Add question"
-        onUpdate={(i, value) => updateArrayItem("custom_questions", i, value)}
-        onAdd={() => addArrayItem("custom_questions")}
-        onRemove={i => removeArrayItem("custom_questions", i)}
         className="mb-6"
       />
 
@@ -257,44 +164,29 @@ export function PositionEditForm({
                 ),
               };
 
-              // Validate required fields
-              const validateRequiredFields = () => {
-                const missingFields = [];
+              // Validate required fields using generic validation utility
+              const validationRules = [
+                createValidationRules.required(
+                  "title",
+                  filteredData.title.trim()
+                ),
+                createValidationRules.required(
+                  "description",
+                  filteredData.description.trim()
+                ),
+                createValidationRules.arrayNotEmpty(
+                  "required skill",
+                  filteredData.required_skills,
+                  "At least one required skill must be provided"
+                ),
+                createValidationRules.arrayNotEmpty(
+                  "desirable skill",
+                  filteredData.desirable_skills,
+                  "At least one desirable skill must be provided"
+                ),
+              ];
 
-                if (!filteredData.title.trim()) {
-                  missingFields.push("title");
-                }
-                if (!filteredData.description.trim()) {
-                  missingFields.push("description");
-                }
-                if (filteredData.required_skills.length === 0) {
-                  missingFields.push("required skills");
-                }
-                if (filteredData.desirable_skills.length === 0) {
-                  missingFields.push("desirable skills");
-                }
-
-                if (missingFields.length > 1) {
-                  toast.error("Please fill in all required fields");
-                  return false;
-                } else if (missingFields.length === 1) {
-                  const field = missingFields[0];
-                  if (field === "required skills") {
-                    toast.error("At least one required skill must be provided");
-                  } else if (field === "desirable skills") {
-                    toast.error(
-                      "At least one desirable skill must be provided"
-                    );
-                  } else {
-                    toast.error(`Please fill in the ${field} field`);
-                  }
-                  return false;
-                }
-
-                return true;
-              };
-
-              if (!validateRequiredFields()) {
+              if (!validateAndShowErrors(validationRules)) {
                 return;
               }
 
