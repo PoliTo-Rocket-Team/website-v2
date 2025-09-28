@@ -21,15 +21,15 @@ export function MembersList() {
   const [userRole, setUserRole] = useState<Partial<Role>[] | null>(null);
 
   useEffect(() => {
-    const loadMembers = async () => {
-      setLoading(true);
-      const { members, role } = await getMembersByUserRole();
-      setMembers(members);
-      setUserRole(role);
-      setLoading(false);
-    };
+    // const loadMembers = async () => {
+    //   setLoading(true);
+    //   const { members, role } = await getMembersByUserRole();
+    //   setMembers(members);
+    //   setUserRole(role);
+    //   setLoading(false);
+    // };
 
-    loadMembers();
+    // loadMembers();
   }, []);
 
   if (loading) {
