@@ -1,14 +1,14 @@
-CREATE TYPE public.view_scope_type AS ENUM ('all', 'department', 'division');
-CREATE TYPE public.access_level_type AS ENUM ('see', 'edit');
+CREATE TYPE public.scope_type AS ENUM ('all', 'department', 'division');
+CREATE TYPE public.access_level_type AS ENUM ('view', 'edit');
 
 
 
-CREATE TABLE view_scopes (
+CREATE TABLE scopes (
   id SERIAL PRIMARY KEY,
-  viewer_member_id INTEGER REFERENCES members(member_id),
-  scope view_scope_type NOT NULL,
-  access_level access_level_type NOT NULL DEFAULT 'see',
+  member_id INTEGER REFERENCES members(member_id),
+  scope scope_type NOT NULL,
+  access_level access_level_type NOT NULL DEFAULT 'view',
   dept_id INTEGER REFERENCES departments(id),
   division_id INTEGER REFERENCES divisions(id),
-  CONSTRAINT unique_scope_combination UNIQUE (viewer_member_id, scope, dept_id, division_id)
+  CONSTRAINT unique_scope_combination UNIQUE (member_id, scope, dept_id, division_id)
 );

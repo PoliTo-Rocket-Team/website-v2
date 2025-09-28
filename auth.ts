@@ -16,7 +16,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: "/sign-in",
-    error: "/error", //! custom error page needed
+    error: "/error", //! todo custom error page needed
   },
   adapter: SupabaseAdapter({
     url: process.env.SUPABASE_URL!,
