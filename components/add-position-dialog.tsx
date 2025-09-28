@@ -211,7 +211,7 @@ export function AddPositionDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-center">
+          <DialogTitle className="text-sm md:text-lg font-semibold text-center">
             Add New Position
           </DialogTitle>
         </DialogHeader>
@@ -219,8 +219,8 @@ export function AddPositionDialog({
           {divisions.length === 1 ? (
             // Show selected division as read-only text when there's only one
             <>
-              <h3 className="font-semibold text-lg mb-2">Division</h3>
-              <div className="w-full px-2 py-2 border rounded mb-4">
+              <h3 className="font-semibold text-sm md:text-lg mb-2">Division</h3>
+              <div className="w-full p-2 border rounded mb-2 md:mb-4 text-xs md:text-sm">
                 {divisions[0].departments && divisions[0].departments.length > 0
                   ? `${divisions[0].departments[0].name} - ${divisions[0].name}`
                   : divisions[0].name}
@@ -229,7 +229,7 @@ export function AddPositionDialog({
           ) : (
             // Show division selection dropdown when there are multiple divisions
             <>
-              <h3 className="font-semibold text-lg mb-2">Division *</h3>
+              <h3 className="font-semibold text-sm md:text-lg mb-2">Division *</h3>
               <Select
                 value={
                   formData.division_id === 0
@@ -243,7 +243,7 @@ export function AddPositionDialog({
                   }))
                 }
               >
-                <SelectTrigger className="w-full mb-4">
+                <SelectTrigger className="w-full text-xs md:text-sm mb-4">
                   <SelectValue placeholder="Select a division" />
                 </SelectTrigger>
                 <SelectContent>
@@ -267,7 +267,7 @@ export function AddPositionDialog({
 
           <h3 className="font-semibold text-lg mb-2">Title *</h3>
           <AutoGrowTextarea
-            className="flex-1 border rounded px-2 py-2 mb-4 w-full"
+            className="flex-1 border rounded p-2 mb-2 md:mb-4 w-full"
             value={formData.title}
             onChange={e =>
               setFormData(prev => ({ ...prev, title: e.target.value }))
@@ -277,7 +277,7 @@ export function AddPositionDialog({
 
           <h3 className="font-semibold text-lg mb-2">Description *</h3>
           <AutoGrowTextarea
-            className="w-full border px-2 py-1 rounded mb-4 resize-none overflow-hidden min-h-[120px]"
+            className="w-full border px-2 py-1 rounded mb-2 md:mb-4 resize-none overflow-hidden min-h-[120px]"
             value={formData.description}
             onChange={e =>
               setFormData(prev => ({ ...prev, description: e.target.value }))
@@ -316,12 +316,12 @@ export function AddPositionDialog({
             }
             placeholder="Enter question"
             addButtonText="+ Add question"
-            className="mb-4"
+            className="mb-2 md:mb-4"
           />
 
           <div className="mb-4">
-            <h3 className="font-semibold text-lg mb-2">Requirements</h3>
-            <div className="flex items-center space-x-3 mb-4">
+            <h3 className="font-semibold text-sm md:text-lg mb-2">Requirements</h3>
+            <div className="flex items-center space-x-3 mb-2 md:mb-4">
               <Switch
                 checked={formData.requires_motivation_letter}
                 onCheckedChange={checked =>
@@ -332,7 +332,7 @@ export function AddPositionDialog({
                 }
                 className="data-[state=checked]:bg-orange-500 data-[state=unchecked]:bg-gray-200"
               />
-              <label className="text-sm font-medium">
+              <label className="text-sm md:text-lg font-medium">
                 Require motivation letter from applicants for this position
               </label>
             </div>
@@ -347,7 +347,7 @@ export function AddPositionDialog({
                 type="submit"
                 variant="default"
                 disabled={isSubmitting}
-                className="bg-blue-400"
+                className="bg-blue-400 text-sm md:text-lg"
               >
                 {isSubmitting ? "Creating..." : "Create Position"}
               </Button>
@@ -356,6 +356,7 @@ export function AddPositionDialog({
                 onClick={resetForm}
                 variant="outline"
                 disabled={isSubmitting}
+                className="text-xs md:text-sm"
               >
                 Clear Form
               </Button>
@@ -364,6 +365,7 @@ export function AddPositionDialog({
                 onClick={() => setOpen(false)}
                 variant="destructive"
                 disabled={isSubmitting}
+                className="text-xs md:text-sm"
               >
                 Cancel
               </Button>

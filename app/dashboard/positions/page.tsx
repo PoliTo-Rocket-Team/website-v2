@@ -106,8 +106,8 @@ export default async function Positions() {
 
   return (
     <div className="w-full">
-      <div className="flex flex-col space-y-4 mb-6">
-        <h2 className="text-2xl font-bold text-primary">Positions</h2>
+      <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
+        <h2 className="text-lg md:text-2xl font-bold text-primary">Positions</h2>
         <p className="text-muted-foreground w-3/4">
           Manage recruitment positions for your divisions. You can create new
           positions, edit existing ones, and control their visibility to

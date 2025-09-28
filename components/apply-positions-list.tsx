@@ -52,6 +52,7 @@ type Props = {
   }) => Promise<ApplyPosition>;
   editableDivisions?: ComponentDivision[];
   pageContext?: string;
+  disclaimer?: string
 };
 
 export function ApplyPositionsList({
@@ -61,6 +62,7 @@ export function ApplyPositionsList({
   handleAddPosition,
   editableDivisions = [],
   pageContext = "default",
+  disclaimer
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
@@ -224,10 +226,10 @@ export function ApplyPositionsList({
     }
   };
 
-  if (loading) return <LoadingSkeleton />;
+  if (loading) return <LoadingSkeleton className="max-w-5xl mx-auto" />;
 
   return (
-    <div className="w-full relative">
+    <div className="w-full relative max-w-5xl mx-auto">
       {/* Add Position button - positioned absolutely to align with title */}
       {editableDivisions.length > 0 && handleAddPosition && (
         <div className="absolute top-0 right-0 -translate-y-12">
@@ -235,8 +237,8 @@ export function ApplyPositionsList({
             onAddPosition={handleAddPositionWithUpdate}
             divisions={editableDivisions}
           >
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
+            <Button className="flex items-center gap-2 text-xs md:text-sm">
+              <Plus className="h-2 w-2 md:h-4 md:w-4" />
               Add Position
             </Button>
           </AddPositionDialog>
@@ -244,11 +246,11 @@ export function ApplyPositionsList({
       )}
 
       {!positions.length ? (
-        <div className="text-muted-foreground p-4">
-          No positions available at this time.
+        <div className="text-muted-foreground p-4 border-t">
+          There is no open position at the moment. 
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-2 md:space-y-4">
           {positions.map(position => (
             <PositionCard
               key={position.id}
@@ -258,6 +260,7 @@ export function ApplyPositionsList({
               onToggleStatus={handleTogglePosition}
               onDelete={handleDeletePosition}
               onEdit={handleEditPositionLocal}
+              disclaimer={disclaimer}
             />
           ))}
         </div>

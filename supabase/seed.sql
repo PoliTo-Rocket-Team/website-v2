@@ -45,9 +45,9 @@ INSERT INTO departments (name, started_at, closed_at, code) VALUES
 
 -- Insert Divisions (2 per subteam = 4 total)
 INSERT INTO divisions (dept_id, name, started_at, closed_at, code) VALUES
-(1, 'Optimization & Analysis Division', '2022-09-01'::date, NULL, 'OPA'),
+(1, 'Optimization & Analysis', '2022-09-01'::date, NULL, 'OPA'),
 (1, 'Mission Analysis', '2022-09-01'::date, NULL, 'MSA'),
-(1, 'Control & Systems Division', '2022-09-01'::date, NULL, 'CAS'),
+(1, 'Control & Systems', '2022-09-01'::date, NULL, 'CAS'),
 (2, 'Firmware', '2022-09-01'::date, NULL, 'FMW'),
 (2, 'Ground Station', '2022-09-01'::date, NULL, 'GNS'),
 (2, 'Hardware', '2022-09-01'::date, NULL, 'HDW'),

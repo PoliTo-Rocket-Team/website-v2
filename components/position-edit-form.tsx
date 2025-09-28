@@ -126,11 +126,11 @@ export function PositionEditForm({
         }
         placeholder="Enter question"
         addButtonText="+ Add question"
-        className="mb-6"
+        className="mb-2 md:mb-6"
       />
 
-      <div className="mb-6">
-        <h3 className="font-semibold text-base mb-2">Requirements</h3>
+      <div className="mb-2 md:mb-6">
+        <h3 className="font-semibold text-sm md:text-base mb-2">Requirements</h3>
         <div className="flex items-center space-x-3 mb-4">
           <Switch
             checked={formData.requires_motivation_letter}
@@ -139,13 +139,13 @@ export function PositionEditForm({
             }
             className="data-[state=checked]:bg-orange-500 data-[state=unchecked]:bg-gray-200"
           />
-          <label className="text-sm font-medium">
+          <label className="text-xs md:text-sm font-medium">
             Require motivation letter from applicants for this position
           </label>
         </div>
       </div>
 
-      <div className="flex justify-between items-center flex-col pt-6 space-y-4 border-t">
+      <div className="flex justify-between items-center flex-col pt-2 md:pt-6 space-y-2 md:space-y-4 border-t">
         <div className="flex justify-center space-x-4">
           <Button
             variant="default"
@@ -197,7 +197,7 @@ export function PositionEditForm({
               };
               onSave(cleanedData);
             }}
-            className="bg-blue-400"
+            className="bg-blue-400 text-xs md:text-sm"
           >
             Save
           </Button>
@@ -207,6 +207,7 @@ export function PositionEditForm({
               onCancel();
             }}
             variant="destructive"
+            className="text-xs md:text-sm"
           >
             Cancel
           </Button>
