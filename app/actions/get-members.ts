@@ -1,7 +1,8 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
+import { createSupabaseClient } from "@/utils/supabase/client";
 import { Database } from "@/types/supabase";
+import { auth } from "@/auth";
 
 export type Member = Database["public"]["Tables"]["members"]["Row"] & {
   users?: Partial<Database["public"]["Tables"]["users"]["Row"]>[] | null;
@@ -25,18 +26,16 @@ export type Role = Database["public"]["Tables"]["roles"]["Row"] & {
 };
 
 export async function getMembersByUserRole() {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
+  const session = await auth();
+  const userId = session?.userId;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { members: [], role: null };
+  if (!userId) return { members: [], role: null };
 
   const { data: userData } = await supabase
     .from("users")
     .select("member")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
 
   if (!userData?.member) {

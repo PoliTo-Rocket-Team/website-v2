@@ -18,18 +18,7 @@ import { departments_info } from "@/app/actions/user/update-user";
 
 // ----------------------------
 export default async function MembersPage() {
-  const supabase = await createClient();
-
-  const { data: team, error } = await supabase.rpc("get_subteam_data");
-  const newdata = [...team];
-  newdata.forEach((member, index, arr) => {
-    if (member.division_id == null) {
-      member.division_id = 0;
-      member.division_name = "Other";
-    }
-  });
-  const division_info = team_meta_data(newdata);
-
+  console.log("MembersPage rendered");
   return (
     <section className="flex flex-col items-center w-full h-full  ">
       <header className="flex items-start flex-col justify-between w-full  my-4 border-b-2 border-gray-300">
