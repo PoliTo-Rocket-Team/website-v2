@@ -3,10 +3,10 @@ TRUNCATE members, users, departments, divisions, roles, orders, apply_positions,
 
 -- Insert Members (at least 10)
 INSERT INTO members (member_id, prt_email, mobile_number, discord, nda_signed_at, nda_name, nda_confirmed_by, picture) VALUES
-('14', null, null, null, null, '2025-04-20 11:48:39.054985+00', null, null),
-('15', null, null, null, null, '2025-04-20 12:18:42.002016+00', null, null),
-('16', null, null, null, null, '2025-04-20 12:19:08.364813+00', null, null),
-('17', null, null, null, null, '2025-04-20 12:19:35.42492+00', null, null),
+-- ('14', null, null, null, null, '2025-04-20 11:48:39.054985+00', null, null),
+-- ('15', null, null, null, null, '2025-04-20 12:18:42.002016+00', null, null),
+-- ('16', null, null, null, null, '2025-04-20 12:19:08.364813+00', null, null),
+-- ('17', null, null, null, null, '2025-04-20 12:19:35.42492+00', null, null),
 (1, 'marco.rossi@prt.it', '+39123456789', 'marco#1234', '2023-01-15 10:00:00+01'::timestamptz, 'Marco Rossi NDA', 1, 'https://avatar.iran.liara.run/public'),
 (2, 'giulia.ferrari@prt.it', '+39234567890', 'giulia#5678', '2023-01-20 11:30:00+01'::timestamptz, 'Giulia Ferrari NDA', 2, 'https://avatar.iran.liara.run/public'),
 (3, 'alessandro.russo@prt.it', '+39345678901', 'alex#9012', '2023-02-05 09:15:00+01'::timestamptz, 'Alessandro Russo NDA', 3, 'https://avatar.iran.liara.run/public'),
@@ -24,11 +24,11 @@ INSERT INTO members (member_id, prt_email, mobile_number, discord, nda_signed_at
 
 -- Insert Users with timestamptz for created_at and NULL for updated_at
 INSERT INTO users (id, email, first_name, last_name, origin, level_of_study, linkedin, polito_id, program, member, created_at, updated_at, access) VALUES
-('user3.wdd@wdd.com', '2025-04-20 12:17:10+00', '2025-04-20 12:17:31+00', 'd1c7255c-bb5f-4f01-8a6e-37c755d74f49', 'Mr. Third', 'Developer', 'Italy', null, null, null, null, '17', null),
-('user2.wdd@wdd.com', '2025-04-20 12:15:52+00', '2025-04-20 12:16:20+00', 'c94f7201-2a19-43b4-8c13-bd763e0bfa33', 'Mr. Second', 'developer', 'Italy', null, null, null, null, '16', null),
-('user1.wdd@wdd.com', '2025-04-20 12:10:18+00', null, 'f93e2a6b-1c9d-4c9a-9e9f-3b4adcb1429b', 'Mr. First', 'Developer', 'Italy', 'master', null, null, null, '15', null),
-('it.lead.prt.dev@gmail.com', '2025-04-20 11:47:36.116989+00', null, '3495ac05-30e0-4326-92a3-2e86035d75c7', 'Mr. Website Lead', 'Trump', 'USA', 'PhD', null, null, 'master of being president', '14', null),
-('pioneering.meti@gmail.com', '2025-04-19 14:24:56.127601+00', null, 'd80e9799-515e-40e5-84ec-6d8d41917538', null, null, null, null, null, null, null, null, null),
+-- ('user3.wdd@wdd.com', '2025-04-20 12:17:10+00', '2025-04-20 12:17:31+00', 'd1c7255c-bb5f-4f01-8a6e-37c755d74f49', 'Mr. Third', 'Developer', 'Italy', null, null, null, null, '17', null),
+-- ('user2.wdd@wdd.com', '2025-04-20 12:15:52+00', '2025-04-20 12:16:20+00', 'c94f7201-2a19-43b4-8c13-bd763e0bfa33', 'Mr. Second', 'developer', 'Italy', null, null, null, null, '16', null),
+-- ('user1.wdd@wdd.com', '2025-04-20 12:10:18+00', null, 'f93e2a6b-1c9d-4c9a-9e9f-3b4adcb1429b', 'Mr. First', 'Developer', 'Italy', 'master', null, null, null, '15', null),
+-- ('it.lead.prt.dev@gmail.com', '2025-04-20 11:47:36.116989+00', null, '3495ac05-30e0-4326-92a3-2e86035d75c7', 'Mr. Website Lead', 'Trump', 'USA', 'PhD', null, null, 'master of being president', '14', null),
+-- ('pioneering.meti@gmail.com', '2025-04-19 14:24:56.127601+00', null, 'd80e9799-515e-40e5-84ec-6d8d41917538', null, null, null, null, null, null, null, null, null),
 ('11111111-1111-1111-1111-111111111111', 'marco.rossi@example.com', 'Marco', 'Rossi', 'Italy', 'Master', 'linkedin.com/in/marcorossi', 's123456', 'Computer Engineering', 1, '2023-01-10 10:00:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
 ('22222222-2222-2222-2222-222222222222', 'giulia.ferrari@example.com', 'Giulia', 'Ferrari', 'Italy', 'Bachelor', 'linkedin.com/in/giuliaferrari', 's234567', 'Electronic Engineering', 2, '2023-01-15 11:30:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
 ('33333333-3333-3333-3333-333333333333', 'alessandro.russo@example.com', 'Alessandro', 'Russo', 'Italy', 'PhD', 'linkedin.com/in/alessandrorusso', 's345678', 'Mechanical Engineering', 3, '2023-02-01 09:15:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),

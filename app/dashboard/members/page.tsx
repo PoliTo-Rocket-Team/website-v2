@@ -14,7 +14,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { UserModificationForm } from "@/components/user-modification-form";
-import { departments_info } from "@/app/actions/user/update-user";
+import { departments_info } from "@/app/actions/update-user";
 
 // ----------------------------
 export default async function MembersPage() {
@@ -34,9 +34,9 @@ export default async function MembersPage() {
                 This action cannot be undone. This will permanently delete your
                 account and remove your data from our servers.
                 <section>
-                  <UserModificationForm
+                  {/* <UserModificationForm
                     department_information={await departments_info()}
-                  />
+                  /> */}
                 </section>
               </SheetDescription>
             </SheetHeader>
@@ -45,7 +45,7 @@ export default async function MembersPage() {
       </header>
 
       <main className="  w-full h-full flex flex-col items-center justify-center">
-        <Tabs
+        {/* <Tabs
           defaultValue="all"
           className="w-full flex flex-col items-center justify-center  "
         >
@@ -114,7 +114,7 @@ export default async function MembersPage() {
               </TabsContent>
             );
           })}
-        </Tabs>
+        </Tabs> */}
       </main>
     </section>
   );

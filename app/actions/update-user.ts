@@ -1,5 +1,5 @@
 "use server";
-import { createClient } from "@/utils/supabase/server";
+import { createSupabaseClient } from "@/utils/supabase/client";
 
 export default async function updateUser(previousState, formData: FormData) {
   const div = await departments_info();
@@ -13,7 +13,7 @@ export default async function updateUser(previousState, formData: FormData) {
 }
 
 export async function divisions_info() {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
   const { data, error } = await supabase
     .from("divisions")
     .select(
@@ -33,7 +33,7 @@ export async function divisions_info() {
 }
 
 export async function departments_info() {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
   const { data, error } = await supabase
     .from("departments")
     .select(
@@ -54,7 +54,7 @@ export async function departments_info() {
 }
 
 export async function getMembers(formData: FormData) {
-  const supabase = await createClient();
+  const supabase = await createSupabaseClient();
   const { data, error } = await supabase
     .from("roles")
     .select(

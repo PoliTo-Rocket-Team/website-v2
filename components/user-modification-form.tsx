@@ -1,5 +1,5 @@
 "use client";
-import updateUser from "@/app/actions/user/update-user";
+import updateUser from "@/app/actions/update-user";
 import { useState, useActionState } from "react";
 
 export interface Division {
