@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 const defaultUrl = process?.env?.AUTH_URL ?? "http://localhost:3000/";
 
+//! todo metadata update
 export const metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Next.js and Supabase Starter Kit",
@@ -69,7 +70,7 @@ export default async function RootLayout({
               />
 
               {/* footer component needed here */}
-              <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
+              <footer className="w-full flex mt-10 items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
                 <p>Footer and Copyright text here</p>
               </footer>
             </main>

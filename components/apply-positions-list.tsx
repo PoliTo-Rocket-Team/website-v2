@@ -12,14 +12,16 @@ import { localStorageUtils } from "@/lib/localStorage";
 import { Database } from "@/types/supabase";
 import { Prettify } from "@/lib/utils";
 
-
 //component-specific Division type with non-nullable code and departments.code
 type ComponentDivision = Prettify<
   Pick<Database["public"]["Tables"]["divisions"]["Row"], "id" | "name"> & {
     code: string; // Override to make non-nullable for component needs
     departments:
       | Prettify<
-          Pick<Database["public"]["Tables"]["departments"]["Row"], "id" | "name"> & {
+          Pick<
+            Database["public"]["Tables"]["departments"]["Row"],
+            "id" | "name"
+          > & {
             code: string; // Override to make non-nullable for component needs
           }
         >[]
@@ -52,7 +54,7 @@ type Props = {
   }) => Promise<ApplyPosition>;
   editableDivisions?: ComponentDivision[];
   pageContext?: string;
-  disclaimer?: string
+  disclaimer?: string;
 };
 
 export function ApplyPositionsList({
@@ -62,7 +64,7 @@ export function ApplyPositionsList({
   handleAddPosition,
   editableDivisions = [],
   pageContext = "default",
-  disclaimer
+  disclaimer,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
@@ -106,7 +108,7 @@ export function ApplyPositionsList({
 
   const isAccordionOpen = (id: string) => openAccordions.has(id);
 
-  const handleAddPositionWithUpdate = async (data: {
+  const handleAddPositionLocal = async (data: {
     title: string;
     description: string;
     required_skills: string[];
@@ -134,23 +136,6 @@ export function ApplyPositionsList({
     return newPosition;
   };
 
-  const addPosition = (position: ApplyPosition) => {
-    setPositions(prev => {
-      const newPositions = [...prev, position];
-
-      // Sort positions: active (status = true) first, then inactive (status = false)
-      return newPositions.sort((a, b) => {
-        return Number(b.status) - Number(a.status);
-      });
-    });
-
-    // Show success toast
-    toast.success("Position added successfully", {
-      description: `${position.title} has been created.`,
-      duration: 4000,
-    });
-  };
-
   const handleTogglePosition = async (id: number, currentStatus: boolean) => {
     if (!handleEditPosition) return;
 
@@ -160,6 +145,16 @@ export function ApplyPositionsList({
         prev.map(pos =>
           pos.id === id ? { ...pos, status: !currentStatus } : pos
         )
+      );
+
+      // Show success toast
+      const newStatus = !currentStatus;
+      toast.success(
+        `Position ${newStatus ? "activated" : "deactivated"} successfully`,
+        {
+          description: `The position is now ${newStatus ? "active and accepting applications" : "inactive"}.`,
+          duration: 3000,
+        }
       );
     } catch (err) {
       console.error("Failed to toggle position status:", err);
@@ -234,7 +229,7 @@ export function ApplyPositionsList({
       {editableDivisions.length > 0 && handleAddPosition && (
         <div className="absolute top-0 right-0 -translate-y-12">
           <AddPositionDialog
-            onAddPosition={handleAddPositionWithUpdate}
+            onAddPosition={handleAddPositionLocal}
             divisions={editableDivisions}
           >
             <Button className="flex items-center gap-2 text-xs md:text-sm">
@@ -247,7 +242,7 @@ export function ApplyPositionsList({
 
       {!positions.length ? (
         <div className="text-muted-foreground p-4 border-t">
-          There is no open position at the moment. 
+          There is no open position at the moment.
         </div>
       ) : (
         <div className="space-y-2 md:space-y-4">

@@ -21,7 +21,7 @@ export function ArrayField({
   onChange,
   placeholder,
   addButtonText,
-  className = "mb-4",
+  className = "mb-6",
   description,
   required = false,
   minItems = 1,
@@ -51,9 +51,9 @@ export function ArrayField({
       {description && (
         <p className="text-xs text-gray-600 mb-3 w-3/4">{description}</p>
       )}
-      <div className={`${className} md:space-y-2`}>
+      <div className={`${className} space-y-2`}>
         {value.map((item, index) => (
-          <div key={index} className="flex space-x-2">
+          <div key={index} className="flex space-x-2 items-center">
             <AutoGrowTextarea
               className="flex-1 border px-2 py-2 rounded resize-none overflow-hidden text-xs md:text-sm"
               value={item}
@@ -77,16 +77,25 @@ export function ArrayField({
               onClick={() => removeItem(index)}
               disabled={value.length <= minItems}
               className={
-                value.length <= minItems ? "opacity-50 cursor-not-allowed text-xs md:text-sm" : "text-xs md:text-sm"
+                value.length <= minItems
+                  ? "opacity-50 cursor-not-allowed text-xs md:text-sm"
+                  : "text-xs md:text-sm"
               }
             >
               Remove
             </Button>
           </div>
         ))}
-        <Button type="button" className="text-xs md:text-sm" size="sm" onClick={addItem}>
-          {addButtonText}
-        </Button>
+        <div className="flex justify-center mt-4">
+          <Button
+            type="button"
+            className="text-xs md:text-sm items-center"
+            size="sm"
+            onClick={addItem}
+          >
+            {addButtonText}
+          </Button>
+        </div>
       </div>
     </>
   );
