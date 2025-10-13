@@ -11,7 +11,7 @@ export default async function Apply() {
   return (
     <div>
       <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
-        <h2 className="text-2lg md:text-7xl font-bold text-primary border-b pt-5 pb-10 ">
+        <h2 className="text-4xl md:text-7xl font-bold text-primary border-b pt-5 pb-10 ">
           Apply
         </h2>
 
@@ -37,7 +37,7 @@ export default async function Apply() {
           <h3>Position</h3>
           <h3>Department</h3>
           <h3>Division</h3>
-          <Button className="invisible h-6 w-6"></Button>
+          <Button className="invisible h-4 w-4"></Button>
         </div>
       </div>
       <ApplyPositionsList

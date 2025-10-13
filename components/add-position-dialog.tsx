@@ -31,14 +31,14 @@ import { Prettify } from "@/lib/utils";
 // component-specific Division type with only necessary fields
 type Division = Prettify<
   Pick<Database["public"]["Tables"]["divisions"]["Row"], "id" | "name"> & {
-    code: string; 
+    code: string;
     departments:
       | Prettify<
           Pick<
             Database["public"]["Tables"]["departments"]["Row"],
             "id" | "name"
           > & {
-            code: string; 
+            code: string;
           }
         >[]
       | null;
@@ -219,7 +219,9 @@ export function AddPositionDialog({
           {divisions.length === 1 ? (
             // Show selected division as read-only text when there's only one
             <>
-              <h3 className="font-semibold text-sm md:text-lg mb-2">Division</h3>
+              <h3 className="font-semibold text-sm md:text-lg mb-2">
+                Division
+              </h3>
               <div className="w-full p-2 border rounded mb-2 md:mb-4 text-xs md:text-sm">
                 {divisions[0].departments && divisions[0].departments.length > 0
                   ? `${divisions[0].departments[0].name} - ${divisions[0].name}`
@@ -229,7 +231,9 @@ export function AddPositionDialog({
           ) : (
             // Show division selection dropdown when there are multiple divisions
             <>
-              <h3 className="font-semibold text-sm md:text-lg mb-2">Division *</h3>
+              <h3 className="font-semibold text-sm md:text-lg mb-2">
+                Division<span className="text-red-500 ml-1">*</span>
+              </h3>
               <Select
                 value={
                   formData.division_id === 0
@@ -265,9 +269,11 @@ export function AddPositionDialog({
             </>
           )}
 
-          <h3 className="font-semibold text-lg mb-2">Title *</h3>
+          <h3 className="font-semibold text-lg mb-2">
+            Title<span className="text-red-500 ml-1">*</span>
+          </h3>
           <AutoGrowTextarea
-            className="flex-1 border rounded p-2 mb-2 md:mb-4 w-full"
+            className="flex-1 border rounded p-2 mb-2 md:mb-6 w-full"
             value={formData.title}
             onChange={e =>
               setFormData(prev => ({ ...prev, title: e.target.value }))
@@ -275,9 +281,11 @@ export function AddPositionDialog({
             placeholder="e.g., Software Engineer"
           />
 
-          <h3 className="font-semibold text-lg mb-2">Description *</h3>
+          <h3 className="font-semibold text-lg mb-2">
+            Description<span className="text-red-500 ml-1">*</span>
+          </h3>
           <AutoGrowTextarea
-            className="w-full border px-2 py-1 rounded mb-2 md:mb-4 resize-none overflow-hidden min-h-[120px]"
+            className="w-full border px-2 py-1 rounded mb-2 md:mb-6 resize-none overflow-hidden min-h-[120px]"
             value={formData.description}
             onChange={e =>
               setFormData(prev => ({ ...prev, description: e.target.value }))
@@ -288,6 +296,7 @@ export function AddPositionDialog({
           <ArrayField
             title="Required Skills"
             required
+            className="mb-2 md:mb-6"
             value={formData.required_skills}
             onChange={value =>
               setFormData(prev => ({ ...prev, required_skills: value }))
@@ -300,6 +309,7 @@ export function AddPositionDialog({
             title="Desirable Skills"
             required
             value={formData.desirable_skills}
+            className="mb-2 md:mb-6"
             onChange={value =>
               setFormData(prev => ({ ...prev, desirable_skills: value }))
             }
@@ -316,12 +326,14 @@ export function AddPositionDialog({
             }
             placeholder="Enter question"
             addButtonText="+ Add question"
-            className="mb-2 md:mb-4"
+            className="mb-2 md:mb-6"
           />
 
           <div className="mb-4">
-            <h3 className="font-semibold text-sm md:text-lg mb-2">Requirements</h3>
-            <div className="flex items-center space-x-3 mb-2 md:mb-4">
+            <h3 className="font-semibold text-sm md:text-lg mb-2">
+              Requirements
+            </h3>
+            <div className="flex items-center space-x-3 mb-2 md:mb-6">
               <Switch
                 checked={formData.requires_motivation_letter}
                 onCheckedChange={checked =>
@@ -332,7 +344,7 @@ export function AddPositionDialog({
                 }
                 className="data-[state=checked]:bg-orange-500 data-[state=unchecked]:bg-gray-200"
               />
-              <label className="text-sm md:text-lg font-medium">
+              <label className="text-xs md:text-sm font-medium">
                 Require motivation letter from applicants for this position
               </label>
             </div>
@@ -347,7 +359,7 @@ export function AddPositionDialog({
                 type="submit"
                 variant="default"
                 disabled={isSubmitting}
-                className="bg-blue-400 text-sm md:text-lg"
+                className="bg-blue-400 text-xs md:text-sm"
               >
                 {isSubmitting ? "Creating..." : "Create Position"}
               </Button>

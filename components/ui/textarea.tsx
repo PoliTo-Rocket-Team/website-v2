@@ -25,34 +25,36 @@ export interface AutoGrowTextareaProps extends TextareaProps {
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
 }
 
-const AutoGrowTextarea = React.forwardRef<HTMLTextAreaElement, AutoGrowTextareaProps>(
-  ({ value, onChange, className, ...props }, ref) => {
-    const internalRef = useRef<HTMLTextAreaElement>(null);
-    const textareaRef = ref || internalRef;
+const AutoGrowTextarea = React.forwardRef<
+  HTMLTextAreaElement,
+  AutoGrowTextareaProps
+>(({ value, onChange, className, ...props }, ref) => {
+  const internalRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = ref || internalRef;
 
-    useEffect(() => {
-      const textarea = (textareaRef as React.RefObject<HTMLTextAreaElement>).current;
-      if (textarea) {
-        textarea.style.height = "auto";
-        textarea.style.height = textarea.scrollHeight + "px";
-      }
-    }, [value, textareaRef]);
+  useEffect(() => {
+    const textarea = (textareaRef as React.RefObject<HTMLTextAreaElement>)
+      .current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    }
+  }, [value, textareaRef]);
 
-    return (
-      <textarea
-        ref={textareaRef}
-        className={cn(
-          "flex  w-full rounded-md border border-input bg-background px-3 py-2 text-sm md:text-lg ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden",
-          className
-        )}
-        value={value}
-        onChange={onChange}
-        rows={1}
-        {...props}
-      />
-    );
-  }
-);
+  return (
+    <textarea
+      ref={textareaRef}
+      className={cn(
+        "flex w-full rounded-md border border-input bg-background px-2 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden",
+        className
+      )}
+      value={value}
+      onChange={onChange}
+      rows={1}
+      {...props}
+    />
+  );
+});
 AutoGrowTextarea.displayName = "AutoGrowTextarea";
 
 export { Textarea, AutoGrowTextarea };

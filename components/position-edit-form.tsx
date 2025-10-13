@@ -77,14 +77,18 @@ export function PositionEditForm({
 
   return (
     <>
-      <h3 className="font-semibold text-lg mb-2">Title *</h3>
+      <h3 className="font-semibold text-lg mb-2">
+        Title<span className="text-red-500 ml-1">*</span>
+      </h3>
       <AutoGrowTextarea
         className="flex-1 border rounded px-2 py-2 mb-6 w-2/3"
         value={formData.title}
         onChange={e => setFormData(d => ({ ...d, title: e.target.value }))}
         onClick={e => e.stopPropagation()}
       />
-      <h3 className="font-semibold text-lg mb-2">Description *</h3>
+      <h3 className="font-semibold text-lg mb-2">
+        Description<span className="text-red-500 ml-1">*</span>
+      </h3>
       <AutoGrowTextarea
         className="w-full border px-2 py-1 rounded mb-6 resize-none overflow-hidden"
         value={formData.description}
@@ -126,11 +130,12 @@ export function PositionEditForm({
         }
         placeholder="Enter question"
         addButtonText="+ Add question"
-        className="mb-2 md:mb-6"
       />
 
       <div className="mb-2 md:mb-6">
-        <h3 className="font-semibold text-sm md:text-base mb-2">Requirements</h3>
+        <h3 className="font-semibold text-sm md:text-base mb-2">
+          Requirements
+        </h3>
         <div className="flex items-center space-x-3 mb-4">
           <Switch
             checked={formData.requires_motivation_letter}
