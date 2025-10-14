@@ -61,12 +61,12 @@ export default async function RootLayout({
               <Toaster
                 richColors
                 position="bottom-center"
+                closeButton={false}
                 toastOptions={{
                   style: {
-                    marginBottom: "4rem",
+                    marginBottom: "3rem",
                   },
                 }}
-                closeButton
               />
 
               {/* footer component needed here */}
