@@ -215,8 +215,7 @@ export function PositionCard({
                             </AlertDialogTitle>
                             <AlertDialogDescription>
                               This action cannot be undone. This will
-                              permanently delete the position "{position.title}"
-                              and remove all associated data from our servers.
+                              permanently delete the position "{position.title}".
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

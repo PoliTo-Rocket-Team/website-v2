@@ -70,19 +70,45 @@ export function ApplyPositionsList({
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
 
-  // Load accordion states from localStorage with page-specific key
+  // Load accordion states from localStorage with page-specific key and time limit
   useEffect(() => {
     const storageKey = `${pageContext}AccordionStates`;
+    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
+
     const savedAccordionStates = localStorageUtils.load(storageKey, []);
-    if (savedAccordionStates && savedAccordionStates.length > 0) {
+    const savedTimestamp = localStorageUtils.load(timestampKey, null);
+
+    // Check if data exists and is within time limit (24 hours = 24 * 60 * 60 * 1000 ms)
+    const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    const now = Date.now();
+
+    if (
+      savedAccordionStates &&
+      savedAccordionStates.length > 0 &&
+      savedTimestamp &&
+      now - savedTimestamp < TIME_LIMIT
+    ) {
       setOpenAccordions(new Set(savedAccordionStates));
+    } else if (savedTimestamp && now - savedTimestamp >= TIME_LIMIT) {
+      // Clean up expired data
+      localStorageUtils.save(storageKey, []);
+      localStorageUtils.save(timestampKey, null);
     }
   }, [pageContext]);
 
-  // Save accordion states to localStorage whenever they change
+  // Save accordion states to localStorage with debouncing
   useEffect(() => {
     const storageKey = `${pageContext}AccordionStates`;
-    localStorageUtils.save(storageKey, Array.from(openAccordions));
+    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
+
+    // Debounce the save operation by 1 second
+    const timeoutId = setTimeout(() => {
+      localStorageUtils.save(storageKey, Array.from(openAccordions));
+      localStorageUtils.save(timestampKey, Date.now());
+    }, 1000);
+
+    // Cleanup: cancel the previous timeout if dependencies change again
+    return () => clearTimeout(timeoutId);
   }, [openAccordions, pageContext]);
 
   useEffect(() => {
