@@ -7,9 +7,11 @@ import { filterItemsByScope } from "./get-scopes";
 export async function getAllPositions() {
   const supabase = await createSupabaseClient();
 
-  // Get all positions with division and department info
-  const { data: positions, error } = await supabase.from("apply_positions")
-    .select(`
+  // Get all positions with division and department info (exclude deleted positions)
+  const { data: positions, error } = await supabase
+    .from("apply_positions")
+    .select(
+      `
       *,
       divisions(
         id,
@@ -22,7 +24,11 @@ export async function getAllPositions() {
           code
         )
       )
-    `);
+    `
+    )
+    .eq("is_deleted", false)
+    .order("divisions(dept_id)", { ascending: true })
+    .order("title", { ascending: true });
 
   if (error) {
     console.error("Error getting positions:", error);
