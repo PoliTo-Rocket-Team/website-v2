@@ -6,13 +6,14 @@ import { createSupabaseClient } from "@/utils/supabase/client";
 export async function handleDelete(id: number) {
   const supabase = await createSupabaseClient();
 
+  // Soft delete: set is_deleted to true instead of actually deleting the record
   const { error: posError } = await supabase
     .from("apply_positions")
-    .delete()
+    .update({ is_deleted: true })
     .eq("id", id);
 
   if (posError) {
-    console.error("[handleDelete] could not delete position:", posError);
+    console.error("[handleDelete] could not soft delete position:", posError);
     throw new Error(`Failed to delete position ${id}: ${posError.message}`);
   }
 }
@@ -56,6 +57,7 @@ export async function handleAddPosition(data: {
       requires_motivation_letter: data.requires_motivation_letter,
       division_id: data.division_id,
       status: true, // New positions are open by default
+      is_deleted: false, // Explicitly set as not deleted
     })
     .select(
       `
