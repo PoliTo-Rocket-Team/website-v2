@@ -1,6 +1,29 @@
 import { Database } from "@/types/supabase";
 import { Prettify } from "@/lib/utils";
 
+// Flattened application + user fields (no nested `user` object)
+export type Applications = Prettify<
+  Database["public"]["Tables"]["applications"]["Row"] & {
+    user_email: string;
+    user_first_name: string;
+    user_last_name: string;
+    user_origin: string;
+    user_level_of_study: string;
+    user_polito_id: string;
+    user_program: string;
+    // Position info
+    position_title: string;
+    division: string;
+    div_id: number;
+    department: string;
+    dept_id: number;
+    // Other applications for this user
+    other_applications: OtherApplication[];
+    // Similar applications (same name, different email)
+    similar_applications: SimilarApplication[];
+  }
+>;
+
 // ApplyPosition type based on the apply_positions table schema with additional fields
 export type ApplyPosition = Prettify<
   Database["public"]["Tables"]["apply_positions"]["Row"] & {
@@ -21,3 +44,26 @@ export type Division = Prettify<
 
 // Scope type based on the scopes table schema
 export type Scope = Prettify<Database["public"]["Tables"]["scopes"]["Row"]>;
+
+// Other applications for a user (simplified structure)
+export type OtherApplication = {
+  id: number;
+  status: "pending" | "accepted" | "rejected";
+  applied_at: string;
+  position_title: string;
+  division: string;
+  department: string;
+};
+
+// Similar applications (same name, different email)
+export type SimilarApplication = {
+  id: number;
+  status: "pending" | "accepted" | "rejected";
+  applied_at: string;
+  position_title: string;
+  division: string;
+  department: string;
+  user_email: string;
+  user_first_name: string;
+  user_last_name: string;
+};

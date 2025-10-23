@@ -253,7 +253,7 @@ export function ApplyPositionsList({
     <div className="w-full relative max-w-5xl mx-auto">
       {/* Add Position button - positioned absolutely to align with title */}
       {editableDivisions.length > 0 && handleAddPosition && (
-        <div className="absolute top-0 right-0 -translate-y-12">
+        <div className="absolute top-12 right-0 -translate-y-12">
           <AddPositionDialog
             onAddPosition={handleAddPositionLocal}
             divisions={editableDivisions}
@@ -267,23 +267,32 @@ export function ApplyPositionsList({
       )}
 
       {!positions.length ? (
-        <div className="text-muted-foreground p-4 border-t">
+        <div className="text-muted-foreground p-4">
           There is no open position at the moment.
         </div>
       ) : (
-        <div className="space-y-2 md:space-y-4">
-          {positions.map(position => (
-            <PositionCard
-              key={position.id}
-              position={position}
-              isOpen={isAccordionOpen(position.id.toString())}
-              onToggleAccordion={toggleAccordion}
-              onToggleStatus={handleTogglePosition}
-              onDelete={handleDeletePosition}
-              onEdit={handleEditPositionLocal}
-              disclaimer={disclaimer}
-            />
-          ))}
+        <div className="">
+          <div className="hidden md:visible md:grid md:grid-cols-[3fr_2fr_2fr_auto_auto] text-center md:justify-items-start text-base px-2 py-4">
+            <h3>Position</h3>
+            <h3>Department</h3>
+            <h3>Division</h3>
+            <Button className="invisible h-4 w-4"></Button>
+            {!disclaimer && <Button className="invisible md:h-6 md:w-11 h-4 w-9 px-2.5"></Button>}
+          </div>
+          <div className="space-y-2 md:space-y-4">
+            {positions.map(position => (
+              <PositionCard
+                key={position.id}
+                position={position}
+                isOpen={isAccordionOpen(position.id.toString())}
+                onToggleAccordion={toggleAccordion}
+                onToggleStatus={handleTogglePosition}
+                onDelete={handleDeletePosition}
+                onEdit={handleEditPositionLocal}
+                disclaimer={disclaimer}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

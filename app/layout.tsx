@@ -1,5 +1,5 @@
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import { Geist } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import Link from "next/link";
 import "./globals.css";
@@ -18,9 +18,14 @@ export const metadata = {
   description: "The fastest way to build apps with Next.js and Supabase",
 };
 
-const geistSans = Geist({
-  display: "swap",
+const inter = Inter({
   subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono", // Keep same CSS variable name
 });
 
 export default async function RootLayout({
@@ -30,8 +35,12 @@ export default async function RootLayout({
 }>) {
   const session = await auth();
   return (
-    <html lang="en" className={geistSans.className} suppressHydrationWarning>
-      <body className="bg-background text-foreground">
+    <html
+      lang="en"
+      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="bg-background text-foreground font-sans">
         <SessionProvider session={session}>
           <ThemeProvider
             attribute="class"

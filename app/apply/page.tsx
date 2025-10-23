@@ -29,16 +29,10 @@ export default async function Apply() {
           </a>
         </p>
       </div>
-      <div className=" max-w-5xl mx-auto">
+      <div className=" max-w-5xl w-full relative mx-auto">
         <h2 className="text-lg md:text-4xl font-bold text-center text-primary mb-4 md:mb-8">
           Open Positions
         </h2>
-        <div className="hidden md:visible md:grid md:grid-cols-[3fr_2fr_2fr_auto] text-center md:justify-items-start text-base px-2 py-4">
-          <h3>Position</h3>
-          <h3>Department</h3>
-          <h3>Division</h3>
-          <Button className="invisible h-4 w-4"></Button>
-        </div>
       </div>
       <ApplyPositionsList
         positions={openPositions}
