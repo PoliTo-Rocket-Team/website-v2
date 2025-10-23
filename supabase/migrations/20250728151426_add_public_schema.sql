@@ -3,7 +3,6 @@
 CREATE TABLE members (
   member_id SERIAL PRIMARY KEY,
   prt_email TEXT,
-  mobile_number TEXT,
   discord TEXT,
   nda_signed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   nda_name TEXT,
@@ -14,18 +13,22 @@ CREATE TABLE members (
 -- USERS
 CREATE TABLE users (
   id UUID PRIMARY KEY,
-  email TEXT NOT NULL,
+  member INTEGER REFERENCES members(member_id),
   first_name TEXT,
   last_name TEXT,
+  email TEXT NOT NULL,
   origin TEXT,
-  level_of_study TEXT,
+  mobile_number TEXT,
   linkedin TEXT,
   polito_id TEXT,
+  polito_email TEXT,
+  date_of_birth DATE,
+  gender TEXT,
+  level_of_study TEXT,
+  how_found_us TEXT,
   program TEXT,
-  member INTEGER REFERENCES members(member_id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ,
-  access TEXT[] DEFAULT '{}'
+  updated_at TIMESTAMPTZ
 );
 
 
@@ -99,10 +102,15 @@ CREATE TABLE apply_positions (
 );
 
 CREATE TYPE public.application_status AS ENUM (
-    'pending',
-    'rejected',
-    'accepted',
     'received',
+    'not_selected',
+    'interview',
+    'rejected_email_to_be_sent',
+    'rejected',
+    'accepted_email_to_be_sent',
+    'accepted',
+    'accepted_joined',
+    'resigned',
     'accepted_by_another_team'
 );
 
