@@ -2,116 +2,123 @@
 TRUNCATE members, users, departments, divisions, roles, orders, apply_positions, applications, scopes RESTART IDENTITY CASCADE;
 
 -- Insert Members (at least 10)
-INSERT INTO members (member_id, prt_email, mobile_number, discord, nda_signed_at, nda_name, nda_confirmed_by, picture) VALUES
-(13, 'marco.rossi@prt.it', '+39123456789', 'marco#1234', '2023-01-15 10:00:00+01'::timestamptz, 'Marco Rossi NDA', 1, 'https://avatar.iran.liara.run/public'),
-(2, 'giulia.ferrari@prt.it', '+39234567890', 'giulia#5678', '2023-01-20 11:30:00+01'::timestamptz, 'Giulia Ferrari NDA', 2, 'https://avatar.iran.liara.run/public'),
-(3, 'alessandro.russo@prt.it', '+39345678901', 'alex#9012', '2023-02-05 09:15:00+01'::timestamptz, 'Alessandro Russo NDA', 3, 'https://avatar.iran.liara.run/public'),
-(4, 'valentina.esposito@prt.it', '+39456789012', 'vale#3456', '2023-02-10 14:20:00+01'::timestamptz, 'Valentina Esposito NDA', 4, 'https://avatar.iran.liara.run/public'),
-(5, 'luca.bianchi@prt.it', '+39567890123', 'luca#7890', '2023-03-01 16:45:00+01'::timestamptz, 'Luca Bianchi NDA', 5, 'https://avatar.iran.liara.run/public'),
-(6, 'sofia.ricci@prt.it', '+39678901234', 'sofia#2345', '2023-03-15 10:30:00+01'::timestamptz, 'Sofia Ricci NDA', 1, 'https://avatar.iran.liara.run/public'),
-(7,  'matteo.conti@prt.it', '+39789012345', 'matteo#6789', '2023-04-01 13:15:00+02'::timestamptz, 'Matteo Conti NDA', 1, 'https://avatar.iran.liara.run/public'),
-(8, 'elena.martini@prt.it', '+39890123456', 'elena#0123', '2023-04-10 11:45:00+02'::timestamptz, 'Elena Martini NDA', 1, 'https://avatar.iran.liara.run/public'),
-(9, 'andrea.gallo@prt.it', '+39901234567', 'andrea#4567', '2023-04-20 14:30:00+02'::timestamptz, 'Andrea Gallo NDA', 1, 'https://avatar.iran.liara.run/public'),
-(10,  'francesca.leone@prt.it', '+39012345678', 'fran#8901', '2023-05-01 09:20:00+02'::timestamptz, 'Francesca Leone NDA', 1, 'https://avatar.iran.liara.run/public'),
-(11, 'simone.lombardi@prt.it', '+39123456780', 'simone#3456', '2023-05-10 10:15:00+02'::timestamptz, 'Simone Lombardi NDA', 1, 'https://avatar.iran.liara.run/public'),
-(12, 'claudia.marino@prt.it', '+39234567891', 'claudia#7890', '2023-05-15 13:30:00+02'::timestamptz, 'Claudia Marino NDA', 1, 'https://avatar.iran.liara.run/public'),
-(1, 'developer@prt.it', '+39234567891', 'test#7890', '2023-05-15 13:30:00+02'::timestamptz, 'developer NDA', 1, 'https://avatar.iran.liara.run/public'),
+INSERT INTO members (member_id, prt_email, discord, nda_signed_at, nda_name, nda_confirmed_by, picture) VALUES
+(13, 'marco.rossi@prt.it', 'marco#1234', '2023-01-15 10:00:00+01'::timestamptz, 'Marco Rossi NDA', 1, 'https://avatar.iran.liara.run/public'),
+(2, 'giulia.ferrari@prt.it', 'giulia#5678', '2023-01-20 11:30:00+01'::timestamptz, 'Giulia Ferrari NDA', 2, 'https://avatar.iran.liara.run/public'),
+(3, 'alessandro.russo@prt.it', 'alex#9012', '2023-02-05 09:15:00+01'::timestamptz, 'Alessandro Russo NDA', 3, 'https://avatar.iran.liara.run/public'),
+(4, 'valentina.esposito@prt.it', 'vale#3456', '2023-02-10 14:20:00+01'::timestamptz, 'Valentina Esposito NDA', 4, 'https://avatar.iran.liara.run/public'),
+(5, 'luca.bianchi@prt.it', 'luca#7890', '2023-03-01 16:45:00+01'::timestamptz, 'Luca Bianchi NDA', 5, 'https://avatar.iran.liara.run/public'),
+(6, 'sofia.ricci@prt.it', 'sofia#2345', '2023-03-15 10:30:00+01'::timestamptz, 'Sofia Ricci NDA', 1, 'https://avatar.iran.liara.run/public'),
+(7,  'matteo.conti@prt.it', 'matteo#6789', '2023-04-01 13:15:00+02'::timestamptz, 'Matteo Conti NDA', 1, 'https://avatar.iran.liara.run/public'),
+(8, 'elena.martini@prt.it', 'elena#0123', '2023-04-10 11:45:00+02'::timestamptz, 'Elena Martini NDA', 1, 'https://avatar.iran.liara.run/public'),
+(9, 'andrea.gallo@prt.it', 'andrea#4567', '2023-04-20 14:30:00+02'::timestamptz, 'Andrea Gallo NDA', 1, 'https://avatar.iran.liara.run/public'),
+(10,  'francesca.leone@prt.it', 'fran#8901', '2023-05-01 09:20:00+02'::timestamptz, 'Francesca Leone NDA', 1, 'https://avatar.iran.liara.run/public'),
+(11, 'simone.lombardi@prt.it', 'simone#3456', '2023-05-10 10:15:00+02'::timestamptz, 'Simone Lombardi NDA', 1, 'https://avatar.iran.liara.run/public'),
+(12, 'claudia.marino@prt.it', 'claudia#7890', '2023-05-15 13:30:00+02'::timestamptz, 'Claudia Marino NDA', 1, 'https://avatar.iran.liara.run/public'),
+(1, 'developer@prt.it', 'test#7890', '2023-05-15 13:30:00+02'::timestamptz, 'developer NDA', 1, 'https://avatar.iran.liara.run/public'),
 
 -- Additional members for division coverage
-(14, 'giovanni.bruno@prt.it', '+39345678902', 'giovanni#1111', '2023-05-20 10:00:00+02'::timestamptz, 'Giovanni Bruno NDA', 1, 'https://avatar.iran.liara.run/public'),
-(15, 'martina.costa@prt.it', '+39456789013', 'martina#2222', '2023-05-25 11:30:00+02'::timestamptz, 'Martina Costa NDA', 1, 'https://avatar.iran.liara.run/public'),
-(16, 'federico.romano@prt.it', '+39567890124', 'federico#3333', '2023-06-01 09:15:00+02'::timestamptz, 'Federico Romano NDA', 1, 'https://avatar.iran.liara.run/public'),
-(17, 'alice.fontana@prt.it', '+39678901235', 'alice#4444', '2023-06-05 14:20:00+02'::timestamptz, 'Alice Fontana NDA', 1, 'https://avatar.iran.liara.run/public'),
-(18, 'lorenzo.sala@prt.it', '+39789012346', 'lorenzo#5555', '2023-06-10 16:45:00+02'::timestamptz, 'Lorenzo Sala NDA', 1, 'https://avatar.iran.liara.run/public'),
-(19, 'beatrice.moro@prt.it', '+39890123457', 'beatrice#6666', '2023-06-15 10:30:00+02'::timestamptz, 'Beatrice Moro NDA', 1, 'https://avatar.iran.liara.run/public'),
-(20, 'tommaso.ferrari@prt.it', '+39901234568', 'tommaso#7777', '2023-06-20 13:15:00+02'::timestamptz, 'Tommaso Ferrari NDA', 1, 'https://avatar.iran.liara.run/public'),
-(21, 'sara.barbieri@prt.it', '+39012345679', 'sara#8888', '2023-06-25 11:45:00+02'::timestamptz, 'Sara Barbieri NDA', 1, 'https://avatar.iran.liara.run/public'),
-(22, 'nicolo.benedetti@prt.it', '+39123456791', 'nicolo#9999', '2023-07-01 14:30:00+02'::timestamptz, 'Nicolò Benedetti NDA', 1, 'https://avatar.iran.liara.run/public'),
-(23, 'camilla.de.santis@prt.it', '+39234567892', 'camilla#0000', '2023-07-05 09:20:00+02'::timestamptz, 'Camilla De Santis NDA', 1, 'https://avatar.iran.liara.run/public'),
-(24, 'riccardo.grassi@prt.it', '+39345678903', 'riccardo#1010', '2023-07-10 10:15:00+02'::timestamptz, 'Riccardo Grassi NDA', 1, 'https://avatar.iran.liara.run/public'),
-(25, 'anna.serra@prt.it', '+39456789014', 'anna#2020', '2023-07-15 13:30:00+02'::timestamptz, 'Anna Serra NDA', 1, 'https://avatar.iran.liara.run/public'),
-(26, 'manuel.vitale@prt.it', '+39567890125', 'manuel#3030', '2023-07-20 10:30:00+02'::timestamptz, 'Manuel Vitale NDA', 1, 'https://avatar.iran.liara.run/public'),
-(27, 'jessica.monti@prt.it', '+39678901236', 'jessica#4040', '2023-07-25 13:15:00+02'::timestamptz, 'Jessica Monti NDA', 1, 'https://avatar.iran.liara.run/public'),
-(28, 'antonio.palmieri@prt.it', '+39789012347', 'antonio#5050', '2023-08-01 11:45:00+02'::timestamptz, 'Antonio Palmieri NDA', 1, 'https://avatar.iran.liara.run/public'),
-(29, 'chiara.santoro@prt.it', '+39890123458', 'chiara#6060', '2023-08-05 14:30:00+02'::timestamptz, 'Chiara Santoro NDA', 1, 'https://avatar.iran.liara.run/public'),
-(30, 'marco.caruso@prt.it', '+39901234569', 'marco#7070', '2023-08-10 09:20:00+02'::timestamptz, 'Marco Caruso NDA', 1, 'https://avatar.iran.liara.run/public'),
-(31, 'elena.moretti@prt.it', '+39012345680', 'elena#8080', '2023-08-15 10:15:00+02'::timestamptz, 'Elena Moretti NDA', 1, 'https://avatar.iran.liara.run/public'),
-(32, 'luca.pellegrini@prt.it', '+39123456792', 'luca#9090', '2023-08-20 13:30:00+02'::timestamptz, 'Luca Pellegrini NDA', 1, 'https://avatar.iran.liara.run/public'),
-(33, 'sofia.greco@prt.it', '+39234567893', 'sofia#1212', '2023-08-25 10:30:00+02'::timestamptz, 'Sofia Greco NDA', 1, 'https://avatar.iran.liara.run/public'),
-(34, 'matteo.villa@prt.it', '+39345678904', 'matteo#2323', '2023-09-01 13:15:00+02'::timestamptz, 'Matteo Villa NDA', 1, 'https://avatar.iran.liara.run/public'),
-(35, 'giulia.longo@prt.it', '+39456789015', 'giulia#3434', '2023-09-05 11:45:00+02'::timestamptz, 'Giulia Longo NDA', 1, 'https://avatar.iran.liara.run/public'),
-(36, 'davide.rosso@prt.it', '+39567890126', 'davide#4545', '2023-09-10 14:30:00+02'::timestamptz, 'Davide Rosso NDA', 1, 'https://avatar.iran.liara.run/public'),
-(37, 'laura.verde@prt.it', '+39678901237', 'laura#5656', '2023-09-15 09:20:00+02'::timestamptz, 'Laura Verde NDA', 1, 'https://avatar.iran.liara.run/public'),
-(38, 'gabriele.azzurro@prt.it', '+39789012348', 'gabriele#6767', '2023-09-20 10:15:00+02'::timestamptz, 'Gabriele Azzurro NDA', 1, 'https://avatar.iran.liara.run/public');
+(14, 'giovanni.bruno@prt.it', 'giovanni#1111', '2023-05-20 10:00:00+02'::timestamptz, 'Giovanni Bruno NDA', 1, 'https://avatar.iran.liara.run/public'),
+(15, 'martina.costa@prt.it', 'martina#2222', '2023-05-25 11:30:00+02'::timestamptz, 'Martina Costa NDA', 1, 'https://avatar.iran.liara.run/public'),
+(16, 'federico.romano@prt.it', 'federico#3333', '2023-06-01 09:15:00+02'::timestamptz, 'Federico Romano NDA', 1, 'https://avatar.iran.liara.run/public'),
+(17, 'alice.fontana@prt.it', 'alice#4444', '2023-06-05 14:20:00+02'::timestamptz, 'Alice Fontana NDA', 1, 'https://avatar.iran.liara.run/public'),
+(18, 'lorenzo.sala@prt.it', 'lorenzo#5555', '2023-06-10 16:45:00+02'::timestamptz, 'Lorenzo Sala NDA', 1, 'https://avatar.iran.liara.run/public'),
+(19, 'beatrice.moro@prt.it', 'beatrice#6666', '2023-06-15 10:30:00+02'::timestamptz, 'Beatrice Moro NDA', 1, 'https://avatar.iran.liara.run/public'),
+(20, 'tommaso.ferrari@prt.it', 'tommaso#7777', '2023-06-20 13:15:00+02'::timestamptz, 'Tommaso Ferrari NDA', 1, 'https://avatar.iran.liara.run/public'),
+(21, 'sara.barbieri@prt.it', 'sara#8888', '2023-06-25 11:45:00+02'::timestamptz, 'Sara Barbieri NDA', 1, 'https://avatar.iran.liara.run/public'),
+(22, 'nicolo.benedetti@prt.it', 'nicolo#9999', '2023-07-01 14:30:00+02'::timestamptz, 'Nicolò Benedetti NDA', 1, 'https://avatar.iran.liara.run/public'),
+(23, 'camilla.de.santis@prt.it', 'camilla#0000', '2023-07-05 09:20:00+02'::timestamptz, 'Camilla De Santis NDA', 1, 'https://avatar.iran.liara.run/public'),
+(24, 'riccardo.grassi@prt.it', 'riccardo#1010', '2023-07-10 10:15:00+02'::timestamptz, 'Riccardo Grassi NDA', 1, 'https://avatar.iran.liara.run/public'),
+(25, 'anna.serra@prt.it', 'anna#2020', '2023-07-15 13:30:00+02'::timestamptz, 'Anna Serra NDA', 1, 'https://avatar.iran.liara.run/public'),
+(26, 'manuel.vitale@prt.it', 'manuel#3030', '2023-07-20 10:30:00+02'::timestamptz, 'Manuel Vitale NDA', 1, 'https://avatar.iran.liara.run/public'),
+(27, 'jessica.monti@prt.it', 'jessica#4040', '2023-07-25 13:15:00+02'::timestamptz, 'Jessica Monti NDA', 1, 'https://avatar.iran.liara.run/public'),
+(28, 'antonio.palmieri@prt.it', 'antonio#5050', '2023-08-01 11:45:00+02'::timestamptz, 'Antonio Palmieri NDA', 1, 'https://avatar.iran.liara.run/public'),
+(29, 'chiara.santoro@prt.it', 'chiara#6060', '2023-08-05 14:30:00+02'::timestamptz, 'Chiara Santoro NDA', 1, 'https://avatar.iran.liara.run/public'),
+(30, 'marco.caruso@prt.it', 'marco#7070', '2023-08-10 09:20:00+02'::timestamptz, 'Marco Caruso NDA', 1, 'https://avatar.iran.liara.run/public'),
+(31, 'elena.moretti@prt.it', 'elena#8080', '2023-08-15 10:15:00+02'::timestamptz, 'Elena Moretti NDA', 1, 'https://avatar.iran.liara.run/public'),
+(32, 'luca.pellegrini@prt.it', 'luca#9090', '2023-08-20 13:30:00+02'::timestamptz, 'Luca Pellegrini NDA', 1, 'https://avatar.iran.liara.run/public'),
+(33, 'sofia.greco@prt.it', 'sofia#1212', '2023-08-25 10:30:00+02'::timestamptz, 'Sofia Greco NDA', 1, 'https://avatar.iran.liara.run/public'),
+(34, 'matteo.villa@prt.it', 'matteo#2323', '2023-09-01 13:15:00+02'::timestamptz, 'Matteo Villa NDA', 1, 'https://avatar.iran.liara.run/public'),
+(35, 'giulia.longo@prt.it', 'giulia#3434', '2023-09-05 11:45:00+02'::timestamptz, 'Giulia Longo NDA', 1, 'https://avatar.iran.liara.run/public'),
+(36, 'davide.rosso@prt.it', 'davide#4545', '2023-09-10 14:30:00+02'::timestamptz, 'Davide Rosso NDA', 1, 'https://avatar.iran.liara.run/public'),
+(37, 'laura.verde@prt.it', 'laura#5656', '2023-09-15 09:20:00+02'::timestamptz, 'Laura Verde NDA', 1, 'https://avatar.iran.liara.run/public'),
+(38, 'gabriele.azzurro@prt.it', 'gabriele#6767', '2023-09-20 10:15:00+02'::timestamptz, 'Gabriele Azzurro NDA', 1, 'https://avatar.iran.liara.run/public');
 
 -- Insert Users with timestamptz for created_at and NULL for updated_at
-INSERT INTO users (id, email, first_name, last_name, origin, level_of_study, linkedin, polito_id, program, member, created_at, updated_at, access) VALUES
-('11111111-1111-1111-1111-111111111111', 'marco.rossi@example.com', 'Marco', 'Rossi', 'Italy', 'Master', 'linkedin.com/in/marcorossi', 's123456', 'Computer Engineering', 13, '2023-01-10 10:00:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('22222222-2222-2222-2222-222222222222', 'giulia.ferrari@example.com', 'Giulia', 'Ferrari', 'Italy', 'Bachelor', 'linkedin.com/in/giuliaferrari', 's234567', 'Electronic Engineering', 2, '2023-01-15 11:30:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('33333333-3333-3333-3333-333333333333', 'alessandro.russo@example.com', 'Alessandro', 'Russo', 'Italy', 'PhD', 'linkedin.com/in/alessandrorusso', 's345678', 'Mechanical Engineering', 3, '2023-02-01 09:15:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('44444444-4444-4444-4444-444444444444', 'valentina.esposito@example.com', 'Valentina', 'Esposito', 'Italy', 'Master', 'linkedin.com/in/valentinaesposito', 's456789', 'Management Engineering', 4, '2023-02-05 14:20:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('55555555-5555-5555-5555-555555555555', 'luca.bianchi@example.com', 'Luca', 'Bianchi', 'Italy', 'Bachelor', 'linkedin.com/in/lucabianchi', 's567890', 'Computer Science', 5, '2023-02-20 16:45:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('66666666-6666-6666-6666-666666666666', 'sofia.ricci@example.com', 'Sofia', 'Ricci', 'Italy', 'Master', 'linkedin.com/in/sofiaricci', 's678901', 'Data Science', 6, '2023-03-10 10:30:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('77777777-7777-7777-7777-777777777777', 'matteo.conti@example.com', 'Matteo', 'Conti', 'Italy', 'Bachelor', 'linkedin.com/in/matteoconti', 's789012', 'Electronic Engineering', 7, '2023-03-15 13:15:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('88888888-8888-8888-8888-888888888888', 'elena.martini@example.com', 'Elena', 'Martini', 'Italy', 'Master', 'linkedin.com/in/elenamartini', 's890123', 'Architecture', 8, '2023-04-05 11:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('99999999-9999-9999-9999-999999999999', 'andrea.gallo@example.com', 'Andrea', 'Gallo', 'Italy', 'PhD', 'linkedin.com/in/andreagallo', 's901234', 'Mechanical Engineering', 9, '2023-04-15 14:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'francesca.leone@example.com', 'Francesca', 'Leone', 'Italy', 'Bachelor', 'linkedin.com/in/francescaleone', 's012345', 'Energy Engineering', 10, '2023-04-25 09:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'simone.lombardi@example.com', 'Simone', 'Lombardi', 'Italy', 'Master', 'linkedin.com/in/simonelombardi', 's123457', 'Computer Engineering', 11, '2023-05-10 10:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('cccccccc-cccc-cccc-cccc-cccccccccccc', 'claudia.marino@example.com', 'Claudia', 'Marino', 'Italy', 'Bachelor', 'linkedin.com/in/claudiamarino', 's234568', 'Biomedical Engineering', 12, '2023-05-15 13:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
+INSERT INTO users (id, email, first_name, last_name, origin, mobile_number, linkedin, polito_id, polito_email, date_of_birth, gender, level_of_study, how_found_us, program, member, created_at, updated_at) VALUES
+('11111111-1111-1111-1111-111111111111', 'marco.rossi@example.com', 'Marco', 'Rossi', 'Italy', '+39328123456', 'linkedin.com/in/marcorossi', 's123456', 'marco.rossi@studenti.polito.it', '1998-03-15'::date, 'Male', 'Master', 'University website', 'Computer Engineering', 13, '2023-01-10 10:00:00+01'::timestamptz, NULL),
+('22222222-2222-2222-2222-222222222222', 'giulia.ferrari@example.com', 'Giulia', 'Ferrari', 'Italy', '+39329234567', 'linkedin.com/in/giuliaferrari', 's234567', 'giulia.ferrari@studenti.polito.it', '1999-07-22'::date, 'Female', 'Bachelor', 'Social media', 'Electronic Engineering', 2, '2023-01-15 11:30:00+01'::timestamptz, NULL),
+('33333333-3333-3333-3333-333333333333', 'alessandro.russo@example.com', 'Alessandro', 'Russo', 'Italy', '+39330345678', 'linkedin.com/in/alessandrorusso', 's345678', 'alessandro.russo@studenti.polito.it', '1995-11-08'::date, 'Male', 'PhD', 'Friend referral', 'Mechanical Engineering', 3, '2023-02-01 09:15:00+01'::timestamptz, NULL),
+('44444444-4444-4444-4444-444444444444', 'valentina.esposito@example.com', 'Valentina', 'Esposito', 'Italy', '+39331456789', 'linkedin.com/in/valentinaesposito', 's456789', 'valentina.esposito@studenti.polito.it', '1997-05-14'::date, 'Female', 'Master', 'Career fair', 'Management Engineering', 4, '2023-02-05 14:20:00+01'::timestamptz, NULL),
+('55555555-5555-5555-5555-555555555555', 'luca.bianchi@example.com', 'Luca', 'Bianchi', 'Italy', '+39332567890', 'linkedin.com/in/lucabianchi', 's567890', 'luca.bianchi@studenti.polito.it', '2000-01-30'::date, 'Male', 'Bachelor', 'Professor recommendation', 'Computer Science', 5, '2023-02-20 16:45:00+01'::timestamptz, NULL),
+('66666666-6666-6666-6666-666666666666', 'sofia.ricci@example.com', 'Sofia', 'Ricci', 'Italy', '+39333678901', 'linkedin.com/in/sofiaricci', 's678901', 'sofia.ricci@studenti.polito.it', '1998-09-12'::date, 'Female', 'Master', 'LinkedIn', 'Data Science', 6, '2023-03-10 10:30:00+01'::timestamptz, NULL),
+('77777777-7777-7777-7777-777777777777', 'matteo.conti@example.com', 'Matteo', 'Conti', 'Italy', '+39334789012', 'linkedin.com/in/matteoconti', 's789012', 'matteo.conti@studenti.polito.it', '1999-12-03'::date, 'Male', 'Bachelor', 'Student organization', 'Electronic Engineering', 7, '2023-03-15 13:15:00+01'::timestamptz, NULL),
+('88888888-8888-8888-8888-888888888888', 'elena.martini@example.com', 'Elena', 'Martini', 'Italy', '+39335890123', 'linkedin.com/in/elenamartini', 's890123', 'elena.martini@studenti.polito.it', '1997-04-18'::date, 'Female', 'Master', 'University website', 'Architecture', 8, '2023-04-05 11:45:00+02'::timestamptz, NULL),
+('99999999-9999-9999-9999-999999999999', 'andrea.gallo@example.com', 'Andrea', 'Gallo', 'Italy', '+39336901234', 'linkedin.com/in/andreagallo', 's901234', 'andrea.gallo@studenti.polito.it', '1994-08-25'::date, 'Male', 'PhD', 'Research group', 'Mechanical Engineering', 9, '2023-04-15 14:30:00+02'::timestamptz, NULL),
+('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'francesca.leone@example.com', 'Francesca', 'Leone', 'Italy', '+39337012345', 'linkedin.com/in/francescaleone', 's012345', 'francesca.leone@studenti.polito.it', '2000-06-07'::date, 'Female', 'Bachelor', 'Social media', 'Energy Engineering', 10, '2023-04-25 09:20:00+02'::timestamptz, NULL),
+('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'simone.lombardi@example.com', 'Simone', 'Lombardi', 'Italy', '+39338123457', 'linkedin.com/in/simonelombardi', 's123457', 'simone.lombardi@studenti.polito.it', '1998-02-19'::date, 'Male', 'Master', 'Friend referral', 'Computer Engineering', 11, '2023-05-10 10:15:00+02'::timestamptz, NULL),
+('cccccccc-cccc-cccc-cccc-cccccccccccc', 'claudia.marino@example.com', 'Claudia', 'Marino', 'Italy', '+39339234568', 'linkedin.com/in/claudiamarino', 's234568', 'claudia.marino@studenti.polito.it', '1999-10-11'::date, 'Female', 'Bachelor', 'Career fair', 'Biomedical Engineering', 12, '2023-05-15 13:30:00+02'::timestamptz, NULL),
 
 -- Users for team members 14-38
-('1a111111-1111-1111-1111-111111111111', 'giovanni.bruno@example.com', 'Giovanni', 'Bruno', 'Italy', 'Master', 'linkedin.com/in/giovannibruno', 's345902', 'Propulsion Engineering', 14, '2023-05-20 10:00:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a222222-2222-2222-2222-222222222222', 'martina.costa@example.com', 'Martina', 'Costa', 'Italy', 'Bachelor', 'linkedin.com/in/martinacosta', 's456013', 'Chemical Engineering', 15, '2023-05-25 11:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a333333-3333-3333-3333-333333333333', 'federico.romano@example.com', 'Federico', 'Romano', 'Italy', 'Master', 'linkedin.com/in/federicoromano', 's567124', 'Propulsion Engineering', 16, '2023-06-01 09:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a444444-4444-4444-4444-444444444444', 'alice.fontana@example.com', 'Alice', 'Fontana', 'Italy', 'PhD', 'linkedin.com/in/alicefontana', 's678235', 'Mechanical Engineering', 17, '2023-06-05 14:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a555555-5555-5555-5555-555555555555', 'lorenzo.sala@example.com', 'Lorenzo', 'Sala', 'Italy', 'Master', 'linkedin.com/in/lorenzosala', 's789346', 'Structural Engineering', 18, '2023-06-10 16:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a666666-6666-6666-6666-666666666666', 'beatrice.moro@example.com', 'Beatrice', 'Moro', 'Italy', 'Bachelor', 'linkedin.com/in/beatricemoro', 's890457', 'Aerospace Engineering', 19, '2023-06-15 10:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a777777-7777-7777-7777-777777777777', 'tommaso.ferrari@example.com', 'Tommaso', 'Ferrari', 'Italy', 'Master', 'linkedin.com/in/tommasoferrari', 's901568', 'Aerospace Engineering', 20, '2023-06-20 13:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a888888-8888-8888-8888-888888888888', 'sara.barbieri@example.com', 'Sara', 'Barbieri', 'Italy', 'PhD', 'linkedin.com/in/sarabarbieri', 's012679', 'Operations Management', 21, '2023-06-25 11:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1a999999-9999-9999-9999-999999999999', 'nicolo.benedetti@example.com', 'Nicolò', 'Benedetti', 'Italy', 'Master', 'linkedin.com/in/nicolobenedetti', 's123790', 'Computer Engineering', 22, '2023-07-01 14:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b111111-1111-1111-1111-111111111111', 'camilla.de.santis@example.com', 'Camilla', 'De Santis', 'Italy', 'Bachelor', 'linkedin.com/in/camilladesantis', 's234891', 'Computer Science', 23, '2023-07-05 09:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b222222-2222-2222-2222-222222222222', 'riccardo.grassi@example.com', 'Riccardo', 'Grassi', 'Italy', 'Master', 'linkedin.com/in/riccardograssi', 's345902', 'Electronic Engineering', 24, '2023-07-10 10:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b333333-3333-3333-3333-333333333333', 'anna.serra@example.com', 'Anna', 'Serra', 'Italy', 'PhD', 'linkedin.com/in/annaserra', 's456013', 'Electronic Engineering', 25, '2023-07-15 13:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b444444-4444-4444-4444-444444444444', 'manuel.vitale@example.com', 'Manuel', 'Vitale', 'Italy', 'Master', 'linkedin.com/in/manuelvitale', 's567124', 'Control Systems Engineering', 26, '2023-07-20 10:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b555555-5555-5555-5555-555555555555', 'jessica.monti@example.com', 'Jessica', 'Monti', 'Italy', 'Bachelor', 'linkedin.com/in/jessicamonti', 's678235', 'Aerospace Engineering', 27, '2023-07-25 13:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b666666-6666-6666-6666-666666666666', 'antonio.palmieri@example.com', 'Antonio', 'Palmieri', 'Italy', 'Master', 'linkedin.com/in/antoniopalmieri', 's789346', 'Aerospace Engineering', 28, '2023-08-01 11:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b777777-7777-7777-7777-777777777777', 'chiara.santoro@example.com', 'Chiara', 'Santoro', 'Italy', 'PhD', 'linkedin.com/in/chiarasantoro', 's890457', 'Computer Science', 29, '2023-08-05 14:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b888888-8888-8888-8888-888888888888', 'marco.caruso@example.com', 'Marco', 'Caruso', 'Italy', 'Master', 'linkedin.com/in/marcocaruso', 's901568', 'Mechanical Engineering', 30, '2023-08-10 09:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1b999999-9999-9999-9999-999999999999', 'elena.moretti@example.com', 'Elena', 'Moretti', 'Italy', 'Bachelor', 'linkedin.com/in/elenamoretti', 's012679', 'Mechanical Engineering', 31, '2023-08-15 10:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1c111111-1111-1111-1111-111111111111', 'luca.pellegrini@example.com', 'Luca', 'Pellegrini', 'Italy', 'Master', 'linkedin.com/in/lucapellegrini', 's123790', 'Propulsion Engineering', 32, '2023-08-20 13:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1c222222-2222-2222-2222-222222222222', 'sofia.greco@example.com', 'Sofia', 'Greco', 'Italy', 'PhD', 'linkedin.com/in/sofiagreco', 's234891', 'Chemical Engineering', 33, '2023-08-25 10:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1c333333-3333-3333-3333-333333333333', 'matteo.villa@example.com', 'Matteo', 'Villa', 'Italy', 'Master', 'linkedin.com/in/matteovilla', 's345902', 'Propulsion Engineering', 34, '2023-09-01 13:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1c444444-4444-4444-4444-444444444444', 'giulia.longo@example.com', 'Giulia', 'Longo', 'Italy', 'Bachelor', 'linkedin.com/in/giulialongo', 's456013', 'Chemical Engineering', 35, '2023-09-05 11:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1c555555-5555-5555-5555-555555555555', 'davide.rosso@example.com', 'Davide', 'Rosso', 'Italy', 'Master', 'linkedin.com/in/daviderosso', 's567124', 'Communications Engineering', 36, '2023-09-10 14:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1c666666-6666-6666-6666-666666666666', 'laura.verde@example.com', 'Laura', 'Verde', 'Italy', 'Bachelor', 'linkedin.com/in/lauraverde', 's678235', 'Management Engineering', 37, '2023-09-15 09:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1c777777-7777-7777-7777-777777777777', 'gabriele.azzurro@example.com', 'Gabriele', 'Azzurro', 'Italy', 'Master', 'linkedin.com/in/gabrieleazzurro', 's789346', 'Computer Engineering', 38, '2023-09-20 10:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
+('1a111111-1111-1111-1111-111111111111', 'giovanni.bruno@example.com', 'Giovanni', 'Bruno', 'Italy', '+39340345902', 'linkedin.com/in/giovannibruno', 's345902', 'giovanni.bruno@studenti.polito.it', '1998-01-14'::date, 'Male', 'Master', 'University website', 'Propulsion Engineering', 14, '2023-05-20 10:00:00+02'::timestamptz, NULL),
+('1a222222-2222-2222-2222-222222222222', 'martina.costa@example.com', 'Martina', 'Costa', 'Italy', '+39341456013', 'linkedin.com/in/martinacosta', 's456013', 'martina.costa@studenti.polito.it', '2000-03-28'::date, 'Female', 'Bachelor', 'Friend referral', 'Chemical Engineering', 15, '2023-05-25 11:30:00+02'::timestamptz, NULL),
+('1a333333-3333-3333-3333-333333333333', 'federico.romano@example.com', 'Federico', 'Romano', 'Italy', '+39342567124', 'linkedin.com/in/federicoromano', 's567124', 'federico.romano@studenti.polito.it', '1997-11-05'::date, 'Male', 'Master', 'Social media', 'Propulsion Engineering', 16, '2023-06-01 09:15:00+02'::timestamptz, NULL),
+('1a444444-4444-4444-4444-444444444444', 'alice.fontana@example.com', 'Alice', 'Fontana', 'Italy', '+39343678235', 'linkedin.com/in/alicefontana', 's678235', 'alice.fontana@studenti.polito.it', '1995-07-12'::date, 'Female', 'PhD', 'Professor recommendation', 'Mechanical Engineering', 17, '2023-06-05 14:20:00+02'::timestamptz, NULL),
+('1a555555-5555-5555-5555-555555555555', 'lorenzo.sala@example.com', 'Lorenzo', 'Sala', 'Italy', '+39344789346', 'linkedin.com/in/lorenzosala', 's789346', 'lorenzo.sala@studenti.polito.it', '1998-09-20'::date, 'Male', 'Master', 'Career fair', 'Structural Engineering', 18, '2023-06-10 16:45:00+02'::timestamptz, NULL),
+('1a666666-6666-6666-6666-666666666666', 'beatrice.moro@example.com', 'Beatrice', 'Moro', 'Italy', '+39345890457', 'linkedin.com/in/beatricemoro', 's890457', 'beatrice.moro@studenti.polito.it', '2000-05-17'::date, 'Female', 'Bachelor', 'LinkedIn', 'Aerospace Engineering', 19, '2023-06-15 10:30:00+02'::timestamptz, NULL),
+('1a777777-7777-7777-7777-777777777777', 'tommaso.ferrari@example.com', 'Tommaso', 'Ferrari', 'Italy', '+39346901568', 'linkedin.com/in/tommasoferrari', 's901568', 'tommaso.ferrari@studenti.polito.it', '1998-12-08'::date, 'Male', 'Master', 'Student organization', 'Aerospace Engineering', 20, '2023-06-20 13:15:00+02'::timestamptz, NULL),
+('1a888888-8888-8888-8888-888888888888', 'sara.barbieri@example.com', 'Sara', 'Barbieri', 'Italy', '+39347012679', 'linkedin.com/in/sarabarbieri', 's012679', 'sara.barbieri@studenti.polito.it', '1996-04-25'::date, 'Female', 'PhD', 'Research group', 'Operations Management', 21, '2023-06-25 11:45:00+02'::timestamptz, NULL),
+('1a999999-9999-9999-9999-999999999999', 'nicolo.benedetti@example.com', 'Nicolò', 'Benedetti', 'Italy', '+39348123790', 'linkedin.com/in/nicolobenedetti', 's123790', 'nicolo.benedetti@studenti.polito.it', '1997-08-13'::date, 'Male', 'Master', 'University website', 'Computer Engineering', 22, '2023-07-01 14:30:00+02'::timestamptz, NULL),
+('1b111111-1111-1111-1111-111111111111', 'camilla.de.santis@example.com', 'Camilla', 'De Santis', 'Italy', '+39349234891', 'linkedin.com/in/camilladesantis', 's234891', 'camilla.desantis@studenti.polito.it', '1999-06-02'::date, 'Female', 'Bachelor', 'Social media', 'Computer Science', 23, '2023-07-05 09:20:00+02'::timestamptz, NULL),
+('1b222222-2222-2222-2222-222222222222', 'riccardo.grassi@example.com', 'Riccardo', 'Grassi', 'Italy', '+39350345902', 'linkedin.com/in/riccardograssi', 's345902', 'riccardo.grassi@studenti.polito.it', '1998-10-16'::date, 'Male', 'Master', 'Friend referral', 'Electronic Engineering', 24, '2023-07-10 10:15:00+02'::timestamptz, NULL),
+('1b333333-3333-3333-3333-333333333333', 'anna.serra@example.com', 'Anna', 'Serra', 'Italy', '+39351456013', 'linkedin.com/in/annaserra', 's456013', 'anna.serra@studenti.polito.it', '1995-02-21'::date, 'Female', 'PhD', 'Professor recommendation', 'Electronic Engineering', 25, '2023-07-15 13:30:00+02'::timestamptz, NULL),
+('1b444444-4444-4444-4444-444444444444', 'manuel.vitale@example.com', 'Manuel', 'Vitale', 'Italy', '+39352567124', 'linkedin.com/in/manuelvitale', 's567124', 'manuel.vitale@studenti.polito.it', '1997-12-29'::date, 'Male', 'Master', 'Career fair', 'Control Systems Engineering', 26, '2023-07-20 10:30:00+02'::timestamptz, NULL),
+('1b555555-5555-5555-5555-555555555555', 'jessica.monti@example.com', 'Jessica', 'Monti', 'Italy', '+39353678235', 'linkedin.com/in/jessicamonti', 's678235', 'jessica.monti@studenti.polito.it', '2000-04-07'::date, 'Female', 'Bachelor', 'LinkedIn', 'Aerospace Engineering', 27, '2023-07-25 13:15:00+02'::timestamptz, NULL),
+('1b666666-6666-6666-6666-666666666666', 'antonio.palmieri@example.com', 'Antonio', 'Palmieri', 'Italy', '+39354789346', 'linkedin.com/in/antoniopalmieri', 's789346', 'antonio.palmieri@studenti.polito.it', '1998-01-18'::date, 'Male', 'Master', 'Student organization', 'Aerospace Engineering', 28, '2023-08-01 11:45:00+02'::timestamptz, NULL),
+('1b777777-7777-7777-7777-777777777777', 'chiara.santoro@example.com', 'Chiara', 'Santoro', 'Italy', '+39355890457', 'linkedin.com/in/chiarasantoro', 's890457', 'chiara.santoro@studenti.polito.it', '1996-09-23'::date, 'Female', 'PhD', 'Research group', 'Computer Science', 29, '2023-08-05 14:30:00+02'::timestamptz, NULL),
+('1b888888-8888-8888-8888-888888888888', 'marco.caruso@example.com', 'Marco', 'Caruso', 'Italy', '+39356901568', 'linkedin.com/in/marcocaruso', 's901568', 'marco.caruso@studenti.polito.it', '1997-05-11'::date, 'Male', 'Master', 'University website', 'Mechanical Engineering', 30, '2023-08-10 09:20:00+02'::timestamptz, NULL),
+('1b999999-9999-9999-9999-999999999999', 'elena.moretti@example.com', 'Elena', 'Moretti', 'Italy', '+39357012679', 'linkedin.com/in/elenamoretti', 's012679', 'elena.moretti@studenti.polito.it', '1999-11-04'::date, 'Female', 'Bachelor', 'Social media', 'Mechanical Engineering', 31, '2023-08-15 10:15:00+02'::timestamptz, NULL),
+('1c111111-1111-1111-1111-111111111111', 'luca.pellegrini@example.com', 'Luca', 'Pellegrini', 'Italy', '+39358123790', 'linkedin.com/in/lucapellegrini', 's123790', 'luca.pellegrini@studenti.polito.it', '1998-03-26'::date, 'Male', 'Master', 'Friend referral', 'Propulsion Engineering', 32, '2023-08-20 13:30:00+02'::timestamptz, NULL),
+('1c222222-2222-2222-2222-222222222222', 'sofia.greco@example.com', 'Sofia', 'Greco', 'Italy', '+39359234891', 'linkedin.com/in/sofiagreco', 's234891', 'sofia.greco@studenti.polito.it', '1995-08-09'::date, 'Female', 'PhD', 'Professor recommendation', 'Chemical Engineering', 33, '2023-08-25 10:30:00+02'::timestamptz, NULL),
+('1c333333-3333-3333-3333-333333333333', 'matteo.villa@example.com', 'Matteo', 'Villa', 'Italy', '+39360345902', 'linkedin.com/in/matteovilla', 's345902', 'matteo.villa@studenti.polito.it', '1997-10-15'::date, 'Male', 'Master', 'Career fair', 'Propulsion Engineering', 34, '2023-09-01 13:15:00+02'::timestamptz, NULL),
+('1c444444-4444-4444-4444-444444444444', 'giulia.longo@example.com', 'Giulia', 'Longo', 'Italy', '+39361456013', 'linkedin.com/in/giulialongo', 's456013', 'giulia.longo@studenti.polito.it', '2000-02-03'::date, 'Female', 'Bachelor', 'LinkedIn', 'Chemical Engineering', 35, '2023-09-05 11:45:00+02'::timestamptz, NULL),
+('1c555555-5555-5555-5555-555555555555', 'davide.rosso@example.com', 'Davide', 'Rosso', 'Italy', '+39362567124', 'linkedin.com/in/daviderosso', 's567124', 'davide.rosso@studenti.polito.it', '1998-07-19'::date, 'Male', 'Master', 'Student organization', 'Communications Engineering', 36, '2023-09-10 14:30:00+02'::timestamptz, NULL),
+('1c666666-6666-6666-6666-666666666666', 'laura.verde@example.com', 'Laura', 'Verde', 'Italy', '+39363678235', 'linkedin.com/in/lauraverde', 's678235', 'laura.verde@studenti.polito.it', '1999-12-12'::date, 'Female', 'Bachelor', 'University website', 'Management Engineering', 37, '2023-09-15 09:20:00+02'::timestamptz, NULL),
+('1c777777-7777-7777-7777-777777777777', 'gabriele.azzurro@example.com', 'Gabriele', 'Azzurro', 'Italy', '+39364789346', 'linkedin.com/in/gabrieleazzurro', 's789346', 'gabriele.azzurro@studenti.polito.it', '1998-04-06'::date, 'Male', 'Master', 'Social media', 'Computer Engineering', 38, '2023-09-20 10:15:00+02'::timestamptz, NULL),
 
-('dddddddd-dddd-dddd-dddd-dddddddddddd', 'chiara.verdi@example.com', 'Chiara', 'Verdi', 'Italy', 'Master', 'linkedin.com/in/chiaraverdi', 's678902', 'Biomedical Engineering', NULL, '2023-03-05 10:30:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'davide.marino@example.com', 'Davide', 'Marino', 'Italy', 'Bachelor', 'linkedin.com/in/davidemarino', 's789013', 'Aerospace Engineering', NULL, '2023-03-10 13:15:00+01'::timestamptz, NULL, ARRAY['drive', 'wiki']),
+('dddddddd-dddd-dddd-dddd-dddddddddddd', 'chiara.verdi@example.com', 'Chiara', 'Verdi', 'Italy', '+39365678902', 'linkedin.com/in/chiaraverdi', 's678902', 'chiara.verdi@studenti.polito.it', '1997-06-14'::date, 'Female', 'Master', 'Social media', 'Biomedical Engineering', NULL, '2023-03-05 10:30:00+01'::timestamptz, NULL),
+('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'davide.marino@example.com', 'Davide', 'Marino', 'Italy', '+39366789013', 'linkedin.com/in/davidemarino', 's789013', 'davide.marino@studenti.polito.it', '2000-01-25'::date, 'Male', 'Bachelor', 'Friend referral', 'Aerospace Engineering', NULL, '2023-03-10 13:15:00+01'::timestamptz, NULL),
 
 -- New applicants for the new positions (unique individuals, not team members)
-('f1111111-1111-1111-1111-111111111111', 'lorenzo.bruno@example.com', 'Lorenzo', 'Bruno', 'Italy', 'Master', 'linkedin.com/in/lorenzobruno', 's345901', 'Communication Design', NULL, '2023-06-01 10:00:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f2222222-2222-2222-2222-222222222222', 'martina.bianchi@example.com', 'Martina', 'Bianchi', 'Italy', 'Bachelor', 'linkedin.com/in/martinabianchi', 's456012', 'Cinema and Media Engineering', NULL, '2023-06-02 11:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f3333333-3333-3333-3333-333333333333', 'federico.neri@example.com', 'Federico', 'Neri', 'Italy', 'Master', 'linkedin.com/in/federiconeri', 's567123', 'Communications Engineering', NULL, '2023-06-03 09:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f4444444-4444-4444-4444-444444444444', 'alice.rossi@example.com', 'Alice', 'Rossi', 'Italy', 'PhD', 'linkedin.com/in/alicerossi', 's678234', 'Computer Engineering', NULL, '2023-06-04 14:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f5555555-5555-5555-5555-555555555555', 'giovanni.villa@example.com', 'Giovanni', 'Villa', 'Italy', 'Master', 'linkedin.com/in/giovannivilla', 's789345', 'Management Engineering', NULL, '2023-06-05 16:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f6666666-6666-6666-6666-666666666666', 'beatrice.conti@example.com', 'Beatrice', 'Conti', 'Italy', 'Bachelor', 'linkedin.com/in/beatriceconti', 's890456', 'Event Management', NULL, '2023-06-06 10:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f7777777-7777-7777-7777-777777777777', 'tommaso.ricci@example.com', 'Tommaso', 'Ricci', 'Italy', 'Master', 'linkedin.com/in/tommasoricci', 's901567', 'Industrial Engineering', NULL, '2023-06-07 13:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f8888888-8888-8888-8888-888888888888', 'sara.galli@example.com', 'Sara', 'Galli', 'Italy', 'PhD', 'linkedin.com/in/saragalli', 's012678', 'Safety Engineering', NULL, '2023-06-08 11:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('f9999999-9999-9999-9999-999999999999', 'nicolo.mancini@example.com', 'Nicolò', 'Mancini', 'Italy', 'Master', 'linkedin.com/in/nicolomancini', 's123789', 'Computer Engineering', NULL, '2023-06-09 14:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d111111-1111-1111-1111-111111111111', 'camilla.fabbri@example.com', 'Camilla', 'Fabbri', 'Italy', 'Bachelor', 'linkedin.com/in/camillafabbri', 's234890', 'Computer Science', NULL, '2023-06-10 09:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d222222-2222-2222-2222-222222222222', 'riccardo.monti@example.com', 'Riccardo', 'Monti', 'Italy', 'Master', 'linkedin.com/in/riccardomonti', 's345901', 'Electronic Engineering', NULL, '2023-06-11 10:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d333333-3333-3333-3333-333333333333', 'anna.lucchesi@example.com', 'Anna', 'Lucchesi', 'Italy', 'PhD', 'linkedin.com/in/annalucchesi', 's456012', 'Electronic Engineering', NULL, '2023-06-12 13:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d444444-4444-4444-4444-444444444444', 'manuel.testa@example.com', 'Manuel', 'Testa', 'Italy', 'Master', 'linkedin.com/in/manueltesta', 's567123', 'Control Systems Engineering', NULL, '2023-06-13 10:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d555555-5555-5555-5555-555555555555', 'jessica.orlando@example.com', 'Jessica', 'Orlando', 'Italy', 'Bachelor', 'linkedin.com/in/jessicaorlando', 's678234', 'Aerospace Engineering', NULL, '2023-06-14 13:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d666666-6666-6666-6666-666666666666', 'antonio.marchetti@example.com', 'Antonio', 'Marchetti', 'Italy', 'Master', 'linkedin.com/in/antoniomarchetti', 's789345', 'Aerospace Engineering', NULL, '2023-06-15 11:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d777777-7777-7777-7777-777777777777', 'chiara.milani@example.com', 'Chiara', 'Milani', 'Italy', 'PhD', 'linkedin.com/in/chiaramilani', 's890456', 'Computer Science', NULL, '2023-06-16 14:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d888888-8888-8888-8888-888888888888', 'marco.bernardi@example.com', 'Marco', 'Bernardi', 'Italy', 'Master', 'linkedin.com/in/marcobernardi', 's901567', 'Mechanical Engineering', NULL, '2023-06-17 09:20:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1d999999-9999-9999-9999-999999999999', 'elena.barone@example.com', 'Elena', 'Barone', 'Italy', 'Bachelor', 'linkedin.com/in/elenabarone', 's012678', 'Mechanical Engineering', NULL, '2023-06-18 10:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1e111111-1111-1111-1111-111111111111', 'luca.fiore@example.com', 'Luca', 'Fiore', 'Italy', 'Master', 'linkedin.com/in/lucafiore', 's123789', 'Propulsion Engineering', NULL, '2023-06-19 13:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1e222222-2222-2222-2222-222222222222', 'sofia.colombo@example.com', 'Sofia', 'Colombo', 'Italy', 'PhD', 'linkedin.com/in/sofiacolombo', 's234890', 'Chemical Engineering', NULL, '2023-06-20 10:30:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1e333333-3333-3333-3333-333333333333', 'matteo.leone@example.com', 'Matteo', 'Leone', 'Italy', 'Master', 'linkedin.com/in/matteoleone', 's345901', 'Propulsion Engineering', NULL, '2023-06-21 13:15:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']),
-('1e444444-4444-4444-4444-444444444444', 'giulia.ferri@example.com', 'Giulia', 'Ferri', 'Italy', 'Bachelor', 'linkedin.com/in/giuliaferri', 's456012', 'Chemical Engineering', NULL, '2023-06-22 11:45:00+02'::timestamptz, NULL, ARRAY['drive', 'wiki']);
+('f1111111-1111-1111-1111-111111111111', 'lorenzo.bruno@example.com', 'Lorenzo', 'Bruno', 'Italy', '+39367345901', 'linkedin.com/in/lorenzobruno', 's345901', 'lorenzo.bruno@studenti.polito.it', '1998-11-22'::date, 'Male', 'Master', 'University website', 'Communication Design', NULL, '2023-06-01 10:00:00+02'::timestamptz, NULL),
+('f2222222-2222-2222-2222-222222222222', 'martina.bianchi@example.com', 'Martina', 'Bianchi', 'Italy', '+39368456012', 'linkedin.com/in/martinabianchi', 's456012', 'martina.bianchi@studenti.polito.it', '2000-08-17'::date, 'Female', 'Bachelor', 'Social media', 'Cinema and Media Engineering', NULL, '2023-06-02 11:30:00+02'::timestamptz, NULL),
+('f3333333-3333-3333-3333-333333333333', 'federico.neri@example.com', 'Federico', 'Neri', 'Italy', '+39369567123', 'linkedin.com/in/federiconeri', 's567123', 'federico.neri@studenti.polito.it', '1997-05-29'::date, 'Male', 'Master', 'Friend referral', 'Communications Engineering', NULL, '2023-06-03 09:15:00+02'::timestamptz, NULL),
+('f4444444-4444-4444-4444-444444444444', 'alice.rossi@example.com', 'Alice', 'Rossi', 'Italy', '+39370678234', 'linkedin.com/in/alicerossi', 's678234', 'alice.rossi@studenti.polito.it', '1995-12-05'::date, 'Female', 'PhD', 'Professor recommendation', 'Computer Engineering', NULL, '2023-06-04 14:20:00+02'::timestamptz, NULL),
+('f5555555-5555-5555-5555-555555555555', 'giovanni.villa@example.com', 'Giovanni', 'Villa', 'Italy', '+39371789345', 'linkedin.com/in/giovannivilla', 's789345', 'giovanni.villa@studenti.polito.it', '1998-03-12'::date, 'Male', 'Master', 'Career fair', 'Management Engineering', NULL, '2023-06-05 16:45:00+02'::timestamptz, NULL),
+('f6666666-6666-6666-6666-666666666666', 'beatrice.conti@example.com', 'Beatrice', 'Conti', 'Italy', '+39372890456', 'linkedin.com/in/beatriceconti', 's890456', 'beatrice.conti@studenti.polito.it', '1999-09-18'::date, 'Female', 'Bachelor', 'LinkedIn', 'Event Management', NULL, '2023-06-06 10:30:00+02'::timestamptz, NULL),
+('f7777777-7777-7777-7777-777777777777', 'tommaso.ricci@example.com', 'Tommaso', 'Ricci', 'Italy', '+39373901567', 'linkedin.com/in/tommasoricci', 's901567', 'tommaso.ricci@studenti.polito.it', '1997-07-24'::date, 'Male', 'Master', 'Student organization', 'Industrial Engineering', NULL, '2023-06-07 13:15:00+02'::timestamptz, NULL),
+('f8888888-8888-8888-8888-888888888888', 'sara.galli@example.com', 'Sara', 'Galli', 'Italy', '+39374012678', 'linkedin.com/in/saragalli', 's012678', 'sara.galli@studenti.polito.it', '1996-02-13'::date, 'Female', 'PhD', 'Research group', 'Safety Engineering', NULL, '2023-06-08 11:45:00+02'::timestamptz, NULL),
+('f9999999-9999-9999-9999-999999999999', 'nicolo.mancini@example.com', 'Nicolò', 'Mancini', 'Italy', '+39375123789', 'linkedin.com/in/nicolomancini', 's123789', 'nicolo.mancini@studenti.polito.it', '1998-10-31'::date, 'Male', 'Master', 'University website', 'Computer Engineering', NULL, '2023-06-09 14:30:00+02'::timestamptz, NULL),
+('1d111111-1111-1111-1111-111111111111', 'camilla.fabbri@example.com', 'Camilla', 'Fabbri', 'Italy', '+39376234890', 'linkedin.com/in/camillafabbri', 's234890', 'camilla.fabbri@studenti.polito.it', '1999-04-06'::date, 'Female', 'Bachelor', 'Social media', 'Computer Science', NULL, '2023-06-10 09:20:00+02'::timestamptz, NULL),
+('1d222222-2222-2222-2222-222222222222', 'riccardo.monti@example.com', 'Riccardo', 'Monti', 'Italy', '+39377345901', 'linkedin.com/in/riccardomonti', 's345901', 'riccardo.monti@studenti.polito.it', '1998-01-15'::date, 'Male', 'Master', 'Friend referral', 'Electronic Engineering', NULL, '2023-06-11 10:15:00+02'::timestamptz, NULL),
+('1d333333-3333-3333-3333-333333333333', 'anna.lucchesi@example.com', 'Anna', 'Lucchesi', 'Italy', '+39378456012', 'linkedin.com/in/annalucchesi', 's456012', 'anna.lucchesi@studenti.polito.it', '1995-08-28'::date, 'Female', 'PhD', 'Professor recommendation', 'Electronic Engineering', NULL, '2023-06-12 13:30:00+02'::timestamptz, NULL),
+('1d444444-4444-4444-4444-444444444444', 'manuel.testa@example.com', 'Manuel', 'Testa', 'Italy', '+39379567123', 'linkedin.com/in/manueltesta', 's567123', 'manuel.testa@studenti.polito.it', '1997-12-10'::date, 'Male', 'Master', 'Career fair', 'Control Systems Engineering', NULL, '2023-06-13 10:30:00+02'::timestamptz, NULL),
+('1d555555-5555-5555-5555-555555555555', 'jessica.orlando@example.com', 'Jessica', 'Orlando', 'Italy', '+39380678234', 'linkedin.com/in/jessicaorlando', 's678234', 'jessica.orlando@studenti.polito.it', '2000-05-21'::date, 'Female', 'Bachelor', 'LinkedIn', 'Aerospace Engineering', NULL, '2023-06-14 13:15:00+02'::timestamptz, NULL),
+('1d666666-6666-6666-6666-666666666666', 'antonio.marchetti@example.com', 'Antonio', 'Marchetti', 'Italy', '+39381789345', 'linkedin.com/in/antoniomarchetti', 's789345', 'antonio.marchetti@studenti.polito.it', '1998-09-03'::date, 'Male', 'Master', 'Student organization', 'Aerospace Engineering', NULL, '2023-06-15 11:45:00+02'::timestamptz, NULL),
+('1d777777-7777-7777-7777-777777777777', 'chiara.milani@example.com', 'Chiara', 'Milani', 'Italy', '+39382890456', 'linkedin.com/in/chiaramilani', 's890456', 'chiara.milani@studenti.polito.it', '1996-03-16'::date, 'Female', 'PhD', 'Research group', 'Computer Science', NULL, '2023-06-16 14:30:00+02'::timestamptz, NULL),
+('1d888888-8888-8888-8888-888888888888', 'marco.bernardi@example.com', 'Marco', 'Bernardi', 'Italy', '+39383901567', 'linkedin.com/in/marcobernardi', 's901567', 'marco.bernardi@studenti.polito.it', '1997-07-07'::date, 'Male', 'Master', 'University website', 'Mechanical Engineering', NULL, '2023-06-17 09:20:00+02'::timestamptz, NULL),
+('1d999999-9999-9999-9999-999999999999', 'elena.barone@example.com', 'Elena', 'Barone', 'Italy', '+39384012678', 'linkedin.com/in/elenabarone', 's012678', 'elena.barone@studenti.polito.it', '1999-11-29'::date, 'Female', 'Bachelor', 'Social media', 'Mechanical Engineering', NULL, '2023-06-18 10:15:00+02'::timestamptz, NULL),
+('1e111111-1111-1111-1111-111111111111', 'luca.fiore@example.com', 'Luca', 'Fiore', 'Italy', '+39385123789', 'linkedin.com/in/lucafiore', 's123789', 'luca.fiore@studenti.polito.it', '1998-06-14'::date, 'Male', 'Master', 'Friend referral', 'Propulsion Engineering', NULL, '2023-06-19 13:30:00+02'::timestamptz, NULL),
+('1e222222-2222-2222-2222-222222222222', 'sofia.colombo@example.com', 'Sofia', 'Colombo', 'Italy', '+39386234890', 'linkedin.com/in/sofiacolombo', 's234890', 'sofia.colombo@studenti.polito.it', '1995-04-01'::date, 'Female', 'PhD', 'Professor recommendation', 'Chemical Engineering', NULL, '2023-06-20 10:30:00+02'::timestamptz, NULL),
+('1e333333-3333-3333-3333-333333333333', 'matteo.leone@example.com', 'Matteo', 'Leone', 'Italy', '+39387345901', 'linkedin.com/in/matteoleone', 's345901', 'matteo.leone@studenti.polito.it', '1997-10-18'::date, 'Male', 'Master', 'Career fair', 'Propulsion Engineering', NULL, '2023-06-21 13:15:00+02'::timestamptz, NULL),
+('1e444444-4444-4444-4444-444444444444', 'giulia.ferri@example.com', 'Giulia', 'Ferri', 'Italy', '+39388456012', 'linkedin.com/in/giuliaferri', 's456012', 'giulia.ferri@studenti.polito.it', '2000-01-23'::date, 'Female', 'Bachelor', 'LinkedIn', 'Chemical Engineering', NULL, '2023-06-22 11:45:00+02'::timestamptz, NULL),
+
+-- New applicant users (not team members)
+('a1111111-1111-1111-1111-111111111111', 'marco.rossi@studenti.polito.it', 'Marco', 'Rossi', 'Italy', '+39389123456', 'https://linkedin.com/in/marcorossi', 's123456', 'marco.rossi@studenti.polito.it', '2000-02-14'::date, 'Male', 'Bachelor', 'Student organization', 'Aerospace Engineering', NULL, '2024-01-10 10:00:00+01'::timestamptz, NULL),
+('a2222222-2222-2222-2222-222222222222', 'sofia.bianchi@studenti.polito.it', 'Sofia', 'Bianchi', 'Italy', '+39390234567', 'https://linkedin.com/in/sofiabianchi', 's234567', 'sofia.bianchi@studenti.polito.it', '1998-05-27'::date, 'Female', 'Master', 'University website', 'Mechanical Engineering', NULL, '2024-01-15 11:30:00+01'::timestamptz, NULL),
+('a3333333-3333-3333-3333-333333333333', 'ahmed.hassan@studenti.polito.it', 'Ahmed', 'Hassan', 'Egypt', '+39391345678', 'https://linkedin.com/in/ahmedhassan', 's345678', 'ahmed.hassan@studenti.polito.it', '1997-09-11'::date, 'Male', 'Master', 'International program', 'Computer Engineering', NULL, '2024-01-20 09:15:00+01'::timestamptz, NULL),
+('a4444444-4444-4444-4444-444444444444', 'elena.popov@studenti.polito.it', 'Elena', 'Popov', 'Bulgaria', '+39392456789', 'https://linkedin.com/in/elenapovv', 's456789', 'elena.popov@studenti.polito.it', '1999-12-03'::date, 'Female', 'Bachelor', 'Exchange program', 'Materials Engineering', NULL, '2024-01-25 14:20:00+01'::timestamptz, NULL),
+('a5555555-5555-5555-5555-555555555555', 'carlos.garcia@studenti.polito.it', 'Carlos', 'Garcia', 'Spain', '+39393567890', 'https://linkedin.com/in/carlosgarcia', 's567890', 'carlos.garcia@studenti.polito.it', '2000-08-19'::date, 'Male', 'Bachelor', 'Erasmus program', 'Aerospace Engineering', NULL, '2024-01-30 16:45:00+01'::timestamptz, NULL);
 
 -- Insert Subteams (2 subteams)
 INSERT INTO departments (name, started_at, closed_at, code) VALUES
@@ -400,7 +407,7 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
    ]),
 
 -- Applications for new positions
-(2, 'f1111111-1111-1111-1111-111111111111', 'lorenzo_graphic_ml.pdf', 'lorenzo_graphic_cv.pdf', '2023-06-05 14:30:00+02'::timestamptz, 'pending', 
+(2, 'f1111111-1111-1111-1111-111111111111', 'lorenzo_graphic_ml.pdf', 'lorenzo_graphic_cv.pdf', '2023-06-05 14:30:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What design software do you use most frequently?',
@@ -436,7 +443,7 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(5, 'f4444444-4444-4444-4444-444444444444', 'alice_fullstack_ml.pdf', 'alice_fullstack_cv.pdf', '2023-06-08 16:45:00+02'::timestamptz, 'pending', 
+(5, 'f4444444-4444-4444-4444-444444444444', 'alice_fullstack_ml.pdf', 'alice_fullstack_cv.pdf', '2023-06-08 16:45:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'Describe your experience with modern web frameworks',
@@ -472,7 +479,7 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(8, 'f7777777-7777-7777-7777-777777777777', 'tommaso_mission_ml.pdf', 'tommaso_mission_cv.pdf', '2023-06-11 08:20:00+02'::timestamptz, 'pending', 
+(8, 'f7777777-7777-7777-7777-777777777777', 'tommaso_mission_ml.pdf', 'tommaso_mission_cv.pdf', '2023-06-11 08:20:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'Do you have experience with technical testing operations?',
@@ -508,7 +515,7 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(11, '1d111111-1111-1111-1111-111111111111', 'camilla_desktop_ml.pdf', 'camilla_desktop_cv.pdf', '2023-06-14 09:45:00+02'::timestamptz, 'pending', 
+(11, '1d111111-1111-1111-1111-111111111111', 'camilla_desktop_ml.pdf', 'camilla_desktop_cv.pdf', '2023-06-14 09:45:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'Which desktop development frameworks do you prefer?',
@@ -544,7 +551,7 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(14, '1d444444-4444-4444-4444-444444444444', 'manuel_control_ml.pdf', 'manuel_control_cv.pdf', '2023-06-17 10:25:00+02'::timestamptz, 'pending', 
+(14, '1d444444-4444-4444-4444-444444444444', 'manuel_control_ml.pdf', 'manuel_control_cv.pdf', '2023-06-17 10:25:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What control theory concepts are you most experienced with?',
@@ -580,7 +587,7 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(17, '1d777777-7777-7777-7777-777777777777', 'chiara_software_ml.pdf', 'chiara_software_cv.pdf', '2023-06-20 09:30:00+02'::timestamptz, 'pending', 
+(17, '1d777777-7777-7777-7777-777777777777', 'chiara_software_ml.pdf', 'chiara_software_cv.pdf', '2023-06-20 09:30:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What programming languages do you use for scientific computing?',
@@ -616,7 +623,7 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(20, '1e111111-1111-1111-1111-111111111111', 'luca_feed_ml.pdf', 'luca_feed_cv.pdf', '2023-06-23 10:05:00+02'::timestamptz, 'pending', 
+(20, '1e111111-1111-1111-1111-111111111111', 'luca_feed_ml.pdf', 'luca_feed_cv.pdf', '2023-06-23 10:05:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What experience do you have with fluid systems design?',
@@ -649,5 +656,58 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      jsonb_build_object(
        'question', 'What diagnostic techniques have you used for engine testing?',
        'answer', 'I have used pressure transducers, thermocouples, and high-speed cameras for combustion diagnostics'
+     )
+   ]),
+
+-- Applications from new applicant users
+(22, 'a1111111-1111-1111-1111-111111111111', 'marco_rossi_motivation.pdf', 'marco_rossi_cv.pdf', '2024-01-15 10:30:00+01'::timestamptz, 'received', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What is your experience with rocket engine design?',
+       'answer', 'I am fascinated by the physics of combustion and want to contribute to space exploration'
+     ),
+     jsonb_build_object(
+       'question', 'Describe your knowledge of combustion chamber cooling methods',
+       'answer', 'During my thesis, I optimized a heat exchanger design using CFD analysis, improving efficiency by 15%'
+     )
+   ]),
+
+(19, 'a2222222-2222-2222-2222-222222222222', NULL, 'sofia_bianchi_cv.pdf', '2024-01-20 14:15:00+01'::timestamptz, 'received', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What FEA software do you use for structural analysis?',
+       'answer', 'I love the challenge of designing lightweight yet strong structures for extreme environments'
+     )
+   ]),
+
+(10, 'a3333333-3333-3333-3333-333333333333', 'ahmed_hassan_motivation.pdf', 'ahmed_hassan_cv.pdf', '2024-01-18 09:45:00+01'::timestamptz, 'accepted', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What embedded platforms have you worked with?',
+       'answer', 'I have 2 years of experience with Arduino and Raspberry Pi projects, including a quadcopter flight controller'
+     ),
+     jsonb_build_object(
+       'question', 'Describe your experience with real-time systems development',
+       'answer', 'I use systematic debugging with oscilloscopes, logic analyzers, and step-by-step code analysis'
+     )
+   ]),
+
+(22, 'a4444444-4444-4444-4444-444444444444', 'elena_popov_motivation.pdf', 'elena_popov_cv.pdf', '2024-01-22 16:20:00+01'::timestamptz, 'rejected', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What is your experience with rocket engine design?',
+       'answer', 'I want to work on cutting-edge propulsion technologies and learn about rocket engine design'
+     ),
+     jsonb_build_object(
+       'question', 'Describe your knowledge of combustion chamber cooling methods',
+       'answer', 'In my materials lab, I developed a new testing procedure that reduced sample preparation time by 30%'
+     )
+   ]),
+
+(19, 'a5555555-5555-5555-5555-555555555555', NULL, 'carlos_garcia_cv.pdf', '2024-01-25 11:10:00+01'::timestamptz, 'received', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What FEA software do you use for structural analysis?',
+       'answer', 'Aerospace structures combine my interests in mechanics and space technology'
      )
    ]);
