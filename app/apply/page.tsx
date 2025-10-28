@@ -2,6 +2,7 @@
 
 import { getAllPositions } from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
+import { ApplyFAQ } from "@/components/apply-faq";
 import { Button } from "@/components/ui/button";
 
 export default async function Apply() {
@@ -45,6 +46,7 @@ export default async function Apply() {
         pageContext="apply"
         disclaimer="true"
       />
+      <ApplyFAQ />
     </div>
   );
 }
