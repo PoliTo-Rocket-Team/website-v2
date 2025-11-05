@@ -6,11 +6,11 @@ import {
 } from "@/components/ui/accordion";
 import { getFAQsByPage } from "@/app/actions/get-faq";
 
-export async function ApplyFAQ() {
-  const faqs = await getFAQsByPage("apply");
+export async function HomeFAQ() {
+  const faqs = await getFAQsByPage("home");
 
   return (
-    <div className="max-w-5xl mx-auto my-12 md:my-24">
+    <div className="w-full max-w-5xl mx-auto my-12 md:my-24">
       <h2 className="text-lg md:text-4xl font-bold text-center text-primary mb-4 md:mb-8">
         Frequently Asked Questions
       </h2>

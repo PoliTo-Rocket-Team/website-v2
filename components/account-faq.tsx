@@ -6,8 +6,8 @@ import {
 } from "@/components/ui/accordion";
 import { getFAQsByPage } from "@/app/actions/get-faq";
 
-export async function ApplyFAQ() {
-  const faqs = await getFAQsByPage("apply");
+export async function AccountFAQ() {
+  const faqs = await getFAQsByPage("account");
 
   return (
     <div className="max-w-5xl mx-auto my-12 md:my-24">
