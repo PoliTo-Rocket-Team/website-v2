@@ -55,6 +55,7 @@ type Props = {
   editableDivisions?: ComponentDivision[];
   pageContext?: string;
   disclaimer?: string;
+  selectedDepartment?: number | null;
 };
 
 export function ApplyPositionsList({
@@ -65,6 +66,7 @@ export function ApplyPositionsList({
   editableDivisions = [],
   pageContext = "default",
   disclaimer,
+  selectedDepartment,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
@@ -112,13 +114,21 @@ export function ApplyPositionsList({
   }, [openAccordions, pageContext]);
 
   useEffect(() => {
+    // Filter by department if selected
+    let filteredPositions = initialPositions;
+    if (selectedDepartment !== null && selectedDepartment !== undefined) {
+      filteredPositions = initialPositions.filter(
+        (p) => p.dept_id === selectedDepartment
+      );
+    }
+    
     // Sort positions: active (status = true) first, then inactive (status = false)
-    const sortedPositions = [...initialPositions].sort((a, b) => {
+    const sortedPositions = [...filteredPositions].sort((a, b) => {
       return Number(b.status) - Number(a.status);
     });
     setPositions(sortedPositions);
     setLoading(false);
-  }, [initialPositions]);
+  }, [initialPositions, selectedDepartment]);
 
   const toggleAccordion = (id: string, isOpen: boolean) => {
     setOpenAccordions(prev => {

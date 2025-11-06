@@ -116,12 +116,9 @@ export function PositionCard({
     >
       <AccordionItem value={position.id.toString()}>
         <AccordionTrigger className="w-full border-b data-[state=closed]:rounded-lg data-[state=open]:rounded-t-lg p-2 md:px-2 md:py-4 hover:bg-secondary bg-clip-padding duration-100 transition-colors">
-          <div className="flex flex-col items-start md:items-center flex-1 gap-2 md:grid w-full md:grid-cols-[3fr_2fr_2fr_auto] md:justify-items-start">
+          <div className="flex flex-col items-start md:items-center flex-1 gap-2 md:grid w-full md:grid-cols-[3fr_2fr_auto] md:justify-items-start">
             <span className="font-semibold text-sm md:text-lg ">
               {position.title}
-            </span>
-            <span className="text-sm md:text-base font-medium ">
-              {position.dept_name}
             </span>
             <span className="text-sm md:text-base font-medium ">
               {position.div_name}
@@ -237,7 +234,7 @@ export function PositionCard({
                   variant="outline"
                   className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white m-0 "
                 >
-                  <Link href="#">Apply</Link>
+                  <Link href={`/apply/position/${position.id}`}>Apply</Link>
                 </Button>
                 {disclaimer && (
                   <div className="flex justify-center pt-2 md:pt-4 px-4 ">
