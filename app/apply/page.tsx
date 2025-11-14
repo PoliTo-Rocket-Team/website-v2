@@ -2,13 +2,21 @@
 
 import { getAllPositions } from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
-import { ApplyFAQ } from "@/components/apply-faq";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { getFAQsByPage } from "@/app/actions/get-faq";
 import { Button } from "@/components/ui/button";
 
 export default async function Apply() {
   const openPositions = (await getAllPositions()).positions.filter(
     position => position.status
   );
+  const faqs = await getFAQsByPage("apply");
+
   return (
     <div>
       <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
@@ -21,7 +29,7 @@ export default async function Apply() {
           undergraduate and graduate students of Politecnico di Torino. Here you
           can find our Open Positions and some Frequently Asked Questions about
           our recruitment process or about the Team. If you still have some
-          questions, don’t hesitate to reach out to us on social media or at{" "}
+          questions, don't hesitate to reach out to us on social media or at{" "}
           <a
             href="mailto:recruitment@politorocketteam.it"
             className="underline text-orange-500"
@@ -46,7 +54,29 @@ export default async function Apply() {
         pageContext="apply"
         disclaimer="true"
       />
-      <ApplyFAQ />
+      <div className="max-w-5xl mx-auto my-12 md:my-24">
+        <h2 className="text-lg md:text-4xl font-bold text-center text-primary mb-4 md:mb-8">
+          Frequently Asked Questions
+        </h2>
+        <Accordion type="single" collapsible className="w-full">
+          {faqs.map((faq) => (
+            <AccordionItem
+              key={faq.id}
+              value={`item-${faq.id}`}
+              className="border-b border-border px-4 md:px-6"
+            >
+              <AccordionTrigger className="text-left hover:no-underline">
+                <span className="text-sm md:text-base font-semibold">
+                  {faq.question}
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="text-muted-foreground">
+                {faq.answer}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
     </div>
   );
 }
