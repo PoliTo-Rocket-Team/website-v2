@@ -21,3 +21,7 @@ export type Division = Prettify<
 
 // Scope type based on the scopes table schema
 export type Scope = Prettify<Database["public"]["Tables"]["scopes"]["Row"]>;
+
+
+// FAQ type based on the faqs table schema
+export type FAQ = Prettify<Database["public"]["Tables"]["faqs"]["Row"]>;

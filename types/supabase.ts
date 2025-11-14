@@ -17,10 +17,10 @@ export type Database = {
     Functions: {
       graphql: {
         Args: {
-          operationName?: string
-          extensions?: Json
-          variables?: Json
           query?: string
+          operationName?: string
+          variables?: Json
+          extensions?: Json
         }
         Returns: Json
       }
@@ -239,6 +239,7 @@ export type Database = {
           desirable_skills: string[] | null
           division_id: number | null
           id: number
+          is_deleted: boolean
           required_skills: string[] | null
           requires_motivation_letter: boolean
           status: boolean
@@ -251,6 +252,7 @@ export type Database = {
           desirable_skills?: string[] | null
           division_id?: number | null
           id?: number
+          is_deleted?: boolean
           required_skills?: string[] | null
           requires_motivation_letter?: boolean
           status: boolean
@@ -263,6 +265,7 @@ export type Database = {
           desirable_skills?: string[] | null
           division_id?: number | null
           id?: number
+          is_deleted?: boolean
           required_skills?: string[] | null
           requires_motivation_letter?: boolean
           status?: boolean
@@ -334,6 +337,47 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "departments"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      faqs: {
+        Row: {
+          answer: string
+          created_at: string
+          display_order: number | null
+          id: number
+          page: Database["public"]["Enums"]["faq_page"]
+          question: string
+          updated_at: string | null
+          updated_by: number | null
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          display_order?: number | null
+          id?: number
+          page: Database["public"]["Enums"]["faq_page"]
+          question: string
+          updated_at?: string | null
+          updated_by?: number | null
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          display_order?: number | null
+          id?: number
+          page?: Database["public"]["Enums"]["faq_page"]
+          question?: string
+          updated_at?: string | null
+          updated_by?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faqs_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["member_id"]
           },
         ]
       }
@@ -600,6 +644,7 @@ export type Database = {
         | "accepted"
         | "received"
         | "accepted_by_another_team"
+      faq_page: "home" | "apply" | "account"
       position_type: "president" | "head" | "lead" | "core"
       scope_type: "all" | "department" | "division"
       status: "pending" | "accepted" | "rejected"
@@ -744,6 +789,7 @@ export const Constants = {
         "received",
         "accepted_by_another_team",
       ],
+      faq_page: ["home", "apply", "account"],
       position_type: ["president", "head", "lead", "core"],
       scope_type: ["all", "department", "division"],
       status: ["pending", "accepted", "rejected"],
