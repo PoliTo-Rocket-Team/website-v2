@@ -18,7 +18,6 @@ export default async function ProtectedPage() {
         <h2 className="font-bold text-2xl mb-4">Your user details</h2>
           {JSON.stringify(session?.email, null, 2)}
       </div>
-      <FAQ page="account" />
     </div>
   );
 }
