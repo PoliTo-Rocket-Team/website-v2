@@ -1,6 +1,7 @@
 "use server";
 
 import { getAllPositions } from "@/app/actions/get-apply-positions";
+import { getAllFAQs } from "@/app/actions/get-faq";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
 import { FAQ } from "@/components/faq";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ export default async function Apply() {
   const openPositions = (await getAllPositions()).positions.filter(
     position => position.status
   );
+  const applyFaqs = (await getAllFAQs()).faqs.filter(faq => faq.page === "apply");
 
   return (
     <div>
@@ -47,7 +49,7 @@ export default async function Apply() {
         pageContext="apply"
         disclaimer="true"
       />
-      <FAQ page="apply" />
+      <FAQ className="" faqs={applyFaqs} />
     </div>
   );
 }
