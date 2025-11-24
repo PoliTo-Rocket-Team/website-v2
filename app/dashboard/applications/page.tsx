@@ -2,7 +2,7 @@
 
 import { getApplicationsByMemberScope } from "@/app/actions/get-applications";
 import { ApplicationsList } from "@/components/applications-list";
-import { handleNoAccess } from "@/lib/access-control";
+// import { handleNoAccess } from "@/lib/access-control";
 import { Applications } from "@/app/actions/types";
 
 export default async function ApplicationsPage() {
