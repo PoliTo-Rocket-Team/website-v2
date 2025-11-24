@@ -51,6 +51,13 @@ export async function checkUserHasAccess(
     );
 
     // Query user's scopes for the target
+    // Validate target is a known enum value before query (defense in depth)
+    const validTargets: TargetType[] = ['positions', 'applications', 'members', 'all'];
+    if (!validTargets.includes(target)) {
+      console.error("Invalid target type:", target);
+      return { hasAccess: false };
+    }
+    
     // Using explicit filter for enum-based target matching (safe from injection)
     const { data: scopes, error } = await supabase
       .from("scopes")
