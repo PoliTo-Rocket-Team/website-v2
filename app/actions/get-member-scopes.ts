@@ -2,8 +2,8 @@
 
 import { createSupabaseClient } from "@/utils/supabase/client";
 import { Scope } from "./types";
-import { getCurrentMemberId } from "./get-memberId";
 import { Prettify } from "@/lib/utils";
+import { auth } from "@/auth";
 
 export type ScopeInfo = {
   hasAdminAccess: boolean;
@@ -18,7 +18,6 @@ export type ScopeInfo = {
 
 /**
  * Fetch scopes for a given member from Supabase
- * @param memberId - The ID of the member to fetch scopes for
  * @param target - Optional target to get processed scope info (e.g., 'positions', 'members', 'applications', )
  * @returns Array of scope permissions OR processed scope info object when target is provided
  */
@@ -26,9 +25,10 @@ export async function getMemberScopes(
   target?: string
 ): Promise<{ scope: Prettify<Scope[] | ScopeInfo> }> {
   //! todo cache needs to implemented
-  const memberId = await getCurrentMemberId();
 
-  if (!memberId) {
+  
+  const session = await auth();
+  if (!session?.userId) {
     return { scope: [] };
   }
 
@@ -39,7 +39,7 @@ export async function getMemberScopes(
   const { data: scopes, error } = await supabase
     .from("scopes")
     .select("*")
-    .eq("member_id", memberId);
+    .eq("user_id", session.userId);
 
   if (error) {
     console.error("Error fetching scopes:", error);
@@ -126,6 +126,12 @@ export async function getEditableDivisions() {
   const { scope: scopeInfo } = (await getMemberScopes("members")) as {
     scope: ScopeInfo;
   };
+
+  // If scopeInfo is empty array (no authentication or no scopes), return empty array
+  if (Array.isArray(scopeInfo) && scopeInfo.length === 0) {
+    return [];
+  }
+
   const supabase = await createSupabaseClient();
   //! todo remove debug log
   console.log("database request on get editable divisions");
