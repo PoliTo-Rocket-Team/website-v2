@@ -1,7 +1,7 @@
 "use server";
 
 import { getPositionsByMemberScope } from "@/app/actions/get-apply-positions";
-import { getEditableDivisions } from "@/app/actions/get-scopes";
+import { getEditableDivisions } from "@/app/actions/get-member-scopes";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
 import {
   handleDelete,
