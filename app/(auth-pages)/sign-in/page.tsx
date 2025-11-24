@@ -1,6 +1,6 @@
 import { Metadata } from "next";
 import Link from "next/link";
-import { Icons } from "@/components/icons";
+import { Icons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
 import SignInWithGoogle from "@/components/signin-google";
 import SignInMagic from "@/components/signin-magic";
@@ -15,7 +15,6 @@ export default async function Login() {
     <div className="flex flex-col h-screen items-center justify-center ">
       <div className="mx-auto flex w-full my-auto flex-col justify-center space-y-6 sm:w-[350px]">
         <div className="flex flex-col space-y-2 text-center">
-          
           {/* //! todo Add Icons.logo */}
           <Icons.logo className="mx-auto h-16 w-16" />
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -27,7 +26,7 @@ export default async function Login() {
         </div>
 
         <SignInWithGoogle />
-        
+
         <div className="flex items-center gap-2 text-sm text-muted-foreground my-2">
           <Separator className="flex-1 ml-2" />
           <span className="whitespace-nowrap">or</span>

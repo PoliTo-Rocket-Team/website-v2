@@ -4,7 +4,7 @@ import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Icons } from "@/components/icons";
+import { Icons } from "@/components/ui/icons";
 import { toast } from "sonner";
 
 export default function SignInMagic() {
