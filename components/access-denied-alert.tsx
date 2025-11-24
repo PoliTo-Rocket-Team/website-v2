@@ -18,8 +18,7 @@ export function AccessDeniedAlert() {
       setShowAlert(true);
       
       // Clear the error param from URL after showing
-      const newUrl = window.location.pathname;
-      router.replace(newUrl);
+      router.replace(window.location.pathname, { scroll: false });
       
       // Auto-hide after 10 seconds
       const timer = setTimeout(() => {

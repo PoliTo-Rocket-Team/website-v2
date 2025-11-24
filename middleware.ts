@@ -29,7 +29,9 @@ export default auth(async req => {
     const target = getRequiredTarget(pathname);
     
     if (target && req.auth.userId) {
-      const supabaseAccessToken = (req.auth as any).supabaseAccessToken;
+      // Session type is extended in types/next-auth.d.ts
+      const session = req.auth as { userId?: string; supabaseAccessToken?: string };
+      const supabaseAccessToken = session.supabaseAccessToken;
       
       if (supabaseAccessToken) {
         const { hasAccess } = await checkUserHasAccess(

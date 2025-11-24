@@ -28,10 +28,19 @@ export async function checkUserHasAccess(
   supabaseAccessToken: string
 ): Promise<PermissionCheckResult> {
   try {
+    // Validate environment variables
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("Missing required Supabase environment variables");
+      return { hasAccess: false };
+    }
+
     // Create Supabase client with user's token
     const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_ANON_KEY!,
+      supabaseUrl,
+      supabaseAnonKey,
       {
         global: {
           headers: {
@@ -42,6 +51,7 @@ export async function checkUserHasAccess(
     );
 
     // Query user's scopes for the target
+    // Using explicit filter for enum-based target matching (safe from injection)
     const { data: scopes, error } = await supabase
       .from("scopes")
       .select("scope, target")
