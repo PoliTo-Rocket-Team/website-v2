@@ -651,3 +651,38 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
        'answer', 'I have used pressure transducers, thermocouples, and high-speed cameras for combustion diagnostics'
      )
    ]);
+
+-- Insert Scopes with new structure
+-- (member_id, scope, target, access_level, dept_id, division_id, given_by)
+INSERT INTO scopes (member_id, scope, target, access_level, dept_id, division_id, given_by) VALUES
+-- Admin scopes (technical/system access)
+(1, 'admin', 'all', 'edit', NULL, NULL, NULL),  -- Developer with full admin access
+(13, 'admin', 'logs', 'view', NULL, NULL, 1),   -- Marco with log viewing access, granted by developer
+
+-- Org-wide scopes (presidents, management)
+(2, 'org', 'all', 'edit', NULL, NULL, NULL),    -- Giulia - President with full org access
+(3, 'org', 'members', 'view', NULL, NULL, 2),   -- Alessandro - can view all members, granted by president
+(4, 'org', 'orders', 'edit', NULL, NULL, 2),    -- Valentina - can manage all orders, granted by president
+
+-- Department-level scopes
+(5, 'department', 'members', 'edit', 1, NULL, 2),     -- Luca - can edit members in Technical dept
+(6, 'department', 'applications', 'view', 1, NULL, 2), -- Sofia - can view applications in Technical dept
+(7, 'department', 'orders', 'edit', 2, NULL, 2),      -- Matteo - can edit orders in Operations dept
+(8, 'department', 'all', 'edit', 3, NULL, 2),         -- Elena - department lead for Marketing with full access
+
+-- Division-level scopes
+(9, 'division', 'members', 'edit', NULL, 1, 5),      -- Andrea - can edit members in Software div, granted by dept manager
+(10, 'division', 'applications', 'view', NULL, 2, 5), -- Francesca - can view applications in Propulsion div
+(11, 'division', 'orders', 'edit', NULL, 3, 7),      -- Simone - can edit orders in Operations Management div
+(12, 'division', 'all', 'edit', NULL, 4, 7),         -- Claudia - division lead for Event Management
+
+-- Website content management scopes
+(14, 'website', 'blog', 'edit', NULL, NULL, 2),      -- Giovanni - can edit blog content, granted by president
+(15, 'website', 'faq', 'edit', NULL, NULL, 2),       -- Martina - can edit FAQ content, granted by president
+(16, 'website', 'blog', 'view', NULL, NULL, 14),     -- Federico - can view blog content, granted by blog editor
+
+-- Additional examples for coverage
+(17, 'division', 'members', 'view', NULL, 5, 11),    -- Alice - can view members in Communications div
+(18, 'department', 'applications', 'edit', 2, NULL, 2), -- Lorenzo - can edit applications in Operations dept
+(19, 'org', 'applications', 'view', NULL, NULL, 2),   -- Beatrice - can view all applications org-wide
+(20, 'division', 'orders', 'view', NULL, 6, 18);      -- Tommaso - can view orders in Management div

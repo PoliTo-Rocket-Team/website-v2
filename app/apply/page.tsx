@@ -1,13 +1,11 @@
 "use server";
 
-import { getAllPositions } from "@/app/actions/get-apply-positions";
+import { getPublicPositions } from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
 import { Button } from "@/components/ui/button";
 
 export default async function Apply() {
-  const openPositions = (await getAllPositions()).positions.filter(
-    position => position.status
-  );
+  const { positions: openPositions } = await getPublicPositions();
   return (
     <div>
       <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
