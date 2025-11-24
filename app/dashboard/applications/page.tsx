@@ -1,11 +1,16 @@
 "use server";
 
-import { getAllApplications } from "@/app/actions/get-applications";
+import { getApplicationsByMemberScope } from "@/app/actions/get-applications";
 import { ApplicationsList } from "@/components/applications-list";
+import { handleNoAccess } from "@/lib/access-control";
+import { Applications } from "@/app/actions/types";
 
 export default async function ApplicationsPage() {
-    const { applications } = await getAllApplications();
-    // const applications: any = []
+  const { applications } = await getApplicationsByMemberScope();
+
+  //! todo handle no access with sessi
+  // // Handle NO_ACCESS redirect
+  // await handleNoAccess(applications);
 
   return (
     <div className="w-full">
@@ -19,7 +24,7 @@ export default async function ApplicationsPage() {
           recruitment process.
         </p>
       </div>
-      <ApplicationsList applications={applications} />
+      <ApplicationsList applications={applications as Applications[]} />
     </div>
   );
 }
