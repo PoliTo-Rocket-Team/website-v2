@@ -276,6 +276,10 @@ function processApplicationsData(applications: any[]): Applications[] {
         user_level_of_study: app.user?.level_of_study || "",
         user_polito_id: app.user?.polito_id || "",
         user_program: app.user?.program || "",
+        user_gender: app.user?.gender || "",
+        user_date_of_birth: app.user?.date_of_birth || "",
+        user_mobile_number: app.user?.mobile_number || "",
+        user_polito_email: app.user?.polito_email || "",
 
         // position flatten
         position_title: app.apply_position?.title ?? "",

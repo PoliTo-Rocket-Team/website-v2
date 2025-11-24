@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Applications } from "@/app/actions/types";
 import { ApplicationCard } from "@/components/application-card";
-import { localStorageUtils } from "@/lib/localStorage";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -17,45 +17,9 @@ export function ApplicationsList({
   pageContext = "applications",
   onChangeStatus,
 }: Props) {
+  const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<Applications[]>([]);
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
-
-  // Load accordion states from localStorage with page-specific key and time limit
-  useEffect(() => {
-    const storageKey = `${pageContext}AccordionStates`;
-    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
-
-    const savedAccordionStates = localStorageUtils.load(storageKey, []);
-    const savedTimestamp = localStorageUtils.load(timestampKey, null);
-
-    const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours
-    const now = Date.now();
-
-    if (
-      savedAccordionStates &&
-      savedAccordionStates.length > 0 &&
-      savedTimestamp &&
-      now - savedTimestamp < TIME_LIMIT
-    ) {
-      setOpenAccordions(new Set(savedAccordionStates));
-    } else if (savedTimestamp && now - savedTimestamp >= TIME_LIMIT) {
-      localStorageUtils.save(storageKey, []);
-      localStorageUtils.save(timestampKey, null);
-    }
-  }, [pageContext]);
-
-  // Save accordion states to localStorage with debouncing
-  useEffect(() => {
-    const storageKey = `${pageContext}AccordionStates`;
-    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
-
-    const timeoutId = setTimeout(() => {
-      localStorageUtils.save(storageKey, Array.from(openAccordions));
-      localStorageUtils.save(timestampKey, Date.now());
-    }, 1000);
-
-    return () => clearTimeout(timeoutId);
-  }, [openAccordions, pageContext]);
 
   useEffect(() => {
     // Sort by applied_at desc by default
@@ -64,6 +28,7 @@ export function ApplicationsList({
         new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime()
     );
     setApplications(sorted);
+    setLoading(false);
   }, [initialApplications]);
 
   const toggleAccordion = (id: string, isOpen: boolean) => {
@@ -77,11 +42,13 @@ export function ApplicationsList({
 
   const isAccordionOpen = (id: string) => openAccordions.has(id);
 
+  if (loading) return <LoadingSkeleton className="max-w-5xl mx-auto" />;
+
   return (
-    <div className="w-full relative max-w-5xl mx-auto">
+    <div className="w-full relative max-w-5xl mx-auto px-2">
       {!applications.length ? (
         <div className="text-muted-foreground p-4">
-          There is no applications at the moment.
+          There is no application at the moment.
         </div>
       ) : (
         <div>

@@ -8,7 +8,6 @@ import { AddPositionDialog } from "@/components/add-position-dialog";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { localStorageUtils } from "@/lib/localStorage";
 import { Database } from "@/types/supabase";
 import { Prettify } from "@/lib/utils";
 
@@ -69,47 +68,6 @@ export function ApplyPositionsList({
   const [loading, setLoading] = useState(true);
   const [positions, setPositions] = useState<ApplyPosition[]>([]);
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
-
-  // Load accordion states from localStorage with page-specific key and time limit
-  useEffect(() => {
-    const storageKey = `${pageContext}AccordionStates`;
-    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
-
-    const savedAccordionStates = localStorageUtils.load(storageKey, []);
-    const savedTimestamp = localStorageUtils.load(timestampKey, null);
-
-    // Check if data exists and is within time limit (24 hours = 24 * 60 * 60 * 1000 ms)
-    const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    const now = Date.now();
-
-    if (
-      savedAccordionStates &&
-      savedAccordionStates.length > 0 &&
-      savedTimestamp &&
-      now - savedTimestamp < TIME_LIMIT
-    ) {
-      setOpenAccordions(new Set(savedAccordionStates));
-    } else if (savedTimestamp && now - savedTimestamp >= TIME_LIMIT) {
-      // Clean up expired data
-      localStorageUtils.save(storageKey, []);
-      localStorageUtils.save(timestampKey, null);
-    }
-  }, [pageContext]);
-
-  // Save accordion states to localStorage with debouncing
-  useEffect(() => {
-    const storageKey = `${pageContext}AccordionStates`;
-    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
-
-    // Debounce the save operation by 1 second
-    const timeoutId = setTimeout(() => {
-      localStorageUtils.save(storageKey, Array.from(openAccordions));
-      localStorageUtils.save(timestampKey, Date.now());
-    }, 1000);
-
-    // Cleanup: cancel the previous timeout if dependencies change again
-    return () => clearTimeout(timeoutId);
-  }, [openAccordions, pageContext]);
 
   useEffect(() => {
     // Sort positions: active (status = true) first, then inactive (status = false)
@@ -253,12 +211,12 @@ export function ApplyPositionsList({
     <div className="w-full relative max-w-5xl mx-auto">
       {/* Add Position button - positioned absolutely to align with title */}
       {editableDivisions.length > 0 && handleAddPosition && (
-        <div className="absolute top-12 right-0 -translate-y-12">
+        <div className="absolute top-[-1rem] md:top-12 right-0 -translate-y-12">
           <AddPositionDialog
             onAddPosition={handleAddPositionLocal}
             divisions={editableDivisions}
           >
-            <Button className="flex items-center gap-2 text-xs md:text-sm">
+            <Button className="flex items-center gap-1 md:gap-3 text-xs md:text-sm">
               <Plus className="h-2 w-2 md:h-4 md:w-4" />
               Add Position
             </Button>
@@ -277,7 +235,9 @@ export function ApplyPositionsList({
             <h3>Department</h3>
             <h3>Division</h3>
             <Button className="invisible h-4 w-4"></Button>
-            {!disclaimer && <Button className="invisible md:h-6 md:w-11 h-4 w-9 px-2.5"></Button>}
+            {!disclaimer && (
+              <Button className="invisible md:h-6 md:w-11 h-4 w-9 px-2.5"></Button>
+            )}
           </div>
           <div className="space-y-2 md:space-y-4">
             {positions.map(position => (
