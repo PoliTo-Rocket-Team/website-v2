@@ -17,10 +17,10 @@ export type Database = {
     Functions: {
       graphql: {
         Args: {
-          operationName?: string
+          query?: string
           extensions?: Json
           variables?: Json
-          query?: string
+          operationName?: string
         }
         Returns: Json
       }
@@ -239,6 +239,7 @@ export type Database = {
           desirable_skills: string[] | null
           division_id: number | null
           id: number
+          is_deleted: boolean
           required_skills: string[] | null
           requires_motivation_letter: boolean
           status: boolean
@@ -251,6 +252,7 @@ export type Database = {
           desirable_skills?: string[] | null
           division_id?: number | null
           id?: number
+          is_deleted?: boolean
           required_skills?: string[] | null
           requires_motivation_letter?: boolean
           status: boolean
@@ -263,6 +265,7 @@ export type Database = {
           desirable_skills?: string[] | null
           division_id?: number | null
           id?: number
+          is_deleted?: boolean
           required_skills?: string[] | null
           requires_motivation_letter?: boolean
           status?: boolean
@@ -485,25 +488,31 @@ export type Database = {
           access_level: Database["public"]["Enums"]["access_level_type"]
           dept_id: number | null
           division_id: number | null
+          given_by: number | null
           id: number
           member_id: number | null
           scope: Database["public"]["Enums"]["scope_type"]
+          target: Database["public"]["Enums"]["target_type"]
         }
         Insert: {
           access_level?: Database["public"]["Enums"]["access_level_type"]
           dept_id?: number | null
           division_id?: number | null
+          given_by?: number | null
           id?: number
           member_id?: number | null
           scope: Database["public"]["Enums"]["scope_type"]
+          target: Database["public"]["Enums"]["target_type"]
         }
         Update: {
           access_level?: Database["public"]["Enums"]["access_level_type"]
           dept_id?: number | null
           division_id?: number | null
+          given_by?: number | null
           id?: number
           member_id?: number | null
           scope?: Database["public"]["Enums"]["scope_type"]
+          target?: Database["public"]["Enums"]["target_type"]
         }
         Relationships: [
           {
@@ -519,6 +528,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "divisions"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scopes_given_by_fkey"
+            columns: ["given_by"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["member_id"]
           },
           {
             foreignKeyName: "scopes_member_id_fkey"
@@ -601,8 +617,17 @@ export type Database = {
         | "received"
         | "accepted_by_another_team"
       position_type: "president" | "head" | "lead" | "core"
-      scope_type: "all" | "department" | "division"
+      scope_type: "admin" | "org" | "department" | "division" | "website"
       status: "pending" | "accepted" | "rejected"
+      target_type:
+        | "all"
+        | "positions"
+        | "applications"
+        | "members"
+        | "orders"
+        | "faq"
+        | "blog"
+        | "logs"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -745,8 +770,18 @@ export const Constants = {
         "accepted_by_another_team",
       ],
       position_type: ["president", "head", "lead", "core"],
-      scope_type: ["all", "department", "division"],
+      scope_type: ["admin", "org", "department", "division", "website"],
       status: ["pending", "accepted", "rejected"],
+      target_type: [
+        "all",
+        "positions",
+        "applications",
+        "members",
+        "orders",
+        "faq",
+        "blog",
+        "logs",
+      ],
     },
   },
 } as const

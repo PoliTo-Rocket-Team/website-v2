@@ -9,6 +9,8 @@ import { auth } from "@/auth";
  */
 export async function getCurrentMemberId(): Promise<number | null> {
   const supabase = await createSupabaseClient();
+  //! todo remove debug log
+  console.log("database request on get member id");
   const session = await auth();
 
   if (!session?.userId) {
