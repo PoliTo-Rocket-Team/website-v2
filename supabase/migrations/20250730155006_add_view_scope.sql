@@ -27,8 +27,8 @@ CREATE TYPE public.access_level_type AS ENUM ('view', 'edit');
 
 CREATE TABLE scopes (
   id SERIAL PRIMARY KEY,
-  member_id INTEGER REFERENCES members(member_id) ON DELETE CASCADE,
-  given_by INTEGER REFERENCES members(member_id) ON DELETE SET NULL,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  given_by UUID REFERENCES users(id) ON DELETE SET NULL,
 
   scope scope_type NOT NULL,
   target target_type NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE scopes (
   division_id INTEGER REFERENCES divisions(id),
 
   CONSTRAINT unique_scope_combination
-    UNIQUE (member_id, scope, target, dept_id, division_id),
+    UNIQUE (user_id, scope, target, dept_id, division_id),
 
   ----------------------------------------------------------------
   -- SCOPE STRUCTURAL RULES ONLY

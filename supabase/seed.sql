@@ -46,6 +46,7 @@ INSERT INTO members (member_id, prt_email, discord, nda_signed_at, nda_name, nda
 
 -- Insert Users with timestamptz for created_at and NULL for updated_at
 INSERT INTO users (id, email, first_name, last_name, origin, mobile_number, linkedin, polito_id, polito_email, date_of_birth, gender, level_of_study, how_found_us, program, member, created_at, updated_at) VALUES
+('00000000-0000-0000-0000-000000000001', 'developer@prt.it', 'Developer', 'Admin', 'Italy', '+39320000000', 'linkedin.com/in/developer', 'dev001', 'developer@studenti.polito.it', '1990-01-01'::date, 'Male', 'PhD', 'Internal', 'Computer Engineering', 1, '2023-01-01 10:00:00+01'::timestamptz, NULL),
 ('11111111-1111-1111-1111-111111111111', 'marco.rossi@example.com', 'Marco', 'Rossi', 'Italy', '+39328123456', 'linkedin.com/in/marcorossi', 's123456', 'marco.rossi@studenti.polito.it', '1998-03-15'::date, 'Male', 'Master', 'University website', 'Computer Engineering', 13, '2023-01-10 10:00:00+01'::timestamptz, NULL),
 ('22222222-2222-2222-2222-222222222222', 'giulia.ferrari@example.com', 'Giulia', 'Ferrari', 'Italy', '+39329234567', 'linkedin.com/in/giuliaferrari', 's234567', 'giulia.ferrari@studenti.polito.it', '1999-07-22'::date, 'Female', 'Bachelor', 'Social media', 'Electronic Engineering', 2, '2023-01-15 11:30:00+01'::timestamptz, NULL),
 ('33333333-3333-3333-3333-333333333333', 'alessandro.russo@example.com', 'Alessandro', 'Russo', 'Italy', '+39330345678', 'linkedin.com/in/alessandrorusso', 's345678', 'alessandro.russo@studenti.polito.it', '1995-11-08'::date, 'Male', 'PhD', 'Friend referral', 'Mechanical Engineering', 3, '2023-02-01 09:15:00+01'::timestamptz, NULL),
@@ -713,36 +714,36 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
    ]);
 
 -- Insert Scopes with new structure
--- (member_id, scope, target, access_level, dept_id, division_id, given_by)
-INSERT INTO scopes (member_id, scope, target, access_level, dept_id, division_id, given_by) VALUES
+-- (user_id, scope, target, access_level, dept_id, division_id, given_by)
+INSERT INTO scopes (user_id, scope, target, access_level, dept_id, division_id, given_by) VALUES
 -- Admin scopes (technical/system access)
-(1, 'admin', 'all', 'edit', NULL, NULL, NULL),  -- Developer with full admin access
-(13, 'admin', 'logs', 'view', NULL, NULL, 1),   -- Marco with log viewing access, granted by developer
+('00000000-0000-0000-0000-000000000001', 'admin', 'all', 'edit', NULL, NULL, NULL),  -- Developer with full admin access
+('11111111-1111-1111-1111-111111111111', 'admin', 'logs', 'view', NULL, NULL, NULL),   -- Marco with log viewing access
 
 -- Org-wide scopes (presidents, management)
-(2, 'org', 'all', 'edit', NULL, NULL, NULL),    -- Giulia - President with full org access
-(3, 'org', 'members', 'view', NULL, NULL, 2),   -- Alessandro - can view all members, granted by president
-(4, 'org', 'orders', 'edit', NULL, NULL, 2),    -- Valentina - can manage all orders, granted by president
+('22222222-2222-2222-2222-222222222222', 'org', 'all', 'edit', NULL, NULL, NULL),    -- Giulia - President with full org access
+('33333333-3333-3333-3333-333333333333', 'org', 'members', 'view', NULL, NULL, NULL),   -- Alessandro - can view all members
+('44444444-4444-4444-4444-444444444444', 'org', 'orders', 'edit', NULL, NULL, NULL),    -- Valentina - can manage all orders
 
 -- Department-level scopes
-(5, 'department', 'members', 'edit', 1, NULL, 2),     -- Luca - can edit members in Technical dept
-(6, 'department', 'applications', 'view', 1, NULL, 2), -- Sofia - can view applications in Technical dept
-(7, 'department', 'orders', 'edit', 2, NULL, 2),      -- Matteo - can edit orders in Operations dept
-(8, 'department', 'all', 'edit', 3, NULL, 2),         -- Elena - department lead for Marketing with full access
+('55555555-5555-5555-5555-555555555555', 'department', 'members', 'edit', 1, NULL, NULL),     -- Luca - can edit members in Technical dept
+('66666666-6666-6666-6666-666666666666', 'department', 'applications', 'view', 1, NULL, NULL), -- Sofia - can view applications in Technical dept
+('77777777-7777-7777-7777-777777777777', 'department', 'orders', 'edit', 2, NULL, NULL),      -- Matteo - can edit orders in Operations dept
+('88888888-8888-8888-8888-888888888888', 'department', 'all', 'edit', 3, NULL, NULL),         -- Elena - department lead for Marketing with full access
 
 -- Division-level scopes
-(9, 'division', 'members', 'edit', NULL, 1, 5),      -- Andrea - can edit members in Software div, granted by dept manager
-(10, 'division', 'applications', 'view', NULL, 2, 5), -- Francesca - can view applications in Propulsion div
-(11, 'division', 'orders', 'edit', NULL, 3, 7),      -- Simone - can edit orders in Operations Management div
-(12, 'division', 'all', 'edit', NULL, 4, 7),         -- Claudia - division lead for Event Management
+('99999999-9999-9999-9999-999999999999', 'division', 'members', 'edit', NULL, 1, NULL),      -- Andrea - can edit members in Software div
+('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'division', 'applications', 'view', NULL, 2, NULL), -- Francesca - can view applications in Propulsion div
+('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'division', 'orders', 'edit', NULL, 3, NULL),      -- Simone - can edit orders in Operations Management div
+('cccccccc-cccc-cccc-cccc-cccccccccccc', 'division', 'all', 'edit', NULL, 4, NULL),         -- Claudia - division lead for Event Management
 
 -- Website content management scopes
-(14, 'website', 'blog', 'edit', NULL, NULL, 2),      -- Giovanni - can edit blog content, granted by president
-(15, 'website', 'faq', 'edit', NULL, NULL, 2),       -- Martina - can edit FAQ content, granted by president
-(16, 'website', 'blog', 'view', NULL, NULL, 14),     -- Federico - can view blog content, granted by blog editor
+('1a111111-1111-1111-1111-111111111111', 'website', 'blog', 'edit', NULL, NULL, NULL),      -- Giovanni - can edit blog content
+('1a222222-2222-2222-2222-222222222222', 'website', 'faq', 'edit', NULL, NULL, NULL),       -- Martina - can edit FAQ content
+('1a333333-3333-3333-3333-333333333333', 'website', 'blog', 'view', NULL, NULL, NULL),     -- Federico - can view blog content
 
 -- Additional examples for coverage
-(17, 'division', 'members', 'view', NULL, 5, 11),    -- Alice - can view members in Communications div
-(18, 'department', 'applications', 'edit', 2, NULL, 2), -- Lorenzo - can edit applications in Operations dept
-(19, 'org', 'applications', 'view', NULL, NULL, 2),   -- Beatrice - can view all applications org-wide
-(20, 'division', 'orders', 'view', NULL, 6, 18);      -- Tommaso - can view orders in Management div
+('1a444444-4444-4444-4444-444444444444', 'division', 'members', 'view', NULL, 5, NULL),    -- Alice - can view members in Communications div
+('1a555555-5555-5555-5555-555555555555', 'department', 'applications', 'edit', 2, NULL, NULL), -- Lorenzo - can edit applications in Operations dept
+('1a666666-6666-6666-6666-666666666666', 'org', 'applications', 'view', NULL, NULL, NULL),   -- Beatrice - can view all applications org-wide
+('1a777777-7777-7777-7777-777777777777', 'division', 'orders', 'view', NULL, 6, NULL);      -- Tommaso - can view orders in Management div
