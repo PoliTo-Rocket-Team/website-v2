@@ -1,8 +1,6 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 
-//! todo handle permission check for protected pages(positions, applications etc)
-
 /**
  * Type guard to check if applications data contains NO_ACCESS marker
  * @param data - Applications data to check

@@ -1,7 +1,12 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
+import {
+  checkUserHasAccess,
+  isProtectedRoute,
+  getRequiredTarget,
+} from "@/lib/middleware-permissions";
 
-export default auth(req => {
+export default auth(async req => {
   const { pathname, search } = req.nextUrl;
 
   // Redirect logged-in users away from sign-in page
@@ -19,7 +24,30 @@ export default auth(req => {
     return NextResponse.redirect(signInUrl);
   }
 
-  //! todo handle permission checks for protected pages (positions, applications, etc)
+  // Handle permission checks for protected pages (positions, applications, etc)
+  if (req.auth && isProtectedRoute(pathname)) {
+    const target = getRequiredTarget(pathname);
+    
+    if (target && req.auth.userId) {
+      const supabaseAccessToken = (req.auth as any).supabaseAccessToken;
+      
+      if (supabaseAccessToken) {
+        const { hasAccess } = await checkUserHasAccess(
+          req.auth.userId,
+          target,
+          supabaseAccessToken
+        );
+
+        if (!hasAccess) {
+          // Redirect to dashboard with error indication
+          const dashboardUrl = new URL("/dashboard", req.url);
+          dashboardUrl.searchParams.set("error", "access_denied");
+          return NextResponse.redirect(dashboardUrl);
+        }
+      }
+    }
+  }
+
   // Store referer header for access control redirects
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-current-path', pathname);

@@ -8,16 +8,11 @@ import {
   handleEditPosition,
   handleAddPosition,
 } from "./server-actions";
-import { handleNoAccess } from "@/lib/access-control";
 import { ApplyPosition } from "@/app/actions/types";
 
 export default async function Positions() {
   const { positions } = await getPositionsByMemberScope();
   const editableDivisions = await getEditableDivisions();
-
-  //! todo handle no access 
-  // // Handle NO_ACCESS redirect
-  // await handleNoAccess(positions);
 
   return (
     <div className="w-full">

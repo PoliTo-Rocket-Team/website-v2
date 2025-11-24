@@ -1,11 +1,14 @@
 import { InfoIcon } from "lucide-react";
 import { auth } from "@/auth";
+import { AccessDeniedAlert } from "@/components/access-denied-alert";
+
 export default async function ProtectedPage() {
   const session = await auth();
 
   return (
     <div className="flex-1 w-full flex flex-col gap-12 mt-10">
       <div className="w-full">
+        <AccessDeniedAlert />
         <div className="bg-accent text-sm p-3 px-5 rounded-md text-foreground flex gap-3 items-center">
           <InfoIcon size="16" strokeWidth={2} />
           This is a protected page that you can only see as an authenticated
