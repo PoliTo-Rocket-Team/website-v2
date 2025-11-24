@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Applications } from "@/app/actions/types";
 import { ApplicationCard } from "@/components/application-card";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { localStorageUtils } from "@/lib/localStorage";
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +18,7 @@ export function ApplicationsList({
   pageContext = "applications",
   onChangeStatus,
 }: Props) {
+  const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<Applications[]>([]);
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
 
@@ -64,6 +66,7 @@ export function ApplicationsList({
         new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime()
     );
     setApplications(sorted);
+    setLoading(false);
   }, [initialApplications]);
 
   const toggleAccordion = (id: string, isOpen: boolean) => {
@@ -77,11 +80,13 @@ export function ApplicationsList({
 
   const isAccordionOpen = (id: string) => openAccordions.has(id);
 
+  if (loading) return <LoadingSkeleton className="max-w-5xl mx-auto" />;
+
   return (
     <div className="w-full relative max-w-5xl mx-auto">
       {!applications.length ? (
         <div className="text-muted-foreground p-4">
-          There is no applications at the moment.
+          There is no application at the moment.
         </div>
       ) : (
         <div>

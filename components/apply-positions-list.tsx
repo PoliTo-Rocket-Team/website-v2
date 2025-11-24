@@ -253,12 +253,13 @@ export function ApplyPositionsList({
     <div className="w-full relative max-w-5xl mx-auto">
       {/* Add Position button - positioned absolutely to align with title */}
       {editableDivisions.length > 0 && handleAddPosition && (
-        <div className="absolute top-12 right-0 -translate-y-12">
+        <div className="absolute top-[-1rem] md:top-12 right-0 -translate-y-12">
           <AddPositionDialog
             onAddPosition={handleAddPositionLocal}
             divisions={editableDivisions}
           >
-            <Button className="flex items-center gap-2 text-xs md:text-sm">
+            <Button className="flex items-center gap-1 md:gap-3 text-xs md:text-sm"
+            >
               <Plus className="h-2 w-2 md:h-4 md:w-4" />
               Add Position
             </Button>

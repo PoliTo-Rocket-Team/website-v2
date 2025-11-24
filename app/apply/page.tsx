@@ -2,7 +2,6 @@
 
 import { getPublicPositions } from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
-import { Button } from "@/components/ui/button";
 
 export default async function Apply() {
   const { positions: openPositions } = await getPublicPositions();
@@ -32,6 +31,8 @@ export default async function Apply() {
           Open Positions
         </h2>
       </div>
+      {/* //! todo add some display-only positions when there are no open positions */}
+      {/* //! todo remove border color for apply positions list on apply page */}
       <ApplyPositionsList
         positions={openPositions}
         pageContext="apply"

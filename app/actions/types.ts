@@ -20,7 +20,7 @@ export type Applications = Prettify<
     // Other applications for this user
     other_applications: OtherApplication[];
     // Similar applications (same name, different email)
-    similar_applications: SimilarApplication[];
+    similar_applications: OtherApplication[];
   }
 >;
 
@@ -48,22 +48,13 @@ export type Scope = Prettify<Database["public"]["Tables"]["scopes"]["Row"]>;
 // Other applications for a user (simplified structure)
 export type OtherApplication = {
   id: number;
-  status: "pending" | "accepted" | "rejected";
+  status: Database["public"]["Enums"]["application_status"];
   applied_at: string;
   position_title: string;
   division: string;
   department: string;
-};
-
-// Similar applications (same name, different email)
-export type SimilarApplication = {
-  id: number;
-  status: "pending" | "accepted" | "rejected";
-  applied_at: string;
-  position_title: string;
-  division: string;
-  department: string;
-  user_email: string;
-  user_first_name: string;
-  user_last_name: string;
+  division_lead_name?: string;
+  user_email?: string;
+  user_first_name?: string;
+  user_last_name?: string;
 };

@@ -19,7 +19,19 @@ export default auth(req => {
     return NextResponse.redirect(signInUrl);
   }
 
-  return NextResponse.next();
+  //! todo handle permission checks for protected pages (positions, applications, etc)
+  // Store referer header for access control redirects
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-current-path', pathname);
+  if (req.headers.get('referer')) {
+    requestHeaders.set('x-referer', req.headers.get('referer')!);
+  }
+
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 });
 
 export const config = {

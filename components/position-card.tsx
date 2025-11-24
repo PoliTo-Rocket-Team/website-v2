@@ -126,7 +126,7 @@ export function PositionCard({
             <span className="text-sm md:text-base font-medium ">
               {position.div_name}
             </span>
-            {/* //! todo better way to change position state, switch inside accordion trigger is not ideal */}
+            {/* //! todo better way to change position state, switch inside accordion trigger is not ideal, inside the edit form would be ideal since it is more contextually relevant */}
             {position.canEdit && (
               <Switch
                 checked={position.status}
@@ -139,6 +139,7 @@ export function PositionCard({
         </AccordionTrigger>
         <AccordionContent className="p-2 md:p-6">
           {isEditing ? (
+            // ! todo preview apply form for position needs to be added to edit form so that editors can see how the position will appear to applicants
             <PositionEditForm
               position={position}
               onSave={handleSaveEdit}
