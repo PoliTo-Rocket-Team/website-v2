@@ -1,7 +1,7 @@
 "use server";
 
 import { ApplyPosition } from "@/app/actions/types";
-import { createSupabaseClient } from "@/utils/supabase/client";
+import { createSupabaseClient } from "@/utils/supabase/server";
 
 export async function handleDelete(id: number) {
   const supabase = await createSupabaseClient();

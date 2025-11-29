@@ -1,6 +1,6 @@
 "use server";
 
-import { createSupabaseClient } from "@/utils/supabase/client";
+import { createSupabaseClient } from "@/utils/supabase/server";
 import { ApplyPosition } from "./types";
 import { filterItemsByScope } from "./get-scopes";
 

@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PositionEditForm } from "@/components/position-edit-form";
 import Link from "next/link";
+import { getApplyUrl } from "@/lib/utils";
+import { ShinyButton } from "@/components/ui/shiny-button";
 
 type PositionCardProps = {
   position: ApplyPosition;
@@ -232,13 +234,13 @@ export function PositionCard({
                     </>
                   )}
                 </div>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white m-0 "
-                >
-                  <Link href="#">Apply</Link>
-                </Button>
+                {position.status &&
+                position.dept_code &&
+                position.div_code ? (
+                  <Link href={getApplyUrl(position)} className="inline-block">
+                    <ShinyButton className="m-0">Apply</ShinyButton>
+                  </Link>
+                ) : null}
                 {disclaimer && (
                   <div className="flex justify-center pt-2 md:pt-4 px-4 ">
                     <p className="text-xs text-muted-foreground text-center">

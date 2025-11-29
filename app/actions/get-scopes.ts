@@ -1,6 +1,6 @@
 "use server";
 
-import { createSupabaseClient } from "@/utils/supabase/client";
+import { createSupabaseClient } from "@/utils/supabase/server";
 import { Scope } from "./types";
 import { getCurrentMemberId } from "./get-memberId";
 
@@ -124,7 +124,7 @@ export async function filterItemsByScope<
  * @returns Array of divisions the user has edit access to
  */
 export async function getEditableDivisions() {
-  const { createSupabaseClient } = await import("@/utils/supabase/client");
+  const { createSupabaseClient } = await import("@/utils/supabase/server");
   const supabase = await createSupabaseClient();
   const memberId = await getCurrentMemberId();
 
