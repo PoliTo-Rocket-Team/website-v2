@@ -1,5 +1,5 @@
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import Link from "next/link";
 import "./globals.css";
@@ -18,7 +18,8 @@ export const metadata = {
   description: "The fastest way to build apps with Next.js and Supabase",
 };
 
-const inter = Inter({
+const plusJakartaSans = Plus_Jakarta_Sans({
+  display: "swap",
   subsets: ["latin"],
   variable: "--font-inter",
 });
@@ -37,10 +38,10 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      className={plusJakartaSans.className}
       suppressHydrationWarning
     >
-      <body className="bg-background text-foreground font-sans">
+      <body className="bg-background text-foreground">
         <SessionProvider session={session}>
           <ThemeProvider
             attribute="class"
