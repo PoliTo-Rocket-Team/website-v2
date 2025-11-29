@@ -19,6 +19,7 @@ const config = {
     },
     extend: {
       colors: {
+        // Existing shadcn/ui colors
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -51,6 +52,35 @@ const config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+
+        // Space Theme Colors
+        // Background Colors
+        'space': {
+          black: '#000000',         // Main background
+          surface: '#111111',       // Surface/Cards
+          'surface-light': '#1A1A1A', // Light surface variant
+        },
+
+        // Primary UI Colors
+        'rocket': {
+          DEFAULT: '#FF4B00',       // Primary orange
+          hover: '#E04400',         // Darker orange for hover states
+          light: '#FF8350',         // Light tint for subtle accents
+        },
+
+        // Accent/Secondary Colors
+        'mission': {
+          'gray-1': '#C4C4C4',     // Accent gray 1 (matches logo white tone)
+          'gray-2': '#8A8A8A',     // Accent gray 2 (for text)
+          'gray-3': '#3A3A3A',     // Accent gray 3 (dividers, strokes)
+        },
+
+        // Text Colors
+        'cosmos': {
+          white: '#EDEDED',         // Text on dark
+          secondary: '#A8A8A8',     // Secondary text
+          disabled: '#6A6A6A',      // Disabled text
         },
       },
       borderRadius: {
