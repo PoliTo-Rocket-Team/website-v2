@@ -57,9 +57,8 @@ const config = {
         // Space Theme Colors
         // Background Colors
         'space': {
-          black: '#000000',         // Main background
-          surface: '#111111',       // Surface/Cards
-          'surface-light': '#1A1A1A', // Light surface variant
+          black: '#121212',         // Main background
+          surface: '#1A1A1A',       // Surface/Cards
         },
 
         // Primary UI Colors
