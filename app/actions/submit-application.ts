@@ -97,4 +97,3 @@ export async function submitApplication(formData: FormData) {
     throw error;
   }
 }
-

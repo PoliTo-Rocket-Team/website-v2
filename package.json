@@ -24,6 +24,7 @@
     "autoprefixer": "10.4.20",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "jose": "^6.0.12",
     "lucide-react": "^0.468.0",
     "next": "latest",
