@@ -1,36 +1,35 @@
 "use server";
 
 import { createSupabaseClient } from "@/utils/supabase/client";
-import { Database } from "@/types/supabase";
 import { auth } from "@/auth";
 
-export type Member = Database["public"]["Tables"]["members"]["Row"] & {
-  users?: Partial<Database["public"]["Tables"]["users"]["Row"]>[] | null;
-  roles?:
-    | (Partial<Database["public"]["Tables"]["roles"]["Row"]> & {
-        departments?: Partial<
-          Database["public"]["Tables"]["departments"]["Row"]
-        > | null;
-        divisions?: Partial<
-          Database["public"]["Tables"]["divisions"]["Row"]
-        > | null;
-      })[]
-    | null;
+type MemberNode = {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url: string | null;
+  role_title: string;
 };
 
-export type Role = Database["public"]["Tables"]["roles"]["Row"] & {
-  departments?: Partial<
-    Database["public"]["Tables"]["departments"]["Row"]
-  > | null;
-  divisions?: Partial<Database["public"]["Tables"]["divisions"]["Row"]> | null;
+type DivisionNode = {
+  id: string;
+  name: string;
+  members: MemberNode[];
 };
 
-export async function getMembersByUserRole() {
+type DepartmentNode = {
+  id: string;
+  name: string;
+  divisions: Record<string, DivisionNode>;
+  direct_members: MemberNode[];
+};
+
+export async function getOrganizationTree() {
   const supabase = await createSupabaseClient();
   const session = await auth();
   const userId = session?.userId;
 
-  if (!userId) return { members: [], role: null };
+  if (!userId) return null;
 
   const { data: userData } = await supabase
     .from("users")
@@ -38,139 +37,115 @@ export async function getMembersByUserRole() {
     .eq("id", userId)
     .single();
 
-  if (!userData?.member) {
-    return { members: [], role: null };
-  }
-  const { data: userRoles } = await supabase
-    .from("roles")
-    .select("id, type, dept_id, division_id, title")
+  if (!userData?.member) return null;
+
+  const { data: userScopes } = await supabase
+    .from("scopes")
+    .select("scope, dept_id, division_id")
     .eq("member_id", userData.member);
 
-  if (!userRoles || userRoles.length === 0) {
-    return { members: [], role: null };
-  }
+  if (!userScopes || userScopes.length === 0) return null;
 
-  const { data: allMembers, error: allMembersError } = await supabase.from(
-    "members"
-  ).select(`
-      member_id, 
-      prt_email,
-      discord,
-      mobile_number,
-      nda_name,
-      nda_signed_at,
-      nda_confirmed_by,
+  const isPresident = userScopes.some((s) => s.scope === "all");
+
+  const allowedDeptIds = userScopes
+    .filter((s) => s.scope === "department" && s.dept_id)
+    .map((s) => s.dept_id);
+
+  const allowedDivIds = userScopes
+    .filter((s) => s.scope === "division" && s.division_id)
+    .map((s) => s.division_id);
+
+  let query = supabase.from("members").select(`
+      member_id,
       picture,
-      users (
-        first_name,
-        last_name,
-        email,
-        level_of_study,
-        linkedin,
-        origin,
-        polito_id,
-        program,
-        updated_at
-      ),
+      users ( first_name, last_name, email ),
       roles!inner (
-        id,
         title,
         type,
         dept_id,
         division_id,
-        departments(*),
-        divisions(*)
+        departments ( id, name ),
+        divisions ( id, name )
       )
     `);
 
-  if (allMembersError) {
-    console.error("Error getting all members:", allMembersError);
-    return { members: [], role: userRoles };
+  if (!isPresident) {
+    const conditions: string[] = [];
+
+    if (allowedDeptIds.length > 0) {
+      conditions.push(`dept_id.in.(${allowedDeptIds.join(",")})`);
+    }
+    if (allowedDivIds.length > 0) {
+      conditions.push(`division_id.in.(${allowedDivIds.join(",")})`);
+    }
+
+    if (conditions.length > 0) {
+      query = query.or(conditions.join(","), { foreignTable: "roles" });
+    } else {
+      return {};
+    }
   }
 
-  if (!allMembers) {
-    return { members: [], role: userRoles };
+  const { data: allMembers, error } = await query;
+
+  if (error) {
+    console.error("Error fetching hierarchy:", error);
+    return null;
   }
 
-  let filteredMembers: Member[] = [];
+  const tree: Record<string, DepartmentNode> = {};
 
-  for (const userRole of userRoles) {
-    allMembers.forEach(member => {
-      if (!member.roles) return;
-      if (member.member_id === userData.member) {
-        return;
-      }
-      member.roles.forEach(role => {
-        if (userRole.type === "president") {
-          filteredMembers.push({
-            ...member,
-            roles: [
-              {
-                ...role,
-                departments: role.departments
-                  ? (role.departments as Partial<
-                      Database["public"]["Tables"]["departments"]["Row"]
-                    > | null)
-                  : null,
-                divisions: role.divisions
-                  ? (role.divisions as Partial<
-                      Database["public"]["Tables"]["divisions"]["Row"]
-                    > | null)
-                  : null,
-              },
-            ],
-          });
-        } else if (userRole.type === "head") {
-          if (role.dept_id === userRole.dept_id) {
-            filteredMembers.push({
-              ...member,
-              roles: [
-                {
-                  ...role,
-                  departments: role.departments
-                    ? (role.departments as Partial<
-                        Database["public"]["Tables"]["departments"]["Row"]
-                      > | null)
-                    : null,
-                  divisions: role.divisions
-                    ? (role.divisions as Partial<
-                        Database["public"]["Tables"]["divisions"]["Row"]
-                      > | null)
-                    : null,
-                },
-              ],
-            });
-          }
-        } else if (userRole.type === "lead") {
-          if (
-            role.division_id === userRole.division_id &&
-            role.dept_id === userRole.dept_id
-          ) {
-            filteredMembers.push({
-              ...member,
-              roles: [
-                {
-                  ...role,
-                  departments: role.departments
-                    ? (role.departments as Partial<
-                        Database["public"]["Tables"]["departments"]["Row"]
-                      > | null)
-                    : null,
-                  divisions: role.divisions
-                    ? (role.divisions as Partial<
-                        Database["public"]["Tables"]["divisions"]["Row"]
-                      > | null)
-                    : null,
-                },
-              ],
-            });
-          }
-        }
-      });
-    });
-  }
-  return {
-    members: filteredMembers as Member[],
-    role: userRoles as Partial<Role>[],
+  const UNASSIGNED_KEY = "unassigned";
+
+  const getOrCreateDept = (id: string, name: string) => {
+    if (!tree[id]) {
+      tree[id] = { id, name, divisions: {}, direct_members: [] };
+    }
+    return tree[id];
   };
+
+  allMembers?.forEach((member) => {
+    if (member.member_id === userData.member) return;
+
+    if (!member.roles) return;
+
+    member.roles.forEach((role: any) => {
+      const memberNode: MemberNode = {
+        id: member.member_id.toString(),
+        name: `${member.users?.first_name || ""} ${member.users?.last_name || ""}`.trim(),
+        email: member.users?.email || "",
+        avatar_url: member.picture,
+        role_title: role.title,
+      };
+
+      const deptId = role.departments?.id
+        ? role.departments.id.toString()
+        : UNASSIGNED_KEY;
+      const deptName = role.departments?.name || "General / Unassigned";
+
+      const deptNode = getOrCreateDept(deptId, deptName);
+
+      if (role.divisions?.id) {
+        const divId = role.divisions.id.toString();
+        const divName = role.divisions.name;
+
+        if (!deptNode.divisions[divId]) {
+          deptNode.divisions[divId] = { id: divId, name: divName, members: [] };
+        }
+
+        if (
+          !deptNode.divisions[divId].members.find((m) => m.id === memberNode.id)
+        ) {
+          deptNode.divisions[divId].members.push(memberNode);
+        }
+      } else {
+        if (!deptNode.direct_members.find((m) => m.id === memberNode.id)) {
+          deptNode.direct_members.push(memberNode);
+        }
+      }
+    });
+  });
+
+  return tree;
 }
