@@ -8,6 +8,7 @@ import Resend from "next-auth/providers/resend";
 // https://authjs.dev/reference/core/types#authconfig
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // https://authjs.dev/getting-started/authentication/oauth
+  secret: process.env.AUTH_SECRET,
   providers: [
     Google,
     Resend({
