@@ -8,6 +8,7 @@ import { ApplyPosition } from "@/app/actions/types";
 import { submitApplication } from "@/app/actions/submit-application";
 import { useFormStatus } from "react-dom";
 import { ShinyButton } from "@/components/ui/shiny-button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const workSans = Work_Sans({
   subsets: ["latin"],
@@ -46,7 +47,7 @@ export function ApplyForm({ position }: ApplyFormProps) {
             name="name"
             type="text"
             required
-            className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="mt-1"
           />
         </div>
 
@@ -58,7 +59,7 @@ export function ApplyForm({ position }: ApplyFormProps) {
             name="surname"
             type="text"
             required
-            className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="mt-1"
           />
         </div>
 
@@ -70,7 +71,7 @@ export function ApplyForm({ position }: ApplyFormProps) {
             name="studentNumber"
             type="text"
             required
-            className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="mt-1"
           />
         </div>
 
@@ -82,20 +83,108 @@ export function ApplyForm({ position }: ApplyFormProps) {
             name="email"
             type="email"
             required
-            className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="mt-1"
           />
         </div>
 
-        {/* Major */}
+        {/* Origin */}
         <div>
-          <Label htmlFor="major" className={workSans.className}>Major</Label>
+          <Label htmlFor="origin" className={workSans.className}>Origin</Label>
           <Input
-            id="major"
-            name="major"
+            id="origin"
+            name="origin"
             type="text"
             required
-            className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="mt-1"
           />
+        </div>
+
+        {/* Program (instead of Major) */}
+        <div>
+          <Label htmlFor="program" className={workSans.className}>Program</Label>
+          <Input
+            id="program"
+            name="program"
+            type="text"
+            required
+            className="mt-1"
+          />
+        </div>
+
+        {/* LinkedIn */}
+        <div>
+          <Label htmlFor="linkedin" className={workSans.className}>LinkedIn Profile</Label>
+          <Input
+            id="linkedin"
+            name="linkedin"
+            type="url"
+            placeholder="https://www.linkedin.com/in/username"
+            className="mt-1"
+          />
+        </div>
+
+        {/* Level of Study (radio) */}
+        <div className="space-y-2">
+          <Label className={workSans.className}>Level of Study</Label>
+          <RadioGroup
+            name="levelOfStudy"
+            required
+            className="grid gap-2 md:grid-cols-2"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id="level-bachelor" value="bachelor" />
+              <Label htmlFor="level-bachelor" className={workSans.className}>
+                Bachelor
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id="level-master" value="master" />
+              <Label htmlFor="level-master" className={workSans.className}>
+                Master
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id="level-phd" value="phd" />
+              <Label htmlFor="level-phd" className={workSans.className}>
+                PhD
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id="level-other" value="other" />
+              <Label htmlFor="level-other" className={workSans.className}>
+                Other
+              </Label>
+            </div>
+          </RadioGroup>
+        </div>
+
+        {/* Sex (radio) */}
+        <div className="space-y-2">
+          <Label className={workSans.className}>Sex</Label>
+          <RadioGroup
+            name="sex"
+            required
+            className="grid gap-2 md:grid-cols-3"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id="sex-male" value="male" />
+              <Label htmlFor="sex-male" className={workSans.className}>
+                Male
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id="sex-female" value="female" />
+              <Label htmlFor="sex-female" className={workSans.className}>
+                Female
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id="sex-other" value="other" />
+              <Label htmlFor="sex-other" className={workSans.className}>
+                Other / Prefer not to say
+              </Label>
+            </div>
+          </RadioGroup>
         </div>
 
         {/* Graduation Year */}
@@ -108,7 +197,7 @@ export function ApplyForm({ position }: ApplyFormProps) {
             min="2020"
             max="2030"
             required
-            className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="mt-1"
           />
         </div>
 
@@ -121,7 +210,7 @@ export function ApplyForm({ position }: ApplyFormProps) {
             type="file"
             accept=".pdf"
             required
-            className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="mt-1"
           />
           <p className="text-xs text-muted-foreground mt-1">
             Maximum file size: 10MB
@@ -138,7 +227,7 @@ export function ApplyForm({ position }: ApplyFormProps) {
               type="file"
               accept=".pdf"
               required
-              className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="mt-1"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Maximum file size: 10MB
@@ -157,7 +246,7 @@ export function ApplyForm({ position }: ApplyFormProps) {
                   id={`customAnswer-${index}`}
                   name={`customAnswer-${index}`}
                   required
-                  className="mt-1 bg-[#0F0F0F] text-white border rounded-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="mt-1"
                   rows={4}
                 />
               </div>

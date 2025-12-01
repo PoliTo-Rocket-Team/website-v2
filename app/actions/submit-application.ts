@@ -16,7 +16,11 @@ export async function submitApplication(formData: FormData) {
     const surname = formData.get("surname") as string;
     const studentNumber = formData.get("studentNumber") as string;
     const email = formData.get("email") as string;
-    const major = formData.get("major") as string;
+    const origin = formData.get("origin") as string;
+    const program = formData.get("program") as string;
+    const linkedin = formData.get("linkedin") as string | null;
+    const levelOfStudy = formData.get("levelOfStudy") as string;
+    const sex = formData.get("sex") as string;
     const graduationYear = formData.get("graduationYear") as string;
     const positionId = formData.get("positionId") as string;
     const cv = formData.get("cv") as File;
@@ -28,7 +32,10 @@ export async function submitApplication(formData: FormData) {
       !surname ||
       !studentNumber ||
       !email ||
-      !major ||
+      !origin ||
+      !program ||
+      !levelOfStudy ||
+      !sex ||
       !graduationYear ||
       !positionId ||
       !cv
@@ -49,8 +56,7 @@ export async function submitApplication(formData: FormData) {
     }
 
     // Extract custom answers
-    const customAnswers: Array<{ questionIndex: number; answer: string }> =
-      [];
+    const customAnswers: Array<{ questionIndex: number; answer: string }> = [];
     let index = 0;
     while (true) {
       const answer = formData.get(`customAnswer-${index}`) as string | null;
@@ -62,6 +68,24 @@ export async function submitApplication(formData: FormData) {
         answer: answer.trim(),
       });
       index++;
+    }
+
+    // Add structured answers for the new fields so they are still persisted
+    const extraFields: Array<{ label: string; value: string | null }> = [
+      { label: "Origin", value: origin },
+      { label: "Program", value: program },
+      { label: "LinkedIn", value: linkedin },
+      { label: "Level of Study", value: levelOfStudy },
+      { label: "Sex", value: sex },
+    ];
+
+    for (const field of extraFields) {
+      if (field.value && field.value.trim().length > 0) {
+        customAnswers.push({
+          questionIndex: customAnswers.length,
+          answer: `${field.label}: ${field.value.trim()}`,
+        });
+      }
     }
 
     // Upload CV file

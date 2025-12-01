@@ -1,23 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { Orbitron, Work_Sans } from "next/font/google";
 import { getAllPositions } from "@/app/actions/get-apply-positions";
 import { getPositionFromSlug } from "@/lib/utils";
 import { ApplyForm } from "@/components/apply-form";
 import { Button } from "@/components/ui/button";
-
-const orbitron = Orbitron({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
-  variable: "--font-orbitron",
-});
-
-const workSans = Work_Sans({
-  subsets: ["latin"],
-  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-  variable: "--font-work-sans",
-});
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -44,11 +31,26 @@ export default async function ApplyPage({ params }: PageProps) {
   return (
     <>
       {/* Full page background gradient - Orange light from top right */}
-      <div 
-        className="fixed inset-0 -z-10"
+      {/* Light mode: vivid but balanced orange glow */}
+      <div
+        className="fixed inset-0 -z-10 dark:hidden"
         style={{
-          background: '#000000',
-          backgroundImage: 'radial-gradient(ellipse at top right, rgba(255, 140, 0, 0.30) 0%, rgba(255, 102, 0, 0.20) 30%, rgba(0, 0, 0, 0) 70%)'
+          backgroundColor: "hsl(var(--background))",
+          backgroundImage:
+            "radial-gradient(ellipse at top right, rgba(255,75,0,0.65) 0%, rgba(255,120,40,0.5) 26%, rgba(255,155,70,0.32) 44%, rgba(255,200,140,0.16) 64%, rgba(0,0,0,0) 80%), url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'><filter id='noiseFilter'><feTurbulence type='fractalNoise' baseFrequency='4.22' numOctaves='6' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.32'/></svg>\")",
+          backgroundBlendMode: "normal",
+          backgroundSize: "cover, 320px 320px",
+        }}
+      />
+      {/* Dark mode: slightly softer orange so it doesn't overpower the dark background */}
+      <div
+        className="fixed inset-0 -z-10 hidden dark:block"
+        style={{
+          backgroundColor: "hsl(var(--background))",
+          backgroundImage:
+            "radial-gradient(ellipse at top right, rgba(255,75,0,0.6) 0%, rgba(255,102,0,0.5) 28%, rgba(255,140,0,0.25) 48%, rgba(0,0,0,0) 72%), url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'><filter id='noiseFilter'><feTurbulence type='fractalNoise' baseFrequency='4.22' numOctaves='6' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.35'/></svg>\")",
+          backgroundBlendMode: "soft-light",
+          backgroundSize: "cover, 320px 320px",
         }}
       />
       <div className="relative min-h-screen">
@@ -71,7 +73,7 @@ export default async function ApplyPage({ params }: PageProps) {
           <div className="space-y-6 md:space-y-8">
             {/* Position title */}
             <div>
-              <h1 className={`text-3xl md:text-5xl lg:text-6xl font-bold text-primary leading-tight ${orbitron.className}`}>
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-primary leading-tight">
                 {position.title}
               </h1>
             </div>
@@ -79,19 +81,19 @@ export default async function ApplyPage({ params }: PageProps) {
             {/* Department and Division */}
             <div className="space-y-3">
               <div>
-                <h2 className={`text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1 ${workSans.className}`}>
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
                   Department
                 </h2>
-                <p className={`text-base md:text-lg text-foreground ${workSans.className}`}>
+                <p className="text-base md:text-lg text-foreground">
                   {position.dept_name}
                 </p>
               </div>
 
               <div>
-                <h2 className={`text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1 ${workSans.className}`}>
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
                   Division
                 </h2>
-                <p className={`text-base md:text-lg text-foreground ${workSans.className}`}>
+                <p className="text-base md:text-lg text-foreground">
                   {position.div_name}
                 </p>
               </div>
@@ -99,13 +101,13 @@ export default async function ApplyPage({ params }: PageProps) {
 
             {/* Description */}
             {position.description && (
-              <div>
-                <h2 className={`text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 ${workSans.className}`}>
+              <div className="space-y-3">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   Description
                 </h2>
-                <pre className={`whitespace-pre-wrap text-sm md:text-base text-muted-foreground leading-relaxed ${workSans.className}`}>
+                <p className="text-base md:text-lg leading-relaxed text-foreground/90">
                   {position.description}
-                </pre>
+                </p>
               </div>
             )}
 
@@ -113,12 +115,12 @@ export default async function ApplyPage({ params }: PageProps) {
             {position.required_skills &&
               position.required_skills.length > 0 && (
                 <div>
-                  <h2 className={`text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 ${workSans.className}`}>
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                     Required Skills
                   </h2>
                   <ul className="list-disc list-outside pl-5 space-y-2">
                     {position.required_skills.map((skill, i) => (
-                      <li key={i} className={`text-sm md:text-base text-muted-foreground ${workSans.className}`}>
+                      <li key={i} className="text-sm md:text-base text-muted-foreground">
                         {skill}
                       </li>
                     ))}
@@ -130,12 +132,12 @@ export default async function ApplyPage({ params }: PageProps) {
             {position.desirable_skills &&
               position.desirable_skills.length > 0 && (
                 <div>
-                  <h2 className={`text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 ${workSans.className}`}>
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                     Desirable Skills
                   </h2>
                   <ul className="list-disc list-outside pl-5 space-y-2">
                     {position.desirable_skills.map((skill, i) => (
-                      <li key={i} className={`text-sm md:text-base text-muted-foreground ${workSans.className}`}>
+                      <li key={i} className="text-sm md:text-base text-muted-foreground">
                         {skill}
                       </li>
                     ))}
