@@ -17,7 +17,7 @@
 
 import { createSupabaseClient } from "@/utils/supabase/client";
 import { ApplyPosition } from "./types";
-import { getMemberScopes, type ScopeInfo } from "./get-member-scopes";
+import { getUserScope, type ScopeInfo } from "./get-user-scope";
 
 /**
  * Get positions filtered by user's scope with database-level filtering
@@ -27,7 +27,7 @@ export async function getPositionsByMemberScope(): Promise<{
   positions: ApplyPosition[];
 }> {
   // Get user's scope information filtered for positions target
-  const { scope: scopeInfo } = (await getMemberScopes("positions")) as {
+  const { scope: scopeInfo } = (await getUserScope("positions")) as {
     scope: ScopeInfo;
   };
 

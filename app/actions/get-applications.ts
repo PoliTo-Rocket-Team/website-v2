@@ -17,8 +17,7 @@
 
 import { createSupabaseClient } from "@/utils/supabase/client";
 import { Applications } from "./types";
-import { getCurrentMemberId } from "./get-memberId";
-import { getMemberScopes, type ScopeInfo } from "./get-member-scopes";
+import { getUserScope, type ScopeInfo } from "./get-user-scope";
 
 /**
  * Get applications filtered by user's scope with database-level filtering
@@ -28,7 +27,7 @@ export async function getApplicationsByMemberScope(): Promise<{
   //! todo needs to be optimized with caching
 }> {
   // Get user's scope information filtered for applications target
-  const { scope: scopeInfo } = (await getMemberScopes("applications")) as {
+  const { scope: scopeInfo } = (await getUserScope("applications")) as {
     scope: ScopeInfo;
   };
 
@@ -107,7 +106,7 @@ export async function getApplicationsByMemberScope(): Promise<{
      * Return special marker for middleware to handle redirect.
      * More efficient than querying and getting zero results.
      */
-    return { applications: []};
+    return { applications: [] };
   }
 
   const { data: applications, error } = await query.order("applied_at", {
