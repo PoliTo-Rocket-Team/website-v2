@@ -31,13 +31,13 @@ export default async function ApplyPage({ params }: PageProps) {
   return (
     <>
       {/* Full page background gradient - Orange light from top right */}
-      {/* Light mode: vivid but balanced orange glow */}
+      {/* Light mode: softer, lighter orange glow */}
       <div
         className="fixed inset-0 -z-10 dark:hidden"
         style={{
           backgroundColor: "hsl(var(--background))",
           backgroundImage:
-            "radial-gradient(ellipse at top right, rgba(255,75,0,0.65) 0%, rgba(255,120,40,0.5) 26%, rgba(255,155,70,0.32) 44%, rgba(255,200,140,0.16) 64%, rgba(0,0,0,0) 80%), url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'><filter id='noiseFilter'><feTurbulence type='fractalNoise' baseFrequency='4.22' numOctaves='6' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.32'/></svg>\")",
+            "radial-gradient(ellipse at top right, rgba(255,133,77,0.45) 0%, rgba(255,160,102,0.32) 26%, rgba(255,189,133,0.2) 46%, rgba(255,214,170,0.12) 66%, rgba(0,0,0,0) 82%), url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'><filter id='noiseFilter'><feTurbulence type='fractalNoise' baseFrequency='4.22' numOctaves='5' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.22'/></svg>\")",
           backgroundBlendMode: "normal",
           backgroundSize: "cover, 320px 320px",
         }}
