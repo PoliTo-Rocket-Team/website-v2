@@ -20,11 +20,7 @@ export default async function ApplyPage({ params }: PageProps) {
   const position = getPositionFromSlug(slug, positions);
 
   // Check if position exists, is active, and not deleted
-  if (
-    !position ||
-    !position.status ||
-    (position as any).is_deleted === true
-  ) {
+  if (!position || !position.status || (position as any).is_deleted === true) {
     notFound();
   }
 
@@ -32,7 +28,7 @@ export default async function ApplyPage({ params }: PageProps) {
     <>
       {/* Full page background gradient - Orange light from top right */}
       {/* Light mode: softer, lighter orange glow */}
-      <div
+      {/* <div
         className="fixed inset-0 -z-10 dark:hidden"
         style={{
           backgroundColor: "hsl(var(--background))",
@@ -41,9 +37,9 @@ export default async function ApplyPage({ params }: PageProps) {
           backgroundBlendMode: "normal",
           backgroundSize: "cover, 320px 320px",
         }}
-      />
+      /> */}
       {/* Dark mode: slightly softer orange so it doesn't overpower the dark background */}
-      <div
+      {/* <div
         className="fixed inset-0 -z-10 hidden dark:block"
         style={{
           backgroundColor: "hsl(var(--background))",
@@ -52,110 +48,123 @@ export default async function ApplyPage({ params }: PageProps) {
           backgroundBlendMode: "soft-light",
           backgroundSize: "cover, 320px 320px",
         }}
+      /> */}
+      //! todo design refeactor may be needed for this background
+      <div
+        className="absolute left-0 right-0 top-0 h-[480px] opacity-60 -z-10 "
+        style={{
+          background: "linear-gradient(to bottom, var(--red-4), transparent)",
+        }}
       />
+
       <div className="relative min-h-screen">
-      {/* Main content container */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12">
-        {/* Back to positions link */}
-        <Link href="/apply">
-          <Button
-            variant="ghost"
-            className="mb-6 md:mb-8 text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4 mr-2" />
-            Back to positions
-          </Button>
-        </Link>
+        {/* Main content container */}
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12">
+          {/* Back to positions link */}
+          <Link href="/apply">
+            <Button
+              variant="ghost"
+              className="mb-6 md:mb-8 text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Back to positions
+            </Button>
+          </Link>
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16">
-          {/* Left column - Position details */}
-          <div className="space-y-6 md:space-y-8">
-            {/* Position title */}
-            <div>
-              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-primary leading-tight">
-                {position.title}
-              </h1>
-            </div>
-
-            {/* Department and Division */}
-            <div className="space-y-3">
+          {/* Two-column layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16">
+            {/* Left column - Position details */}
+            <div className="space-y-6 md:space-y-8">
+              {/* Position title */}
               <div>
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  Department
-                </h2>
-                <p className="text-base md:text-lg text-foreground">
-                  {position.dept_name}
-                </p>
+                <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-primary leading-tight">
+                  {position.title}
+                </h1>
               </div>
 
-              <div>
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  Division
-                </h2>
-                <p className="text-base md:text-lg text-foreground">
-                  {position.div_name}
-                </p>
-              </div>
-            </div>
-
-            {/* Description */}
-            {position.description && (
+              {/* Department and Division */}
               <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                  Description
-                </h2>
-                <p className="text-base md:text-lg leading-relaxed text-foreground/90">
-                  {position.description}
-                </p>
+                <div>
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Department
+                  </h2>
+                  <p className="text-base md:text-lg text-foreground">
+                    {position.dept_name}
+                  </p>
+                </div>
+
+                <div>
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Division
+                  </h2>
+                  <p className="text-base md:text-lg text-foreground">
+                    {position.div_name}
+                  </p>
+                </div>
               </div>
-            )}
 
-            {/* Required Skills */}
-            {position.required_skills &&
-              position.required_skills.length > 0 && (
-                <div>
-                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                    Required Skills
+              {/* Description */}
+              {position.description && (
+                <div className="space-y-3">
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                    Description
                   </h2>
-                  <ul className="list-disc list-outside pl-5 space-y-2">
-                    {position.required_skills.map((skill, i) => (
-                      <li key={i} className="text-sm md:text-base text-muted-foreground">
-                        {skill}
-                      </li>
-                    ))}
-                  </ul>
+                  <p className="text-base md:text-lg leading-relaxed text-foreground/90">
+                    {position.description}
+                  </p>
                 </div>
               )}
 
-            {/* Desirable Skills */}
-            {position.desirable_skills &&
-              position.desirable_skills.length > 0 && (
-                <div>
-                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                    Desirable Skills
-                  </h2>
-                  <ul className="list-disc list-outside pl-5 space-y-2">
-                    {position.desirable_skills.map((skill, i) => (
-                      <li key={i} className="text-sm md:text-base text-muted-foreground">
-                        {skill}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-          </div>
+              {/* Required Skills */}
+              {position.required_skills &&
+                position.required_skills.length > 0 && (
+                  <div>
+                    <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                      Required Skills
+                    </h2>
+                    <ul className="list-disc list-outside pl-5 space-y-2">
+                      {position.required_skills.map((skill, i) => (
+                        <li
+                          key={i}
+                          className="text-sm md:text-base text-muted-foreground"
+                        >
+                          {skill}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-          {/* Right column - Application form */}
-          <div className="lg:sticky lg:top-8 lg:self-start">
-            <div className="p-6 md:p-8">
-              <ApplyForm position={position} />
+              {/* Desirable Skills */}
+              {position.desirable_skills &&
+                position.desirable_skills.length > 0 && (
+                  <div>
+                    <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                      Desirable Skills
+                    </h2>
+                    <ul className="list-disc list-outside pl-5 space-y-2">
+                      {position.desirable_skills.map((skill, i) => (
+                        <li
+                          key={i}
+                          className="text-sm md:text-base text-muted-foreground"
+                        >
+                          {skill}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+            </div>
+
+            {/* Right column - Application form */}
+            <div className="lg:sticky lg:top-8 lg:self-start">
+              <div className="p-6 md:p-8">
+                <ApplyForm position={position} />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
     </>
   );
 }
-
