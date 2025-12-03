@@ -7,7 +7,6 @@
     "generate:supabase-types": "supabase gen types typescript --local > types/supabase.ts",
     "minio:start": "docker-compose -f minio/docker-compose.dev.yml up -d",
     "minio:stop": "docker-compose -f minio/docker-compose.dev.yml down",
-    "minio:log-stream": "docker-compose -f minio/docker-compose.dev.yml logs -f minio",
     "minio:logs": "docker-compose -f minio/docker-compose.dev.yml logs --tail=20"
   },
   "dependencies": {

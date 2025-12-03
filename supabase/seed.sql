@@ -738,9 +738,9 @@ INSERT INTO scopes (user_id, scope, target, access_level, dept_id, division_id, 
 ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'division', 'all', 'edit', NULL, 4, NULL),         -- Claudia - division lead for Event Management
 
 -- Website content management scopes
-('1a111111-1111-1111-1111-111111111111', 'website', 'blog', 'edit', NULL, NULL, NULL),      -- Giovanni - can edit blog content
-('1a222222-2222-2222-2222-222222222222', 'website', 'faq', 'edit', NULL, NULL, NULL),       -- Martina - can edit FAQ content
-('1a333333-3333-3333-3333-333333333333', 'website', 'blog', 'view', NULL, NULL, NULL),     -- Federico - can view blog content
+('1a111111-1111-1111-1111-111111111111', 'core_member', 'blog', 'edit', NULL, NULL, NULL),      -- Giovanni - can edit blog content
+('1a222222-2222-2222-2222-222222222222', 'core_member', 'faq', 'view', NULL, NULL, NULL),       -- Martina - can edit FAQ content
+('1a333333-3333-3333-3333-333333333333', 'core_member', 'blog', 'view', NULL, NULL, NULL),     -- Federico - can view blog content
 
 -- Additional examples for coverage
 ('1a444444-4444-4444-4444-444444444444', 'division', 'members', 'view', NULL, 5, NULL),    -- Alice - can view members in Communications div
