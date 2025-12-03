@@ -1,9 +1,8 @@
 [![Netlify Status](https://api.netlify.com/api/v1/badges/4c661322-7277-43f5-aff6-5485d5c49180/deploy-status)](https://app.netlify.com/sites/dashing-pika-6e410b/deploys)
 
-
 # PoliTo Rocket Team Website
-This is the repository for the PoliTo Rocket Team website. The website is built using Next.js, Supabase for database management, next-auth for authentication, and Tailwind CSS for styling.
 
+This is the repository for the PoliTo Rocket Team website. The website is built using Next.js, Supabase for database management, next-auth for authentication, and Tailwind CSS for styling.
 
 ## Setup Instructions
 
@@ -67,6 +66,18 @@ This is the repository for the PoliTo Rocket Team website. The website is built 
 
 - `pnpm generate:supabase-types` - Generate types for supabase queries
 
+#### MinIO Commands (for file storage development)
+
+- `pnpm minio:start` - Start MinIO container for local file storage
+- `pnpm minio:stop` - Stop MinIO container
+- `pnpm minio:logs` - View MinIO container logs
+
+**MinIO Setup:**
+
+1. Start MinIO: `pnpm minio:start`
+2. Access MinIO Console: http://localhost:9001 (Username: `minioadmin`, Password: `minioadmin123`)
+3. The app will now mimic Cloudflare R2 for file storage with MinIO on your local machine.
+
 ### Basic database workflow
 
 If you want to create a new table in Supabase Studio (which runs on http://localhost:54323 by default):
@@ -75,15 +86,13 @@ If you want to create a new table in Supabase Studio (which runs on http://local
 
 - Next, generate a schema diff by running the following command:
 
-    `supabase db diff -f <migration_name>`
+  `supabase db diff -f <migration_name>`
 
-    You can choose a descriptive name for the migration file.
+  You can choose a descriptive name for the migration file.
 
 - This command will create a migration file at `supabase/migrations/<timestamp>_<migration_name>.sql`.
 
 - Open the generated migration file and paste the SQL code you copied earlier. This makes the migration file much easier to read and maintain, since the auto-generated ones are often difficult to follow.
-
-
 
 If you want to make some changes in production and development databases, you should push the migration file to the repository.
 
