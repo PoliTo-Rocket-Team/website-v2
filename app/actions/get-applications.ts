@@ -50,6 +50,20 @@ export async function getApplicationsByMemberScope(): Promise<{
       `
       *,
       user:users!applications_user_id_fkey(*),
+      cv_file:application_files!applications_cv_file_id_fkey(
+        id,
+        original_filename,
+        file_hash,
+        mime_type,
+        file_size
+      ),
+      cover_letter_file:application_files!applications_cover_letter_file_id_fkey(
+        id,
+        original_filename,
+        file_hash,
+        mime_type,
+        file_size
+      ),
       apply_position:apply_positions!inner(*,
         divisions!inner(
           id, name, code, dept_id,
@@ -286,6 +300,12 @@ function processApplicationsData(applications: any[]): Applications[] {
         div_id: app.apply_position?.divisions?.id ?? 0,
         department: app.apply_position?.divisions?.departments?.name ?? "",
         dept_id: app.apply_position?.divisions?.departments?.id ?? 0,
+
+        // file flatten
+        cv_name: app.cv_file?.original_filename || null,
+        cv_file_hash: app.cv_file?.file_hash || null,
+        ml_name: app.cover_letter_file?.original_filename || null,
+        ml_file_hash: app.cover_letter_file?.file_hash || null,
 
         // other applications for this user
         other_applications: otherApps,
