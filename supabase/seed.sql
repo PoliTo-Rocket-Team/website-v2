@@ -393,9 +393,78 @@ INSERT INTO apply_positions (status, division_id, title, description, required_s
 
 
 
--- Insert Applications with timestamptz for applied_at
-INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_at, status, custom_answers) VALUES
-(1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 'chiara_ml.pdf', 'chiara_cv.pdf', '2023-02-05 16:45:00+01'::timestamptz, 'accepted', 
+-- Insert Application Files first
+INSERT INTO application_files (r2_key, original_filename, mime_type, file_size, file_hash, user_id) VALUES
+-- Files for the accepted full-stack application
+('applications/chiara_cv_hash123.pdf', 'chiara_cv.pdf', 'application/pdf', 524288, 'hash123cv', 'dddddddd-dddd-dddd-dddd-dddddddddddd'),
+('applications/chiara_ml_hash456.pdf', 'chiara_ml.pdf', 'application/pdf', 262144, 'hash456ml', 'dddddddd-dddd-dddd-dddd-dddddddddddd'),
+
+-- Files for Position 2: Graphic Designer applications
+('applications/lorenzo_graphic_cv_hash789.pdf', 'lorenzo_graphic_cv.pdf', 'application/pdf', 400000, 'hash789', 'f1111111-1111-1111-1111-111111111111'),
+('applications/lorenzo_graphic_ml_hash101.pdf', 'lorenzo_graphic_ml.pdf', 'application/pdf', 300000, 'hash101', 'f1111111-1111-1111-1111-111111111111'),
+('applications/martina_photo_cv_hash102.pdf', 'martina_photo_cv.pdf', 'application/pdf', 450000, 'hash102', 'f2222222-2222-2222-2222-222222222222'),
+('applications/martina_photo_ml_hash103.pdf', 'martina_photo_ml.pdf', 'application/pdf', 350000, 'hash103', 'f2222222-2222-2222-2222-222222222222'),
+
+-- Files for Position 3: Photographer & Videomaker
+('applications/federico_photo_cv_hash104.pdf', 'federico_photo_cv.pdf', 'application/pdf', 420000, 'hash104', 'f3333333-3333-3333-3333-333333333333'),
+('applications/federico_photo_ml_hash105.pdf', 'federico_photo_ml.pdf', 'application/pdf', 280000, 'hash105', 'f3333333-3333-3333-3333-333333333333'),
+
+-- Files for Position 4: Social Media Manager
+('applications/alice_social_cv_hash106.pdf', 'alice_social_cv.pdf', 'application/pdf', 380000, 'hash106', 'f4444444-4444-4444-4444-444444444444'),
+('applications/alice_social_ml_hash107.pdf', 'alice_social_ml.pdf', 'application/pdf', 250000, 'hash107', 'f4444444-4444-4444-4444-444444444444'),
+
+-- Files for Position 5: Sponsoring Specialist
+('applications/giovanni_sponsor_cv_hash108.pdf', 'giovanni_sponsor_cv.pdf', 'application/pdf', 410000, 'hash108', 'f5555555-5555-5555-5555-555555555555'),
+
+-- Files for Position 9: Embedded Software Engineer
+('applications/nicolo_embedded_cv_hash109.pdf', 'nicolo_embedded_cv.pdf', 'application/pdf', 390000, 'hash109', 'f9999999-9999-9999-9999-999999999999'),
+('applications/ahmed_embedded_cv_hash110.pdf', 'ahmed_embedded_cv.pdf', 'application/pdf', 420000, 'hash110', 'a3333333-3333-3333-3333-333333333333'),
+
+-- Files for Position 10: Desktop Application Developer
+('applications/camilla_desktop_cv_hash111.pdf', 'camilla_desktop_cv.pdf', 'application/pdf', 385000, 'hash111', '1d111111-1111-1111-1111-111111111111'),
+
+-- Files for Position 11: RF Specialist
+('applications/riccardo_rf_cv_hash112.pdf', 'riccardo_rf_cv.pdf', 'application/pdf', 405000, 'hash112', '1d222222-2222-2222-2222-222222222222'),
+
+-- Files for Position 12: Hardware Engineer
+('applications/anna_hardware_cv_hash113.pdf', 'anna_hardware_cv.pdf', 'application/pdf', 395000, 'hash113', '1d333333-3333-3333-3333-333333333333'),
+
+-- Files for Position 13: Control System Engineer
+('applications/manuel_control_cv_hash114.pdf', 'manuel_control_cv.pdf', 'application/pdf', 415000, 'hash114', '1d444444-4444-4444-4444-444444444444'),
+
+-- Files for Position 14: Recovery Engineer
+('applications/jessica_recovery_cv_hash115.pdf', 'jessica_recovery_cv.pdf', 'application/pdf', 375000, 'hash115', '1d555555-5555-5555-5555-555555555555'),
+
+-- Files for Position 15: Mission Analyst
+('applications/antonio_mission_cv_hash116.pdf', 'antonio_mission_cv.pdf', 'application/pdf', 430000, 'hash116', '1d666666-6666-6666-6666-666666666666'),
+
+-- Files for Position 16: Software Engineer
+('applications/chiara_software_cv_hash117.pdf', 'chiara_software_cv.pdf', 'application/pdf', 385000, 'hash117', '1d777777-7777-7777-7777-777777777777'),
+
+-- Files for Position 17: Design & Manufacturing Engineer
+('applications/marco_design_cv_hash118.pdf', 'marco_design_cv.pdf', 'application/pdf', 400000, 'hash118', '1d888888-8888-8888-8888-888888888888'),
+
+-- Files for Position 18: Structural Engineer
+('applications/elena_structural_cv_hash119.pdf', 'elena_structural_cv.pdf', 'application/pdf', 420000, 'hash119', '1d999999-9999-9999-9999-999999999999'),
+
+-- Files for Position 19: Feed System Engineer
+('applications/luca_feed_cv_hash120.pdf', 'luca_feed_cv.pdf', 'application/pdf', 410000, 'hash120', '1e111111-1111-1111-1111-111111111111'),
+('applications/sofia_bianchi_cv_hash121.pdf', 'sofia_bianchi_cv.pdf', 'application/pdf', 390000, 'hash121', 'a2222222-2222-2222-2222-222222222222'),
+
+-- Files for Position 20: Test Engineer (Propulsion)
+('applications/sofia_test_cv_hash122.pdf', 'sofia_test_cv.pdf', 'application/pdf', 405000, 'hash122', '1e222222-2222-2222-2222-222222222222'),
+
+-- Files for Position 21: Test Engineer (Thrust Chamber)
+('applications/matteo_thrust_cv_hash123.pdf', 'matteo_thrust_cv.pdf', 'application/pdf', 395000, 'hash123', '1e333333-3333-3333-3333-333333333333'),
+
+-- Files for Position 22: Propulsion Engineer
+('applications/giulia_propulsion_cv_hash124.pdf', 'giulia_propulsion_cv.pdf', 'application/pdf', 425000, 'hash124', '1e444444-4444-4444-4444-444444444444'),
+('applications/marco_rossi_cv_hash125.pdf', 'marco_rossi_cv.pdf', 'application/pdf', 380000, 'hash125', 'a1111111-1111-1111-1111-111111111111');
+
+-- Insert Applications with file references
+INSERT INTO applications (apply_position_id, user_id, cv_file_id, cover_letter_file_id, applied_at, status, custom_answers) VALUES
+-- Application for Position 1: Full-Stack Developer
+(1, 'dddddddd-dddd-dddd-dddd-dddddddddddd', 1, 2, '2023-02-05 16:45:00+01'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
        'question', 'Describe your experience with frontend frameworks',
@@ -407,8 +476,8 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
--- Applications for new positions
-(2, 'f1111111-1111-1111-1111-111111111111', 'lorenzo_graphic_ml.pdf', 'lorenzo_graphic_cv.pdf', '2023-06-05 14:30:00+02'::timestamptz, 'received', 
+-- Applications for Position 2: Graphic Designer
+(2, 'f1111111-1111-1111-1111-111111111111', 3, 4, '2023-06-05 14:30:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What design software do you use most frequently?',
@@ -420,107 +489,127 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(3, 'f2222222-2222-2222-2222-222222222222', 'martina_photo_ml.pdf', 'martina_photo_cv.pdf', '2023-06-06 09:15:00+02'::timestamptz, 'accepted', 
+(2, 'f2222222-2222-2222-2222-222222222222', 5, 6, '2023-06-06 09:15:00+02'::timestamptz, 'interview', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What design software do you use most frequently?',
+       'answer', 'Adobe Creative Suite and Figma for UI/UX design. I also use Canva for quick social media graphics'
+     ),
+     jsonb_build_object(
+       'question', 'Can you share examples of technical illustrations you have created?',
+       'answer', 'I have designed infographics explaining engineering processes and created visual guides for technical documentation'
+     )
+   ]),
+
+-- Applications for Position 3: Photographer & Videomaker
+(3, 'f3333333-3333-3333-3333-333333333333', 7, 8, '2023-06-07 11:20:00+02'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
        'question', 'What camera equipment are you familiar with?',
-       'answer', 'I work with Canon DSLR cameras, various lenses, drones for aerial photography, and professional lighting equipment'
+       'answer', 'Canon DSLR cameras, various lenses including macro and telephoto, DJI drones, and professional lighting setups'
      ),
      jsonb_build_object(
        'question', 'Do you have experience filming technical/engineering content?',
-       'answer', 'Yes, I have documented manufacturing processes and created educational videos for engineering projects'
+       'answer', 'Yes, I have documented manufacturing processes and created educational videos for engineering projects at university'
      )
    ]),
 
-(4, 'f3333333-3333-3333-3333-333333333333', 'federico_social_ml.pdf', 'federico_social_cv.pdf', '2023-06-07 11:20:00+02'::timestamptz, 'received', 
+-- Applications for Position 4: Social Media Manager
+(4, 'f4444444-4444-4444-4444-444444444444', 9, 10, '2023-06-08 16:45:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'Which social media platforms do you have experience managing?',
-       'answer', 'I have managed Instagram, LinkedIn, Twitter, and YouTube channels for tech companies and personal brands'
+       'answer', 'Instagram, LinkedIn, Twitter, YouTube, and TikTok. I have managed accounts with 10k+ followers'
      ),
      jsonb_build_object(
        'question', 'How do you measure social media success?',
-       'answer', 'I track engagement rates, reach, conversions, and community growth, using analytics tools to optimize content strategy'
+       'answer', 'I track engagement rates, reach, follower growth, and conversion metrics. I use analytics tools to optimize content strategy'
      )
    ]),
 
-(5, 'f4444444-4444-4444-4444-444444444444', 'alice_fullstack_ml.pdf', 'alice_fullstack_cv.pdf', '2023-06-08 16:45:00+02'::timestamptz, 'received', 
-   ARRAY[
-     jsonb_build_object(
-       'question', 'Describe your experience with modern web frameworks',
-       'answer', 'I have 3 years of experience with React and Next.js, building scalable web applications with TypeScript'
-     ),
-     jsonb_build_object(
-       'question', 'What is your approach to database design?',
-       'answer', 'I focus on normalization, performance optimization, and clear relationships, using tools like Prisma for type safety'
-     )
-   ]),
-
-(6, 'f5555555-5555-5555-5555-555555555555', 'giovanni_sponsor_ml.pdf', 'giovanni_sponsor_cv.pdf', '2023-06-09 10:30:00+02'::timestamptz, 'accepted', 
+-- Applications for Position 5: Sponsoring Specialist
+(5, 'f5555555-5555-5555-5555-555555555555', 11, NULL, '2023-06-09 10:30:00+02'::timestamptz, 'interview', 
    ARRAY[
      jsonb_build_object(
        'question', 'What types of partnerships have you developed before?',
-       'answer', 'I have secured sponsorships for student organizations and helped establish corporate partnerships for tech events'
+       'answer', 'I have secured sponsorships for university events, ranging from local businesses to tech companies'
      ),
      jsonb_build_object(
        'question', 'How do you approach sponsor relationship management?',
-       'answer', 'I maintain regular communication, provide detailed ROI reports, and ensure sponsors receive agreed-upon recognition and benefits'
+       'answer', 'I focus on building long-term relationships by delivering value, regular communication, and transparent reporting'
      )
    ]),
 
-(7, 'f6666666-6666-6666-6666-666666666666', 'beatrice_events_ml.pdf', 'beatrice_events_cv.pdf', '2023-06-10 13:45:00+02'::timestamptz, 'received', 
+-- Applications for Position 6: Events Specialist  
+(6, 'f6666666-6666-6666-6666-666666666666', NULL, NULL, '2023-06-10 14:15:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What types of events have you organized before?',
-       'answer', 'I have organized technical conferences, product launches, and educational workshops for 50-200 attendees'
+       'answer', 'University conferences, technical workshops, and promotional events for student organizations'
      ),
      jsonb_build_object(
        'question', 'How do you handle event logistics and coordination?',
-       'answer', 'I use project management tools, create detailed timelines, and maintain vendor relationships for smooth execution'
+       'answer', 'I use project management tools to track timelines, coordinate with vendors, and ensure all requirements are met'
      )
    ]),
 
-(8, 'f7777777-7777-7777-7777-777777777777', 'tommaso_mission_ml.pdf', 'tommaso_mission_cv.pdf', '2023-06-11 08:20:00+02'::timestamptz, 'received', 
+-- Applications for Position 7: Test & Mission Support Specialist
+(7, 'f7777777-7777-7777-7777-777777777777', NULL, NULL, '2023-06-11 09:45:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'Do you have experience with technical testing operations?',
-       'answer', 'Yes, I have coordinated testing for electronic systems and managed equipment calibration procedures'
+       'answer', 'I have supported testing operations during my internship at an automotive company, helping with data collection and equipment setup'
      ),
      jsonb_build_object(
        'question', 'How do you prioritize safety in high-stakes environments?',
-       'answer', 'I follow strict protocols, maintain clear communication, and ensure all team members are trained on safety procedures'
+       'answer', 'Safety protocols come first - I ensure all procedures are followed, equipment is checked, and communication is clear'
      )
    ]),
 
-(9, 'f8888888-8888-8888-8888-888888888888', 'sara_safety_ml.pdf', 'sara_safety_cv.pdf', '2023-06-12 14:15:00+02'::timestamptz, 'accepted', 
+-- Applications for Position 8: Safety Officer
+(8, 'f8888888-8888-8888-8888-888888888888', NULL, NULL, '2023-06-12 13:30:00+02'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
        'question', 'What safety certifications do you hold?',
-       'answer', 'I hold OSHA 30-Hour certification and have completed specialized training in chemical and laboratory safety'
+       'answer', 'I have OSHA 30-hour certification and first aid/CPR training. Currently pursuing additional safety management certification'
      ),
      jsonb_build_object(
        'question', 'Describe your approach to risk assessment in technical environments',
-       'answer', 'I conduct systematic hazard identification, probability analysis, and implement layered control measures to minimize risks'
+       'answer', 'I conduct systematic hazard identification, assess probability and severity, and implement controls following hierarchy of risk management'
      )
    ]),
 
-(10, 'f9999999-9999-9999-9999-999999999999', 'nicolo_embedded_ml.pdf', 'nicolo_embedded_cv.pdf', '2023-06-13 11:30:00+02'::timestamptz, 'received', 
+-- Applications for Position 9: Embedded Software Engineer
+(9, 'f9999999-9999-9999-9999-999999999999', 12, NULL, '2023-06-13 11:15:00+02'::timestamptz, 'interview', 
    ARRAY[
      jsonb_build_object(
        'question', 'What embedded platforms have you worked with?',
-       'answer', 'I have experience with Arduino, STM32 microcontrollers, and Raspberry Pi for various embedded projects'
+       'answer', 'Arduino, Raspberry Pi, STM32 microcontrollers, and ESP32 for IoT projects'
      ),
      jsonb_build_object(
        'question', 'Describe your experience with real-time systems development',
-       'answer', 'I have developed time-critical control systems using FreeRTOS and implemented interrupt-driven sensor interfaces'
+       'answer', 'I have developed real-time control systems for robotics projects, implementing interrupt-driven programming and timing-critical functions'
      )
    ]),
 
-(11, '1d111111-1111-1111-1111-111111111111', 'camilla_desktop_ml.pdf', 'camilla_desktop_cv.pdf', '2023-06-14 09:45:00+02'::timestamptz, 'received', 
+(9, 'a3333333-3333-3333-3333-333333333333', 13, NULL, '2024-01-18 09:45:00+01'::timestamptz, 'accepted', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What embedded platforms have you worked with?',
+       'answer', 'STM32, Arduino, and Raspberry Pi. I built a quadcopter flight controller from scratch'
+     ),
+     jsonb_build_object(
+       'question', 'Describe your experience with real-time systems development',
+       'answer', 'I implemented real-time control loops for drone stabilization with microsecond precision timing requirements'
+     )
+   ]),
+
+-- Applications for Position 10: Desktop Application Developer
+(10, '1d111111-1111-1111-1111-111111111111', 14, NULL, '2023-06-14 15:45:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'Which desktop development frameworks do you prefer?',
-       'answer', 'I prefer Qt for cross-platform applications and have experience with Electron for web-based desktop apps'
+       'answer', 'I prefer Electron for cross-platform apps and Qt for performance-critical applications'
      ),
      jsonb_build_object(
        'question', 'How do you approach real-time data visualization?',
@@ -528,188 +617,183 @@ INSERT INTO applications (apply_position_id, user_id, ml_name, cv_name, applied_
      )
    ]),
 
-(12, '1d222222-2222-2222-2222-222222222222', 'riccardo_rf_ml.pdf', 'riccardo_rf_cv.pdf', '2023-06-15 15:20:00+02'::timestamptz, 'accepted', 
+-- Applications for Position 11: RF Specialist
+(11, '1d222222-2222-2222-2222-222222222222', 15, NULL, '2023-06-15 10:30:00+02'::timestamptz, 'interview', 
    ARRAY[
      jsonb_build_object(
        'question', 'What RF frequency bands have you worked with?',
-       'answer', 'I have experience with UHF/VHF bands for telemetry and 2.4GHz/5.8GHz for high-bandwidth data transmission'
+       'answer', 'VHF/UHF for amateur radio, 2.4GHz for wireless systems, and some experience with S-band for telemetry'
      ),
      jsonb_build_object(
        'question', 'Do you hold an amateur radio license?',
-       'answer', 'Yes, I hold a General class amateur radio license and have experience with packet radio and digital modes'
+       'answer', 'Yes, I hold a General class license and actively participate in amateur radio emergency communications'
      )
    ]),
 
-(13, '1d333333-3333-3333-3333-333333333333', 'anna_hardware_ml.pdf', 'anna_hardware_cv.pdf', '2023-06-16 12:10:00+02'::timestamptz, 'received', 
+-- Applications for Position 12: Hardware Engineer
+(12, '1d333333-3333-3333-3333-333333333333', 16, NULL, '2023-06-16 14:20:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What PCB design software do you use?',
-       'answer', 'I primarily use Altium Designer and have experience with KiCad for open-source projects'
+       'answer', 'KiCad for open-source projects and Altium Designer for professional work. Also familiar with Eagle'
      ),
      jsonb_build_object(
        'question', 'Describe your experience with environmental testing of electronics',
-       'answer', 'I have conducted thermal cycling, vibration testing, and EMI/EMC compliance testing for aerospace applications'
+       'answer', 'I have conducted temperature cycling, vibration testing, and humidity testing for ruggedized electronics'
      )
    ]),
 
-(14, '1d444444-4444-4444-4444-444444444444', 'manuel_control_ml.pdf', 'manuel_control_cv.pdf', '2023-06-17 10:25:00+02'::timestamptz, 'received', 
+-- Applications for Position 13: Control System Engineer
+(13, '1d444444-4444-4444-4444-444444444444', 17, NULL, '2023-06-17 09:15:00+02'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
        'question', 'What control theory concepts are you most experienced with?',
-       'answer', 'I have strong experience with PID control, state-space methods, and Kalman filtering for estimation and control'
+       'answer', 'PID control, state-space methods, Kalman filtering, and adaptive control for dynamic systems'
      ),
      jsonb_build_object(
        'question', 'Describe your experience with flight control systems',
-       'answer', 'I have simulated and implemented autopilot systems for UAVs, including attitude control and trajectory following'
+       'answer', 'I designed and simulated autopilot systems for UAVs, implementing stabilization and waypoint navigation'
      )
    ]),
 
-(15, '1d555555-5555-5555-5555-555555555555', 'jessica_recovery_ml.pdf', 'jessica_recovery_cv.pdf', '2023-06-18 14:40:00+02'::timestamptz, 'accepted', 
+-- Applications for Position 14: Recovery Engineer
+(14, '1d555555-5555-5555-5555-555555555555', 18, NULL, '2023-06-18 16:30:00+02'::timestamptz, 'interview', 
    ARRAY[
      jsonb_build_object(
        'question', 'What types of recovery systems have you worked with?',
-       'answer', 'I have designed and tested parachute recovery systems for model rockets and high-altitude balloon payloads'
+       'answer', 'Parachute systems for model rockets, drogue and main chute deployment mechanisms'
      ),
      jsonb_build_object(
        'question', 'How do you approach recovery system reliability and safety?',
-       'answer', 'I implement redundant deployment mechanisms, conduct extensive ground testing, and use simulation for failure analysis'
+       'answer', 'Multiple redundancy, extensive testing, and conservative safety factors in all design calculations'
      )
    ]),
 
-(16, '1d666666-6666-6666-6666-666666666666', 'antonio_mission_ml.pdf', 'antonio_mission_cv.pdf', '2023-06-19 11:15:00+02'::timestamptz, 'received', 
+-- Applications for Position 15: Mission Analyst
+(15, '1d666666-6666-6666-6666-666666666666', 19, NULL, '2023-06-19 11:45:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What mission analysis tools are you familiar with?',
-       'answer', 'I have experience with MATLAB/Simulink for trajectory analysis and STK for mission planning and visualization'
+       'answer', 'MATLAB for trajectory analysis, STK for mission planning, and Python for custom simulation scripts'
      ),
      jsonb_build_object(
        'question', 'Describe your experience with trajectory optimization',
-       'answer', 'I have implemented optimal control algorithms for minimum-energy trajectories and constrained flight paths'
+       'answer', 'I optimized launch trajectories for maximum altitude using genetic algorithms and gradient-based methods'
      )
    ]),
 
-(17, '1d777777-7777-7777-7777-777777777777', 'chiara_software_ml.pdf', 'chiara_software_cv.pdf', '2023-06-20 09:30:00+02'::timestamptz, 'received', 
+-- Applications for Position 16: Software Engineer (Mission Analysis)
+(16, '1d777777-7777-7777-7777-777777777777', 20, NULL, '2023-06-20 13:15:00+02'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
        'question', 'What programming languages do you use for scientific computing?',
-       'answer', 'I primarily use Python with NumPy/SciPy, MATLAB for prototyping, and C++ for performance-critical applications'
+       'answer', 'Python with NumPy/SciPy, MATLAB for prototyping, and C++ for performance-critical simulations'
      ),
      jsonb_build_object(
        'question', 'Describe your experience with simulation software development',
-       'answer', 'I have developed Monte Carlo simulations for mission analysis and physics-based models for system dynamics'
+       'answer', 'I developed a 6DOF rocket simulation with atmospheric modeling and Monte Carlo analysis capabilities'
      )
    ]),
 
-(18, '1d888888-8888-8888-8888-888888888888', 'marco_manufacturing_ml.pdf', 'marco_manufacturing_cv.pdf', '2023-06-21 13:50:00+02'::timestamptz, 'accepted', 
+-- Applications for Position 17: Design & Additive Manufacturing Engineer
+(17, '1d888888-8888-8888-8888-888888888888', 21, NULL, '2023-06-21 10:45:00+02'::timestamptz, 'interview', 
    ARRAY[
      jsonb_build_object(
        'question', 'What CAD software do you use for design?',
-       'answer', 'I use SolidWorks for mechanical design and Fusion 360 for integrated CAD/CAM workflows'
+       'answer', 'SolidWorks for mechanical design, Fusion 360 for integrated CAM, and Blender for artistic modeling'
      ),
      jsonb_build_object(
        'question', 'Which additive manufacturing technologies have you worked with?',
-       'answer', 'I have experience with FDM, SLA, and SLS printing, optimizing designs for each technology constraints'
+       'answer', 'FDM printers, SLA for high-detail parts, and some experience with SLS for functional prototypes'
      )
    ]),
 
-(19, '1d999999-9999-9999-9999-999999999999', 'elena_structural_ml.pdf', 'elena_structural_cv.pdf', '2023-06-22 16:20:00+02'::timestamptz, 'received', 
+-- Applications for Position 18: Structural Engineer
+(18, '1d999999-9999-9999-9999-999999999999', 22, NULL, '2023-06-22 15:30:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What FEA software do you use for structural analysis?',
-       'answer', 'I primarily use ANSYS Mechanical and have experience with Abaqus for complex nonlinear analysis'
+       'answer', 'ANSYS for complex simulations, SolidWorks Simulation for quick analysis, and some experience with Abaqus'
      ),
      jsonb_build_object(
        'question', 'Describe your experience with aerospace structures',
-       'answer', 'I have analyzed composite panels, pressure vessels, and vibration-sensitive structures for aerospace applications'
+       'answer', 'I analyzed composite wing structures during my thesis, focusing on buckling and fatigue analysis'
      )
    ]),
 
-(20, '1e111111-1111-1111-1111-111111111111', 'luca_feed_ml.pdf', 'luca_feed_cv.pdf', '2023-06-23 10:05:00+02'::timestamptz, 'received', 
+-- Applications for Position 19: Feed System Engineer
+(19, '1e111111-1111-1111-1111-111111111111', 23, NULL, '2023-06-23 09:20:00+02'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
        'question', 'What experience do you have with fluid systems design?',
-       'answer', 'I have designed hydraulic systems and worked with high-pressure plumbing for industrial applications'
+       'answer', 'I designed hydraulic systems for industrial machinery and studied turbomachinery in my coursework'
      ),
      jsonb_build_object(
        'question', 'Describe your knowledge of rocket propellant handling',
-       'answer', 'I understand the safety requirements for handling cryogenic and hypergolic propellants, including containment systems'
+       'answer', 'I understand the safety requirements for handling hypergolic and cryogenic propellants from aerospace courses'
      )
    ]),
 
-(21, '1e222222-2222-2222-2222-222222222222', 'sofia_test1_ml.pdf', 'sofia_test1_cv.pdf', '2023-06-24 12:35:00+02'::timestamptz, 'accepted', 
+(19, 'a2222222-2222-2222-2222-222222222222', 24, NULL, '2024-01-20 14:15:00+01'::timestamptz, 'received', 
+   ARRAY[
+     jsonb_build_object(
+       'question', 'What experience do you have with fluid systems design?',
+       'answer', 'During my mechanical engineering studies, I designed a pump system for water distribution'
+     ),
+     jsonb_build_object(
+       'question', 'Describe your knowledge of rocket propellant handling',
+       'answer', 'I have studied the theoretical aspects and safety protocols for handling rocket propellants'
+     )
+   ]),
+
+-- Applications for Position 20: Test Engineer (Propulsion)
+(20, '1e222222-2222-2222-2222-222222222222', 25, NULL, '2023-06-24 14:10:00+02'::timestamptz, 'interview', 
    ARRAY[
      jsonb_build_object(
        'question', 'What types of propulsion testing have you been involved with?',
-       'answer', 'I have participated in solid rocket motor testing and have experience with test stand instrumentation'
+       'answer', 'I assisted with small-scale solid motor testing and data acquisition during university projects'
      ),
      jsonb_build_object(
        'question', 'How do you ensure safety during hazardous testing operations?',
-       'answer', 'I follow established safety protocols, maintain clear communication, and ensure proper emergency procedures are in place'
+       'answer', 'Comprehensive safety briefings, proper PPE, remote operation when possible, and emergency response plans'
      )
    ]),
 
-(22, '1e333333-3333-3333-3333-333333333333', 'matteo_test2_ml.pdf', 'matteo_test2_cv.pdf', '2023-06-25 14:45:00+02'::timestamptz, 'received', 
+-- Applications for Position 21: Test Engineer (Thrust Chamber)
+(21, '1e333333-3333-3333-3333-333333333333', 26, NULL, '2023-06-25 11:35:00+02'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'Describe your experience with combustion testing',
-       'answer', 'I have conducted combustion experiments in laboratory settings and analyzed flame characteristics and heat transfer'
+       'answer', 'I conducted burner testing for my thesis research and have experience with flame temperature measurement'
      ),
      jsonb_build_object(
        'question', 'What diagnostic techniques have you used for engine testing?',
-       'answer', 'I have used pressure transducers, thermocouples, and high-speed cameras for combustion diagnostics'
+       'answer', 'Pressure transducers, thermocouples, high-speed photography, and exhaust gas analysis'
      )
    ]),
 
--- Applications from new applicant users
-(22, 'a1111111-1111-1111-1111-111111111111', 'marco_rossi_motivation.pdf', 'marco_rossi_cv.pdf', '2024-01-15 10:30:00+01'::timestamptz, 'received', 
+-- Applications for Position 22: Propulsion Engineer
+(22, '1e444444-4444-4444-4444-444444444444', 27, NULL, '2023-06-26 16:45:00+02'::timestamptz, 'accepted', 
    ARRAY[
      jsonb_build_object(
        'question', 'What is your experience with rocket engine design?',
-       'answer', 'I am fascinated by the physics of combustion and want to contribute to space exploration'
+       'answer', 'I designed and simulated a small liquid rocket engine for my senior capstone project'
      ),
      jsonb_build_object(
        'question', 'Describe your knowledge of combustion chamber cooling methods',
-       'answer', 'During my thesis, I optimized a heat exchanger design using CFD analysis, improving efficiency by 15%'
+       'answer', 'I studied regenerative cooling, film cooling, and ablative cooling methods in my propulsion coursework'
      )
    ]),
 
-(19, 'a2222222-2222-2222-2222-222222222222', NULL, 'sofia_bianchi_cv.pdf', '2024-01-20 14:15:00+01'::timestamptz, 'received', 
-   ARRAY[
-     jsonb_build_object(
-       'question', 'What FEA software do you use for structural analysis?',
-       'answer', 'I love the challenge of designing lightweight yet strong structures for extreme environments'
-     )
-   ]),
-
-(10, 'a3333333-3333-3333-3333-333333333333', 'ahmed_hassan_motivation.pdf', 'ahmed_hassan_cv.pdf', '2024-01-18 09:45:00+01'::timestamptz, 'accepted', 
-   ARRAY[
-     jsonb_build_object(
-       'question', 'What embedded platforms have you worked with?',
-       'answer', 'I have 2 years of experience with Arduino and Raspberry Pi projects, including a quadcopter flight controller'
-     ),
-     jsonb_build_object(
-       'question', 'Describe your experience with real-time systems development',
-       'answer', 'I use systematic debugging with oscilloscopes, logic analyzers, and step-by-step code analysis'
-     )
-   ]),
-
-(22, 'a4444444-4444-4444-4444-444444444444', 'elena_popov_motivation.pdf', 'elena_popov_cv.pdf', '2024-01-22 16:20:00+01'::timestamptz, 'rejected', 
+(22, 'a1111111-1111-1111-1111-111111111111', 28, NULL, '2024-01-15 10:30:00+01'::timestamptz, 'received', 
    ARRAY[
      jsonb_build_object(
        'question', 'What is your experience with rocket engine design?',
-       'answer', 'I want to work on cutting-edge propulsion technologies and learn about rocket engine design'
+       'answer', 'I am passionate about space exploration and have studied rocket propulsion theory extensively'
      ),
      jsonb_build_object(
        'question', 'Describe your knowledge of combustion chamber cooling methods',
-       'answer', 'In my materials lab, I developed a new testing procedure that reduced sample preparation time by 30%'
-     )
-   ]),
-
-(19, 'a5555555-5555-5555-5555-555555555555', NULL, 'carlos_garcia_cv.pdf', '2024-01-25 11:10:00+01'::timestamptz, 'received', 
-   ARRAY[
-     jsonb_build_object(
-       'question', 'What FEA software do you use for structural analysis?',
-       'answer', 'Aerospace structures combine my interests in mechanics and space technology'
+       'answer', 'I understand regenerative cooling principles and have analyzed heat transfer in combustion chambers'
      )
    ]);
 

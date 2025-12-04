@@ -114,14 +114,40 @@ CREATE TYPE public.application_status AS ENUM (
     'accepted_by_another_team'
 );
 
+-- APPLICATION FILES
+CREATE TABLE application_files (
+  id SERIAL PRIMARY KEY,
+  r2_key TEXT UNIQUE NOT NULL,           -- R2 storage key
+  original_filename TEXT NOT NULL,       -- original filename as uploaded by user
+  mime_type TEXT,                        -- MIME type (e.g., 'application/pdf')
+  file_size BIGINT,                      -- file size in bytes
+  file_hash TEXT,                       -- hash of the file content for integrity verification
+  uploaded_at TIMESTAMPTZ DEFAULT now(),
+  user_id UUID REFERENCES users(id)
+);
+
 -- APPLICATIONS
 CREATE TABLE applications (
   id SERIAL PRIMARY KEY,
   apply_position_id INTEGER REFERENCES apply_positions(id),
   user_id UUID REFERENCES users(id),
-  ml_name TEXT,
-  cv_name TEXT,
+  cv_file_id INTEGER REFERENCES application_files(id) ON DELETE SET NULL,
+  cover_letter_file_id INTEGER REFERENCES application_files(id) ON DELETE SET NULL,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   status public.application_status DEFAULT 'received'::public.application_status NOT NULL,
   custom_answers JSONB[]
 );
+
+-- Create indexes for application_files
+CREATE INDEX idx_application_files_r2_key ON application_files(r2_key);
+
+-- Create indexes for applications table
+CREATE INDEX idx_applications_cv_file_id ON applications(cv_file_id);
+CREATE INDEX idx_applications_cover_letter_file_id ON applications(cover_letter_file_id);
+
+-- Add comments for documentation
+COMMENT ON TABLE application_files IS 'Stores CV and cover letter files for job applications';
+COMMENT ON COLUMN application_files.r2_key IS 'Unique key for the file in R2 storage';
+COMMENT ON COLUMN application_files.original_filename IS 'Original filename as uploaded by the user';
+COMMENT ON COLUMN applications.cv_file_id IS 'Reference to CV file in application_files table';
+COMMENT ON COLUMN applications.cover_letter_file_id IS 'Reference to cover letter file in application_files table';
