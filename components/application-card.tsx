@@ -11,6 +11,9 @@ import {
 } from "@/components/ui/accordion";
 import { OtherApplications } from "@/components/other-applications";
 import { CopyButton } from "@/components/ui/copy-button";
+import { FilePreviewDialog } from "@/components/file-preview-dialog";
+import { useState } from "react";
+import { FileText, ExternalLink } from "lucide-react";
 
 //! todo refactor to use a status config object, review needed for visual grouping
 export const getStatusConfig = (status: Applications["status"]) => {
@@ -81,12 +84,83 @@ export type ApplicationCardProps = {
   onChangeStatus?: (id: number, currentStatus: Applications["status"]) => void;
 };
 
+const FileIcon = ({
+  type,
+  onClick,
+  fileUrl,
+}: {
+  type: "CV" | "ML";
+  onClick: () => void;
+  fileUrl: string;
+}) => {
+  const isCV = type === "CV";
+  const bgColor = isCV
+    ? "bg-red-50 dark:bg-red-900/30"
+    : "bg-blue-50 dark:bg-blue-900/30";
+  const borderColor = isCV
+    ? "border-red-200 dark:border-red-700"
+    : "border-blue-200 dark:border-blue-700";
+  const hoverColor = isCV
+    ? "hover:bg-red-100 dark:hover:bg-red-900/50"
+    : "hover:bg-blue-100 dark:hover:bg-blue-900/50";
+  const iconColor = isCV
+    ? "text-red-600 dark:text-red-400"
+    : "text-blue-600 dark:text-blue-400";
+
+  const handleMainClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Check if Ctrl (Windows/Linux) or Cmd (Mac) key is pressed
+    if (e.ctrlKey || e.metaKey) {
+      window.open(fileUrl, "_blank");
+    } else {
+      onClick();
+    }
+  };
+
+  const handleExternalClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(fileUrl, "_blank");
+  };
+
+  return (
+    <div className="relative group">
+      <button
+        onClick={handleMainClick}
+        className={`relative w-16 h-20 ${bgColor} border ${borderColor} rounded ${hoverColor} transition-colors`}
+        title={`Click to view in dialog, Ctrl+Click to open in new tab`}
+      >
+        <FileText
+          className={`w-8 h-8 ${iconColor} absolute top-2 left-1/2 transform -translate-x-1/2`}
+        />
+        <span
+          className={`absolute bottom-1.5 left-1/2 transform -translate-x-1/2 text-sm font-bold ${iconColor}`}
+        >
+          {type}
+        </span>
+      </button>
+      {/* External link button */}
+      <button
+        onClick={handleExternalClick}
+        className={`absolute -top-1 -right-1 w-6 h-6 ${bgColor} border ${borderColor} rounded-full ${hoverColor} opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow-sm`}
+        title="Open in new tab"
+      >
+        <ExternalLink className={`w-4 h-4 ${iconColor}`} />
+      </button>
+    </div>
+  );
+};
+
 export function ApplicationCard({
   application,
   isOpen,
   onToggleAccordion,
   onChangeStatus,
 }: ApplicationCardProps) {
+  const [dialogOpen, setDialogOpen] = useState<"cv" | "ml" | null>(null);
+
   const fullName =
     `${application.user_first_name ?? ""} ${application.user_last_name ?? ""}`.trim() ||
     application.user_email ||
@@ -235,15 +309,53 @@ export function ApplicationCard({
                 </div>
               )}
 
-            {/* //! todo add cloudflare storage here to store cv and mv */}
-            <div className="pt-2">
-              <h3 className="font-semibold mb-1">Files</h3>
-              <ul className="text-sm list-disc pl-5">
-                <li>CV: {application.cv_name ?? ""}</li>
-                {application.ml_name && (
-                  <li>Motivation letter: {application.ml_name}</li>
+            {/* Files section with icons */}
+            <div className="pt-4">
+              <h3 className="font-semibold mb-3 text-sm">Files</h3>
+              <div className="flex gap-3">
+                {application.cv_name && application.cv_file_hash && (
+                  <>
+                    <div className="flex flex-col items-center gap-1">
+                      <FileIcon
+                        type="CV"
+                        onClick={() => setDialogOpen("cv")}
+                        fileUrl={`/docs/applications/${application.cv_file_hash}/${application.cv_name}`}
+                      />
+                    </div>
+                    <FilePreviewDialog
+                      open={dialogOpen === "cv"}
+                      onOpenChange={open => {
+                        setDialogOpen(open ? "cv" : null);
+                      }}
+                      fileUrl={`/docs/applications/${application.cv_file_hash}/${application.cv_name}`}
+                      fileName={application.cv_name}
+                      fileType="CV"
+                    />
+                  </>
                 )}
-              </ul>
+
+                {application.ml_name && application.ml_file_hash && (
+                  <>
+                    <div className="flex flex-col items-center gap-1">
+                      <FileIcon
+                        type="ML"
+                        onClick={() => setDialogOpen("ml")}
+                        fileUrl={`/docs/applications/${application.ml_file_hash}/${application.ml_name}`}
+                      />
+                    </div>
+                    <FilePreviewDialog
+                      open={dialogOpen === "ml"}
+                      onOpenChange={open => {
+                        console.log("ML dialog onOpenChange:", open);
+                        setDialogOpen(open ? "ml" : null);
+                      }}
+                      fileUrl={`/docs/applications/${application.ml_file_hash}/${application.ml_name}`}
+                      fileName={application.ml_name}
+                      fileType="ML"
+                    />
+                  </>
+                )}
+              </div>
             </div>
 
             <OtherApplications
@@ -264,7 +376,7 @@ export function ApplicationCard({
               comment="Applications from previous recruitment sessions"
             />
 
-            //! todo handle change status
+            {/* //! todo handle change status */}
             <div className="flex justify-center pt-2">
               <Button size="sm" variant="outline" onClick={handleChangeStatus}>
                 Update Status

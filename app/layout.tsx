@@ -24,11 +24,6 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-inter",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono", // Keep same CSS variable name
-});
-
 export default async function RootLayout({
   children,
 }: Readonly<{

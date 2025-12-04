@@ -7,7 +7,8 @@
     "generate:supabase-types": "supabase gen types typescript --local > types/supabase.ts",
     "minio:start": "docker-compose -f minio/docker-compose.dev.yml up -d",
     "minio:stop": "docker-compose -f minio/docker-compose.dev.yml down",
-    "minio:logs": "docker-compose -f minio/docker-compose.dev.yml logs --tail=20"
+    "minio:logs": "docker-compose -f minio/docker-compose.dev.yml logs --tail=20",
+    "seed:r2": "curl -X POST http://localhost:3000/api/seed-r2"
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.10.0",

@@ -79,12 +79,12 @@ export function CopyButton({ text, label, className = "" }: CopyButtonProps) {
     <Button
       size="sm"
       variant="ghost"
-      className={`h-4 min-w-4 p-1 hover:bg-gray-100 text-xs ${className}`}
+      className={`h-4 min-w-4 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs ${className}`}
       onClick={handleCopy}
       title={`Copy ${label.toLowerCase()}`}
     >
       {isCopied ? (
-        <span className="text-green-600">Copied</span>
+        <span className="text-green-600 dark:text-green-400">Copied</span>
       ) : (
         <svg
           className="h-3 w-3"

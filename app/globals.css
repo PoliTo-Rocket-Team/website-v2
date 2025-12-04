@@ -80,7 +80,7 @@
     --muted: var(--space-surface);
     --muted-foreground: var(--cosmos-secondary);
 
-    --accent: var(--mission-gray-1);
+    --accent: var(--mission-gray-3);
     --accent-foreground: var(--space-black);
 
     --destructive: 0 84.2% 60.2%;
