@@ -216,9 +216,10 @@ function getStorageKeyFromFile(matchedFile: any): string {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { r2key: string; filename: string } }
+  context: { params: Promise<{ r2key: string; filename: string }> }
 ) {
   try {
+    const params = await context.params;
     const fileHash = params.r2key; // Using r2key param but treating it as file hash
     const filename = params.filename;
 
