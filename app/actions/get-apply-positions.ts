@@ -17,9 +17,7 @@
 
 import { createSupabaseClient } from "@/utils/supabase/client";
 import { ApplyPosition } from "./types";
-import { getCurrentMemberId } from "./get-memberId";
-
-import { getMemberScopes, type ScopeInfo } from "./get-member-scopes";
+import { getUserScope, type ScopeInfo } from "./get-user-scope";
 
 /**
  * Get positions filtered by user's scope with database-level filtering
@@ -28,15 +26,16 @@ export async function getPositionsByMemberScope(): Promise<{
   //! todo needs to be optimized with caching
   positions: ApplyPosition[];
 }> {
-  const memberId = await getCurrentMemberId();
-  if (!memberId) {
-    return { positions: [] };
-  }
-
   // Get user's scope information filtered for positions target
-  const { scope: scopeInfo } = (await getMemberScopes("positions")) as {
+  const { scope: scopeInfo } = (await getUserScope("positions")) as {
     scope: ScopeInfo;
   };
+
+  //! todo handle no access in a better way
+  // If scopeInfo is empty array (no authentication or no scopes), return NO_ACCESS
+  if (Array.isArray(scopeInfo) && scopeInfo.length === 0) {
+    return { positions: [] };
+  }
 
   const supabase = await createSupabaseClient();
   //! todo remove debug log

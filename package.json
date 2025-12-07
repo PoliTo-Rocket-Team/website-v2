@@ -4,10 +4,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "generate:supabase-types": "supabase gen types typescript --local > types/supabase.ts"
+    "generate:supabase-types": "supabase gen types typescript --local > types/supabase.ts",
+    "minio:start": "docker-compose -f minio/docker-compose.dev.yml up -d",
+    "minio:stop": "docker-compose -f minio/docker-compose.dev.yml down",
+    "minio:logs": "docker-compose -f minio/docker-compose.dev.yml logs --tail=20",
+    "seed:r2": "curl -X POST http://localhost:3000/api/seed-r2"
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.10.0",
+    "@aws-sdk/client-s3": "^3.940.0",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.3",

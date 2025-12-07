@@ -21,6 +21,7 @@ export const metadata = {
 const plusJakartaSans = Plus_Jakarta_Sans({
   display: "swap",
   subsets: ["latin"],
+  variable: "--font-inter",
 });
 
 export default async function RootLayout({
