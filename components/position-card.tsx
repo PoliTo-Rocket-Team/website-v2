@@ -116,7 +116,7 @@ export function PositionCard({
     >
       <AccordionItem value={position.id.toString()}>
         <AccordionTrigger className="w-full border-b data-[state=closed]:rounded-lg data-[state=open]:rounded-t-lg p-2 md:px-2 md:py-4 hover:bg-secondary bg-clip-padding duration-100 transition-colors">
-          <div className="flex flex-col items-start md:items-center flex-1 gap-2 md:grid w-full md:grid-cols-[3fr_2fr_2fr_auto] md:justify-items-start">
+          <div className="flex flex-col items-start md:items-center flex-1 md:grid w-full md:grid-cols-[3fr_2fr_2fr_auto] md:justify-items-start">
             <span className="font-semibold text-sm md:text-lg ">
               {position.title}
             </span>
@@ -126,7 +126,7 @@ export function PositionCard({
             <span className="text-sm md:text-base font-medium ">
               {position.div_name}
             </span>
-            {/* //! todo better way to change position state, switch inside accordion trigger is not ideal */}
+            {/* //! todo better way to change position state, switch inside accordion trigger is not ideal, inside the edit form would be ideal since it is more contextually relevant */}
             {position.canEdit && (
               <Switch
                 checked={position.status}
@@ -139,6 +139,7 @@ export function PositionCard({
         </AccordionTrigger>
         <AccordionContent className="p-2 md:p-6">
           {isEditing ? (
+            // ! todo preview apply form for position needs to be added to edit form so that editors can see how the position will appear to applicants
             <PositionEditForm
               position={position}
               onSave={handleSaveEdit}

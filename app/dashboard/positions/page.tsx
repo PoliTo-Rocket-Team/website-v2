@@ -1,22 +1,25 @@
 "use server";
 
 import { getPositionsByMemberScope } from "@/app/actions/get-apply-positions";
-import { getEditableDivisions } from "@/app/actions/get-member-scopes";
+import { getEditableDivisions } from "@/app/actions/get-user-scope";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
 import {
   handleDelete,
   handleEditPosition,
   handleAddPosition,
 } from "./server-actions";
+import { ApplyPosition } from "@/app/actions/types";
 
 export default async function Positions() {
   const { positions } = await getPositionsByMemberScope();
   const editableDivisions = await getEditableDivisions();
 
+  //! todo handle no access
+
   return (
     <div className="w-full">
-      <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
-        <h2 className="text-lg md:text-2xl font-bold text-primary">
+      <div className="flex flex-col my-4 border-b pb-4 md:pb-8">
+        <h2 className="text-lg md:text-2xl font-bold text-primary pb-2 md:pb-4">
           Positions
         </h2>
         <p className="text-muted-foreground w-3/4">
@@ -27,7 +30,7 @@ export default async function Positions() {
         </p>
       </div>
       <ApplyPositionsList
-        positions={positions}
+        positions={positions as ApplyPosition[]}
         handleDelete={handleDelete}
         handleEditPosition={handleEditPosition}
         handleAddPosition={handleAddPosition}

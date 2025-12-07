@@ -183,34 +183,75 @@ export type Database = {
   }
   public: {
     Tables: {
+      application_files: {
+        Row: {
+          file_hash: string | null
+          file_size: number | null
+          id: number
+          mime_type: string | null
+          original_filename: string
+          r2_key: string
+          uploaded_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          file_hash?: string | null
+          file_size?: number | null
+          id?: number
+          mime_type?: string | null
+          original_filename: string
+          r2_key: string
+          uploaded_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          file_hash?: string | null
+          file_size?: number | null
+          id?: number
+          mime_type?: string | null
+          original_filename?: string
+          r2_key?: string
+          uploaded_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_files_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       applications: {
         Row: {
           applied_at: string
           apply_position_id: number | null
+          cover_letter_file_id: number | null
           custom_answers: Json[] | null
-          cv_name: string | null
+          cv_file_id: number | null
           id: number
-          ml_name: string | null
           status: Database["public"]["Enums"]["application_status"]
           user_id: string | null
         }
         Insert: {
           applied_at?: string
           apply_position_id?: number | null
+          cover_letter_file_id?: number | null
           custom_answers?: Json[] | null
-          cv_name?: string | null
+          cv_file_id?: number | null
           id?: number
-          ml_name?: string | null
           status?: Database["public"]["Enums"]["application_status"]
           user_id?: string | null
         }
         Update: {
           applied_at?: string
           apply_position_id?: number | null
+          cover_letter_file_id?: number | null
           custom_answers?: Json[] | null
-          cv_name?: string | null
+          cv_file_id?: number | null
           id?: number
-          ml_name?: string | null
           status?: Database["public"]["Enums"]["application_status"]
           user_id?: string | null
         }
@@ -220,6 +261,20 @@ export type Database = {
             columns: ["apply_position_id"]
             isOneToOne: false
             referencedRelation: "apply_positions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_cover_letter_file_id_fkey"
+            columns: ["cover_letter_file_id"]
+            isOneToOne: false
+            referencedRelation: "application_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_cv_file_id_fkey"
+            columns: ["cv_file_id"]
+            isOneToOne: false
+            referencedRelation: "application_files"
             referencedColumns: ["id"]
           },
           {
@@ -344,7 +399,6 @@ export type Database = {
         Row: {
           discord: string | null
           member_id: number
-          mobile_number: string | null
           nda_confirmed_by: number | null
           nda_name: string | null
           nda_signed_at: string
@@ -354,7 +408,6 @@ export type Database = {
         Insert: {
           discord?: string | null
           member_id?: number
-          mobile_number?: string | null
           nda_confirmed_by?: number | null
           nda_name?: string | null
           nda_signed_at?: string
@@ -364,7 +417,6 @@ export type Database = {
         Update: {
           discord?: string | null
           member_id?: number
-          mobile_number?: string | null
           nda_confirmed_by?: number | null
           nda_name?: string | null
           nda_signed_at?: string
@@ -488,31 +540,31 @@ export type Database = {
           access_level: Database["public"]["Enums"]["access_level_type"]
           dept_id: number | null
           division_id: number | null
-          given_by: number | null
+          given_by: string | null
           id: number
-          member_id: number | null
           scope: Database["public"]["Enums"]["scope_type"]
           target: Database["public"]["Enums"]["target_type"]
+          user_id: string | null
         }
         Insert: {
           access_level?: Database["public"]["Enums"]["access_level_type"]
           dept_id?: number | null
           division_id?: number | null
-          given_by?: number | null
+          given_by?: string | null
           id?: number
-          member_id?: number | null
           scope: Database["public"]["Enums"]["scope_type"]
-          target: Database["public"]["Enums"]["target_type"]
+          target?: Database["public"]["Enums"]["target_type"]
+          user_id?: string | null
         }
         Update: {
           access_level?: Database["public"]["Enums"]["access_level_type"]
           dept_id?: number | null
           division_id?: number | null
-          given_by?: number | null
+          given_by?: string | null
           id?: number
-          member_id?: number | null
           scope?: Database["public"]["Enums"]["scope_type"]
           target?: Database["public"]["Enums"]["target_type"]
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -533,60 +585,72 @@ export type Database = {
             foreignKeyName: "scopes_given_by_fkey"
             columns: ["given_by"]
             isOneToOne: false
-            referencedRelation: "members"
-            referencedColumns: ["member_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "scopes_member_id_fkey"
-            columns: ["member_id"]
+            foreignKeyName: "scopes_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "members"
-            referencedColumns: ["member_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
           },
         ]
       }
       users: {
         Row: {
-          access: string[] | null
           created_at: string
+          date_of_birth: string | null
           email: string
           first_name: string | null
+          gender: string | null
+          how_found_us: string | null
           id: string
           last_name: string | null
           level_of_study: string | null
           linkedin: string | null
           member: number | null
+          mobile_number: string | null
           origin: string | null
+          polito_email: string | null
           polito_id: string | null
           program: string | null
           updated_at: string | null
         }
         Insert: {
-          access?: string[] | null
           created_at?: string
+          date_of_birth?: string | null
           email: string
           first_name?: string | null
+          gender?: string | null
+          how_found_us?: string | null
           id: string
           last_name?: string | null
           level_of_study?: string | null
           linkedin?: string | null
           member?: number | null
+          mobile_number?: string | null
           origin?: string | null
+          polito_email?: string | null
           polito_id?: string | null
           program?: string | null
           updated_at?: string | null
         }
         Update: {
-          access?: string[] | null
           created_at?: string
+          date_of_birth?: string | null
           email?: string
           first_name?: string | null
+          gender?: string | null
+          how_found_us?: string | null
           id?: string
           last_name?: string | null
           level_of_study?: string | null
           linkedin?: string | null
           member?: number | null
+          mobile_number?: string | null
           origin?: string | null
+          polito_email?: string | null
           polito_id?: string | null
           program?: string | null
           updated_at?: string | null
@@ -611,13 +675,18 @@ export type Database = {
     Enums: {
       access_level_type: "view" | "edit"
       application_status:
-        | "pending"
-        | "rejected"
-        | "accepted"
         | "received"
+        | "not_selected"
+        | "interview"
+        | "rejected_email_to_be_sent"
+        | "rejected"
+        | "accepted_email_to_be_sent"
+        | "accepted"
+        | "accepted_joined"
+        | "resigned"
         | "accepted_by_another_team"
       position_type: "president" | "head" | "lead" | "core"
-      scope_type: "admin" | "org" | "department" | "division" | "website"
+      scope_type: "admin" | "org" | "department" | "division" | "core_member"
       status: "pending" | "accepted" | "rejected"
       target_type:
         | "all"
@@ -763,14 +832,19 @@ export const Constants = {
     Enums: {
       access_level_type: ["view", "edit"],
       application_status: [
-        "pending",
-        "rejected",
-        "accepted",
         "received",
+        "not_selected",
+        "interview",
+        "rejected_email_to_be_sent",
+        "rejected",
+        "accepted_email_to_be_sent",
+        "accepted",
+        "accepted_joined",
+        "resigned",
         "accepted_by_another_team",
       ],
       position_type: ["president", "head", "lead", "core"],
-      scope_type: ["admin", "org", "department", "division", "website"],
+      scope_type: ["admin", "org", "department", "division", "core_member"],
       status: ["pending", "accepted", "rejected"],
       target_type: [
         "all",
