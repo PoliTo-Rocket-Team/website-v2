@@ -4,14 +4,16 @@ DROP TYPE IF EXISTS public.scope_type CASCADE;
 DROP TYPE IF EXISTS public.target_type CASCADE;
 DROP TYPE IF EXISTS public.access_level_type CASCADE;
 
+-- 1. SCOPE TYPE (The "Role" or "Power Level")
 CREATE TYPE public.scope_type AS ENUM (
-  'admin',
-  'org',
-  'department',
-  'division',
-  'website'
+  'admin',       
+  'org',         
+  'department',  
+  'division',    
+  'core_member'  
 );
 
+-- 2. TARGET TYPE (The "Resource")
 CREATE TYPE public.target_type AS ENUM (
   'all',
   'positions',
@@ -27,36 +29,36 @@ CREATE TYPE public.access_level_type AS ENUM ('view', 'edit');
 
 CREATE TABLE scopes (
   id SERIAL PRIMARY KEY,
-  member_id INTEGER REFERENCES members(member_id) ON DELETE CASCADE,
-  given_by INTEGER REFERENCES members(member_id) ON DELETE SET NULL,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  given_by UUID REFERENCES users(id) ON DELETE SET NULL,
 
   scope scope_type NOT NULL,
-  target target_type NOT NULL,
+  target target_type NOT NULL DEFAULT 'all',
   access_level access_level_type NOT NULL DEFAULT 'view',
 
   dept_id INTEGER REFERENCES departments(id),
   division_id INTEGER REFERENCES divisions(id),
 
   CONSTRAINT unique_scope_combination
-    UNIQUE (member_id, scope, target, dept_id, division_id),
+    UNIQUE (user_id, scope, target, dept_id, division_id),
 
   ----------------------------------------------------------------
-  -- SCOPE STRUCTURAL RULES ONLY
+  -- STRUCTURAL VALIDITY RULES
   ----------------------------------------------------------------
   CONSTRAINT scope_structure_constraints CHECK (
-    -- admin: must not have dept/div
+    -- admin: Must be global
     (scope = 'admin' AND dept_id IS NULL AND division_id IS NULL) OR
 
-    -- org: must not have dept/div
+    -- org: Must be global
     (scope = 'org' AND dept_id IS NULL AND division_id IS NULL) OR
 
-    -- department: must have dept, must NOT have division
+    -- department: Must have dept, Must NOT have division
     (scope = 'department' AND dept_id IS NOT NULL AND division_id IS NULL) OR
 
-    -- division: must have division, must NOT have dept
+    -- division: Must have division, Must NOT have dept
     (scope = 'division' AND division_id IS NOT NULL AND dept_id IS NULL) OR
 
-    -- website: must not have dept/div
-    (scope = 'website' AND dept_id IS NULL AND division_id IS NULL)
+    -- core_member: Must be global (Basic member of the Org)
+    (scope = 'core_member' AND dept_id IS NULL AND division_id IS NULL)
   )
 );

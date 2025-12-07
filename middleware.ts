@@ -18,6 +18,7 @@ export default auth(req => {
     signInUrl.searchParams.set("callbackUrl", pathname + search);
     return NextResponse.redirect(signInUrl);
   }
+  //! todo handle permission checks for protected pages (positions, applications, etc)
 
   return NextResponse.next();
 });

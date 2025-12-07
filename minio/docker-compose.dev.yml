@@ -1,0 +1,42 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio-dev
+    ports:
+      - "9000:9000" # MinIO API
+      - "9001:9001" # MinIO Console (Web UI)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo '🔧 Configuring MinIO client...';
+      mc alias set local http://minio:9000 minioadmin minioadmin123;
+      echo '🪣 Creating private bucket...';
+      mc mb --ignore-existing local/prt;
+      echo '✅ Private bucket setup complete!';
+      echo '';
+      echo '-------------------------------------------';
+      echo ' MinIO is running locally!';
+      echo ' Open the console: http://localhost:9001';
+      echo ' API endpoint:     http://localhost:9000';
+      echo ' Bucket: prt (private)';
+      echo '-------------------------------------------';
+      "
+volumes:
+  minio_data:
+    driver: local
