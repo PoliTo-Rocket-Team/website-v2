@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Icons } from "@/components/icons";
 import { Separator } from "@/components/ui/separator";
 import SignInWithGoogle from "@/components/signin-google";
-import SignInMagic from "@/components/signin-magic";
+// import SignInMagic from "@/components/signin-magic";
 
 export const metadata: Metadata = {
   title: "Login | Polito Rocket Team",
@@ -34,7 +34,7 @@ export default async function Login() {
           <Separator className="flex-1 mr-2" />
         </div>
 
-        <SignInMagic />
+        {/* <SignInMagic /> */}
 
         <p className="px-4 text-center text-sm text-muted-foreground">
           By signing in, you agree to our{" "}

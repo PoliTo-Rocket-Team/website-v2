@@ -1,7 +1,8 @@
 "use server";
 
 import { createSupabaseClient } from "@/utils/supabase/client";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 /**
  * Get the current authenticated user's member ID
@@ -11,7 +12,9 @@ export async function getCurrentMemberId(): Promise<number | null> {
   const supabase = await createSupabaseClient();
   //! todo remove debug log
   console.log("database request on get member id");
-  const session = await auth();
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
 
   if (!session?.userId) {
     return null;
@@ -20,7 +23,7 @@ export async function getCurrentMemberId(): Promise<number | null> {
   const { data: userData, error } = await supabase
     .from("users")
     .select("member")
-    .eq("id", session.userId)
+    .eq("id", session?.userId)
     .single();
 
   if (error) {

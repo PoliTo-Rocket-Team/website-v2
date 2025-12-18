@@ -13,7 +13,7 @@ CREATE TABLE members (
 
 -- USERS
 CREATE TABLE users (
-  id UUID PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   email TEXT NOT NULL,
   first_name TEXT,
   last_name TEXT,
@@ -110,7 +110,7 @@ CREATE TYPE public.application_status AS ENUM (
 CREATE TABLE applications (
   id SERIAL PRIMARY KEY,
   apply_position_id INTEGER REFERENCES apply_positions(id),
-  user_id UUID REFERENCES users(id),
+  user_id TEXT REFERENCES users(id),
   ml_name TEXT,
   cv_name TEXT,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),

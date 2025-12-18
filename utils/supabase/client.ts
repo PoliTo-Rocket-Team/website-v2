@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 /**
  * This file is responsible for creating a Supabase client instance.
@@ -12,16 +13,19 @@ import { auth } from "@/auth";
  * Otherwise, return a public client using anon key.
  */
 export async function createSupabaseClient() {
-  const session = await auth();
-  const supabaseAccessToken = session?.supabaseAccessToken;
-  if (supabaseAccessToken) {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+  
+  if (session?.supabaseAccessToken) {
+    // Use stored Supabase JWT token for RLS
     return createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_ANON_KEY!,
       {
         global: {
           headers: {
-            Authorization: `Bearer ${supabaseAccessToken}`,
+            Authorization: `Bearer ${session.supabaseAccessToken}`,
           },
         },
       }

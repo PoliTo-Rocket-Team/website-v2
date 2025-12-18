@@ -2,7 +2,7 @@
 
 import { createSupabaseClient } from "@/utils/supabase/client";
 import { Database } from "@/types/supabase";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
 
 export type Member = Database["public"]["Tables"]["members"]["Row"] & {
   users?: Partial<Database["public"]["Tables"]["users"]["Row"]>[] | null;
