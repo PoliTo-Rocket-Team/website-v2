@@ -6,8 +6,8 @@ export async function middleware(request: NextRequest) {
   const sessionCookie = getSessionCookie(request);
   const isAuthenticated = !!sessionCookie;
 
-  // Redirect logged-in users away from sign-in page
-  if (isAuthenticated && pathname === "/sign-in") {
+  // Redirect logged-in users away from login page
+  if (isAuthenticated && pathname === "/login") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -19,7 +19,7 @@ export async function middleware(request: NextRequest) {
   const isApplySlug = pathname.startsWith("/apply/") && pathname !== "/apply/";
 
   if ((isDashboard || isApplySlug) && !isAuthenticated) {
-    const signInUrl = new URL("/sign-in", request.url);
+    const signInUrl = new URL("/login", request.url);
     signInUrl.searchParams.set("callbackUrl", pathname + search);
     return NextResponse.redirect(signInUrl);
   }
@@ -28,5 +28,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/sign-in", "/dashboard/:path*", "/apply/:slug"],
+  matcher: ["/login", "/dashboard/:path*", "/apply/:slug"],
 };
