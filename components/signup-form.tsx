@@ -16,7 +16,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { signUp } from "@/lib/auth-client";
 import { Icons } from "@/components/icons";
 import { toast } from "sonner";
@@ -29,7 +29,16 @@ const signupSchema = z
   .object({
     name: z.string().min(1, "Name is required").max(100, "Name is too long"),
     email: z.string().email("Invalid email address"),
-    password: z.string().min(8, "Password must be at least 8 characters long"),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters long")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number")
+      .regex(
+        /[^A-Za-z0-9]/,
+        "Password must contain at least one special character"
+      ),
     confirmPassword: z.string().min(1, "Please confirm your password"),
   })
   .refine(data => data.password === data.confirmPassword, {
@@ -47,12 +56,9 @@ export function SignupForm({
   const [userEmail, setUserEmail] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [callbackUrl, setCallbackUrl] = useState<string>("/dashboard");
 
-  useEffect(() => {
-    const callback = searchParams.get("cb") || "/dashboard";
-    setCallbackUrl(callback);
-  }, [searchParams]);
+  // Get callback URL directly from searchParams
+  const callbackUrl = searchParams.get("cb") || "/dashboard";
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -88,38 +94,46 @@ export function SignupForm({
     }
 
     try {
-      const response = await signUp.email({
-        email: result.data.email,
-        password: result.data.password,
-        name: result.data.name,
-        callbackURL: "/dashboard",
-      });
-
-      // Check if signup was successful
-      if (response.error) {
-        // Handle specific errors
-        if (
-          response.error.status === 422 ||
-          response.error.message?.includes("already exists")
-        ) {
-          toast.error(
-            "This email is already registered. Please login instead."
-          );
-        } else {
-          toast.error(
-            response.error.message ||
-              "Failed to create account. Please try again."
-          );
+      await signUp.email(
+        {
+          email: result.data.email,
+          password: result.data.password,
+          name: result.data.name,
+          callbackURL: callbackUrl,
+        },
+        {
+          onSuccess: () => {
+            setIsLoading(false);
+            toast.success("Account created successfully!");
+            setUserEmail(result.data.email);
+            setShowVerificationDialog(true);
+          },
+          onError: ctx => {
+            setIsLoading(false);
+            // Handle specific errors
+            if (ctx.error.status === 403) {
+              // Email not verified
+              setUserEmail(result.data.email);
+              setShowVerificationDialog(true);
+            } else if (
+              ctx.error.status === 422 ||
+              ctx.error.message?.includes("already exists")
+            ) {
+              toast.error(
+                "This email is already registered. Please login instead."
+              );
+            } else {
+              toast.error(
+                ctx.error.message ||
+                  "Failed to create account. Please try again."
+              );
+            }
+          },
         }
-        return;
-      }
-
-      toast.success("Account created successfully!");
-      setUserEmail(result.data.email);
-      setShowVerificationDialog(true);
-    } catch (err: any) {
-      console.error("Signup error:", err);
-    } finally {
+      );
+    } catch (error) {
+      console.error("Unexpected signup error:", error);
+      toast.error("An unexpected error occurred. Please try again.");
       setIsLoading(false);
     }
   };
@@ -206,7 +220,8 @@ export function SignupForm({
                   </Field>
                 </Field>
                 <FieldDescription>
-                  Must be at least 8 characters long.
+                  Must be at least 8 characters with uppercase, lowercase,
+                  number, and special character.
                 </FieldDescription>
               </Field>
               <Field>
@@ -221,7 +236,12 @@ export function SignupForm({
                   )}
                 </Button>
                 <FieldDescription className="text-center">
-                  Already have an account? <a href="/login">Sign in</a>
+                  Already have an account?{" "}
+                  <Link
+                    href={`/login${callbackUrl !== "/dashboard" ? `?cb=${encodeURIComponent(callbackUrl)}` : ""}`}
+                  >
+                    Sign in
+                  </Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>
@@ -238,6 +258,8 @@ export function SignupForm({
         open={showVerificationDialog}
         onOpenChange={setShowVerificationDialog}
         email={userEmail}
+        showResendButton={true}
+        startCountdownOnOpen={true}
       />
     </div>
   );

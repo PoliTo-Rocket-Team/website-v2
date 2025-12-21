@@ -5,9 +5,9 @@
     "build": "next build",
     "start": "next start",
     "generate:supabase-types": "supabase gen types typescript --local > types/supabase.ts",
-    "mailpit:start": "docker-compose -f mailpit/docker-compose.yml up -d mailpit 2>&1 | grep -v 'is up-to-date\\|Starting\\|Creating' || true && echo '✅ Mailpit started!\n📧 SMTP: smtp://127.0.0.1:1025\n🌐 Web UI: http://localhost:8025'",
-    "mailpit:stop": "docker-compose -f mailpit/docker-compose.yml stop mailpit > /dev/null && echo '✅ Mailpit stopped'",
-    "mailpit:restart": "docker-compose -f mailpit/docker-compose.yml restart mailpit > /dev/null && echo '✅ Mailpit restarted!\n📧 SMTP: smtp://127.0.0.1:1025\n🌐 Web UI: http://localhost:8025'",
+    "mailpit:start": "(docker info > /dev/null 2>&1 || (echo '❌ Docker is not running. Please start Docker/OrbStack first.' && exit 1)) && (docker-compose -f mailpit/docker-compose.yml up -d mailpit 2>&1 | grep -v 'is up-to-date\\|Starting\\|Creating' || true) && echo '✅ Mailpit started!\n📧 SMTP: smtp://127.0.0.1:1025\n🌐 Web UI: http://localhost:8025'",
+    "mailpit:stop": "(docker info > /dev/null 2>&1 || (echo '❌ Docker is not running. Please start Docker/OrbStack first.' && exit 1)) && docker stop mailpit > /dev/null 2>&1 && echo '✅ Mailpit stopped' || echo '❌ Mailpit is not running'",
+    "mailpit:restart": "(docker info > /dev/null 2>&1 || (echo '❌ Docker is not running. Please start Docker/OrbStack first.' && exit 1)) && docker stop mailpit > /dev/null 2>&1 && docker rm mailpit > /dev/null 2>&1 && docker-compose -f mailpit/docker-compose.yml up -d mailpit 2>&1 | grep -v 'is up-to-date\\|Starting\\|Creating' || true && echo '✅ Mailpit restarted (fresh)!\n📧 SMTP: smtp://127.0.0.1:1025\n🌐 Web UI: http://localhost:8025' || echo '❌ Failed to restart Mailpit'",
     "mailpit:logs": "docker logs -f mailpit"
   },
   "dependencies": {

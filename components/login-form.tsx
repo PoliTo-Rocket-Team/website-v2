@@ -17,13 +17,14 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { signIn } from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Icons } from "@/components/icons";
 import { toast } from "sonner";
 import { EmailVerificationDialog } from "@/components/email-verification-dialog";
+import { ForgotPasswordDialog } from "@/components/forgot-password-dialog";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -40,14 +41,14 @@ export function LoginForm({
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
+  const [showForgotPasswordDialog, setShowForgotPasswordDialog] =
+    useState(false);
   const [userEmail, setUserEmail] = useState("");
+  const [emailInput, setEmailInput] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [callbackUrl, setCallbackUrl] = useState<string>("/dashboard");
 
-  useEffect(() => {
-    const callback = searchParams.get("cb") || "/dashboard";
-    setCallbackUrl(callback);
-  }, [searchParams]);
+  // Get callback URL directly from searchParams
+  const callbackUrl = searchParams.get("cb") || "/dashboard";
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
@@ -98,40 +99,34 @@ export function LoginForm({
       return;
     }
 
-    try {
-      const response = await signIn.email({
+    await signIn.email(
+      {
         email: result.data.email,
         password: result.data.password,
         callbackURL: callbackUrl,
-      });
-
-      // Check if sign-in was successful
-      if (response.error) {
-        // Handle specific errors
-        if (response.error.status === 401) {
-          toast.error("Invalid email or password");
-        } else if (
-          response.error.message?.includes("not verified") ||
-          response.error.message?.includes("verify")
-        ) {
-          setUserEmail(result.data.email);
-          setShowVerificationDialog(true);
-        } else {
-          toast.error(
-            response.error.message || "Failed to sign in. Please try again."
-          );
-        }
-        return;
+      },
+      {
+        onSuccess: () => {
+          setIsEmailLoading(false);
+          toast.success("Signed in successfully!");
+          router.push(callbackUrl);
+        },
+        onError: ctx => {
+          setIsEmailLoading(false);
+          // Handle specific errors
+          if (ctx.error.status === 403) {
+            setUserEmail(result.data.email);
+            setShowVerificationDialog(true);
+          } else if (ctx.error.status === 401) {
+            toast.error("Invalid email or password");
+          } else {
+            toast.error(
+              ctx.error.message || "Failed to sign in. Please try again."
+            );
+          }
+        },
       }
-
-      toast.success("Signed in successfully!");
-      router.push("/dashboard");
-    } catch (err: any) {
-      console.error("Sign-in error:", err);
-      toast.error("An error occurred. Please try again.");
-    } finally {
-      setIsEmailLoading(false);
-    }
+    );
   };
 
   return (
@@ -141,38 +136,45 @@ export function LoginForm({
           <CardTitle className="text-xl p-2">Welcome </CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleEmailSignIn}>
-            <FieldGroup>
-              <Field>
-                <div className="relative group">
-                  <Button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    disabled={isGoogleLoading || isEmailLoading}
-                    className="w-full"
-                  >
-                    {isGoogleLoading ? (
-                      <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Icons.google className="mr-2 h-4 w-4" />
-                    )}
-                    Continue with Google
-                  </Button>
+          <FieldGroup>
+            <Field>
+              <div className="relative group">
+                <Button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={isGoogleLoading || isEmailLoading}
+                  className="w-full"
+                >
+                  {isGoogleLoading ? (
+                    <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Icons.google className="mr-2 h-4 w-4" />
+                  )}
+                  Continue with Google
+                </Button>
+                {!isEmailLoading && !isGoogleLoading && (
                   <span className="absolute -top-3 -left-3 text-[10px] bg-primary px-1.5 py-0.5 rounded-md -rotate-[0deg] shadow-sm font-medium group-hover:opacity-0 transition-opacity">
                     Recommended
                   </span>
-                </div>
-              </Field>
-              <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
-                Or continue with
-              </FieldSeparator>
+                )}
+              </div>
+            </Field>
+            <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
+              Or continue with
+            </FieldSeparator>
+          </FieldGroup>
+          <form onSubmit={handleEmailSignIn} autoComplete="on" noValidate>
+            <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
                   id="email"
                   name="email"
-                  type="text"
+                  type="email"
                   placeholder="m@example.com"
+                  autoComplete="email"
+                  value={emailInput}
+                  onChange={e => setEmailInput(e.target.value)}
                   disabled={isEmailLoading || isGoogleLoading}
                   className={errors.email ? "border-destructive" : ""}
                 />
@@ -185,18 +187,12 @@ export function LoginForm({
               <Field>
                 <div className="flex items-center">
                   <FieldLabel htmlFor="password">Password</FieldLabel>
-                  {/* //! todo -- forgot password link --- // */}
-                  <a
-                    href="#"
-                    className="ml-auto text-xs underline-offset-4 hover:underline"
-                  >
-                    Forgot your password?
-                  </a>
                 </div>
                 <Input
                   id="password"
                   name="password"
                   type="password"
+                  autoComplete="current-password"
                   disabled={isEmailLoading || isGoogleLoading}
                   className={errors.password ? "border-destructive" : ""}
                 />
@@ -205,6 +201,14 @@ export function LoginForm({
                     {errors.password}
                   </FieldDescription>
                 )}
+                {/* //! todo -- forgot password link --- // */}
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPasswordDialog(true)}
+                  className="text-xs underline-offset-4 hover:underline focus:outline-none focus:underline"
+                >
+                  Forgot your password?
+                </button>
               </Field>
               <Field>
                 <Button
@@ -221,7 +225,12 @@ export function LoginForm({
                   )}
                 </Button>
                 <FieldDescription className="text-center">
-                  Don&apos;t have an account? <a href="/sign-up">Sign up</a>
+                  Don&apos;t have an account?{" "}
+                  <Link
+                    href={`/sign-up${callbackUrl !== "/dashboard" ? `?cb=${encodeURIComponent(callbackUrl)}` : ""}`}
+                  >
+                    Sign up
+                  </Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>
@@ -238,6 +247,14 @@ export function LoginForm({
         open={showVerificationDialog}
         onOpenChange={setShowVerificationDialog}
         email={userEmail}
+        showResendButton={true}
+        startCountdownOnOpen={false}
+      />
+
+      <ForgotPasswordDialog
+        open={showForgotPasswordDialog}
+        onOpenChange={setShowForgotPasswordDialog}
+        email={emailInput}
       />
     </div>
   );

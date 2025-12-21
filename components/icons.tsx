@@ -13,6 +13,7 @@ import {
     Laptop,
     Loader2,
     LucideProps,
+    Mail,
     Moon,
     MoreVertical,
     Pizza,
@@ -97,4 +98,5 @@ import {
   ),
     twitter: Twitter,
     check: Check,
+    mail: Mail,
   }
