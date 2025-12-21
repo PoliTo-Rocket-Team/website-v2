@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const sessionCookie = getSessionCookie(request);
   const isAuthenticated = !!sessionCookie;
 
-  // Redirect logged-in users away from login page
-  if (isAuthenticated && pathname === "/login") {
+  // Redirect logged-in users away from login and signup pages
+  if (isAuthenticated && (pathname === "/login" || pathname === "/sign-up")) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -20,7 +20,8 @@ export async function middleware(request: NextRequest) {
 
   if ((isDashboard || isApplySlug) && !isAuthenticated) {
     const signInUrl = new URL("/login", request.url);
-    signInUrl.searchParams.set("callbackUrl", pathname + search);
+    // Preserve the original destination to redirect after login Callback
+    signInUrl.searchParams.set("cb", pathname + search);
     return NextResponse.redirect(signInUrl);
   }
 
@@ -28,5 +29,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/dashboard/:path*", "/apply/:slug"],
+  matcher: ["/login", "/sign-up", "/dashboard/:path*", "/apply/:slug"],
 };
