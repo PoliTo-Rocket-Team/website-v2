@@ -19,28 +19,49 @@ import {
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { signIn } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Icons } from "@/components/icons";
 import { toast } from "sonner";
+import { EmailVerificationDialog } from "@/components/email-verification-dialog";
+import { z } from "zod";
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
+  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [callbackUrl, setCallbackUrl] = useState<string>("/dashboard");
+
+  useEffect(() => {
+    const callback = searchParams.get("cb") || "/dashboard";
+    setCallbackUrl(callback);
+  }, [searchParams]);
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     try {
       await signIn.social({
         provider: "google",
-        callbackURL: "/dashboard",
+        callbackURL: callbackUrl,
       });
     } catch (err: any) {
       console.error("Google sign-in error:", err);
-      toast.error("Failed to sign in with Google");
+      toast.error(
+        "Failed to sign in with Google: " +
+          (err?.message || "Please try again.")
+      );
     } finally {
       setIsGoogleLoading(false);
     }
@@ -49,22 +70,65 @@ export function LoginForm({
   const handleEmailSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsEmailLoading(true);
+    setErrors({});
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
+    const data = {
+      email: formData.get("email") as string,
+      password: formData.get("password") as string,
+    };
+
+    // Validate with Zod
+    const result = loginSchema.safeParse(data);
+
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+
+      if (result.error?.issues) {
+        result.error.issues.forEach(error => {
+          if (error.path[0]) {
+            fieldErrors[error.path[0] as string] = error.message;
+          }
+        });
+      }
+
+      setErrors(fieldErrors);
+      setIsEmailLoading(false);
+      toast.error("Please fix the errors in the form");
+      return;
+    }
 
     try {
-      await signIn.email({
-        email,
-        password,
-        callbackURL: "/dashboard",
+      const response = await signIn.email({
+        email: result.data.email,
+        password: result.data.password,
+        callbackURL: callbackUrl,
       });
+
+      // Check if sign-in was successful
+      if (response.error) {
+        // Handle specific errors
+        if (response.error.status === 401) {
+          toast.error("Invalid email or password");
+        } else if (
+          response.error.message?.includes("not verified") ||
+          response.error.message?.includes("verify")
+        ) {
+          setUserEmail(result.data.email);
+          setShowVerificationDialog(true);
+        } else {
+          toast.error(
+            response.error.message || "Failed to sign in. Please try again."
+          );
+        }
+        return;
+      }
+
       toast.success("Signed in successfully!");
       router.push("/dashboard");
     } catch (err: any) {
       console.error("Sign-in error:", err);
-      toast.error("Invalid email or password");
+      toast.error("An error occurred. Please try again.");
     } finally {
       setIsEmailLoading(false);
     }
@@ -110,7 +174,13 @@ export function LoginForm({
                   type="text"
                   placeholder="m@example.com"
                   disabled={isEmailLoading || isGoogleLoading}
+                  className={errors.email ? "border-destructive" : ""}
                 />
+                {errors.email && (
+                  <FieldDescription className="text-destructive">
+                    {errors.email}
+                  </FieldDescription>
+                )}
               </Field>
               <Field>
                 <div className="flex items-center">
@@ -128,7 +198,13 @@ export function LoginForm({
                   name="password"
                   type="password"
                   disabled={isEmailLoading || isGoogleLoading}
+                  className={errors.password ? "border-destructive" : ""}
                 />
+                {errors.password && (
+                  <FieldDescription className="text-destructive">
+                    {errors.password}
+                  </FieldDescription>
+                )}
               </Field>
               <Field>
                 <Button
@@ -157,6 +233,12 @@ export function LoginForm({
         By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
         and <a href="#">Privacy Policy</a>.
       </FieldDescription>
+
+      <EmailVerificationDialog
+        open={showVerificationDialog}
+        onOpenChange={setShowVerificationDialog}
+        email={userEmail}
+      />
     </div>
   );
 }
