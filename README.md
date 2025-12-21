@@ -67,6 +67,12 @@ This is the repository for the PoliTo Rocket Team website. The website is built 
 
 - `pnpm generate:supabase-types` - Generate types for supabase queries
 
+### Mailpit Commands(for email testing in development
+- `pnpm mailpit:start` - Start Mailpit container for email testing
+- `pnpm mailpit:stop` - Stop Mailpit container
+- `pnpm mailpit:restart` - Restart Mailpit container
+- `pnpm mailpit:logs` - View Mailpit container logs (live tail)
+
 ### Basic database workflow
 
 If you want to create a new table in Supabase Studio (which runs on http://localhost:54323 by default):
