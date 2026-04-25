@@ -5,9 +5,6 @@ import Link from "next/link";
 import "./globals.css";
 import MaxWidthWrapper from "@/components/max-width-wrapper";
 import AuthButton from "@/components/header-auth";
-import { SessionProvider } from "next-auth/react";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { Toaster } from "@/components/ui/sonner";
 
 const defaultUrl = process?.env?.AUTH_URL ?? "http://localhost:3000/";
@@ -15,8 +12,8 @@ const defaultUrl = process?.env?.AUTH_URL ?? "http://localhost:3000/";
 //! todo metadata update
 export const metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Next.js and Supabase Starter Kit",
-  description: "The fastest way to build apps with Next.js and Supabase",
+  title: "PoliTo Rocket Team",
+  description: "PoliTo Rocket Team website and recruitment platform",
 };
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -24,15 +21,11 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
 });
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
   return (
     <html
       lang="en"
@@ -59,7 +52,7 @@ export default async function RootLayout({
                     Apply
                   </Link>
                 </div>
-                <AuthButton initialSession={session} />
+                <AuthButton />
               </div>
               <ThemeSwitcher />
             </nav>

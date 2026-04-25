@@ -1,38 +1,95 @@
 "use server";
 
+import { and, eq, isNull } from "drizzle-orm";
+import { updateTag } from "next/cache";
+import { POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { ApplyPosition } from "@/app/actions/types";
-import { createSupabaseClient } from "@/utils/supabase/client";
+import { getDb } from "@/db/client";
+import { applyPositions, departments, divisions } from "@/db/schema";
+import { withAuditUser } from "@/lib/db-audit";
+
+type PositionMutation = Partial<{
+  title: string;
+  description: string;
+  status: boolean;
+  required_skills: string[];
+  desirable_skills: string[];
+  custom_questions: string[];
+}>;
+
+async function getPositionById(id: number): Promise<ApplyPosition | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      id: applyPositions.id,
+      status: applyPositions.status,
+      division_id: applyPositions.divisionId,
+      title: applyPositions.title,
+      description: applyPositions.description,
+      required_skills: applyPositions.requiredSkills,
+      desirable_skills: applyPositions.desirableSkills,
+      custom_questions: applyPositions.customQuestions,
+      created_at: applyPositions.createdAt,
+      requires_motivation_letter: applyPositions.requiresMotivationLetter,
+      is_deleted: applyPositions.isDeleted,
+      div_name: divisions.name,
+      div_code: divisions.code,
+      dept_id: departments.id,
+      dept_name: departments.name,
+      dept_code: departments.code,
+    })
+    .from(applyPositions)
+    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .where(
+      and(
+        eq(applyPositions.id, id),
+        isNull(divisions.closedAt),
+        isNull(departments.closedAt),
+      ),
+    )
+    .limit(1);
+
+  return row
+    ? {
+        ...row,
+        div_code: row.div_code ?? "",
+        dept_code: row.dept_code ?? "",
+        canEdit: true,
+      }
+    : null;
+}
 
 export async function handleDelete(id: number) {
-  const supabase = await createSupabaseClient();
+  await withAuditUser(async (tx) => {
+    await tx
+      .update(applyPositions)
+      .set({ isDeleted: true })
+      .where(eq(applyPositions.id, id));
+  });
 
-  // Soft delete: set is_deleted to true instead of actually deleting the record
-  const { error: posError } = await supabase
-    .from("apply_positions")
-    .update({ is_deleted: true })
-    .eq("id", id);
-
-  if (posError) {
-    console.error("[handleDelete] could not soft delete position:", posError);
-    throw new Error(`Failed to delete position ${id}: ${posError.message}`);
-  }
+  updateTag(POSITIONS_CACHE_TAG);
 }
 
 export async function handleEditPosition(
   id: number,
-  updatedData: Partial<{ title: string; description: string; status: boolean }>
+  updatedData: PositionMutation,
 ) {
-  const supabase = await createSupabaseClient();
+  await withAuditUser(async (tx) => {
+    await tx
+      .update(applyPositions)
+      .set({
+        title: updatedData.title,
+        description: updatedData.description,
+        status: updatedData.status,
+        requiredSkills: updatedData.required_skills,
+        desirableSkills: updatedData.desirable_skills,
+        customQuestions: updatedData.custom_questions,
+      })
+      .where(eq(applyPositions.id, id));
+  });
 
-  const { error: posError } = await supabase
-    .from("apply_positions")
-    .update(updatedData)
-    .eq("id", id);
-
-  if (posError) {
-    console.error("[handleEditPosition] could not update position:", posError);
-    throw new Error(`Failed to update position ${id}: ${posError.message}`);
-  }
+  updateTag(POSITIONS_CACHE_TAG);
 }
 
 export async function handleAddPosition(data: {
@@ -44,58 +101,36 @@ export async function handleAddPosition(data: {
   requires_motivation_letter: boolean;
   division_id: number;
 }): Promise<ApplyPosition> {
-  const supabase = await createSupabaseClient();
+  const insertedData = await withAuditUser(async (tx) => {
+    const [row] = await tx
+      .insert(applyPositions)
+      .values({
+        title: data.title,
+        description: data.description,
+        requiredSkills: data.required_skills,
+        desirableSkills: data.desirable_skills,
+        customQuestions: data.custom_questions,
+        requiresMotivationLetter: data.requires_motivation_letter,
+        divisionId: data.division_id,
+        status: true,
+        isDeleted: false,
+      })
+      .returning({ id: applyPositions.id });
 
-  const { data: insertedData, error: posError } = await supabase
-    .from("apply_positions")
-    .insert({
-      title: data.title,
-      description: data.description,
-      required_skills: data.required_skills,
-      desirable_skills: data.desirable_skills,
-      custom_questions: data.custom_questions,
-      requires_motivation_letter: data.requires_motivation_letter,
-      division_id: data.division_id,
-      status: true, // New positions are open by default
-      is_deleted: false, // Explicitly set as not deleted
-    })
-    .select(
-      `
-      *,
-      divisions(
-        id,
-        name,
-        code,
-        dept_id,
-        departments(
-          id,
-          name,
-          code
-        )
-      )
-    `
-    )
-    .single();
-
-  if (posError) {
-    console.error("[handleAddPosition] could not add position:", posError);
-    throw new Error(`Failed to add position: ${posError.message}`);
-  }
+    return row;
+  });
 
   if (!insertedData) {
     throw new Error("No data returned after inserting position");
   }
 
-  // Transform to match ApplyPosition type
-  const applyPosition: ApplyPosition = {
-    ...insertedData,
-    div_name: insertedData.divisions?.name || "",
-    div_code: insertedData.divisions?.code || "",
-    dept_id: insertedData.divisions?.departments?.id || 0,
-    dept_name: insertedData.divisions?.departments?.name || "",
-    dept_code: insertedData.divisions?.departments?.code || "",
-    canEdit: true, // User can edit positions they just created
-  };
+  const applyPosition = await getPositionById(insertedData.id);
 
-  return applyPosition; // return the complete position data
+  if (!applyPosition) {
+    throw new Error("Inserted position could not be loaded");
+  }
+
+  updateTag(POSITIONS_CACHE_TAG);
+
+  return applyPosition;
 }

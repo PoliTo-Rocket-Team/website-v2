@@ -1,7 +1,5 @@
-"use server";
-
-import { getPositionsByMemberScope } from "@/app/actions/get-apply-positions";
-import { getEditableDivisions } from "@/app/actions/get-member-scopes";
+import { Suspense } from "react";
+import { getPositionsPageData } from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
 import {
   handleDelete,
@@ -9,10 +7,27 @@ import {
   handleAddPosition,
 } from "./server-actions";
 
-export default async function Positions() {
-  const { positions } = await getPositionsByMemberScope();
-  const editableDivisions = await getEditableDivisions();
+async function PositionsContent() {
+  const { positions, databaseUnavailable, editableDivisions } =
+    await getPositionsPageData();
 
+  return (
+    <ApplyPositionsList
+      positions={positions}
+      handleDelete={handleDelete}
+      handleEditPosition={handleEditPosition}
+      handleAddPosition={handleAddPosition}
+      editableDivisions={databaseUnavailable ? [] : editableDivisions}
+      pageContext="dashboard"
+    />
+  );
+}
+
+function PositionsFallback() {
+  return <div className="min-h-24" aria-hidden="true" />;
+}
+
+export default function Positions() {
   return (
     <div className="w-full">
       <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
@@ -26,14 +41,9 @@ export default async function Positions() {
           the application page.
         </p>
       </div>
-      <ApplyPositionsList
-        positions={positions}
-        handleDelete={handleDelete}
-        handleEditPosition={handleEditPosition}
-        handleAddPosition={handleAddPosition}
-        editableDivisions={editableDivisions}
-        pageContext="dashboard"
-      />
+      <Suspense fallback={<PositionsFallback />}>
+        <PositionsContent />
+      </Suspense>
     </div>
   );
 }

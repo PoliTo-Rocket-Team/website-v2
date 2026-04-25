@@ -5,9 +5,9 @@ import { ApplyPosition } from "@/app/actions/types";
 import {
   Accordion,
   AccordionItem,
-  AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
+import { ChevronDown } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -115,29 +115,61 @@ export function PositionCard({
       }`}
     >
       <AccordionItem value={position.id.toString()}>
-        <AccordionTrigger className="w-full border-b data-[state=closed]:rounded-lg data-[state=open]:rounded-t-lg p-2 md:px-2 md:py-4 hover:bg-secondary bg-clip-padding duration-100 transition-colors">
-          <div className="flex flex-col items-start md:items-center flex-1 gap-2 md:grid w-full md:grid-cols-[3fr_2fr_2fr_auto] md:justify-items-start">
-            <span className="font-semibold text-sm md:text-lg ">
-              {position.title}
-            </span>
-            <span className="text-sm md:text-base font-medium ">
-              {position.dept_name}
-            </span>
-            <span className="text-sm md:text-base font-medium ">
-              {position.div_name}
-            </span>
-            {/* //! todo better way to change position state, switch inside accordion trigger is not ideal */}
+        <div className="flex items-center gap-3 border-b p-2 md:px-4 md:py-5 hover:bg-secondary bg-clip-padding duration-100 transition-colors">
+          <button
+            type="button"
+            onClick={() =>
+              onToggleAccordion(position.id.toString(), !isOpen)
+            }
+            className="flex min-w-0 flex-1 items-center"
+            aria-expanded={isOpen}
+            aria-controls={`position-content-${position.id}`}
+          >
+            <div className="flex min-w-0 flex-col items-start gap-2 text-left md:grid md:w-full md:grid-cols-[3fr_2fr_2fr] md:items-center md:justify-items-start">
+              <span className="truncate font-semibold text-sm md:text-lg">
+                {position.title}
+              </span>
+              <span className="truncate text-sm md:text-base font-medium">
+                {position.dept_name}
+              </span>
+              <span className="truncate text-sm md:text-base font-medium">
+                {position.div_name}
+              </span>
+            </div>
+          </button>
+          <div className="flex shrink-0 items-center gap-3">
             {position.canEdit && (
               <Switch
                 checked={position.status}
-                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                aria-label={
+                  position.status ? "Deactivate position" : "Activate position"
+                }
                 onCheckedChange={handleToggleStatus}
-                className="data-[state=checked]:bg-orange-500 data-[state=unchecked]:bg-gray-200 "
+                className="data-[state=checked]:bg-orange-500 data-[state=unchecked]:bg-gray-200"
               />
             )}
+            <button
+              type="button"
+              onClick={() =>
+                onToggleAccordion(position.id.toString(), !isOpen)
+              }
+              className="flex h-8 w-8 items-center justify-center text-foreground/80 transition-transform"
+              aria-label={isOpen ? "Collapse position" : "Expand position"}
+              aria-expanded={isOpen}
+              aria-controls={`position-content-${position.id}`}
+            >
+              <ChevronDown
+                className={`h-5 w-5 transition-transform duration-200 ${
+                  isOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
           </div>
-        </AccordionTrigger>
-        <AccordionContent className="p-2 md:p-6">
+        </div>
+        <AccordionContent
+          id={`position-content-${position.id}`}
+          className="p-2 md:p-6"
+        >
           {isEditing ? (
             <PositionEditForm
               position={position}

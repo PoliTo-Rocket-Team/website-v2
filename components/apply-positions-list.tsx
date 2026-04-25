@@ -1,33 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ApplyPosition } from "@/app/actions/types";
 import { PositionCard } from "@/components/position-card";
-import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { AddPositionDialog } from "@/components/add-position-dialog";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { localStorageUtils } from "@/lib/localStorage";
-import { Database } from "@/types/supabase";
-import { Prettify } from "@/lib/utils";
-
-//component-specific Division type with non-nullable code and departments.code
-type ComponentDivision = Prettify<
-  Pick<Database["public"]["Tables"]["divisions"]["Row"], "id" | "name"> & {
-    code: string; // Override to make non-nullable for component needs
-    departments:
-      | Prettify<
-          Pick<
-            Database["public"]["Tables"]["departments"]["Row"],
-            "id" | "name"
-          > & {
-            code: string; // Override to make non-nullable for component needs
-          }
-        >[]
-      | null;
-  }
->;
+import type { Division } from "@/db/types";
 
 type Props = {
   positions: ApplyPosition[];
@@ -41,7 +21,7 @@ type Props = {
       required_skills: string[];
       desirable_skills: string[];
       custom_questions: string[];
-    }>
+    }>,
   ) => void;
   handleAddPosition?: (data: {
     title: string;
@@ -52,10 +32,14 @@ type Props = {
     requires_motivation_letter: boolean;
     division_id: number;
   }) => Promise<ApplyPosition>;
-  editableDivisions?: ComponentDivision[];
+  editableDivisions?: Division[];
   pageContext?: string;
   disclaimer?: string;
 };
+
+function sortPositions(positions: ApplyPosition[]) {
+  return [...positions].sort((a, b) => Number(b.status) - Number(a.status));
+}
 
 export function ApplyPositionsList({
   handleDelete,
@@ -63,65 +47,19 @@ export function ApplyPositionsList({
   positions: initialPositions,
   handleAddPosition,
   editableDivisions = [],
-  pageContext = "default",
   disclaimer,
 }: Props) {
-  const [loading, setLoading] = useState(true);
-  const [positions, setPositions] = useState<ApplyPosition[]>([]);
+  const [positions, setPositions] = useState<ApplyPosition[]>(() =>
+    sortPositions(initialPositions),
+  );
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
 
-  // Load accordion states from localStorage with page-specific key and time limit
   useEffect(() => {
-    const storageKey = `${pageContext}AccordionStates`;
-    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
-
-    const savedAccordionStates = localStorageUtils.load(storageKey, []);
-    const savedTimestamp = localStorageUtils.load(timestampKey, null);
-
-    // Check if data exists and is within time limit (24 hours = 24 * 60 * 60 * 1000 ms)
-    const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    const now = Date.now();
-
-    if (
-      savedAccordionStates &&
-      savedAccordionStates.length > 0 &&
-      savedTimestamp &&
-      now - savedTimestamp < TIME_LIMIT
-    ) {
-      setOpenAccordions(new Set(savedAccordionStates));
-    } else if (savedTimestamp && now - savedTimestamp >= TIME_LIMIT) {
-      // Clean up expired data
-      localStorageUtils.save(storageKey, []);
-      localStorageUtils.save(timestampKey, null);
-    }
-  }, [pageContext]);
-
-  // Save accordion states to localStorage with debouncing
-  useEffect(() => {
-    const storageKey = `${pageContext}AccordionStates`;
-    const timestampKey = `${pageContext}AccordionStatesTimestamp`;
-
-    // Debounce the save operation by 1 second
-    const timeoutId = setTimeout(() => {
-      localStorageUtils.save(storageKey, Array.from(openAccordions));
-      localStorageUtils.save(timestampKey, Date.now());
-    }, 1000);
-
-    // Cleanup: cancel the previous timeout if dependencies change again
-    return () => clearTimeout(timeoutId);
-  }, [openAccordions, pageContext]);
-
-  useEffect(() => {
-    // Sort positions: active (status = true) first, then inactive (status = false)
-    const sortedPositions = [...initialPositions].sort((a, b) => {
-      return Number(b.status) - Number(a.status);
-    });
-    setPositions(sortedPositions);
-    setLoading(false);
+    setPositions(sortPositions(initialPositions));
   }, [initialPositions]);
 
   const toggleAccordion = (id: string, isOpen: boolean) => {
-    setOpenAccordions(prev => {
+    setOpenAccordions((prev) => {
       const newSet = new Set(prev);
       if (isOpen) {
         newSet.add(id);
@@ -151,7 +89,7 @@ export function ApplyPositionsList({
     const newPosition = await handleAddPosition(data);
 
     // Add the new position to the current list
-    setPositions(prev => {
+    setPositions((prev) => {
       const newPositions = [newPosition, ...prev];
       // Sort positions: active (status = true) first, then inactive (status = false)
       return newPositions.sort((a, b) => {
@@ -167,10 +105,10 @@ export function ApplyPositionsList({
 
     try {
       await handleEditPosition(id, { status: !currentStatus });
-      setPositions(prev =>
-        prev.map(pos =>
-          pos.id === id ? { ...pos, status: !currentStatus } : pos
-        )
+      setPositions((prev) =>
+        prev.map((pos) =>
+          pos.id === id ? { ...pos, status: !currentStatus } : pos,
+        ),
       );
 
       // Show success toast
@@ -180,7 +118,7 @@ export function ApplyPositionsList({
         {
           description: `The position is now ${newStatus ? "active and accepting applications" : "inactive"}.`,
           duration: 3000,
-        }
+        },
       );
     } catch (err) {
       console.error("Failed to toggle position status:", err);
@@ -199,7 +137,7 @@ export function ApplyPositionsList({
 
     try {
       await handleDelete(id);
-      setPositions(prev => prev.filter(pos => pos.id !== id));
+      setPositions((prev) => prev.filter((pos) => pos.id !== id));
 
       // Show success toast
       toast.success("Position deleted successfully", {
@@ -224,8 +162,8 @@ export function ApplyPositionsList({
     try {
       await handleEditPosition(id, data);
       // Update the local state to re-render the position with new data
-      setPositions(prev =>
-        prev.map(pos => (pos.id === id ? { ...pos, ...data } : pos))
+      setPositions((prev) =>
+        prev.map((pos) => (pos.id === id ? { ...pos, ...data } : pos)),
       );
 
       // Show success toast
@@ -246,8 +184,6 @@ export function ApplyPositionsList({
       });
     }
   };
-
-  if (loading) return <LoadingSkeleton className="max-w-5xl mx-auto" />;
 
   return (
     <div className="w-full relative max-w-5xl mx-auto">
@@ -272,7 +208,7 @@ export function ApplyPositionsList({
         </div>
       ) : (
         <div className="space-y-2 md:space-y-4">
-          {positions.map(position => (
+          {positions.map((position) => (
             <PositionCard
               key={position.id}
               position={position}

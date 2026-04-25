@@ -1,14 +1,29 @@
 import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { customSession } from "better-auth/plugins";
-import { Pool } from "pg";
-import { generateSupabaseAccessToken } from "./supabase-jwt";
+import { getDb } from "@/db/client";
+import {
+  betterAuthAccounts,
+  betterAuthSessions,
+  betterAuthUsers,
+  betterAuthVerifications,
+} from "@/db/schema";
 import { sendVerificationEmail, sendPasswordResetEmail } from "./email";
+
+const authDb = getDb();
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL as string,
   trustedOrigins: ["http://localhost:3000"],
-  database: new Pool({
-    connectionString: process.env.DATABASE_URL,
+  database: drizzleAdapter(authDb, {
+    provider: "pg",
+    camelCase: true,
+    schema: {
+      user: betterAuthUsers,
+      session: betterAuthSessions,
+      account: betterAuthAccounts,
+      verification: betterAuthVerifications,
+    },
   }),
   emailAndPassword: {
     enabled: true,
@@ -47,16 +62,9 @@ export const auth = betterAuth({
     },
   },
   plugins: [
-    customSession(async ({ user, session }) => {
-      // Generate Supabase access token and attach to session
-      const supabaseAccessToken = await generateSupabaseAccessToken(
-        user.id,
-        user.email
-      );
-
+    customSession(async ({ user }) => {
       return {
         user,
-        supabaseAccessToken,
         userId: user.id,
         email: user.email,
       };

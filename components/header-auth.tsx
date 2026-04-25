@@ -4,26 +4,30 @@ import { Button } from "./ui/button";
 import { useSession } from "@/lib/auth-client";
 import { UserAccountNav } from "@/components/user-account-nav";
 
-export default function AuthButton({
-  initialSession,
-}: {
-  initialSession: any;
-}) {
+export default function AuthButton() {
   const { data: session, isPending } = useSession();
 
-  // Use initialSession during initial render to prevent flash
-  const currentSession = isPending ? initialSession : session;
+  if (session) {
+    return (
+      <UserAccountNav
+        user={{
+          name: session.user?.name || "User",
+          image: "",
+          email: session.email || "",
+        }}
+      />
+    );
+  }
 
-  return currentSession ? (
-    <UserAccountNav
-      user={{
-        name: currentSession?.user?.name || "User",
-        // google image takes too long to load, so default to empty string for now
-        image: "",
-        email: currentSession?.email || "",
-      }}
-    />
-  ) : (
+  if (isPending) {
+    return (
+      <div className="flex items-center justify-end min-w-20">
+        <div className="h-9 w-20 animate-pulse rounded-md border border-border/60 bg-muted/40" />
+      </div>
+    );
+  }
+
+  return (
     <div className="flex gap-2">
       <Button asChild size="sm" variant={"outline"}>
         <Link href="/login">Login</Link>

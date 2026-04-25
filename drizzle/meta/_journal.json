@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1777134496729,
+      "tag": "0000_sticky_wendell_rand",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777134496730,
+      "tag": "0001_sync_better_auth_user_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777134496731,
+      "tag": "0002_add_audit_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777134496732,
+      "tag": "0003_logs_changed_by_user_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777148646704,
+      "tag": "0004_melodic_blue_marvel",
+      "breakpoints": true
+    }
+  ]
+}
