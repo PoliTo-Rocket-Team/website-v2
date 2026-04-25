@@ -21,34 +21,6 @@ export type ScopeInfo = {
   editableDivisionIds: Set<number>;
 };
 
-function isDatabaseUnavailableError(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const message = error.message;
-  const cause =
-    "cause" in error ? (error as Error & { cause?: unknown }).cause : undefined;
-
-  if (
-    message.includes("ECONNREFUSED") ||
-    message.includes("connect ECONNREFUSED") ||
-    message.includes("EAUTHTIMEOUT") ||
-    message.includes("timeout while waiting for message") ||
-    message.includes("08006")
-  ) {
-    return true;
-  }
-
-  return cause instanceof Error
-    ? cause.message.includes("ECONNREFUSED") ||
-        cause.message.includes("connect ECONNREFUSED") ||
-        cause.message.includes("EAUTHTIMEOUT") ||
-        cause.message.includes("timeout while waiting for message") ||
-        cause.message.includes("08006")
-    : false;
-}
-
 function createEmptyScopeInfo(): ScopeInfo {
   return {
     hasAdminAccess: false,
@@ -112,6 +84,52 @@ function normalizeDivision(row: {
         ]
       : null,
   };
+}
+
+function buildDivisionScopeFilter(
+  departmentIds: number[],
+  divisionIds: number[],
+) {
+  const scopeFilters = [];
+
+  if (divisionIds.length) {
+    scopeFilters.push(inArray(divisions.id, divisionIds));
+  }
+
+  if (departmentIds.length) {
+    scopeFilters.push(inArray(divisions.deptId, departmentIds));
+  }
+
+  return scopeFilters.length ? or(...scopeFilters) : undefined;
+}
+
+function buildScopeInfo(scopesData: Scope[], target: string): ScopeInfo {
+  return scopesData.reduce<ScopeInfo>((acc, scope) => {
+    const isTargetMatch = scope.target === "all" || scope.target === target;
+    if (!isTargetMatch) {
+      return acc;
+    }
+
+    if (scope.scope === "admin") {
+      acc.hasAdminAccess = true;
+      if (scope.access_level === "edit") acc.hasAdminEdit = true;
+    } else if (scope.scope === "org") {
+      acc.hasOrgAccess = true;
+      if (scope.access_level === "edit") acc.hasOrgEdit = true;
+    } else if (scope.scope === "department" && scope.dept_id !== null) {
+      acc.departmentIds.add(scope.dept_id);
+      if (scope.access_level === "edit") {
+        acc.editableDepartmentIds.add(scope.dept_id);
+      }
+    } else if (scope.scope === "division" && scope.division_id !== null) {
+      acc.divisionIds.add(scope.division_id);
+      if (scope.access_level === "edit") {
+        acc.editableDivisionIds.add(scope.division_id);
+      }
+    }
+
+    return acc;
+  }, createEmptyScopeInfo());
 }
 
 async function getScopeRowsForMember(memberId: number): Promise<Scope[]> {
@@ -184,15 +202,7 @@ async function getScopedOpenDivisions(
   }
 
   const db = getDb();
-  const scopeFilters = [];
-
-  if (divisionIds.length) {
-    scopeFilters.push(inArray(divisions.id, divisionIds));
-  }
-
-  if (departmentIds.length) {
-    scopeFilters.push(inArray(divisions.deptId, departmentIds));
-  }
+  const scopeFilter = buildDivisionScopeFilter(departmentIds, divisionIds);
 
   const divisionRows = await db
     .select({
@@ -210,7 +220,7 @@ async function getScopedOpenDivisions(
       and(
         isNull(divisions.closedAt),
         isNull(departments.closedAt),
-        or(...scopeFilters),
+        scopeFilter,
       ),
     )
     .orderBy(asc(divisions.id));
@@ -227,33 +237,7 @@ export async function getScopeInfoForMember(
   }
 
   const scopesData = await getScopeRowsForMember(memberId);
-
-  return scopesData.reduce<ScopeInfo>((acc, scope) => {
-    const isTargetMatch = scope.target === "all" || scope.target === target;
-    if (!isTargetMatch) {
-      return acc;
-    }
-
-    if (scope.scope === "admin") {
-      acc.hasAdminAccess = true;
-      if (scope.access_level === "edit") acc.hasAdminEdit = true;
-    } else if (scope.scope === "org") {
-      acc.hasOrgAccess = true;
-      if (scope.access_level === "edit") acc.hasOrgEdit = true;
-    } else if (scope.scope === "department" && scope.dept_id !== null) {
-      acc.departmentIds.add(scope.dept_id);
-      if (scope.access_level === "edit") {
-        acc.editableDepartmentIds.add(scope.dept_id);
-      }
-    } else if (scope.scope === "division" && scope.division_id !== null) {
-      acc.divisionIds.add(scope.division_id);
-      if (scope.access_level === "edit") {
-        acc.editableDivisionIds.add(scope.division_id);
-      }
-    }
-
-    return acc;
-  }, createEmptyScopeInfo());
+  return buildScopeInfo(scopesData, target);
 }
 
 export async function getScopeInfoForCurrentUser(
@@ -266,33 +250,7 @@ export async function getScopeInfoForCurrentUser(
   }
 
   const scopesData = await getScopeRowsForUserId(userId);
-
-  return scopesData.reduce<ScopeInfo>((acc, scope) => {
-    const isTargetMatch = scope.target === "all" || scope.target === target;
-    if (!isTargetMatch) {
-      return acc;
-    }
-
-    if (scope.scope === "admin") {
-      acc.hasAdminAccess = true;
-      if (scope.access_level === "edit") acc.hasAdminEdit = true;
-    } else if (scope.scope === "org") {
-      acc.hasOrgAccess = true;
-      if (scope.access_level === "edit") acc.hasOrgEdit = true;
-    } else if (scope.scope === "department" && scope.dept_id !== null) {
-      acc.departmentIds.add(scope.dept_id);
-      if (scope.access_level === "edit") {
-        acc.editableDepartmentIds.add(scope.dept_id);
-      }
-    } else if (scope.scope === "division" && scope.division_id !== null) {
-      acc.divisionIds.add(scope.division_id);
-      if (scope.access_level === "edit") {
-        acc.editableDivisionIds.add(scope.division_id);
-      }
-    }
-
-    return acc;
-  }, createEmptyScopeInfo());
+  return buildScopeInfo(scopesData, target);
 }
 
 export async function getEditableDivisionsForScope(
@@ -339,15 +297,5 @@ export async function getMemberScopes(
 export async function getEditableDivisions(): Promise<Division[]> {
   const memberId = await getCurrentMemberId();
   const scopeInfo = await getScopeInfoForMember(memberId, "positions");
-
-  try {
-    return await getEditableDivisionsForScope(scopeInfo);
-  } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
-      throw error;
-    }
-
-    console.warn("Database unavailable while loading editable divisions");
-    return [];
-  }
+  return getEditableDivisionsForScope(scopeInfo);
 }

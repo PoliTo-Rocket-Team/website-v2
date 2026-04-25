@@ -83,6 +83,10 @@ export function PositionCard({
     }
   };
 
+  const toggleAccordion = () => {
+    onToggleAccordion(position.id.toString(), !isOpen);
+  };
+
   const renderSkillsList = (
     skills: string[] | null | undefined,
     title: string
@@ -115,16 +119,21 @@ export function PositionCard({
       }`}
     >
       <AccordionItem value={position.id.toString()}>
-        <div className="flex items-center gap-3 border-b p-2 md:px-4 md:py-5 hover:bg-secondary bg-clip-padding duration-100 transition-colors">
-          <button
-            type="button"
-            onClick={() =>
-              onToggleAccordion(position.id.toString(), !isOpen)
+        <div
+          className="flex cursor-pointer items-center gap-3 border-b p-2 transition-colors duration-100 hover:rounded-lg hover:bg-secondary md:px-4 md:py-5"
+          role="button"
+          tabIndex={0}
+          onClick={toggleAccordion}
+          onKeyDown={event => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              toggleAccordion();
             }
-            className="flex min-w-0 flex-1 items-center"
-            aria-expanded={isOpen}
-            aria-controls={`position-content-${position.id}`}
-          >
+          }}
+          aria-expanded={isOpen}
+          aria-controls={`position-content-${position.id}`}
+        >
+          <div className="flex min-w-0 flex-1 items-center">
             <div className="flex min-w-0 flex-col items-start gap-2 text-left md:grid md:w-full md:grid-cols-[3fr_2fr_2fr] md:items-center md:justify-items-start">
               <span className="truncate font-semibold text-sm md:text-lg">
                 {position.title}
@@ -136,8 +145,12 @@ export function PositionCard({
                 {position.div_name}
               </span>
             </div>
-          </button>
-          <div className="flex shrink-0 items-center gap-3">
+          </div>
+          <div
+            className="flex shrink-0 items-center gap-3"
+            onClick={event => event.stopPropagation()}
+            onKeyDown={event => event.stopPropagation()}
+          >
             {position.canEdit && (
               <Switch
                 checked={position.status}
@@ -148,22 +161,16 @@ export function PositionCard({
                 className="data-[state=checked]:bg-orange-500 data-[state=unchecked]:bg-gray-200"
               />
             )}
-            <button
-              type="button"
-              onClick={() =>
-                onToggleAccordion(position.id.toString(), !isOpen)
-              }
+            <div
               className="flex h-8 w-8 items-center justify-center text-foreground/80 transition-transform"
-              aria-label={isOpen ? "Collapse position" : "Expand position"}
-              aria-expanded={isOpen}
-              aria-controls={`position-content-${position.id}`}
+              aria-hidden="true"
             >
               <ChevronDown
                 className={`h-5 w-5 transition-transform duration-200 ${
                   isOpen ? "rotate-180" : ""
                 }`}
               />
-            </button>
+            </div>
           </div>
         </div>
         <AccordionContent

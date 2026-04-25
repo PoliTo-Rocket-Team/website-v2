@@ -37,10 +37,6 @@ type Props = {
   disclaimer?: string;
 };
 
-function sortPositions(positions: ApplyPosition[]) {
-  return [...positions].sort((a, b) => Number(b.status) - Number(a.status));
-}
-
 export function ApplyPositionsList({
   handleDelete,
   handleEditPosition,
@@ -49,13 +45,11 @@ export function ApplyPositionsList({
   editableDivisions = [],
   disclaimer,
 }: Props) {
-  const [positions, setPositions] = useState<ApplyPosition[]>(() =>
-    sortPositions(initialPositions),
-  );
+  const [positions, setPositions] = useState<ApplyPosition[]>(initialPositions);
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setPositions(sortPositions(initialPositions));
+    setPositions(initialPositions);
   }, [initialPositions]);
 
   const toggleAccordion = (id: string, isOpen: boolean) => {
@@ -88,14 +82,8 @@ export function ApplyPositionsList({
     // Call the server action to add the position
     const newPosition = await handleAddPosition(data);
 
-    // Add the new position to the current list
-    setPositions((prev) => {
-      const newPositions = [newPosition, ...prev];
-      // Sort positions: active (status = true) first, then inactive (status = false)
-      return newPositions.sort((a, b) => {
-        return Number(b.status) - Number(a.status);
-      });
-    });
+    // Add the new position to the current list without reordering the rest.
+    setPositions((prev) => [newPosition, ...prev]);
 
     return newPosition;
   };

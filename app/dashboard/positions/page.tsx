@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { getPositionsPageData } from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import {
   handleDelete,
   handleEditPosition,
@@ -8,8 +9,7 @@ import {
 } from "./server-actions";
 
 async function PositionsContent() {
-  const { positions, databaseUnavailable, editableDivisions } =
-    await getPositionsPageData();
+  const { positions, editableDivisions } = await getPositionsPageData();
 
   return (
     <ApplyPositionsList
@@ -17,14 +17,22 @@ async function PositionsContent() {
       handleDelete={handleDelete}
       handleEditPosition={handleEditPosition}
       handleAddPosition={handleAddPosition}
-      editableDivisions={databaseUnavailable ? [] : editableDivisions}
+      editableDivisions={editableDivisions}
       pageContext="dashboard"
     />
   );
 }
 
 function PositionsFallback() {
-  return <div className="min-h-24" aria-hidden="true" />;
+  return (
+    <div className="w-full relative max-w-5xl mx-auto">
+      <div
+        className="absolute top-0 right-0 -translate-y-12 h-10 w-[132px] rounded-md border border-border bg-muted/40 animate-pulse"
+        aria-hidden="true"
+      />
+      <LoadingSkeleton className="space-y-2 md:space-y-4" />
+    </div>
+  );
 }
 
 export default function Positions() {

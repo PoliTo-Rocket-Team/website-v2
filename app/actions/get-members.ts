@@ -2,11 +2,9 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 import { cacheLife } from "next/cache";
-import { headers } from "next/headers";
-import { cache } from "react";
 import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, users } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import { getCurrentMemberId } from "./get-memberId";
 
 type MemberUser = {
   first_name: string | null;
@@ -63,25 +61,13 @@ export type Member = {
   roles?: Partial<Role>[] | null;
 };
 
-const getSession = cache(async () => {
-  return auth.api.getSession({
-    headers: await headers(),
-  });
-});
+type MemberDirectoryRow = Awaited<ReturnType<typeof getMemberDirectoryRows>>[number];
 
-async function getMemberByUserId(userId: string) {
-  "use cache";
-  cacheLife("hours");
-
-  const db = getDb();
-  const [userData] = await db
-    .select({ member: users.member })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  return userData;
-}
+type ViewerAccess = {
+  canViewAll: boolean;
+  departmentIds: Set<number>;
+  divisionKeys: Set<string>;
+};
 
 async function getRolesForMember(memberId: number) {
   "use cache";
@@ -154,21 +140,116 @@ async function getMemberDirectoryRows() {
     .leftJoin(divisions, eq(roles.divisionId, divisions.id));
 }
 
+function toMemberUser(row: MemberDirectoryRow): Partial<MemberUser> {
+  return {
+    first_name: row.first_name,
+    last_name: row.last_name,
+    email: row.email ?? "",
+    level_of_study: row.level_of_study,
+    linkedin: row.linkedin,
+    origin: row.origin,
+    polito_id: row.polito_id,
+    program: row.program,
+    updated_at: row.updated_at,
+  };
+}
+
+function toMemberRole(row: MemberDirectoryRow): Partial<Role> {
+  return {
+    id: row.role_id ?? undefined,
+    member_id: row.role_member_id,
+    dept_id: row.dept_id,
+    division_id: row.division_id,
+    title: row.title ?? "",
+    started_at: row.started_at ?? "",
+    leaved_at: row.leaved_at,
+    type: row.type,
+    departments: row.department_id
+      ? {
+          id: row.department_id,
+          name: row.department_name ?? "",
+          started_at: row.department_started_at ?? "",
+          closed_at: row.department_closed_at,
+          code: row.department_code,
+        }
+      : null,
+    divisions: row.division_id
+      ? {
+          id: row.division_id,
+          dept_id: row.division_dept_id,
+          name: row.division_name ?? "",
+          started_at: row.division_started_at ?? "",
+          closed_at: row.division_closed_at,
+          code: row.division_code,
+        }
+      : null,
+  };
+}
+
+function createViewerAccess(userRoles: Role[]): ViewerAccess {
+  const access: ViewerAccess = {
+    canViewAll: false,
+    departmentIds: new Set<number>(),
+    divisionKeys: new Set<string>(),
+  };
+
+  for (const role of userRoles) {
+    if (role.type === "president") {
+      access.canViewAll = true;
+      continue;
+    }
+
+    if (role.type === "head" && role.dept_id !== null) {
+      access.departmentIds.add(role.dept_id);
+      continue;
+    }
+
+    if (
+      role.type === "lead" &&
+      role.dept_id !== null &&
+      role.division_id !== null
+    ) {
+      access.divisionKeys.add(`${role.dept_id}:${role.division_id}`);
+    }
+  }
+
+  return access;
+}
+
+function canViewerAccessRole(
+  access: ViewerAccess,
+  role: Partial<Role>,
+): boolean {
+  if (access.canViewAll) {
+    return true;
+  }
+
+  if (role.dept_id !== null && role.dept_id !== undefined) {
+    if (access.departmentIds.has(role.dept_id)) {
+      return true;
+    }
+  }
+
+  if (
+    role.dept_id !== null &&
+    role.dept_id !== undefined &&
+    role.division_id !== null &&
+    role.division_id !== undefined
+  ) {
+    return access.divisionKeys.has(`${role.dept_id}:${role.division_id}`);
+  }
+
+  return false;
+}
+
 export async function getMembersByUserRole() {
-  const session = await getSession();
-  const userId = session?.userId;
+  const currentMemberId = await getCurrentMemberId();
 
-  if (!userId) {
+  if (!currentMemberId) {
     return { members: [], role: null };
   }
 
-  const userData = await getMemberByUserId(userId);
-
-  if (!userData?.member) {
-    return { members: [], role: null };
-  }
-
-  const userRoles = await getRolesForMember(userData.member);
+  const userRoles = await getRolesForMember(currentMemberId);
 
   if (userRoles.length === 0) {
     return { members: [], role: null };
@@ -177,6 +258,8 @@ export async function getMembersByUserRole() {
   const allMemberRows = await getMemberDirectoryRows();
 
   const membersMap = new Map<number, Member>();
+  const memberUserEmails = new Map<number, Set<string>>();
+  const memberRoleIds = new Map<number, Set<number>>();
 
   for (const row of allMemberRows) {
     let member = membersMap.get(row.member_id);
@@ -195,93 +278,37 @@ export async function getMembersByUserRole() {
         roles: [],
       };
       membersMap.set(row.member_id, member);
+      memberUserEmails.set(row.member_id, new Set());
+      memberRoleIds.set(row.member_id, new Set());
     }
 
-    if (
-      row.user_id &&
-      !member.users?.some((existing) => existing.email === row.email)
-    ) {
-      member.users?.push({
-        first_name: row.first_name,
-        last_name: row.last_name,
-        email: row.email ?? "",
-        level_of_study: row.level_of_study,
-        linkedin: row.linkedin,
-        origin: row.origin,
-        polito_id: row.polito_id,
-        program: row.program,
-        updated_at: row.updated_at,
-      });
+    const seenEmails = memberUserEmails.get(row.member_id);
+    if (row.user_id && row.email && seenEmails && !seenEmails.has(row.email)) {
+      seenEmails.add(row.email);
+      member.users?.push(toMemberUser(row));
     }
 
-    if (
-      row.role_id &&
-      !member.roles?.some((existing) => existing.id === row.role_id)
-    ) {
-      member.roles?.push({
-        id: row.role_id,
-        member_id: row.role_member_id,
-        dept_id: row.dept_id,
-        division_id: row.division_id,
-        title: row.title ?? "",
-        started_at: row.started_at ?? "",
-        leaved_at: row.leaved_at,
-        type: row.type,
-        departments: row.department_id
-          ? {
-              id: row.department_id,
-              name: row.department_name ?? "",
-              started_at: row.department_started_at ?? "",
-              closed_at: row.department_closed_at,
-              code: row.department_code,
-            }
-          : null,
-        divisions: row.division_id
-          ? {
-              id: row.division_id,
-              dept_id: row.division_dept_id,
-              name: row.division_name ?? "",
-              started_at: row.division_started_at ?? "",
-              closed_at: row.division_closed_at,
-              code: row.division_code,
-            }
-          : null,
-      });
+    const seenRoleIds = memberRoleIds.get(row.member_id);
+    if (row.role_id && seenRoleIds && !seenRoleIds.has(row.role_id)) {
+      seenRoleIds.add(row.role_id);
+      member.roles?.push(toMemberRole(row));
     }
   }
 
+  const viewerAccess = createViewerAccess(userRoles);
   const filteredMembers: Member[] = [];
 
-  for (const userRole of userRoles) {
-    for (const member of Array.from(membersMap.values())) {
-      if (!member.roles?.length || member.member_id === userData.member) {
-        continue;
-      }
+  for (const member of Array.from(membersMap.values())) {
+    if (!member.roles?.length || member.member_id === currentMemberId) {
+      continue;
+    }
 
-      for (const role of member.roles ?? []) {
-        if (userRole.type === "president") {
-          filteredMembers.push({
-            ...member,
-            roles: [role as Partial<Role>],
-          });
-        } else if (
-          userRole.type === "head" &&
-          role.dept_id === userRole.dept_id
-        ) {
-          filteredMembers.push({
-            ...member,
-            roles: [role as Partial<Role>],
-          });
-        } else if (
-          userRole.type === "lead" &&
-          role.division_id === userRole.division_id &&
-          role.dept_id === userRole.dept_id
-        ) {
-          filteredMembers.push({
-            ...member,
-            roles: [role as Partial<Role>],
-          });
-        }
+    for (const role of member.roles) {
+      if (canViewerAccessRole(viewerAccess, role)) {
+        filteredMembers.push({
+          ...member,
+          roles: [role],
+        });
       }
     }
   }

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cacheLife, cacheTag, revalidatePath } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { ApplyPosition } from "./types";
 import { getCurrentMemberId } from "./get-memberId";
@@ -15,30 +15,6 @@ import { getDb } from "@/db/client";
 import { applyPositions, departments, divisions } from "@/db/schema";
 
 export const POSITIONS_CACHE_TAG = "positions";
-
-function nowMs() {
-  return performance.now();
-}
-
-function formatMs(value: number) {
-  return `${value.toFixed(1)}ms`;
-}
-
-function logPositionsTiming(
-  label: string,
-  timings: Record<string, number>,
-  extra?: Record<string, unknown>,
-) {
-  if (process.env.NODE_ENV === "production") {
-    return;
-  }
-
-  const summary = Object.entries(timings)
-    .map(([key, value]) => `${key}=${formatMs(value)}`)
-    .join(" ");
-
-  console.info(`[positions] ${label} ${summary}`, extra ?? "");
-}
 
 export type PositionSnapshotRow = {
   id: number;
@@ -57,6 +33,12 @@ export type PositionSnapshotRow = {
   dept_id: number;
   dept_name: string;
   dept_code: string | null;
+};
+
+type PositionSnapshotOptions = {
+  departmentIds?: number[];
+  divisionIds?: number[];
+  activeOnly?: boolean;
 };
 
 function basePositionSelection() {
@@ -80,43 +62,10 @@ function basePositionSelection() {
   };
 }
 
-async function getPositionSnapshot(): Promise<PositionSnapshotRow[]> {
-  "use cache";
-
-  cacheLife("hours");
-  cacheTag(POSITIONS_CACHE_TAG);
-
-  const db = getDb();
-
-  return db
-    .select(basePositionSelection())
-    .from(applyPositions)
-    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
-    .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(
-      and(
-        eq(applyPositions.isDeleted, false),
-        isNull(divisions.closedAt),
-        isNull(departments.closedAt),
-      ),
-    )
-    .orderBy(asc(divisions.deptId), asc(applyPositions.title));
-}
-
-async function getScopedPositionSnapshot(
+function buildPositionScopeFilter(
   departmentIds: number[],
   divisionIds: number[],
-): Promise<PositionSnapshotRow[]> {
-  "use cache";
-
-  cacheLife("hours");
-  cacheTag(POSITIONS_CACHE_TAG);
-
-  if (!departmentIds.length && !divisionIds.length) {
-    return [];
-  }
-
-  const db = getDb();
+) {
   const scopeFilters = [];
 
   if (divisionIds.length) {
@@ -127,20 +76,55 @@ async function getScopedPositionSnapshot(
     scopeFilters.push(inArray(divisions.deptId, departmentIds));
   }
 
+  return scopeFilters.length ? or(...scopeFilters) : undefined;
+}
+
+async function getPositionSnapshot(
+  options: PositionSnapshotOptions = {},
+): Promise<PositionSnapshotRow[]> {
+  "use cache";
+
+  cacheLife("hours");
+  cacheTag(POSITIONS_CACHE_TAG);
+
+  const {
+    departmentIds = [],
+    divisionIds = [],
+    activeOnly = false,
+  } = options;
+  const db = getDb();
+  const scopeFilter = buildPositionScopeFilter(departmentIds, divisionIds);
+
+  const whereClauses = [
+    eq(applyPositions.isDeleted, false),
+    isNull(divisions.closedAt),
+    isNull(departments.closedAt),
+    activeOnly ? eq(applyPositions.status, true) : undefined,
+    scopeFilter,
+  ];
+
   return db
     .select(basePositionSelection())
     .from(applyPositions)
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(
-      and(
-        eq(applyPositions.isDeleted, false),
-        isNull(divisions.closedAt),
-        isNull(departments.closedAt),
-        or(...scopeFilters),
-      ),
-    )
+    .where(and(...whereClauses))
     .orderBy(asc(divisions.deptId), asc(applyPositions.title));
+}
+
+async function getScopedPositionSnapshot(
+  departmentIds: number[],
+  divisionIds: number[],
+): Promise<PositionSnapshotRow[]> {
+  if (!departmentIds.length && !divisionIds.length) {
+    return [];
+  }
+
+  return getPositionSnapshot({ departmentIds, divisionIds });
+}
+
+async function getActivePositionSnapshot(): Promise<PositionSnapshotRow[]> {
+  return getPositionSnapshot({ activeOnly: true });
 }
 
 function toApplyPosition(
@@ -153,32 +137,6 @@ function toApplyPosition(
     dept_code: position.dept_code ?? "",
     canEdit,
   };
-}
-
-function isDatabaseUnavailableError(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const message = error.message;
-  const cause =
-    "cause" in error ? (error as Error & { cause?: unknown }).cause : undefined;
-
-  if (
-    message.includes("ECONNREFUSED") ||
-    message.includes("connect ECONNREFUSED")
-  ) {
-    return true;
-  }
-
-  return cause instanceof Error
-    ? cause.message.includes("ECONNREFUSED") ||
-        cause.message.includes("connect ECONNREFUSED")
-    : false;
-}
-
-export function revalidatePositionsPage() {
-  revalidatePath("/dashboard/positions");
 }
 
 function mapPositionsWithEditScope(
@@ -198,100 +156,43 @@ function mapPositionsWithEditScope(
 }
 
 export async function getPositionsByMemberScope(): Promise<{
-  databaseUnavailable: boolean;
   positions: ApplyPosition[];
 }> {
-  const requestStartedAt = nowMs();
   const memberId = await getCurrentMemberId();
-  const memberIdAt = nowMs();
 
   if (!memberId) {
-    logPositionsTiming("scoped.no-member", {
-      total: memberIdAt - requestStartedAt,
-      getCurrentMemberId: memberIdAt - requestStartedAt,
-    });
-    return { databaseUnavailable: false, positions: [] };
+    return { positions: [] };
   }
 
   const scopeInfo = await getScopeInfoForMember(memberId, "positions");
-  const scopeAt = nowMs();
+  if (isEmptyScopeInfo(scopeInfo)) {
+    return { positions: [] };
+  }
+
   const hasFullVisibility = scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess;
   const departmentIds = Array.from(scopeInfo.departmentIds);
   const divisionIds = Array.from(scopeInfo.divisionIds);
 
-  try {
-    const visiblePositions = hasFullVisibility
-      ? await getPositionSnapshot()
-      : await getScopedPositionSnapshot(departmentIds, divisionIds);
-    const positionsAt = nowMs();
+  const visiblePositions = hasFullVisibility
+    ? await getPositionSnapshot()
+    : await getScopedPositionSnapshot(departmentIds, divisionIds);
 
-    if (!hasFullVisibility && visiblePositions.length === 0) {
-      logPositionsTiming(
-        "scoped.empty",
-        {
-          total: positionsAt - requestStartedAt,
-          getCurrentMemberId: memberIdAt - requestStartedAt,
-          getScopeInfo: scopeAt - memberIdAt,
-          getPositions: positionsAt - scopeAt,
-        },
-        {
-          hasFullVisibility,
-          departmentIds: departmentIds.length,
-          divisionIds: divisionIds.length,
-        },
-      );
-      return { databaseUnavailable: false, positions: [] };
-    }
-
-    const mappedPositions = mapPositionsWithEditScope(visiblePositions, scopeInfo);
-    const mappedAt = nowMs();
-
-    logPositionsTiming(
-      "scoped.success",
-      {
-        total: mappedAt - requestStartedAt,
-        getCurrentMemberId: memberIdAt - requestStartedAt,
-        getScopeInfo: scopeAt - memberIdAt,
-        getPositions: positionsAt - scopeAt,
-        mapPositions: mappedAt - positionsAt,
-      },
-      {
-        hasFullVisibility,
-        departmentIds: departmentIds.length,
-        divisionIds: divisionIds.length,
-        rows: mappedPositions.length,
-      },
-    );
-
-    return {
-      databaseUnavailable: false,
-      positions: mappedPositions,
-    };
-  } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
-      throw error;
-    }
-
-    console.warn("Database unavailable while loading scoped positions");
-    return { databaseUnavailable: true, positions: [] };
+  if (!hasFullVisibility && visiblePositions.length === 0) {
+    return { positions: [] };
   }
+
+  return {
+    positions: mapPositionsWithEditScope(visiblePositions, scopeInfo),
+  };
 }
 
 export async function getPositionsPageData(): Promise<{
-  databaseUnavailable: boolean;
   editableDivisions: Division[];
   positions: ApplyPosition[];
 }> {
-  const requestStartedAt = nowMs();
   const scopeInfo = await getScopeInfoForCurrentUser("positions");
-  const scopeAt = nowMs();
   if (isEmptyScopeInfo(scopeInfo)) {
-    logPositionsTiming("page.empty-scope", {
-      total: scopeAt - requestStartedAt,
-      getScopeInfo: scopeAt - requestStartedAt,
-    });
     return {
-      databaseUnavailable: false,
       editableDivisions: [],
       positions: [],
     };
@@ -301,73 +202,25 @@ export async function getPositionsPageData(): Promise<{
   const departmentIds = Array.from(scopeInfo.departmentIds);
   const divisionIds = Array.from(scopeInfo.divisionIds);
 
-  try {
-    const [positions, editableDivisions] = await Promise.all([
-      hasFullVisibility
-        ? getPositionSnapshot()
-        : getScopedPositionSnapshot(departmentIds, divisionIds),
-      getEditableDivisionsForScope(scopeInfo),
-    ]);
-    const queriesAt = nowMs();
+  const [positions, editableDivisions] = await Promise.all([
+    hasFullVisibility
+      ? getPositionSnapshot()
+      : getScopedPositionSnapshot(departmentIds, divisionIds),
+    getEditableDivisionsForScope(scopeInfo),
+  ]);
 
-    const mappedPositions = mapPositionsWithEditScope(positions, scopeInfo);
-    const mappedAt = nowMs();
-
-    logPositionsTiming(
-      "page.success",
-      {
-        total: mappedAt - requestStartedAt,
-        getScopeInfo: scopeAt - requestStartedAt,
-        getPageQueries: queriesAt - scopeAt,
-        mapPositions: mappedAt - queriesAt,
-      },
-      {
-        hasFullVisibility,
-        departmentIds: departmentIds.length,
-        divisionIds: divisionIds.length,
-        rows: mappedPositions.length,
-        editableDivisions: editableDivisions.length,
-      },
-    );
-
-    return {
-      databaseUnavailable: false,
-      editableDivisions,
-      positions: mappedPositions,
-    };
-  } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
-      throw error;
-    }
-
-    console.warn("Database unavailable while loading positions dashboard data");
-    return {
-      databaseUnavailable: true,
-      editableDivisions: [],
-      positions: [],
-    };
-  }
+  return {
+    editableDivisions,
+    positions: mapPositionsWithEditScope(positions, scopeInfo),
+  };
 }
 
 export async function getPublicPositions(): Promise<{
-  databaseUnavailable: boolean;
   positions: ApplyPosition[];
 }> {
-  try {
-    const positions = await getPositionSnapshot();
+  const positions = await getActivePositionSnapshot();
 
-    return {
-      databaseUnavailable: false,
-      positions: positions
-        .filter((position) => position.status)
-        .map((position) => toApplyPosition(position)),
-    };
-  } catch (error) {
-    if (!isDatabaseUnavailableError(error)) {
-      throw error;
-    }
-
-    console.warn("Database unavailable while loading public positions");
-    return { databaseUnavailable: true, positions: [] };
-  }
+  return {
+    positions: positions.map((position) => toApplyPosition(position)),
+  };
 }
