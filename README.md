@@ -11,6 +11,7 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ope
    ```
 
 2. Copy `.env.example` to `.env` and fill in the required values.
+   Use `BETTER_AUTH_URL` and `BETTER_AUTH_SECRET` for the auth base URL and secret.
 
 3. Set `DATABASE_URL` to the Postgres database you want the app to use.
 

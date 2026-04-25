@@ -14,6 +14,7 @@ const authDb = getDb();
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL as string,
+  secret: process.env.BETTER_AUTH_SECRET as string,
   trustedOrigins: ["http://localhost:3000"],
   database: drizzleAdapter(authDb, {
     provider: "pg",

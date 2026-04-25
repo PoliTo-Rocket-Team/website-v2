@@ -80,6 +80,7 @@ EMAIL_FROM_ADDRESS="noreply@politorocketteam.it"
 
 # Better Auth
 BETTER_AUTH_URL="http://localhost:3000"
+BETTER_AUTH_SECRET="your-better-auth-secret"
 ```
 
 ## Better Auth Integration

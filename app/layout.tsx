@@ -7,7 +7,7 @@ import MaxWidthWrapper from "@/components/max-width-wrapper";
 import AuthButton from "@/components/header-auth";
 import { Toaster } from "@/components/ui/sonner";
 
-const defaultUrl = process?.env?.AUTH_URL ?? "http://localhost:3000/";
+const defaultUrl = process?.env?.BETTER_AUTH_URL ?? "http://localhost:3000/";
 
 //! todo metadata update
 export const metadata = {
