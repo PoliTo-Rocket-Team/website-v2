@@ -2,6 +2,8 @@ import { Metadata } from "next";
 import { LoginForm } from "@/components/login-form";
 import { GalleryVerticalEnd } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Login | Polito Rocket Team",
   description: "Login to your account",
