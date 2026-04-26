@@ -1,7 +1,6 @@
 import "server-only";
 
 import { eq } from "drizzle-orm";
-import { cacheLife } from "next/cache";
 import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, users } from "@/db/schema";
 import { getCurrentMemberId } from "./get-memberId";
@@ -70,9 +69,6 @@ type ViewerAccess = {
 };
 
 async function getRolesForMember(memberId: number) {
-  "use cache";
-  cacheLife("hours");
-
   const db = getDb();
   return db
     .select({
@@ -90,9 +86,6 @@ async function getRolesForMember(memberId: number) {
 }
 
 async function getMemberDirectoryRows() {
-  "use cache";
-  cacheLife("hours");
-
   const db = getDb();
   return db
     .select({

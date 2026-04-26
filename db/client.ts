@@ -1,25 +1,15 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "@/db/schema";
 
-function getConnectionString() {
+export function getDb() {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
     throw new Error("DATABASE_URL must be configured");
   }
 
-  return connectionString;
-}
-
-export function getDb() {
-  const client = postgres(getConnectionString(), {
-    max: 1,
-  });
+  const client = neon(connectionString);
 
   return drizzle(client, { schema });
-}
-
-export async function getDbAsync() {
-  return getDb();
 }

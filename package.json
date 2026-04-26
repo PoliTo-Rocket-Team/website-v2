@@ -18,6 +18,7 @@
     "mailpit:logs": "docker logs -f mailpit"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.1",
     "@opennextjs/cloudflare": "^1.19.4",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.15",

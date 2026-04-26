@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cacheLife, cacheTag } from "next/cache";
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ApplyPosition } from "./types";
 import { getCurrentMemberId } from "./get-memberId";
 import {
@@ -14,7 +14,8 @@ import type { Division } from "@/db/types";
 import { getDb } from "@/db/client";
 import { applyPositions, departments, divisions } from "@/db/schema";
 
-export const POSITIONS_CACHE_TAG = "positions";
+export const POSITIONS_CACHE_TAG = "apply-positions";
+export const PUBLIC_POSITIONS_CACHE_TAG = "public-apply-positions";
 
 export type PositionSnapshotRow = {
   id: number;
@@ -33,12 +34,6 @@ export type PositionSnapshotRow = {
   dept_id: number;
   dept_name: string;
   dept_code: string | null;
-};
-
-type PositionSnapshotOptions = {
-  departmentIds?: number[];
-  divisionIds?: number[];
-  activeOnly?: boolean;
 };
 
 function basePositionSelection() {
@@ -62,45 +57,16 @@ function basePositionSelection() {
   };
 }
 
-function buildPositionScopeFilter(
-  departmentIds: number[],
-  divisionIds: number[],
-) {
-  const scopeFilters = [];
-
-  if (divisionIds.length) {
-    scopeFilters.push(inArray(applyPositions.divisionId, divisionIds));
-  }
-
-  if (departmentIds.length) {
-    scopeFilters.push(inArray(divisions.deptId, departmentIds));
-  }
-
-  return scopeFilters.length ? or(...scopeFilters) : undefined;
-}
-
-async function getPositionSnapshot(
-  options: PositionSnapshotOptions = {},
+async function queryPositionSnapshot(
+  activeOnly = false,
 ): Promise<PositionSnapshotRow[]> {
-  "use cache";
-
-  cacheLife("hours");
-  cacheTag(POSITIONS_CACHE_TAG);
-
-  const {
-    departmentIds = [],
-    divisionIds = [],
-    activeOnly = false,
-  } = options;
   const db = getDb();
-  const scopeFilter = buildPositionScopeFilter(departmentIds, divisionIds);
 
   const whereClauses = [
     eq(applyPositions.isDeleted, false),
     isNull(divisions.closedAt),
     isNull(departments.closedAt),
     activeOnly ? eq(applyPositions.status, true) : undefined,
-    scopeFilter,
   ];
 
   return db
@@ -112,19 +78,32 @@ async function getPositionSnapshot(
     .orderBy(asc(divisions.deptId), asc(applyPositions.title));
 }
 
-async function getScopedPositionSnapshot(
-  departmentIds: number[],
-  divisionIds: number[],
-): Promise<PositionSnapshotRow[]> {
-  if (!departmentIds.length && !divisionIds.length) {
-    return [];
-  }
-
-  return getPositionSnapshot({ departmentIds, divisionIds });
+async function queryAllPositionSnapshot(): Promise<PositionSnapshotRow[]> {
+  return queryPositionSnapshot();
 }
 
-async function getActivePositionSnapshot(): Promise<PositionSnapshotRow[]> {
-  return getPositionSnapshot({ activeOnly: true });
+async function queryActivePositionSnapshot(): Promise<PositionSnapshotRow[]> {
+  return queryPositionSnapshot(true);
+}
+
+async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
+  "use cache";
+
+  cacheTag(POSITIONS_CACHE_TAG);
+  cacheLife("hours");
+
+  return queryAllPositionSnapshot();
+}
+
+async function getActivePositionSnapshotCached(): Promise<
+  PositionSnapshotRow[]
+> {
+  "use cache";
+
+  cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
+  cacheLife("hours");
+
+  return queryActivePositionSnapshot();
 }
 
 function toApplyPosition(
@@ -137,6 +116,26 @@ function toApplyPosition(
     dept_code: position.dept_code ?? "",
     canEdit,
   };
+}
+
+function filterPositionSnapshotByScope(
+  positions: PositionSnapshotRow[],
+  departmentIds: number[],
+  divisionIds: number[],
+): PositionSnapshotRow[] {
+  if (!departmentIds.length && !divisionIds.length) {
+    return [];
+  }
+
+  const departmentIdSet = new Set(departmentIds);
+  const divisionIdSet = new Set(divisionIds);
+
+  return positions.filter(
+    (position) =>
+      (position.division_id !== null &&
+        divisionIdSet.has(position.division_id)) ||
+      departmentIdSet.has(position.dept_id),
+  );
 }
 
 function mapPositionsWithEditScope(
@@ -172,10 +171,10 @@ export async function getPositionsByMemberScope(): Promise<{
   const hasFullVisibility = scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess;
   const departmentIds = Array.from(scopeInfo.departmentIds);
   const divisionIds = Array.from(scopeInfo.divisionIds);
-
+  const allPositions = await getAllPositionSnapshotCached();
   const visiblePositions = hasFullVisibility
-    ? await getPositionSnapshot()
-    : await getScopedPositionSnapshot(departmentIds, divisionIds);
+    ? allPositions
+    : filterPositionSnapshotByScope(allPositions, departmentIds, divisionIds);
 
   if (!hasFullVisibility && visiblePositions.length === 0) {
     return { positions: [] };
@@ -202,12 +201,13 @@ export async function getPositionsPageData(): Promise<{
   const departmentIds = Array.from(scopeInfo.departmentIds);
   const divisionIds = Array.from(scopeInfo.divisionIds);
 
-  const [positions, editableDivisions] = await Promise.all([
-    hasFullVisibility
-      ? getPositionSnapshot()
-      : getScopedPositionSnapshot(departmentIds, divisionIds),
+  const [allPositions, editableDivisions] = await Promise.all([
+    getAllPositionSnapshotCached(),
     getEditableDivisionsForScope(scopeInfo),
   ]);
+  const positions = hasFullVisibility
+    ? allPositions
+    : filterPositionSnapshotByScope(allPositions, departmentIds, divisionIds);
 
   return {
     editableDivisions,
@@ -218,7 +218,7 @@ export async function getPositionsPageData(): Promise<{
 export async function getPublicPositions(): Promise<{
   positions: ApplyPosition[];
 }> {
-  const positions = await getActivePositionSnapshot();
+  const positions = await getActivePositionSnapshotCached();
 
   return {
     positions: positions.map((position) => toApplyPosition(position)),

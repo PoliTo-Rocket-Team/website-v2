@@ -1,14 +1,11 @@
 import "server-only";
 
 import { cacheLife, cacheTag } from "next/cache";
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { Division, Scope } from "@/db/types";
 import { getCurrentMemberId, getCurrentUserId } from "./get-memberId";
 import { getDb } from "@/db/client";
 import { departments, divisions, scopes, users } from "@/db/schema";
-
-const SCOPES_CACHE_TAG = "member-scopes";
-const DIVISIONS_CACHE_TAG = "open-divisions";
 
 export type ScopeInfo = {
   hasAdminAccess: boolean;
@@ -19,6 +16,18 @@ export type ScopeInfo = {
   divisionIds: Set<number>;
   editableDepartmentIds: Set<number>;
   editableDivisionIds: Set<number>;
+};
+
+type DivisionStructureSnapshotRow = {
+  id: number;
+  name: string;
+  code: string | null;
+  dept_id: number | null;
+  division_closed_at: string | null;
+  department_id: number | null;
+  department_name: string | null;
+  department_code: string | null;
+  department_closed_at: string | null;
 };
 
 function createEmptyScopeInfo(): ScopeInfo {
@@ -86,21 +95,36 @@ function normalizeDivision(row: {
   };
 }
 
-function buildDivisionScopeFilter(
+function mapDivisionSnapshotToDivision(
+  rows: DivisionStructureSnapshotRow[],
+): Division[] {
+  return rows.map(normalizeDivision);
+}
+
+function filterOpenDivisionSnapshot(
+  rows: DivisionStructureSnapshotRow[],
+): DivisionStructureSnapshotRow[] {
+  return rows.filter(
+    (row) =>
+      row.division_closed_at === null && row.department_closed_at === null,
+  );
+}
+
+function filterDivisionSnapshotByScope(
+  rows: DivisionStructureSnapshotRow[],
   departmentIds: number[],
   divisionIds: number[],
-) {
-  const scopeFilters = [];
-
-  if (divisionIds.length) {
-    scopeFilters.push(inArray(divisions.id, divisionIds));
+): DivisionStructureSnapshotRow[] {
+  if (!departmentIds.length && !divisionIds.length) {
+    return [];
   }
 
-  if (departmentIds.length) {
-    scopeFilters.push(inArray(divisions.deptId, departmentIds));
-  }
+  const departmentIdSet = new Set(departmentIds);
+  const divisionIdSet = new Set(divisionIds);
 
-  return scopeFilters.length ? or(...scopeFilters) : undefined;
+  return rows.filter(
+    (row) => divisionIdSet.has(row.id) || departmentIdSet.has(row.dept_id ?? -1),
+  );
 }
 
 function buildScopeInfo(scopesData: Scope[], target: string): ScopeInfo {
@@ -133,11 +157,6 @@ function buildScopeInfo(scopesData: Scope[], target: string): ScopeInfo {
 }
 
 async function getScopeRowsForMember(memberId: number): Promise<Scope[]> {
-  "use cache";
-
-  cacheLife("hours");
-  cacheTag(SCOPES_CACHE_TAG);
-
   const db = getDb();
   const scopeRows = await db
     .select()
@@ -148,11 +167,6 @@ async function getScopeRowsForMember(memberId: number): Promise<Scope[]> {
 }
 
 async function getScopeRowsForUserId(userId: string): Promise<Scope[]> {
-  "use cache";
-
-  cacheLife("hours");
-  cacheTag(SCOPES_CACHE_TAG);
-
   const db = getDb();
   const scopeRows = await db
     .select({ scope: scopes })
@@ -163,69 +177,44 @@ async function getScopeRowsForUserId(userId: string): Promise<Scope[]> {
   return scopeRows.map((row) => toScopeRow(row.scope));
 }
 
-async function getOpenDivisions(): Promise<Division[]> {
-  "use cache";
-
-  cacheLife("hours");
-  cacheTag(DIVISIONS_CACHE_TAG);
-
+async function queryDivisionStructureSnapshot(): Promise<
+  DivisionStructureSnapshotRow[]
+> {
   const db = getDb();
-  const divisionRows = await db
+
+  return db
     .select({
       id: divisions.id,
       name: divisions.name,
       code: divisions.code,
       dept_id: divisions.deptId,
+      division_closed_at: divisions.closedAt,
       department_id: departments.id,
       department_name: departments.name,
       department_code: departments.code,
+      department_closed_at: departments.closedAt,
     })
     .from(divisions)
     .leftJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(isNull(divisions.closedAt), isNull(departments.closedAt)))
     .orderBy(asc(divisions.id));
-
-  return divisionRows.map(normalizeDivision);
 }
 
-async function getScopedOpenDivisions(
-  departmentIds: number[],
-  divisionIds: number[],
-): Promise<Division[]> {
+async function getDivisionStructureSnapshotCached(): Promise<
+  DivisionStructureSnapshotRow[]
+> {
   "use cache";
 
+  cacheTag("org-structure");
   cacheLife("hours");
-  cacheTag(DIVISIONS_CACHE_TAG);
 
-  if (!departmentIds.length && !divisionIds.length) {
-    return [];
-  }
+  return queryDivisionStructureSnapshot();
+}
 
-  const db = getDb();
-  const scopeFilter = buildDivisionScopeFilter(departmentIds, divisionIds);
-
-  const divisionRows = await db
-    .select({
-      id: divisions.id,
-      name: divisions.name,
-      code: divisions.code,
-      dept_id: divisions.deptId,
-      department_id: departments.id,
-      department_name: departments.name,
-      department_code: departments.code,
-    })
-    .from(divisions)
-    .leftJoin(departments, eq(divisions.deptId, departments.id))
-    .where(
-      and(
-        isNull(divisions.closedAt),
-        isNull(departments.closedAt),
-        scopeFilter,
-      ),
-    )
-    .orderBy(asc(divisions.id));
-
-  return divisionRows.map(normalizeDivision);
+async function getScopeInfoFromRows(
+  scopesData: Promise<Scope[]>,
+  target: string,
+): Promise<ScopeInfo> {
+  return buildScopeInfo(await scopesData, target);
 }
 
 export async function getScopeInfoForMember(
@@ -236,8 +225,7 @@ export async function getScopeInfoForMember(
     return createEmptyScopeInfo();
   }
 
-  const scopesData = await getScopeRowsForMember(memberId);
-  return buildScopeInfo(scopesData, target);
+  return getScopeInfoFromRows(getScopeRowsForMember(memberId), target);
 }
 
 export async function getScopeInfoForCurrentUser(
@@ -249,8 +237,7 @@ export async function getScopeInfoForCurrentUser(
     return createEmptyScopeInfo();
   }
 
-  const scopesData = await getScopeRowsForUserId(userId);
-  return buildScopeInfo(scopesData, target);
+  return getScopeInfoFromRows(getScopeRowsForUserId(userId), target);
 }
 
 export async function getEditableDivisionsForScope(
@@ -265,11 +252,17 @@ export async function getEditableDivisionsForScope(
     return [];
   }
 
+  const openDivisions = filterOpenDivisionSnapshot(
+    await getDivisionStructureSnapshotCached(),
+  );
+
   if (hasFullAccess) {
-    return getOpenDivisions();
+    return mapDivisionSnapshotToDivision(openDivisions);
   }
 
-  return getScopedOpenDivisions(departmentIds, divisionIds);
+  return mapDivisionSnapshotToDivision(
+    filterDivisionSnapshotByScope(openDivisions, departmentIds, divisionIds),
+  );
 }
 
 export async function getMemberScopes(): Promise<{ scope: Scope[] }>;

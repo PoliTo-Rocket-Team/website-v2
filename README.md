@@ -1,6 +1,6 @@
 # PoliTo Rocket Team Website
 
-This repository powers the PoliTo Rocket Team website. The stack is Next.js, OpenNext for Cloudflare deployment, Drizzle ORM for database schema/migrations, PostgreSQL, Better Auth, and Tailwind CSS.
+This repository powers the PoliTo Rocket Team website. The stack is Next.js, OpenNext for Cloudflare deployment, Drizzle ORM for database schema/migrations, Neon Postgres, Better Auth, and Tailwind CSS.
 
 ## Setup
 
@@ -13,12 +13,11 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ope
 2. Copy `.env.example` to `.env` and fill in the required values.
    Use `BETTER_AUTH_URL` and `BETTER_AUTH_SECRET` for the auth base URL and secret.
 
-3. Set `DATABASE_URL` to the Postgres database you want the app to use.
+3. Create a Neon project and set `DATABASE_URL`.
 
    For `wrangler dev` or `pnpm preview`, put Worker runtime secrets in `.dev.vars`
-   instead of `wrangler.jsonc`. Do not commit production values or a local
-   `localhost` database URL to `wrangler.jsonc`, because deployed Workers cannot
-   reach your laptop's Postgres instance.
+   instead of `wrangler.jsonc`. Do not commit production values or a local database URL
+   to `wrangler.jsonc`, because deployed Workers cannot reach your laptop's Postgres instance.
 
 4. Apply the schema and load seed data:
 
