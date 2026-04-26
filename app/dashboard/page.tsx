@@ -1,11 +1,12 @@
 import { Suspense } from "react";
 import { InfoIcon } from "lucide-react";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { headers } from "next/headers";
 
 async function SessionDetails() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
+  const requestHeaders = await headers();
+  const session = await getAuth().api.getSession({
+    headers: requestHeaders,
   });
 
   return (

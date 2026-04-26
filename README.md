@@ -15,6 +15,11 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ope
 
 3. Set `DATABASE_URL` to the Postgres database you want the app to use.
 
+   For `wrangler dev` or `pnpm preview`, put Worker runtime secrets in `.dev.vars`
+   instead of `wrangler.jsonc`. Do not commit production values or a local
+   `localhost` database URL to `wrangler.jsonc`, because deployed Workers cannot
+   reach your laptop's Postgres instance.
+
 4. Apply the schema and load seed data:
 
    ```bash

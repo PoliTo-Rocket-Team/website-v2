@@ -3,17 +3,9 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { cacheLife } from "next/cache";
 import { headers } from "next/headers";
-import { cache } from "react";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { users } from "@/db/schema";
-
-const getSession = cache(async () => {
-  const requestHeaders = await headers();
-  return auth.api.getSession({
-    headers: requestHeaders,
-  });
-});
 
 async function getMemberIdByUserId(userId: string): Promise<number | null> {
   "use cache";
@@ -30,7 +22,10 @@ async function getMemberIdByUserId(userId: string): Promise<number | null> {
 }
 
 export async function getCurrentUserId(): Promise<string | null> {
-  const session = await getSession();
+  const requestHeaders = await headers();
+  const session = await getAuth().api.getSession({
+    headers: requestHeaders,
+  });
   return session?.userId ?? null;
 }
 

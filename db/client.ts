@@ -12,29 +12,12 @@ function getConnectionString() {
   return connectionString;
 }
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __dbClient: ReturnType<typeof postgres> | undefined;
-  // eslint-disable-next-line no-var
-  var __db: ReturnType<typeof drizzle<typeof schema>> | undefined;
-}
-
-function getClient() {
-  if (!globalThis.__dbClient) {
-    globalThis.__dbClient = postgres(getConnectionString(), {
-      max: 10,
-    });
-  }
-
-  return globalThis.__dbClient;
-}
-
 export function getDb() {
-  if (!globalThis.__db) {
-    globalThis.__db = drizzle(getClient(), { schema });
-  }
+  const client = postgres(getConnectionString(), {
+    max: 1,
+  });
 
-  return globalThis.__db;
+  return drizzle(client, { schema });
 }
 
 export async function getDbAsync() {

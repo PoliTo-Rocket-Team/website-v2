@@ -1,11 +1,12 @@
 import { sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { getDb } from "@/db/client";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 
 export async function getCurrentUserId(): Promise<string | null> {
-  const session = await auth.api.getSession({
-    headers: await headers(),
+  const requestHeaders = await headers();
+  const session = await getAuth().api.getSession({
+    headers: requestHeaders,
   });
 
   return session?.userId ?? session?.user?.id ?? null;
