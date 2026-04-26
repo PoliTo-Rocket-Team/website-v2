@@ -11,11 +11,17 @@ import {
 import { sendVerificationEmail, sendPasswordResetEmail } from "./email";
 
 const authDb = getDb();
+const authBaseUrl = process.env.BETTER_AUTH_URL;
+const trustedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  authBaseUrl,
+].filter((origin): origin is string => Boolean(origin));
 
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL as string,
+  baseURL: authBaseUrl as string,
   secret: process.env.BETTER_AUTH_SECRET as string,
-  trustedOrigins: ["http://localhost:3000"],
+  trustedOrigins,
   database: drizzleAdapter(authDb, {
     provider: "pg",
     camelCase: true,

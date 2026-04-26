@@ -20,13 +20,13 @@ export const betterAuthUsers = betterAuthSchema.table(
     image: text("image"),
     createdAt: timestamp("createdAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     updatedAt: timestamp("updatedAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
@@ -50,23 +50,23 @@ export const betterAuthAccounts = betterAuthSchema.table(
     idToken: text("idToken"),
     accessTokenExpiresAt: timestamp("accessTokenExpiresAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     }),
     refreshTokenExpiresAt: timestamp("refreshTokenExpiresAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     }),
     scope: text("scope"),
     password: text("password"),
     createdAt: timestamp("createdAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     updatedAt: timestamp("updatedAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     }).notNull(),
   },
   (table) => ({
@@ -80,18 +80,18 @@ export const betterAuthSessions = betterAuthSchema.table(
     id: text("id").primaryKey(),
     expiresAt: timestamp("expiresAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     }).notNull(),
     token: text("token").notNull(),
     createdAt: timestamp("createdAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     updatedAt: timestamp("updatedAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     }).notNull(),
     ipAddress: text("ipAddress"),
     userAgent: text("userAgent"),
@@ -113,17 +113,17 @@ export const betterAuthVerifications = betterAuthSchema.table(
     value: text("value").notNull(),
     expiresAt: timestamp("expiresAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     }).notNull(),
     createdAt: timestamp("createdAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     updatedAt: timestamp("updatedAt", {
       withTimezone: true,
-      mode: "string",
+      mode: "date",
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
