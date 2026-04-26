@@ -1,21 +1,19 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
-  "name": "website-v2",
-  "keep_vars": true,
-  "compatibility_date": "2026-04-25",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "assets": {
-    "directory": ".open-next/assets",
-    "binding": "ASSETS",
-  },
-  "services": [
-    {
-      "binding": "WORKER_SELF_REFERENCE",
-      "service": "website-v2",
-    },
-  ],
-  "images": {
-    "binding": "IMAGES",
-  },
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "website-v2",
+	"compatibility_date": "2026-04-20",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"keep_vars": true,
+	"workers_dev": true,
+	"preview_urls": true,
 }
