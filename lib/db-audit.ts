@@ -1,24 +1,34 @@
 import { sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
 import { getCurrentUserId } from "@/lib/current-user";
 
 export { getCurrentUserId } from "@/lib/current-user";
 
 type AuditDb = ReturnType<typeof getDb>;
+type AuditQuery<TResult> = BatchItem<"pg"> & Promise<TResult>;
 
-function buildAuditContext(userId: string, db: AuditDb) {
-  return db
-    .$with("audit_context", {
-      auditUser: sql<string>`set_config('request.jwt.claim.sub', ${userId}, true)`,
-    })
-    .as(
-      sql`select set_config('request.jwt.claim.sub', ${userId}, true) as audit_user`,
-    );
+function buildAuditSetupQuery(db: AuditDb, userId: string) {
+  return db.execute(
+    sql`select set_config('request.jwt.claim.sub', ${userId}, true) as audit_user`,
+  );
 }
 
-export async function getAuditDb(): Promise<AuditDb> {
+export async function runAuditQuery<TResult>(
+  buildQuery: (db: AuditDb) => AuditQuery<TResult>,
+): Promise<TResult> {
   const db = getDb();
   const userId = await getCurrentUserId();
+  const query = buildQuery(db);
 
-  return userId ? (db.with(buildAuditContext(userId, db)) as AuditDb) : db;
+  if (!userId) {
+    return query;
+  }
+
+  const [, result] = await db.batch([
+    buildAuditSetupQuery(db, userId),
+    query,
+  ] as const);
+
+  return result;
 }

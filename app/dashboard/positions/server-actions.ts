@@ -10,7 +10,7 @@ import {
 import { ApplyPosition } from "@/app/actions/types";
 import { getDb } from "@/db/client";
 import { applyPositions, departments, divisions } from "@/db/schema";
-import { getAuditDb } from "@/lib/db-audit";
+import { runAuditQuery } from "@/lib/db-audit";
 
 type PositionMutation = Partial<{
   title: string;
@@ -111,12 +111,12 @@ function invalidatePositionCaches() {
 }
 
 export async function handleDelete(id: number) {
-  const db = await getAuditDb();
-
-  await db
-    .update(applyPositions)
-    .set({ isDeleted: true })
-    .where(eq(applyPositions.id, id));
+  await runAuditQuery((db) =>
+    db
+      .update(applyPositions)
+      .set({ isDeleted: true })
+      .where(eq(applyPositions.id, id)),
+  );
 
   invalidatePositionCaches();
 }
@@ -125,12 +125,12 @@ export async function handleEditPosition(
   id: number,
   updatedData: PositionMutation,
 ) {
-  const db = await getAuditDb();
-
-  await db
-    .update(applyPositions)
-    .set(buildPositionMutation(updatedData))
-    .where(eq(applyPositions.id, id));
+  await runAuditQuery((db) =>
+    db
+      .update(applyPositions)
+      .set(buildPositionMutation(updatedData))
+      .where(eq(applyPositions.id, id)),
+  );
 
   invalidatePositionCaches();
 }
@@ -138,11 +138,12 @@ export async function handleEditPosition(
 export async function handleAddPosition(
   data: NewPositionInput,
 ): Promise<ApplyPosition> {
-  const db = await getAuditDb();
-  const insertedRows = await db
-    .insert(applyPositions)
-    .values(buildNewPositionValues(data))
-    .returning({ id: applyPositions.id });
+  const insertedRows = await runAuditQuery((db) =>
+    db
+      .insert(applyPositions)
+      .values(buildNewPositionValues(data))
+      .returning({ id: applyPositions.id }),
+  );
   const [insertedData] = insertedRows;
 
   if (!insertedData) {
