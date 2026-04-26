@@ -1,8 +1,7 @@
+import { Suspense } from "react";
 import { GalleryVerticalEnd } from "lucide-react";
 import { SignupForm } from "@/components/signup-form";
 import { Metadata } from "next";
-
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Sign Up | Polito Rocket Team",
@@ -20,7 +19,9 @@ export default function SignupPage() {
           {/* //! todo add prt logo  */}
           Polito Rocket Team
         </div>
-        <SignupForm />
+        <Suspense fallback={<div className="min-h-24" aria-hidden="true" />}>
+          <SignupForm />
+        </Suspense>
       </div>
     </div>
   );
