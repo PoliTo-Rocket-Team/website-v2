@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import postgres from "postgres";
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -10,16 +10,15 @@ async function main() {
     throw new Error("DATABASE_URL must be configured");
   }
 
-  const pool = new Pool({
-    connectionString,
+  const client = postgres(connectionString, {
     max: 1,
   });
 
   try {
-    const db = drizzle(pool);
+    const db = drizzle(client);
     await migrate(db, { migrationsFolder: "./drizzle" });
   } finally {
-    await pool.end();
+    await client.end();
   }
 }
 

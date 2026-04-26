@@ -1,5 +1,5 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "@/db/schema";
 
 function getConnectionString() {
@@ -14,25 +14,24 @@ function getConnectionString() {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __dbPool: Pool | undefined;
+  var __dbClient: ReturnType<typeof postgres> | undefined;
   // eslint-disable-next-line no-var
   var __db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 }
 
-function getPool() {
-  if (!globalThis.__dbPool) {
-    globalThis.__dbPool = new Pool({
-      connectionString: getConnectionString(),
+function getClient() {
+  if (!globalThis.__dbClient) {
+    globalThis.__dbClient = postgres(getConnectionString(), {
       max: 10,
     });
   }
 
-  return globalThis.__dbPool;
+  return globalThis.__dbClient;
 }
 
 export function getDb() {
   if (!globalThis.__db) {
-    globalThis.__db = drizzle({ client: getPool(), schema });
+    globalThis.__db = drizzle(getClient(), { schema });
   }
 
   return globalThis.__db;

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { Pool } from "pg";
+import postgres from "postgres";
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -12,15 +12,14 @@ async function main() {
 
   const seedPath = resolve(process.cwd(), "db/seed.sql");
   const seedSql = await readFile(seedPath, "utf8");
-  const pool = new Pool({
-    connectionString,
+  const client = postgres(connectionString, {
     max: 1,
   });
 
   try {
-    await pool.query(seedSql);
+    await client.unsafe(seedSql);
   } finally {
-    await pool.end();
+    await client.end();
   }
 }
 
