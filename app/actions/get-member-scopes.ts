@@ -205,7 +205,7 @@ async function getDivisionStructureSnapshotCached(): Promise<
   "use cache";
 
   cacheTag("org-structure");
-  cacheLife("hours");
+  cacheLife("max");
 
   return queryDivisionStructureSnapshot();
 }

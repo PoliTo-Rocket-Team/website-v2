@@ -90,7 +90,7 @@ async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
   "use cache";
 
   cacheTag(POSITIONS_CACHE_TAG);
-  cacheLife("hours");
+  cacheLife("weeks");
 
   return queryAllPositionSnapshot();
 }
@@ -101,7 +101,7 @@ async function getActivePositionSnapshotCached(): Promise<
   "use cache";
 
   cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
-  cacheLife("hours");
+  cacheLife("weeks");
 
   return queryActivePositionSnapshot();
 }
