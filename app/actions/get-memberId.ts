@@ -1,32 +1,33 @@
-"use server";
+import "server-only";
 
-import { createSupabaseClient } from "@/utils/supabase/client";
-import { auth } from "@/auth";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/db/client";
+import { users } from "@/db/schema";
+import { getCurrentUserId } from "@/lib/current-user";
+
+export { getCurrentUserId } from "@/lib/current-user";
+
+async function getMemberIdByUserId(userId: string): Promise<number | null> {
+  const db = getDb();
+  const [userData] = await db
+    .select({ member: users.member })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return userData?.member ?? null;
+}
 
 /**
  * Get the current authenticated user's member ID
  * @returns Promise<number | null> - Returns member ID or null if not found/authenticated
  */
 export async function getCurrentMemberId(): Promise<number | null> {
-  const supabase = await createSupabaseClient();
-  //! todo remove debug log
-  console.log("database request on get member id");
-  const session = await auth();
+  const userId = await getCurrentUserId();
 
-  if (!session?.userId) {
+  if (!userId) {
     return null;
   }
 
-  const { data: userData, error } = await supabase
-    .from("users")
-    .select("member")
-    .eq("id", session.userId)
-    .single();
-
-  if (error) {
-    console.error("Error getting user member ID:", error);
-    return null;
-  }
-
-  return userData?.member || null;
+  return getMemberIdByUserId(userId);
 }

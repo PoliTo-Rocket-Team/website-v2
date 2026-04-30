@@ -1,2 +1,5 @@
+ignoredBuiltDependencies:
+  - '@snaplet/seed'
+  - sharp
+
 onlyBuiltDependencies:
-  - supabase

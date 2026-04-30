@@ -4,6 +4,7 @@
 /node_modules
 /.pnp
 .pnp.*
+.pnpm-*
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
@@ -16,6 +17,7 @@
 # next.js
 /.next/
 /out/
+.open-next/
 
 # production
 /build
@@ -32,10 +34,13 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.dev.vars*
 
 # vercel
 .vercel
+.wrangler/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+cloudflare-env.d.ts
