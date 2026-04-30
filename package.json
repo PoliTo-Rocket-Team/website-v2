@@ -19,6 +19,7 @@
     "mailpit:logs": "docker logs -f mailpit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.984.0",
     "@neondatabase/serverless": "^1.0.1",
     "@opennextjs/cloudflare": "^1.19.4",
     "@radix-ui/react-accordion": "^1.2.3",
