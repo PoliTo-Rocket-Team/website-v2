@@ -21,7 +21,7 @@ import { useState } from "react";
 import { signIn } from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Icons } from "@/components/icons";
+import { Icons } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { EmailVerificationDialog } from "@/components/email-verification-dialog";
 import { ForgotPasswordDialog } from "@/components/forgot-password-dialog";

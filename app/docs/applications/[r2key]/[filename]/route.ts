@@ -15,8 +15,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getFile } from "@/utils/r2";
-import { auth } from "@/auth";
-import { createSupabaseClient } from "@/utils/supabase/client";
 import { getUserScope, ScopeInfo } from "@/app/actions/get-user-scope";
 
 /**
@@ -35,7 +33,6 @@ async function validateFileAccessByFileHash(
   fileHash: string,
   requestingUserId: string
 ): Promise<{ isValid: boolean; application?: any; matchedFile?: any }> {
-  const supabase = await createSupabaseClient();
 
   console.log("database request on docs route (file hash based)");
 

@@ -1,17 +1,22 @@
 "use client";
 
-import { signIn } from "next-auth/react";
-import { useState, useEffect } from "react";
-
+import { useState } from "react";
+import { signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Icons } from "@/components/ui/icons";
 
 export default function SignInWithGoogle() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
-    signIn("google");
+    try {
+      await signIn.social({
+        provider: "google",
+      });
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   return (

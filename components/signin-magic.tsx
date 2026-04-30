@@ -1,11 +1,30 @@
 "use client";
 
-import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icons } from "@/components/ui/icons";
 import { toast } from "sonner";
+
+type MagicLinkSignIn = typeof signIn & {
+  magicLink?: (input: {
+    email: string;
+    callbackURL?: string;
+    name?: string;
+    newUserCallbackURL?: string;
+    errorCallbackURL?: string;
+  }) => Promise<{
+    data?: {
+      status: boolean;
+    };
+    error?: {
+      message?: string;
+    };
+  }>;
+};
+
+const magicLinkSignIn = signIn as MagicLinkSignIn;
 
 export default function SignInMagic() {
   const [isLoading, setIsLoading] = useState(false);
@@ -22,14 +41,21 @@ export default function SignInMagic() {
 
     setIsLoading(true);
     try {
-      const result = await signIn("resend", {
+      if (!magicLinkSignIn.magicLink) {
+        toast.message("Magic link flow not connected yet.", {
+          description: "Enable the Better Auth magic-link plugin to use this.",
+        });
+        return;
+      }
+
+      const result = await magicLinkSignIn.magicLink({
         email,
-        redirect: false,
       });
 
       if (result?.error) {
         toast.error("Failed to send login link.", {
           description:
+            result.error.message ||
             "We couldn’t send a magic link to your inbox. Try again.",
         });
       } else {

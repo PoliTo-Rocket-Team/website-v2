@@ -1,12 +1,24 @@
-"use server";
-
+import { Suspense } from "react";
 import { getApplicationsByMemberScope } from "@/app/actions/get-applications";
 import { ApplicationsList } from "@/components/applications-list";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Applications } from "@/app/actions/types";
 
-export default async function ApplicationsPage() {
+async function ApplicationsContent() {
   const { applications } = await getApplicationsByMemberScope();
 
+  return <ApplicationsList applications={applications as Applications[]} />;
+}
+
+function ApplicationsListFallback() {
+  return (
+    <div className="w-full relative max-w-5xl mx-auto">
+      <LoadingSkeleton className="space-y-2 md:space-y-4" />
+    </div>
+  );
+}
+
+export default function ApplicationsPage() {
   //! todo handle no access with sessi
 
   return (
@@ -21,7 +33,9 @@ export default async function ApplicationsPage() {
           recruitment process.
         </p>
       </div>
-      <ApplicationsList applications={applications as Applications[]} />
+      <Suspense fallback={<ApplicationsListFallback />}>
+        <ApplicationsContent />
+      </Suspense>
     </div>
   );
 }

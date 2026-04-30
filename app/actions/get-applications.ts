@@ -1,319 +1,179 @@
 "use server";
 
-/**
- * APPLICATIONS DATA ACCESS LAYER
- *
- * This module provides secure, efficient access to applications data with:
- *
- * 1. **Database-Level Security**: Permissions enforced at query level, not application level
- * 2. **Performance Optimization**: Single-pass scope processing, Set-based lookups
- * 3. **Permission Hierarchy**: admin > org > department > division
- * 4. **Scope-Based Filtering**: Users only see applications they have access to
- *
- * FUNCTIONS:
- * - getApplicationsByMemberScope(): Authenticated users with permission filtering
- * - getAllApplications(): Legacy function for backward compatibility (should be migrated)
- */
+import "server-only";
 
-import { createSupabaseClient } from "@/utils/supabase/client";
-import { Applications } from "./types";
-import { getUserScope, type ScopeInfo } from "./get-user-scope";
+import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { getDb } from "@/db/client";
+import {
+  applications,
+  applyPositions,
+  departments,
+  divisions,
+  members,
+  users,
+} from "@/db/schema";
+import {
+  getScopeInfoForCurrentUser,
+  isEmptyScopeInfo,
+  type ScopeInfo,
+} from "./get-member-scopes";
+import type { Applications } from "./types";
 
-/**
- * Get applications filtered by user's scope with database-level filtering
- */
-export async function getApplicationsByMemberScope(): Promise<{
-  applications: Applications[];
-  //! todo needs to be optimized with caching
-}> {
-  // Get user's scope information filtered for applications target
-  const { scope: scopeInfo } = (await getUserScope("applications")) as {
-    scope: ScopeInfo;
-  };
+type ApplicationRow = Awaited<ReturnType<typeof getApplicationRows>>[number];
 
-  //! todo handle no access in a better way
-  // If scopeInfo is empty array (no authentication or no scopes), return NO_ACCESS
-  if (Array.isArray(scopeInfo) && scopeInfo.length === 0) {
-    return { applications: [] };
-  }
+async function getApplicationRows(scopeInfo: ScopeInfo) {
+  const db = getDb();
 
-  const supabase = await createSupabaseClient();
-  console.log("database request on get applications by scope");
+  const filters = [isNull(divisions.closedAt), isNull(departments.closedAt)];
 
-  /**
-   * Base query selects applications with joined user and position data.
-   * Filters out closed divisions/departments and includes position hierarchy.
-   */
-  let query = supabase
-    .from("applications")
-    .select(
-      `
-      *,
-      user:users!applications_user_id_fkey(*),
-      cv_file:application_files!applications_cv_file_id_fkey(
-        id,
-        original_filename,
-        file_hash,
-        mime_type,
-        file_size
-      ),
-      cover_letter_file:application_files!applications_cover_letter_file_id_fkey(
-        id,
-        original_filename,
-        file_hash,
-        mime_type,
-        file_size
-      ),
-      apply_position:apply_positions!inner(*,
-        divisions!inner(
-          id, name, code, dept_id,
-          departments!inner(id, name, code),
-          roles!roles_division_id_fkey(
-            member_id,
-            type,
-            leaved_at,
-            members(
-              users(first_name, last_name)
-            )
-          )
-        )
-      )
-    `
-    )
-    .is("apply_position.divisions.closed_at", null)
-    .is("apply_position.divisions.departments.closed_at", null);
+  if (!(scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess)) {
+    const departmentIds = Array.from(scopeInfo.departmentIds);
+    const divisionIds = Array.from(scopeInfo.divisionIds);
 
-  /**
-   * Database filtering based on user permissions:
-   * - Admin/Org access: No additional filtering
-   * - Department access: Filter by divisions.dept_id
-   * - Division access: Filter by division_id
-   * - Combined access: OR condition with both filters
-   * - No access: Return empty array
-   */
-  if (scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess) {
-    // Admin or org access - no additional filtering needed
-  } else if (
-    scopeInfo.departmentIds.size > 0 ||
-    scopeInfo.divisionIds.size > 0
-  ) {
-    // Convert Sets to arrays for Supabase query methods
-    const departmentIdsArray = Array.from(scopeInfo.departmentIds);
-    const divisionIdsArray = Array.from(scopeInfo.divisionIds);
-
-    if (departmentIdsArray.length > 0 && divisionIdsArray.length > 0) {
-      // Applies OR condition for both division and department filtering
-      query = query.or(
-        `apply_position.division_id.in.(${divisionIdsArray.join(",")}),apply_position.divisions.dept_id.in.(${departmentIdsArray.join(",")})`
-      );
-    } else if (divisionIdsArray.length > 0) {
-      // Filters by division_id using IN clause
-      query = query.in("apply_position.division_id", divisionIdsArray);
-    } else if (departmentIdsArray.length > 0) {
-      // Filters by department ID through divisions relationship
-      query = query.in("apply_position.divisions.dept_id", departmentIdsArray);
-    }
-  } else {
-    /**
-     * NO ACCESS: User has no permissions for any departments or divisions
-     *
-     * Return special marker for middleware to handle redirect.
-     * More efficient than querying and getting zero results.
-     */
-    return { applications: [] };
-  }
-
-  const { data: applications, error } = await query.order("applied_at", {
-    ascending: false,
-  });
-
-  if (error) {
-    console.error("Error getting applications by scope:", error);
-    return { applications: [] };
-  }
-
-  if (!applications) {
-    return { applications: [] };
-  }
-
-  /**
-   * APPLICATION TRANSFORMATION & PROCESSING
-   *
-   * For each application returned from the database, we:
-   * 1. Transform the raw database structure to our Applications type
-   * 2. Process related applications (other applications from same user)
-   * 3. Find similar applications (same name, different user)
-   */
-  return { applications: processApplicationsData(applications) };
-}
-
-/**
- * Process and transform applications data with related applications
- * @param applications - Raw application data from database
- * @returns Transformed applications with flattened data and related applications
- */
-function processApplicationsData(applications: any[]): Applications[] {
-  /**
-   * Helper function to extract division lead name from roles
-   * Takes the roles array from the nested query
-   * Finds the active lead role (type === "lead" and leaved_at === null)
-   * Extracts the full name from the nested user data
-   * @param roles - Array of roles from the nested query
-   * @returns Full name of the division lead or undefined if no active lead is found
-   */
-  const getDivisionLeadName = (roles: any[]): string | undefined => {
-    if (!roles || !Array.isArray(roles)) return undefined;
-
-    const activeLeadRole = roles.find(
-      (role: any) =>
-        role.type === "lead" &&
-        role.leaved_at === null &&
-        role.members?.users?.[0]
-    );
-
-    if (activeLeadRole?.members?.users?.[0]) {
-      const user = activeLeadRole.members.users[0];
-      const fullName =
-        `${user.first_name || ""} ${user.last_name || ""}`.trim();
-      return fullName || undefined;
-    }
-
-    return undefined;
-  };
-
-  // Group applications by user_id to find other applications for each user
-  const applicationsByUser = new Map();
-  applications.forEach((app: any) => {
-    if (!applicationsByUser.has(app.user_id)) {
-      applicationsByUser.set(app.user_id, []);
-    }
-    applicationsByUser.get(app.user_id).push(app);
-  });
-
-  // Function to normalize names for comparison
-  const normalizeName = (name: string) => {
-    return name?.toLowerCase().trim().replace(/\s+/g, " ") || "";
-  };
-
-  // Function to check if full names are related (exact match or one includes the other)
-  const areFullNamesRelated = (
-    firstName1: string,
-    lastName1: string,
-    firstName2: string,
-    lastName2: string
-  ) => {
-    const fullName1 = normalizeName(`${firstName1} ${lastName1}`);
-    const fullName2 = normalizeName(`${firstName2} ${lastName2}`);
-
-    if (!fullName1 || !fullName2) return false;
-
-    // Exact match
-    if (fullName1 === fullName2) return true;
-
-    // Check if one full name includes the other
-    return fullName1.includes(fullName2) || fullName2.includes(fullName1);
-  };
-
-  // Function to find similar applications by name (different user_id, same name)
-  const findSimilarApplications = (currentApp: any) => {
-    const currentFirstName = currentApp.user?.first_name || "";
-    const currentLastName = currentApp.user?.last_name || "";
-
-    if (!currentFirstName || !currentLastName) {
+    if (!departmentIds.length && !divisionIds.length) {
       return [];
     }
 
-    return applications
-      .filter((app: any) => {
-        // Different user
-        if (app.user_id === currentApp.user_id) return false;
-
-        // Similar name check
-        const appFirstName = app.user?.first_name || "";
-        const appLastName = app.user?.last_name || "";
-
-        return areFullNamesRelated(
-          currentFirstName,
-          currentLastName,
-          appFirstName,
-          appLastName
-        );
-      })
-      .map((app: any) => ({
-        id: app.id,
-        status: app.status,
-        applied_at: app.applied_at,
-        position_title: app.apply_position?.title ?? "",
-        division: app.apply_position?.divisions?.name ?? "",
-        department: app.apply_position?.divisions?.departments?.name ?? "",
-        division_lead_name: getDivisionLeadName(
-          app.apply_position?.divisions?.roles
-        ),
-        user_email: app.user?.email || "",
-        user_first_name: app.user?.first_name || "",
-        user_last_name: app.user?.last_name || "",
-      }));
-  };
-
-  // transform application data to match ApplicationWithUser type
-  // map nested user fields to top-level fields and include other applications
-  const transformedApplications: Applications[] = applications.map(
-    (app: any) => {
-      const userApps = applicationsByUser.get(app.user_id) || [];
-      // Filter out the current application to get other applications
-      const otherApps = userApps
-        .filter((otherApp: any) => otherApp.id !== app.id)
-        .map((otherApp: any) => ({
-          id: otherApp.id,
-          status: otherApp.status,
-          applied_at: otherApp.applied_at,
-          position_title: otherApp.apply_position?.title ?? "",
-          division: otherApp.apply_position?.divisions?.name ?? "",
-          department:
-            otherApp.apply_position?.divisions?.departments?.name ?? "",
-          division_lead_name: getDivisionLeadName(
-            otherApp.apply_position?.divisions?.roles
-          ),
-        }));
-
-      // Find similar applications (same name, different user)
-      const similarApps = findSimilarApplications(app);
-
-      return {
-        ...app,
-        // user flatten
-        user_email: app.user?.email || "",
-        user_first_name: app.user?.first_name || "",
-        user_last_name: app.user?.last_name || "",
-        user_origin: app.user?.origin || "",
-        user_level_of_study: app.user?.level_of_study || "",
-        user_polito_id: app.user?.polito_id || "",
-        user_program: app.user?.program || "",
-        user_gender: app.user?.gender || "",
-        user_date_of_birth: app.user?.date_of_birth || "",
-        user_mobile_number: app.user?.mobile_number || "",
-        user_polito_email: app.user?.polito_email || "",
-
-        // position flatten
-        position_title: app.apply_position?.title ?? "",
-        division: app.apply_position?.divisions?.name ?? "",
-        div_id: app.apply_position?.divisions?.id ?? 0,
-        department: app.apply_position?.divisions?.departments?.name ?? "",
-        dept_id: app.apply_position?.divisions?.departments?.id ?? 0,
-
-        // file flatten
-        cv_name: app.cv_file?.original_filename || null,
-        cv_file_hash: app.cv_file?.file_hash || null,
-        ml_name: app.cover_letter_file?.original_filename || null,
-        ml_file_hash: app.cover_letter_file?.file_hash || null,
-
-        // other applications for this user
-        other_applications: otherApps,
-        // similar applications (same name, different email)
-        similar_applications: similarApps,
-      };
+    if (departmentIds.length && divisionIds.length) {
+      filters.push(
+        or(
+          inArray(divisions.id, divisionIds),
+          inArray(divisions.deptId, departmentIds),
+        )!,
+      );
+    } else if (divisionIds.length) {
+      filters.push(inArray(divisions.id, divisionIds));
+    } else if (departmentIds.length) {
+      filters.push(inArray(divisions.deptId, departmentIds));
     }
-  );
+  }
 
-  return transformedApplications;
+  return db
+    .select({
+      id: applications.id,
+      user_id: applications.userId,
+      applied_at: applications.appliedAt,
+      status: applications.status,
+      custom_answers: applications.customAnswers,
+      cv_name: applications.cvName,
+      ml_name: applications.mlName,
+      user_email: users.email,
+      user_first_name: users.firstName,
+      user_last_name: users.lastName,
+      user_origin: users.origin,
+      user_level_of_study: users.levelOfStudy,
+      user_polito_id: users.politoId,
+      user_program: users.program,
+      user_mobile_number: members.mobileNumber,
+      position_title: applyPositions.title,
+      division: divisions.name,
+      div_id: divisions.id,
+      department: departments.name,
+      dept_id: departments.id,
+    })
+    .from(applications)
+    .innerJoin(users, eq(applications.userId, users.id))
+    .leftJoin(members, eq(users.member, members.memberId))
+    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .where(and(...filters))
+    .orderBy(desc(applications.appliedAt), asc(applications.id));
+}
+
+function normalizeNamePart(value: string | null | undefined) {
+  return value?.toLowerCase().trim().replace(/\s+/g, " ") || "";
+}
+
+function areNamesRelated(a: ApplicationRow, b: ApplicationRow) {
+  const aFull = `${normalizeNamePart(a.user_first_name)} ${normalizeNamePart(a.user_last_name)}`.trim();
+  const bFull = `${normalizeNamePart(b.user_first_name)} ${normalizeNamePart(b.user_last_name)}`.trim();
+
+  if (!aFull || !bFull) {
+    return false;
+  }
+
+  return aFull === bFull || aFull.includes(bFull) || bFull.includes(aFull);
+}
+
+function toRelatedApplication(row: ApplicationRow) {
+  return {
+    id: row.id,
+    status: row.status,
+    applied_at: row.applied_at,
+    position_title: row.position_title ?? "",
+    division: row.division ?? "",
+    department: row.department ?? "",
+    division_lead_name: undefined,
+    user_email: row.user_email ?? "",
+    user_first_name: row.user_first_name ?? "",
+    user_last_name: row.user_last_name ?? "",
+  };
+}
+
+function transformApplications(rows: ApplicationRow[]): Applications[] {
+  const applicationsByUser = new Map<string, ApplicationRow[]>();
+
+  for (const row of rows) {
+    const key = row.user_id ?? `unknown-${row.id}`;
+    const existing = applicationsByUser.get(key) ?? [];
+    existing.push(row);
+    applicationsByUser.set(key, existing);
+  }
+
+  return rows.map((row) => {
+    const sameUserRows = applicationsByUser.get(row.user_id ?? `unknown-${row.id}`) ?? [];
+    const otherApplications = sameUserRows
+      .filter((candidate) => candidate.id !== row.id)
+      .map(toRelatedApplication);
+
+    const similarApplications = rows
+      .filter((candidate) => candidate.id !== row.id)
+      .filter((candidate) => candidate.user_id !== row.user_id)
+      .filter((candidate) => areNamesRelated(row, candidate))
+      .map(toRelatedApplication);
+
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      applied_at: row.applied_at,
+      status: row.status,
+      custom_answers: row.custom_answers ?? [],
+      user_email: row.user_email ?? "",
+      user_first_name: row.user_first_name ?? "",
+      user_last_name: row.user_last_name ?? "",
+      user_origin: row.user_origin ?? "",
+      user_level_of_study: row.user_level_of_study ?? "",
+      user_polito_id: row.user_polito_id ?? "",
+      user_program: row.user_program ?? "",
+      user_gender: "",
+      user_date_of_birth: "",
+      user_mobile_number: row.user_mobile_number ?? "",
+      user_polito_email: "",
+      position_title: row.position_title ?? "",
+      division: row.division ?? "",
+      div_id: row.div_id ?? 0,
+      department: row.department ?? "",
+      dept_id: row.dept_id ?? 0,
+      cv_name: row.cv_name ?? null,
+      cv_file_hash: null,
+      ml_name: row.ml_name ?? null,
+      ml_file_hash: null,
+      other_applications: otherApplications,
+      similar_applications: similarApplications,
+    };
+  });
+}
+
+export async function getApplicationsByMemberScope(): Promise<{
+  applications: Applications[];
+}> {
+  const scopeInfo = await getScopeInfoForCurrentUser("applications");
+
+  if (isEmptyScopeInfo(scopeInfo)) {
+    return { applications: [] };
+  }
+
+  const rows = await getApplicationRows(scopeInfo);
+  return { applications: transformApplications(rows) };
 }
