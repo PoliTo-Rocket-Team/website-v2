@@ -19,5 +19,5 @@ export function UserAvatar({ user, ...props }: UserAvatarProps) {
         </AvatarFallback>
       )}
     </Avatar>
-  );
-}
+  )
+} 

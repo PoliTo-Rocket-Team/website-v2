@@ -1,32 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ApplyPosition } from "@/app/actions/types";
 import { PositionCard } from "@/components/position-card";
-import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { AddPositionDialog } from "@/components/add-position-dialog";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { Database } from "@/types/supabase";
-import { Prettify } from "@/lib/utils";
-
-//component-specific Division type with non-nullable code and departments.code
-type ComponentDivision = Prettify<
-  Pick<Database["public"]["Tables"]["divisions"]["Row"], "id" | "name"> & {
-    code: string; // Override to make non-nullable for component needs
-    departments:
-      | Prettify<
-          Pick<
-            Database["public"]["Tables"]["departments"]["Row"],
-            "id" | "name"
-          > & {
-            code: string; // Override to make non-nullable for component needs
-          }
-        >[]
-      | null;
-  }
->;
+import type { Division } from "@/db/types";
 
 type Props = {
   positions: ApplyPosition[];
@@ -40,7 +21,7 @@ type Props = {
       required_skills: string[];
       desirable_skills: string[];
       custom_questions: string[];
-    }>
+    }>,
   ) => void;
   handleAddPosition?: (data: {
     title: string;
@@ -51,7 +32,7 @@ type Props = {
     requires_motivation_letter: boolean;
     division_id: number;
   }) => Promise<ApplyPosition>;
-  editableDivisions?: ComponentDivision[];
+  editableDivisions?: Division[];
   pageContext?: string;
   disclaimer?: string;
 };
@@ -62,24 +43,17 @@ export function ApplyPositionsList({
   positions: initialPositions,
   handleAddPosition,
   editableDivisions = [],
-  pageContext = "default",
   disclaimer,
 }: Props) {
-  const [loading, setLoading] = useState(true);
-  const [positions, setPositions] = useState<ApplyPosition[]>([]);
+  const [positions, setPositions] = useState<ApplyPosition[]>(initialPositions);
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Sort positions: active (status = true) first, then inactive (status = false)
-    const sortedPositions = [...initialPositions].sort((a, b) => {
-      return Number(b.status) - Number(a.status);
-    });
-    setPositions(sortedPositions);
-    setLoading(false);
+    setPositions(initialPositions);
   }, [initialPositions]);
 
   const toggleAccordion = (id: string, isOpen: boolean) => {
-    setOpenAccordions(prev => {
+    setOpenAccordions((prev) => {
       const newSet = new Set(prev);
       if (isOpen) {
         newSet.add(id);
@@ -108,14 +82,8 @@ export function ApplyPositionsList({
     // Call the server action to add the position
     const newPosition = await handleAddPosition(data);
 
-    // Add the new position to the current list
-    setPositions(prev => {
-      const newPositions = [newPosition, ...prev];
-      // Sort positions: active (status = true) first, then inactive (status = false)
-      return newPositions.sort((a, b) => {
-        return Number(b.status) - Number(a.status);
-      });
-    });
+    // Add the new position to the current list without reordering the rest.
+    setPositions((prev) => [newPosition, ...prev]);
 
     return newPosition;
   };
@@ -125,10 +93,10 @@ export function ApplyPositionsList({
 
     try {
       await handleEditPosition(id, { status: !currentStatus });
-      setPositions(prev =>
-        prev.map(pos =>
-          pos.id === id ? { ...pos, status: !currentStatus } : pos
-        )
+      setPositions((prev) =>
+        prev.map((pos) =>
+          pos.id === id ? { ...pos, status: !currentStatus } : pos,
+        ),
       );
 
       // Show success toast
@@ -138,7 +106,7 @@ export function ApplyPositionsList({
         {
           description: `The position is now ${newStatus ? "active and accepting applications" : "inactive"}.`,
           duration: 3000,
-        }
+        },
       );
     } catch (err) {
       console.error("Failed to toggle position status:", err);
@@ -157,7 +125,7 @@ export function ApplyPositionsList({
 
     try {
       await handleDelete(id);
-      setPositions(prev => prev.filter(pos => pos.id !== id));
+      setPositions((prev) => prev.filter((pos) => pos.id !== id));
 
       // Show success toast
       toast.success("Position deleted successfully", {
@@ -182,8 +150,8 @@ export function ApplyPositionsList({
     try {
       await handleEditPosition(id, data);
       // Update the local state to re-render the position with new data
-      setPositions(prev =>
-        prev.map(pos => (pos.id === id ? { ...pos, ...data } : pos))
+      setPositions((prev) =>
+        prev.map((pos) => (pos.id === id ? { ...pos, ...data } : pos)),
       );
 
       // Show success toast
@@ -205,18 +173,16 @@ export function ApplyPositionsList({
     }
   };
 
-  if (loading) return <LoadingSkeleton className="max-w-5xl mx-auto" />;
-
   return (
     <div className="w-full relative max-w-5xl mx-auto">
       {/* Add Position button - positioned absolutely to align with title */}
       {editableDivisions.length > 0 && handleAddPosition && (
-        <div className="absolute top-[-1rem] md:top-12 right-0 -translate-y-12">
+        <div className="absolute top-0 right-0 -translate-y-12">
           <AddPositionDialog
             onAddPosition={handleAddPositionLocal}
             divisions={editableDivisions}
           >
-            <Button className="flex items-center gap-1 md:gap-3 text-xs md:text-sm">
+            <Button className="flex items-center gap-2 text-xs md:text-sm">
               <Plus className="h-2 w-2 md:h-4 md:w-4" />
               Add Position
             </Button>
@@ -225,34 +191,23 @@ export function ApplyPositionsList({
       )}
 
       {!positions.length ? (
-        <div className="text-muted-foreground p-4">
+        <div className="text-muted-foreground p-4 border-t">
           There is no open position at the moment.
         </div>
       ) : (
-        <div className="">
-          <div className="hidden md:visible md:grid md:grid-cols-[3fr_2fr_2fr_auto_auto] text-center md:justify-items-start text-base px-2 py-4">
-            <h3>Position</h3>
-            <h3>Department</h3>
-            <h3>Division</h3>
-            <Button className="invisible h-4 w-4"></Button>
-            {!disclaimer && (
-              <Button className="invisible md:h-6 md:w-11 h-4 w-9 px-2.5"></Button>
-            )}
-          </div>
-          <div className="space-y-2 md:space-y-4">
-            {positions.map(position => (
-              <PositionCard
-                key={position.id}
-                position={position}
-                isOpen={isAccordionOpen(position.id.toString())}
-                onToggleAccordion={toggleAccordion}
-                onToggleStatus={handleTogglePosition}
-                onDelete={handleDeletePosition}
-                onEdit={handleEditPositionLocal}
-                disclaimer={disclaimer}
-              />
-            ))}
-          </div>
+        <div className="space-y-2 md:space-y-4">
+          {positions.map((position) => (
+            <PositionCard
+              key={position.id}
+              position={position}
+              isOpen={isAccordionOpen(position.id.toString())}
+              onToggleAccordion={toggleAccordion}
+              onToggleStatus={handleTogglePosition}
+              onDelete={handleDeletePosition}
+              onEdit={handleEditPositionLocal}
+              disclaimer={disclaimer}
+            />
+          ))}
         </div>
       )}
     </div>

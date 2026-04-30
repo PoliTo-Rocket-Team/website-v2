@@ -1,28 +1,28 @@
-import { auth } from "@/auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
 
-export default auth(req => {
-  const { pathname, search } = req.nextUrl;
+export async function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+  const sessionCookie = getSessionCookie(request);
+  const isAuthenticated = !!sessionCookie;
 
-  // Redirect logged-in users away from sign-in page
-  if (req.auth && pathname === "/sign-in") {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+  if (isAuthenticated && (pathname === "/login" || pathname === "/sign-up")) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // Protect dashboard routes for unauthenticated users
   const isDashboard =
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const isApplySlug = pathname.startsWith("/apply/") && pathname !== "/apply/";
 
-  if (isDashboard && !req.auth) {
-    const signInUrl = new URL("/sign-in", req.url);
-    signInUrl.searchParams.set("callbackUrl", pathname + search);
+  if ((isDashboard || isApplySlug) && !isAuthenticated) {
+    const signInUrl = new URL("/login", request.url);
+    signInUrl.searchParams.set("cb", pathname + search);
     return NextResponse.redirect(signInUrl);
   }
-  //! todo handle permission checks for protected pages (positions, applications, etc)
 
   return NextResponse.next();
-});
+}
 
 export const config = {
-  matcher: ["/sign-in", "/dashboard/:path*"],
+  matcher: ["/login", "/sign-up", "/dashboard/:path*", "/apply/:slug"],
 };

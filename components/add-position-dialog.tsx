@@ -22,28 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApplyPosition } from "@/app/actions/types";
+import type { Division } from "@/db/types";
 import { localStorageUtils } from "@/lib/localStorage";
 import { validateAndShowErrors, createValidationRules } from "@/lib/validation";
 import { ArrayField } from "@/components/ui/array-field";
-import { Database } from "@/types/supabase";
-import { Prettify } from "@/lib/utils";
-
-// component-specific Division type with only necessary fields
-type Division = Prettify<
-  Pick<Database["public"]["Tables"]["divisions"]["Row"], "id" | "name"> & {
-    code: string;
-    departments:
-      | Prettify<
-          Pick<
-            Database["public"]["Tables"]["departments"]["Row"],
-            "id" | "name"
-          > & {
-            code: string;
-          }
-        >[]
-      | null;
-  }
->;
 
 interface AddPositionDialogProps {
   onAddPosition: (data: {
@@ -85,7 +67,7 @@ export function AddPositionDialog({
     if (!hasLoadedFromStorage) {
       const savedFormData = localStorageUtils.load(
         "addPositionDialog_formData",
-        defaultFormData
+        defaultFormData,
       );
       if (savedFormData) {
         setFormData(savedFormData);
@@ -102,9 +84,9 @@ export function AddPositionDialog({
         formData.title ||
         formData.description ||
         formData.division_id > 0 ||
-        formData.required_skills.some(skill => skill.trim()) ||
-        formData.desirable_skills.some(skill => skill.trim()) ||
-        formData.custom_questions.some(q => q.trim()) ||
+        formData.required_skills.some((skill) => skill.trim()) ||
+        formData.desirable_skills.some((skill) => skill.trim()) ||
+        formData.custom_questions.some((q) => q.trim()) ||
         formData.requires_motivation_letter;
 
       if (hasData) {
@@ -117,7 +99,7 @@ export function AddPositionDialog({
   useEffect(() => {
     const savedDialogState = localStorageUtils.load(
       "addPositionDialog_open",
-      false
+      false,
     );
     if (savedDialogState) {
       setOpen(true);
@@ -138,13 +120,13 @@ export function AddPositionDialog({
       const filteredData = {
         ...formData,
         required_skills: formData.required_skills.filter(
-          skill => skill.trim() !== ""
+          (skill) => skill.trim() !== "",
         ),
         desirable_skills: formData.desirable_skills.filter(
-          skill => skill.trim() !== ""
+          (skill) => skill.trim() !== "",
         ),
         custom_questions: formData.custom_questions.filter(
-          question => question.trim() !== ""
+          (question) => question.trim() !== "",
         ),
       };
 
@@ -153,22 +135,22 @@ export function AddPositionDialog({
         createValidationRules.required("title", filteredData.title.trim()),
         createValidationRules.required(
           "description",
-          filteredData.description.trim()
+          filteredData.description.trim(),
         ),
         createValidationRules.selection(
           "division",
           filteredData.division_id,
-          "Please select a division"
+          "Please select a division",
         ),
         createValidationRules.arrayNotEmpty(
           "required skill",
           filteredData.required_skills,
-          "At least one required skill must be provided"
+          "At least one required skill must be provided",
         ),
         createValidationRules.arrayNotEmpty(
           "desirable skill",
           filteredData.desirable_skills,
-          "At least one desirable skill must be provided"
+          "At least one desirable skill must be provided",
         ),
       ];
 
@@ -240,8 +222,8 @@ export function AddPositionDialog({
                     ? ""
                     : formData.division_id.toString()
                 }
-                onValueChange={value =>
-                  setFormData(prev => ({
+                onValueChange={(value) =>
+                  setFormData((prev) => ({
                     ...prev,
                     division_id: parseInt(value),
                   }))
@@ -253,7 +235,7 @@ export function AddPositionDialog({
                 <SelectContent>
                   <SelectGroup>
                     <SelectLabel>Divisions</SelectLabel>
-                    {divisions.map(division => (
+                    {divisions.map((division) => (
                       <SelectItem
                         key={division.id}
                         value={division.id.toString()}
@@ -275,8 +257,8 @@ export function AddPositionDialog({
           <AutoGrowTextarea
             className="flex-1 border rounded p-2 mb-2 md:mb-6 w-full"
             value={formData.title}
-            onChange={e =>
-              setFormData(prev => ({ ...prev, title: e.target.value }))
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, title: e.target.value }))
             }
             placeholder="e.g., Software Engineer"
           />
@@ -287,8 +269,8 @@ export function AddPositionDialog({
           <AutoGrowTextarea
             className="w-full border px-2 py-1 rounded mb-2 md:mb-6 resize-none overflow-hidden min-h-[120px]"
             value={formData.description}
-            onChange={e =>
-              setFormData(prev => ({ ...prev, description: e.target.value }))
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, description: e.target.value }))
             }
             placeholder="Describe the position, responsibilities, and requirements..."
           />
@@ -298,8 +280,8 @@ export function AddPositionDialog({
             required
             className="mb-2 md:mb-6"
             value={formData.required_skills}
-            onChange={value =>
-              setFormData(prev => ({ ...prev, required_skills: value }))
+            onChange={(value) =>
+              setFormData((prev) => ({ ...prev, required_skills: value }))
             }
             placeholder="Enter required skill"
             addButtonText="+ Add required skill"
@@ -310,8 +292,8 @@ export function AddPositionDialog({
             required
             value={formData.desirable_skills}
             className="mb-2 md:mb-6"
-            onChange={value =>
-              setFormData(prev => ({ ...prev, desirable_skills: value }))
+            onChange={(value) =>
+              setFormData((prev) => ({ ...prev, desirable_skills: value }))
             }
             placeholder="Enter desirable skill"
             addButtonText="+ Add desirable skill"
@@ -321,8 +303,8 @@ export function AddPositionDialog({
             title="Custom Questions"
             description="Default informations (CV, name, surname, email, major, graduation year, etc.) will be asked automatically. If you want to ask specific questions to applicants for this position, add them to this box below."
             value={formData.custom_questions}
-            onChange={value =>
-              setFormData(prev => ({ ...prev, custom_questions: value }))
+            onChange={(value) =>
+              setFormData((prev) => ({ ...prev, custom_questions: value }))
             }
             placeholder="Enter question"
             addButtonText="+ Add question"
@@ -336,8 +318,8 @@ export function AddPositionDialog({
             <div className="flex items-center space-x-3 mb-2 md:mb-6">
               <Switch
                 checked={formData.requires_motivation_letter}
-                onCheckedChange={checked =>
-                  setFormData(prev => ({
+                onCheckedChange={(checked) =>
+                  setFormData((prev) => ({
                     ...prev,
                     requires_motivation_letter: checked,
                   }))
