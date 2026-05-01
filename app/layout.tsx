@@ -1,5 +1,4 @@
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import Link from "next/link";
 import "./globals.css";
@@ -18,11 +17,6 @@ export const metadata = {
   description: "PoliTo Rocket Team website and recruitment platform",
 };
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  display: "swap",
-  subsets: ["latin"],
-});
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,7 +25,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={plusJakartaSans.className}
+      className="font-sans"
       suppressHydrationWarning
     >
       <body className="bg-background text-foreground">

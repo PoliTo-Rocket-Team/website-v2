@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   cacheComponents: true,
   turbopack: {
-    root: path.resolve(__dirname),
+    root: path.join(__dirname),
   },
 };
 

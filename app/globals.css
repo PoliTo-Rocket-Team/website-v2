@@ -103,6 +103,14 @@
   * {
     @apply border-border;
   }
+  html {
+    font-family:
+      "Plus Jakarta Sans",
+      "Avenir Next",
+      Avenir,
+      "Segoe UI",
+      sans-serif;
+  }
   body {
     @apply bg-background text-foreground;
   }
