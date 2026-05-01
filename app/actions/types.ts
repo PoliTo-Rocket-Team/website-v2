@@ -13,6 +13,8 @@ export type RelatedApplication = {
   user_last_name?: string;
 };
 
+export type OtherApplication = RelatedApplication;
+
 export type Applications = {
   id: number;
   user_id: string | null;

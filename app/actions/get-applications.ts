@@ -3,8 +3,10 @@
 import "server-only";
 
 import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 import {
+  applicationFiles,
   applications,
   applyPositions,
   departments,
@@ -23,6 +25,8 @@ type ApplicationRow = Awaited<ReturnType<typeof getApplicationRows>>[number];
 
 async function getApplicationRows(scopeInfo: ScopeInfo) {
   const db = getDb();
+  const cvFiles = alias(applicationFiles, "cv_files");
+  const mlFiles = alias(applicationFiles, "ml_files");
 
   const filters = [isNull(divisions.closedAt), isNull(departments.closedAt)];
 
@@ -70,6 +74,10 @@ async function getApplicationRows(scopeInfo: ScopeInfo) {
       div_id: divisions.id,
       department: departments.name,
       dept_id: departments.id,
+      cv_file_name: cvFiles.originalFilename,
+      cv_file_hash: cvFiles.fileHash,
+      ml_file_name: mlFiles.originalFilename,
+      ml_file_hash: mlFiles.fileHash,
     })
     .from(applications)
     .innerJoin(users, eq(applications.userId, users.id))
@@ -77,6 +85,8 @@ async function getApplicationRows(scopeInfo: ScopeInfo) {
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
+    .leftJoin(mlFiles, eq(applications.coverLetterFileId, mlFiles.id))
     .where(and(...filters))
     .orderBy(desc(applications.appliedAt), asc(applications.id));
 }
@@ -155,10 +165,10 @@ function transformApplications(rows: ApplicationRow[]): Applications[] {
       div_id: row.div_id ?? 0,
       department: row.department ?? "",
       dept_id: row.dept_id ?? 0,
-      cv_name: row.cv_name ?? null,
-      cv_file_hash: null,
-      ml_name: row.ml_name ?? null,
-      ml_file_hash: null,
+      cv_name: row.cv_file_name ?? row.cv_name ?? null,
+      cv_file_hash: row.cv_file_hash ?? null,
+      ml_name: row.ml_file_name ?? row.ml_name ?? null,
+      ml_file_hash: row.ml_file_hash ?? null,
       other_applications: otherApplications,
       similar_applications: similarApplications,
     };
