@@ -19,6 +19,28 @@ type MatchedFile = {
   fileHash: string | null;
 };
 
+async function readResponseBodyAsBuffer(body: unknown) {
+  if (
+    body &&
+    typeof body === "object" &&
+    "transformToByteArray" in body &&
+    typeof body.transformToByteArray === "function"
+  ) {
+    return Buffer.from(await body.transformToByteArray());
+  }
+
+  if (
+    body &&
+    typeof body === "object" &&
+    "arrayBuffer" in body &&
+    typeof body.arrayBuffer === "function"
+  ) {
+    return Buffer.from(await body.arrayBuffer());
+  }
+
+  throw new Error("Unsupported file response body");
+}
+
 type ApplicationAccessRow = {
   id: number;
   userId: string | null;
@@ -144,8 +166,7 @@ export async function GET(
       return new NextResponse("File not found", { status: 404 });
     }
 
-    const bytes = await response.Body.transformToByteArray();
-    const buffer = Buffer.from(bytes);
+    const buffer = await readResponseBodyAsBuffer(response.Body);
 
     const headers = new Headers();
     headers.set("Content-Type", response.ContentType || "application/pdf");

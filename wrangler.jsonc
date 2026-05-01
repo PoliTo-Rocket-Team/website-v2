@@ -21,6 +21,10 @@
 		{
 			"binding": "NEXT_INC_CACHE_R2_BUCKET",
 			"bucket_name": "website-v2-opennext-cache"
+		},
+		{
+			"binding": "APPLICATION_FILES_R2_BUCKET",
+			"bucket_name": "prt"
 		}
 	],
 	"durable_objects": {
