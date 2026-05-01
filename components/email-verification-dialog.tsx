@@ -13,7 +13,7 @@ import { Mail, CheckCircle } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
-import { Icons } from "@/components/icons";
+import { Icons } from "@/components/ui/icons";
 
 interface EmailVerificationDialogProps {
   open: boolean;

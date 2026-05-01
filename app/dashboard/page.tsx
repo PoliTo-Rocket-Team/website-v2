@@ -1,19 +1,24 @@
 import { Suspense } from "react";
 import { InfoIcon } from "lucide-react";
-import { getAuth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { getCurrentUserId } from "@/lib/current-user";
 
 async function SessionDetails() {
-  const requestHeaders = await headers();
-  const session = await getAuth().api.getSession({
-    headers: requestHeaders,
-  });
+  const userId = await getCurrentUserId();
 
   return (
     <div className="flex flex-col gap-2 items-center">
       <h2 className="font-bold text-2xl mb-4">Your user details</h2>
       <pre className="bg-card border rounded-lg p-6 max-w-2xl w-full overflow-auto">
-        <code className="text-sm">{JSON.stringify(session, null, 2)}</code>
+        <code className="text-sm">
+          {JSON.stringify(
+            {
+              authenticated: Boolean(userId),
+              userId,
+            },
+            null,
+            2
+          )}
+        </code>
       </pre>
     </div>
   );

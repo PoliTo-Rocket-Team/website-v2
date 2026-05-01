@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { signUp } from "@/lib/auth-client";
-import { Icons } from "@/components/icons";
+import { Icons } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useRouter, useSearchParams } from "next/navigation";
