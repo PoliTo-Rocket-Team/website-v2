@@ -1,6 +1,6 @@
 # PoliTo Rocket Team Website
 
-This repository powers the PoliTo Rocket Team website. The stack is Next.js, OpenNext for Cloudflare deployment, Drizzle ORM for database schema/migrations, Neon Postgres, Better Auth, and Tailwind CSS.
+This repository powers the PoliTo Rocket Team website. The stack is Next.js, Vercel for deployment, Drizzle ORM for database schema/migrations, Neon Postgres, Better Auth, and Tailwind CSS.
 
 ## Setup
 
@@ -14,30 +14,6 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ope
    Use `BETTER_AUTH_URL` and `BETTER_AUTH_SECRET` for the auth base URL and secret.
 
 3. Create a Neon project and set `DATABASE_URL`.
-
-   For `wrangler dev` or `pnpm preview`, put Worker runtime secrets in `.dev.vars`
-   instead of `wrangler.jsonc`. Do not commit production values or a local database URL
-   to `wrangler.jsonc`, because deployed Workers cannot reach your laptop's Postgres instance.
-
-   Recommended local workflow with Neon:
-
-   - Keep production and local development on separate Neon branches.
-   - Create one long-lived personal development branch, for example `dev/huey`.
-   - Use that branch's connection string in your local `.env`.
-
-   Example:
-
-   ```bash
-   neonctl auth
-   neonctl branches create --name dev/huey
-   neonctl connection-string dev/huey
-   ```
-
-   Then set:
-
-   ```bash
-   DATABASE_URL='postgresql://...'
-   ```
 
 4. Apply the schema and load seed data:
 
@@ -55,8 +31,8 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ope
 ## Common Commands
 
 - `pnpm dev` - Start the development server
-- `pnpm preview` - Build and preview the app in the OpenNext Cloudflare runtime
-- `pnpm deploy` - Build and deploy with OpenNext Cloudflare
+- `pnpm preview` - Build and serve the production app locally
+- `pnpm deploy` - Deploy the app to Vercel
 - `pnpm db:generate` - Generate Drizzle migrations from the TypeScript schema
 - `pnpm db:migrate` - Apply Drizzle migrations in `drizzle/`
 - `pnpm db:seed` - Seed the database using [`db/seed.sql`](/Users/huey/Documents/projects/website-v2/db/seed.sql)
@@ -72,6 +48,13 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ope
 - Review the generated migration in [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle).
 - Apply it with `pnpm db:migrate`.
 - Refresh fixture data in [`db/seed.sql`](/Users/huey/Documents/projects/website-v2/db/seed.sql) when needed.
+
+## Vercel Deployment
+
+1. Connect the repository to Vercel.
+2. Copy the production environment variables from your local `.env` into the Vercel project settings.
+3. Keep the default Next.js framework preset and use the repository root as the project root.
+4. Deploy from the Vercel dashboard or run `pnpm deploy` after authenticating the Vercel CLI.
 
 ## Neon Branching Workflow
 
