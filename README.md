@@ -118,12 +118,14 @@ Recommended environment split:
 
 ## GitHub Actions Database Automation
 
-This repository includes one workflow:
+This repository includes these workflows:
 
 - [db_migrate.yml](/Users/huey/Documents/projects/website-v2/.github/workflows/db_migrate.yml)
   Runs `pnpm db:migrate` automatically on pushes to `dev` and `main`.
+- [neon_schema_diff.yml](/Users/huey/Documents/projects/website-v2/.github/workflows/neon_schema_diff.yml)
+  Runs the Neon Schema Diff action on pull requests and posts the schema diff against the Neon `main` branch.
 
-The automation only applies committed migrations from [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle). It does not generate new migrations in CI, and it does not run for feature branches.
+The automation only applies committed migrations from [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle). It does not generate new migrations in CI, and it does not run migrations for feature branches.
 
 ### Required GitHub configuration
 
@@ -136,6 +138,13 @@ The workflow uses the environment that matches the pushed branch name, so:
 
 - pushes to `dev` use the `dev` environment's `DATABASE_URL`
 - pushes to `main` use the `main` environment's `DATABASE_URL`
+
+For schema diff comments, also add:
+
+- Repository variable: `NEON_PROJECT_ID`
+- Repository secret: `NEON_API_KEY`
+
+The schema diff workflow assumes the GitHub pull request branch name also exists as a Neon branch in that same Neon project. It compares that Neon branch to Neon `main`.
 
 ### Recommended migration flow
 

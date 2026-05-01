@@ -1,0 +1,28 @@
+name: Neon Schema Diff
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+concurrency:
+  group: neon-schema-diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  schema_diff:
+    name: Comment schema diff
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Neon Schema Diff GitHub Action
+        uses: neondatabase/schema-diff-action@v1.0.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          compare_branch: ${{ github.event.pull_request.head.ref }}
+          base_branch: main
+          api_key: ${{ secrets.NEON_API_KEY }}
