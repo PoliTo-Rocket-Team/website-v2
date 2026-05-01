@@ -3,6 +3,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "cf:build": "opennextjs-cloudflare build",
     "start": "next start",
     "preview": "next build && next start",
     "deploy": "vercel --prod",
@@ -17,6 +18,7 @@
     "mailpit:logs": "docker logs -f mailpit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.984.0",
     "@neondatabase/serverless": "^1.0.1",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.15",

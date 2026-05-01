@@ -55,3 +55,77 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 2. Copy the production environment variables from your local `.env` into the Vercel project settings.
 3. Keep the default Next.js framework preset and use the repository root as the project root.
 4. Deploy from the Vercel dashboard or run `pnpm deploy` after authenticating the Vercel CLI.
+
+## Neon Branching Workflow
+
+### Local development
+
+- Use a dedicated Neon development branch locally instead of sharing the production database.
+- A good default is one long-lived personal branch per developer, such as `dev/huey`.
+- Put that branch's connection string in your local `.env`.
+- Run migrations locally against that branch with `pnpm db:migrate`.
+
+Typical local flow:
+
+```bash
+pnpm db:migrate
+pnpm dev
+```
+
+If you need a clean development database, reset your Neon development branch and rerun migrations:
+
+```bash
+neonctl branches reset dev/huey
+pnpm db:migrate
+pnpm db:seed
+```
+
+### Production
+
+- Keep production on a separate Neon branch or database.
+- Never point local `.env` at production.
+- Treat files in [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle) as append-only migrations.
+
+### Branch strategy
+
+- Local development can stay on your personal Neon branch.
+- The `dev` branch in GitHub can auto-run committed migrations against the shared development database.
+- The `main` branch in GitHub can auto-run committed migrations against production.
+- Any other branch should use a local Neon branch only.
+
+Recommended environment split:
+
+- Local development: `dev/<developer-name>`
+- Shared development: `dev` GitHub branch + shared development database
+- Production: `main` GitHub branch + production database
+
+## GitHub Actions Database Automation
+
+This repository includes one workflow:
+
+- [db_migrate.yml](/Users/huey/Documents/projects/website-v2/.github/workflows/db_migrate.yml)
+  Runs `pnpm db:migrate` automatically on pushes to `dev` and `main`.
+
+The automation only applies committed migrations from [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle). It does not generate new migrations in CI, and it does not run migrations for feature branches.
+
+### Required GitHub configuration
+
+Create these GitHub environments and add a `DATABASE_URL` secret to each one:
+
+- Environment: `dev`
+- Environment: `main`
+
+The workflow uses the environment that matches the pushed branch name, so:
+
+- pushes to `dev` use the `dev` environment's `DATABASE_URL`
+- pushes to `main` use the `main` environment's `DATABASE_URL`
+
+### Recommended migration flow
+
+1. Update the schema in [`db/schema`](/Users/huey/Documents/projects/website-v2/db/schema).
+2. Generate a migration locally with `pnpm db:generate`.
+3. Review the SQL file in [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle).
+4. Apply it locally with `pnpm db:migrate`.
+5. Commit both the schema changes and the migration file.
+6. Merge or push to `dev` to update the shared development database automatically.
+7. Merge or push to `main` to update production automatically.

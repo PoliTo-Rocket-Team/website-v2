@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import { Icons } from "@/components/icons";
+import { Icons } from "@/components/ui/icons";
 import { toast } from "sonner";
 import { z } from "zod";
 import Link from "next/link";

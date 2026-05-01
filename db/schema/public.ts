@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   date,
   index,
@@ -189,6 +190,15 @@ export const applications = pgTable("applications", {
     () => applyPositions.id,
   ),
   userId: text("user_id").references(() => users.id),
+  cvFileId: integer("cv_file_id").references(() => applicationFiles.id, {
+    onDelete: "set null",
+  }),
+  coverLetterFileId: integer("cover_letter_file_id").references(
+    () => applicationFiles.id,
+    {
+      onDelete: "set null",
+    },
+  ),
   mlName: text("ml_name"),
   cvName: text("cv_name"),
   appliedAt: timestamp("applied_at", {
@@ -199,7 +209,29 @@ export const applications = pgTable("applications", {
     .notNull(),
   status: applicationStatusEnum("status").default("received").notNull(),
   customAnswers: jsonb("custom_answers").array(),
-});
+}, (table) => ({
+  cvFileIdIdx: index("applications_cv_file_id_idx").on(table.cvFileId),
+  coverLetterFileIdIdx: index("applications_cover_letter_file_id_idx").on(
+    table.coverLetterFileId,
+  ),
+}));
+
+export const applicationFiles = pgTable("application_files", {
+  id: serial("id").primaryKey(),
+  r2Key: text("r2_key").notNull().unique(),
+  originalFilename: text("original_filename").notNull(),
+  mimeType: text("mime_type"),
+  fileSize: bigint("file_size", { mode: "number" }),
+  fileHash: text("file_hash"),
+  uploadedAt: timestamp("uploaded_at", {
+    withTimezone: true,
+    mode: "string",
+  }).defaultNow(),
+  userId: text("user_id").references(() => users.id),
+}, (table) => ({
+  r2KeyIdx: index("application_files_r2_key_idx").on(table.r2Key),
+  fileHashIdx: index("application_files_file_hash_idx").on(table.fileHash),
+}));
 
 export const scopes = pgTable(
   "scopes",
