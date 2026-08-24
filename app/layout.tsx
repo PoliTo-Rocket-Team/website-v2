@@ -1,21 +1,29 @@
-import { ThemeSwitcher } from "@/components/theme-switcher";
 import { ThemeProvider } from "next-themes";
-import Link from "next/link";
+import { Archivo, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import MaxWidthWrapper from "@/components/max-width-wrapper";
-import AuthButton from "@/components/header-auth";
 import { Toaster } from "@/components/ui/sonner";
 
 const defaultUrl =
   process.env.BETTER_AUTH_URL ??
   "http://localhost:3000/";
 
-//! todo metadata update
 export const metadata = {
   metadataBase: new URL(defaultUrl),
   title: "PoliTo Rocket Team",
-  description: "PoliTo Rocket Team website and recruitment platform",
+  description:
+    "The rocket engineering student team of Politecnico di Torino. Born for space, built in Torino.",
 };
+
+const archivo = Archivo({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["400", "500", "600", "700", "800", "900"],
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+});
 
 export default function RootLayout({
   children,
@@ -23,53 +31,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className="font-sans"
-      suppressHydrationWarning
-    >
-      <body className="bg-background text-foreground">
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${archivo.variable} ${geistMono.variable} bg-ground text-prt-text font-display antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="dark"
+          enableSystem={false}
           disableTransitionOnChange
         >
-          <main>
-            {/* //! todo nav component needed here */}
-            <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16 items-center mb-5">
-              <div className="w-full max-w-7xl flex justify-between items-center p-3 px-5 text-sm">
-                <div className="flex gap-5 items-center font-bold">
-                  {/* //! todo add logo here and link to home page */}
-                  <Link href={"/"}>PRT</Link>
-                </div>
-                <div className="flex items-center">
-                  <Link href={"/apply"} className="mr-4 ">
-                    Apply
-                  </Link>
-                </div>
-                <AuthButton />
-              </div>
-              <ThemeSwitcher />
-            </nav>
-
-            <MaxWidthWrapper>{children}</MaxWidthWrapper>
-            <Toaster
-              richColors
-              position="bottom-center"
-              closeButton={false}
-              toastOptions={{
-                style: {
-                  marginBottom: "3rem",
-                },
-              }}
-            />
-
-            {/* //! todo footer component needed here */}
-            <footer className="w-full flex mt-10 items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-              <p>Footer and Copyright text here</p>
-            </footer>
-          </main>
+          {children}
+          <Toaster
+            richColors
+            position="bottom-center"
+            closeButton={false}
+            toastOptions={{
+              style: {
+                marginBottom: "3rem",
+              },
+            }}
+          />
         </ThemeProvider>
       </body>
     </html>

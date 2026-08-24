@@ -2,7 +2,7 @@
 
 import "server-only";
 
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 import {
@@ -23,11 +23,7 @@ import type { Applications } from "./types";
 
 type ApplicationRow = Awaited<ReturnType<typeof getApplicationRows>>[number];
 
-async function getApplicationRows(scopeInfo: ScopeInfo) {
-  const db = getDb();
-  const cvFiles = alias(applicationFiles, "cv_files");
-  const mlFiles = alias(applicationFiles, "ml_files");
-
+function buildApplicationFilters(scopeInfo: ScopeInfo) {
   const filters = [isNull(divisions.closedAt), isNull(departments.closedAt)];
 
   if (!(scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess)) {
@@ -52,43 +48,128 @@ async function getApplicationRows(scopeInfo: ScopeInfo) {
     }
   }
 
-  return db
-    .select({
-      id: applications.id,
-      user_id: applications.userId,
-      applied_at: applications.appliedAt,
-      status: applications.status,
-      custom_answers: applications.customAnswers,
-      cv_name: applications.cvName,
-      ml_name: applications.mlName,
-      user_email: users.email,
-      user_first_name: users.firstName,
-      user_last_name: users.lastName,
-      user_origin: users.origin,
-      user_level_of_study: users.levelOfStudy,
-      user_polito_id: users.politoId,
-      user_program: users.program,
-      user_mobile_number: members.mobileNumber,
-      position_title: applyPositions.title,
-      division: divisions.name,
-      div_id: divisions.id,
-      department: departments.name,
-      dept_id: departments.id,
-      cv_file_name: cvFiles.originalFilename,
-      cv_file_hash: cvFiles.fileHash,
-      ml_file_name: mlFiles.originalFilename,
-      ml_file_hash: mlFiles.fileHash,
-    })
-    .from(applications)
-    .innerJoin(users, eq(applications.userId, users.id))
-    .leftJoin(members, eq(users.member, members.memberId))
-    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
-    .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
-    .leftJoin(mlFiles, eq(applications.coverLetterFileId, mlFiles.id))
-    .where(and(...filters))
-    .orderBy(desc(applications.appliedAt), asc(applications.id));
+  return filters;
+}
+
+function isMissingApplicationFileSchemaError(error: unknown) {
+  const messages = new Set<string>();
+  const queue = [error];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+
+    if (!current || typeof current !== "object") {
+      continue;
+    }
+
+    if ("message" in current && typeof current.message === "string") {
+      messages.add(current.message.toLowerCase());
+    }
+
+    if ("cause" in current && current.cause) {
+      queue.push(current.cause);
+    }
+  }
+
+  return Array.from(messages).some(
+    (message) =>
+      message.includes("application_files") ||
+      message.includes("cv_file_id") ||
+      message.includes("cover_letter_file_id") ||
+      message.includes("original_filename") ||
+      message.includes("file_hash"),
+  );
+}
+
+async function getApplicationRows(scopeInfo: ScopeInfo) {
+  const db = getDb();
+  const cvFiles = alias(applicationFiles, "cv_files");
+  const mlFiles = alias(applicationFiles, "ml_files");
+  const filters = buildApplicationFilters(scopeInfo);
+
+  if (filters.length === 0) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select({
+        id: applications.id,
+        user_id: applications.userId,
+        applied_at: applications.appliedAt,
+        status: applications.status,
+        custom_answers: applications.customAnswers,
+        cv_name: applications.cvName,
+        ml_name: applications.mlName,
+        user_email: users.email,
+        user_first_name: users.firstName,
+        user_last_name: users.lastName,
+        user_origin: users.origin,
+        user_level_of_study: users.levelOfStudy,
+        user_polito_id: users.politoId,
+        user_program: users.program,
+        user_mobile_number: members.mobileNumber,
+        position_title: applyPositions.title,
+        division: divisions.name,
+        div_id: divisions.id,
+        department: departments.name,
+        dept_id: departments.id,
+        cv_file_name: cvFiles.originalFilename,
+        cv_file_hash: cvFiles.fileHash,
+        ml_file_name: mlFiles.originalFilename,
+        ml_file_hash: mlFiles.fileHash,
+      })
+      .from(applications)
+      .innerJoin(users, eq(applications.userId, users.id))
+      .leftJoin(members, eq(users.member, members.memberId))
+      .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+      .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+      .innerJoin(departments, eq(divisions.deptId, departments.id))
+      .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
+      .leftJoin(mlFiles, eq(applications.coverLetterFileId, mlFiles.id))
+      .where(and(...filters))
+      .orderBy(desc(applications.appliedAt), asc(applications.id));
+  } catch (error) {
+    if (!isMissingApplicationFileSchemaError(error)) {
+      throw error;
+    }
+
+    return db
+      .select({
+        id: applications.id,
+        user_id: applications.userId,
+        applied_at: applications.appliedAt,
+        status: applications.status,
+        custom_answers: applications.customAnswers,
+        cv_name: applications.cvName,
+        ml_name: applications.mlName,
+        user_email: users.email,
+        user_first_name: users.firstName,
+        user_last_name: users.lastName,
+        user_origin: users.origin,
+        user_level_of_study: users.levelOfStudy,
+        user_polito_id: users.politoId,
+        user_program: users.program,
+        user_mobile_number: members.mobileNumber,
+        position_title: applyPositions.title,
+        division: divisions.name,
+        div_id: divisions.id,
+        department: departments.name,
+        dept_id: departments.id,
+        cv_file_name: sql<string | null>`null`,
+        cv_file_hash: sql<string | null>`null`,
+        ml_file_name: sql<string | null>`null`,
+        ml_file_hash: sql<string | null>`null`,
+      })
+      .from(applications)
+      .innerJoin(users, eq(applications.userId, users.id))
+      .leftJoin(members, eq(users.member, members.memberId))
+      .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+      .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+      .innerJoin(departments, eq(divisions.deptId, departments.id))
+      .where(and(...filters))
+      .orderBy(desc(applications.appliedAt), asc(applications.id));
+  }
 }
 
 function normalizeNamePart(value: string | null | undefined) {
