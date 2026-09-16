@@ -246,7 +246,9 @@ export function Hero() {
           </p>
         </div>
 
-        {/* Rocket: (-60, 204) 1480x280 on the board — rendered AFTER the text
+        {/* Rocket: (-60, 204) 1480x280 on the board, canvas widened to 2400
+            around the same centre so the plume has room behind the nozzle —
+            rendered AFTER the text
             so the angled fly-in passes over it (depth). On taller viewports it
             drifts down by half the extra space, staying centered between the
             title and the slogan. Drive-in sits inside the lift-off layer.
@@ -254,7 +256,7 @@ export function Hero() {
             are warm before the flight starts. */}
         {!reduced && (
           <div
-            className={`pointer-events-none absolute left-[-60px] h-[280px] w-[1480px] will-change-transform ${
+            className={`pointer-events-none absolute left-[-520px] h-[280px] w-[2400px] will-change-transform ${
               phase === "liftoff" || phase === "gone" ? "animate-rocket-liftoff" : ""
             }`}
             style={{ top: "calc(204px + (100% - 900px) / 2)" }}
@@ -263,7 +265,7 @@ export function Hero() {
               className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
               style={phase === "enter" ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" } : undefined}
             >
-              <HeroRocket3D />
+              <HeroRocket3D fullBurn={phase === "drive"} />
             </div>
           </div>
         )}

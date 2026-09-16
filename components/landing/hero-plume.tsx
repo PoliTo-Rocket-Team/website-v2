@@ -15,8 +15,8 @@ import * as THREE from "three";
 
 // ---- Core: one long plane, shader-driven -----------------------------------
 
-const CORE_LENGTH = 14;
-const CORE_HEIGHT = 4.2;
+const CORE_LENGTH = 30; // reaches the stage's left edge; the shader fades it out before the end
+const CORE_HEIGHT = 6.8;
 
 const CORE_VERT = /* glsl */ `
   varying vec2 vUv;
@@ -28,6 +28,7 @@ const CORE_VERT = /* glsl */ `
 
 const CORE_FRAG = /* glsl */ `
   uniform float uTime;
+  uniform float uThrottle; // 1 = full burn (drive-in), ~0.4 = parked idle
   varying vec2 vUv;
 
   float random(vec2 st) {
@@ -45,39 +46,48 @@ const CORE_FRAG = /* glsl */ `
   }
 
   void main() {
-    // d = distance from the nozzle, 0 at the bell, 1 at the far tail
+    // d = distance from the nozzle along the plane, 0 at the bell, 1 at the far end
     float d = 1.0 - vUv.x;
+    // Throttle shortens the flame: everything is measured in "flame lengths"
+    float de = d / mix(0.22, 1.0, uThrottle);
 
-    // Turbulence scrolling away from the bell; finer near the nozzle
-    float n = noise(vec2(vUv.x * 7.0 + uTime * 2.6, vUv.y * 3.5)) * 0.6
-            + noise(vec2(vUv.x * 16.0 + uTime * 5.0, vUv.y * 8.0 + uTime * 0.9)) * 0.4;
+    // Turbulence: slow big tongues + fast fine ripples, both scrolling tailward
+    float n = noise(vec2(vUv.x * 5.0 + uTime * 3.2, vUv.y * 3.0)) * 0.6
+            + noise(vec2(vUv.x * 13.0 + uTime * 6.5, vUv.y * 7.0 + uTime * 1.3)) * 0.4;
 
-    // Radius: pencil-thin at the bell, opening into the tail
-    float spread = mix(0.16, 0.46, d);
-    float wobble = (n - 0.5) * mix(0.03, 0.26, d);
+    // Cone: tight at the bell, opening as the exhaust expands; tongues grow with distance
+    float spread = mix(0.17, 0.62, smoothstep(0.0, 1.0, de)) * mix(0.75, 1.0, uThrottle);
+    float wobble = (n - 0.5) * mix(0.02, 0.36, smoothstep(0.0, 1.0, de));
     float r = abs(vUv.y - 0.5 + wobble);
-    float core = smoothstep(spread * 0.55, spread * 0.05, r);
-    float halo = smoothstep(spread, spread * 0.25, r);
+    float core = smoothstep(spread * 0.6, 0.0, r);
+    float body = smoothstep(spread, spread * 0.35, r);
 
-    // Shock diamonds: bright cells along the axis, dying out after ~1/4 length
-    float cells = pow(0.5 + 0.5 * cos(d * 48.0), 2.0) * exp(-d * 5.0);
+    // Axial: the flame proper dies out within the first ~third of the plane
+    // (at full throttle), the smoke tail carries on and fades to nothing
+    float flame = exp(-de * 2.2) * (1.0 - smoothstep(0.7, 1.05, de));
+    float cells = pow(0.5 + 0.5 * cos(de * 55.0), 2.0) * exp(-de * 6.0) * uThrottle;
 
-    // Intensity along the axis: hottest at the bell
-    float axialFade = exp(-d * 3.2);
+    vec3 white  = vec3(1.0, 0.98, 0.9);
+    vec3 yellow = vec3(1.0, 0.85, 0.45);
+    vec3 orange = vec3(1.0, 0.5, 0.14);
+    vec3 ember  = vec3(0.8, 0.28, 0.08);
+    vec3 smoke  = vec3(0.5, 0.44, 0.44);
 
-    vec3 white  = vec3(1.0, 0.98, 0.92);
-    vec3 blue   = vec3(0.72, 0.84, 1.0);
-    vec3 orange = vec3(1.0, 0.46, 0.12);
-    vec3 ember  = vec3(0.85, 0.30, 0.10);
-    vec3 smoke  = vec3(0.50, 0.44, 0.46);
+    vec3 col = mix(orange, yellow, core);
+    col = mix(col, white, core * exp(-de * 4.0));
+    col += white * cells * core * 0.6;
+    col = mix(col, ember, smoothstep(0.2, 0.6, de) * (1.0 - core * 0.5));
+    col = mix(col, smoke, smoothstep(0.5, 1.0, de));
 
-    vec3 col = mix(orange, white, core);
-    col = mix(col, blue, exp(-d * 12.0) * 0.45 * core); // blue tinge at the throat
-    col += white * cells * core * 0.7;
-    col = mix(col, ember, smoothstep(0.15, 0.5, d) * (1.0 - core));
-    col = mix(col, smoke, smoothstep(0.4, 1.0, d));
+    // Idle look (parked): the soft pale plume of the original Blender render —
+    // a short pink-white glow at the bell, no jet. Blends in as throttle drops.
+    vec3 idleCol = mix(vec3(0.95, 0.8, 0.85), vec3(1.0, 0.97, 0.95), core);
+    float idle = 1.0 - smoothstep(0.35, 0.9, uThrottle);
+    col = mix(col, idleCol, idle);
 
-    float alpha = (halo * 0.5 + core * 0.9) * axialFade * (0.65 + 0.45 * n);
+    float alpha = (body * 0.6 + core * 0.9) * flame * (0.7 + 0.4 * n) * mix(0.35, 1.0, uThrottle);
+    alpha *= mix(1.0, 0.8 + 0.2 * (1.0 - n), idle); // calmer at idle
+    alpha *= 1.0 - smoothstep(0.82, 1.0, d); // never a hard edge at the plane's end
     gl_FragColor = vec4(col * alpha, alpha);
   }
 `;
@@ -120,8 +130,8 @@ function Glow({ position, size, color, opacity }: { position: [number, number, n
 
 // ---- Smoke: point sprites spawned at the throat, drifting down the trail ----
 
-const SMOKE_COUNT = 140;
-const SMOKE_LIFE = 2.4; // seconds
+const SMOKE_COUNT = 220;
+const SMOKE_LIFE = 4.2; // seconds
 const SMOKE_SPEED = 4.6; // world units / s, drifting to -x
 
 const SMOKE_VERT = /* glsl */ `
@@ -156,7 +166,7 @@ const SMOKE_FRAG = /* glsl */ `
 
 type Puff = { age: number; y: number; vy: number; seed: number };
 
-function Smoke() {
+function Smoke({ throttle }: { throttle: { current: number } }) {
   const pixelRatio = useThree((s) => s.gl.getPixelRatio());
   const geom = useRef<THREE.BufferGeometry>(null!);
   const puffs = useRef<Puff[]>([]);
@@ -230,7 +240,7 @@ function Smoke() {
       positions[i * 3 + 2] = -0.5; // behind the core plane
       // Grows as it cools; fades out over the second half of its life
       sizes[i] = 40 + t * 210;
-      alphas[i] = 0.55 * Math.min(1, t * 5.0) * (1 - Math.pow(t, 1.4));
+      alphas[i] = 0.55 * Math.min(1, t * 5.0) * (1 - Math.pow(t, 1.4)) * (0.12 + 0.88 * throttle.current);
       heats[i] = Math.exp(-t * 6.0);
     }
     const g = geom.current;
@@ -255,12 +265,17 @@ function Smoke() {
 
 // ---- Assembly ---------------------------------------------------------------
 
-export default function Plume() {
+const IDLE_THROTTLE = 0.3;
+const THROTTLE_RATE = 1.4; // 1/s, exponential approach
+
+export default function Plume({ fullBurn = false }: { fullBurn?: boolean }) {
   const coreRef = useRef<THREE.Mesh>(null!);
+  const glowRef = useRef<THREE.Group>(null!);
+  const throttle = useRef(fullBurn ? 1 : IDLE_THROTTLE);
   const coreMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } },
+        uniforms: { uTime: { value: 0 }, uThrottle: { value: 1 } },
         vertexShader: CORE_VERT,
         fragmentShader: CORE_FRAG,
         transparent: true,
@@ -275,26 +290,38 @@ export default function Plume() {
   );
   useEffect(() => () => coreMaterial.dispose(), [coreMaterial]);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
+    // Throttle eases toward its target: full burn on the way in, idle when parked
+    const target = fullBurn ? 1 : IDLE_THROTTLE;
+    throttle.current += (target - throttle.current) * (1 - Math.exp(-delta * THROTTLE_RATE));
+    const th = throttle.current;
     coreMaterial.uniforms.uTime.value = t;
+    coreMaterial.uniforms.uThrottle.value = th;
     if (coreRef.current) {
-      // Engine breathing: slight flicker in length and width
-      const flicker = 1 + Math.sin(t * 9.0) * 0.02 + Math.sin(t * 23.0) * 0.012;
+      // Engine breathing: slight flicker in length and width, rougher at idle
+      const rough = 1.6 - th * 0.6;
+      const flicker = 1 + (Math.sin(t * 9.0) * 0.02 + Math.sin(t * 23.0) * 0.012) * rough;
       coreRef.current.scale.set(flicker, 1 + (flicker - 1) * 1.6, 1);
+    }
+    if (glowRef.current) {
+      const g = 0.5 + 0.5 * th;
+      glowRef.current.scale.set(g, g, 1);
     }
   });
 
   return (
     <group>
-      <Smoke />
+      <Smoke throttle={throttle} />
       <mesh ref={coreRef} position={[-CORE_LENGTH / 2 + 0.4, 0, 0]} material={coreMaterial}>
         <planeGeometry args={[CORE_LENGTH, CORE_HEIGHT]} />
       </mesh>
       {/* Throat glow: the overexposed blob a camera would see at the nozzle */}
-      <Glow position={[-0.4, 0, 0.2]} size={5} color="#ffd9b0" opacity={0.8} />
-      <Glow position={[-1.2, 0, 0.2]} size={9} color="#ff7a2a" opacity={0.28} />
-      <Glow position={[-4.5, 0, 0.1]} size={10} color="#ff5a1a" opacity={0.14} />
+      <group ref={glowRef}>
+        <Glow position={[-0.4, 0, 0.2]} size={5} color="#ffd9b0" opacity={0.8} />
+        <Glow position={[-1.2, 0, 0.2]} size={9} color="#ff7a2a" opacity={0.28} />
+        <Glow position={[-4.5, 0, 0.1]} size={10} color="#ff5a1a" opacity={0.14} />
+      </group>
     </group>
   );
 }

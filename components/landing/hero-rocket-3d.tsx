@@ -13,7 +13,8 @@ import { applyWeathering, PROFILES, type WeatherUniforms } from "./hero-weatheri
 // Idle: hover bob only (decision 0004: no shake); plume lives in hero-plume.tsx.
 // Scroll fly-out stays on the CSS wrapper in hero.tsx.
 
-// Camera: z=11, fov=40, canvas 1480x280 → world width ~42.3, height 8.
+// Canvas 2400x280, centred where the old 1480px stage was: ~750px of room
+// behind the nozzle for the plume. World view: 8 units tall, ~68.6 wide.
 const LENGTH = 32; // rocket length in world units (matches the static render)
 const HALF = LENGTH / 2;
 const X_OFF = 3.2; // shifts nose to ~95% of the canvas width
@@ -76,7 +77,7 @@ function extrudeSheet(source: THREE.BufferGeometry): THREE.BufferGeometry {
   return plate;
 }
 
-function Rocket() {
+function Rocket({ fullBurn }: { fullBurn: boolean }) {
   const group = useRef<THREE.Group>(null!);
   const { scene } = useGLTF("/design/cavour.glb");
   const weather = useMemo<WeatherUniforms>(
@@ -186,7 +187,7 @@ function Rocket() {
         <primitive object={normalized.object} />
       </group>
       <group position={[-HALF, 0, 0]}>
-        <Plume />
+        <Plume fullBurn={fullBurn} />
       </group>
     </group>
   );
@@ -203,7 +204,7 @@ function webglSupported() {
   }
 }
 
-export default function HeroRocket3D() {
+export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean }) {
   const [supported, setSupported] = useState(false);
   const [visible, setVisible] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -256,7 +257,7 @@ export default function HeroRocket3D() {
             <directionalLight position={[-6, -5, 8]} intensity={0.04} color="#9FB0C8" />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
             <Suspense fallback={null}>
-              <Rocket />
+              <Rocket fullBurn={fullBurn} />
             </Suspense>
           </Canvas>
         </div>
