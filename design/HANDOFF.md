@@ -9,6 +9,7 @@ Landing page design is APPROVED. Now designing subroutes.
 - Images live NEXT TO the .pen file (referenced as `./name.png`). Partner logos in `./sponsors/` (use `color-*.png` versions).
 - Site stack: Next.js, Tailwind, shadcn, Better Auth magic link + Google, Drizzle + Neon, Vercel.
 - `.claude/skills/` has threejs-* skills — USE THEM for any 3D work.
+- `.claude/skills/rocket-surface/` = the approved rocket look (lighting, worn paint, fins) and the process for the next GLBs. Load it before touching any rocket model.
 
 ## Hard rules
 - NEVER modify boards 00–03 (`Bqh4w` 00 Tokens, `lKPB9` 01 Navbar, `LJCAP` 02 Buttons & Pills, `H4S7dd` 03 Cards, `onDQB` 04 Form fields, `X45Jje` 03 Landing draft). New ideas → new boards.
