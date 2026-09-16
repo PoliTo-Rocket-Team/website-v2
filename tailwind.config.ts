@@ -123,6 +123,8 @@ const config = {
         "hero-fade": "hero-fade 0.9s ease-out both",
         // Heavy drive-in: Starship pace — slow, deliberate, long deceleration
         "rocket-drive-in": "rocket-drive-in 7s linear both",
+        // Title/slogan part to make room for the rocket: same 7s, same curve
+        "hero-separate": "hero-separate 7s linear both",
         // Lift-off: starts slow, accelerates away
         "rocket-liftoff": "rocket-liftoff 1.8s cubic-bezier(0.55, 0, 0.9, 0.35) forwards",
       },
@@ -165,6 +167,18 @@ const config = {
           "80%": { transform: "translate(-5.6vw, 1.9vh) rotate(-7.5deg)" },
           "92%": { transform: "translate(-1.4vw, 0.5vh) rotate(-6.5deg)" },
           "100%": { transform: "translate(0, 0) rotate(-6deg)" },
+        },
+        // Gathered → final position, keyed to the drive-in's deceleration so
+        // the type parts at the rocket's pace. --gather-y is the element's
+        // gathered offset (title +, slogan −).
+        "hero-separate": {
+          "0%": { transform: "translateY(var(--gather-y))" },
+          "20%": { transform: "translateY(calc(var(--gather-y) * 0.62))" },
+          "40%": { transform: "translateY(calc(var(--gather-y) * 0.35))" },
+          "60%": { transform: "translateY(calc(var(--gather-y) * 0.17))" },
+          "80%": { transform: "translateY(calc(var(--gather-y) * 0.053))" },
+          "92%": { transform: "translateY(calc(var(--gather-y) * 0.013))" },
+          "100%": { transform: "translateY(0)" },
         },
         // Applied on the outer layer, on top of the parked -6°: pitches up a
         // further 6° as it accelerates away.

@@ -7,17 +7,21 @@ import { Starfield } from "./starfield";
 
 const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
 
-// Hero choreography per .decisions/0004 (no pinning), amended: title + slogan
-// sit at their final positions the whole time (no gather/split move).
-//   enter   — words stagger in
+// Hero choreography per .decisions/0004 (no pinning). Title + slogan start
+// gathered (close together where the rocket will park) and part at the
+// rocket's own pace as it drives in.
+//   enter   — words stagger in, type gathered
 //   drive   — rocket climbs in from off-screen lower-left OVER the type,
-//             decelerating, nose easing from 14° to 6° up; parks at 6°
+//             decelerating, nose easing from 14° to 6° up; parks at 6°.
+//             Title rises and slogan drops on the same curve to make room
 //   settled — copy fades in
 //   liftoff — one-shot: past ~18% scroll the rocket accelerates out up-right
 //   gone    — rocket left; when the hero is fully visible again, replay
 type Phase = "enter" | "drive" | "settled" | "liftoff" | "gone";
 
 const HOLD_MS = 2000; // gathered hold before the rocket appears
+const TITLE_GATHER_Y = 64; // px the title sits lower while gathered
+const SLOGAN_GATHER_Y = -96; // px the slogan sits higher while gathered
 const DRIVE_MS = 7000; // rocket drive-in duration (Starship pace)
 const LIFTOFF_MS = 1800;
 const LIFTOFF_SCROLL = 0.18; // fraction of hero height
@@ -112,6 +116,15 @@ export function Hero() {
   // Body/hairline/strip stay hidden until the rocket has settled.
   const copyVisible = phase !== "enter" && phase !== "drive";
 
+  // Title/slogan: gathered while entering, then part on the drive-in curve.
+  // The animation fills forward, so they stay put through settled/lift-off.
+  const gathered = !reduced && phase === "enter";
+  const separateClass = reduced || phase === "enter" ? "" : "animate-hero-separate";
+  const separateStyle = (gatherY: number): React.CSSProperties => ({
+    ["--gather-y" as string]: `${gatherY}px`,
+    transform: gathered ? `translateY(${gatherY}px)` : undefined,
+  });
+
   return (
     <section
       ref={sectionRef}
@@ -183,8 +196,8 @@ export function Hero() {
 
         {/* Title: y180 */}
         <h1
-          className="absolute left-16 top-[180px] w-[1312px] text-center font-extrabold leading-[0.89] tracking-[-2.8px] text-prt-text"
-          style={{ fontSize: 90 }}
+          className={`absolute left-16 top-[180px] w-[1312px] text-center font-extrabold leading-[0.89] tracking-[-2.8px] text-prt-text ${separateClass}`}
+          style={{ fontSize: 90, ...separateStyle(TITLE_GATHER_Y) }}
         >
           {/* star-dimming fade behind the glyphs; moves with the title */}
           <span
@@ -209,7 +222,10 @@ export function Hero() {
             board = a 436px-tall band pinned to the bottom edge */}
         <div className="absolute bottom-0 left-0 h-[436px] w-full">
           {/* Slogan */}
-          <p className="absolute left-16 top-0 w-[1312px] text-[148px] font-extrabold leading-[0.89] tracking-[-5.2px] text-prt-text">
+          <p
+            className={`absolute left-16 top-0 w-[1312px] text-[148px] font-extrabold leading-[0.89] tracking-[-5.2px] text-prt-text ${separateClass}`}
+            style={separateStyle(SLOGAN_GATHER_Y)}
+          >
             <span
               className={`inline-block ${reduced ? "" : "animate-slogan-down motion-reduce:animate-none"}`}
               style={{ animationDelay: "450ms" }}
