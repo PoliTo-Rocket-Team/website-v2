@@ -10,7 +10,7 @@ import { applyWeathering, PROFILES, type WeatherUniforms } from "./hero-weatheri
 
 // Three.js hero stage: cavour.glb horizontal, nose right, matching the static
 // render's framing (nose ~95% across, plume trailing to the left edge).
-// Idle: hover bob + subtle shake; plume lives in hero-plume.tsx.
+// Idle: hover bob only (decision 0004: no shake); plume lives in hero-plume.tsx.
 // Scroll fly-out stays on the CSS wrapper in hero.tsx.
 
 // Camera: z=11, fov=40, canvas 1480x280 → world width ~42.3, height 8.
@@ -26,8 +26,6 @@ const REDUCED =
 // falloff give the metals proper streaks and the orange paint a believable
 // sheen — the previous hand-built strip environment read flat and cartoony.
 const HDRI = "/design/hdri/studio_small_03.hdr";
-
-const RUMBLE_DECAY_S = 7; // matches the drive-in duration
 
 // The GLB's fins are single-sided sheets with zero thickness, so from the
 // side they vanish into a line. Extrude each sheet into a plate: a front
@@ -78,9 +76,8 @@ function extrudeSheet(source: THREE.BufferGeometry): THREE.BufferGeometry {
   return plate;
 }
 
-function Rocket({ rumbling }: { rumbling: boolean }) {
+function Rocket() {
   const group = useRef<THREE.Group>(null!);
-  const rumbleStart = useRef<number | null>(null);
   const { scene } = useGLTF("/design/cavour.glb");
   const weather = useMemo<WeatherUniforms>(
     () => ({
@@ -141,7 +138,7 @@ function Rocket({ rumbling }: { rumbling: boolean }) {
           mat.clearcoat = 0.12;
           mat.clearcoatRoughness = 0.65;
         }
-        mat.envMapIntensity = 0.45;
+        mat.envMapIntensity = 0.28;
         applyWeathering(mat, PROFILES.paint, weather);
       } else if (mat.name === "Seam") {
         mat.roughness = 0.7;
@@ -175,23 +172,9 @@ function Rocket({ rumbling }: { rumbling: boolean }) {
     if (!group.current || REDUCED) return;
     const t = state.clock.elapsedTime;
 
-    // Hover drift: gentle bob, ±0.45 world units (~16px) over ~6s
-    group.current.position.y = Math.sin(t * 1.05) * 0.45;
-
-    // Starship rumble while driving in: gentle structural shudder that dies
-    // down over the ride and ends still. Idle stays calm.
-    if (rumbling) {
-      if (rumbleStart.current === null) rumbleStart.current = t;
-      const elapsed = t - rumbleStart.current;
-      const k = Math.max(0, 1 - elapsed / RUMBLE_DECAY_S) ** 2; // fade to 0
-      group.current.position.y += (Math.sin(t * 57) * 0.03 + Math.sin(t * 23) * 0.027) * k;
-      group.current.position.x = X_OFF + Math.sin(t * 43) * 0.033 * k;
-      group.current.rotation.z = Math.sin(t * 31) * 0.002 * k;
-    } else {
-      rumbleStart.current = null;
-      group.current.position.x = X_OFF;
-      group.current.rotation.z = 0;
-    }
+    // Hover drift: barely-there, ±0.15 world units (~5px) over ~9s.
+    // Enough to keep the rocket from reading as a sticker, never a bounce.
+    group.current.position.y = Math.sin(t * 0.7) * 0.15;
 
     // Keep the procedural wear pinned to the hull while the group moves
     weather.uRocketPos.value.copy(group.current.position);
@@ -220,7 +203,7 @@ function webglSupported() {
   }
 }
 
-export default function HeroRocket3D({ rumbling = false }: { rumbling?: boolean }) {
+export default function HeroRocket3D() {
   const [supported, setSupported] = useState(false);
   const [visible, setVisible] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -270,10 +253,10 @@ export default function HeroRocket3D({ rumbling = false }: { rumbling?: boolean 
               shadow-camera-near={1}
               shadow-camera-far={80}
             />
-            <directionalLight position={[-6, -5, 8]} intensity={0.25} color="#9FB0C8" />
+            <directionalLight position={[-6, -5, 8]} intensity={0.04} color="#9FB0C8" />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
             <Suspense fallback={null}>
-              <Rocket rumbling={rumbling} />
+              <Rocket />
             </Suspense>
           </Canvas>
         </div>

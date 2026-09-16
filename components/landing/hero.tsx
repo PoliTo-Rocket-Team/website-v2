@@ -10,8 +10,8 @@ const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
 // Hero choreography per .decisions/0004 (no pinning), amended: title + slogan
 // sit at their final positions the whole time (no gather/split move).
 //   enter   — words stagger in
-//   drive   — rocket climbs in from lower-left OVER the type at ~22°, leveling
-//             out as it decelerates
+//   drive   — rocket climbs in from off-screen lower-left OVER the type,
+//             decelerating, nose easing from 14° to 6° up; parks at 6°
 //   settled — copy fades in
 //   liftoff — one-shot: past ~18% scroll the rocket accelerates out up-right
 //   gone    — rocket left; when the hero is fully visible again, replay
@@ -261,9 +261,9 @@ export function Hero() {
           >
             <div
               className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
-              style={phase === "enter" ? { transform: "translate(-68vw, 24vh) rotate(-22deg)" } : undefined}
+              style={phase === "enter" ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" } : undefined}
             >
-              <HeroRocket3D rumbling={phase === "drive"} />
+              <HeroRocket3D />
             </div>
           </div>
         )}

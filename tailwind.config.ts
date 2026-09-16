@@ -154,18 +154,23 @@ const config = {
         // Angled arrival: climbs in from lower-left over the type at ~22°,
         // leveling out as it decelerates. Deceleration is baked into the stop
         // spacing, so the animation runs linear.
+        // Straight climb from fully off-screen lower-left, decelerating. The
+        // nose eases from 14° to 6° up over the flight (a gentle settle, never
+        // a pitch-over) and parks still slightly nose-up.
         "rocket-drive-in": {
-          "0%": { transform: "translate(-68vw, 24vh) rotate(-22deg)" },
-          "20%": { transform: "translate(-42vw, 15.5vh) rotate(-17deg)" },
-          "40%": { transform: "translate(-24vw, 9.5vh) rotate(-12.5deg)" },
-          "60%": { transform: "translate(-11.5vw, 4.8vh) rotate(-8.5deg)" },
-          "80%": { transform: "translate(-3.6vw, 1.6vh) rotate(-5.5deg)" },
-          "92%": { transform: "translate(-0.9vw, 0.4vh) rotate(-2.5deg)" },
-          "100%": { transform: "translate(0, 0) rotate(0deg)" },
+          "0%": { transform: "translate(-105vw, 36vh) rotate(-14deg)" },
+          "20%": { transform: "translate(-65vw, 22.3vh) rotate(-13deg)" },
+          "40%": { transform: "translate(-36.8vw, 12.6vh) rotate(-11.5deg)" },
+          "60%": { transform: "translate(-17.9vw, 6.1vh) rotate(-9.5deg)" },
+          "80%": { transform: "translate(-5.6vw, 1.9vh) rotate(-7.5deg)" },
+          "92%": { transform: "translate(-1.4vw, 0.5vh) rotate(-6.5deg)" },
+          "100%": { transform: "translate(0, 0) rotate(-6deg)" },
         },
+        // Applied on the outer layer, on top of the parked -6°: pitches up a
+        // further 6° as it accelerates away.
         "rocket-liftoff": {
           "0%": { transform: "translate(0, 0) rotate(0deg)" },
-          "100%": { transform: "translate(28vw, -130vh) rotate(-16deg)" },
+          "100%": { transform: "translate(28vw, -130vh) rotate(-6deg)" },
         },
         shoot: {
           "0%": { transform: "translate(0, 0) rotate(-18deg)", opacity: "0" },
