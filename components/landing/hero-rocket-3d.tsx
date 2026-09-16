@@ -1,13 +1,16 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Environment, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import Plume from "./hero-plume";
+import { applyWeathering, PROFILES, type WeatherUniforms } from "./hero-weathering";
 
 // Three.js hero stage: cavour.glb horizontal, nose right, matching the static
 // render's framing (nose ~95% across, plume trailing to the left edge).
-// Idle: hover bob + subtle shake; plume = noise-driven shader (smoke + wave).
+// Idle: hover bob + subtle shake; plume lives in hero-plume.tsx.
 // Scroll fly-out stays on the CSS wrapper in hero.tsx.
 
 // Camera: z=11, fov=40, canvas 1480x280 → world width ~42.3, height 8.
@@ -19,138 +22,74 @@ const REDUCED =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// IBL matching the Blender render's mood: a DARK studio with a few bright
-// strips. Metals stay near-black with long specular streaks instead of
-// reflecting a white room. Generated on the GPU, no HDR download.
-function DarkStudioEnvironment() {
-  const gl = useThree((s) => s.gl);
-  const scene = useThree((s) => s.scene);
-  useEffect(() => {
-    const env = new THREE.Scene();
-    env.background = new THREE.Color(0x000000);
-    // Gradient dome (dark floor → mid-gray sky) so curved metal picks up a
-    // smooth sheen everywhere instead of hard panel edges.
-    const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(50, 32, 16),
-      new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        vertexShader: `varying vec3 vPos; void main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `varying vec3 vPos; void main(){ float h = normalize(vPos).y * 0.5 + 0.5; vec3 c = mix(vec3(0.14, 0.145, 0.155), vec3(0.48, 0.51, 0.56), smoothstep(0.0, 1.0, h)); gl_FragColor = vec4(c, 1.0); }`,
-      }),
-    );
-    env.add(sky);
-    const strip = (color: number, intensity: number, w: number, h: number, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(
-        new THREE.PlaneGeometry(w, h),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity) }),
-      );
-      m.position.set(x, y, z);
-      m.lookAt(0, 0, 0);
-      env.add(m);
-    };
-    strip(0xffffff, 5, 44, 4, 0, 13, 6); // long key strip → streak along the glossy body
-    strip(0xbfd0e6, 0.6, 28, 7, -8, -13, 6); // cool fill from below-left
-    strip(0xffffff, 0.8, 24, 5, 2, 0, 16); // soft frontal bounce so dark faces stay readable
-    strip(0xff8a50, 1.6, 10, 4, 8, 2, -14); // warm kicker behind
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const tex = pmrem.fromScene(env, 0.03).texture;
-    scene.environment = tex;
-    return () => {
-      scene.environment = null;
-      tex.dispose();
-      pmrem.dispose();
-      env.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (mesh.isMesh) {
-          mesh.geometry.dispose();
-          (mesh.material as THREE.Material).dispose();
-        }
-      });
-    };
-  }, [gl, scene]);
-  return null;
-}
-
-// Plume: one plane behind the bell. uv.x runs 0 (tail) → 1 (bell). Two octaves
-// of value noise scroll toward the tail for the smoke wave; color ramps from a
-// hot core at the nozzle to the purple-pink smoke of the render.
-const PLUME_VERT = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const PLUME_FRAG = /* glsl */ `
-  uniform float uTime;
-  varying vec2 vUv;
-
-  float random(vec2 st) {
-    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453);
-  }
-  float noise(vec2 st) {
-    vec2 i = floor(st);
-    vec2 f = fract(st);
-    float a = random(i);
-    float b = random(i + vec2(1.0, 0.0));
-    float c = random(i + vec2(0.0, 1.0));
-    float d = random(i + vec2(1.0, 1.0));
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-  }
-
-  void main() {
-    float axial = vUv.x; // 1 = nozzle end
-
-    // Smoke wave: noise scrolling away from the bell (toward -x)
-    float n = noise(vec2(vUv.x * 6.0 + uTime * 2.2, vUv.y * 3.0)) * 0.6
-            + noise(vec2(vUv.x * 14.0 + uTime * 4.5, vUv.y * 7.0 + uTime * 0.8)) * 0.4;
-
-    // Radial falloff: tight at the bell, wide and wobbly at the tail
-    float spread = mix(0.5, 0.16, axial);
-    float wobble = (n - 0.5) * mix(0.35, 0.05, axial);
-    float r = abs(vUv.y - 0.5 + wobble);
-    float body = smoothstep(spread, spread * 0.25, r);
-
-    // Bright at the bell, fading down the tail
-    float axialFade = pow(axial, 1.6);
-
-    vec3 hot = vec3(1.0, 0.88, 0.72);
-    vec3 smoke = vec3(0.63, 0.42, 0.93);
-    vec3 col = mix(smoke, hot, pow(axial, 3.0));
-
-    float alpha = body * axialFade * (0.62 + 0.45 * n);
-    gl_FragColor = vec4(col * alpha, alpha);
-  }
-`;
+// IBL: a real small-studio HDRI (Poly Haven, CC0). Real softboxes and
+// falloff give the metals proper streaks and the orange paint a believable
+// sheen — the previous hand-built strip environment read flat and cartoony.
+const HDRI = "/design/hdri/studio_small_03.hdr";
 
 const RUMBLE_DECAY_S = 7; // matches the drive-in duration
 
+// The GLB's fins are single-sided sheets with zero thickness, so from the
+// side they vanish into a line. Extrude each sheet into a plate: a front
+// and back copy offset along the sheet normal, plus walls along every
+// boundary edge. Flat per-face normals so the edges read as machined.
+// (No fillet: a rounded rim mirrors the environment and shifts the fin's
+// color as the rocket bobs.)
+const FIN_THICKNESS_OF_SPAN = 0.026;
+function extrudeSheet(source: THREE.BufferGeometry): THREE.BufferGeometry {
+  const g = mergeVertices(source.index ? source : source.clone());
+  g.computeBoundingBox();
+  const size = g.boundingBox!.getSize(new THREE.Vector3());
+  const axes = [size.x, size.y, size.z];
+  const thin = axes.indexOf(Math.min(...axes));
+  const span = Math.max(...axes);
+  const half = (span * FIN_THICKNESS_OF_SPAN) / 2;
+  const n = new THREE.Vector3(thin === 0 ? 1 : 0, thin === 1 ? 1 : 0, thin === 2 ? 1 : 0);
+
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const idx = g.index!;
+  const P = (i: number) => new THREE.Vector3().fromBufferAttribute(pos, i);
+  const front = (i: number) => P(i).addScaledVector(n, half);
+  const back = (i: number) => P(i).addScaledVector(n, -half);
+
+  const out: number[] = [];
+  const push = (...v: THREE.Vector3[]) => v.forEach((p) => out.push(p.x, p.y, p.z));
+  const edgeCount = new Map<string, number>();
+  const edges: [number, number][] = [];
+  for (let t = 0; t < idx.count; t += 3) {
+    const a = idx.getX(t), b = idx.getX(t + 1), c = idx.getX(t + 2);
+    push(front(a), front(b), front(c));
+    push(back(a), back(c), back(b));
+    for (const [u, v] of [[a, b], [b, c], [c, a]] as [number, number][]) {
+      const key = u < v ? `${u}_${v}` : `${v}_${u}`;
+      edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1);
+      edges.push([u, v]);
+    }
+  }
+  for (const [u, v] of edges) {
+    const key = u < v ? `${u}_${v}` : `${v}_${u}`;
+    if (edgeCount.get(key) !== 1) continue; // interior edge
+    push(front(u), front(v), back(v));
+    push(front(u), back(v), back(u));
+  }
+  const plate = new THREE.BufferGeometry();
+  plate.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
+  plate.computeVertexNormals();
+  return plate;
+}
+
 function Rocket({ rumbling }: { rumbling: boolean }) {
   const group = useRef<THREE.Group>(null!);
-  const plumeRef = useRef<THREE.Mesh>(null!);
   const rumbleStart = useRef<number | null>(null);
   const { scene } = useGLTF("/design/cavour.glb");
-
-  const plumeMaterial = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } },
-        vertexShader: PLUME_VERT,
-        fragmentShader: PLUME_FRAG,
-        transparent: true,
-        // Shader outputs premultiplied color; add it 1:1 and accumulate alpha
-        // so the transparent canvas composites over the page correctly.
-        blending: THREE.CustomBlending,
-        blendEquation: THREE.AddEquation,
-        blendSrc: THREE.OneFactor,
-        blendDst: THREE.OneFactor,
-        depthWrite: false,
-      }),
+  const weather = useMemo<WeatherUniforms>(
+    () => ({
+      uRocketPos: { value: new THREE.Vector3(X_OFF, 0, 0) },
+      uSootStart: { value: -HALF + 9 },
+      uTail: { value: -HALF - 0.5 },
+    }),
     [],
   );
-  useEffect(() => () => plumeMaterial.dispose(), [plumeMaterial]);
 
   // Normalize whatever axes/scale the GLB ships with: longest axis becomes
   // the rocket's length, laid horizontally along +X (nose right), centered.
@@ -164,22 +103,54 @@ function Rocket({ rumbling }: { rumbling: boolean }) {
       if (/plume/i.test(o.name)) plumes.push(o);
     });
     plumes.forEach((o) => o.parent?.remove(o));
-    // Material polish toward the Blender render: glossier metal so the env
-    // strips streak across the fins instead of averaging to flat gray.
+    // Materials: matte, worn surfaces instead of the GLB's showroom finish.
+    // Fins and bell lip ship fully metallic on a dark base, which under an
+    // HDRI is nothing but a reflection of the studio — pulled toward dull
+    // brushed metal. The paint keeps a faint clearcoat. Then procedural
+    // wear (scuffs, streaks, soot toward the nozzle) goes on everything.
+    const seen = new Set<THREE.Material>();
     clone.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      if (!mat?.isMeshStandardMaterial) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (/^fin\d/i.test(mesh.name)) {
+        mesh.geometry = extrudeSheet(mesh.geometry);
+        (mesh.material as THREE.Material).side = THREE.DoubleSide;
+      }
+      const mat = mesh.material as THREE.MeshPhysicalMaterial;
+      if (!mat?.isMeshStandardMaterial || seen.has(mat)) return;
+      seen.add(mat);
       if (mat.name === "Aluminium") {
-        mat.roughness = 0.4;
-        mat.envMapIntensity = 0.95;
+        // Dark anodized aluminium: a step lighter than the body's black,
+        // dull rather than brushed so nothing flashes as the view shifts
+        mat.color.setRGB(0.14, 0.145, 0.155);
+        mat.metalness = 0.6;
+        mat.roughness = 0.72;
+        mat.envMapIntensity = 0.3;
+        applyWeathering(mat, PROFILES.metal, weather);
       } else if (mat.name === "Titanium") {
-        mat.roughness = 0.4;
-        mat.envMapIntensity = 1.2;
-      } else if (mat.name === "Livery" || mat.name === "Seam") {
-        mat.roughness = 0.3;
-        mat.envMapIntensity = 1.25;
+        mat.color.setRGB(0.16, 0.165, 0.17);
+        mat.metalness = 0.6;
+        mat.roughness = 0.7;
+        mat.envMapIntensity = 0.35;
+        applyWeathering(mat, PROFILES.metal, weather);
+      } else if (mat.name === "Livery" || mat.name === "DecalStrip") {
+        mat.roughness = 0.62;
+        if ("clearcoat" in mat) {
+          mat.clearcoat = 0.12;
+          mat.clearcoatRoughness = 0.65;
+        }
+        mat.envMapIntensity = 0.45;
+        applyWeathering(mat, PROFILES.paint, weather);
+      } else if (mat.name === "Seam") {
+        mat.roughness = 0.7;
+        mat.envMapIntensity = 0.5;
+        applyWeathering(mat, PROFILES.trim, weather);
+      } else if (mat.name === "Decal White") {
+        mat.roughness = 0.6;
+        mat.envMapIntensity = 0.55;
+        applyWeathering(mat, PROFILES.paint, weather);
       }
     });
     const box = new THREE.Box3().setFromObject(clone);
@@ -198,7 +169,7 @@ function Rocket({ rumbling }: { rumbling: boolean }) {
       holder.rotation.z = -Math.PI / 2; // length along Y → X
     }
     return { object: holder, scale: LENGTH / longest };
-  }, [scene]);
+  }, [scene, weather]);
 
   useFrame((state) => {
     if (!group.current || REDUCED) return;
@@ -222,12 +193,8 @@ function Rocket({ rumbling }: { rumbling: boolean }) {
       group.current.rotation.z = 0;
     }
 
-    // Plume: noise scroll + slow breathing
-    plumeMaterial.uniforms.uTime.value = t;
-    if (plumeRef.current) {
-      const breathe = 1 + Math.sin(t * 2.4) * 0.05;
-      plumeRef.current.scale.set(breathe, breathe, 1);
-    }
+    // Keep the procedural wear pinned to the hull while the group moves
+    weather.uRocketPos.value.copy(group.current.position);
   });
 
   return (
@@ -235,9 +202,9 @@ function Rocket({ rumbling }: { rumbling: boolean }) {
       <group scale={normalized.scale}>
         <primitive object={normalized.object} />
       </group>
-      <mesh ref={plumeRef} position={[-HALF - 5.6, 0, 0]} material={plumeMaterial}>
-        <planeGeometry args={[13, 3.8]} />
-      </mesh>
+      <group position={[-HALF, 0, 0]}>
+        <Plume />
+      </group>
     </group>
   );
 }
@@ -278,16 +245,33 @@ export default function HeroRocket3D({ rumbling = false }: { rumbling?: boolean 
             // box, not the transformed bounding rect, or the canvas mis-sizes.
             resize={{ offsetSize: true }}
             gl={{ alpha: true, antialias: true }}
-            // Orthographic like the Blender render — a close wide-angle lens
-            // distorts a 32-unit rocket badly. zoom 35 px/unit → 42.3x8 world view.
-            orthographic
-            camera={{ zoom: 35, position: [0, 0, 60], near: 0.1, far: 200 }}
+            shadows="soft"
+            // Long lens: a 14° vertical fov from ~33 units back frames the same
+            // 42x8 world window the orthographic setup did, but with the faint
+            // foreshortening of a 200mm photo instead of a diagram's flatness.
+            camera={{ fov: 14, position: [0, 0, 32.6], near: 1, far: 200 }}
           >
-            <DarkStudioEnvironment />
-            {/* Faint direct light for diffuse shape; the dark IBL does the rest */}
-            <ambientLight intensity={0.3} />
-            <directionalLight position={[6, 8, 10]} intensity={1.4} />
-            <directionalLight position={[-8, -3, 6]} intensity={0.5} color="#C8CEDA" />
+            <Environment files={HDRI} environmentIntensity={0.45} environmentRotation={[-Math.PI / 2, 0, 0]} />
+            {/* Sun sits on the camera side, a little high: the screen-facing
+                half is lit, shadows fall away behind the rocket, so no angle
+                management. The HDRI adds the broad soft sheen. */}
+            <ambientLight intensity={0.12} />
+            <directionalLight
+              position={[3, 4, 26]}
+              intensity={2.1}
+              castShadow
+              shadow-mapSize={[2048, 2048]}
+              shadow-bias={-0.0002}
+              shadow-normalBias={0.02}
+              shadow-camera-left={-24}
+              shadow-camera-right={24}
+              shadow-camera-top={8}
+              shadow-camera-bottom={-8}
+              shadow-camera-near={1}
+              shadow-camera-far={80}
+            />
+            <directionalLight position={[-6, -5, 8]} intensity={0.25} color="#9FB0C8" />
+            <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
             <Suspense fallback={null}>
               <Rocket rumbling={rumbling} />
             </Suspense>
