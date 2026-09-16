@@ -13,11 +13,17 @@ const links = [
 export function LandingNavbar() {
   return (
     <header className="absolute inset-x-0 top-0 z-40">
-      <div className="relative mx-auto h-[100px] w-[1440px]">
+      <div className="relative mx-auto h-[100px] w-full max-w-[1440px]">
         <Link href="/" className="absolute left-16 top-6 block h-[50px] w-[40px]">
           <Image src="/design/prt-mark.png" alt="Polito Rocket Team" width={40} height={50} priority />
         </Link>
 
+        {/* star-dimming fade behind the link row (invisible on the black sky) */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-[-10px] h-[150px] w-[780px] -translate-x-1/2"
+          style={{ background: "radial-gradient(ellipse 50% 50% at 50% 50%, #010101 30%, #01010100 70%)" }}
+        />
         <nav className="absolute left-0 top-[47px] flex w-full items-center justify-center gap-[44px]">
           {links.map((l) => (
             <Link key={l.href} href={l.href} className="text-[17px] text-prt-text transition-colors hover:text-accent">

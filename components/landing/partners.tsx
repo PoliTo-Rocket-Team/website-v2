@@ -39,8 +39,8 @@ export function Partners() {
   const loop = [...logos, ...logos];
   return (
     <section className="border-t border-hairline px-0 py-24">
-      <div className="flex flex-col justify-between gap-8 px-6 md:flex-row md:items-end md:px-16">
-        <div className="mx-auto w-full max-w-[1312px] md:mx-0">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col justify-between gap-8 px-6 md:flex-row md:items-end md:px-16">
+        <div>
           <p className="font-mono text-xs tracking-[0.3em] text-accent">PARTNERS</p>
           <h2 className="mt-4 text-4xl font-bold leading-tight tracking-tight md:text-5xl">
             Their logos fly with the rocket.
@@ -48,7 +48,7 @@ export function Partners() {
         </div>
         <a
           href="mailto:info@politorocketteam.it"
-          className="font-mono text-sm tracking-wide text-text-2 underline-offset-4 transition-colors hover:text-accent md:mr-[calc((100vw-1312px)/2)]"
+          className="shrink-0 font-mono text-sm tracking-wide text-text-2 underline-offset-4 transition-colors hover:text-accent"
         >
           Become a partner →
         </a>

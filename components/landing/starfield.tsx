@@ -11,12 +11,12 @@ function mulberry32(seed: number) {
   };
 }
 
-function makeStars(count: number, seed: number, twinkleEvery = 6): Star[] {
+function makeStars(count: number, seed: number, twinkleEvery = 6, sizeMin = 1, sizeMax = 3.2): Star[] {
   const rand = mulberry32(seed);
   return Array.from({ length: count }, (_, i) => ({
     x: rand() * 100,
     y: rand() * 100,
-    size: 1 + rand() * 2.2,
+    size: sizeMin + rand() * (sizeMax - sizeMin),
     twinkle: i % twinkleEvery === 0,
     delay: rand() * 4,
   }));
@@ -26,14 +26,20 @@ export function Starfield({
   count = 34,
   seed = 42,
   twinkleEvery = 6,
+  sizeMin = 1,
+  sizeMax = 3.2,
+  dimOpacity = 0.35,
   className = "",
 }: {
   count?: number;
   seed?: number;
   twinkleEvery?: number;
+  sizeMin?: number;
+  sizeMax?: number;
+  dimOpacity?: number;
   className?: string;
 }) {
-  const stars = makeStars(count, seed);
+  const stars = makeStars(count, seed, twinkleEvery, sizeMin, sizeMax);
   return (
     <div aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
       {stars.map((s, i) => (
@@ -45,7 +51,7 @@ export function Starfield({
             top: `${s.y}%`,
             width: s.size,
             height: s.size,
-            opacity: s.twinkle ? undefined : 0.35,
+            opacity: s.twinkle ? undefined : dimOpacity,
             animationDelay: `${s.delay}s`,
           }}
         />

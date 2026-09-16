@@ -7,11 +7,12 @@ import { Starfield } from "./starfield";
 
 const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
 
-// Hero choreography per .decisions/0004 (no pinning):
-//   enter   — title + slogan lightly separated (board 04 idle), words stagger in
+// Hero choreography per .decisions/0004 (no pinning), amended: title + slogan
+// sit at their final positions the whole time (no gather/split move).
+//   enter   — words stagger in
 //   drive   — rocket climbs in from lower-left OVER the type at ~22°, leveling
-//             out as it decelerates; text holds still so eyes stay on the rocket
-//   settled — only now the type drifts that last bit apart; copy fades in
+//             out as it decelerates
+//   settled — copy fades in
 //   liftoff — one-shot: past ~18% scroll the rocket accelerates out up-right
 //   gone    — rocket left; when the hero is fully visible again, replay
 type Phase = "enter" | "drive" | "settled" | "liftoff" | "gone";
@@ -22,10 +23,34 @@ const LIFTOFF_MS = 1800;
 const LIFTOFF_SCROLL = 0.18; // fraction of hero height
 const REPLAY_SCROLL = 40; // px — hero counts as "fully visible" again
 
-// Gathered offsets from final positions, matching board 04's no-rocket idle:
-// already separated, just less — the final split is a small, calm move.
-const TITLE_GATHER_Y = 80;
-const SLOGAN_GATHER_Y = -26;
+// Board fit, as CSS vars so the inline <script> below can set them before the
+// SSR'd hero ever paints (no unscaled flash on load):
+//   --hero-scale  downscale-only board zoom: min(1, vw/1440, vh/900)
+//   --hero-h      section height: the viewport height, clamped between the
+//                 scaled board (900·s) and the scaled stretch cap (1080·s) —
+//                 so a width-limited scale still fills the screen vertically
+//                 by stretching the board, never by showing the next section
+const applyHeroVars = () => {
+  const s = Math.min(1, window.innerWidth / 1440, window.innerHeight / 900);
+  const h = Math.min(Math.max(window.innerHeight, 900 * s), 1080 * s);
+  const style = document.documentElement.style;
+  style.setProperty("--hero-scale", String(s));
+  style.setProperty("--hero-h", `${h}px`);
+};
+// Same logic, inlined into the HTML stream (runs during parse, pre-paint).
+const HERO_VARS_SCRIPT =
+  "(function(){var s=Math.min(1,innerWidth/1440,innerHeight/900);" +
+  "var h=Math.min(Math.max(innerHeight,900*s),1080*s);" +
+  "var t=document.documentElement.style;" +
+  "t.setProperty('--hero-scale',String(s));t.setProperty('--hero-h',h+'px')})()";
+const HERO_H = "var(--hero-h, min(100vh, 1080px))";
+// Earth + its fades span the whole viewport (in stage coordinates, so ÷ scale)
+// — on ultra-wide screens the photo zooms up and the limb arc continues to the
+// edges instead of ending in a hard vertical cut. Never below the design 1800.
+const EARTH_W = "max(1800px, calc(100vw / var(--hero-scale, 1)))";
+// Soft sky-colored fade rendered behind white type: invisible on the black
+// sky, it just dims the stars behind the glyphs so none reads as a defect.
+const TEXT_FADE = "radial-gradient(ellipse 50% 50% at 50% 50%, #010101 35%, #01010100 72%)";
 
 export function Hero() {
   const [phase, setPhase] = useState<Phase>("enter");
@@ -40,6 +65,14 @@ export function Hero() {
       setReduced(true);
       setPhase("settled");
     }
+  }, []);
+
+  // Keep the fit vars fresh on resize (initial values come from the inline
+  // script; this also covers client-side navigations to this page).
+  useEffect(() => {
+    applyHeroVars();
+    window.addEventListener("resize", applyHeroVars);
+    return () => window.removeEventListener("resize", applyHeroVars);
   }, []);
 
   // Phase timers
@@ -76,43 +109,89 @@ export function Hero() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [reduced]);
 
-  // Text holds its gathered spot through the whole flight; splits at the end.
-  const gathered = phase === "enter" || phase === "drive";
-  const copyVisible = !gathered; // body/hairline/strip fade in with the split
+  // Body/hairline/strip stay hidden until the rocket has settled.
+  const copyVisible = phase !== "enter" && phase !== "drive";
 
   return (
-    <section ref={sectionRef} className="relative flex h-screen max-h-[900px] justify-center overflow-hidden bg-ground">
-      <div key={cycle} className="relative h-[900px] w-[1440px] shrink-0">
-        {/* Earth: (-180, 300) 1800x1013 */}
-        <div className="absolute left-[-180px] top-[300px] h-[1013px] w-[1800px]">
-          <Image src="/design/earth-limb.jpg" alt="" fill priority sizes="1800px" className="object-cover" />
+    <section
+      ref={sectionRef}
+      className="relative flex justify-center overflow-hidden"
+      // #010101 = the earth photo's measured sky color, so the sky above/beside
+      // the photo is identical to the photo's own black (bg-ground would read
+      // a touch grayer); the scrim still ends solid ground color at the bottom
+      style={{ height: HERO_H, background: "#010101" }}
+    >
+      <script dangerouslySetInnerHTML={{ __html: HERO_VARS_SCRIPT }} />
+      {/* Stage fills the section; on viewports taller than the 900px board the
+          extra height opens up between the top-anchored title and the
+          bottom-anchored slogan/copy block — type never scales. On smaller
+          screens the fixed 900px board is scaled down to fit instead: its
+          unscaled height (--hero-h / --hero-scale) is then exactly 900px. */}
+      <div
+        key={cycle}
+        className="relative w-[1440px] shrink-0"
+        style={{
+          height: `calc(${HERO_H} / var(--hero-scale, 1))`,
+          transform: "scale(var(--hero-scale, 1))",
+          transformOrigin: "top center",
+        }}
+      >
+        {/* Earth: (-180, 300) 1800x1013 on the 900 board — bottom-anchored so
+            the horizon keeps its distance to the slogan on taller viewports.
+            object-top keeps the limb pinned to the container's top when the
+            photo zooms to cover ultra-wide viewports. */}
+        <div
+          className="absolute bottom-[-413px] left-1/2 h-[1013px] -translate-x-1/2"
+          style={{ width: EARTH_W }}
+        >
+          {/* earth-limb-sym.jpg = the photo's left half mirrored at the arc
+              peak (scripted from earth-limb.jpg), so the limb arc is
+              symmetric around the center */}
+          <Image src="/design/earth-limb-sym.jpg" alt="" fill priority sizes="100vw" className="object-cover object-top" />
         </div>
 
         {/* Soft blend over the earth image's hard top edge (behind the slogan) */}
         <div
-          className="absolute left-0 top-[300px] h-[220px] w-full"
-          style={{ background: "linear-gradient(to bottom, #0B0B0C, #0B0B0C00)" }}
+          className="absolute bottom-[380px] left-1/2 h-[220px] -translate-x-1/2"
+          style={{ width: EARTH_W, background: "linear-gradient(to bottom, #010101, #01010100)" }}
         />
 
-        {/* Scrim: #0B0B0C66 → #0B0B0C1A 45% → #0B0B0CB3 80% → #0B0B0C */}
+        {/* Scrim, anchored from the bottom (px stops = design's 100%/80%/45%
+            of the 900 board); above 900px from the bottom it holds the light
+            #0B0B0C66 wash the design has at the top */}
         <div
-          className="absolute inset-0"
+          className="absolute left-1/2 top-0 h-full -translate-x-1/2"
           style={{
+            width: EARTH_W,
             background:
-              "linear-gradient(to bottom, #0B0B0C66 0%, #0B0B0C1A 45%, #0B0B0CB3 80%, #0B0B0C 100%)",
+              "linear-gradient(to top, #0B0B0C 0px, #0B0B0CB3 180px, #0B0B0C1A 495px, #0B0B0C66 900px)",
           }}
         />
 
-        {/* Starfield: 1440x560, top */}
-        <div className="absolute left-0 top-0 h-[560px] w-[1440px]">
-          <Starfield count={42} seed={7} className="h-full" />
+        {/* Starfield: the whole sky — full earth width, from the top down to
+            100px past the earth photo's top edge (at 100% − 600px), so the CSS
+            stars blend into the photo's own faint stars with no clean band */}
+        <div
+          className="absolute left-1/2 top-0 -translate-x-1/2"
+          style={{ width: EARTH_W, height: "calc(100% - 500px)" }}
+        >
+          <Starfield count={90} seed={7} className="h-full" />
+          {/* dense dust layer: hundreds of sub-pixel stars matching the earth
+              photo's faint speckle (twinkleEvery 0 = no twinkle) */}
+          <Starfield count={280} seed={13} twinkleEvery={0} sizeMin={0.5} sizeMax={1.2} dimOpacity={0.22} className="h-full" />
         </div>
 
-        {/* Title: final y120; gathered = pushed down toward the rocket band */}
+        {/* Title: y180 */}
         <h1
-          className="absolute left-16 top-[120px] w-[1312px] text-center font-extrabold leading-[0.89] tracking-[-2.8px] text-prt-text transition-transform duration-[2400ms] ease-[cubic-bezier(0.45,0,0.15,1)]"
-          style={{ fontSize: 90, transform: gathered ? `translateY(${TITLE_GATHER_Y}px)` : "translateY(0)" }}
+          className="absolute left-16 top-[180px] w-[1312px] text-center font-extrabold leading-[0.89] tracking-[-2.8px] text-prt-text"
+          style={{ fontSize: 90 }}
         >
+          {/* star-dimming fade behind the glyphs; moves with the title */}
+          <span
+            aria-hidden
+            className="absolute left-1/2 top-1/2 -z-10 h-[280px] w-[1380px] -translate-x-1/2 -translate-y-1/2"
+            style={{ background: TEXT_FADE }}
+          />
           {["POLITO", "ROCKET", "TEAM"].map((word, i) => (
             <span key={word}>
               <span
@@ -126,28 +205,59 @@ export function Hero() {
           ))}
         </h1>
 
-        {/* Slogan: final y464; gathered = pulled up a touch */}
-        <p
-          className="absolute left-16 top-[464px] w-[1312px] text-[148px] font-extrabold leading-[0.89] tracking-[-5.2px] text-prt-text transition-transform duration-[2400ms] ease-[cubic-bezier(0.45,0,0.15,1)]"
-          style={{ transform: gathered ? `translateY(${SLOGAN_GATHER_Y}px)` : "translateY(0)" }}
-        >
-          <span
-            className={`inline-block ${reduced ? "" : "animate-slogan-down motion-reduce:animate-none"}`}
-            style={{ animationDelay: "450ms" }}
-          >
-            BORN FOR SPACE
-          </span>
-        </p>
+        {/* Lower block, bottom-anchored: slogan y464 → strip y852 on the 900
+            board = a 436px-tall band pinned to the bottom edge */}
+        <div className="absolute bottom-0 left-0 h-[436px] w-full">
+          {/* Slogan */}
+          <p className="absolute left-16 top-0 w-[1312px] text-[148px] font-extrabold leading-[0.89] tracking-[-5.2px] text-prt-text">
+            <span
+              className={`inline-block ${reduced ? "" : "animate-slogan-down motion-reduce:animate-none"}`}
+              style={{ animationDelay: "450ms" }}
+            >
+              BORN FOR SPACE
+            </span>
+          </p>
 
-        {/* Rocket: (-60, 204) 1480x280 — rendered AFTER both text lines so the
-            angled fly-in passes over them (depth). Drive-in sits inside the
-            lift-off layer. Mounted (parked offscreen) during the hold so the
-            GLB and shaders are warm before the flight starts. */}
+          {/* Body: (64, 644) on the board → 180 below the slogan */}
+          <p
+            className={`absolute left-16 top-[180px] w-[600px] text-[22px] leading-[1.3] text-prt-text ${
+              copyVisible ? "animate-hero-fade" : "opacity-0"
+            }`}
+            style={{ animationDelay: "600ms" }}
+          >
+            The rocket engineering student team of Politecnico di Torino, Italy. 150+ undergraduate,
+            graduate and PhD students researching, designing and building rocket engines and
+            experimental rockets with scientific payloads.
+          </p>
+
+          {/* Hairline + fact strip: y815 / y852 on the board */}
+          <div
+            className={`absolute left-16 top-[351px] h-px w-[1312px] bg-hairline ${copyVisible ? "animate-hero-fade" : "opacity-0"}`}
+            style={{ animationDelay: "700ms" }}
+          />
+          <p
+            className={`absolute left-16 top-[388px] font-mono text-[11px] tracking-[1.5px] text-prt-muted ${
+              copyVisible ? "animate-hero-fade" : "opacity-0"
+            }`}
+            style={{ animationDelay: "700ms" }}
+          >
+            EST. 2021 · TORINO, ITALY&nbsp;&nbsp;&nbsp;&nbsp; IREC 2025 · 1ST DESIGN &amp; BUILD
+            &nbsp;&nbsp;&nbsp;&nbsp; EUROC 2024 · 4TH VEHICLE
+          </p>
+        </div>
+
+        {/* Rocket: (-60, 204) 1480x280 on the board — rendered AFTER the text
+            so the angled fly-in passes over it (depth). On taller viewports it
+            drifts down by half the extra space, staying centered between the
+            title and the slogan. Drive-in sits inside the lift-off layer.
+            Mounted (parked offscreen) during the hold so the GLB and shaders
+            are warm before the flight starts. */}
         {!reduced && (
           <div
-            className={`pointer-events-none absolute left-[-60px] top-[204px] h-[280px] w-[1480px] will-change-transform ${
+            className={`pointer-events-none absolute left-[-60px] h-[280px] w-[1480px] will-change-transform ${
               phase === "liftoff" || phase === "gone" ? "animate-rocket-liftoff" : ""
             }`}
+            style={{ top: "calc(204px + (100% - 900px) / 2)" }}
           >
             <div
               className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
@@ -157,33 +267,6 @@ export function Hero() {
             </div>
           </div>
         )}
-
-        {/* Body: (64, 644) 600 wide */}
-        <p
-          className={`absolute left-16 top-[644px] w-[600px] text-[22px] leading-[1.3] text-prt-text ${
-            copyVisible ? "animate-hero-fade" : "opacity-0"
-          }`}
-          style={{ animationDelay: "600ms" }}
-        >
-          The rocket engineering student team of Politecnico di Torino, Italy. 150+ undergraduate,
-          graduate and PhD students researching, designing and building rocket engines and
-          experimental rockets with scientific payloads.
-        </p>
-
-        {/* Hairline + fact strip */}
-        <div
-          className={`absolute left-16 top-[815px] h-px w-[1312px] bg-hairline ${copyVisible ? "animate-hero-fade" : "opacity-0"}`}
-          style={{ animationDelay: "700ms" }}
-        />
-        <p
-          className={`absolute left-16 top-[852px] font-mono text-[11px] tracking-[1.5px] text-prt-muted ${
-            copyVisible ? "animate-hero-fade" : "opacity-0"
-          }`}
-          style={{ animationDelay: "700ms" }}
-        >
-          EST. 2021 · TORINO, ITALY&nbsp;&nbsp;&nbsp;&nbsp; IREC 2025 · 1ST DESIGN &amp; BUILD
-          &nbsp;&nbsp;&nbsp;&nbsp; EUROC 2024 · 4TH VEHICLE
-        </p>
       </div>
     </section>
   );

@@ -22,7 +22,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./earth-limb.jpg",
+            "url": "earth-limb.jpg",
             "mode": "fill"
           },
           "width": 1800,
@@ -549,7 +549,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./prt-mark.png",
+            "url": "prt-mark.png",
             "mode": "fit"
           },
           "width": 40,
@@ -750,7 +750,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./cavour-hero.png",
+            "url": "cavour-hero.png",
             "mode": "fit"
           },
           "width": 1480,
@@ -779,7 +779,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./earth-limb.jpg",
+            "url": "earth-limb.jpg",
             "mode": "fill"
           },
           "width": 1800,
@@ -830,7 +830,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./prt-mark.png",
+            "url": "prt-mark.png",
             "mode": "fit"
           },
           "width": 40,
@@ -959,7 +959,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./cavour-hero.png",
+            "url": "cavour-hero.png",
             "mode": "fit"
           },
           "width": 1480,
@@ -1060,7 +1060,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./earth-limb.jpg",
+            "url": "earth-limb.jpg",
             "mode": "fill"
           },
           "width": 1800,
@@ -1111,7 +1111,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./prt-mark.png",
+            "url": "prt-mark.png",
             "mode": "fit"
           },
           "width": 40,
@@ -1241,7 +1241,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./cavour-hero.png",
+            "url": "cavour-hero.png",
             "mode": "fit"
           },
           "width": 1480,
@@ -1344,7 +1344,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./earth-limb.jpg",
+            "url": "earth-limb.jpg",
             "mode": "fill"
           },
           "width": 1800,
@@ -1395,7 +1395,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./prt-mark.png",
+            "url": "prt-mark.png",
             "mode": "fit"
           },
           "width": 40,
@@ -1525,7 +1525,7 @@
           "fill": {
             "type": "image",
             "enabled": true,
-            "url": "./cavour-hero.png",
+            "url": "cavour-hero.png",
             "mode": "fit"
           },
           "width": 1480,
@@ -1725,7 +1725,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./IREC-2025logo.png",
+                        "url": "IREC-2025logo.png",
                         "mode": "fit"
                       },
                       "width": 88,
@@ -1814,7 +1814,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./EUROC.png",
+                        "url": "EUROC.png",
                         "mode": "fit"
                       },
                       "width": 88,
@@ -1899,7 +1899,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./Spaceport-America-Cup.png",
+                        "url": "Spaceport-America-Cup.png",
                         "mode": "fit"
                       },
                       "width": 88,
@@ -2112,7 +2112,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./cavour.png",
+                        "url": "cavour.png",
                         "mode": "fit"
                       },
                       "width": 40,
@@ -3285,7 +3285,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./PRT-logo-horizontal.png",
+                        "url": "PRT-logo-horizontal.png",
                         "mode": "fit"
                       },
                       "width": 150,
@@ -3328,6 +3328,7 @@
                           "content": "ABOUT",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -3388,6 +3389,7 @@
                           "content": "PROJECTS",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -3448,6 +3450,7 @@
                           "content": "GET INVOLVED",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -3498,6 +3501,7 @@
                           "content": "CONTACT",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -3573,6 +3577,7 @@
                   "content": "POLITO ROCKET TEAM ™ 2026",
                   "fontFamily": "$font-mono",
                   "fontSize": 11,
+                  "fontWeight": "normal",
                   "letterSpacing": 1.54
                 },
                 {
@@ -3590,6 +3595,7 @@
                       "content": "CORSO DUCA DEGLI ABRUZZI 24, TORINO, ITALY",
                       "fontFamily": "$font-mono",
                       "fontSize": 11,
+                      "fontWeight": "normal",
                       "letterSpacing": 1.54
                     },
                     {
@@ -3608,6 +3614,7 @@
                       "content": "POLITECNICO DI TORINO",
                       "fontFamily": "$font-mono",
                       "fontSize": 11,
+                      "fontWeight": "normal",
                       "letterSpacing": 1.54
                     }
                   ]
@@ -5118,7 +5125,7 @@
                   "fill": {
                     "type": "image",
                     "enabled": true,
-                    "url": "./earth-limb.jpg",
+                    "url": "earth-limb.jpg",
                     "mode": "fill"
                   },
                   "width": 1800,
@@ -5174,7 +5181,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./prt-mark.png",
+                        "url": "prt-mark.png",
                         "mode": "fit"
                       },
                       "width": 36,
@@ -5356,7 +5363,7 @@
                   "fill": {
                     "type": "image",
                     "enabled": true,
-                    "url": "./prt-mark.png",
+                    "url": "prt-mark.png",
                     "mode": "fit"
                   },
                   "width": 36,
@@ -5536,7 +5543,7 @@
                   "fill": {
                     "type": "image",
                     "enabled": true,
-                    "url": "./prt-mark.png",
+                    "url": "prt-mark.png",
                     "mode": "fit"
                   },
                   "width": 36,
@@ -7612,7 +7619,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./cavour.png",
+                        "url": "cavour.png",
                         "mode": "fit"
                       },
                       "width": 40,
@@ -8576,7 +8583,7 @@
                   "fill": {
                     "type": "image",
                     "enabled": true,
-                    "url": "./IREC-2025logo.png",
+                    "url": "IREC-2025logo.png",
                     "mode": "fit"
                   },
                   "width": 88,
@@ -10954,7 +10961,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./earth-limb.jpg",
+                        "url": "earth-limb.jpg",
                         "mode": "fill"
                       },
                       "width": 760,
@@ -11734,7 +11741,7 @@
                           "fill": {
                             "type": "image",
                             "enabled": true,
-                            "url": "./cavour-render-vert.png",
+                            "url": "cavour-render-vert.png",
                             "mode": "fit"
                           },
                           "width": 63,
@@ -12681,7 +12688,7 @@
                           "fill": {
                             "type": "image",
                             "enabled": true,
-                            "url": "./cavour-render-vert.png",
+                            "url": "cavour-render-vert.png",
                             "mode": "fit"
                           },
                           "width": 73,
@@ -13459,7 +13466,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-sophia.png",
+                        "url": "sponsors/color-sophia.png",
                         "mode": "fit"
                       },
                       "width": 99,
@@ -13472,7 +13479,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-siemens.png",
+                        "url": "sponsors/color-siemens.png",
                         "mode": "fit"
                       },
                       "width": 315,
@@ -13485,7 +13492,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-ansys.png",
+                        "url": "sponsors/color-ansys.png",
                         "mode": "fit"
                       },
                       "width": 158,
@@ -13498,7 +13505,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-altium.png",
+                        "url": "sponsors/color-altium.png",
                         "mode": "fit"
                       },
                       "width": 230,
@@ -13511,7 +13518,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-evomisure.png",
+                        "url": "sponsors/color-evomisure.png",
                         "mode": "fit"
                       },
                       "width": 273,
@@ -13524,7 +13531,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-esss.png",
+                        "url": "sponsors/color-esss.png",
                         "mode": "fit"
                       },
                       "width": 190,
@@ -13537,7 +13544,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-explorer.png",
+                        "url": "sponsors/color-explorer.png",
                         "mode": "fit"
                       },
                       "width": 223,
@@ -13550,7 +13557,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-astrospace.png",
+                        "url": "sponsors/color-astrospace.png",
                         "mode": "fit"
                       },
                       "width": 314,
@@ -13563,7 +13570,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-camerana.png",
+                        "url": "sponsors/color-camerana.png",
                         "mode": "fit"
                       },
                       "width": 203,
@@ -13576,7 +13583,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-mul2.png",
+                        "url": "sponsors/color-mul2.png",
                         "mode": "fit"
                       },
                       "width": 126,
@@ -13589,7 +13596,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./sponsors/color-magicar.png",
+                        "url": "sponsors/color-magicar.png",
                         "mode": "fit"
                       },
                       "width": 162,
@@ -14423,7 +14430,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./PRT-logo-horizontal.png",
+                        "url": "PRT-logo-horizontal.png",
                         "mode": "fit"
                       },
                       "width": 150,
@@ -14466,6 +14473,7 @@
                           "content": "ABOUT",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -14526,6 +14534,7 @@
                           "content": "PROJECTS",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -14586,6 +14595,7 @@
                           "content": "GET INVOLVED",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -14636,6 +14646,7 @@
                           "content": "CONTACT",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
+                          "fontWeight": "normal",
                           "letterSpacing": 1.54
                         },
                         {
@@ -14711,6 +14722,7 @@
                   "content": "POLITO ROCKET TEAM ™ 2026",
                   "fontFamily": "$font-mono",
                   "fontSize": 11,
+                  "fontWeight": "normal",
                   "letterSpacing": 1.54
                 },
                 {
@@ -14728,6 +14740,7 @@
                       "content": "CORSO DUCA DEGLI ABRUZZI 24, TORINO, ITALY",
                       "fontFamily": "$font-mono",
                       "fontSize": 11,
+                      "fontWeight": "normal",
                       "letterSpacing": 1.54
                     },
                     {
@@ -14746,6 +14759,7 @@
                       "content": "POLITECNICO DI TORINO",
                       "fontFamily": "$font-mono",
                       "fontSize": 11,
+                      "fontWeight": "normal",
                       "letterSpacing": 1.54
                     }
                   ]
@@ -14805,7 +14819,7 @@
               "fill": {
                 "type": "image",
                 "enabled": true,
-                "url": "./prt-mark.png",
+                "url": "prt-mark.png",
                 "mode": "fit"
               },
               "width": 36,
@@ -15021,7 +15035,7 @@
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./cavour-hero.png",
+                        "url": "cavour-hero.png",
                         "mode": "fill"
                       },
                       "width": 560,
