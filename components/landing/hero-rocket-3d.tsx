@@ -213,7 +213,8 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
     setSupported(webglSupported());
     const el = wrapRef.current;
     if (!el) return;
-    // Render only while the hero is on screen; pause offscreen.
+    // Keep the canvas mounted; only pause the frame loop while offscreen so
+    // scrolling back shows the last frame, not a fresh reload.
     const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0 });
     io.observe(el);
     return () => io.disconnect();
@@ -221,9 +222,10 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
 
   return (
     <div ref={wrapRef} className="relative h-full w-full">
-      {supported && visible && (
+      {supported && (
         <div className="absolute inset-0">
           <Canvas
+            frameloop={visible ? "always" : "never"}
             dpr={[1, 2]}
             // The wrapper animates transforms (rotation!) — measure the layout
             // box, not the transformed bounding rect, or the canvas mis-sizes.

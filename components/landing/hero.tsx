@@ -15,17 +15,13 @@ const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
 //             decelerating, nose easing from 14° to 6° up; parks at 6°.
 //             Title rises and slogan drops on the same curve to make room
 //   settled — copy fades in
-//   liftoff — one-shot: past ~18% scroll the rocket accelerates out up-right
-//   gone    — rocket left; when the hero is fully visible again, replay
-type Phase = "enter" | "drive" | "settled" | "liftoff" | "gone";
+// The entrance plays once per page load; there is no scroll lift-off.
+type Phase = "enter" | "drive" | "settled";
 
 const HOLD_MS = 2000; // gathered hold before the rocket appears
 const TITLE_GATHER_Y = 64; // px the title sits lower while gathered
 const SLOGAN_GATHER_Y = -96; // px the slogan sits higher while gathered
 const DRIVE_MS = 7000; // rocket drive-in duration (Starship pace)
-const LIFTOFF_MS = 1800;
-const LIFTOFF_SCROLL = 0.18; // fraction of hero height
-const REPLAY_SCROLL = 40; // px — hero counts as "fully visible" again
 
 // Board fit, as CSS vars so the inline <script> below can set them before the
 // SSR'd hero ever paints (no unscaled flash on load):
@@ -58,11 +54,8 @@ const TEXT_FADE = "radial-gradient(ellipse 50% 50% at 50% 50%, #010101 35%, #010
 
 export function Hero() {
   const [phase, setPhase] = useState<Phase>("enter");
-  const [cycle, setCycle] = useState(0); // remount key → restarts CSS animations
   const [reduced, setReduced] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
-  const phaseRef = useRef(phase);
-  phaseRef.current = phase;
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -90,34 +83,13 @@ export function Hero() {
       const t = setTimeout(() => setPhase("settled"), DRIVE_MS);
       return () => clearTimeout(t);
     }
-    if (phase === "liftoff") {
-      const t = setTimeout(() => setPhase("gone"), LIFTOFF_MS);
-      return () => clearTimeout(t);
-    }
   }, [phase, reduced]);
-
-  // Scroll: one-shot lift-off past the threshold; replay once fully back
-  useEffect(() => {
-    if (reduced) return;
-    const onScroll = () => {
-      const h = sectionRef.current?.offsetHeight ?? 900;
-      const p = phaseRef.current;
-      if (window.scrollY > h * LIFTOFF_SCROLL && (p === "drive" || p === "settled")) {
-        setPhase("liftoff");
-      } else if (window.scrollY < REPLAY_SCROLL && p === "gone") {
-        setCycle((c) => c + 1);
-        setPhase("enter");
-      }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [reduced]);
 
   // Body/hairline/strip stay hidden until the rocket has settled.
   const copyVisible = phase !== "enter" && phase !== "drive";
 
   // Title/slogan: gathered while entering, then part on the drive-in curve.
-  // The animation fills forward, so they stay put through settled/lift-off.
+  // The animation fills forward, so they stay put once settled.
   const gathered = !reduced && phase === "enter";
   const separateClass = reduced || phase === "enter" ? "" : "animate-hero-separate";
   const separateStyle = (gatherY: number): React.CSSProperties => ({
@@ -141,7 +113,6 @@ export function Hero() {
           screens the fixed 900px board is scaled down to fit instead: its
           unscaled height (--hero-h / --hero-scale) is then exactly 900px. */}
       <div
-        key={cycle}
         className="relative w-[1440px] shrink-0"
         style={{
           height: `calc(${HERO_H} / var(--hero-scale, 1))`,
@@ -267,14 +238,12 @@ export function Hero() {
             rendered AFTER the text
             so the angled fly-in passes over it (depth). On taller viewports it
             drifts down by half the extra space, staying centered between the
-            title and the slogan. Drive-in sits inside the lift-off layer.
-            Mounted (parked offscreen) during the hold so the GLB and shaders
+            title and the slogan. Mounted (parked offscreen) during the hold so
+            the GLB and shaders
             are warm before the flight starts. */}
         {!reduced && (
           <div
-            className={`pointer-events-none absolute left-[-520px] h-[280px] w-[2400px] will-change-transform ${
-              phase === "liftoff" || phase === "gone" ? "animate-rocket-liftoff" : ""
-            }`}
+            className="pointer-events-none absolute left-[-520px] h-[280px] w-[2400px] will-change-transform"
             style={{ top: "calc(204px + (100% - 900px) / 2)" }}
           >
             <div

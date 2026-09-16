@@ -125,8 +125,6 @@ const config = {
         "rocket-drive-in": "rocket-drive-in 7s linear both",
         // Title/slogan part to make room for the rocket: same 7s, same curve
         "hero-separate": "hero-separate 7s linear both",
-        // Lift-off: starts slow, accelerates away
-        "rocket-liftoff": "rocket-liftoff 1.8s cubic-bezier(0.55, 0, 0.9, 0.35) forwards",
       },
       keyframes: {
         "accordion-down": {
@@ -179,12 +177,6 @@ const config = {
           "80%": { transform: "translateY(calc(var(--gather-y) * 0.053))" },
           "92%": { transform: "translateY(calc(var(--gather-y) * 0.013))" },
           "100%": { transform: "translateY(0)" },
-        },
-        // Applied on the outer layer, on top of the parked -6°: pitches up a
-        // further 6° as it accelerates away.
-        "rocket-liftoff": {
-          "0%": { transform: "translate(0, 0) rotate(0deg)" },
-          "100%": { transform: "translate(28vw, -130vh) rotate(-6deg)" },
         },
         shoot: {
           "0%": { transform: "translate(0, 0) rotate(-18deg)", opacity: "0" },
