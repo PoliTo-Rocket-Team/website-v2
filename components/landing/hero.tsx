@@ -179,7 +179,7 @@ export function Hero() {
           {["POLITO", "ROCKET", "TEAM"].map((word, i) => (
             <span key={word}>
               <span
-                className={`inline-block ${reduced ? "" : "animate-word-up motion-reduce:animate-none"}`}
+                className={`hero-type inline-block ${reduced ? "" : "animate-word-up motion-reduce:animate-none"}`}
                 style={{ animationDelay: `${i * 75}ms` }}
               >
                 {word}
@@ -198,7 +198,7 @@ export function Hero() {
             style={separateStyle(SLOGAN_GATHER_Y)}
           >
             <span
-              className={`inline-block ${reduced ? "" : "animate-slogan-down motion-reduce:animate-none"}`}
+              className={`hero-type inline-block ${reduced ? "" : "animate-slogan-down motion-reduce:animate-none"}`}
               style={{ animationDelay: "450ms" }}
             >
               BORN FOR SPACE
@@ -247,6 +247,7 @@ export function Hero() {
             style={{ top: "calc(204px + (100% - 900px) / 2)" }}
           >
             <div
+              data-rocket-stage
               className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
               style={phase === "enter" ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" } : undefined}
             >

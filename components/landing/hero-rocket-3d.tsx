@@ -1,11 +1,12 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import Plume from "./hero-plume";
+import CavourBuilt from "./rocket-cavour";
 import { applyWeathering, PROFILES, type WeatherUniforms } from "./hero-weathering";
 
 // Three.js hero stage: cavour.glb horizontal, nose right, matching the static
@@ -77,17 +78,84 @@ function extrudeSheet(source: THREE.BufferGeometry): THREE.BufferGeometry {
   return plate;
 }
 
+// Which Cavour to show: the code-built one in rocket-cavour.tsx (default)
+// or the Blender GLB it was matched to. `?glb` on the URL brings the GLB
+// back for side-by-side checks; the GLB path is kept as the reference.
+function useBuiltModel() {
+  return useMemo(() => !new URLSearchParams(window.location.search).has("glb"), []);
+}
+
+// Belly light: the lit earth under the rocket, white. Two parts, both
+// driven by how low the rocket sits on screen: the environment's light on
+// down-facing surfaces (gated in the weathering shader, so nothing fixed
+// sits under the hull) and a lamp from below for the punch. Off while the
+// rocket waits off stage, strongest as it climbs in low near the horizon,
+// easing to a faint trace once parked. Direction follows the CSS tilt of
+// the stage (rotation lives on the wrapper in hero.tsx, not in the scene).
+const EARTH_PEAK = 1.2; // lamp intensity at the lowest point of the climb
+const EARTH_PARKED = 0.03; // lamp intensity once settled
+const BELLY_PARKED = 0.15; // env gate once settled (0 = none, 1 = all)
+
 function Rocket({ fullBurn }: { fullBurn: boolean }) {
   const group = useRef<THREE.Group>(null!);
-  const { scene } = useGLTF("/design/cavour.glb");
+  const earth = useRef<THREE.DirectionalLight>(null!);
+  const canvas = useThree((s) => s.gl.domElement);
+  const built = useBuiltModel();
   const weather = useMemo<WeatherUniforms>(
     () => ({
       uRocketPos: { value: new THREE.Vector3(X_OFF, 0, 0) },
       uSootStart: { value: -HALF + 9 },
       uTail: { value: -HALF - 0.5 },
+      uBelly: { value: BELLY_PARKED },
+      uDown: { value: new THREE.Vector3(0, -1, 0) },
     }),
     [],
   );
+
+  useFrame((state) => {
+    if (!group.current || REDUCED) return;
+    const t = state.clock.elapsedTime;
+
+    // Hover drift: barely-there, ±0.15 world units (~5px) over ~9s.
+    // Enough to keep the rocket from reading as a sticker, never a bounce.
+    group.current.position.y = Math.sin(t * 0.7) * 0.15;
+
+    // Keep the procedural wear pinned to the hull while the group moves
+    weather.uRocketPos.value.copy(group.current.position);
+
+    const stage = canvas.closest<HTMLElement>("[data-rocket-stage]");
+    if (!stage || !earth.current) return;
+    const rect = stage.getBoundingClientRect();
+    // 0 at the parked height, 1 at the entry height (36vh lower, see hero.tsx)
+    const parkedY = stage.parentElement!.getBoundingClientRect().top + rect.height / 2;
+    const lowness = THREE.MathUtils.clamp(
+      ((rect.top + rect.bottom) / 2 - parkedY) / (0.36 * window.innerHeight),
+      0,
+      1,
+    );
+    const onStage = rect.right > 0 ? 1 : 0;
+    earth.current.intensity = onStage * THREE.MathUtils.lerp(EARTH_PARKED, EARTH_PEAK, lowness);
+    weather.uBelly.value = onStage * THREE.MathUtils.lerp(BELLY_PARKED, 1, lowness);
+    // CSS rotate(θ): screen-down in the stage's own frame is (sinθ, -cosθ)
+    const m = new DOMMatrixReadOnly(getComputedStyle(stage).transform);
+    const theta = Math.atan2(m.b, m.a);
+    weather.uDown.value.set(Math.sin(theta), -Math.cos(theta), 0);
+    earth.current.position.set(Math.sin(theta) * 10, -Math.cos(theta) * 10, 3);
+  });
+
+  return (
+    <group ref={group} position={[X_OFF, 0, 0]}>
+      <directionalLight ref={earth} intensity={0} color="#ffffff" />
+      {built ? <CavourBuilt weather={weather} length={LENGTH} /> : <CavourGlb weather={weather} />}
+      <group position={[-HALF, 0, 0]}>
+        <Plume fullBurn={fullBurn} />
+      </group>
+    </group>
+  );
+}
+
+function CavourGlb({ weather }: { weather: WeatherUniforms }) {
+  const { scene } = useGLTF("/design/cavour.glb");
 
   // Normalize whatever axes/scale the GLB ships with: longest axis becomes
   // the rocket's length, laid horizontally along +X (nose right), centered.
@@ -169,26 +237,9 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
     return { object: holder, scale: LENGTH / longest };
   }, [scene, weather]);
 
-  useFrame((state) => {
-    if (!group.current || REDUCED) return;
-    const t = state.clock.elapsedTime;
-
-    // Hover drift: barely-there, ±0.15 world units (~5px) over ~9s.
-    // Enough to keep the rocket from reading as a sticker, never a bounce.
-    group.current.position.y = Math.sin(t * 0.7) * 0.15;
-
-    // Keep the procedural wear pinned to the hull while the group moves
-    weather.uRocketPos.value.copy(group.current.position);
-  });
-
   return (
-    <group ref={group} position={[X_OFF, 0, 0]}>
-      <group scale={normalized.scale}>
-        <primitive object={normalized.object} />
-      </group>
-      <group position={[-HALF, 0, 0]}>
-        <Plume fullBurn={fullBurn} />
-      </group>
+    <group scale={normalized.scale}>
+      <primitive object={normalized.object} />
     </group>
   );
 }
@@ -256,7 +307,6 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
               shadow-camera-near={1}
               shadow-camera-far={80}
             />
-            <directionalLight position={[-6, -5, 8]} intensity={0.04} color="#9FB0C8" />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
             <Suspense fallback={null}>
               <Rocket fullBurn={fullBurn} />

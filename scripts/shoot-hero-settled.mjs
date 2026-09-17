@@ -1,6 +1,6 @@
 // Dev-only: screenshot the settled hero rocket plus two fin crops three
 // seconds apart, to check surface work against the hover bob.
-// Usage: node scripts/shoot-hero-settled.mjs <outDir>   (dev server on :3000)
+// Usage: [HERO_URL=http://localhost:3000/?built] node scripts/shoot-hero-settled.mjs <outDir>
 import { chromium } from "playwright";
 
 const outDir = process.argv[2] ?? ".";
@@ -11,7 +11,7 @@ page.on("console", (m) => {
   if (m.type() === "error" || /shader|GLSL/i.test(m.text())) console.log("[page]", m.text().slice(0, 300));
 });
 
-await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
+await page.goto(process.env.HERO_URL ?? "http://localhost:3000/", { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(16000); // entrance + drive-in fully settled
 
 const fins = { x: 230, y: 250, width: 200, height: 220 };

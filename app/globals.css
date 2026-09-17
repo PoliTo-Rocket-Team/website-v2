@@ -115,3 +115,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Hero display type: lit like the rocket (sun on the camera side, a touch
+   above), so the glyphs shade from white at the top to a cooler gray at the
+   bottom and cast a soft shadow onto whatever sits behind them. Applied to
+   the animated word spans, not the heading: background-clip: text does not
+   survive transformed children. drop-shadow, not text-shadow — text-shadow
+   shows through the transparent fill. */
+.hero-type {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f2f0 45%, #c9c9d0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* The sun sits at the camera, a touch up and right ([3,4,26] in the
+     scene), so the shadow falls almost straight behind the glyphs, nudged
+     down-left in the same 3:4 ratio. */
+  filter: drop-shadow(-3px 4px 16px rgba(0, 0, 0, 0.65));
+}

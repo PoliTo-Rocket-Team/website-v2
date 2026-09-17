@@ -16,7 +16,15 @@ export type WeatherUniforms = {
   uRocketPos: { value: THREE.Vector3 }; // rocket group world position
   uSootStart: { value: number }; // x where soot begins (toward the tail)
   uTail: { value: number }; // x of the nozzle
+  // Belly light gate: how much of the environment's light reaches
+  // down-facing surfaces (0 = none, 1 = all of it). The HDRI's floor would
+  // otherwise leave a fixed sheen under the hull; the hero drives this from
+  // the rocket's height on screen so the underside only lights up near the
+  // earth. uDown is screen-down in scene space (the stage is CSS-tilted).
+  uBelly: { value: number };
+  uDown: { value: THREE.Vector3 };
 };
+const BELLY_FLOOR = 0.15; // env light kept under the hull when uBelly = 0
 
 export type WeatherProfile = {
   micro: number; // roughness noise amplitude
@@ -88,7 +96,23 @@ export function applyWeathering(
         uniform float uWScuff;
         uniform float uWSoot;
         uniform float uWTone;
+        uniform float uBelly;
+        uniform vec3 uDown;
         ${NOISE_GLSL}`,
+      )
+      // Environment light on the underside follows the belly gate
+      .replace(
+        "#include <lights_fragment_maps>",
+        `#include <lights_fragment_maps>
+        {
+          float down = smoothstep(-0.15, 0.45, dot(geometryNormal, uDown));
+          float k = mix(1.0, mix(${BELLY_FLOOR}, 1.0, uBelly), down);
+          iblIrradiance *= k;
+          radiance *= k;
+          #ifdef USE_CLEARCOAT
+            clearcoatRadiance *= k;
+          #endif
+        }`,
       )
       // Diffuse: scuffs and soot darken the base color
       .replace(
