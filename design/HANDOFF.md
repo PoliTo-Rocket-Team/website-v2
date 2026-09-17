@@ -9,7 +9,8 @@ Landing page design is APPROVED. Now designing subroutes.
 - Images live NEXT TO the .pen file (referenced as `./name.png`). Partner logos in `./sponsors/` (use `color-*.png` versions).
 - Site stack: Next.js, Tailwind, shadcn, Better Auth magic link + Google, Drizzle + Neon, Vercel.
 - `.claude/skills/` has threejs-* skills — USE THEM for any 3D work.
-- `.claude/skills/rocket-surface/` = the approved rocket look (lighting, worn paint, fins) and the process for the next GLBs. Load it before touching any rocket model.
+- `.claude/skills/rocket-surface/` = the approved rocket look (lighting, worn paint, fins) and the process for building the next vehicles in code. Load it before touching any rocket model.
+- `design/cavour.glb` = the Blender export of Cavour, kept ONLY as the measurement reference. It is NOT served: the hero renders Cavour from code (`components/landing/rocket-cavour.tsx`, numbers measured off this file on 2026-09-17), with the GLB's livery wrap and decal strip extracted to `public/design/cavour/`. Do not move it back under `public/`.
 
 ## Hard rules
 - NEVER modify boards 00–03 (`Bqh4w` 00 Tokens, `lKPB9` 01 Navbar, `LJCAP` 02 Buttons & Pills, `H4S7dd` 03 Cards, `onDQB` 04 Form fields, `X45Jje` 03 Landing draft). New ideas → new boards.
@@ -48,6 +49,6 @@ Landing page design is APPROVED. Now designing subroutes.
 - Mirror hero starfield to 04a/b/c once hero final.
 - Real renders for VES, VES Mark II, Efesto; clean BETA CAE + better Magicar logos.
 - Real specs for all vehicles; VES Mark II 2025 IREC result wording verify.
-- ~~Three.js hero stage~~ DONE 2026-08-24 in website-v2 `components/landing/hero.tsx` + `hero-rocket-3d.tsx` (pinned scroll hero, cavour.glb with GLB plume meshes stripped, sprite plume, bob/shake, fly-in). Verify with `node scripts/shoot-hero.mjs <outdir>`.
+- ~~Three.js hero stage~~ DONE 2026-08-24, reworked 2026-09-17: `components/landing/hero.tsx` + `hero-rocket-3d.tsx` + `rocket-cavour.tsx` (code-built Cavour, no mesh served; drive-in with throttled plume, no lift-off; belly light driven by the rocket's height on screen; top-lit hero type). Verify with `node scripts/shoot-hero-settled.mjs <outdir>` against `pnpm preview`.
 - React vs Next.js final call (leaning: keep website-v2 Next.js stack).
 - prt-3d roadmap.md step numbering is stale.
