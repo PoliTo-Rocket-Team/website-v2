@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { applyWeathering, PROFILES, type WeatherUniforms } from "./hero-weathering";
 
 // Cavour built from code instead of the 1.7 MB GLB. Every number below was
-// measured off public/design/cavour.glb (see the rocket-surface skill), in
+// measured off design/cavour.glb (see the rocket-surface skill), in
 // the GLB's own units: body radius 0.05, tail at y=0, nose tip at y=0.85,
 // nose pointing +Y. The holder at the bottom lays it along +X like the GLB
 // path does, so the weathering shader and the plume see the same frame.
