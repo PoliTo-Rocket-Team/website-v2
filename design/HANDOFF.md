@@ -46,10 +46,14 @@ Landing page design is APPROVED. Now designing subroutes.
 - Board `yDRL8` 11 = /projects index: solid navbar copy, H1 "Every vehicle since 2021.", 4 full-width rows (render left, meta/name/desc/specs right). Cavour uses `cavour-hero.png`; others "RENDER TBD". **Specs/dates are placeholder guesses — confirm with user.** Awaiting user feedback on row layout.
 
 ## Todo / open
+- **PARKED (agreed 2026-09-18): the other three rockets.** VES, VES Mark II and Efesto are not being built now. Cavour alone carries the hero and the Cavour project card; the other three cards stay empty and their `/projects` rows read "RENDER TBD". Picking this up needs one side-on photo plus logo PNGs per vehicle from the user, then `.claude/skills/rocket-surface/SKILL.md` and the structure of `components/landing/rocket-cavour.tsx`. Do not start it unprompted.
+- Hosting is settled, do not re-open: `.decisions/0005` (Vercel Hobby, Cloudflare free rejected on CPU time).
+- **Deploys (checked 2026-09-18).** The live project is `website-v2` on the TEAM Vercel account (`info@politorocketteam.it`, `prj_3DEiZelyFEff4LOXUMjqEy9ehhfT`), linked to the GitHub org repo and auto-deploying every push since April. Each branch gets a preview URL; `huey/landing-page` is at https://website-v2-git-huey-landing-page-info-42486522s-projects.vercel.app . A second `website-v2` project on Huey's PERSONAL Vercel account is a stale duplicate, safe to delete.
+- **PARKED (agreed 2026-09-18): production.** The project has never had a successful production deploy — the one production attempt (April, `dev` branch) errored, and `live` is false. Previews are all we use for now. Fix it when the landing page is ready to go public; no custom domain is pointed at Vercel yet.
 - Subroutes to design: /projects/[slug] (next after index), /apply, /about pages, news post page, /outreach, /partners.
 - Full-page assembly board of landing (user hasn't said yes yet).
 - Mirror hero starfield to 04a/b/c once hero final.
-- Real renders for VES, VES Mark II, Efesto; clean BETA CAE + better Magicar logos.
+- Real renders for VES, VES Mark II, Efesto (parked, see top of this list); clean BETA CAE + better Magicar logos.
 - Real specs for all vehicles; VES Mark II 2025 IREC result wording verify.
 - ~~Three.js hero stage~~ DONE 2026-08-24, reworked 2026-09-17: `components/landing/hero.tsx` + `hero-rocket-3d.tsx` + `rocket-cavour.tsx` (code-built Cavour, no mesh served; drive-in with throttled plume, no lift-off; belly light driven by the rocket's height on screen; top-lit hero type). Verify with `node scripts/shoot-hero-settled.mjs <outdir>` against `pnpm preview`.
 - React vs Next.js final call (leaning: keep website-v2 Next.js stack).
