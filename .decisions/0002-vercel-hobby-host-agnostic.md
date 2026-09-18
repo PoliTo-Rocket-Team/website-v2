@@ -19,6 +19,10 @@ Accepted risk, from prior experience: Vercel Hobby's per-function bundle-size ce
 
 Netlify free was decided earlier (2026) because of those bundle-size failures. Team ruling superseded it the same day: use Vercel for now, migration path preserved instead. This record supersedes the hosting half of the earlier decision; the runtime-cost analysis in it (static-heavy site, CDN-cached landing, lightly-used dashboard) still holds and applies to either host. Database choice is separate — see the database ADR.
 
+## Amendments
+
+- **#0005 — Vercel Hobby's non-commercial clause named as an accepted risk; Cloudflare re-checked and rejected on CPU time, not bundle size (2026-09-18).**
+
 ## Records
 
 no vocabulary impact
