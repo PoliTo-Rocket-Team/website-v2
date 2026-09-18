@@ -131,7 +131,7 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
         <div className="absolute inset-0">
           <Canvas
             frameloop={visible ? "always" : "never"}
-            dpr={[1, 2]}
+            dpr={[1, 1.5]}
             // The wrapper animates transforms (rotation!) — measure the layout
             // box, not the transformed bounding rect, or the canvas mis-sizes.
             resize={{ offsetSize: true }}
@@ -151,7 +151,7 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
               position={[3, 4, 26]}
               intensity={2.1}
               castShadow
-              shadow-mapSize={[2048, 2048]}
+              shadow-mapSize={[1024, 1024]}
               shadow-bias={-0.0002}
               shadow-normalBias={0.02}
               shadow-camera-left={-24}
