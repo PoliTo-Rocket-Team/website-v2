@@ -1,5 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { newsBlur } from "./news-blur";
+
+// VES, VES Mark II and Efesto have no render yet, which left three dead grey
+// boxes in the row. The brand textures fill them so the row reads as four cards
+// rather than one card and three holes. Same crops as the Latest section, handed
+// out in order so no two cards share one.
 
 // Board 06 — Projects. Cavour card carries the render tilted -16°; hover scales it
 // ~15% in place ("toward the viewer", never slides) and rotates to -12° so the nose
@@ -15,6 +21,12 @@ type Project = {
   specs: Spec[];
   image?: string;
 };
+
+// "arc" sits last: its bright highlight lands on the bottom edge of a card this
+// short and reads as a glitch, so with four vehicles it never gets picked.
+const textures = ["streaks", "fan", "swirl", "cloud", "arc"].map(
+  (name) => `/design/news/tex-${name}.jpg`,
+);
 
 const projects: Project[] = [
   {
@@ -72,11 +84,21 @@ const projects: Project[] = [
   },
 ];
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({ project, index }: { project: Project; index: number }) {
+  const texture = textures[index % textures.length];
   return (
     <article className="group relative overflow-hidden rounded-[10px] border border-hairline bg-panel transition-colors duration-300 ease-out hover:border-border-strong hover:bg-surface-2">
       {/* Render zone */}
       <div className="relative h-64 overflow-hidden border-b border-hairline">
+        <Image
+          src={texture}
+          alt=""
+          fill
+          sizes="(max-width: 1024px) 100vw, 25vw"
+          placeholder="blur"
+          blurDataURL={newsBlur[texture]}
+          className="object-cover opacity-40 transition-opacity duration-300 ease-out group-hover:opacity-55"
+        />
         {project.image ? (
           <>
             <Image
@@ -90,7 +112,7 @@ function ProjectCard({ project }: { project: Project }) {
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-panel to-transparent transition-colors duration-300 group-hover:from-surface-2" />
           </>
         ) : (
-          <div className="flex h-full items-center justify-center font-mono text-xs tracking-widest text-dim">
+          <div className="relative flex h-full items-center justify-center font-mono text-xs tracking-widest text-dim">
             RENDER TBD
           </div>
         )}
@@ -150,8 +172,8 @@ export function Projects() {
         </div>
 
         <div className="mt-14 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {projects.map((p) => (
-            <ProjectCard key={p.name} project={p} />
+          {projects.map((p, i) => (
+            <ProjectCard key={p.name} project={p} index={i} />
           ))}
         </div>
       </div>
