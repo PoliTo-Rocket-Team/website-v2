@@ -12,6 +12,8 @@ Landing page design is APPROVED. Now designing subroutes.
 - `.claude/skills/rocket-surface/` = the approved rocket look (lighting, worn paint, fins) and the process for building the next vehicles in code. Load it before touching any rocket model.
 - `design/cavour.glb` = the Blender export of Cavour, kept ONLY as the measurement reference. It is NOT served: the hero renders Cavour from code (`components/landing/rocket-cavour.tsx`, numbers measured off this file on 2026-09-17), with the GLB's livery wrap and decal strip extracted to `public/design/cavour/`. Do not move it back under `public/`.
 
+- `design/handoff-hero-rocket.md` = the 2026-09-17 hero rocket session: what was decided, why, and what is still open.
+
 ## Hard rules
 - NEVER modify boards 00–03 (`Bqh4w` 00 Tokens, `lKPB9` 01 Navbar, `LJCAP` 02 Buttons & Pills, `H4S7dd` 03 Cards, `onDQB` 04 Form fields, `X45Jje` 03 Landing draft). New ideas → new boards.
 - User style: plain language, ≤6 lines per message, one yes/no question at a time, recs with why + tradeoffs + confidence. No em dashes in site copy. Verify visually with Export (note: unfilled nested frames export dim — add `fill:"$ground"` to parents; it's fine in Pencil itself).
@@ -27,7 +29,7 @@ Landing page design is APPROVED. Now designing subroutes.
 7. `xLYRW` 10 Footer: 4 columns; About order = The Team, Alumni, Our University, Mission & Vision; Projects = Cavour, VES, VES Mark II, Efesto (no "All projects"). **Starfield bg** (`eUZY1`, ~52 stars, few twinkle) + shooting star every ~20s upper half. Stars ONLY on hero + footer (bookends) — user rejected stars on middle sections.
 
 ## Animations (all agreed with user)
-- **Hero — SUPERSEDED by website-v2 `.decisions/0004-hero-entrance-and-liftoff.md` (2026-08-24, user rejected pinning + scroll dimming).** Built: gathered title+slogan block staggers in → ~2s hold → block separates while rocket drives in slowly from left (~4.5s, heavy SpaceX pace, shader plume) → settles center. One-shot lift-off at ~18% scroll; full replay when hero fully visible again. No PNG fallback (no-WebGL = text only). No vibration/shake — bob only. Boards 04a/b/c are design history now.
+- **Hero — SUPERSEDED by website-v2 `.decisions/0004-hero-entrance.md` (2026-08-24, amended 2026-09-17; user rejected pinning + scroll dimming).** Built: gathered title+slogan block staggers in → 2s hold → block parts while the rocket climbs in from off-screen lower-left (7s, heavy Starship pace, shader plume) → parks center. No scroll lift-off and no replay: both were built then cut on 2026-09-17. No PNG fallback (no-WebGL = text only). No vibration/shake — bob only. Boards 04a/b/c are design history now.
 - **Projects card hover:** rocket scales ~15% IN PLACE ("toward the viewer" — user explicitly rejected sliding up) + rotates 16°→12°; nose crosses the top-right border because it grows, not because it moves. Card fill → surface-2, stroke → border-strong. 300ms ease-out. ≈ `transform: scale(1.15) rotate(4deg)`, transform-origin center, on the rocket img.
 - **Partners marquee:** logos scroll right→left, continuous loop ~40s, pause on hover. Full-color logos (user rejected grayscale). Edge fade masks on site only (removed in Pencil for review).
 - **Footer starfield:** stars fixed, a few brighter ones twinkle slowly (opacity pulse). One shooting star streaks across the upper half every ~20s. Same field (dimmer, sparser) behind hero navbar + team name. Stars ONLY hero + footer.
