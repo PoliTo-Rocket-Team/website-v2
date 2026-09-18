@@ -15,17 +15,21 @@ const tagStyles: Record<Tag, string> = {
 
 // A post with no photo still gets a visual, so a card can never open a hole.
 // Cropped off-centre from the 2026 wallpaper set to leave the logo out.
-// Warm ones only: the wallpaper set ships a grey twin of every design, and a
-// grey draw made the whole section read flat.
-const textures = [1, 2, 3, 4, 5, 6].map((n) => `/design/news/tex-${n}.jpg`);
+//
+// That set is 12 designs, each shipped twice (mark only / mark + wordmark) and
+// again in a grey twin. Greys made the section read flat, and the flat-gradient
+// and tagline wallpapers have no texture to crop, which leaves exactly these
+// five warm designs — one crop each, no repeats.
+const textures = ["streaks", "fan", "swirl", "arc", "cloud"].map(
+  (name) => `/design/news/tex-${name}.jpg`,
+);
 
-// Picked from the title rather than at random: Math.random() would give the
-// server and the client different answers and break hydration. Same scattered
-// look, but a given post always keeps its texture.
-function textureFor(title: string): string {
-  let hash = 0;
-  for (let i = 0; i < title.length; i++) hash = (hash * 31 + title.charCodeAt(i)) | 0;
-  return textures[Math.abs(hash) % textures.length];
+// Handed out in order, so no two cards on screen can share a texture. Hashing
+// the title looked more clever and gave three of four cards the same one;
+// Math.random() would differ between server and client and break hydration.
+// The featured card is 0, the list runs on from 1.
+function textureFor(index: number): string {
+  return textures[index % textures.length];
 }
 
 type Post = {
@@ -92,12 +96,12 @@ export function Latest() {
           <article className="group relative isolate flex flex-col justify-between overflow-hidden rounded-[10px] border border-hairline bg-panel px-10 pb-6 pt-4 transition-colors hover:border-border-strong">
             {/* Texture fills the card, same as the list cards. */}
             <Image
-              src={textureFor(featured.title)}
+              src={textureFor(0)}
               alt=""
               fill
               sizes="(min-width: 1024px) 55vw, 100vw"
               placeholder="blur"
-              blurDataURL={newsBlur[textureFor(featured.title)]}
+              blurDataURL={newsBlur[textureFor(0)]}
               className="-z-10 object-cover opacity-60 transition-opacity duration-300 group-hover:opacity-80"
             />
             <div className="absolute inset-0 -z-10 bg-gradient-to-r from-panel via-panel/70 to-panel/35" />
@@ -140,20 +144,19 @@ export function Latest() {
 
           {/* List */}
           <div className="flex flex-col gap-4">
-            {posts.map((post) => (
+            {posts.map((post, i) => (
               <article
                 key={post.title}
                 className="group relative isolate overflow-hidden rounded-[10px] border border-hairline bg-panel p-10 transition-colors hover:border-border-strong"
               >
-                {/* Same idea as the featured card, but far dimmer: the type sits
-                    on top here, so the texture only tints the panel. */}
+                {/* Same texture treatment as the featured card. */}
                 <Image
-                  src={post.image ?? textureFor(post.title)}
+                  src={post.image ?? textureFor(i + 1)}
                   alt=""
                   fill
                   sizes="(min-width: 1024px) 40vw, 100vw"
                   placeholder="blur"
-                  blurDataURL={newsBlur[post.image ?? textureFor(post.title)]}
+                  blurDataURL={newsBlur[post.image ?? textureFor(i + 1)]}
                   className="-z-10 object-cover opacity-60 transition-opacity duration-300 group-hover:opacity-80"
                 />
                 <div className="absolute inset-0 -z-10 bg-gradient-to-r from-panel via-panel/70 to-panel/35" />
