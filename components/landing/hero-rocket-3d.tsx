@@ -154,7 +154,9 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
             // box, not the transformed bounding rect, or the canvas mis-sizes.
             resize={{ offsetSize: true }}
             gl={{ alpha: true, antialias: true }}
-            shadows="soft"
+            // "soft" asks for PCFSoftShadowMap, which three now silently swaps
+            // for PCFShadowMap and warns. Ask for the real one: same picture.
+            shadows="percentage"
             // Long lens: a 14° vertical fov from ~33 units back frames the same
             // 42x8 world window the orthographic setup did, but with the faint
             // foreshortening of a 200mm photo instead of a diagram's flatness.
