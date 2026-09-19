@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { newsBlur } from "./news-blur";
+import { RocketArrow } from "./rocket-arrow";
 
 // Board 05 — "Latest" (track record). Posts will come from the dashboard posts table;
 // static seed data until that lands.
@@ -136,9 +137,10 @@ export function Latest() {
             )}
             <Link
               href="#"
-              className="mt-5 inline-flex items-center gap-2 self-start text-sm font-medium text-accent transition-colors hover:text-accent-hover"
+              className="group/cta mt-5 inline-flex items-center gap-3 self-start text-sm font-medium text-accent transition-colors hover:text-accent-hover"
             >
-              {featured.cta} →
+              {featured.cta}
+              <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover/cta:translate-x-1.5 group-hover/cta:opacity-100" />
             </Link>
           </article>
 
@@ -174,8 +176,12 @@ export function Latest() {
         </div>
 
         <div className="mt-12 text-center">
-          <Link href="#" className="font-mono text-sm tracking-wide text-text-2 transition-colors hover:text-accent">
-            All news →
+          <Link
+            href="#"
+            className="group inline-flex items-center gap-3 font-mono text-sm tracking-wide text-text-2 transition-colors hover:text-accent"
+          >
+            All news
+            <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
           </Link>
         </div>
       </div>

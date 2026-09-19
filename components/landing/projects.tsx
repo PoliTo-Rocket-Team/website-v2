@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import RocketCard3D from "./rocket-card-3d";
 import { newsBlur } from "./news-blur";
+import { RocketArrow } from "./rocket-arrow";
 
 // VES, VES Mark II and Efesto have no render yet, which left three dead grey
 // boxes in the row. The brand textures fill them so the row reads as four cards
@@ -169,9 +170,10 @@ export function Projects() {
             </p>
             <Link
               href="/projects"
-              className="mt-4 inline-block font-mono text-sm text-text-2 transition-colors hover:text-accent"
+              className="group mt-4 inline-flex items-center gap-3 font-mono text-sm text-text-2 transition-colors hover:text-accent"
             >
-              All projects →
+              All projects
+              <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
             </Link>
           </div>
         </div>
