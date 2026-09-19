@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import RocketCard3D from "./rocket-card-3d";
 import { newsBlur } from "./news-blur";
 
 // VES, VES Mark II and Efesto have no render yet, which left three dead grey
@@ -19,7 +20,8 @@ type Project = {
   name: string;
   desc: string;
   specs: Spec[];
-  image?: string;
+  /** Rendered live in Three.js from the code-built model, rather than a still. */
+  model?: boolean;
 };
 
 // "arc" sits last: its bright highlight lands on the bottom edge of a card this
@@ -41,7 +43,7 @@ const projects: Project[] = [
       { label: "MOTOR", value: "Solid · M" },
       { label: "MAX SPEED", value: "Mach 0.8" },
     ],
-    image: "/design/cavour-render-vert.png",
+    model: true,
   },
   {
     num: "02",
@@ -55,6 +57,7 @@ const projects: Project[] = [
       { label: "MOTOR", value: "Solid · M" },
       { label: "MAX SPEED", value: "Mach 0.9" },
     ],
+    model: true,
   },
   {
     num: "03",
@@ -68,6 +71,7 @@ const projects: Project[] = [
       { label: "MOTOR", value: "Solid · O" },
       { label: "MAX SPEED", value: "Mach 1.8" },
     ],
+    model: true,
   },
   {
     num: "04",
@@ -81,34 +85,34 @@ const projects: Project[] = [
       { label: "ENGINE", value: "Liquid · LOX" },
       { label: "STATUS", value: "Static fire" },
     ],
+    // Cavour's model stands in until each vehicle is built in code.
+    model: true,
   },
 ];
 
 function ProjectCard({ project, index }: { project: Project; index: number }) {
   const texture = textures[index % textures.length];
   return (
-    <article className="group relative overflow-hidden rounded-[10px] border border-hairline bg-panel transition-colors duration-300 ease-out hover:border-border-strong hover:bg-surface-2">
-      {/* Render zone */}
-      <div className="relative h-64 overflow-hidden border-b border-hairline">
-        <Image
-          src={texture}
-          alt=""
-          fill
-          sizes="(max-width: 1024px) 100vw, 25vw"
-          placeholder="blur"
-          blurDataURL={newsBlur[texture]}
-          className="object-cover opacity-40 transition-opacity duration-300 ease-out group-hover:opacity-55"
-        />
-        {project.image ? (
+    <article className="group relative z-0 rounded-[10px] border border-hairline bg-panel transition-colors duration-300 ease-out hover:z-10 hover:border-border-strong hover:bg-surface-2">
+      {/* Render zone. Deliberately not clipped, so the rocket can leave the card
+          on hover; the texture gets its own clipped layer instead, which is what
+          keeps the card's rounded top corners. */}
+      <div className="relative h-[26rem] border-b border-hairline [clip-path:inset(-200%_0_0_0)]">
+        <div className="absolute inset-0 overflow-hidden rounded-t-[9px]">
+          <Image
+            src={texture}
+            alt=""
+            fill
+            sizes="(max-width: 1024px) 100vw, 25vw"
+            placeholder="blur"
+            blurDataURL={newsBlur[texture]}
+            className="object-cover opacity-40 transition-opacity duration-300 ease-out group-hover:opacity-55"
+          />
+        </div>
+        {project.model ? (
           <>
-            <Image
-              src={project.image}
-              alt={project.name}
-              fill
-              sizes="(max-width: 1024px) 100vw, 25vw"
-              className="object-contain object-center p-4 [transform:rotate(-16deg)_scale(1)] transition-transform duration-300 ease-out group-hover:[transform:rotate(-12deg)_scale(1.15)]"
-            />
-            {/* Tail fades under text */}
+            <RocketCard3D />
+            {/* Tail fades under text. Sits above the rocket so the fade holds. */}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-panel to-transparent transition-colors duration-300 group-hover:from-surface-2" />
           </>
         ) : (
@@ -128,12 +132,13 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
         </div>
       </div>
 
-      {/* Bottom */}
-      <div className="p-6">
+      {/* Bottom. Kept tight on purpose: every row of padding here is a row the
+          vehicle above does not get. */}
+      <div className="px-6 pb-4 pt-3">
         <h3 className="text-xl font-bold">{project.name}</h3>
-        <p className="mt-1.5 min-h-10 text-sm text-prt-muted">{project.desc}</p>
+        <p className="mt-0.5 min-h-9 text-sm leading-snug text-prt-muted">{project.desc}</p>
 
-        <dl className="mt-6 grid grid-cols-3 gap-3 border-t border-hairline pt-5">
+        <dl className="mt-3 grid grid-cols-3 gap-3 border-t border-hairline pt-3">
           {project.specs.map((s) => (
             <div key={s.label}>
               <dt className="font-mono text-[10px] tracking-widest text-dim">{s.label}</dt>

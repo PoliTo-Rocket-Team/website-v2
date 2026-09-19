@@ -33,7 +33,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    // Background on <html>, not just <body>: on reload the browser paints the
+    // root before the stylesheet lands, and its default is white. That white
+    // shows through every transparent canvas for a frame. The colour is the
+    // `ground` token from tailwind.config.ts.
+    <html lang="en" suppressHydrationWarning style={{ background: "#0B0B0C", colorScheme: "dark" }}>
       <body className={`${archivo.variable} ${geistMono.variable} bg-ground text-prt-text font-display antialiased`}>
         <ThemeProvider
           attribute="class"

@@ -7,6 +7,7 @@ import * as THREE from "three";
 import Plume from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
+import { RevealOnFirstFrame } from "./reveal-on-first-frame";
 
 // Three.js hero stage: the code-built Cavour (rocket-cavour.tsx) horizontal,
 // nose right, matching the static render's framing (nose ~95% across, plume
@@ -126,7 +127,9 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
   }, []);
 
   return (
-    <div ref={wrapRef} className="relative h-full w-full">
+    // The canvas starts invisible and RevealOnFirstFrame shows it once it has
+    // actually drawn; see reveal-on-first-frame.tsx for why.
+    <div ref={wrapRef} className="relative h-full w-full [&_canvas]:opacity-0">
       {supported && (
         <div className="absolute inset-0">
           <Canvas
@@ -162,6 +165,7 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
               shadow-camera-far={80}
             />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
+            <RevealOnFirstFrame />
             <Suspense fallback={null}>
               <Rocket fullBurn={fullBurn} />
             </Suspense>
