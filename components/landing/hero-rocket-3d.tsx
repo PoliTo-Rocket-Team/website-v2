@@ -42,10 +42,19 @@ const EARTH_PEAK = 1.2; // lamp intensity at the lowest point of the climb
 const EARTH_PARKED = 0.03; // lamp intensity once settled
 const BELLY_PARKED = 0.15; // env gate once settled (0 = none, 1 = all)
 
+// The belly-light readings below force the browser to re-run layout and
+// style (getBoundingClientRect, getComputedStyle) while the drive-in CSS
+// animation is running, and doing that every frame was the biggest single
+// cost on first load (issue #29). The light eases over seconds, so reading
+// every few frames is invisible.
+const DOM_READ_EVERY = 4;
+
 function Rocket({ fullBurn }: { fullBurn: boolean }) {
   const group = useRef<THREE.Group>(null!);
   const earth = useRef<THREE.DirectionalLight>(null!);
   const canvas = useThree((s) => s.gl.domElement);
+  const stage = useRef<HTMLElement | null>(null);
+  const frame = useRef(0);
   const weather = useMemo<WeatherUniforms>(
     () => ({
       uRocketInv: { value: new THREE.Matrix4().makeTranslation(-X_OFF, 0, 0) },
@@ -72,11 +81,13 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
     group.current.updateMatrixWorld();
     weather.uRocketInv.value.copy(group.current.matrixWorld).invert();
 
-    const stage = canvas.closest<HTMLElement>("[data-rocket-stage]");
-    if (!stage || !earth.current) return;
-    const rect = stage.getBoundingClientRect();
+    if (frame.current++ % DOM_READ_EVERY !== 0) return;
+    stage.current ??= canvas.closest<HTMLElement>("[data-rocket-stage]");
+    const el = stage.current;
+    if (!el || !earth.current) return;
+    const rect = el.getBoundingClientRect();
     // 0 at the parked height, 1 at the entry height (36vh lower, see hero.tsx)
-    const parkedY = stage.parentElement!.getBoundingClientRect().top + rect.height / 2;
+    const parkedY = el.parentElement!.getBoundingClientRect().top + rect.height / 2;
     const lowness = THREE.MathUtils.clamp(
       ((rect.top + rect.bottom) / 2 - parkedY) / (0.36 * window.innerHeight),
       0,
@@ -86,7 +97,7 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
     earth.current.intensity = onStage * THREE.MathUtils.lerp(EARTH_PARKED, EARTH_PEAK, lowness);
     weather.uBelly.value = onStage * THREE.MathUtils.lerp(BELLY_PARKED, 1, lowness);
     // CSS rotate(θ): screen-down in the stage's own frame is (sinθ, -cosθ)
-    const m = new DOMMatrixReadOnly(getComputedStyle(stage).transform);
+    const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
     const theta = Math.atan2(m.b, m.a);
     weather.uDown.value.set(Math.sin(theta), -Math.cos(theta), 0);
     earth.current.position.set(Math.sin(theta) * 10, -Math.cos(theta) * 10, 3);

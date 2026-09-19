@@ -139,6 +139,11 @@ export default function RocketCard3D() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [supported, setSupported] = useState(false);
   const [visible, setVisible] = useState(false);
+  // Flips once, the first time the card comes within a screen of the viewport,
+  // and the Canvas mounts then. Before this the four cards each built Cavour
+  // and compiled its shaders on page load, under the hero's own entrance,
+  // which is where the first-load stutter came from (issue #29).
+  const [mounted, setMounted] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [tuning, setTuning] = useState(false);
   const [readout, setReadout] = useState("");
@@ -154,6 +159,20 @@ export default function RocketCard3D() {
     const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0 });
     io.observe(el);
 
+    // Mount a little early so the rocket is built by the time it scrolls in.
+    // A full screen of margin was too generous: at 1440x900 the cards start
+    // ~1800px down, inside that margin, so all four still mounted on load.
+    const near = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) {
+          setMounted(true);
+          near.disconnect();
+        }
+      },
+      { rootMargin: "30% 0px" },
+    );
+    near.observe(el);
+
     // Hover is read off the card rather than passed in, so the card itself can
     // stay a server component.
     const card = el.closest("article");
@@ -164,6 +183,7 @@ export default function RocketCard3D() {
 
     return () => {
       io.disconnect();
+      near.disconnect();
       card?.removeEventListener("pointerenter", enter);
       card?.removeEventListener("pointerleave", leave);
     };
@@ -175,7 +195,7 @@ export default function RocketCard3D() {
     // The canvas starts invisible and RevealOnFirstFrame shows it once it has
     // actually drawn; see reveal-on-first-frame.tsx for why.
     <div ref={wrapRef} className="pointer-events-none absolute inset-x-0 -top-64 bottom-0 [&_canvas]:opacity-0">
-      {supported && (
+      {supported && mounted && (
         <Canvas
           // "demand" rather than "never" while off screen: "never" leaves the
           // WebGL buffer undrawn, and on a real GPU that shows as white until

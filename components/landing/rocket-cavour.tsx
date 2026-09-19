@@ -248,24 +248,31 @@ function makeMaterials(livery: THREE.Texture, decal: THREE.Texture, weather: Wea
   return { livery: paint(livery, 0.6, false), decal: paint(decal, 0.4, true), text, aluminium, titanium, seam };
 }
 
+// Built once per page, not once per canvas: the hero and the four project
+// cards all show the same vehicle, and geometry is safe to share across WebGL
+// contexts (three uploads it to each on first draw). Materials are NOT shared,
+// because each canvas drives its own weather uniforms.
+let sharedGeo: ReturnType<typeof buildGeometry> | null = null;
+function buildGeometry() {
+  const body: [number, number][] = [[0, R], [NOSE_START, R]];
+  NOSE_R.forEach((r, i) => body.push([NOSE_START + i * NOSE_STEP, r]));
+  body[body.length - 1][0] = TIP;
+  return {
+    body: lathe(body, 128),
+    seam: lathe([[-SEAM_H / 2, SEAM_R], [SEAM_H / 2, SEAM_R]], 96),
+    ring: lathe([[-0.0036, 0.036], [0, 0.036]], 64),
+    throat: lathe([[-0.016, 0.015], [0.004, 0.015]], 48),
+    bell: lathe([[-0.027, 0.027], [-0.021, 0.024], [-0.014, 0.02], [-0.008, 0.017]], 64),
+    fin: finGeometry(),
+    decal: hullPatch(DECAL),
+    text: hullPatch(TEXT),
+  };
+}
+
 export default function CavourBuilt({ weather, length }: { weather: WeatherUniforms; length: number }) {
   const [livery, decal] = useTexture(["/design/cavour/livery.png", "/design/cavour/decal-strip.png"]);
   const mats = useMemo(() => makeMaterials(livery, decal, weather), [livery, decal, weather]);
-  const geo = useMemo(() => {
-    const body: [number, number][] = [[0, R], [NOSE_START, R]];
-    NOSE_R.forEach((r, i) => body.push([NOSE_START + i * NOSE_STEP, r]));
-    body[body.length - 1][0] = TIP;
-    return {
-      body: lathe(body, 128),
-      seam: lathe([[-SEAM_H / 2, SEAM_R], [SEAM_H / 2, SEAM_R]], 96),
-      ring: lathe([[-0.0036, 0.036], [0, 0.036]], 64),
-      throat: lathe([[-0.016, 0.015], [0.004, 0.015]], 48),
-      bell: lathe([[-0.027, 0.027], [-0.021, 0.024], [-0.014, 0.02], [-0.008, 0.017]], 64),
-      fin: finGeometry(),
-      decal: hullPatch(DECAL),
-      text: hullPatch(TEXT),
-    };
-  }, []);
+  const geo = (sharedGeo ??= buildGeometry());
 
   const scale = length / BBOX_LEN;
   const shadow = { castShadow: true, receiveShadow: true };
