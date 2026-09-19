@@ -114,6 +114,23 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
   );
 }
 
+/**
+ * Compiles every shader in the scene during the 2 s gathered hold, while the
+ * stage is parked off screen and nothing is moving. Without this the rocket's
+ * five weathered materials and both plume shaders compiled on the first frame
+ * of the drive-in, which was the stutter left after issue #29 (~330 ms).
+ * compileAsync uses the GPU's parallel-compile path, so it does not block.
+ */
+function WarmUp() {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    // A rejected promise (lost context) just means the normal first-draw
+    // compile happens instead, so there is nothing to handle.
+    gl.compileAsync(scene, camera).catch(() => {});
+  }, [gl, scene, camera]);
+  return null;
+}
+
 // No static fallback by decision 0004: if WebGL is unavailable the hero is
 // just the type — nothing renders here.
 function webglSupported() {
@@ -185,6 +202,9 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
             <RevealOnFirstFrame />
             <Suspense fallback={null}>
               <Rocket fullBurn={fullBurn} />
+              {/* Inside the Suspense so it runs after the textures resolve and
+                  the materials exist, not before. */}
+              <WarmUp />
             </Suspense>
           </Canvas>
         </div>
