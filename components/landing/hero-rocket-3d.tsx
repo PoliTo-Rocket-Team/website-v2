@@ -48,11 +48,14 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
   const canvas = useThree((s) => s.gl.domElement);
   const weather = useMemo<WeatherUniforms>(
     () => ({
-      uRocketPos: { value: new THREE.Vector3(X_OFF, 0, 0) },
+      uRocketInv: { value: new THREE.Matrix4().makeTranslation(-X_OFF, 0, 0) },
       uSootStart: { value: -HALF + 9 },
       uTail: { value: -HALF - 0.5 },
       uBelly: { value: BELLY_PARKED },
       uDown: { value: new THREE.Vector3(0, -1, 0) },
+      // The wear was tuned at this framing; 1/1 is the reference look.
+      uWearScale: { value: 1 },
+      uWearAmount: { value: 1 },
     }),
     [],
   );
@@ -66,7 +69,8 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
     group.current.position.y = Math.sin(t * 0.7) * 0.15;
 
     // Keep the procedural wear pinned to the hull while the group moves
-    weather.uRocketPos.value.copy(group.current.position);
+    group.current.updateMatrixWorld();
+    weather.uRocketInv.value.copy(group.current.matrixWorld).invert();
 
     const stage = canvas.closest<HTMLElement>("[data-rocket-stage]");
     if (!stage || !earth.current) return;

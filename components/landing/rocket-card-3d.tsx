@@ -39,23 +39,33 @@ const LEAN = 0.2;
 const PARKED_X = 1.2;
 const EASE = 1.4; // lower is slower; this settles over roughly two seconds
 
+// The card is a close-up, so the hero's wear noise is rescaled: finer grain
+// and lower contrast, or it reads as dashes and static at this pixel size.
+// See uWearScale / uWearAmount in hero-weathering.ts.
+const WEAR_SCALE = 2.5;
+const WEAR_AMOUNT = 0.45;
+
 const REDUCED =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function Vehicle({ hovered }: { hovered: boolean }) {
   const group = useRef<THREE.Group>(null!);
+  /** The group the vehicle sits in directly: its frame IS rocket space. */
+  const frame = useRef<THREE.Group>(null!);
   /** 0 parked, 1 fully hovered. Eased every frame. */
   const t = useRef(0);
   const weather = useMemo<WeatherUniforms>(
     () => ({
-      uRocketPos: { value: new THREE.Vector3(0, 0, 0) },
+      uRocketInv: { value: new THREE.Matrix4() },
       uSootStart: { value: -HALF + 9 },
       uTail: { value: -HALF - 0.5 },
       // Fixed here: the hero drives this off the rocket's height on screen, but
       // a card has no climb to track.
       uBelly: { value: 0.35 },
       uDown: { value: new THREE.Vector3(0, -1, 0) },
+      uWearScale: { value: WEAR_SCALE },
+      uWearAmount: { value: WEAR_AMOUNT },
     }),
     [],
   );
@@ -74,13 +84,16 @@ function Vehicle({ hovered }: { hovered: boolean }) {
     group.current.position.y = PARKED_Y + t.current * RISE;
     group.current.position.x = PARKED_X;
     group.current.position.z = PARKED_Z;
+    // Pin the procedural wear to the hull through the lean, turn and climb.
+    group.current.updateMatrixWorld();
+    weather.uRocketInv.value.copy(frame.current.matrixWorld).invert();
   });
 
   // The model is built along X with the nose at +X; stand it up nose-first,
   // less 16° so it leans to the right.
   return (
     <group ref={group}>
-      <group rotation={[0, 0, Math.PI / 2 - LEAN]}>
+      <group ref={frame} rotation={[0, 0, Math.PI / 2 - LEAN]}>
         <CavourBuilt weather={weather} length={LENGTH} />
       </group>
     </group>

@@ -13,7 +13,12 @@ import * as THREE from "three";
 //  - soot staining that builds toward the nozzle
 
 export type WeatherUniforms = {
-  uRocketPos: { value: THREE.Vector3 }; // rocket group world position
+  // World -> rocket space. The inverse world matrix of the group that holds
+  // the vehicle, so the wear stays pinned to the hull however that group is
+  // placed: the hero only slides it, but the card stands it up, leans it and
+  // pivots it on hover. A bare position (the old uRocketPos) could not
+  // express the rotation, so the wear crawled across the card rocket.
+  uRocketInv: { value: THREE.Matrix4 };
   uSootStart: { value: number }; // x where soot begins (toward the tail)
   uTail: { value: number }; // x of the nozzle
   // Belly light gate: how much of the environment's light reaches
@@ -23,6 +28,13 @@ export type WeatherUniforms = {
   // earth. uDown is screen-down in scene space (the stage is CSS-tilted).
   uBelly: { value: number };
   uDown: { value: THREE.Vector3 };
+  // Close-up dials. The wear frequencies were tuned for the hero's framing,
+  // where the whole vehicle spans the screen; a card shows the same hull at
+  // several times the pixel scale, and there the same noise reads as dashes
+  // and static. uWearScale multiplies the noise frequency (finer grain) and
+  // uWearAmount its contrast. Both 1 on the hero, which keeps it byte-identical.
+  uWearScale: { value: number };
+  uWearAmount: { value: number };
 };
 const BELLY_FLOOR = 0.15; // env light kept under the hull when uBelly = 0
 
@@ -77,10 +89,10 @@ export function applyWeathering(
     });
 
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vWRocketPos;")
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWRocketPos;\nuniform mat4 uRocketInv;")
       .replace(
         "#include <project_vertex>",
-        "#include <project_vertex>\nvWRocketPos = (modelMatrix * vec4(transformed, 1.0)).xyz;",
+        "#include <project_vertex>\nvWRocketPos = (uRocketInv * modelMatrix * vec4(transformed, 1.0)).xyz;",
       );
 
     shader.fragmentShader = shader.fragmentShader
@@ -88,7 +100,6 @@ export function applyWeathering(
         "#include <common>",
         `#include <common>
         varying vec3 vWRocketPos;
-        uniform vec3 uRocketPos;
         uniform float uSootStart;
         uniform float uTail;
         uniform float uWMicro;
@@ -98,6 +109,8 @@ export function applyWeathering(
         uniform float uWTone;
         uniform float uBelly;
         uniform vec3 uDown;
+        uniform float uWearScale;
+        uniform float uWearAmount;
         ${NOISE_GLSL}`,
       )
       // Environment light on the underside follows the belly gate
@@ -105,7 +118,12 @@ export function applyWeathering(
         "#include <lights_fragment_maps>",
         `#include <lights_fragment_maps>
         {
-          float down = smoothstep(-0.15, 0.45, dot(geometryNormal, uDown));
+          // geometryNormal is in view space; uDown is given in scene space.
+          // The hero's level camera hid the mismatch, but the card camera is
+          // pitched down, so without this any surface facing the camera
+          // counted as underside and went dark.
+          vec3 downView = normalize((viewMatrix * vec4(uDown, 0.0)).xyz);
+          float down = smoothstep(-0.15, 0.45, dot(geometryNormal, downView));
           float k = mix(1.0, mix(${BELLY_FLOOR}, 1.0, uBelly), down);
           iblIrradiance *= k;
           radiance *= k;
@@ -119,15 +137,18 @@ export function applyWeathering(
         "#include <color_fragment>",
         `#include <color_fragment>
         {
-          vec3 rp = vWRocketPos - uRocketPos;
-          float scuff = smoothstep(0.55, 0.8, wFbm(rp * 1.7 + 3.0));
-          float sootMask = smoothstep(uSootStart, uTail, rp.x);
+          // Soot is placed in true rocket units (it has to start at the
+          // nozzle); everything else is noise and may be rescaled.
+          float axial = vWRocketPos.x;
+          vec3 rp = vWRocketPos * uWearScale;
+          float scuff = smoothstep(0.55, 0.8, wFbm(rp * 1.7 + 3.0)) * uWearAmount;
+          float sootMask = smoothstep(uSootStart, uTail, axial);
           float sootN = 0.55 + 0.45 * wFbm(rp * vec3(0.9, 3.5, 3.5) + 11.0);
           float soot = sootMask * sootN * uWSoot;
           // Unfinished-surface tone: brushed streaks and grain show in the
           // color itself, not only in the sheen (needed on light paint).
-          float streak = smoothstep(0.55, 0.95, wNoise(vec3(rp.x * 1.2, rp.y * 42.0, rp.z * 42.0)));
-          float grain = wFbm(rp * 9.0) - 0.5;
+          float streak = smoothstep(0.55, 0.95, wNoise(vec3(rp.x * 1.2, rp.y * 42.0, rp.z * 42.0))) * uWearAmount;
+          float grain = (wFbm(rp * 9.0) - 0.5) * uWearAmount;
           diffuseColor.rgb *= 1.0 - streak * uWTone * 0.6 + grain * uWTone * 0.8;
           diffuseColor.rgb *= 1.0 - scuff * uWScuff;
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.16, 0.14, 0.13), soot);
@@ -138,12 +159,13 @@ export function applyWeathering(
         "#include <roughnessmap_fragment>",
         `#include <roughnessmap_fragment>
         {
-          vec3 rp = vWRocketPos - uRocketPos;
-          float micro = wFbm(rp * 6.0) - 0.5;
+          float axial = vWRocketPos.x;
+          vec3 rp = vWRocketPos * uWearScale;
+          float micro = (wFbm(rp * 6.0) - 0.5) * uWearAmount;
           float streak = wNoise(vec3(rp.x * 1.2, rp.y * 42.0, rp.z * 42.0));
-          streak = smoothstep(0.62, 0.95, streak);
-          float scuff = smoothstep(0.55, 0.8, wFbm(rp * 1.7 + 3.0));
-          float sootMask = smoothstep(uSootStart, uTail, rp.x);
+          streak = smoothstep(0.62, 0.95, streak) * uWearAmount;
+          float scuff = smoothstep(0.55, 0.8, wFbm(rp * 1.7 + 3.0)) * uWearAmount;
+          float sootMask = smoothstep(uSootStart, uTail, axial);
           roughnessFactor += micro * uWMicro * 2.0;
           roughnessFactor += streak * uWStreak;
           roughnessFactor += scuff * 0.25 * uWScuff * 4.0;
