@@ -1,37 +1,45 @@
 import Image from "next/image";
+import { RocketArrow } from "./rocket-arrow";
 
 // Board 08 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on hover.
 // Full-color logos (grayscale was explicitly rejected). Edge fade masks on site only.
-const logos = [
-  { src: "/design/sponsors/color-altium.png", alt: "Altium" },
-  { src: "/design/sponsors/color-ansys.png", alt: "Ansys" },
-  { text: "BETA CAE Systems" }, // their SVG is broken UTF-16; styled text until a clean file exists
-  { src: "/design/sponsors/color-camerana.png", alt: "Camerana" },
-  { src: "/design/sponsors/color-esss.png", alt: "eSSS" },
-  { src: "/design/sponsors/color-evomisure.png", alt: "Evomisure" },
-  { src: "/design/sponsors/color-explorer.png", alt: "Explorer" },
-  { src: "/design/sponsors/color-magicar.png", alt: "Magicar" },
-  { src: "/design/sponsors/color-mul2.png", alt: "Mul2" },
-  { src: "/design/sponsors/color-siemens.png", alt: "Siemens" },
-  { src: "/design/sponsors/color-sophia.png", alt: "Sophia" },
+// Static list for now; partners will come from the database, with real URLs.
+// Every logo is a link; "#" stands in until the URLs exist.
+type Logo = { href: string } & ({ src: string; alt: string } | { text: string });
+
+const logos: Logo[] = [
+  { src: "/design/sponsors/color-altium.png", alt: "Altium", href: "#" },
+  { src: "/design/sponsors/color-ansys.png", alt: "Ansys", href: "#" },
+  { text: "BETA CAE Systems", href: "#" }, // SVG is UTF-16; styled text until it is converted
+  { src: "/design/sponsors/color-camerana.png", alt: "Camerana", href: "#" },
+  { src: "/design/sponsors/color-esss.png", alt: "eSSS", href: "#" },
+  { src: "/design/sponsors/color-evomisure.png", alt: "Evomisure", href: "#" },
+  { src: "/design/sponsors/color-explorer.png", alt: "Explorer", href: "#" },
+  { src: "/design/sponsors/color-magicar.png", alt: "Magicar", href: "#" },
+  { src: "/design/sponsors/color-mul2.png", alt: "Mul2", href: "#" },
+  { src: "/design/sponsors/color-siemens.png", alt: "Siemens", href: "#" },
+  { src: "/design/sponsors/color-sophia.png", alt: "Sophia", href: "#" },
 ];
 
-function LogoItem({ logo }: { logo: (typeof logos)[number] }) {
-  if ("text" in logo) {
-    return (
-      <span className="mx-10 whitespace-nowrap font-mono text-lg font-semibold tracking-wide text-text-2">
-        {logo.text}
-      </span>
-    );
-  }
+function LogoItem({ logo }: { logo: Logo }) {
+  // Real partner sites open in a new tab; the "#" placeholder stays put.
+  const external = logo.href !== "#";
   return (
-    <Image
-      src={logo.src!}
-      alt={logo.alt!}
-      width={140}
-      height={56}
-      className="mx-10 h-12 w-auto object-contain opacity-90"
-    />
+    <a
+      href={logo.href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noopener noreferrer" : undefined}
+      aria-label={"text" in logo ? logo.text : logo.alt}
+      className="mx-10 flex shrink-0 items-center opacity-80 transition-opacity duration-300 hover:opacity-100"
+    >
+      {"text" in logo ? (
+        <span className="whitespace-nowrap font-mono text-lg font-semibold tracking-wide text-text-2">
+          {logo.text}
+        </span>
+      ) : (
+        <Image src={logo.src} alt={logo.alt} width={140} height={56} className="h-12 w-auto object-contain" />
+      )}
+    </a>
   );
 }
 
@@ -48,9 +56,10 @@ export function Partners() {
         </div>
         <a
           href="mailto:info@politorocketteam.it"
-          className="shrink-0 font-mono text-sm tracking-wide text-text-2 underline-offset-4 transition-colors hover:text-accent"
+          className="group inline-flex shrink-0 items-center gap-3 font-mono text-sm tracking-wide text-text-2 transition-colors hover:text-accent"
         >
-          Become a partner →
+          Become a partner
+          <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
         </a>
       </div>
 
