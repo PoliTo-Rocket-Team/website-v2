@@ -43,7 +43,8 @@ Landing page design is APPROVED. Now designing subroutes.
 - PoliTo funds 28% of team budget (use on partners/university pages).
 
 ## In progress
-- Board `yDRL8` 11 = /projects index: solid navbar copy, H1 "Every vehicle since 2021.", 4 full-width rows (render left, meta/name/desc/specs right). Cavour uses `cavour-hero.png`; others "RENDER TBD". **Specs/dates are placeholder guesses — confirm with user.** Awaiting user feedback on row layout.
+- Board `yDRL8` 11 = /projects index, FIRST DRAFT: 4 rows with guessed specs. Superseded by 11b; keep only for comparison.
+- Board `Qv3JM` 11b = /projects index, v2 (2026-09-20): real data from `specs-from-old-site.md`. Follows the old site's split: THREE projects, not four. H1 "Two rockets flown. One engine on the bench.", stats strip (4 flights · 3 countries · 3 awards · 9 000 m · 5 kN), then one tall card per project. Rocket cards: texture + render left, meta/name/desc, version pills (Cavour CVR 100-75-3/-75-4/-54-6; VES Mark II/Mark I/Test), 2×3 spec grid, and a **launch log** table (date · where · apogee · max speed · result, awards in accent). Efesto card: engine specs (N₂O/ethanol, 5 kN, pressure-fed, regenerative, printed Cu chamber) and five work-line chips (TCA · EC · LSA · TB · ECS). VES and Efesto visuals read "RENDER TBD". Textures are `../public/design/news/tex-*.jpg`. Awaiting user feedback.
 
 ## Todo / open
 - **PARKED (agreed 2026-09-18): the other three rockets.** VES, VES Mark II and Efesto are not being built now. Cavour alone carries the hero and the Cavour project card; the other three cards stay empty and their `/projects` rows read "RENDER TBD". Picking this up needs one side-on photo plus logo PNGs per vehicle from the user, then `.claude/skills/rocket-surface/SKILL.md` and the structure of `components/landing/rocket-cavour.tsx`. Do not start it unprompted.
