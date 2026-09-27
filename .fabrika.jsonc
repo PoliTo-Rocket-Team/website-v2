@@ -1,0 +1,54 @@
+{
+  // fabrika's per-repo settings. Every key left out falls to fabrika's shipped
+  // default; `fabrika status settings --surfaces` prints what this repo runs on.
+
+  // The site is one Next.js app at the repo root. A prefix is a single folder,
+  // so the app needs two rows to cover both folders that change pixels: `app/`
+  // (pages, layout, globals.css) and `components/`. The second row's mount is a
+  // placeholder no page uses; it exists only so `components/` raises the ui
+  // class. Root files such as `tailwind.config.ts` cannot be covered by a
+  // prefix, so a reviewer routes a token-only change to review-ui by hand.
+  //
+  // `next dev --port` fails when the port is taken, which is the strict-port
+  // rule fabrika asks for. Pages that read the database (for example /apply)
+  // need DATABASE_URL in the environment; the landing page at / does not.
+  "uiSurfaces": [
+    {
+      "name": "web",
+      "prefix": "app/",
+      "mount": "/",
+      "readyPath": "/",
+      "command": "pnpm exec next dev --port {{port}}"
+    },
+    {
+      "name": "web-components",
+      "prefix": "components/",
+      "mount": "/__components",
+      "basePath": "/",
+      "readyPath": "/",
+      "command": "pnpm exec next dev --port {{port}}"
+    }
+  ],
+
+  // What a lane runs to install dependencies, then to check a merged tree.
+  // `pnpm build` is left out on purpose: it prerenders pages that query Neon
+  // and fails without DATABASE_URL, which a lane worktree does not have.
+  "dependencyReconciler": { "command": ["pnpm", "install", "--frozen-lockfile"] },
+  "codeValidators": [
+    { "command": ["pnpm", "exec", "tsc", "--noEmit"] }
+  ],
+
+  // The CI gate fabrika reads check runs from (.github/workflows/ci.yml).
+  "ci": { "noProducer": "refuse", "gateWorkflow": "ci.yml" },
+
+  // Files that change how the pipeline itself behaves. A diff touching one
+  // owes a governance verdict, and CODEOWNERS names who approves it.
+  "governedRoots": [".decisions/", ".claude/settings.json", ".github/", ".fabrika.jsonc", "CLAUDE.md"],
+
+  // Every issue homes on a milestone pinned in ROADMAP.md; no standing lanes.
+  "boardVocabulary": { "standingLanes": [] },
+
+  // Who may clear an extra repair round, and who may declare or flip a campaign.
+  "capClearAuthors": ["@hueypov"],
+  "campaignAuthors": ["@hueypov"]
+}
