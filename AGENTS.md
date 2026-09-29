@@ -42,8 +42,9 @@ ground truth at every step.
   prose, **ui-builder** for a rendered surface, **mixed-builder** for both. An
   [`operate`](https://github.com/kamp-us/phoenix/blob/main/claude-plugins/fabrika/skills/operate/SKILL.md)
   lane drives the whole run.
-- A reviewer is never the pull request's author. It posts SHA-bound verdicts from its own GitHub
-  account with write access:
+- A reviewer is never the pull request's author. It posts SHA-bound verdicts only from the
+  `nothueypov` account, never from Huey's own, by prefixing each `gh` or `fabrika` call with
+  `GH_TOKEN="$(gh auth token --user nothueypov)"` without changing the active account:
   [`review`](https://github.com/kamp-us/phoenix/blob/main/claude-plugins/fabrika/skills/review/SKILL.md)
   for text,
   [`review-ui`](https://github.com/kamp-us/phoenix/blob/main/claude-plugins/fabrika/skills/review-ui/SKILL.md)
