@@ -1,0 +1,7 @@
+# Huey owns the files that set how work flows in this repo. fabrika reads this
+# list to know who may approve an epic's plan and changes to these files.
+/.decisions/                @hueypov
+/CLAUDE.md                  @hueypov
+/.claude/settings.json      @hueypov
+/.fabrika.jsonc             @hueypov
+/.github/                   @hueypov
