@@ -1,0 +1,89 @@
+name: preview-marker
+
+# Posts the Vercel preview URL on a PR in the shape Fabrika's review-ui reads
+# (`readPreviewAnnouncement` in @kampus/fabrika-cli `dist/capture/resolve.js`),
+# so the design review gate can render the PR. One sticky comment per PR,
+# written by github-actions[bot] and edited in place on later deploys.
+#
+# Vercel creates a GitHub deployment in environment `Preview` for every PR push
+# and marks it `success` with the preview URL in `environment_url`. Only that
+# status is acted on; every other status and environment is skipped.
+#
+# Event data is passed through `env:` and checked before use, never pasted into
+# the script, so a crafted URL or ref cannot inject shell.
+
+on:
+  deployment_status:
+
+permissions: {}
+
+concurrency:
+  # Serialize runs for one commit, so a redeploy of the same SHA cannot race
+  # another run into creating a second comment.
+  group: preview-marker-${{ github.event.deployment.sha }}
+  cancel-in-progress: false
+
+jobs:
+  marker:
+    name: post the preview marker on the PR
+    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview'
+    runs-on: ubuntu-latest
+    permissions:
+      # Read the PRs for a commit and each PR's head; create and edit the comment.
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      DEPLOY_SHA: ${{ github.event.deployment.sha }}
+      PREVIEW_URL: ${{ github.event.deployment_status.environment_url }}
+    steps:
+      - name: upsert the preview-deploy comment
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::deployment sha is not a full commit sha: $DEPLOY_SHA"
+            exit 1
+          fi
+          url_re='^https://[A-Za-z0-9.~:/?#@!$&*+,;=%_-]+$'
+          if ! [[ "$PREVIEW_URL" =~ $url_re ]]; then
+            echo "::error::environment_url is not a plain https URL: $PREVIEW_URL"
+            exit 1
+          fi
+
+          # Open PRs whose head is exactly this commit. None: nothing to write.
+          prs=$(gh api --paginate "repos/$REPO/commits/$DEPLOY_SHA/pulls" \
+            --jq ".[] | select(.state == \"open\" and .head.sha == \"$DEPLOY_SHA\") | .number")
+          if [[ -z "$prs" ]]; then
+            echo "No open PR has $DEPLOY_SHA as its head; nothing to do."
+            exit 0
+          fi
+
+          body=$(printf '%s\n%s\n%s\n' \
+            '<!-- preview-deploy -->' \
+            '<!-- preview-deploy:web -->' \
+            "- **web**: $PREVIEW_URL @ $DEPLOY_SHA")
+
+          for pr in $prs; do
+            # Stale guard: a late build of an older commit must not overwrite
+            # the marker of a newer head. Re-read the head just before writing.
+            head=$(gh api "repos/$REPO/pulls/$pr" --jq 'if .state == "open" then .head.sha else "" end')
+            if [[ "$head" != "$DEPLOY_SHA" ]]; then
+              echo "PR #$pr head is now ${head:-closed}, not $DEPLOY_SHA; leaving its marker alone."
+              continue
+            fi
+
+            # Sticky lookup: only a marker this workflow wrote, never one by
+            # another author.
+            existing=$(gh api --paginate "repos/$REPO/issues/$pr/comments" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- preview-deploy -->"))) | .id' \
+              | head -n 1)
+
+            if [[ -n "$existing" ]]; then
+              gh api --method PATCH "repos/$REPO/issues/comments/$existing" -f body="$body" --silent
+              echo "Updated preview marker $existing on PR #$pr."
+            else
+              gh api --method POST "repos/$REPO/issues/$pr/comments" -f body="$body" --silent
+              echo "Created preview marker on PR #$pr."
+            fi
+          done
