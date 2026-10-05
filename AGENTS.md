@@ -22,7 +22,7 @@ Tailwind 3. Local email goes through Mailpit (`mailpit/`).
 - An agent lane works in its own linked worktree. Lefthook's post-checkout hook
   ([lefthook.yml](lefthook.yml)) sets it up: it links `.env` and `.env.local` from the main
   checkout and runs `pnpm install`. `pnpm install` in the main checkout installs the hook.
-- The default branch is `dev`; pull requests target it. Branches you create by hand start with
+- The default branch is `huey/landing-page` for now (the redesign lives there and `dev` does not have it yet); pull requests target it. Branches you create by hand start with
   `huey/`. Fabrika lanes name their own branches.
 - Decisions live in `.decisions/` as `NNNN-slug.md`. Filenames plus each record's frontmatter
   (`id`, `title`, `status`) are the index. Read the records that govern a choice before changing
