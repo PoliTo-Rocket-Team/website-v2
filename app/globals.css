@@ -137,46 +137,34 @@
    still wins over these defaults. */
 @layer components {
   /* Page sky (board 21): the one background behind every section from below
-   the hero to the apply band. Ground, soft diagonal light streaks and a fine
-   grain, at about 16% strength; the stars are a Starfield on top
-   (app/page.tsx). Drawn in code so it has no fixed height: the soft streaks
-   are three tall radial glows tiled at sizes that do not line up, each fading
-   to nothing before its tile edge, the grain is a stitched SVG tile, and the
-   diagonal shading is a repeating gradient, so the pattern is periodic and
-   shows no seam however tall the page grows. The top fades in so the hero's
-   own scrim meets it without a line. public/textures/streaks.webp is the
-   reference crop for the look, not an asset of this layer. */
-  .page-sky-light {
+   the hero to the apply band. Two layers, with the stars a Starfield on top
+   (app/page.tsx).
+   .page-sky-light is a seamless tile cut from the approved background, with
+   the soft diagonal streaks baked onto ground at the board's 16% strength
+   (public/textures/page-streaks-tile.webp, 1440 x 1800). It repeats down the
+   page with no seam, so the sky has no fixed height. It is 1440px wide and
+   centred, and it scales up with the page on wider screens. Its top fades in
+   so the hero's own scrim meets it without a line.
+   .page-sky-grain is the fine film grain, a separate stitched SVG noise tile:
+   webp compression drops the grain from the streak tile. Its white specks
+   and opacity are matched by eye to board 21, recorded as an exception in
+   design-system-manifest.md. */
+  .page-sky-light,
+  .page-sky-grain {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-      radial-gradient(closest-side, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0)),
-      radial-gradient(closest-side, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)),
-      radial-gradient(closest-side, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
-      repeating-linear-gradient(
-        101deg,
-        rgba(0, 0, 0, 0) 0px,
-        rgba(0, 0, 0, 0.3) 300px,
-        rgba(0, 0, 0, 0) 620px,
-        rgba(255, 255, 255, 0.02) 900px,
-        rgba(0, 0, 0, 0) 1180px
-      );
-    background-size:
-      180px 180px,
-      460px 1500px,
-      700px 1100px,
-      380px 1900px,
-      auto;
-    background-position:
-      0 0,
-      0 0,
-      310px 520px,
-      820px 260px,
-      0 0;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
     mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
+  }
+  .page-sky-light {
+    background: theme("colors.ground") url("/textures/page-streaks-tile.webp")
+      top center / max(100%, 1440px) auto repeat-y;
+  }
+  .page-sky-grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1.4 0 0 0 -.6'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+    opacity: 0.05;
   }
 
   /* Liquid glass (board 21 spec table). Every glass surface draws its edge as

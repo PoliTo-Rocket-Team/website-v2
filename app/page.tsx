@@ -9,8 +9,9 @@ import { LandingFooter } from "@/components/landing/footer";
 import { Starfield } from "@/components/landing/starfield";
 
 // Approved landing page per Pencil board 21 ("Home v3, footer background
-// throughout"). One drawn sky runs behind every section from below the hero
-// to the apply band; the sections inside it paint no background of their own.
+// throughout"). One sky runs behind every section from below the hero to the
+// apply band: a repeating streak tile, a grain layer and stars. The sections
+// inside it paint no background of their own.
 export default function LandingPage() {
   return (
     <div className="relative bg-ground">
@@ -20,6 +21,7 @@ export default function LandingPage() {
         <div className="relative isolate">
           <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
             <div className="page-sky-light" />
+            <div className="page-sky-grain" />
             {/* The footer's starfield, without its shooting star. Stars are
                 placed in percent, so the count is sized for the sky's usual
                 height of about 3600px. Unlike the hero and footer skies, this

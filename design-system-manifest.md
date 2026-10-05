@@ -65,9 +65,9 @@ Rules:
   a comment: hero sky `#010101` (the earth photo's measured black, `hero.tsx`), star-dimming
   radial fades (`hero.tsx`, `navbar.tsx`), the `.hero-type` gradient (`app/globals.css`), the
   `RocketArrow` grey hull and fin fills (`rocket-arrow.tsx`; its ring and nose use
-  `fill-prt-text` and `fill-accent`), and the board 21 spec values for the page sky and the
-  liquid glass utilities, the navbar bar included (`.page-sky-light`, `.glass-*` in
-  `app/globals.css`).
+  `fill-prt-text` and `fill-accent`), and the page sky grain, matched by eye to board 21, and the
+  board 21 spec values for the liquid glass utilities, the navbar bar included
+  (`.page-sky-grain`, `.glass-*` in `app/globals.css`).
   A new exception needs the same kind of comment.
 
 ## Type
@@ -189,12 +189,14 @@ lines up with the tagline and its width matches the tagline's first line: the br
 `w-max`, the first line does not wrap, and the logo fills the block (`footer.tsx`).
 
 **Page sky** (board 21, `app/page.tsx`, `app/globals.css`): one background runs from below the
-hero to the apply band, behind Latest, Projects, Inside the team and Partners. It is ground,
-soft diagonal light streaks and a fine grain at about 16% strength (`.page-sky-light`), plus a
-`Starfield` with no shooting star. It is drawn in code: the streaks are repeating gradients and
-the grain is a stitched SVG tile, so it is periodic and shows no seam at any page height. Never
-ship it as one tall image. Its top fades in so the hero scrim, which ends on `ground`, meets it
-without a line.
+hero to the apply band, behind Latest, Projects, Inside the team and Partners. It has three
+layers. `.page-sky-light` is `public/textures/page-streaks-tile.webp`, a seamless 1440 x 1800
+tile cut from the approved background, with the soft diagonal streaks baked onto `ground` at
+the board's 16% strength. It repeats down the page (`top center / max(100%, 1440px) auto
+repeat-y`), so it shows no seam at any page height. `.page-sky-grain` is the fine film grain, a
+stitched SVG noise tile at low opacity, kept apart because webp compression drops grain. On top
+sits a `Starfield` with no shooting star. Never ship the sky as one tall image. Its top fades in
+so the hero scrim, which ends on `ground`, meets it without a line.
 
 **Hero** (`.decisions/0004-hero-entrance.md`, `hero.tsx`, `hero-phone.tsx`):
 - Plays once per load. Title and slogan stagger in, gathered. Hold 2s (`HOLD_MS`). The rocket
