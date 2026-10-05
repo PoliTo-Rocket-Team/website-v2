@@ -17,9 +17,7 @@ export function ApplyBand() {
       <div className="mx-auto flex max-w-[1312px] flex-col justify-between gap-12 lg:flex-row lg:items-center">
         <div className="lg:shrink-0">
           <p className="font-mono text-xs tracking-[0.3em]">APPLY · 2025/26</p>
-          {/* Nudged left by the B's side bearing so its stem lines up with the
-              A of the label above. */}
-          <h2 className="-ml-[0.06em] mt-4 text-5xl font-extrabold leading-[0.95] tracking-[-0.035em] md:text-6xl md:leading-[0.95] xl:text-[80px]">
+          <h2 className="mt-4 text-5xl font-extrabold leading-[0.95] tracking-[-0.035em] md:text-6xl md:leading-[0.95] xl:text-[80px]">
             Build the
             <br />
             next one with us.
@@ -32,7 +30,7 @@ export function ApplyBand() {
           </p>
           <Link
             href="/apply"
-            className="mt-8 inline-block rounded-full bg-ground px-10 py-[18px] text-[17px] font-semibold text-prt-text transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            className="mt-8 inline-block rounded-full bg-ground px-10 py-[17px] text-[17px] font-semibold text-prt-text transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
           >
             Apply to join
           </Link>

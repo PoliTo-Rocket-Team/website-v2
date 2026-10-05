@@ -49,8 +49,9 @@ and code that cannot take a class (the `<html>` paint in `app/layout.tsx`, the h
 
 Rules:
 
-- Orange `accent` is the one brand colour. Use it for section eyebrows, the Apply pill,
-  hover text, and the Launch tag. Do not add a second accent.
+- Orange `accent` is the one brand colour. Use it for section eyebrows, hover text, the
+  Launch tag and the apply band. Do not add a second accent. The navbar Apply pill is
+  not orange any more (board 21): it is `prt-text` with `ground` text.
 - Tags and status pills pair a `-soft` fill with the solid text colour: Launch = accent,
   Competition = warning, Outreach = success, Team = `white-10` with `prt-text`
   (`latest.tsx`, HANDOFF board 05). Project status pills sit on a texture, so they follow
@@ -65,7 +66,8 @@ Rules:
   radial fades (`hero.tsx`, `navbar.tsx`), the `.hero-type` gradient (`app/globals.css`), the
   `RocketArrow` grey hull and fin fills (`rocket-arrow.tsx`; its ring and nose use
   `fill-prt-text` and `fill-accent`), and the board 21 spec values for the page sky and the
-  liquid glass utilities (`.page-sky-light`, `.glass-*` in `app/globals.css`).
+  liquid glass utilities, the navbar bar included (`.page-sky-light`, `.glass-*` in
+  `app/globals.css`).
   A new exception needs the same kind of comment.
 
 ## Type
@@ -110,6 +112,11 @@ Rules:
 
   Each edge is a gradient ring on `::before`, cut out with a mask. A project card's edge
   brightens on hover through a second ring on `::after`.
+- The navbar is `.glass-bar`: a full-width bar fixed to the top edge, not floating (no side
+  margins, no radius). Fill `rgba(10,10,10,.35)` under the 200deg sheen, blur 24px, a 1px
+  bottom edge white 8% to 25% to 8% (brightest in the middle), shadow `0 8px 24px` black
+  35%. The bar spans the viewport; its contents stay on the 1440 board columns. No UI
+  package in the repo ships a glass surface, so it is CSS beside the other glass.
 - The legacy `border border-hairline bg-panel` card is not used on the landing page any more.
 - The hero is a fixed 1440 x 900 board. It scales down only, by
   `min(1, vw/1440, vh/900)`. Section height is clamped to 900 to 1080 board px. An inline script
@@ -117,10 +124,9 @@ Rules:
 
 ## Components
 
-- Buttons: Apply = accent pill (`bg-accent`, hover `accent-hover`, active `accent-pressed`,
-  text `accent-on-accent`). Sign in = ghost pill (`border-white-10`, hover `border-strong`)
-  (`navbar.tsx`, HANDOFF). On the orange band the button inverts to `bg-ground`
-  (`apply-band.tsx`).
+- Buttons: navbar Apply = paper pill (`bg-prt-text`, text `ground`, hover opacity 90%),
+  board 21. Sign in = ghost pill (`border-white-10`, hover `border-strong`) (`navbar.tsx`).
+  On the orange band the button is `bg-ground` with `prt-text` (`apply-band.tsx`).
 - Text links with an arrow use `RocketArrow` (`components/landing/rocket-arrow.tsx`), not a
   `→` glyph. Hover: link to `text-accent`, arrow `translate-x-1.5`, opacity 0.8 to 1, 300ms
   ease-out.
@@ -155,7 +161,10 @@ All values from `tailwind.config.ts`, except the rocket rise, which is set on th
 **Landing order** (`app/page.tsx`, board 21): navbar, hero, Latest (track record), Projects,
 Inside the team, Partners, Apply band, footer.
 
-**Brand:** the navbar logo is `prt-logo-white.svg` at 220px wide. The footer logo's left edge
+**Navbar** (board 21): `.glass-bar`, fixed, 100px tall from md (64px below), logo, link
+row and actions in the board 04 places. Below lg the link row is hidden.
+
+**Brand:** the navbar logo is `prt-logo-white.svg` at 220px wide (120px on phones). The footer logo's left edge
 lines up with the tagline and its width matches the tagline's first line: the brand block is
 `w-max`, the first line does not wrap, and the logo fills the block (`footer.tsx`).
 
@@ -179,7 +188,8 @@ without a line.
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
-client match).
+client match). The hero and footer stars, and the footer's shooting star, stay exactly as
+built. Only the page sky passes `reducedMotion="still"`.
 
 **Latest:** featured card plus a three-row list, then a centred "All news" link. The cards are
 `.glass-card` with no texture of their own; the featured card keeps its inset photo
@@ -214,9 +224,10 @@ four columns (About, Projects, Get involved, Contact); the email link is accent
 ## Accessibility
 
 - Reduced motion: the hero jumps to its settled state and mounts no rocket (`hero.tsx`). The
-  hero bob, the card rocket's drift and its hover rise, star twinkle, the shooting star and the
+  hero bob, the card rocket's drift and its hover rise, the page sky's star twinkle and the
   partners marquee are off under reduced motion (`hero-rocket-3d.tsx`, `rocket-card-3d.tsx`,
-  `projects.tsx`, `starfield.tsx`, `footer.tsx`, `partners.tsx`). Any new motion must honour
+  `projects.tsx`, `app/page.tsx`, `partners.tsx`). The hero and footer star twinkle and the
+  footer shooting star are kept as built (issue #33). Any new motion must honour
   `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.
   Meaningful images carry real alt text; logo links carry `aria-label` (`partners.tsx`).
@@ -251,7 +262,7 @@ four columns (About, Projects, Get involved, Contact); the email link is accent
   are not used by the landing page.
 - **Old font stack.** `app/globals.css` still sets Plus Jakarta Sans on `html`. The body class
   overrides it with Archivo.
-- **Small screens.** The navbar is absolutely placed at desktop sizes, and the hero only scales
-  the 1440 board. No mobile design is recorded.
+- **Small screens.** The hero only scales the 1440 board, so on phones its title sits under
+  the 64px navbar bar. No mobile design is recorded.
 - **Subroutes.** `/projects`, `/projects/[slug]`, `/about/*`, `/outreach`, `/partners`,
   `/apply` and the news page are still being designed (HANDOFF "Todo").

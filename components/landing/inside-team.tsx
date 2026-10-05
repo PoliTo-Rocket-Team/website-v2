@@ -28,37 +28,37 @@ export function InsideTeam() {
               Who&apos;s behind the rockets.
             </h2>
           </div>
-          <p className="max-w-[460px] text-base leading-relaxed text-text-2">
+          <p className="max-w-[460px] text-base leading-relaxed text-text-2 md:text-[17px]">
             People who design, machine, solder, test and fly the vehicle themselves, between
             lectures and exams.
           </p>
         </div>
 
-        <dl className="mt-16 grid grid-cols-2 gap-x-4 gap-y-10 border-t border-hairline pt-9 lg:grid-cols-4">
+        <dl className="mt-[73px] grid grid-cols-2 gap-x-4 gap-y-10 border-t border-hairline pt-7 lg:grid-cols-4 lg:gap-x-0">
           {figures.map((f) => (
             <div key={f.value} className="flex flex-col-reverse justify-end">
               <dt className="mt-3 text-base text-text-2">{f.label}</dt>
-              <dd className="text-6xl font-extrabold leading-none tracking-[-0.03em] md:text-[84px]">
+              <dd className="text-6xl font-extrabold leading-none tracking-[-0.01em] md:text-[84px]">
                 {f.value}
               </dd>
             </div>
           ))}
         </dl>
 
-        <div className="mt-[72px] grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-[67px] grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {routes.map((r) => (
             <Link
               key={r.title}
               href={r.href}
-              className="glass-card group block rounded-xl px-6 py-5 transition-colors"
+              className="glass-card group block rounded-xl px-6 py-[22px] transition-colors"
             >
               <span className="flex items-center justify-between gap-4">
-                <span className="text-lg font-semibold transition-colors group-hover:text-accent">
+                <span className="text-lg font-semibold transition-colors group-hover:text-accent md:text-[19px]">
                   {r.title}
                 </span>
                 <RocketArrow className="shrink-0 opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
               </span>
-              <span className="mt-1.5 block text-sm text-text-2">{r.sub}</span>
+              <span className="mt-1 block text-sm text-text-2 md:text-[15px]">{r.sub}</span>
             </Link>
           ))}
         </div>

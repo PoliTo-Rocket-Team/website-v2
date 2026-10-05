@@ -24,7 +24,7 @@ const HALF = LENGTH / 2;
 // the vehicle at card scale.
 const TARGET = new THREE.Vector3(2.3, 8, 0);
 const VIEW_DIRECTION = new THREE.Vector3(2.8, 12.2, 28.4);
-const VIEW_DISTANCE = 3.5;
+const VIEW_DISTANCE = 3.3;
 const EYE = TARGET.clone().addScaledVector(VIEW_DIRECTION, VIEW_DISTANCE);
 /** Vertical field of view, in degrees, over the whole hanging canvas. */
 const FOV = 30;
@@ -33,7 +33,7 @@ const FOV = 30;
 // transform on the canvas wrapper (projects.tsx), so its distance and timing
 // are exact in px and ms. The parked pose shows the vehicle from the nose to
 // mid-body above the card's info box.
-const PARKED_Y = 3;
+const PARKED_Y = 2.7;
 const PARKED_Z = -6; // pushed back from the camera, so it reads a little smaller
 // How far off vertical the vehicle leans its nose to the right, in radians.
 // The lean swings the tail left, so PARKED_X shifts the whole vehicle back

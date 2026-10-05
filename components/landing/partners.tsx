@@ -5,7 +5,8 @@ import { RocketArrow } from "./rocket-arrow";
 // Full-color logos (grayscale was explicitly rejected). Edge fade masks on site only.
 // Static list for now; partners will come from the database, with real URLs.
 // Every logo is a link; "#" stands in until the URLs exist.
-type Logo = { href: string } & ({ src: string; alt: string } | { text: string });
+// `tall` marks a near-square mark that board 21 draws taller than the wordmarks.
+type Logo = { href: string } & ({ src: string; alt: string; tall?: boolean } | { text: string });
 
 const logos: Logo[] = [
   { src: "/design/sponsors/color-altium.png", alt: "Altium", href: "#" },
@@ -18,7 +19,7 @@ const logos: Logo[] = [
   { src: "/design/sponsors/color-magicar.png", alt: "Magicar", href: "#" },
   { src: "/design/sponsors/color-mul2.png", alt: "Mul2", href: "#" },
   { src: "/design/sponsors/color-siemens.png", alt: "Siemens", href: "#" },
-  { src: "/design/sponsors/color-sophia.png", alt: "Sophia", href: "#" },
+  { src: "/design/sponsors/color-sophia.png", alt: "Sophia", href: "#", tall: true },
 ];
 
 function LogoItem({ logo }: { logo: Logo }) {
@@ -37,7 +38,13 @@ function LogoItem({ logo }: { logo: Logo }) {
           {logo.text}
         </span>
       ) : (
-        <Image src={logo.src} alt={logo.alt} width={140} height={56} className="h-12 w-auto object-contain" />
+        <Image
+          src={logo.src}
+          alt={logo.alt}
+          width={140}
+          height={56}
+          className={`w-auto object-contain ${logo.tall ? "h-[76px]" : "h-[50px]"}`}
+        />
       )}
     </a>
   );
@@ -57,7 +64,7 @@ export function Partners() {
         </div>
         <a
           href="mailto:info@politorocketteam.it"
-          className="group inline-flex shrink-0 items-center gap-3 font-mono text-base text-prt-text transition-colors hover:text-accent"
+          className="group inline-flex shrink-0 items-center gap-3 font-mono text-base text-prt-text transition-colors hover:text-accent md:mb-2"
         >
           Become a partner
           <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />

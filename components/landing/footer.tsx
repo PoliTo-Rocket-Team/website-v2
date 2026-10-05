@@ -55,10 +55,13 @@ export function LandingFooter() {
           className="object-cover opacity-30 mix-blend-screen"
         />
         <Starfield count={52} seed={23} twinkleEvery={7} />
-        <span className="absolute left-[70%] top-[12%] h-px w-28 animate-shooting-star bg-gradient-to-r from-white to-transparent motion-reduce:hidden" />
+        <span
+          aria-hidden
+          className="absolute left-[70%] top-[12%] h-px w-28 animate-shooting-star bg-gradient-to-r from-white to-transparent"
+        />
       </div>
 
-      <div className="px-6 pb-10 pt-24 md:px-16">
+      <div className="px-6 pb-12 pt-24 md:px-16">
         <div className="mx-auto max-w-[1312px]">
           <div className="grid gap-14 lg:grid-cols-[350px_1fr] lg:gap-0">
             {/* Brand. The block is as wide as the tagline's first line, and the
@@ -74,7 +77,7 @@ export function LandingFooter() {
                   className="h-auto w-full"
                 />
               </Link>
-              <p className="mt-8 text-[15px] leading-6 text-prt-muted">
+              <p className="mt-[21px] text-[15px] leading-6 text-prt-muted">
                 <span className="block whitespace-nowrap">
                   A student rocketry team at Politecnico di Torino.
                 </span>
@@ -83,11 +86,11 @@ export function LandingFooter() {
             </div>
 
             {/* Columns */}
-            <div className="grid grid-cols-2 gap-x-16 gap-y-10 sm:grid-cols-4 sm:gap-x-6">
+            <div className="grid grid-cols-2 gap-x-16 gap-y-10 sm:grid-cols-4 sm:gap-x-[14px]">
               {columns.map((col) => (
                 <div key={col.head}>
                   <h3 className="font-mono text-[11px] tracking-[0.2em] text-dim">{col.head}</h3>
-                  <ul className="mt-4 space-y-3">
+                  <ul className="mt-2.5 space-y-2">
                     {col.links.map(([label, href]) => (
                       <li key={label}>
                         <Link
@@ -106,9 +109,9 @@ export function LandingFooter() {
             </div>
           </div>
 
-          <hr className="mt-20 border-t border-hairline" />
+          <hr className="mt-16 border-t border-hairline" />
 
-          <div className="mt-8 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.2em] text-dim md:flex-row">
+          <div className="mt-7 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.2em] text-dim md:flex-row">
             <p>POLITO ROCKET TEAM ™ 2026</p>
             <div className="flex flex-col gap-3 md:flex-row md:gap-14">
               <p>CORSO DUCA DEGLI ABRUZZI 24, TORINO, ITALY</p>

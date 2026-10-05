@@ -162,14 +162,14 @@ export function Projects() {
           </div>
           <Link
             href="/projects"
-            className="group inline-flex shrink-0 items-center gap-3 font-mono text-base text-prt-text transition-colors hover:text-accent"
+            className="group inline-flex shrink-0 items-center gap-3 font-mono text-base text-prt-text transition-colors hover:text-accent md:mb-1"
           >
             All projects
             <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
           </Link>
         </div>
 
-        <div className="mt-16 grid gap-4 lg:grid-cols-3">
+        <div className="mt-14 grid gap-4 lg:grid-cols-3">
           {projects.map((p) => (
             <ProjectCard key={p.name} project={p} />
           ))}

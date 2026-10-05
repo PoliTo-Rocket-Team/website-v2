@@ -139,37 +139,42 @@
   /* Page sky (board 21): the one background behind every section from below
    the hero to the apply band. Ground, soft diagonal light streaks and a fine
    grain, at about 16% strength; the stars are a Starfield on top
-   (app/page.tsx). Drawn in code so it has no fixed height: both streak layers
-   are repeating gradients and the grain is a stitched SVG tile, so the
-   pattern is periodic and shows no seam however tall the page grows. The top
-   fades in so the hero's own scrim meets it without a line.
-   public/textures/streaks.webp is the reference crop for the look, not an
-   asset of this layer. */
+   (app/page.tsx). Drawn in code so it has no fixed height: the soft streaks
+   are three tall radial glows tiled at sizes that do not line up, each fading
+   to nothing before its tile edge, the grain is a stitched SVG tile, and the
+   diagonal shading is a repeating gradient, so the pattern is periodic and
+   shows no seam however tall the page grows. The top fades in so the hero's
+   own scrim meets it without a line. public/textures/streaks.webp is the
+   reference crop for the look, not an asset of this layer. */
   .page-sky-light {
     position: absolute;
     inset: 0;
     pointer-events: none;
     background-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .12 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-      repeating-linear-gradient(
-        112deg,
-        rgba(255, 255, 255, 0) 0px,
-        rgba(255, 255, 255, 0.045) 220px,
-        rgba(255, 255, 255, 0) 460px,
-        rgba(255, 255, 255, 0) 760px
-      ),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+      radial-gradient(closest-side, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0)),
+      radial-gradient(closest-side, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)),
+      radial-gradient(closest-side, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
       repeating-linear-gradient(
         101deg,
         rgba(0, 0, 0, 0) 0px,
-        rgba(0, 0, 0, 0.35) 300px,
+        rgba(0, 0, 0, 0.3) 300px,
         rgba(0, 0, 0, 0) 620px,
-        rgba(255, 255, 255, 0.03) 900px,
+        rgba(255, 255, 255, 0.02) 900px,
         rgba(0, 0, 0, 0) 1180px
       );
     background-size:
       180px 180px,
-      auto,
+      460px 1500px,
+      700px 1100px,
+      380px 1900px,
       auto;
+    background-position:
+      0 0,
+      0 0,
+      310px 520px,
+      820px 260px,
+      0 0;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
     mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
   }
@@ -255,6 +260,37 @@
   }
   .glass-project:hover::after {
     opacity: 1;
+  }
+
+  /* Navbar (board 21 hero section): a full-width bar fixed to the top edge,
+   not floating. Translucent ink with the info box's sheen, a 1px bottom edge
+   brightest in the middle, and a soft drop shadow. No UI package in the repo
+   ships a glass surface, so it is drawn here with the other glass. */
+  .glass-bar {
+    background:
+      linear-gradient(
+        200deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.02) 50%,
+        rgba(255, 255, 255, 0.05)
+      ),
+      rgba(10, 10, 10, 0.35);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .glass-bar::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0.25) 50%,
+      rgba(255, 255, 255, 0.08)
+    );
+    pointer-events: none;
   }
 
   /* Project info box. Efesto's texture is bright grey, so its card sets

@@ -22,8 +22,16 @@ export default function LandingPage() {
             <div className="page-sky-light" />
             {/* The footer's starfield, without its shooting star. Stars are
                 placed in percent, so the count is sized for the sky's usual
-                height of about 3600px. */}
-            <Starfield count={150} seed={31} twinkleEvery={9} className="top-[240px]" />
+                height of about 3600px. Unlike the hero and footer skies, this
+                one holds still under reduced motion. */}
+            <Starfield
+              count={200}
+              seed={31}
+              twinkleEvery={9}
+              dimOpacity={0.6}
+              reducedMotion="still"
+              className="top-[240px]"
+            />
           </div>
           <Latest />
           <Projects />

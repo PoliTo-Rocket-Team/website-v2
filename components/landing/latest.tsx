@@ -76,7 +76,7 @@ export function Latest() {
               We fly against the best student teams on earth.
             </h2>
           </div>
-          <p className="max-w-[460px] text-base leading-relaxed text-text-2">
+          <p className="max-w-[460px] text-base leading-relaxed text-text-2 md:text-[17px]">
             Four international campaigns since 2021. Every vehicle designed, built and qualified
             in-house.
           </p>
@@ -88,10 +88,10 @@ export function Latest() {
           <article className="glass-card flex flex-col justify-between rounded-xl p-8 md:p-11">
             <div>
               <TagLine post={featured} />
-              <h3 className="mt-8 text-2xl font-bold leading-snug tracking-[-0.02em] md:text-[32px]">
+              <h3 className="mt-6 text-2xl font-bold leading-snug tracking-[-0.02em] md:text-[34px]">
                 {featured.title}
               </h3>
-              <p className="mt-6 max-w-[46ch] text-base leading-relaxed text-text-2">
+              <p className="mt-5 max-w-[46ch] text-base leading-relaxed text-text-2 md:text-[17px]">
                 {featured.excerpt}
               </p>
             </div>
@@ -122,11 +122,11 @@ export function Latest() {
             {posts.map((post) => (
               <article
                 key={post.title}
-                className="glass-card flex flex-1 flex-col justify-center rounded-xl p-8 md:p-10"
+                className="glass-card flex flex-1 flex-col justify-center rounded-xl p-8 md:py-10 md:pl-10 md:pr-16 lg:min-h-[250px]"
               >
                 <TagLine post={post} />
-                <h3 className="mt-4 text-xl font-semibold leading-snug">{post.title}</h3>
-                <p className="mt-3 text-base leading-relaxed text-text-2">{post.excerpt}</p>
+                <h3 className="mt-3 text-xl font-semibold leading-snug md:text-[21px]">{post.title}</h3>
+                <p className="mt-3 text-base leading-relaxed text-text-2 md:text-[17px]">{post.excerpt}</p>
               </article>
             ))}
           </div>
