@@ -20,8 +20,8 @@ export type NavLink = { href: string; label: string };
 // Board 24b: below the width where the link row fits, the menu icon opens a
 // 330px glass sidebar from the right, full height, over a dimmed page. Top:
 // the PRT mark and a close icon. Then the links at 28px with a RocketArrow,
-// the current page in accent. At the foot: the white "Apply to join", the
-// outlined "Sign in" and the contact email. It is the repo's Radix dialog
+// the current page in accent. At the foot: the white "Apply" and the outlined
+// "Sign in", with no email. It is the repo's Radix dialog
 // (components/ui/dialog), so focus, Escape and scroll lock come with it; the
 // content is the primitive itself because the shadcn DialogContent is a
 // centred modal.
@@ -84,7 +84,7 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
                 href="/apply"
                 className="block rounded-full bg-prt-text py-3 text-center text-base font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80"
               >
-                Apply to join
+                Apply
               </Link>
             </DialogClose>
             <DialogClose asChild>
@@ -95,12 +95,6 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
                 Sign in
               </Link>
             </DialogClose>
-            <a
-              href="mailto:info@politorocketteam.it"
-              className="mt-1 font-mono text-[13px] tracking-wide text-prt-muted transition-colors hover:text-accent"
-            >
-              info@politorocketteam.it
-            </a>
           </div>
         </DialogPrimitive.Content>
       </DialogPortal>

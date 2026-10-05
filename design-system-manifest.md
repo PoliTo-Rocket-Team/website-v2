@@ -179,8 +179,8 @@ right. There is no Apply and no Sign in on the bar: both are in the menu.
 the page). The page behind dims (`ground` at 55% and a slight blur). Top: the mark and a close
 icon. Then Projects, About, Outreach and Partners at 28px bold, each 66px tall over a
 `white-10` rule with a `RocketArrow`; the current page is `accent`. At the foot: the white
-"Apply to join" (`bg-prt-text`, full width), the outlined "Sign in" (`border-white-10`) and the
-contact email in mono `prt-muted`. It is the repo's Radix dialog (`components/ui/dialog`), so
+"Apply" (`bg-prt-text`, full width) and the outlined "Sign in" (`border-white-10`), with no
+email. It is the repo's Radix dialog (`components/ui/dialog`), so
 focus, Escape and scroll lock come with it; the slide in is off under reduced motion.
 
 **Brand:** the navbar logo is `prt-logo-white.svg` at 220px wide from md, and the mark on
