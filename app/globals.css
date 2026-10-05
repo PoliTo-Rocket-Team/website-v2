@@ -308,4 +308,23 @@
     backdrop-filter: blur(24px);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
+
+  /* Phone menu (board 24b): a full-height sidebar from the right. Darker
+   than the bar (ink at 70%) under the same 200deg sheen, blur 32px, a 1px
+   left edge and a shadow cast onto the dimmed page. */
+  .glass-sidebar {
+    background:
+      linear-gradient(
+        200deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.02) 50%,
+        rgba(255, 255, 255, 0.05)
+      ),
+      rgba(10, 10, 10, 0.7);
+    -webkit-backdrop-filter: blur(32px);
+    backdrop-filter: blur(32px);
+    box-shadow:
+      inset 1px 0 0 rgba(255, 255, 255, 0.18),
+      -16px 0 48px rgba(0, 0, 0, 0.5);
+  }
 }

@@ -79,14 +79,14 @@ Rules:
 - Patterns in code (`latest.tsx`, `projects.tsx`, `inside-team.tsx`, `partners.tsx`):
   - Eyebrow: `font-mono text-xs tracking-[0.3em] text-accent`, uppercase.
   - Section title (board 21: 48px, weight 700, line height 1.25, tracking -0.025em; board 24
-    phone: 32px): `text-[32px] md:text-[48px] font-bold leading-[1.25] tracking-[-0.025em]`.
+    phone: 26px): `text-[26px] md:text-[48px] font-bold leading-[1.25] tracking-[-0.025em]`.
   - Section intro: `text-[15px] md:text-[17px] leading-relaxed text-text-2`, right of the
     title from md, under it on phones.
   - Spec label / value on a project info box: `font-mono text-[10px] tracking-[0.2em]
     text-prt-muted` over `font-mono text-[13px] text-prt-text`.
 - Hero type is fixed in px on a 1440 x 900 board: title 90px extrabold, slogan 148px extrabold,
   body 22px, fact strip 11px mono (`hero.tsx`). On phones (board 24) the title is 30px, the
-  slogan 58px on two lines ("BORN FOR / SPACE") and the body 15px (`hero-phone.tsx`). Title and slogan words use `.hero-type`: a white
+  slogan 52px on two lines ("BORN FOR / SPACE") and the body 14px (`hero-phone.tsx`). Title and slogan words use `.hero-type`: a white
   to grey gradient clipped to text, with `drop-shadow` (not `text-shadow`), set on each animated
   word span, not the heading (`app/globals.css`, `handoff-hero-rocket.md` §5).
 - Site copy has no em dashes (HANDOFF, hard rules).
@@ -94,8 +94,8 @@ Rules:
 ## Spacing, layout, shape
 
 - Content width: `max-w-[1312px]` centred. Navbar and partner strip use `max-w-[1440px]`.
-- Section padding: `px-5 py-[72px] md:px-16 md:py-[120px]` (partners `md:py-[100px]`): board 24
-  gives phones 20px sides and 72px top and bottom. Sections below the hero have no borders
+- Section padding: `px-5 py-14 md:px-16 md:py-[120px]` (partners `md:py-[100px]`): board 24
+  gives phones 20px sides and 56px top and bottom. The apply band is `py-16` on phones. Sections below the hero have no borders
   between them and no background of their own: they sit on the page sky.
 - Section header: eyebrow and title left, intro or link right, `md:flex-row md:items-end`,
   then content at `mt-16`.
@@ -124,7 +124,7 @@ Rules:
 - From md the hero is a fixed 1440 x 900 board. It scales down only, by
   `min(1, vw/1440, vh/900)`. Section height is clamped to 900 to 1080 board px. An inline script
   sets `--hero-scale` and `--hero-h` before first paint (`hero.tsx`). Below md the hero is board
-  24's 760px frame, laid out from the 20px edges rather than scaled (`hero-phone.tsx`).
+  24's 650px frame, laid out from the 20px edges rather than scaled (`hero-phone.tsx`).
 
 ## Components
 
@@ -137,7 +137,8 @@ Rules:
 - Brand assets (board 21) are in `public/brand/` and `public/textures/`. The navbar and footer
   use `prt-logo-white.svg`; never recolour or stretch the logo. Project cards use
   `project-cavour.webp`, `project-ves.webp`, `project-efesto.webp`; the apply band uses
-  `apply-band.webp`; the footer uses `streaks.webp`. Photos use `next/image` with
+  `apply-band.webp`; the footer uses `streaks.webp`. The navbar on phones and the menu use
+  `prt-mark-white.svg`. Photos use `next/image` with
   `placeholder="blur"` from `news-blur.ts`.
 - Reach for an existing `components/ui/` primitive before writing a new control. Toasts go
   through `sonner` (`app/layout.tsx`).
@@ -166,13 +167,21 @@ All values from `tailwind.config.ts`, except the rocket rise, which is set on th
 Inside the team, Partners, Apply band, footer.
 
 **Navbar** (board 21): `.glass-bar`, fixed, 100px tall from md, logo, link row and actions
-in the board 04 places. Below lg the link row moves into a menu (the `components/ui`
-dropdown, its panel `.glass-info`), opened by a menu icon right of the actions (`navbar.tsx`,
-`nav-menu.tsx`).
+in the board 04 places. Below lg the link row moves into the menu (below), opened by a menu
+icon right of the actions (`navbar.tsx`).
 
 **Navbar on phones** (board 24, below md): the same glass bar, 64px tall, 20px side padding.
-The PRT mark only (`prt-mark-white.svg`, 32px tall) on the left; the white Apply pill and the
-menu icon on the right. Sign in moves into the menu with the links.
+The PRT mark only (`prt-mark-white.svg`, 32px tall) on the left and the menu icon on the
+right. There is no Apply and no Sign in on the bar: both are in the menu.
+
+**Menu** (board 24b, `nav-menu.tsx`): a sidebar from the right, 330px wide and full height,
+`.glass-sidebar` (ink at 70% under the 200deg sheen, blur 32px, a 1px left edge, a shadow onto
+the page). The page behind dims (`ground` at 55% and a slight blur). Top: the mark and a close
+icon. Then Projects, About, Outreach and Partners at 28px bold, each 66px tall over a
+`white-10` rule with a `RocketArrow`; the current page is `accent`. At the foot: the white
+"Apply to join" (`bg-prt-text`, full width), the outlined "Sign in" (`border-white-10`) and the
+contact email in mono `prt-muted`. It is the repo's Radix dialog (`components/ui/dialog`), so
+focus, Escape and scroll lock come with it; the slide in is off under reduced motion.
 
 **Brand:** the navbar logo is `prt-logo-white.svg` at 220px wide from md, and the mark on
 phones (above). The footer logo's left edge
@@ -195,10 +204,11 @@ without a line.
 - The belly light rises as the rocket climbs and fades once parked, driven by the rocket's
   screen height. Do not add a fixed fill lamp from below (`handoff-hero-rocket.md` §4).
 - No PNG fallback. Without WebGL the hero is text only.
-- Phones (board 24): the same sky, earth, stars, live rocket and entrance on the 760px frame.
-  Title at y≈126 (below the 64px bar), slogan at y250, earth from y300, the rocket climbing
-  right at about 21° with its nose near (315, 320), body copy from y584. No hairline or fact
-  strip. Only the frame that is showing mounts the rocket canvas.
+- Phones (board 24): the same sky, earth, stars, live rocket and entrance on the 650px frame.
+  Top to bottom: title at y≈113 (below the 64px bar), the rocket climbing right at about 21°
+  with its nose near (325, 182), then "BORN FOR / SPACE" right below the rocket at y≈384, then
+  the body copy from y≈510. The earth photo starts at y215, smaller than on desktop. No
+  hairline or fact strip. Only the frame that is showing mounts the rocket canvas.
 - Render budget: pixel ratio capped at 1.5, shadow map 1024 (`hero-rocket-3d.tsx`).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
@@ -208,33 +218,44 @@ built. Only the page sky passes `reducedMotion="still"`.
 
 **Latest:** featured card plus a three-row list, then a centred "All news" link. The cards are
 `.glass-card` with no texture of their own; the featured card keeps its inset photo
-(`latest.tsx`). Phones (board 24): one column, the featured card (24px title, photo 190px
-tall), then the three news cards stacked 28px apart, then "All news".
+(`latest.tsx`). Phones (board 24): one column, the featured card (20px title, photo 150px
+tall), then only the first news card (IREC 2025), 20px below, then "All news". The other two
+news cards are desktop-only (from md).
 
 **Projects:** exactly three cards, Cavour, VES and Efesto, with the board 21 data from
-`design/specs-from-old-site.md`, each on its texture, 618px tall (620px stacked full width on
-phones, board 24), with a `.glass-info` box inset 32px at the bottom (20px from lg to xl). Each card renders Cavour live in 3D. At rest it shows from the nose to
+`design/specs-from-old-site.md`, each on its texture, 618px tall, with a `.glass-info` box
+inset 32px at the bottom (20px from lg to xl). From md to lg the cards stack, 480px wide at
+most. Each card renders Cavour live in 3D. At rest it shows from the nose to
 mid-body above the info box. On hover the rocket rises 170px over 450ms ease-out and its nose
 leaves the card top; on leave it sinks back the same way. The rise is a CSS transform on the
 canvas wrapper, which hangs above and below the card and is clipped to the card's sides and
 bottom only. The vehicle and camera hold still in the scene. Under reduced motion there is no
 rise; only the glass edge brightens. At rest the nose sits about 30px below the card top and
-the flags show just above the info box, on phones too. The canvas takes no pointer events. No raycast hover
+the flags show just above the info box. The canvas takes no pointer events. No raycast hover
 (`projects.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
 `rocket-card-3d.tsx`, not the JSX. Any new vehicle model follows
 `.claude/skills/rocket-surface/`.
+Phones (board 24): the cards sit side by side in a horizontal swipe row (`swipe-row.tsx`),
+210 x 360 each, 10px apart, scroll-snap to the 20px page edge, the next card peeking, and
+pager dots below (the current one an 18px pill). The row bleeds to the screen edges. The
+card scales down: 14px insets, a 24px name, 11px description, 8px / 10px spec labels and
+values. The rocket keeps the nose-to-mid-body framing, its nose about 20px below the card top.
+Phone copy is shorter (`phone` text in `projects.tsx`): VES "130 mm, all-SRAD systems. Mark II
+won Design & Build at IREC 2025.", years "24–25", Cavour motor "Solid L", VES "MARKS" "Mk I–II",
+Efesto fuel "Ethanol".
 
 **Inside the team:** four figures, then four `.glass-card` link cards. Phones (board 24):
 figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
 (`inside-team.tsx`).
 
-**Partners:** no box and no fill; the page sky shows behind the logos. On phones: heading,
-"Become a partner", then the marquee. Full-colour logos,
+**Partners:** no box and no fill; the page sky shows behind the logos. On phones (board 24):
+26px heading, "Become a partner", then the logos at half size (25px, the Sophia mark 38px) in
+a 56px marquee. Full-colour logos,
 never greyscale. Right-to-left loop, 40s, paused on hover and still under reduced motion,
 edges faded with a mask. Each logo is a link (`partners.tsx`, HANDOFF).
 
 **Apply band** (board 21): `bg-accent` (`#FF5E00`) with `public/textures/apply-band.webp` on
-top in multiply at 60%. Eyebrow "APPLY · 2025/26"; headline "Build the / next one with us." at
+top in multiply at 60%. Eyebrow just "APPLY", with no year, at every width; headline "Build the / next one with us." at
 80px, weight 800, vertically centred against the right block; body at 22px, then the inverted
 "Apply to join" button. There is no open-positions count (`apply-band.tsx`). Phones (board
 24): stacked, a 44px heading ("Build the next / one with us."), body 17px, and a full-width

@@ -9,17 +9,16 @@ import { NavMenu, type NavLink } from "./nav-menu";
 // edge (`.glass-bar`); its contents stay on the 1440 board's columns.
 //
 // Board 24 (phone, below md): a 64px bar with 20px sides, the PRT mark only
-// (32px tall), then the Apply pill and a menu icon. The links and Sign in
-// move into the menu. From md to lg the menu also stands in for the link
-// row, which does not clear the logo yet; Sign in is back on the bar there.
+// (32px tall) and a menu icon. No Apply or Sign in on the bar: both live in
+// the board 24b sidebar with the links (nav-menu.tsx). From md to lg the menu
+// also stands in for the link row, which does not clear the logo yet; Apply
+// and Sign in are back on the bar there.
 const links: NavLink[] = [
   { href: "/projects", label: "Projects" },
   { href: "/about/the-team", label: "About" },
   { href: "/outreach", label: "Outreach" },
   { href: "/partners", label: "Partners" },
 ];
-
-const menuLinks: NavLink[] = [...links, { href: "/sign-in", label: "Sign in", phoneOnly: true }];
 
 export function LandingNavbar() {
   return (
@@ -56,10 +55,10 @@ export function LandingNavbar() {
           ))}
         </nav>
 
-        <div className="absolute right-5 top-3 flex items-center gap-1.5 md:right-[64px] md:top-[35px] md:gap-3">
+        <div className="absolute right-5 top-3 flex items-center md:right-[64px] md:top-[35px] md:gap-3">
           <Link
             href="/apply"
-            className="rounded-full bg-prt-text px-[18px] py-[5px] text-[15px] font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80 md:px-6 md:py-2.5"
+            className="hidden rounded-full bg-prt-text px-6 py-2.5 text-[15px] font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80 md:inline-block"
           >
             Apply
           </Link>
@@ -69,7 +68,7 @@ export function LandingNavbar() {
           >
             Sign in
           </Link>
-          <NavMenu links={menuLinks} className="-mr-2 lg:hidden" />
+          <NavMenu links={links} className="-mr-2 lg:hidden" />
         </div>
       </div>
     </header>

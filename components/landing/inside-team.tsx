@@ -19,15 +19,15 @@ const routes = [
 
 export function InsideTeam() {
   return (
-    // Board 24 below md: 20px sides, 72px top and bottom, 32px heading,
+    // Board 24 below md: 20px sides, 56px top and bottom, 26px heading,
     // figures 2 x 2 with 52px numbers (each under its own rule), link cards
     // stacked.
-    <section className="px-5 py-[72px] md:px-16 md:py-[120px]">
+    <section className="px-5 py-14 md:px-16 md:py-[120px]">
       <div className="mx-auto max-w-[1312px]">
-        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end md:gap-8">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end md:gap-8">
           <div>
             <p className="font-mono text-xs tracking-[0.3em] text-accent">INSIDE THE TEAM</p>
-            <h2 className="mt-4 text-[32px] font-bold leading-[1.25] tracking-[-0.025em] md:max-w-[16ch] md:text-[48px]">
+            <h2 className="mt-4 text-[26px] font-bold leading-[1.25] tracking-[-0.025em] md:max-w-[16ch] md:text-[48px]">
               Who&apos;s behind the rockets.
             </h2>
           </div>

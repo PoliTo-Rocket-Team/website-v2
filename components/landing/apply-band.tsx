@@ -3,11 +3,12 @@ import Link from "next/link";
 
 // Board 21, apply band: the accent with the apply-band texture multiplied on
 // top at 60%. The headline is centred against the right block, which is the
-// taller of the two. Board 24 below md: stacked, 20px sides, 72px top and
-// bottom, a 44px heading and a full-width "Apply to join" button.
+// taller of the two. The eyebrow is just "APPLY", with no year, at every
+// width. Board 24 below md: stacked, 20px sides, 64px top and bottom, a 44px
+// heading and a full-width "Apply to join" button.
 export function ApplyBand() {
   return (
-    <section className="relative isolate overflow-hidden bg-accent px-5 py-[72px] text-accent-on-accent md:px-16 md:py-[120px]">
+    <section className="relative isolate overflow-hidden bg-accent px-5 py-16 text-accent-on-accent md:px-16 md:py-[120px]">
       <Image
         src="/textures/apply-band.webp"
         alt=""
@@ -17,7 +18,7 @@ export function ApplyBand() {
       />
       <div className="mx-auto flex max-w-[1312px] flex-col justify-between gap-6 md:gap-12 lg:flex-row lg:items-center">
         <div className="lg:shrink-0">
-          <p className="font-mono text-xs tracking-[0.3em]">APPLY · 2025/26</p>
+          <p className="font-mono text-xs tracking-[0.3em]">APPLY</p>
           <h2 className="mt-4 text-[44px] font-extrabold leading-[0.95] tracking-[-0.035em] md:text-6xl md:leading-[0.95] xl:text-[80px]">
             Build the
             <br className="hidden md:inline" /> next one with us.

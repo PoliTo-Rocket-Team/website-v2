@@ -128,8 +128,8 @@ export function Hero() {
   return (
     <section
       ref={sectionRef}
-      // Board 24 below md is a 760px frame; from md the board 21 height rules.
-      className="relative flex h-[760px] justify-center overflow-hidden md:h-[var(--hero-h,min(100vh,1080px))]"
+      // Board 24 below md is a 650px frame; from md the board 21 height rules.
+      className="relative flex h-[650px] justify-center overflow-hidden md:h-[var(--hero-h,min(100vh,1080px))]"
       // #010101 = the earth photo's measured sky color, so the sky above/beside
       // the photo is identical to the photo's own black (bg-ground would read
       // a touch grayer); the scrim still ends solid ground color at the bottom
