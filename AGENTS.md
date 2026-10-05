@@ -28,6 +28,11 @@ Tailwind 3. Local email goes through Mailpit (`mailpit/`).
   (`id`, `title`, `status`) are the index. Read the records that govern a choice before changing
   it, and record a new decision with the `adr` skill. CI reds a duplicate id or a filename that
   disagrees with its frontmatter (`pnpm exec fabrika guard decisions-index validate`).
+- Use the definitions in [.glossary/TERMS.md](.glossary/TERMS.md) (domain nouns) and
+  [.glossary/LANGUAGE.md](.glossary/LANGUAGE.md) (architecture terms) when you name or change a
+  concept. Update them with the `glossary` skill when a name is coined or redefined.
+- Before a change, read the rows of [.patterns/index.md](.patterns/index.md) that match it, and
+  follow the docs they link. Update a doc when your change moves the shape it describes.
 - Rendered UI follows [design-system-manifest.md](design-system-manifest.md). Its source is the
   Pencil design in `design/` (`prt-website.pen` plus `HANDOFF.md`). Open `.pen` files only
   through the Pencil MCP tools.
@@ -76,4 +81,6 @@ Keep each fact in the document that owns it, and link to it from elsewhere.
 | [ROADMAP.md](ROADMAP.md) | Arcs and campaigns, each pinned to a milestone that triage homes issues on |
 | [design-system-manifest.md](design-system-manifest.md) | Rendered UI law |
 | `.decisions/` | Decisions, their rationale and history |
+| [.glossary/](.glossary/TERMS.md) | Canonical terms: domain nouns in `TERMS.md`, architecture terms in `LANGUAGE.md` |
+| [.patterns/](.patterns/index.md) | How the code is shaped today, and when to read each pattern |
 | [mailpit/EMAIL_SETUP.md](mailpit/EMAIL_SETUP.md) | Local email testing |
