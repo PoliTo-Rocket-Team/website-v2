@@ -19,25 +19,27 @@ const HALF = LENGTH / 2;
 // Camera sits high and in front, tipped down at the upper body, and never
 // moves. The nozzle and lower hull are deliberately out of frame: the whole
 // vehicle is already on the hero, so the card is a detail shot. The target
-// follows the 16° lean, or the body drifts out of frame as it rises.
-const EYE = new THREE.Vector3(5.1, 20.2, 28.4);
+// follows the 16° lean. The canvas hangs well above and below the card, so
+// the camera stands back along the same line of sight (VIEW_DISTANCE) to keep
+// the vehicle at card scale.
 const TARGET = new THREE.Vector3(2.3, 8, 0);
+const VIEW_DIRECTION = new THREE.Vector3(2.8, 12.2, 28.4);
+const VIEW_DISTANCE = 3.5;
+const EYE = TARGET.clone().addScaledVector(VIEW_DIRECTION, VIEW_DISTANCE);
+/** Vertical field of view, in degrees, over the whole hanging canvas. */
+const FOV = 30;
 
-// Hover pivots the vehicle itself: a turn about X swings the nose off vertical
-// and round to face the viewer. The camera holds still — dollying the whole
-// rocket forward instead only makes it bigger, which is not the same thing.
-// It also rises far enough that the nose clears the top of the card; the canvas
-// is taller than the card and the card does not clip its top, so there is room.
-const TURN = 0.62; // radians, ~35° of nose-toward-camera
-const PARKED_Y = -5; // sits the nose clear of the card's top edge at rest
+// The vehicle holds still in the scene. The card's hover rise is a CSS
+// transform on the canvas wrapper (projects.tsx), so its distance and timing
+// are exact in px and ms. The parked pose shows the vehicle from the nose to
+// mid-body above the card's info box.
+const PARKED_Y = 3;
 const PARKED_Z = -6; // pushed back from the camera, so it reads a little smaller
-const RISE = 8; // climbs clear of the card's top edge and over the heading
 // How far off vertical the vehicle leans its nose to the right, in radians.
 // The lean swings the tail left, so PARKED_X shifts the whole vehicle back
-// right; without it the near fins leave the frame once the rocket rises.
+// right.
 const LEAN = 0.2;
 const PARKED_X = 1.2;
-const EASE = 1.4; // lower is slower; this settles over roughly two seconds
 
 // The card is a close-up, so the hero's wear noise is rescaled: finer grain
 // and lower contrast, or it reads as dashes and static at this pixel size.
@@ -49,12 +51,10 @@ const REDUCED =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function Vehicle({ hovered }: { hovered: boolean }) {
+function Vehicle() {
   const group = useRef<THREE.Group>(null!);
   /** The group the vehicle sits in directly: its frame IS rocket space. */
   const frame = useRef<THREE.Group>(null!);
-  /** 0 parked, 1 fully hovered. Eased every frame. */
-  const t = useRef(0);
   const weather = useMemo<WeatherUniforms>(
     () => ({
       uRocketInv: { value: new THREE.Matrix4() },
@@ -70,18 +70,13 @@ function Vehicle({ hovered }: { hovered: boolean }) {
     [],
   );
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     if (!group.current) return;
-    // One eased value drives both the turn and the climb, so they arrive
-    // together. Frame-rate independent, and slow enough to read as heavy
-    // machinery rather than a UI flick.
-    const want = hovered && !REDUCED ? 1 : 0;
-    t.current += (want - t.current) * (1 - Math.exp(-EASE * delta));
-    // Barely-there drift on top, same intent as the hero's: keeps it from
-    // reading as a sticker without ever becoming a bounce.
+    // Barely-there drift, same intent as the hero's: keeps it from reading as
+    // a sticker without ever becoming a bounce.
     const drift = REDUCED ? 0 : Math.sin(state.clock.elapsedTime * 0.5) * 0.04;
-    group.current.rotation.x = t.current * TURN + drift;
-    group.current.position.y = PARKED_Y + t.current * RISE;
+    group.current.rotation.x = drift;
+    group.current.position.y = PARKED_Y;
     group.current.position.x = PARKED_X;
     group.current.position.z = PARKED_Z;
     // Pin the procedural wear to the hull through the lean, turn and climb.
@@ -144,7 +139,6 @@ export default function RocketCard3D() {
   // and compiled its shaders on page load, under the hero's own entrance,
   // which is where the first-load stutter came from (issue #29).
   const [mounted, setMounted] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const [tuning, setTuning] = useState(false);
   const [readout, setReadout] = useState("");
 
@@ -173,28 +167,18 @@ export default function RocketCard3D() {
     );
     near.observe(el);
 
-    // Hover is read off the card rather than passed in, so the card itself can
-    // stay a server component.
-    const card = el.closest("article");
-    const enter = () => setHovered(true);
-    const leave = () => setHovered(false);
-    card?.addEventListener("pointerenter", enter);
-    card?.addEventListener("pointerleave", leave);
-
     return () => {
       io.disconnect();
       near.disconnect();
-      card?.removeEventListener("pointerenter", enter);
-      card?.removeEventListener("pointerleave", leave);
     };
   }, []);
 
   return (
-    // Taller than the card and hanging over its top edge, so the rocket has
-    // somewhere to climb into. The card's render zone does not clip its top.
+    // Fills the wrapper the card gives it, which hangs over the card's top
+    // edge so the rocket has somewhere to rise into (projects.tsx).
     // The canvas starts invisible and RevealOnFirstFrame shows it once it has
     // actually drawn; see reveal-on-first-frame.tsx for why.
-    <div ref={wrapRef} className="pointer-events-none absolute inset-x-0 -top-64 bottom-0 [&_canvas]:opacity-0">
+    <div ref={wrapRef} className="pointer-events-none absolute inset-0 [&_canvas]:opacity-0">
       {supported && mounted && (
         <Canvas
           // "demand" rather than "never" while off screen: "never" leaves the
@@ -204,7 +188,7 @@ export default function RocketCard3D() {
           dpr={[1, 1.5]}
           resize={{ offsetSize: true }}
           gl={{ alpha: true, antialias: true }}
-          camera={{ fov: 30, near: 1, far: 200, position: [EYE.x, EYE.y, EYE.z] }}
+          camera={{ fov: FOV, near: 1, far: 200, position: [EYE.x, EYE.y, EYE.z] }}
           // The canvas is taller than the card and hangs over its top edge, so
           // it must never take pointer events: hover belongs to the card, and
           // the part of the rocket sticking out above it is not a hover target.
@@ -228,7 +212,7 @@ export default function RocketCard3D() {
               environmentIntensity={0.45}
               environmentRotation={[-Math.PI / 2, 0, 0]}
             />
-            <Vehicle hovered={hovered} />
+            <Vehicle />
           </Suspense>
         </Canvas>
       )}

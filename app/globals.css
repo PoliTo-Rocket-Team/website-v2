@@ -132,3 +132,144 @@
      down-left in the same 3:4 ratio. */
   filter: drop-shadow(-3px 4px 16px rgba(0, 0, 0, 0.65));
 }
+
+/* Components layer, so a utility on the same element (absolute, a radius)
+   still wins over these defaults. */
+@layer components {
+  /* Page sky (board 21): the one background behind every section from below
+   the hero to the apply band. Ground, soft diagonal light streaks and a fine
+   grain, at about 16% strength; the stars are a Starfield on top
+   (app/page.tsx). Drawn in code so it has no fixed height: both streak layers
+   are repeating gradients and the grain is a stitched SVG tile, so the
+   pattern is periodic and shows no seam however tall the page grows. The top
+   fades in so the hero's own scrim meets it without a line.
+   public/textures/streaks.webp is the reference crop for the look, not an
+   asset of this layer. */
+  .page-sky-light {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .12 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+      repeating-linear-gradient(
+        112deg,
+        rgba(255, 255, 255, 0) 0px,
+        rgba(255, 255, 255, 0.045) 220px,
+        rgba(255, 255, 255, 0) 460px,
+        rgba(255, 255, 255, 0) 760px
+      ),
+      repeating-linear-gradient(
+        101deg,
+        rgba(0, 0, 0, 0) 0px,
+        rgba(0, 0, 0, 0.35) 300px,
+        rgba(0, 0, 0, 0) 620px,
+        rgba(255, 255, 255, 0.03) 900px,
+        rgba(0, 0, 0, 0) 1180px
+      );
+    background-size:
+      180px 180px,
+      auto,
+      auto;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
+  }
+
+  /* Liquid glass (board 21 spec table). Every glass surface draws its edge as
+   a gradient ring on ::before: padding sets the ring width and the mask cuts
+   the inside out, so the fill under it stays see-through. The rgba whites and
+   blacks here are the spec's own values, recorded as an exception in
+   design-system-manifest.md. */
+  .glass-card,
+  .glass-info,
+  .glass-project {
+    position: relative;
+  }
+  .glass-card::before,
+  .glass-info::before,
+  .glass-project::before,
+  .glass-project::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    padding: var(--glass-edge-width, 1px);
+    background: var(--glass-edge);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+    pointer-events: none;
+  }
+
+  /* Track record and team cards. */
+  .glass-card {
+    --glass-edge: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.2),
+      rgba(255, 255, 255, 0.04)
+    );
+    background: rgba(255, 255, 255, 0.03);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  /* The project card edge, shared by the card and its info box. */
+  .glass-project,
+  .glass-info {
+    --glass-edge: linear-gradient(
+      215deg,
+      rgba(255, 255, 255, 0.7),
+      rgba(255, 255, 255, 0.2) 30%,
+      rgba(255, 255, 255, 0.05) 55%,
+      rgba(255, 255, 255, 0.15) 80%,
+      rgba(255, 255, 255, 0.5)
+    );
+  }
+
+  /* Project card: the texture is the fill, so only the edge and the shadows
+   are glass. On hover the edge brightens: a second, brighter ring fades in
+   over the first, because a gradient cannot transition. That is the one hover
+   change left under reduced motion. */
+  .glass-project {
+    --glass-edge-width: 1.5px;
+    box-shadow:
+      inset 0 1px 2px rgba(255, 255, 255, 0.25),
+      0 16px 40px rgba(0, 0, 0, 0.6);
+  }
+  .glass-project::after {
+    background: linear-gradient(
+      215deg,
+      rgba(255, 255, 255, 0.95),
+      rgba(255, 255, 255, 0.45) 30%,
+      rgba(255, 255, 255, 0.2) 55%,
+      rgba(255, 255, 255, 0.35) 80%,
+      rgba(255, 255, 255, 0.8)
+    );
+    opacity: 0;
+    transition: opacity 300ms ease-out;
+  }
+  .glass-project:hover::after {
+    opacity: 1;
+  }
+
+  /* Project info box. Efesto's texture is bright grey, so its card sets
+   --glass-tint darker to keep the text readable. */
+  .glass-info {
+    background:
+      linear-gradient(
+        200deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.02) 50%,
+        rgba(255, 255, 255, 0.05)
+      ),
+      rgba(10, 10, 10, var(--glass-tint, 0.6));
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+}

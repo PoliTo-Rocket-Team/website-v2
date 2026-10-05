@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { RocketArrow } from "./rocket-arrow";
 
-// Board 08 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on hover.
+// Board 08 / 21 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on hover.
 // Full-color logos (grayscale was explicitly rejected). Edge fade masks on site only.
 // Static list for now; partners will come from the database, with real URLs.
 // Every logo is a link; "#" stands in until the URLs exist.
@@ -46,17 +46,18 @@ function LogoItem({ logo }: { logo: Logo }) {
 export function Partners() {
   const loop = [...logos, ...logos];
   return (
-    <section className="border-t border-hairline px-0 py-24">
+    // No box and no fill: the page sky shows behind the logo strip.
+    <section className="px-0 py-[100px]">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col justify-between gap-8 px-6 md:flex-row md:items-end md:px-16">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-accent">PARTNERS</p>
-          <h2 className="mt-4 text-4xl font-bold leading-tight tracking-tight md:text-5xl">
+          <h2 className="mt-4 text-4xl font-bold leading-[1.25] tracking-[-0.025em] md:text-[48px]">
             Their logos fly with the rocket.
           </h2>
         </div>
         <a
           href="mailto:info@politorocketteam.it"
-          className="group inline-flex shrink-0 items-center gap-3 font-mono text-sm tracking-wide text-text-2 transition-colors hover:text-accent"
+          className="group inline-flex shrink-0 items-center gap-3 font-mono text-base text-prt-text transition-colors hover:text-accent"
         >
           Become a partner
           <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
@@ -64,7 +65,7 @@ export function Partners() {
       </div>
 
       <div className="group relative mt-14 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]">
-        <div className="flex w-max animate-marquee items-center group-hover:[animation-play-state:paused]">
+        <div className="flex w-max animate-marquee items-center motion-reduce:animate-none group-hover:[animation-play-state:paused]">
           {loop.map((logo, i) => (
             <LogoItem key={i} logo={logo} />
           ))}

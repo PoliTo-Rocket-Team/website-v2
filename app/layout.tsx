@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Archivo, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { brand } from "@/lib/brand-colors";
 
 const defaultUrl =
   process.env.BETTER_AUTH_URL ??
@@ -36,8 +37,8 @@ export default function RootLayout({
     // Background on <html>, not just <body>: on reload the browser paints the
     // root before the stylesheet lands, and its default is white. That white
     // shows through every transparent canvas for a frame. The colour is the
-    // `ground` token from tailwind.config.ts.
-    <html lang="en" suppressHydrationWarning style={{ background: "#0B0B0C", colorScheme: "dark" }}>
+    // `ground` token, read from the module tailwind.config.ts builds it from.
+    <html lang="en" suppressHydrationWarning style={{ background: brand.ground, colorScheme: "dark" }}>
       <body className={`${archivo.variable} ${geistMono.variable} bg-ground text-prt-text font-display antialiased`}>
         <ThemeProvider
           attribute="class"

@@ -6,18 +6,30 @@ import { InsideTeam } from "@/components/landing/inside-team";
 import { Partners } from "@/components/landing/partners";
 import { ApplyBand } from "@/components/landing/apply-band";
 import { LandingFooter } from "@/components/landing/footer";
+import { Starfield } from "@/components/landing/starfield";
 
-// Approved landing page per Pencil boards 04 → 10 (HANDOFF.md).
+// Approved landing page per Pencil board 21 ("Home v3, footer background
+// throughout"). One drawn sky runs behind every section from below the hero
+// to the apply band; the sections inside it paint no background of their own.
 export default function LandingPage() {
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
       <main>
         <Hero />
-        <Latest />
-        <Projects />
-        <InsideTeam />
-        <Partners />
+        <div className="relative isolate">
+          <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
+            <div className="page-sky-light" />
+            {/* The footer's starfield, without its shooting star. Stars are
+                placed in percent, so the count is sized for the sky's usual
+                height of about 3600px. */}
+            <Starfield count={150} seed={31} twinkleEvery={9} className="top-[240px]" />
+          </div>
+          <Latest />
+          <Projects />
+          <InsideTeam />
+          <Partners />
+        </div>
         <ApplyBand />
       </main>
       <LandingFooter />

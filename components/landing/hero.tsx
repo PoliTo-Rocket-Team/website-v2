@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { brand } from "@/lib/brand-colors";
 import { Starfield } from "./starfield";
 
 const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
@@ -142,13 +143,13 @@ export function Hero() {
 
         {/* Scrim, anchored from the bottom (px stops = design's 100%/80%/45%
             of the 900 board); above 900px from the bottom it holds the light
-            #0B0B0C66 wash the design has at the top */}
+            40% ground wash the design has at the top. It ends on the ground
+            token, so the hero meets the page background with no line. */}
         <div
           className="absolute left-1/2 top-0 h-full -translate-x-1/2"
           style={{
             width: EARTH_W,
-            background:
-              "linear-gradient(to top, #0B0B0C 0px, #0B0B0CB3 180px, #0B0B0C1A 495px, #0B0B0C66 900px)",
+            background: `linear-gradient(to top, ${brand.ground} 0px, ${brand.ground}B3 180px, ${brand.ground}1A 495px, ${brand.ground}66 900px)`,
           }}
         />
 
