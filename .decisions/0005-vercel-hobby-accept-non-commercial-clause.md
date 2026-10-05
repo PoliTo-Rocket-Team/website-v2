@@ -1,3 +1,10 @@
+---
+id: 0005
+title: "Stay on Vercel Hobby and knowingly accept its non-commercial clause, never pay to dodge it"
+status: accepted
+date: 2026-09-18
+---
+
 # 0005 — Stay on Vercel Hobby and knowingly accept its non-commercial clause, never pay to dodge it
 
 **What this decides:** Hosting was re-opened on 2026-09-18 because the team has no budget and Cloudflare looked cheaper. It isn't. We stay where we are, on the free plan, with our eyes open about the one term that could bite us.

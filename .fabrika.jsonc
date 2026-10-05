@@ -1,4 +1,5 @@
 {
+  "$schema": "./.fabrika.schema.json",
   // fabrika's per-repo settings. Every key left out falls to fabrika's shipped
   // default; `fabrika status settings --surfaces` prints what this repo runs on.
 
@@ -43,7 +44,27 @@
 
   // Files that change how the pipeline itself behaves. A diff touching one
   // owes a governance verdict, and CODEOWNERS names who approves it.
-  "governedRoots": [".decisions/", ".claude/settings.json", ".github/", ".fabrika.jsonc", "CLAUDE.md"],
+  "governedRoots": [
+    ".decisions/",
+    ".claude/settings.json",
+    ".github/",
+    ".fabrika.jsonc",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "design-system-manifest.md",
+    "lefthook.yml"
+  ],
+
+  // Names that mean something only here; the portability guard keeps them out
+  // of Fabrika's own shipped text.
+  "portability": { "repoNames": ["website-v2", "PoliTo-Rocket-Team", "hueypov", "nothueypov"] },
+
+  // `build check` runs these on a diff that touches the file each one reads,
+  // so a hooks-only or config-only change can go green.
+  "configValidators": [
+    { "command": ["pnpm", "exec", "lefthook", "validate"], "reads": ["lefthook.yml"] },
+    { "command": ["pnpm", "exec", "fabrika", "status", "settings", "--json"], "reads": [".fabrika.jsonc"] }
+  ],
 
   // Every issue homes on a milestone pinned in ROADMAP.md; no standing lanes.
   "boardVocabulary": { "standingLanes": [] },

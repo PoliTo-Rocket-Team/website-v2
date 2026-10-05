@@ -19,15 +19,18 @@ Tailwind 3. Local email goes through Mailpit (`mailpit/`).
   needs `DATABASE_URL`.
 - Another session may share this checkout. Run `git branch --show-current` before editing, and
   leave the branch where you found it.
+- An agent lane works in its own linked worktree. Lefthook's post-checkout hook
+  ([lefthook.yml](lefthook.yml)) sets it up: it links `.env` and `.env.local` from the main
+  checkout and runs `pnpm install`. `pnpm install` in the main checkout installs the hook.
 - The default branch is `dev`; pull requests target it. Branches you create by hand start with
   `huey/`. Fabrika lanes name their own branches.
 - Decisions live in `.decisions/` as `NNNN-slug.md`. Filenames plus each record's frontmatter
   (`id`, `title`, `status`) are the index. Read the records that govern a choice before changing
-  it, and record a new decision with the `adr` skill. Records 0001–0005 exist on the unmerged
-  `huey/landing-page` branch; take the next free number after them.
+  it, and record a new decision with the `adr` skill. CI reds a duplicate id or a filename that
+  disagrees with its frontmatter (`pnpm exec fabrika guard decisions-index validate`).
 - Rendered UI follows [design-system-manifest.md](design-system-manifest.md). Its source is the
-  Pencil design in `design/` (`prt-website.pen` plus `HANDOFF.md`, arriving with
-  `huey/landing-page`). Open `.pen` files only through the Pencil MCP tools.
+  Pencil design in `design/` (`prt-website.pen` plus `HANDOFF.md`). Open `.pen` files only
+  through the Pencil MCP tools.
 
 ## Work flows through Fabrika
 

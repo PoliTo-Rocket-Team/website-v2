@@ -10,5 +10,24 @@
 	},
 	"enabledPlugins": {
 		"fabrika@kampus": true
+	},
+	"permissions": {
+		"allow": [
+			"Bash(fabrika build *)",
+			"Bash(fabrika lane *)"
+		]
+	},
+	"hooks": {
+		"WorktreeCreate": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "fabrika hook worktree-create",
+						"timeout": 600
+					}
+				]
+			}
+		]
 	}
 }

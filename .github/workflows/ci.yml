@@ -3,10 +3,14 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [dev]
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   typecheck:
@@ -16,7 +20,13 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
+      # Installs the fabrika version package.json pins, so CI runs the same
+      # guard a local `pnpm exec fabrika` runs.
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc --noEmit
+      - name: Validate the ADR corpus
+        env:
+          FABRIKA_GLOBAL_WARNING_DISABLED: "1"
+        run: pnpm exec fabrika guard decisions-index validate

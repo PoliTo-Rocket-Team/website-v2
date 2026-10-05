@@ -1,3 +1,10 @@
+---
+id: 0004
+title: "Hero entrance choreography"
+status: accepted
+date: 2026-09-18
+---
+
 # 0004 — Hero entrance choreography
 
 **What this decides:** How the landing hero animates on load — ruled by the founder

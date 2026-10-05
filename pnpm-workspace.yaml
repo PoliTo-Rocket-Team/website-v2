@@ -3,3 +3,7 @@ ignoredBuiltDependencies:
   - sharp
 
 onlyBuiltDependencies:
+  # fabrika-cli's postinstall downloads a browser for `review-ui render`;
+  # lefthook's installs its binary.
+  - '@kampus/fabrika-cli'
+  - lefthook

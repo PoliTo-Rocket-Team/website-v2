@@ -1,3 +1,10 @@
+---
+id: 0002
+title: "Deploy on Vercel Hobby; keep the app host-agnostic so Netlify or self-hosting stays a config change"
+status: accepted
+date: 2026-08-24
+---
+
 # 0002 — Deploy on Vercel Hobby; keep the app host-agnostic so Netlify or self-hosting stays a config change
 
 **What this decides:** Vercel's free tier is the deploy target today. App code must never import anything host-specific, so a move to Netlify or a self-hosted Node server is a config/deploy-pipeline change only.

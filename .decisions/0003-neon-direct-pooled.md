@@ -1,3 +1,10 @@
+---
+id: 0003
+title: "Neon Postgres direct with pooled connections; no host-managed Postgres"
+status: accepted
+date: 2026-08-24
+---
+
 # 0003 — Neon Postgres direct with pooled connections; no host-managed Postgres
 
 **What this decides:** The database stays Neon Postgres accessed directly from the app — never through Vercel/Netlify-managed Postgres integrations — over a pooled connection string.

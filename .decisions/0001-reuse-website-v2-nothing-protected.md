@@ -1,3 +1,10 @@
+---
+id: 0001
+title: "Reuse website-v2 as the base; every line of it is changeable"
+status: accepted
+date: 2026-08-24
+---
+
 # 0001 — Reuse website-v2 as the base; every line of it is changeable
 
 **What this decides:** The redesign happens inside the existing website-v2 repo rather than a fresh scaffold — but as a convenience of history, not a preservation order: any file, dependency, schema or convention in it may be rewritten, replaced or deleted when the new design calls for it.
