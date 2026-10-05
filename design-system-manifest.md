@@ -290,8 +290,9 @@ stacked.
 4. Hover uses the 300ms ease-out pattern (the project rocket rise is 450ms); links use
    `RocketArrow`.
 5. The hero still follows ADR 0004: once, no pinning, no replay, no shake, no PNG.
-6. Sections below the hero paint no background of their own; the page sky is drawn in code;
-   the shooting star appears only in the footer.
+6. Sections below the hero paint no background of their own; the page sky is the repeating
+   streak tile plus the code-drawn grain, never one tall image; the shooting star appears only
+   in the footer.
 7. Any canvas uses `RevealOnFirstFrame`; there is no white flash on reload.
 8. Reduced motion leaves no moving part in the change.
 9. The change renders at 1440 x 900 and scales down without showing the next section.
