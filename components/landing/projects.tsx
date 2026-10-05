@@ -82,7 +82,7 @@ const projects: Project[] = [
 
 function ProjectCard({ project }: { project: Project }) {
   return (
-    <article className="glass-project group relative mx-auto h-[618px] w-full max-w-[480px] rounded-2xl hover:z-10 lg:max-w-none">
+    <article className="glass-project group relative mx-auto h-[620px] w-full max-w-[480px] rounded-2xl hover:z-10 md:h-[618px] lg:max-w-none">
       {/* Texture: clipped to the card's corners on its own layer, because the
           card itself must not clip the rocket's nose. */}
       <div className="absolute inset-0 overflow-hidden rounded-2xl">
@@ -106,7 +106,7 @@ function ProjectCard({ project }: { project: Project }) {
       </div>
 
       {/* Top row */}
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between p-6 md:p-8">
+      <div className="absolute inset-x-0 top-0 flex items-center justify-between p-8">
         <span className="font-mono text-[13px] tracking-[0.15em] text-prt-text/70">
           {project.num} · {project.year}
         </span>
@@ -119,24 +119,24 @@ function ProjectCard({ project }: { project: Project }) {
 
       {/* Info box */}
       <div
-        className="glass-info absolute inset-x-5 bottom-5 rounded-xl p-6 xl:inset-x-8 xl:bottom-8"
+        className="glass-info absolute inset-x-8 bottom-8 rounded-xl px-6 pb-5 pt-[26px] lg:inset-x-5 lg:bottom-5 xl:inset-x-8 xl:bottom-8"
         style={
           project.infoTint
             ? ({ "--glass-tint": project.infoTint } as React.CSSProperties)
             : undefined
         }
       >
-        <h3 className="text-[40px] font-extrabold leading-none tracking-[-0.02em] xl:text-[48px]">
+        <h3 className="text-[48px] font-extrabold leading-none tracking-[-0.02em] lg:text-[40px] xl:text-[48px]">
           {project.name}
         </h3>
-        <p className="mt-5 text-[15px] leading-normal text-prt-text/90 xl:text-base">
+        <p className="mt-4 text-[15px] leading-[23px] text-prt-text/90 xl:text-base">
           {project.desc}
         </p>
         <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-white-10 pt-4">
           {project.specs.map((s) => (
             <div key={s.label}>
               <dt className="font-mono text-[10px] tracking-[0.2em] text-prt-muted">{s.label}</dt>
-              <dd className="mt-1.5 whitespace-nowrap font-mono text-[13px] text-prt-text">
+              <dd className="mt-1.5 font-mono md:whitespace-nowrap text-[13px] text-prt-text">
                 {s.value}
               </dd>
             </div>
@@ -149,12 +149,14 @@ function ProjectCard({ project }: { project: Project }) {
 
 export function Projects() {
   return (
-    <section className="px-6 py-[120px] md:px-16">
+    // Board 24 below md: 20px sides, 72px top and bottom, 32px heading, cards
+    // stacked full width at 620px.
+    <section className="px-5 py-[72px] md:px-16 md:py-[120px]">
       <div className="mx-auto max-w-[1312px]">
-        <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
+        <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end md:gap-8">
           <div>
             <p className="font-mono text-xs tracking-[0.3em] text-accent">PROJECTS</p>
-            <h2 className="mt-4 text-4xl font-bold leading-[1.25] tracking-[-0.025em] md:text-[48px]">
+            <h2 className="mt-4 text-[32px] font-bold leading-[1.25] tracking-[-0.025em] md:text-[48px]">
               Built in Torino.
               <br />
               Flown around the world.
@@ -169,7 +171,7 @@ export function Projects() {
           </Link>
         </div>
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-3">
+        <div className="mt-8 grid gap-8 md:mt-14 lg:grid-cols-3 lg:gap-4">
           {projects.map((p) => (
             <ProjectCard key={p.name} project={p} />
           ))}

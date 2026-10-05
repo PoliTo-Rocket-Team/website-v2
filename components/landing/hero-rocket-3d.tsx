@@ -96,9 +96,12 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
     const onStage = rect.right > 0 ? 1 : 0;
     earth.current.intensity = onStage * THREE.MathUtils.lerp(EARTH_PARKED, EARTH_PEAK, lowness);
     weather.uBelly.value = onStage * THREE.MathUtils.lerp(BELLY_PARKED, 1, lowness);
-    // CSS rotate(θ): screen-down in the stage's own frame is (sinθ, -cosθ)
+    // CSS rotate(θ): screen-down in the stage's own frame is (sinθ, -cosθ).
+    // θ adds the wrapper's own tilt, which only the phone frame sets
+    // (hero-phone.tsx); on the 1440 board the wrapper is untransformed.
     const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
-    const theta = Math.atan2(m.b, m.a);
+    const w = new DOMMatrixReadOnly(getComputedStyle(el.parentElement!).transform);
+    const theta = Math.atan2(m.b, m.a) + Math.atan2(w.b, w.a);
     weather.uDown.value.set(Math.sin(theta), -Math.cos(theta), 0);
     earth.current.position.set(Math.sin(theta) * 10, -Math.cos(theta) * 10, 3);
   });

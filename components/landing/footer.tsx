@@ -4,7 +4,8 @@ import { Starfield } from "./starfield";
 
 // Board 21 footer. Its own background: ground, the streaks texture at 30% in
 // screen blend, fixed stars with a few twinkling, and one shooting star
-// crossing the upper half every ~20s.
+// crossing the upper half every ~20s. Board 24 below md: 20px sides, the
+// brand block, then the link columns 2 x 2, then the address lines stacked.
 const columns = [
   {
     head: "ABOUT",
@@ -61,9 +62,9 @@ export function LandingFooter() {
         />
       </div>
 
-      <div className="px-6 pb-12 pt-24 md:px-16">
+      <div className="px-5 pb-12 pt-14 md:px-16 md:pt-24">
         <div className="mx-auto max-w-[1312px]">
-          <div className="grid gap-14 lg:grid-cols-[350px_1fr] lg:gap-0">
+          <div className="grid gap-11 md:gap-14 lg:grid-cols-[350px_1fr] lg:gap-0">
             {/* Brand. The block is as wide as the tagline's first line, and the
                 logo fills it, so the logo's left edge and width follow the
                 tagline whatever the font renders at. */}
@@ -77,7 +78,7 @@ export function LandingFooter() {
                   className="h-auto w-full"
                 />
               </Link>
-              <p className="mt-[21px] text-[15px] leading-6 text-prt-muted">
+              <p className="mt-[21px] text-[14px] leading-[22px] text-prt-muted md:text-[15px] md:leading-6">
                 <span className="block whitespace-nowrap">
                   A student rocketry team at Politecnico di Torino.
                 </span>
@@ -86,16 +87,16 @@ export function LandingFooter() {
             </div>
 
             {/* Columns */}
-            <div className="grid grid-cols-2 gap-x-16 gap-y-10 sm:grid-cols-4 sm:gap-x-[14px]">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-4 md:gap-x-[14px]">
               {columns.map((col) => (
                 <div key={col.head}>
                   <h3 className="font-mono text-[11px] tracking-[0.2em] text-dim">{col.head}</h3>
-                  <ul className="mt-2.5 space-y-2">
+                  <ul className="mt-2.5 md:space-y-2">
                     {col.links.map(([label, href]) => (
                       <li key={label}>
                         <Link
                           href={href}
-                          className={`text-[15px] transition-colors hover:text-accent ${
+                          className={`text-[15px] leading-[25px] transition-colors hover:text-accent md:leading-normal ${
                             href.startsWith("mailto:") ? "text-accent" : "text-prt-text"
                           }`}
                         >
@@ -109,13 +110,13 @@ export function LandingFooter() {
             </div>
           </div>
 
-          <hr className="mt-16 border-t border-hairline" />
+          <hr className="mt-8 border-t border-hairline md:mt-16" />
 
-          <div className="mt-7 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.2em] text-dim md:flex-row">
+          <div className="mt-7 flex flex-col justify-between gap-3 font-mono text-[11px] tracking-[0.12em] text-dim md:flex-row md:tracking-[0.2em]">
             <p>POLITO ROCKET TEAM ™ 2026</p>
             <div className="flex flex-col gap-3 md:flex-row md:gap-14">
               <p>CORSO DUCA DEGLI ABRUZZI 24, TORINO, ITALY</p>
-              <p>POLITECNICO DI TORINO</p>
+              <p className="hidden md:block">POLITECNICO DI TORINO</p>
             </div>
           </div>
         </div>

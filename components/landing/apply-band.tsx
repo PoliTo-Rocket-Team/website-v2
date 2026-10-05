@@ -3,10 +3,11 @@ import Link from "next/link";
 
 // Board 21, apply band: the accent with the apply-band texture multiplied on
 // top at 60%. The headline is centred against the right block, which is the
-// taller of the two.
+// taller of the two. Board 24 below md: stacked, 20px sides, 72px top and
+// bottom, a 44px heading and a full-width "Apply to join" button.
 export function ApplyBand() {
   return (
-    <section className="relative isolate overflow-hidden bg-accent px-6 py-[120px] text-accent-on-accent md:px-16">
+    <section className="relative isolate overflow-hidden bg-accent px-5 py-[72px] text-accent-on-accent md:px-16 md:py-[120px]">
       <Image
         src="/textures/apply-band.webp"
         alt=""
@@ -14,23 +15,22 @@ export function ApplyBand() {
         sizes="100vw"
         className="-z-10 object-cover opacity-60 mix-blend-multiply"
       />
-      <div className="mx-auto flex max-w-[1312px] flex-col justify-between gap-12 lg:flex-row lg:items-center">
+      <div className="mx-auto flex max-w-[1312px] flex-col justify-between gap-6 md:gap-12 lg:flex-row lg:items-center">
         <div className="lg:shrink-0">
           <p className="font-mono text-xs tracking-[0.3em]">APPLY · 2025/26</p>
-          <h2 className="mt-4 text-5xl font-extrabold leading-[0.95] tracking-[-0.035em] md:text-6xl md:leading-[0.95] xl:text-[80px]">
+          <h2 className="mt-4 text-[44px] font-extrabold leading-[0.95] tracking-[-0.035em] md:text-6xl md:leading-[0.95] xl:text-[80px]">
             Build the
-            <br />
-            next one with us.
+            <br className="hidden md:inline" /> next one with us.
           </h2>
         </div>
 
-        <div className="max-w-[480px] xl:mr-[60px]">
-          <p className="text-lg leading-normal md:text-[22px]">
+        <div className="md:max-w-[480px] xl:mr-[60px]">
+          <p className="text-[17px] leading-normal md:text-[22px]">
             Open to every Politecnico student. No rocketry experience needed. We learn together.
           </p>
           <Link
             href="/apply"
-            className="mt-8 inline-block rounded-full bg-ground px-10 py-[17px] text-[17px] font-semibold text-prt-text transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            className="mt-6 block rounded-full bg-ground px-10 py-[13px] text-center text-[17px] md:mt-8 md:inline-block md:py-[17px] font-semibold text-prt-text transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
           >
             Apply to join
           </Link>

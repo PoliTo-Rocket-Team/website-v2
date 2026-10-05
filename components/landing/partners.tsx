@@ -53,12 +53,14 @@ function LogoItem({ logo }: { logo: Logo }) {
 export function Partners() {
   const loop = [...logos, ...logos];
   return (
-    // No box and no fill: the page sky shows behind the logo strip.
-    <section className="px-0 py-[100px]">
-      <div className="mx-auto flex w-full max-w-[1440px] flex-col justify-between gap-8 px-6 md:flex-row md:items-end md:px-16">
+    // No box and no fill: the page sky shows behind the logo strip. Board 24
+    // below md: 20px sides, 72px top and bottom, 32px heading, then "Become a
+    // partner", then the marquee.
+    <section className="px-0 py-[72px] md:py-[100px]">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col justify-between gap-5 px-5 md:flex-row md:items-end md:gap-8 md:px-16">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-accent">PARTNERS</p>
-          <h2 className="mt-4 text-4xl font-bold leading-[1.25] tracking-[-0.025em] md:text-[48px]">
+          <h2 className="mt-4 text-[32px] font-bold leading-[1.25] tracking-[-0.025em] md:text-[48px]">
             Their logos fly with the rocket.
           </h2>
         </div>
@@ -71,7 +73,7 @@ export function Partners() {
         </a>
       </div>
 
-      <div className="group relative mt-14 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]">
+      <div className="group relative mt-8 overflow-hidden md:mt-14 [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]">
         <div className="flex w-max animate-marquee items-center motion-reduce:animate-none group-hover:[animation-play-state:paused]">
           {loop.map((logo, i) => (
             <LogoItem key={i} logo={logo} />

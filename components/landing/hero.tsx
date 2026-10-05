@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { brand } from "@/lib/brand-colors";
+import { HeroPhoneStage } from "./hero-phone";
 import { Starfield } from "./starfield";
 
 const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
@@ -56,7 +57,18 @@ const TEXT_FADE = "radial-gradient(ellipse 50% 50% at 50% 50%, #010101 35%, #010
 export function Hero() {
   const [phase, setPhase] = useState<Phase>("enter");
   const [reduced, setReduced] = useState(false);
+  // Which frame is showing: board 24 below md, board 21 from md up. Only that
+  // frame mounts the rocket, so a page never runs two WebGL hero canvases.
+  const [layout, setLayout] = useState<"phone" | "desktop" | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setLayout(mq.matches ? "desktop" : "phone");
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -98,23 +110,47 @@ export function Hero() {
     transform: gathered ? `translateY(${gatherY}px)` : undefined,
   });
 
+  const wordClass = reduced ? "" : "animate-word-up motion-reduce:animate-none";
+  const sloganClass = reduced ? "" : "animate-slogan-down motion-reduce:animate-none";
+
+  // The rocket's flight stage: parked offscreen during the hold, then the
+  // drive-in. Both frames place it; only the one showing mounts it.
+  const rocketStage = (
+    <div
+      data-rocket-stage
+      className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
+      style={phase === "enter" ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" } : undefined}
+    >
+      <HeroRocket3D fullBurn={phase === "drive"} />
+    </div>
+  );
+
   return (
     <section
       ref={sectionRef}
-      className="relative flex justify-center overflow-hidden"
+      // Board 24 below md is a 760px frame; from md the board 21 height rules.
+      className="relative flex h-[760px] justify-center overflow-hidden md:h-[var(--hero-h,min(100vh,1080px))]"
       // #010101 = the earth photo's measured sky color, so the sky above/beside
       // the photo is identical to the photo's own black (bg-ground would read
       // a touch grayer); the scrim still ends solid ground color at the bottom
-      style={{ height: HERO_H, background: "#010101" }}
+      style={{ background: "#010101" }}
     >
       <script dangerouslySetInnerHTML={{ __html: HERO_VARS_SCRIPT }} />
+      <HeroPhoneStage
+        separateClass={separateClass}
+        separateStyle={separateStyle}
+        wordClass={wordClass}
+        sloganClass={sloganClass}
+        copyVisible={copyVisible}
+        rocket={!reduced && layout === "phone" ? rocketStage : null}
+      />
       {/* Stage fills the section; on viewports taller than the 900px board the
           extra height opens up between the top-anchored title and the
           bottom-anchored slogan/copy block — type never scales. On smaller
           screens the fixed 900px board is scaled down to fit instead: its
           unscaled height (--hero-h / --hero-scale) is then exactly 900px. */}
       <div
-        className="relative w-[1440px] shrink-0"
+        className="relative hidden w-[1440px] shrink-0 md:block"
         style={{
           height: `calc(${HERO_H} / var(--hero-scale, 1))`,
           transform: "scale(var(--hero-scale, 1))",
@@ -180,7 +216,7 @@ export function Hero() {
           {["POLITO", "ROCKET", "TEAM"].map((word, i) => (
             <span key={word}>
               <span
-                className={`hero-type inline-block ${reduced ? "" : "animate-word-up motion-reduce:animate-none"}`}
+                className={`hero-type inline-block ${wordClass}`}
                 style={{ animationDelay: `${i * 75}ms` }}
               >
                 {word}
@@ -199,7 +235,7 @@ export function Hero() {
             style={separateStyle(SLOGAN_GATHER_Y)}
           >
             <span
-              className={`hero-type inline-block ${reduced ? "" : "animate-slogan-down motion-reduce:animate-none"}`}
+              className={`hero-type inline-block ${sloganClass}`}
               style={{ animationDelay: "450ms" }}
             >
               BORN FOR SPACE
@@ -242,18 +278,12 @@ export function Hero() {
             title and the slogan. Mounted (parked offscreen) during the hold so
             the GLB and shaders
             are warm before the flight starts. */}
-        {!reduced && (
+        {!reduced && layout === "desktop" && (
           <div
             className="pointer-events-none absolute left-[-520px] h-[280px] w-[2400px] will-change-transform"
             style={{ top: "calc(204px + (100% - 900px) / 2)" }}
           >
-            <div
-              data-rocket-stage
-              className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
-              style={phase === "enter" ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" } : undefined}
-            >
-              <HeroRocket3D fullBurn={phase === "drive"} />
-            </div>
+            {rocketStage}
           </div>
         )}
       </div>

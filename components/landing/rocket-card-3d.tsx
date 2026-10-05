@@ -33,8 +33,8 @@ const FOV = 30;
 // transform on the canvas wrapper (projects.tsx), so its distance and timing
 // are exact in px and ms. The parked pose shows the vehicle from the nose to
 // mid-body above the card's info box.
-const PARKED_Y = 2.7;
-const PARKED_Z = -6; // pushed back from the camera, so it reads a little smaller
+const PARKED_Y = 1.05;
+const PARKED_Z = -14; // pushed back from the camera, so it reads at the board 21 size
 // How far off vertical the vehicle leans its nose to the right, in radians.
 // The lean swings the tail left, so PARKED_X shifts the whole vehicle back
 // right.
