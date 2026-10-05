@@ -57,7 +57,7 @@
 
   // Names that mean something only here; the portability guard keeps them out
   // of Fabrika's own shipped text.
-  "portability": { "repoNames": ["website-v2", "PoliTo-Rocket-Team", "hueypov", "nothueypov"] },
+  "portability": { "repoNames": ["website-v2", "PoliTo-Rocket-Team", "hueypov"] },
 
   // `build check` runs these on a diff that touches the file each one reads,
   // so a hooks-only or config-only change can go green.
