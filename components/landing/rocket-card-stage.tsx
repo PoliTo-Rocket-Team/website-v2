@@ -50,8 +50,13 @@ const POSTER_SIZES = "(min-width: 768px) 480px, 272px";
  * while the hero's rocket can spare the frames, nearest cards first; a card
  * coming within a screen of the viewport moves to the front. Once the canvas
  * has drawn, it fades in over the poster.
+ *
+ * `className` places the box; by default it fills its parent. The landing
+ * card also gives it a hover rise (projects.tsx), and the 3D scene reads that
+ * rise as it plays and shrinks the vehicle in step (rocket-card-3d.tsx). A
+ * box with no rise (the /projects page) keeps the vehicle at rest.
  */
-export function RocketCardStage() {
+export function RocketCardStage({ className = "absolute inset-0" }: { className?: string }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [supported, setSupported] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -114,14 +119,14 @@ export function RocketCardStage() {
   };
 
   return (
-    // Fills the wrapper the card gives it, which hangs over the card's top
-    // edge so the rocket has somewhere to rise into (projects.tsx).
+    // On a landing card this box hangs over the card's top edge, so the
+    // rocket has somewhere to rise into (projects.tsx).
     // The canvas is hidden from the first paint by CSS, not by an effect, so
     // its undrawn buffer (white on macOS GPUs) can never show; see
     // reveal-on-first-frame.tsx. It is shown only once it has drawn.
     <div
       ref={wrapRef}
-      className={`pointer-events-none absolute inset-0 ${
+      className={`pointer-events-none ${className} ${
         shown === "poster"
           ? "[&_canvas]:opacity-0"
           : "motion-safe:[&_canvas]:transition-opacity motion-safe:[&_canvas]:duration-300 motion-safe:[&_canvas]:ease-out"
@@ -131,7 +136,13 @@ export function RocketCardStage() {
         <Image src={CAVOUR_CARD_POSTER} alt="" fill sizes={POSTER_SIZES} className="object-cover" />
       )}
       {supported && mounted && (
-        <RocketCard3D tuning={tuning} onReadout={setReadout} onReady={onReady} onFailed={setupOver} />
+        <RocketCard3D
+          tuning={tuning}
+          onReadout={setReadout}
+          onReady={onReady}
+          onFailed={setupOver}
+          liftBox={wrapRef}
+        />
       )}
       {tuning && (
         <p className="pointer-events-none absolute bottom-1 left-1 rounded bg-ground/70 px-2 py-1 font-mono text-[10px] text-accent">

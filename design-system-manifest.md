@@ -165,7 +165,7 @@ Rules:
 | Name | Value | Use |
 |---|---|---|
 | Hover transitions | 300ms ease-out | cards, arrows, textures, glass edges |
-| Project rocket rise | 170px, 450ms ease-out | project card hover (`projects.tsx`) |
+| Project rocket rise | 60px (8px on phones), 450ms ease-out, with the vehicle shrinking about its nose in step | project card hover (`projects.tsx`, `rocket-card-3d.tsx`) |
 | `word-up`, `slogan-down` | 0.7s `cubic-bezier(0.22,1,0.36,1)` | hero type in |
 | `hero-fade` | 0.9s ease-out | hero copy once settled |
 | `rocket-drive-in`, `hero-separate` | 7s linear, easing baked into stops | hero entrance |
@@ -245,7 +245,8 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   the bob where it stopped (issue #63). The bob, the flame flicker and the smoke move by real
   elapsed time, so fewer frames never mean slower motion. Off screen or in a hidden tab it
   draws nothing. The card canvases draw
-  only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
+  only on demand (warm-up, resize, and the hover rise while it plays), so a card at rest draws
+  no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
@@ -276,11 +277,15 @@ news cards are desktop-only (from md).
 `design/specs-from-old-site.md`, each on its texture, 618px tall, with a `.glass-info` box
 inset 32px at the bottom (20px from lg to xl). From md to lg the cards stack, 480px wide at
 most. Each card renders Cavour live in 3D. At rest it shows from the nose to
-mid-body above the info box. On hover the rocket rises 170px over 450ms ease-out and its nose
-leaves the card top; on leave it sinks back the same way. The rise is a CSS transform on the
-canvas wrapper, which hangs above and below the card and is clipped to the card's sides and
-bottom only. The vehicle and camera hold still in the scene. Under reduced motion there is no
-rise; only the glass edge brightens. At rest the nose sits about 30px below the card top and
+mid-body above the info box. On hover the card shows the whole rocket, nose to fins (issue
+#65): it rises 60px over 450ms ease-out and, in step, the vehicle shrinks about its nose tip
+(0.65), so the nose moves by the rise alone and the fins come up above the info box. The nose
+leaves the card top and stops about 25px under the Projects heading, never closer than 16px.
+On leave both go back the same way. The rise is a CSS transform on the canvas box, which hangs
+above and below the card and is clipped to the card's sides and bottom only; the scene reads the
+rise as it plays and scales the vehicle to match, so the two cannot drift apart. The camera
+holds still, and the canvas draws frames only while the rise plays. Under reduced motion there
+is no rise and no shrink; only the glass edge brightens. At rest the nose sits about 30px below the card top and
 the flags show just above the info box. The canvas takes no pointer events. No raycast hover
 (`projects.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
 `rocket-card-3d.tsx`, not the JSX. Any new vehicle model follows
@@ -289,7 +294,9 @@ Phones (board 24): the cards sit side by side in a horizontal swipe row (`swipe-
 210 x 360 each, 10px apart, scroll-snap to the 20px page edge, the next card peeking, and
 pager dots below (the current one an 18px pill). The row bleeds to the screen edges. The
 card scales down: 14px insets, a 24px name, 11px description, 8px / 10px spec labels and
-values. The rocket keeps the nose-to-mid-body framing, its nose about 20px below the card top.
+values. The rocket keeps the nose-to-mid-body framing, its nose about 20px below the card top. The
+swipe row clips the card top, so on hover the rocket rises 8px and shrinks further (0.57): the
+whole rocket shows inside the card, above the info box.
 Phone copy is shorter (`phone` text in `projects.tsx`): VES "130 mm, all-SRAD systems. Mark II
 won Design & Build at IREC 2025.", years "24–25", Cavour motor "Solid L", VES "MARKS" "Mk I–II",
 Efesto fuel "Ethanol".
@@ -338,7 +345,7 @@ stacked.
 1. Colours come from the PRT tokens, or are a commented exception from the list above.
 2. Fonts are Archivo or Geist Mono, in the type patterns above.
 3. Width, padding, radii and glass surfaces match the layout rules.
-4. Hover uses the 300ms ease-out pattern (the project rocket rise is 450ms); links use
+4. Hover uses the 300ms ease-out pattern (the project rocket rise and shrink are 450ms); links use
    `RocketArrow`.
 5. The hero still follows ADR 0004: once, no pinning, no replay, no shake, no PNG.
 6. Sections below the hero paint no background of their own; the page sky is the repeating

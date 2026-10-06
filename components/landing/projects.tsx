@@ -9,10 +9,13 @@ import { SwipeRow } from "./swipe-row";
 // Cavour live in 3D and a liquid glass info box. Data from
 // design/specs-from-old-site.md.
 //
-// Hover: the rocket rises 170px over 450ms ease-out and its nose leaves the
-// top of the card, and the card's glass edge brightens. The rise is a CSS
-// transform on the canvas wrapper, so it is exact in px and drops out under
-// reduced motion; only the edge change is left then.
+// Hover: the rocket rises over 450ms ease-out and shrinks about its nose in
+// step, so the whole vehicle shows, nose to fins, and the card's glass edge
+// brightens. From md the rise is 60px: the nose leaves the card top and stops
+// about 25px under the heading. On phones it is 8px, because the swipe row
+// clips the card top. The rise is a CSS transform on the canvas box, so it is
+// exact in px and drops out under reduced motion, and the shrink with it
+// (rocket-card-3d.tsx); only the edge change is left then.
 //
 // Board 24 below md: the cards sit side by side in a horizontal swipe row,
 // 210 x 360 each, 10px apart, with scroll-snap, the next card peeking and
@@ -126,9 +129,11 @@ function ProjectCard({ project }: { project: Project }) {
       </div>
 
       {/* Rocket. Clipped to the card's sides and rounded bottom but open at
-          the top, so the nose can leave the card. The canvas reaches below the
-          card by the rise, so the hull still meets the bottom edge once the
-          wrapper has moved up. On phones the canvas is shorter (593px over a
+          the top, so the nose can leave the card. The canvas reaches 170px
+          below the card (89px on phones): the resting framing is tuned to
+          that box, so it stays although the rise is shorter now. `--rocket-rise`
+          names the rise for the 3D scene, which shrinks the vehicle in step
+          with it. On phones the canvas is shorter (593px over a
           360px card) and sits 25px left, so the vehicle draws at about board
           24's size with its nose about 20px below the card top, near the
           middle, and the same nose-to-mid-body framing.
@@ -136,13 +141,11 @@ function ProjectCard({ project }: { project: Project }) {
           sit at z-index 1, so the rocket at 2 draws over them where its nose
           crosses the card's top edge. The top row and the info box are also
           at 2 and come later, so they stay above the rocket as before.
-          will-change keeps the rising wrapper on its own compositor layer
+          will-change keeps the rising box on its own compositor layer
           from the start, so the rise never waits on a repaint of the canvas
           and the hover does not stutter while the canvas draws frames. */}
       <div className="pointer-events-none absolute inset-0 z-[2] [clip-path:inset(-400px_0_0_0_round_16px)]">
-        <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] transition-transform ease-out will-change-transform [transition-duration:450ms] motion-safe:group-hover:-translate-y-[170px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
-          <RocketCardStage />
-        </div>
+        <RocketCardStage className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] transition-transform ease-out will-change-transform [--rocket-rise:8px] [transition-duration:450ms] motion-safe:group-hover:-translate-y-[var(--rocket-rise)] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0 md:[--rocket-rise:60px]" />
       </div>
 
       {/* Top row */}

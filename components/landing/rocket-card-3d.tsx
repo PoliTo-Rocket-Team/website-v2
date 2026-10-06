@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -20,11 +20,12 @@ const LENGTH = 32;
 const HALF = LENGTH / 2;
 
 // Camera sits high and in front, tipped down at the upper body, and never
-// moves. The nozzle and lower hull are deliberately out of frame: the whole
-// vehicle is already on the hero, so the card is a detail shot. The target
-// follows the 16° lean. The canvas hangs well above and below the card, so
-// the camera stands back along the same line of sight (VIEW_DISTANCE) to keep
-// the vehicle at card scale.
+// moves. At rest the nozzle and lower hull are deliberately out of frame: the
+// whole vehicle is already on the hero, so the card is a detail shot. The
+// hover brings them in by shrinking the vehicle, not by moving the camera.
+// The target follows the 16° lean. The canvas hangs well above and below the
+// card, so the camera stands back along the same line of sight
+// (VIEW_DISTANCE) to keep the vehicle at card scale.
 const TARGET = new THREE.Vector3(2.3, 8, 0);
 const VIEW_DIRECTION = new THREE.Vector3(2.8, 12.2, 28.4);
 const VIEW_DISTANCE = 3.3;
@@ -32,10 +33,8 @@ const EYE = TARGET.clone().addScaledVector(VIEW_DIRECTION, VIEW_DISTANCE);
 /** Vertical field of view, in degrees, over the whole hanging canvas. */
 const FOV = 30;
 
-// The vehicle holds still in the scene. The card's hover rise is a CSS
-// transform on the canvas wrapper (projects.tsx), so its distance and timing
-// are exact in px and ms. The parked pose shows the vehicle from the nose to
-// mid-body above the card's info box.
+// The parked pose shows the vehicle from the nose to mid-body above the
+// card's info box.
 const PARKED_Y = 1.05;
 const PARKED_Z = -14; // pushed back from the camera, so it reads at the board 21 size
 // How far off vertical the vehicle leans its nose to the right, in radians.
@@ -43,6 +42,26 @@ const PARKED_Z = -14; // pushed back from the camera, so it reads at the board 2
 // right.
 const LEAN = 0.2;
 const PARKED_X = 1.2;
+/** The nose tip in the scene: the point the hover shrinks the vehicle about. */
+const NOSE = new THREE.Vector3(
+  PARKED_X + HALF * Math.sin(LEAN),
+  PARKED_Y + HALF * Math.cos(LEAN),
+  PARKED_Z,
+);
+
+// Hover (issue #65): the whole vehicle, nose to fins. The card's rise is a CSS
+// transform on the canvas box (projects.tsx), exact in px and ms; the vehicle
+// shrinks about its nose tip in step with it, so the nose moves by the rise
+// alone and the fins come up above the info box. The scale follows the rise
+// as it plays, interruptions and all, so the two can never drift apart, and
+// with no rise (reduced motion) there is no shrink either.
+// From md the rise is 60px and the nose ends about 25px under the Projects
+// heading; on phones the swipe row clips the card top, so the rise is 8px
+// and the vehicle shrinks further to fit above the shorter info box.
+const HOVER_SCALE_WIDE = 0.65;
+const HOVER_SCALE_PHONE = 0.57;
+/** Tailwind's md: where the card switches from the phone layout. */
+const WIDE = "(min-width: 768px)";
 
 // The card is a close-up, so the hero's wear noise is rescaled: finer grain
 // and lower contrast, or it reads as dashes and static at this pixel size.
@@ -50,8 +69,23 @@ const PARKED_X = 1.2;
 const WEAR_SCALE = 2.5;
 const WEAR_AMOUNT = 0.45;
 
-function Vehicle() {
-  const group = useRef<THREE.Group>(null!);
+/**
+ * How far the card's rise has gone, from 0 at rest to 1 fully raised, read
+ * off the box's live transform: mid-transition this is the in-flight value.
+ * The box names its full rise in `--rocket-rise` (projects.tsx).
+ */
+function readLift(box: HTMLElement): number {
+  const style = getComputedStyle(box);
+  const rise = parseFloat(style.getPropertyValue("--rocket-rise"));
+  if (!(rise > 0) || style.transform === "none") return 0;
+  const lift = -new DOMMatrixReadOnly(style.transform).m42 / rise;
+  return Math.min(1, Math.max(0, lift));
+}
+
+function Vehicle({ liftBox }: { liftBox: RefObject<HTMLElement | null> }) {
+  const invalidate = useThree((s) => s.invalidate);
+  /** Sits on the nose tip and carries the hover scale. */
+  const pivot = useRef<THREE.Group>(null!);
   /** The group the vehicle sits in directly: its frame IS rocket space. */
   const frame = useRef<THREE.Group>(null!);
   const weather = useMemo<WeatherUniforms>(
@@ -69,22 +103,43 @@ function Vehicle() {
     [],
   );
 
-  // The vehicle never moves, and the canvas only draws on demand (warm-up,
-  // resize), so there is no idle drift: a card at rest draws no frames
-  // (issue #48). This runs on those few frames only.
+  // The canvas draws on demand only, so a card at rest draws no frames
+  // (issue #48). The rise asks for frames while it plays and one more when it
+  // ends or is cut short; nothing else moves the vehicle.
+  const wide = useMemo(() => window.matchMedia(WIDE), []);
+  useEffect(() => {
+    const box = liftBox.current;
+    if (!box) return;
+    const kick = (e: TransitionEvent) => {
+      if (e.target === box) invalidate();
+    };
+    const kinds = ["transitionrun", "transitionend", "transitioncancel"] as const;
+    for (const k of kinds) box.addEventListener(k, kick);
+    return () => {
+      for (const k of kinds) box.removeEventListener(k, kick);
+    };
+  }, [liftBox, invalidate]);
+
   useFrame(() => {
-    if (!group.current) return;
-    // Pin the procedural wear to the hull through the lean.
-    group.current.updateMatrixWorld();
+    if (!pivot.current) return;
+    const box = liftBox.current;
+    const lift = box ? readLift(box) : 0;
+    const hoverScale = wide.matches ? HOVER_SCALE_WIDE : HOVER_SCALE_PHONE;
+    pivot.current.scale.setScalar(1 + (hoverScale - 1) * lift);
+    // Pin the procedural wear to the hull through the lean and the scale.
+    pivot.current.updateMatrixWorld();
     weather.uRocketInv.value.copy(frame.current.matrixWorld).invert();
+    if (box && box.getAnimations().length > 0) invalidate();
   });
 
   // The model is built along X with the nose at +X; stand it up nose-first,
   // less 16° so it leans to the right.
   return (
-    <group ref={group} position={[PARKED_X, PARKED_Y, PARKED_Z]}>
-      <group ref={frame} rotation={[0, 0, Math.PI / 2 - LEAN]}>
-        <CavourBuilt weather={weather} length={LENGTH} />
+    <group ref={pivot} position={NOSE}>
+      <group position={[PARKED_X - NOSE.x, PARKED_Y - NOSE.y, PARKED_Z - NOSE.z]}>
+        <group ref={frame} rotation={[0, 0, Math.PI / 2 - LEAN]}>
+          <CavourBuilt weather={weather} length={LENGTH} />
+        </group>
       </group>
     </group>
   );
@@ -128,16 +183,17 @@ type Props = {
   onReady: () => void;
   /** The scene failed to load. The canvas stays hidden; the poster stays. */
   onFailed: () => void;
+  /** The box the card raises on hover, carrying `--rocket-rise` (projects.tsx). */
+  liftBox: RefObject<HTMLElement | null>;
 };
 
-export default function RocketCard3D({ tuning, onReadout, onReady, onFailed }: Props) {
+export default function RocketCard3D({ tuning, onReadout, onReady, onFailed, liftBox }: Props) {
   return (
     <Canvas
-      // Nothing in the scene moves, so the canvas draws only when asked: the
-      // warm-up (scene-ready.tsx), a resize, and the ?cam tuner's orbit
-      // controls. The hover rise is a CSS transform on the canvas wrapper
-      // (projects.tsx) and needs no frames. Under reduced motion this is the
-      // same: the warm-up draws the finished vehicle, then nothing.
+      // The canvas draws only when asked: the warm-up (scene-ready.tsx), a
+      // resize, the hover shrink while the rise plays (Vehicle), and the ?cam
+      // tuner's orbit controls. Under reduced motion there is no rise, so the
+      // warm-up draws the finished vehicle, then nothing.
       // Not "never": that leaves the WebGL buffer undrawn, which shows white
       // on a real GPU, and ignores the warm-up's invalidate.
       frameloop="demand"
@@ -171,7 +227,7 @@ export default function RocketCard3D({ tuning, onReadout, onReady, onFailed }: P
             environmentIntensity={0.45}
             environmentRotation={[-Math.PI / 2, 0, 0]}
           />
-          <Vehicle />
+          <Vehicle liftBox={liftBox} />
           <WarmUp onWarm={onReady} />
         </Suspense>
       </SceneErrorBoundary>
