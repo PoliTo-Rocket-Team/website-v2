@@ -30,7 +30,8 @@ type Props = {
   separateStyle: (gatherY: number) => CSSProperties;
   wordClass: string;
   sloganClass: string;
-  copyVisible: boolean;
+  /** Hides the body copy until the entrance settles, then fades it in. */
+  copyClass: string;
   /** The rocket stage (hero.tsx owns its mount and phase), or null. */
   rocket: ReactNode;
 };
@@ -43,7 +44,7 @@ export function HeroPhoneStage({
   separateStyle,
   wordClass,
   sloganClass,
-  copyVisible,
+  copyClass,
   rocket,
 }: Props) {
   return (
@@ -97,7 +98,7 @@ export function HeroPhoneStage({
 
       <p
         className={`absolute inset-x-5 top-[510px] text-[14px] leading-[1.5] text-prt-text ${
-          copyVisible ? "animate-hero-fade" : "opacity-0"
+          copyClass
         }`}
         style={{ animationDelay: "600ms" }}
       >

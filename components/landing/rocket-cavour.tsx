@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { useTexture } from "@react-three/drei";
+import { useEnvironment, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { applyWeathering, PROFILES, type WeatherUniforms } from "./hero-weathering";
+import { CAVOUR_DECAL, CAVOUR_HDRI, CAVOUR_LIVERY } from "./cavour-assets";
 
 // Cavour built from code instead of the 1.7 MB GLB. Every number below was
 // measured off design/cavour.glb (see the rocket-surface skill), in
@@ -270,7 +271,7 @@ function buildGeometry() {
 }
 
 export default function CavourBuilt({ weather, length }: { weather: WeatherUniforms; length: number }) {
-  const [livery, decal] = useTexture(["/design/cavour/livery.png", "/design/cavour/decal-strip.png"]);
+  const [livery, decal] = useTexture([CAVOUR_LIVERY, CAVOUR_DECAL]);
   const mats = useMemo(() => makeMaterials(livery, decal, weather), [livery, decal, weather]);
   const geo = (sharedGeo ??= buildGeometry());
 
@@ -306,4 +307,8 @@ export default function CavourBuilt({ weather, length }: { weather: WeatherUnifo
   );
 }
 
-useTexture.preload(["/design/cavour/livery.png", "/design/cavour/decal-strip.png"]);
+// Load and decode once, when this chunk first runs, for every canvas on the
+// page: the hero and the cards all read these from the same loader cache, so
+// the HDRI and both textures are fetched and parsed once, not once per canvas.
+useTexture.preload([CAVOUR_LIVERY, CAVOUR_DECAL]);
+useEnvironment.preload({ files: CAVOUR_HDRI });
