@@ -7,7 +7,7 @@ description: Build a vehicle in Three.js code for the site's stages and make it 
 
 Cavour in `components/landing/rocket-cavour.tsx` is the reference implementation and the single source of truth for every number: it is built in code (lathe body, fin plates, nozzle, livery wrap, decal patches), no mesh file is served. Reference meshes stay in `design/` (not `public/`, so they never ship). This skill is the process and the gotchas that code cannot tell you. Read the file first; copy from it, do not re-derive.
 
-The look the founder signed off on (2026-09-16), in their words: matte, worn, "unfinished" paint; fins a shade lighter than the body black, dull, no lines; sun on the camera side; no top-edge highlight. The old Blender render in `public/design/cavour-hero.png` is not the target.
+The look the founder signed off on (2026-09-16), in their words: matte, worn, "unfinished" paint; fins a shade lighter than the body black, dull, no lines; sun on the camera side; no top-edge highlight. The old Blender render in `design/cavour-hero.png` is not the target.
 
 ## Steps
 

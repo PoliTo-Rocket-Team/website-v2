@@ -17,7 +17,8 @@ import { useFrame, useThree } from "@react-three/fiber";
  * The two frames are requested with `invalidate`, so this also works on the
  * card canvases, whose frame loop is "demand". (The hero's canvas ignores
  * `invalidate`: its own driver draws every frame until warm.) After them
- * the canvas has drawn the finished scene and RevealOnFirstFrame has shown it.
+ * the canvas has drawn the finished scene: the hero's RevealOnFirstFrame has
+ * shown it, and a card's stage fades it in over its poster on `onWarm`.
  */
 export function WarmUp({ onWarm }: { onWarm?: () => void }) {
   const gl = useThree((s) => s.gl);

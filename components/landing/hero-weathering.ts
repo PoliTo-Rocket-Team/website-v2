@@ -74,13 +74,21 @@ const NOISE_GLSL = /* glsl */ `
   }
 `;
 
+/**
+ * The weather uniforms one renderer draws with. A material can be shared by
+ * several canvases, each with its own WebGL context and its own view of the
+ * vehicle; three compiles the material once per renderer, and each compile
+ * binds the uniforms this returns for that renderer.
+ */
+export type WeatherFor = (renderer: THREE.WebGLRenderer) => WeatherUniforms;
+
 export function applyWeathering(
   material: THREE.MeshStandardMaterial,
   profile: WeatherProfile,
-  uniforms: WeatherUniforms,
+  weatherFor: WeatherFor,
 ) {
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms, {
+  material.onBeforeCompile = (shader, renderer) => {
+    Object.assign(shader.uniforms, weatherFor(renderer), {
       uWMicro: { value: profile.micro },
       uWStreak: { value: profile.streak },
       uWScuff: { value: profile.scuff },

@@ -118,7 +118,9 @@ function ProjectCard({ project }: { project: Project }) {
           src={project.texture}
           alt=""
           fill
-          sizes="(min-width: 1024px) 30vw, (min-width: 768px) 480px, 210px"
+          // One of three columns from lg: (content − 2 × 16px gap) / 3, where
+          // the content is 100vw − 128px up to its 1312px cap at 1440.
+          sizes="(min-width: 1440px) 427px, (min-width: 1024px) calc((100vw - 160px) / 3), (min-width: 768px) 480px, 210px"
           className="object-cover"
         />
       </div>

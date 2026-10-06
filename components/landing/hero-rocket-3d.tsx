@@ -10,6 +10,7 @@ import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
 import { SceneErrorBoundary, WarmUp } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
+import { holdCardSetup } from "./scene-schedule";
 
 // Three.js hero stage: the code-built Cavour (rocket-cavour.tsx) horizontal,
 // nose right, matching the static render's framing (nose ~95% across, plume
@@ -224,8 +225,15 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   const [supported, setSupported] = useState(false);
   const [visible, setVisible] = useState(false);
   const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [plumeIdle, setPlumeIdle] = useState(false);
   const rate = drawRate(ready, visible, phase !== "settled" || !plumeIdle);
+  // The project cards set up their canvases only while this one is not
+  // drawing every frame, so they never take a frame from the warm-up or the
+  // drive-in (scene-schedule.ts).
+  // A scene that failed to load never warms up, so it holds nothing.
+  const drawingEveryFrame = supported && !failed && rate === "every-frame";
+  useEffect(() => (drawingEveryFrame ? holdCardSetup() : undefined), [drawingEveryFrame]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
@@ -294,7 +302,12 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
             <FrameDriver rate={rate} />
             <RevealOnFirstFrame />
-            <SceneErrorBoundary onError={() => onStatusRef.current?.("unavailable")}>
+            <SceneErrorBoundary
+              onError={() => {
+                setFailed(true);
+                onStatusRef.current?.("unavailable");
+              }}
+            >
               {/* The environment, the rocket and the warm-up share one
                   Suspense: the rocket is ready only when all of it is. */}
               <Suspense fallback={null}>
