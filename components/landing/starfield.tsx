@@ -20,16 +20,15 @@ function makeStars(
   wholePixels = false,
 ): Star[] {
   const rand = mulberry32(seed);
-  return Array.from({ length: count }, (_, i) => {
-    const size = sizeMin + rand() * (sizeMax - sizeMin);
-    return {
-      x: rand() * 100,
-      y: rand() * 100,
-      size: wholePixels ? Math.round(size) : size,
-      twinkle: i % twinkleEvery === 0,
-      delay: rand() * 4,
-    };
-  });
+  const round = wholePixels ? Math.round : (n: number) => n;
+  // Draw order is x, y, size, delay: changing it moves every seeded sky.
+  return Array.from({ length: count }, (_, i) => ({
+    x: rand() * 100,
+    y: rand() * 100,
+    size: round(sizeMin + rand() * (sizeMax - sizeMin)),
+    twinkle: i % twinkleEvery === 0,
+    delay: rand() * 4,
+  }));
 }
 
 export function Starfield({

@@ -205,7 +205,7 @@ tile cut from the approved background, with the soft diagonal streaks baked onto
 the board's 16% strength, blurred so it holds no compression blocks and stored lossless. It
 repeats down the page (`top center / max(100%, 1440px) auto
 repeat-y`), so it shows no seam at any page height. `.page-sky-grain` is the fine film grain, a
-stitched SVG noise tile at low opacity, kept apart because webp compression drops grain; it
+stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain; it
 also dithers the tile's dark gradients so they show no bands. `.page-sky-fade` is the top fade. On top
 sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
 `wholePixels`): a fractional box under 3px renders as a dash, not a dot. Never ship the sky as one tall image. Its top fades in
