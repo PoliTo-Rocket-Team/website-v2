@@ -243,11 +243,14 @@ client match). The hero and footer stars, and the footer's shooting star, stay e
 built. Only the page sky passes `wholePixels` and `minSpacing`. One star in `twinkleEvery` is
 bright, and one bright star in two twinkles; the rest hold still at full brightness.
 
-**Idle motion** (issue #59): a page at rest draws no frames. Every continuous animation (a
-twinkle, the shooting star, the partners marquee) goes through the motion gate
-(`motion-gate.ts`): it runs only while the tab is visible, it is on screen and wholly below the
-navbar, and no surface with a `backdrop-filter` covers it. Otherwise it pauses where it stands.
-So nothing animates under glass. New continuous motion uses the gate too.
+**Idle motion** (issue #59): every twinkle, the shooting star and the partners marquee go
+through the motion gate (`motion-gate.ts`). Each runs only while the tab is visible, some of it
+shows below the navbar and none of it shows under the navbar, and no surface with a
+`backdrop-filter` covers its centre. Otherwise it pauses where it stands. The gate does not
+cover the hero canvas: parked, it still draws at most 15 fps while on screen, also while part
+of it sits under the navbar (Render budget above). The gate does not watch the phone menu
+either, so motion behind an open menu keeps the state it had. New continuous motion uses the
+gate.
 
 **Latest:** featured card plus a three-row list, then a centred "All news" link. The cards are
 `.glass-card` with no texture of their own; the featured card keeps its inset photo
