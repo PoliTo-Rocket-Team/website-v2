@@ -117,37 +117,30 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
               <div
                 key={i}
                 aria-hidden={!isCurrent}
+                onClick={!isCurrent && shown ? (e) => tapped(e) && step(d) : undefined}
                 style={{
                   transform: `translateX(calc(var(--peek-x) * ${d})) scale(${isCurrent ? 1 : "var(--peek-scale)"})`,
                   opacity: isCurrent ? 1 : shown ? 0.35 : 0,
                   zIndex: isCurrent ? 2 : 1,
                 }}
-                className={`absolute inset-0 ${shown ? "" : "pointer-events-none"} ${
+                className={`absolute inset-0 ${shown ? "" : "pointer-events-none"} ${!isCurrent && shown ? "cursor-pointer" : ""} ${
                   jumped ? "" : "motion-safe:transition-[transform,opacity] motion-safe:duration-300 motion-safe:ease-out"
                 }`}
               >
                 <ItemView item={it} sizes="(min-width: 768px) 760px, 300px" fit="cover" />
-                {isCurrent ? (
-                  <button
-                    type="button"
-                    aria-label={`Open photo ${i + 1} of ${count}: ${it.alt}`}
-                    onClick={(e) => tapped(e) && setOpen(true)}
-                    className="absolute inset-0 z-[2] cursor-zoom-in rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60"
-                  />
-                ) : (
-                  shown && (
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-hidden
-                      onClick={(e) => tapped(e) && step(d)}
-                      className="absolute inset-0 z-[2] cursor-pointer rounded-xl"
-                    />
-                  )
-                )}
               </div>
             );
           })}
+
+          {/* One open button over the current photo, outside the slides: it
+              stays the same element as the carousel steps, so keyboard focus
+              follows the current photo and never lands in a hidden neighbour. */}
+          <button
+            type="button"
+            aria-label={`Open photo ${current + 1} of ${count}: ${item.alt}`}
+            onClick={(e) => tapped(e) && setOpen(true)}
+            className="absolute inset-0 z-[2] cursor-zoom-in rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60"
+          />
 
           <button
             type="button"
