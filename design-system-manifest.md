@@ -131,6 +131,9 @@ Rules:
   bottom edge white 8% to 25% to 8% (brightest in the middle), shadow `0 8px 24px` black
   35%. The bar spans the viewport; its contents stay on the 1440 board columns. No UI
   package in the repo ships a glass surface, so it is CSS beside the other glass.
+  While the hero canvas shows under the bar, the bar has no blur and keeps the same fill,
+  so a canvas frame never forces a re-blur; the blur fades out and back in over 300ms
+  ease-out (issue #63, `glass-bar.ts`, `html[data-glass-bar="clear"]` in `app/globals.css`).
 - The legacy `border border-hairline bg-panel` card is not used on the landing page any more.
 - From md the hero is a fixed 1440 x 900 board. It scales down only, by
   `min(1, vw/1440, vh/900)`. Section height is clamped to 900 to 1080 board px. An inline script
@@ -224,6 +227,9 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   climbs in from off-screen lower-left over the type for 7s (`DRIVE_MS`), nose easing 14° to 6°,
   while title and slogan part on the same curve. Body copy, hairline and fact strip fade in after.
 - No pinning, no scroll effect, no lift-off, no replay. The parked rocket only bobs; no shake.
+- The entrance burns its full plume and smoke. Once parked, the plume and smoke fade out to
+  nothing over 1.25s, eased in and out (`FADE_S`, `hero-plume.tsx`), and stay off while the
+  rocket is parked.
 - The belly light rises as the rocket climbs and fades once parked, driven by the rocket's
   screen height. Do not add a fixed fill lamp from below (`handoff-hero-rocket.md` §4).
 - No PNG fallback. Without WebGL the hero is text only.
@@ -234,7 +240,11 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   hairline or fact strip. Only the frame that is showing mounts the rocket canvas.
 - Render budget: pixel ratio capped at 1.5 on every canvas, shadow map 1024
   (`hero-rocket-3d.tsx`). The hero draws every frame only through the entrance and the plume's
-  ease to idle; parked, it draws at most 15 fps (issue #59), and nothing off screen. The card canvases draw
+  fade-out. Parked, with no plume, it draws only the bob: at most 10 fps while someone
+  scrolls, points or types, and a still frame once nobody has for 5s; the next input resumes
+  the bob where it stopped (issue #63). The bob, the flame flicker and the smoke move by real
+  elapsed time, so fewer frames never mean slower motion. Off screen or in a hidden tab it
+  draws nothing. The card canvases draw
   only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
@@ -251,8 +261,8 @@ rest hold still at full brightness.
 through the motion gate (`motion-gate.ts`). Each runs only while the tab is visible, some of it
 shows below the navbar and none of it shows under the navbar, and no surface with a
 `backdrop-filter` covers its centre. Otherwise it pauses where it stands. The gate does not
-cover the hero canvas: parked, it still draws at most 15 fps while on screen, also while part
-of it sits under the navbar (Render budget above). The gate does not watch the phone menu
+cover the hero canvas: parked, it draws by the Render budget above, also while part of it sits
+under the navbar, where the bar drops its blur instead (Spacing, layout, shape above). The gate does not watch the phone menu
 either, so motion behind an open menu keeps the state it had. New continuous motion uses the
 gate.
 
