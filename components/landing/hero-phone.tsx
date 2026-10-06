@@ -8,7 +8,8 @@ import { Starfield } from "./starfield";
 // frame instead of scaling the desktop board down. Top to bottom: the title
 // 30px at y≈113 below the 64px bar, the rocket climbing right at about 21°
 // with its nose near (325, 182), "BORN FOR / SPACE" 52px on two lines right
-// below the rocket at y≈384, then the body copy at 14px from y≈510. The earth
+// below the rocket at y≈384, then the body copy at 14px from y≈510. All three
+// text blocks are centred between the 20px edges (issue #67). The earth
 // photo starts at y215 and is smaller than the desktop one. Positions run from
 // the left and right 20px edges, so wider phones keep the same shape.
 //
@@ -82,7 +83,7 @@ export function HeroPhoneStage({
       </div>
 
       <h1
-        className={`absolute inset-x-5 top-[113px] text-[30px] font-extrabold leading-[0.89] tracking-[-0.93px] text-prt-text ${separateClass}`}
+        className={`absolute inset-x-5 top-[113px] text-center text-[30px] font-extrabold leading-[0.89] tracking-[-0.93px] text-prt-text ${separateClass}`}
         style={separateStyle(TITLE_GATHER_Y)}
       >
         {["POLITO", "ROCKET", "TEAM"].map((word, i) => (
@@ -96,7 +97,7 @@ export function HeroPhoneStage({
       </h1>
 
       <p
-        className={`absolute inset-x-5 top-[384px] text-[52px] font-extrabold leading-[0.89] tracking-[-1.8px] text-prt-text ${separateClass}`}
+        className={`absolute inset-x-5 top-[384px] text-center text-[52px] font-extrabold leading-[0.89] tracking-[-1.8px] text-prt-text ${separateClass}`}
         style={separateStyle(SLOGAN_GATHER_Y)}
       >
         <span className={`hero-type inline-block ${sloganClass}`} style={{ animationDelay: "450ms" }}>
@@ -107,7 +108,7 @@ export function HeroPhoneStage({
       </p>
 
       <p
-        className={`absolute inset-x-5 top-[510px] text-[14px] leading-[1.5] text-prt-text ${
+        className={`absolute inset-x-5 top-[510px] text-center text-[14px] leading-[1.5] text-prt-text ${
           copyClass
         }`}
         style={{ animationDelay: "600ms" }}

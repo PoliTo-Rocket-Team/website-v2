@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
 // Exhaust plume, built to read like a photo of a motor firing: a tight
@@ -138,19 +138,28 @@ function Glow({ position, size, color, opacity }: { position: [number, number, n
 const SMOKE_COUNT = 220;
 const SMOKE_LIFE = 4.2; // seconds
 const SMOKE_SPEED = 4.6; // world units / s, drifting to -x
+// Puff diameter in world units, fresh to old. Sized in the world, not in
+// screen pixels, so a smaller canvas draws smaller puffs: on the phone stage
+// (hero-phone.tsx, 0.29 scale) fixed-pixel puffs grew to three times the
+// canvas height and the canvas edges cut them into a hard-edged wedge
+// (issue #67). On the 280px desktop canvas these are the 40px and 250px the
+// smoke was tuned at.
+const SMOKE_SIZE_FRESH = 1.16;
+const SMOKE_SIZE_OLD = 7.26;
 
 const SMOKE_VERT = /* glsl */ `
   attribute float aSize;
   attribute float aAlpha;
   attribute float aHeat;
-  uniform float uPixelRatio;
+  uniform float uViewportHeight; // drawing buffer height, device px
   varying float vAlpha;
   varying float vHeat;
   void main() {
     vAlpha = aAlpha;
     vHeat = aHeat;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * uPixelRatio;
+    // World size to device px at this depth, as three's sizeAttenuation does
+    gl_PointSize = aSize * projectionMatrix[1][1] * 0.5 * uViewportHeight / -mv.z;
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -172,7 +181,6 @@ const SMOKE_FRAG = /* glsl */ `
 type Puff = { age: number; y: number; vy: number; seed: number };
 
 function Smoke({ throttle, fade }: { throttle: { current: number }; fade: { current: number } }) {
-  const pixelRatio = useThree((s) => s.gl.getPixelRatio());
   const geom = useRef<THREE.BufferGeometry>(null!);
   const puffs = useRef<Puff[]>([]);
 
@@ -194,7 +202,7 @@ function Smoke({ throttle, fade }: { throttle: { current: number }; fade: { curr
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: { uMap: { value: map }, uPixelRatio: { value: pixelRatio } },
+        uniforms: { uMap: { value: map }, uViewportHeight: { value: 1 } },
         vertexShader: SMOKE_VERT,
         fragmentShader: SMOKE_FRAG,
         transparent: true,
@@ -205,7 +213,7 @@ function Smoke({ throttle, fade }: { throttle: { current: number }; fade: { curr
         blendSrc: THREE.OneFactor,
         blendDst: THREE.OneMinusSrcAlphaFactor,
       }),
-    [map, pixelRatio],
+    [map],
   );
   useEffect(() => () => material.dispose(), [material]);
 
@@ -226,9 +234,10 @@ function Smoke({ throttle, fade }: { throttle: { current: number }; fade: { curr
 
   // `delta` is real elapsed time (SceneClock in hero-rocket-3d.tsx), so the
   // smoke drifts at full speed however few frames the canvas draws.
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     // Gone: the plume group is hidden, so there is nothing to move.
     if (fade.current === 0) return;
+    material.uniforms.uViewportHeight.value = state.gl.domElement.height;
     const { positions, sizes, alphas, heats } = buffers;
     const list = puffs.current;
     for (let i = 0; i < SMOKE_COUNT; i++) {
@@ -247,7 +256,7 @@ function Smoke({ throttle, fade }: { throttle: { current: number }; fade: { curr
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = -0.5; // behind the core plane
       // Grows as it cools; fades out over the second half of its life
-      sizes[i] = 40 + t * 210;
+      sizes[i] = SMOKE_SIZE_FRESH + t * (SMOKE_SIZE_OLD - SMOKE_SIZE_FRESH);
       alphas[i] = 0.55 * Math.min(1, t * 5.0) * (1 - Math.pow(t, 1.4)) * (0.12 + 0.88 * throttle.current) * fade.current;
       heats[i] = Math.exp(-t * 6.0);
     }
