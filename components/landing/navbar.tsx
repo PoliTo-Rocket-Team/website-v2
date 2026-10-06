@@ -2,11 +2,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { NavMenu, type NavLink } from "./nav-menu";
 
-// Board 04 navbar, with board 21's logo and bar: white PRT logo (64,32)
-// 220x32 · links centered y47, 17px, gap 44 · actions right-aligned at
-// (1076,35): Apply = paper pill with ink text (10/24), Sign in = white-10
-// stroke pill (10/20). The bar is full-width liquid glass fixed to the top
-// edge (`.glass-bar`); its contents stay on the 1440 board's columns.
+// Board 04 navbar, with board 21's logo and bar: a 72px bar, white PRT logo
+// 220px wide at x64 · links centred on the page, 17px, gap 44 · actions
+// right-aligned at x1376: Apply = paper pill with ink text (10/24), Sign in =
+// white-10 stroke pill (10/20). Logo, links and actions are all centred on
+// the bar's middle by flex, not by offsets. The bar is full-width liquid
+// glass fixed to the top edge (`.glass-bar`); its contents stay on the 1440
+// board's columns.
 //
 // Board 24 (phone, below md): a 64px bar with 20px sides, the PRT mark only
 // (32px tall) and a menu icon. No Apply or Sign in on the bar: both live in
@@ -23,12 +25,8 @@ const links: NavLink[] = [
 export function LandingNavbar() {
   return (
     <header className="glass-bar fixed inset-x-0 top-0 z-40">
-      <div className="relative mx-auto h-16 w-full max-w-[1440px] md:h-[100px]">
-        <Link
-          href="/"
-          aria-label="Polito Rocket Team"
-          className="absolute left-5 top-4 block md:left-16 md:top-8"
-        >
+      <div className="relative mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between px-5 md:h-[72px] md:px-16">
+        <Link href="/" aria-label="Polito Rocket Team" className="relative z-10 block">
           <Image
             src="/brand/prt-mark-white.svg"
             alt=""
@@ -47,15 +45,17 @@ export function LandingNavbar() {
           />
         </Link>
 
-        <nav className="absolute left-0 top-[47px] hidden w-full items-center justify-center gap-[44px] lg:flex">
+        {/* Centred on the page, not between logo and actions: the row spans
+            the bar, and only its links take the pointer. */}
+        <nav className="pointer-events-none absolute inset-0 hidden items-center justify-center gap-[44px] lg:flex">
           {links.map((l) => (
-            <Link key={l.href} href={l.href} className="text-[17px] text-prt-text transition-colors hover:text-accent">
+            <Link key={l.href} href={l.href} className="pointer-events-auto text-[17px] text-prt-text transition-colors hover:text-accent">
               {l.label}
             </Link>
           ))}
         </nav>
 
-        <div className="absolute right-5 top-3 flex items-center md:right-[64px] md:top-[35px] md:gap-3">
+        <div className="relative z-10 flex items-center md:gap-3">
           <Link
             href="/apply"
             className="hidden rounded-full bg-prt-text px-6 py-2.5 text-[15px] font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80 md:inline-block"

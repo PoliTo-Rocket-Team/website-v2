@@ -56,7 +56,7 @@ export function Partners() {
     // No box and no fill: the page sky shows behind the logo strip. Board 24
     // below md: 20px sides, 56px top and bottom, 26px heading, then "Become a
     // partner", then the logos at half size in a 56px marquee.
-    <section className="px-0 py-14 md:py-[100px]">
+    <section className="px-0 py-section">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col justify-between gap-4 px-5 md:flex-row md:items-end md:gap-8 md:px-16">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-accent">PARTNERS</p>

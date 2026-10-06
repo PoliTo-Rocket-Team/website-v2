@@ -2,9 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { Starfield } from "./starfield";
 
-// Board 21 footer. Its own background: ground, the streaks texture at 30% in
-// screen blend, fixed stars with a few twinkling, and one shooting star
-// crossing the upper half every ~20s. Board 24 below md: 20px sides, the
+// Board 21 footer. Its own background: the page sky's streak tile and grain
+// (the board is "footer background throughout": the page sky was cut from
+// it), so it reads as the same even dark streaks with no blotches; fixed
+// stars with a few twinkling, and one shooting star crossing the upper half
+// every ~20s. Board 24 below md: 20px sides, the
 // brand block, then the link columns 2 x 2, then the address lines stacked.
 const columns = [
   {
@@ -46,15 +48,12 @@ const columns = [
 
 export function LandingFooter() {
   return (
-    <footer className="relative isolate overflow-hidden bg-ground">
+    // pt-section: the footer is the last section, so its top pad is the
+    // section rhythm's and the gap after the apply band matches the others.
+    <footer className="relative isolate overflow-hidden bg-ground pt-section">
       <div aria-hidden className="absolute inset-0 -z-10">
-        <Image
-          src="/textures/streaks.webp"
-          alt=""
-          fill
-          sizes="100vw"
-          className="object-cover opacity-30 mix-blend-screen"
-        />
+        <div className="page-sky-light" />
+        <div className="page-sky-grain" />
         <Starfield count={52} seed={23} twinkleEvery={7} />
         <span
           aria-hidden
@@ -62,9 +61,12 @@ export function LandingFooter() {
         />
       </div>
 
-      <div className="px-5 pb-12 pt-14 md:px-16 md:pt-24">
+      <div className="px-5 pb-12 md:px-16">
         <div className="mx-auto max-w-[1312px]">
-          <div className="grid gap-11 md:gap-14 lg:grid-cols-[350px_1fr] lg:gap-0">
+          {/* From lg the brand block and the four columns are one row, each as
+              wide as its widest line, spread edge to edge: the space between
+              every pair of columns, brand to ABOUT included, is the same. */}
+          <div className="grid gap-11 md:gap-14 lg:flex lg:justify-between lg:gap-0">
             {/* Brand. The block is as wide as the tagline's first line, and the
                 logo fills it, so the logo's left edge and width follow the
                 tagline whatever the font renders at. */}
@@ -87,7 +89,7 @@ export function LandingFooter() {
             </div>
 
             {/* Columns */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-4 md:gap-x-[14px]">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-4 md:gap-x-[14px] lg:contents">
               {columns.map((col) => (
                 <div key={col.head}>
                   <h3 className="font-mono text-[11px] tracking-[0.2em] text-dim">{col.head}</h3>
