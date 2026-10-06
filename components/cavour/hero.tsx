@@ -1,11 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CavourRocketStage } from "./rocket-stage";
+import { CAVOUR_STAGE_POSTER } from "@/components/landing/cavour-assets";
 import { keyFacts } from "./data";
 import { Pill } from "./parts";
 
 // Board 23 hero (1440): breadcrumb, the 128px name, summary left with the
-// status pill and years right, then the live rocket panel on the Cavour
+// status pill and years right, then the parked rocket, a still, on the Cavour
 // texture and six key facts. Board 23m (390): the same stack at 20px sides,
 // pill and years in one row under the summary, facts 3 x 2.
 export function CavourHero() {
@@ -48,13 +48,18 @@ export function CavourHero() {
             sizes="(min-width: 768px) 1312px, 100vw"
             className="object-cover"
           />
-          <CavourRocketStage />
+          {/* Rendered for the desktop box; contain keeps the rocket whole and
+              centred on a phone's shorter, narrower panel (cavour-assets.ts). */}
+          <Image
+            src={CAVOUR_STAGE_POSTER}
+            alt="Cavour in its flight configuration, side-on, nose right"
+            fill
+            priority
+            sizes="(min-width: 768px) 1312px, 100vw"
+            className="object-contain"
+          />
           <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
-            <span className="md:hidden">CVR 100-75-3 · DRAG TO ORBIT</span>
-            <span className="hidden md:inline">
-              CVR 100-75-3 · FLIGHT CONFIGURATION
-              <span className="ml-6 text-prt-text/50">LIVE 3D · DRAG TO ORBIT</span>
-            </span>
+            CVR 100-75-3 · FLIGHT CONFIGURATION
           </p>
         </div>
 

@@ -1,6 +1,7 @@
 import { preload } from "react-dom";
 
-// The files every Cavour canvas loads: the hero's and each project card's.
+// The files every Cavour canvas loads: the homepage hero's and each project
+// card's, and the stills that stand in for a canvas.
 // This module imports no three.js, so the hero can name them in the HTML
 // without pulling the 3D code into the first bundle.
 // Poly Haven's studio_small_03 (CC0), halved to 512x256. Every Cavour
@@ -25,6 +26,16 @@ export const CAVOUR_DECAL = "/design/cavour/decal-strip.png";
  * `node scripts/render-card-poster.mjs` whenever the card scene changes.
  */
 export const CAVOUR_CARD_POSTER = "/design/cavour/card-poster.png";
+
+/**
+ * The /projects/cavour hero panel's rocket as a still: the parked vehicle
+ * (cavour-stage-3d.tsx), rendered at 1968 x 930 for the panel's 1312 x 620
+ * desktop box, with a transparent background over the Cavour texture. The
+ * scene frames the rocket by panel width, so `object-fit: contain` keeps it
+ * whole and placed the same on any narrower panel. Re-render it with
+ * `node scripts/render-cavour-stage.mjs` whenever the stage scene changes.
+ */
+export const CAVOUR_STAGE_POSTER = "/design/cavour/stage-poster.webp";
 
 /**
  * Starts the downloads from the HTML head, while the page is still parsing,

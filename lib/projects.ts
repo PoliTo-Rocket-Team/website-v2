@@ -27,8 +27,13 @@ export type Launch = {
 
 export type WorkLine = { code: string; name: string };
 
+/** A project page that exists. Add a route here when its page ships. */
+export type ProjectPage = "/projects/cavour";
+
 type ProjectBase = {
   slug: string;
+  /** Its own page, when it has one: the card links there. No page, no link. */
+  href?: ProjectPage;
   index: string;
   years: string;
   name: string;
@@ -78,6 +83,7 @@ export const projects: readonly Project[] = [
   {
     kind: "vehicle",
     slug: "cavour",
+    href: "/projects/cavour",
     index: "01",
     years: "2022 – 2023",
     name: "Cavour",
