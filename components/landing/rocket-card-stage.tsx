@@ -31,7 +31,6 @@ function webglSupported() {
 export function RocketCardStage() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [supported, setSupported] = useState(false);
-  const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [tuning, setTuning] = useState(false);
   const [readout, setReadout] = useState("");
@@ -45,10 +44,6 @@ export function RocketCardStage() {
     setTuning(new URLSearchParams(window.location.search).has("cam"));
     const el = wrapRef.current;
     if (!el) return;
-
-    // Only paint every frame while the card is on screen.
-    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0 });
-    io.observe(el);
 
     // A card scrolled near before its turn mounts at once. The margin is
     // kept small: at 1440x900 the cards start ~1800px down, and a full
@@ -71,7 +66,6 @@ export function RocketCardStage() {
     });
 
     return () => {
-      io.disconnect();
       near.disconnect();
       cancel();
       pendingDone.current?.();
@@ -91,7 +85,7 @@ export function RocketCardStage() {
     // actually drawn; see reveal-on-first-frame.tsx for why.
     <div ref={wrapRef} className="pointer-events-none absolute inset-0 [&_canvas]:opacity-0">
       {supported && mounted && (
-        <RocketCard3D visible={visible} tuning={tuning} onReadout={setReadout} onSetupDone={onSetupDone} />
+        <RocketCard3D tuning={tuning} onReadout={setReadout} onSetupDone={onSetupDone} />
       )}
       {tuning && (
         <p className="pointer-events-none absolute bottom-1 left-1 rounded bg-ground/70 px-2 py-1 font-mono text-[10px] text-accent">

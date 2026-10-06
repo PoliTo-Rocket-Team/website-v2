@@ -174,7 +174,7 @@ export function Hero() {
       className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
       style={phase === "enter" ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" } : undefined}
     >
-      <HeroRocket3D fullBurn={phase === "drive"} onStatus={onRocketStatus} />
+      <HeroRocket3D phase={phase} onStatus={onRocketStatus} />
     </div>
   );
 

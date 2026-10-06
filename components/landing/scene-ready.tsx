@@ -14,8 +14,9 @@ import { useFrame, useThree } from "@react-three/fiber";
  * at the start of the drive-in (~330 ms, issue #29), on a card the blank
  * texture as it scrolled in (issue #45).
  *
- * The two frames are requested with `invalidate`, so this also works on a
- * canvas whose frame loop is "demand" while it waits off screen. After them
+ * The two frames are requested with `invalidate`, so this also works on the
+ * card canvases, whose frame loop is "demand". (The hero's canvas ignores
+ * `invalidate`: its own driver draws every frame until warm.) After them
  * the canvas has drawn the finished scene and RevealOnFirstFrame has shown it.
  */
 export function WarmUp({ onWarm }: { onWarm?: () => void }) {

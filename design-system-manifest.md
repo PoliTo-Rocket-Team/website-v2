@@ -225,7 +225,10 @@ so the hero scrim, which ends on `ground`, meets it without a line.
   with its nose near (325, 182), then "BORN FOR / SPACE" right below the rocket at y≈384, then
   the body copy from y≈510. The earth photo starts at y215, smaller than on desktop. No
   hairline or fact strip. Only the frame that is showing mounts the rocket canvas.
-- Render budget: pixel ratio capped at 1.5, shadow map 1024 (`hero-rocket-3d.tsx`).
+- Render budget: pixel ratio capped at 1.5 on every canvas, shadow map 1024
+  (`hero-rocket-3d.tsx`). The hero draws every frame only through the entrance and the plume's
+  ease to idle; parked, it draws at most 30 fps, and nothing off screen. The card canvases draw
+  only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
@@ -289,9 +292,9 @@ stacked.
 ## Accessibility
 
 - Reduced motion: the hero jumps to its settled state and mounts no rocket (`hero.tsx`). The
-  hero bob, the card rocket's drift and its hover rise, the page sky's star twinkle and the
-  partners marquee are off under reduced motion (`hero-rocket-3d.tsx`, `rocket-card-3d.tsx`,
-  `projects.tsx`, `app/page.tsx`, `partners.tsx`). The hero and footer star twinkle and the
+  hero bob, the card rocket's hover rise, the page sky's star twinkle and the partners marquee
+  are off under reduced motion (`hero-rocket-3d.tsx`, `projects.tsx`, `app/page.tsx`,
+  `partners.tsx`). The card rocket has no idle motion at all. The hero and footer star twinkle and the
   footer shooting star are kept as built (issue #33). Any new motion must honour
   `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.

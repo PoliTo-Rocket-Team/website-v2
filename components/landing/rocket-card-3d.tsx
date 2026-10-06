@@ -51,10 +51,6 @@ const PARKED_X = 1.2;
 const WEAR_SCALE = 2.5;
 const WEAR_AMOUNT = 0.45;
 
-const REDUCED =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 function Vehicle() {
   const group = useRef<THREE.Group>(null!);
   /** The group the vehicle sits in directly: its frame IS rocket space. */
@@ -74,16 +70,12 @@ function Vehicle() {
     [],
   );
 
-  useFrame((state) => {
+  // The vehicle never moves, and the canvas only draws on demand (warm-up,
+  // resize), so there is no idle drift: a card at rest draws no frames
+  // (issue #48). This runs on those few frames only.
+  useFrame(() => {
     if (!group.current) return;
-    // Barely-there drift, same intent as the hero's: keeps it from reading as
-    // a sticker without ever becoming a bounce.
-    const drift = REDUCED ? 0 : Math.sin(state.clock.elapsedTime * 0.5) * 0.04;
-    group.current.rotation.x = drift;
-    group.current.position.y = PARKED_Y;
-    group.current.position.x = PARKED_X;
-    group.current.position.z = PARKED_Z;
-    // Pin the procedural wear to the hull through the lean, turn and climb.
+    // Pin the procedural wear to the hull through the lean.
     group.current.updateMatrixWorld();
     weather.uRocketInv.value.copy(frame.current.matrixWorld).invert();
   });
@@ -91,7 +83,7 @@ function Vehicle() {
   // The model is built along X with the nose at +X; stand it up nose-first,
   // less 16° so it leans to the right.
   return (
-    <group ref={group}>
+    <group ref={group} position={[PARKED_X, PARKED_Y, PARKED_Z]}>
       <group ref={frame} rotation={[0, 0, Math.PI / 2 - LEAN]}>
         <CavourBuilt weather={weather} length={LENGTH} />
       </group>
@@ -126,8 +118,6 @@ function FixedCamera() {
 }
 
 type Props = {
-  /** The card is on screen: draw every frame. Otherwise only on demand. */
-  visible: boolean;
   /** `?cam` on the URL: orbit controls and a live camera readout. */
   tuning: boolean;
   onReadout: (s: string) => void;
@@ -139,16 +129,22 @@ type Props = {
   onSetupDone: () => void;
 };
 
-export default function RocketCard3D({ visible, tuning, onReadout, onSetupDone }: Props) {
+export default function RocketCard3D({ tuning, onReadout, onSetupDone }: Props) {
   return (
     <Canvas
-      // "demand" rather than "never" while off screen: "never" leaves the
-      // WebGL buffer undrawn, and on a real GPU that shows as white until
-      // the first frame. "demand" still costs nothing between frames, and
-      // lets the warm-up draw the finished vehicle before the card is seen.
-      frameloop={visible ? "always" : "demand"}
+      // Nothing in the scene moves, so the canvas draws only when asked: the
+      // warm-up (scene-ready.tsx), a resize, and the ?cam tuner's orbit
+      // controls. The hover rise is a CSS transform on the canvas wrapper
+      // (projects.tsx) and needs no frames. Under reduced motion this is the
+      // same: the warm-up draws the finished vehicle, then nothing.
+      // Not "never": that leaves the WebGL buffer undrawn, which shows white
+      // on a real GPU, and ignores the warm-up's invalidate.
+      frameloop="demand"
       dpr={[1, 1.5]}
-      resize={{ offsetSize: true }}
+      // No scroll tracking: the canvas takes no pointer events, so its page
+      // position is never used, and tracking it would draw a frame on every
+      // scroll.
+      resize={{ offsetSize: true, scroll: false }}
       gl={{ alpha: true, antialias: true }}
       camera={{ fov: FOV, near: 1, far: 200, position: [EYE.x, EYE.y, EYE.z] }}
       // The canvas is taller than the card and hangs over its top edge, so
