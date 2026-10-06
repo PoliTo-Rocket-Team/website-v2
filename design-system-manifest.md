@@ -227,6 +227,9 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   climbs in from off-screen lower-left over the type for 7s (`DRIVE_MS`), nose easing 14° to 6°,
   while title and slogan part on the same curve. Body copy, hairline and fact strip fade in after.
 - No pinning, no scroll effect, no lift-off, no replay. The parked rocket only bobs; no shake.
+- The entrance burns its full plume and smoke. Once parked, the plume and smoke fade out to
+  nothing over 1.25s, eased in and out (`FADE_S`, `hero-plume.tsx`), and stay off while the
+  rocket is parked.
 - The belly light rises as the rocket climbs and fades once parked, driven by the rocket's
   screen height. Do not add a fixed fill lamp from below (`handoff-hero-rocket.md` §4).
 - No PNG fallback. Without WebGL the hero is text only.
@@ -237,11 +240,11 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   hairline or fact strip. Only the frame that is showing mounts the rocket canvas.
 - Render budget: pixel ratio capped at 1.5 on every canvas, shadow map 1024
   (`hero-rocket-3d.tsx`). The hero draws every frame only through the entrance and the plume's
-  ease to idle. Parked, it draws at most 10 fps while someone scrolls, points or types, and
-  holds a still frame once nobody has for 5s; the next input resumes the bob where it stopped
-  (issue #63). The bob, the flame flicker and the smoke move by real elapsed time, so the
-  10 fps cap shows fewer frames, never slower motion. Off screen or in a hidden tab it draws
-  nothing. The card canvases draw
+  fade-out. Parked, with no plume, it draws only the bob: at most 10 fps while someone
+  scrolls, points or types, and a still frame once nobody has for 5s; the next input resumes
+  the bob where it stopped (issue #63). The bob, the flame flicker and the smoke move by real
+  elapsed time, so fewer frames never mean slower motion. Off screen or in a hidden tab it
+  draws nothing. The card canvases draw
   only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and

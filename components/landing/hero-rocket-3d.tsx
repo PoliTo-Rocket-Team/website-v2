@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import * as THREE from "three";
-import Plume from "./hero-plume";
+import Plume, { type Burn } from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
@@ -17,7 +17,8 @@ import { useClearGlassBarOver } from "./glass-bar";
 // nose right, matching the static render's framing (nose ~95% across, plume
 // trailing to the left edge). The Blender GLB it was measured from lives in
 // design/cavour.glb, out of public/ so it is never served.
-// Idle: hover bob only (decision 0004: no shake); plume lives in hero-plume.tsx.
+// Idle: hover bob only (decision 0004: no shake); the plume fades out once
+// parked (hero-plume.tsx).
 // Scroll fly-out stays on the CSS wrapper in hero.tsx.
 
 // Canvas 2400x280, centred where the old 1480px stage was: ~750px of room
@@ -54,11 +55,11 @@ const BELLY_PARKED = 0.15; // env gate once settled (0 = none, 1 = all)
 const DOM_READ_EVERY = 4;
 
 function Rocket({
-  fullBurn,
-  onPlumeIdleChange,
+  burn,
+  onPlumeGoneChange,
 }: {
-  fullBurn: boolean;
-  onPlumeIdleChange: (idle: boolean) => void;
+  burn: Burn;
+  onPlumeGoneChange: (gone: boolean) => void;
 }) {
   const group = useRef<THREE.Group>(null!);
   const earth = useRef<THREE.DirectionalLight>(null!);
@@ -121,7 +122,7 @@ function Rocket({
       <directionalLight ref={earth} intensity={0} color="#ffffff" />
       <CavourBuilt weather={weather} length={LENGTH} />
       <group position={[-HALF, 0, 0]}>
-        <Plume fullBurn={fullBurn} onIdleChange={onPlumeIdleChange} />
+        <Plume burn={burn} onGoneChange={onPlumeGoneChange} />
       </group>
     </group>
   );
@@ -130,12 +131,14 @@ function Rocket({
 /** The hero's entrance, as hero.tsx runs it (decision 0004). */
 type Phase = "enter" | "drive" | "settled";
 
+/** The engine through the entrance: full burn on the drive-in, out once parked. */
+const BURN: Record<Phase, Burn> = { enter: "idle", drive: "full", settled: "out" };
+
 // Render budget (issue #48): the site must stay light. The canvas draws every
-// display frame only while the rocket really moves — the hold, the drive-in,
-// and the plume easing down to idle after it. Parked, only the slow bob (one
-// lap in 9s, at most ~4px a second) and the idle plume's faint flicker move.
-// They read the same at 10 fps, so it draws at most that (issue #63; 15 in
-// #59, 30 before). Once nobody has scrolled, pointed or typed for
+// display frame only while something really moves — the hold, the drive-in,
+// and the plume fading out after it. Parked there is no plume, only the slow
+// bob (one lap in 9s, at most ~4px a second). It reads the same at 10 fps, so
+// it draws at most that (issue #63; 15 in #59, 30 before). Once nobody has scrolled, pointed or typed for
 // PARKED_STILL_MS, it holds a still frame, and the next input wakes it where
 // it stopped (SceneClock). Off screen it draws nothing.
 const PARKED_FPS = 10;
@@ -149,7 +152,7 @@ const WAKE_EVENTS = ["pointermove", "pointerdown", "wheel", "scroll", "keydown",
  * How often the canvas draws. One value, so no mix of flags can ask for two
  * rates at once.
  *  - "every-frame": warming up, or the rocket is on the move
- *  - "parked":      the bob and idle plume at PARKED_FPS, then a still
+ *  - "parked":      the bob at PARKED_FPS, then a still
  *                   frame while nobody is at the page
  *  - "on-resize":   reduced motion; the finished scene, redrawn only when a
  *                   resize clears the canvas
@@ -170,8 +173,8 @@ function drawRate(ready: boolean, visible: boolean, moving: boolean): DrawRate {
 /**
  * Scene time for a canvas that does not draw all the time. While it draws,
  * scene time is wall-clock time: each draw moves it on by the real time since
- * the one before, so at 10 fps the bob, the flicker and the smoke move at
- * full speed in fewer frames, never in slow motion. While it does not draw (a
+ * the one before, so the bob and the plume move at full speed however few
+ * frames are drawn, never in slow motion. While it does not draw (a
  * still frame, a hidden tab, off screen) the clock is paused, so the next
  * draw carries on from where the last one stopped instead of jumping ahead.
  * (R3F's own clock would restart at zero on every setFrameloop.)
@@ -308,8 +311,8 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   const [visible, setVisible] = useState(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [plumeIdle, setPlumeIdle] = useState(false);
-  const rate = drawRate(ready, visible, phase !== "settled" || !plumeIdle);
+  const [plumeGone, setPlumeGone] = useState(false);
+  const rate = drawRate(ready, visible, phase !== "settled" || !plumeGone);
   // The project cards set up their canvases only while this one is not
   // drawing every frame, so they never take a frame from the warm-up or the
   // drive-in (scene-schedule.ts).
@@ -401,7 +404,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
                   environmentIntensity={0.45}
                   environmentRotation={[-Math.PI / 2, 0, 0]}
                 />
-                <Rocket fullBurn={phase === "drive"} onPlumeIdleChange={setPlumeIdle} />
+                <Rocket burn={BURN[phase]} onPlumeGoneChange={setPlumeGone} />
                 <WarmUp onWarm={onWarm} />
               </Suspense>
             </SceneErrorBoundary>
