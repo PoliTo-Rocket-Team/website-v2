@@ -11,7 +11,7 @@ import {
   isEmptyScopeInfo,
 } from "./get-member-scopes";
 import type { Division } from "@/db/types";
-import { getDb } from "@/db/client";
+import { getDb, isDatabaseConfigured } from "@/db/client";
 import { applyPositions, departments, divisions } from "@/db/schema";
 
 export const POSITIONS_CACHE_TAG = "apply-positions";
@@ -215,12 +215,19 @@ export async function getPositionsPageData(): Promise<{
   };
 }
 
-export async function getPublicPositions(): Promise<{
-  positions: ApplyPosition[];
-}> {
+export type PublicPositions =
+  | { status: "available"; positions: ApplyPosition[] }
+  | { status: "database-not-configured" };
+
+export async function getPublicPositions(): Promise<PublicPositions> {
+  if (!isDatabaseConfigured()) {
+    return { status: "database-not-configured" };
+  }
+
   const positions = await getActivePositionSnapshotCached();
 
   return {
+    status: "available",
     positions: positions.map((position) => toApplyPosition(position)),
   };
 }
