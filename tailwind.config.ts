@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { brand } from "./lib/brand-colors";
 
 const config = {
   darkMode: ["class"],
@@ -19,22 +20,23 @@ const config = {
     },
     extend: {
       colors: {
-        // PRT design tokens (Pencil variables, board 00)
-        ground: "#0B0B0C",
+        // PRT design tokens (Pencil variables, board 00; brand colours from
+        // board 21, lib/brand-colors.ts)
+        ground: brand.ground,
         panel: "#141416",
         "surface-2": "#1C1C1F",
         hairline: "#232326",
         "border-strong": "#34343A",
-        "prt-text": "#F2F2F0",
+        "prt-text": brand.text,
         "text-2": "#C9C9CE",
         "prt-muted": "#8A8A8F",
         dim: "#5E5E64",
         accent: {
-          DEFAULT: "#FF5100",
-          hover: "#FF6A26",
-          pressed: "#E04700",
-          soft: "#FF510024",
-          "on-accent": "#0B0B0C",
+          DEFAULT: brand.accent,
+          hover: brand.accentHover,
+          pressed: brand.accentPressed,
+          soft: `${brand.accent}24`,
+          "on-accent": brand.ground,
         },
         "white-5": "#FFFFFF0D",
         "white-10": "#FFFFFF1A",

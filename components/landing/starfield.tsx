@@ -29,6 +29,7 @@ export function Starfield({
   sizeMin = 1,
   sizeMax = 3.2,
   dimOpacity = 0.35,
+  reducedMotion = "twinkle",
   className = "",
 }: {
   count?: number;
@@ -37,15 +38,22 @@ export function Starfield({
   sizeMin?: number;
   sizeMax?: number;
   dimOpacity?: number;
+  /**
+   * What twinkling stars do under prefers-reduced-motion. The hero and footer
+   * skies keep twinkling as built; the page sky between them holds still.
+   */
+  reducedMotion?: "twinkle" | "still";
   className?: string;
 }) {
   const stars = makeStars(count, seed, twinkleEvery, sizeMin, sizeMax);
+  const twinkleClass =
+    reducedMotion === "still" ? "animate-twinkle motion-reduce:animate-none" : "animate-twinkle";
   return (
     <div aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
       {stars.map((s, i) => (
         <span
           key={i}
-          className={`absolute rounded-full bg-white ${s.twinkle ? "animate-twinkle" : ""}`}
+          className={`absolute rounded-full bg-white ${s.twinkle ? twinkleClass : ""}`}
           style={{
             left: `${s.x}%`,
             top: `${s.y}%`,

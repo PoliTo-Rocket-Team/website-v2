@@ -3,8 +3,9 @@ import Link from "next/link";
 import { newsBlur } from "./news-blur";
 import { RocketArrow } from "./rocket-arrow";
 
-// Board 05 — "Latest" (track record). Posts will come from the dashboard posts table;
-// static seed data until that lands.
+// Board 21, track record. Posts will come from the dashboard posts table;
+// static seed data until that lands. The cards are liquid glass over the page
+// sky, with no texture of their own.
 type Tag = "LAUNCH" | "COMPETITION" | "OUTREACH" | "TEAM";
 
 const tagStyles: Record<Tag, string> = {
@@ -14,35 +15,14 @@ const tagStyles: Record<Tag, string> = {
   TEAM: "bg-white-10 text-prt-text",
 };
 
-// A post with no photo still gets a visual, so a card can never open a hole.
-// Cropped off-centre from the 2026 wallpaper set to leave the logo out.
-//
-// That set is 12 designs, each shipped twice (mark only / mark + wordmark) and
-// again in a grey twin. Greys made the section read flat, and the flat-gradient
-// and tagline wallpapers have no texture to crop, which leaves exactly these
-// five warm designs — one crop each, no repeats.
-const textures = ["streaks", "fan", "swirl", "arc", "cloud"].map(
-  (name) => `/design/news/tex-${name}.jpg`,
-);
-
-// Handed out in order, so no two cards on screen can share a texture. Hashing
-// the title looked more clever and gave three of four cards the same one;
-// Math.random() would differ between server and client and break hydration.
-// The featured card is 0, the list runs on from 1.
-function textureFor(index: number): string {
-  return textures[index % textures.length];
-}
-
 type Post = {
   tag: Tag;
   date: string;
   title: string;
   excerpt: string;
-  /** A real photo of the event. Falls back to the tag's brand texture. */
-  image?: string;
 };
 
-const featured: Post & { cta: string } = {
+const featured: Post & { cta: string; image: string } = {
   tag: "LAUNCH",
   date: "12 OCT 2025",
   title: "VES Mark II static fire complete",
@@ -73,71 +53,67 @@ const posts: Post[] = [
   },
 ];
 
+function TagLine({ post }: { post: Post }) {
+  return (
+    <div className="flex items-center gap-4 font-mono text-[12px] md:gap-5 md:text-[13px]">
+      <span className={`rounded-full px-3.5 py-1 tracking-widest ${tagStyles[post.tag]}`}>
+        {post.tag}
+      </span>
+      <span className="tracking-wider text-prt-muted">{post.date}</span>
+    </div>
+  );
+}
+
 export function Latest() {
   return (
-    <section className="px-6 py-24 md:px-16">
+    // Board 24 below md: 20px sides, 56px top and bottom, 26px heading, one
+    // column: the featured card (photo 150px tall) and only the first news
+    // card (IREC 2025). The other two news cards are desktop-only.
+    <section className="px-5 py-14 md:px-16 md:py-[120px]">
       <div className="mx-auto max-w-[1312px]">
         {/* Header */}
-        <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end md:gap-8">
           <div>
             <p className="font-mono text-xs tracking-[0.3em] text-accent">TRACK RECORD</p>
-            <h2 className="mt-4 max-w-[16ch] text-4xl font-bold leading-tight tracking-tight md:text-5xl">
+            <h2 className="mt-4 text-[26px] font-bold leading-[1.25] tracking-[-0.025em] md:max-w-[16ch] md:text-[48px]">
               We fly against the best student teams on earth.
             </h2>
           </div>
-          <p className="max-w-[380px] text-sm leading-relaxed text-prt-muted">
+          <p className="max-w-[460px] text-[15px] leading-relaxed text-text-2 md:text-[17px]">
             Four international campaigns since 2021. Every vehicle designed, built and qualified
             in-house.
           </p>
         </div>
 
         {/* Grid: featured card + list */}
-        <div className="mt-14 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <div className="mt-6 grid gap-5 md:mt-16 lg:grid-cols-[1.58fr_1fr]">
           {/* Featured */}
-          <article className="group relative isolate flex flex-col justify-between overflow-hidden rounded-[10px] border border-hairline bg-panel px-10 pb-6 pt-4 transition-colors hover:border-border-strong">
-            {/* Texture fills the card, same as the list cards. */}
-            <Image
-              src={textureFor(0)}
-              alt=""
-              fill
-              sizes="(min-width: 1024px) 55vw, 100vw"
-              placeholder="blur"
-              blurDataURL={newsBlur[textureFor(0)]}
-              className="-z-10 object-cover opacity-60 transition-opacity duration-300 group-hover:opacity-80"
-            />
-            <div className="absolute inset-0 -z-10 bg-gradient-to-r from-panel via-panel/70 to-panel/35" />
+          <article className="glass-card flex flex-col justify-between rounded-xl p-5 md:p-11">
             <div>
-              <div className="flex items-center gap-4 font-mono text-xs">
-                <span className={`rounded-full px-3 py-1 tracking-widest ${tagStyles[featured.tag]}`}>
-                  {featured.tag}
-                </span>
-                <span className="text-dim">{featured.date}</span>
-              </div>
-              <h3 className="mt-3 text-2xl font-bold leading-snug md:text-3xl">{featured.title}</h3>
-              <p className="mt-2 max-w-[46ch] text-sm leading-relaxed text-prt-muted">
+              <TagLine post={featured} />
+              <h3 className="mt-4 text-[20px] font-bold leading-[1.2] tracking-[-0.02em] md:mt-6 md:text-[34px] md:leading-snug">
+                {featured.title}
+              </h3>
+              <p className="mt-3 max-w-[46ch] text-[14px] leading-[22px] text-text-2 md:mt-5 md:text-[17px] md:leading-relaxed">
                 {featured.excerpt}
               </p>
             </div>
-            {/* The photo sits inset, so the card's texture still shows all the way
-                round it. Fixed at 2:1 rather than flex-1: letting it absorb the
-                list column's slack made its shape depend on the viewport, which
-                squashed it to 5:1 around 820px wide. */}
-            {featured.image && (
-              <div className="relative mt-6 aspect-[2/1] w-full overflow-hidden rounded-[6px]">
-                <Image
-                  src={featured.image}
-                  alt=""
-                  fill
-                  sizes="(min-width: 1024px) 50vw, 90vw"
-                  placeholder="blur"
-                  blurDataURL={newsBlur[featured.image]}
-                  className="object-cover"
-                />
-              </div>
-            )}
+            {/* Fixed at 2.2:1 rather than flex-1: letting it absorb the list
+                column's slack made its shape depend on the viewport. */}
+            <div className="relative mt-4 h-[150px] w-full overflow-hidden rounded-[6px] md:mt-10 md:aspect-[2.2/1] md:h-auto">
+              <Image
+                src={featured.image}
+                alt=""
+                fill
+                sizes="(min-width: 1024px) 50vw, 90vw"
+                placeholder="blur"
+                blurDataURL={newsBlur[featured.image]}
+                className="object-cover"
+              />
+            </div>
             <Link
               href="#"
-              className="group/cta mt-5 inline-flex items-center gap-3 self-start text-sm font-medium text-accent transition-colors hover:text-accent-hover"
+              className="group/cta mt-3 inline-flex items-center gap-3 self-start text-[15px] font-medium md:mt-10 md:text-base text-accent transition-colors hover:text-accent-hover"
             >
               {featured.cta}
               <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover/cta:translate-x-1.5 group-hover/cta:opacity-100" />
@@ -145,40 +121,24 @@ export function Latest() {
           </article>
 
           {/* List */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             {posts.map((post, i) => (
               <article
                 key={post.title}
-                className="group relative isolate overflow-hidden rounded-[10px] border border-hairline bg-panel p-10 transition-colors hover:border-border-strong"
+                className={`glass-card flex-1 flex-col justify-center rounded-xl p-5 md:flex md:py-10 ${i === 0 ? "flex" : "hidden"} md:pl-10 md:pr-16 lg:min-h-[250px]`}
               >
-                {/* Same texture treatment as the featured card. */}
-                <Image
-                  src={post.image ?? textureFor(i + 1)}
-                  alt=""
-                  fill
-                  sizes="(min-width: 1024px) 40vw, 100vw"
-                  placeholder="blur"
-                  blurDataURL={newsBlur[post.image ?? textureFor(i + 1)]}
-                  className="-z-10 object-cover opacity-60 transition-opacity duration-300 group-hover:opacity-80"
-                />
-                <div className="absolute inset-0 -z-10 bg-gradient-to-r from-panel via-panel/70 to-panel/35" />
-                <div className="flex items-center gap-4 font-mono text-xs">
-                  <span className={`rounded-full px-3 py-1 tracking-widest ${tagStyles[post.tag]}`}>
-                    {post.tag}
-                  </span>
-                  <span className="text-dim">{post.date}</span>
-                </div>
-                <h3 className="mt-4 font-semibold leading-snug">{post.title}</h3>
-                <p className="mt-1.5 text-sm text-prt-muted">{post.excerpt}</p>
+                <TagLine post={post} />
+                <h3 className="mt-3 text-[16px] font-semibold leading-[1.2] md:text-[21px] md:leading-snug">{post.title}</h3>
+                <p className="mt-2 text-[14px] leading-[21px] text-text-2 md:mt-3 md:text-[17px] md:leading-relaxed">{post.excerpt}</p>
               </article>
             ))}
           </div>
         </div>
 
-        <div className="mt-12 text-center">
+        <div className="mt-6 text-center md:mt-16">
           <Link
             href="#"
-            className="group inline-flex items-center gap-3 font-mono text-sm tracking-wide text-text-2 transition-colors hover:text-accent"
+            className="group inline-flex items-center gap-3 font-mono text-base tracking-wide text-prt-text transition-colors hover:text-accent"
           >
             All news
             <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />

@@ -1,9 +1,19 @@
 import Image from "next/image";
 import Link from "next/link";
+import { NavMenu, type NavLink } from "./nav-menu";
 
-// Board 04 navbar: logo (64,24) 40x50 · links centered y47, 17px, gap 44 ·
-// actions right-aligned at (1076,35): Apply = accent pill (10/24), Sign in = white-10 stroke pill (10/20).
-const links = [
+// Board 04 navbar, with board 21's logo and bar: white PRT logo (64,32)
+// 220x32 · links centered y47, 17px, gap 44 · actions right-aligned at
+// (1076,35): Apply = paper pill with ink text (10/24), Sign in = white-10
+// stroke pill (10/20). The bar is full-width liquid glass fixed to the top
+// edge (`.glass-bar`); its contents stay on the 1440 board's columns.
+//
+// Board 24 (phone, below md): a 64px bar with 20px sides, the PRT mark only
+// (32px tall) and a menu icon. No Apply or Sign in on the bar: both live in
+// the board 24b sidebar with the links (nav-menu.tsx). From md to lg the menu
+// also stands in for the link row, which does not clear the logo yet; Apply
+// and Sign in are back on the bar there.
+const links: NavLink[] = [
   { href: "/projects", label: "Projects" },
   { href: "/about/the-team", label: "About" },
   { href: "/outreach", label: "Outreach" },
@@ -12,19 +22,32 @@ const links = [
 
 export function LandingNavbar() {
   return (
-    <header className="absolute inset-x-0 top-0 z-40">
-      <div className="relative mx-auto h-[100px] w-full max-w-[1440px]">
-        <Link href="/" className="absolute left-16 top-6 block h-[50px] w-[40px]">
-          <Image src="/design/prt-mark.png" alt="Polito Rocket Team" width={40} height={50} priority />
+    <header className="glass-bar fixed inset-x-0 top-0 z-40">
+      <div className="relative mx-auto h-16 w-full max-w-[1440px] md:h-[100px]">
+        <Link
+          href="/"
+          aria-label="Polito Rocket Team"
+          className="absolute left-5 top-4 block md:left-16 md:top-8"
+        >
+          <Image
+            src="/brand/prt-mark-white.svg"
+            alt=""
+            width={444}
+            height={220}
+            priority
+            className="h-8 w-auto md:hidden"
+          />
+          <Image
+            src="/brand/prt-logo-white.svg"
+            alt=""
+            width={943}
+            height={137}
+            priority
+            className="hidden h-auto w-[220px] md:block"
+          />
         </Link>
 
-        {/* star-dimming fade behind the link row (invisible on the black sky) */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 top-[-10px] h-[150px] w-[780px] -translate-x-1/2"
-          style={{ background: "radial-gradient(ellipse 50% 50% at 50% 50%, #010101 30%, #01010100 70%)" }}
-        />
-        <nav className="absolute left-0 top-[47px] flex w-full items-center justify-center gap-[44px]">
+        <nav className="absolute left-0 top-[47px] hidden w-full items-center justify-center gap-[44px] lg:flex">
           {links.map((l) => (
             <Link key={l.href} href={l.href} className="text-[17px] text-prt-text transition-colors hover:text-accent">
               {l.label}
@@ -32,19 +55,20 @@ export function LandingNavbar() {
           ))}
         </nav>
 
-        <div className="absolute right-[64px] top-[35px] flex items-center gap-3">
+        <div className="absolute right-5 top-3 flex items-center md:right-[64px] md:top-[35px] md:gap-3">
           <Link
             href="/apply"
-            className="rounded-full bg-accent px-6 py-2.5 text-[15px] font-semibold text-accent-on-accent transition-colors hover:bg-accent-hover active:bg-accent-pressed"
+            className="hidden rounded-full bg-prt-text px-6 py-2.5 text-[15px] font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80 md:inline-block"
           >
             Apply
           </Link>
           <Link
             href="/sign-in"
-            className="rounded-full border border-white-10 px-5 py-2.5 text-[15px] font-medium text-prt-text transition-colors hover:border-border-strong"
+            className="hidden rounded-full border border-white-10 px-5 py-2.5 text-[15px] font-medium text-prt-text transition-colors hover:border-border-strong md:inline-block"
           >
             Sign in
           </Link>
+          <NavMenu links={links} className="-mr-2 lg:hidden" />
         </div>
       </div>
     </header>
