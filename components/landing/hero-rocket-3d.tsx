@@ -8,6 +8,8 @@ import Plume from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
+import { SceneErrorBoundary, WarmUp } from "./scene-ready";
+import { CAVOUR_HDRI } from "./cavour-assets";
 
 // Three.js hero stage: the code-built Cavour (rocket-cavour.tsx) horizontal,
 // nose right, matching the static render's framing (nose ~95% across, plume
@@ -26,10 +28,10 @@ const REDUCED =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// IBL: a real small-studio HDRI (Poly Haven, CC0). Real softboxes and
-// falloff give the metals proper streaks and the orange paint a believable
-// sheen — the previous hand-built strip environment read flat and cartoony.
-const HDRI = "/design/hdri/studio_small_03.hdr";
+// IBL: a real small-studio HDRI (Poly Haven, CC0), CAVOUR_HDRI. Real
+// softboxes and falloff give the metals proper streaks and the orange paint a
+// believable sheen — the previous hand-built strip environment read flat and
+// cartoony.
 
 // Belly light: the lit earth under the rocket, white. Two parts, both
 // driven by how low the rocket sits on screen: the environment's light on
@@ -117,23 +119,6 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
   );
 }
 
-/**
- * Compiles every shader in the scene during the 2 s gathered hold, while the
- * stage is parked off screen and nothing is moving. Without this the rocket's
- * five weathered materials and both plume shaders compiled on the first frame
- * of the drive-in, which was the stutter left after issue #29 (~330 ms).
- * compileAsync uses the GPU's parallel-compile path, so it does not block.
- */
-function WarmUp() {
-  const { gl, scene, camera } = useThree();
-  useEffect(() => {
-    // A rejected promise (lost context) just means the normal first-draw
-    // compile happens instead, so there is nothing to handle.
-    gl.compileAsync(scene, camera).catch(() => {});
-  }, [gl, scene, camera]);
-  return null;
-}
-
 // No static fallback by decision 0004: if WebGL is unavailable the hero is
 // just the type — nothing renders here.
 function webglSupported() {
@@ -145,13 +130,31 @@ function webglSupported() {
   }
 }
 
-export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean }) {
+/** What the hero's phase clock waits for before the drive-in may start. */
+export type RocketStatus = "ready" | "unavailable";
+
+type Props = {
+  fullBurn?: boolean;
+  /**
+   * "ready" once the rocket is loaded, compiled and drawn (off stage), so the
+   * drive-in never starts on a blank canvas. "unavailable" when there will be
+   * no rocket: no WebGL, or the scene failed to load. Called once.
+   */
+  onStatus?: (status: RocketStatus) => void;
+};
+
+export default function HeroRocket3D({ fullBurn = false, onStatus }: Props) {
   const [supported, setSupported] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [ready, setReady] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
 
   useEffect(() => {
-    setSupported(webglSupported());
+    const ok = webglSupported();
+    setSupported(ok);
+    if (!ok) onStatusRef.current?.("unavailable");
     const el = wrapRef.current;
     if (!el) return;
     // Keep the canvas mounted; only pause the frame loop while offscreen so
@@ -161,6 +164,11 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
     return () => io.disconnect();
   }, []);
 
+  const onWarm = () => {
+    setReady(true);
+    onStatusRef.current?.("ready");
+  };
+
   return (
     // The canvas starts invisible and RevealOnFirstFrame shows it once it has
     // actually drawn; see reveal-on-first-frame.tsx for why.
@@ -168,7 +176,11 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
       {supported && (
         <div className="absolute inset-0">
           <Canvas
-            frameloop={visible ? "always" : "never"}
+            // Runs until the rocket is warm even while the stage waits off
+            // screen (on phones it is fully outside the viewport during the
+            // hold), so it has drawn before the drive-in starts. After that
+            // it only runs while visible.
+            frameloop={visible || !ready ? "always" : "never"}
             dpr={[1, 1.5]}
             // The wrapper animates transforms (rotation!) — measure the layout
             // box, not the transformed bounding rect, or the canvas mis-sizes.
@@ -182,7 +194,6 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
             // foreshortening of a 200mm photo instead of a diagram's flatness.
             camera={{ fov: 14, position: [0, 0, 32.6], near: 1, far: 200 }}
           >
-            <Environment files={HDRI} environmentIntensity={0.45} environmentRotation={[-Math.PI / 2, 0, 0]} />
             {/* Sun sits on the camera side, a little high: the screen-facing
                 half is lit, shadows fall away behind the rocket, so no angle
                 management. The HDRI adds the broad soft sheen. */}
@@ -203,12 +214,19 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
             />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
             <RevealOnFirstFrame />
-            <Suspense fallback={null}>
-              <Rocket fullBurn={fullBurn} />
-              {/* Inside the Suspense so it runs after the textures resolve and
-                  the materials exist, not before. */}
-              <WarmUp />
-            </Suspense>
+            <SceneErrorBoundary onError={() => onStatusRef.current?.("unavailable")}>
+              {/* The environment, the rocket and the warm-up share one
+                  Suspense: the rocket is ready only when all of it is. */}
+              <Suspense fallback={null}>
+                <Environment
+                  files={CAVOUR_HDRI}
+                  environmentIntensity={0.45}
+                  environmentRotation={[-Math.PI / 2, 0, 0]}
+                />
+                <Rocket fullBurn={fullBurn} />
+                <WarmUp onWarm={onWarm} />
+              </Suspense>
+            </SceneErrorBoundary>
           </Canvas>
         </div>
       )}

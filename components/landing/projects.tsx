@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import RocketCard3D from "./rocket-card-3d";
+import { RocketCardStage } from "./rocket-card-stage";
 import { RocketArrow } from "./rocket-arrow";
 import { SwipeRow } from "./swipe-row";
 
@@ -108,7 +108,9 @@ function Text<T extends ReactNode>({ copy }: { copy: Copy<T> }) {
 
 function ProjectCard({ project }: { project: Project }) {
   return (
-    <article className="glass-project group relative h-[360px] w-[210px] shrink-0 snap-start rounded-2xl hover:z-10 md:mx-auto md:h-[618px] md:w-full md:max-w-[480px] lg:max-w-none">
+    // isolate: the card is its own stacking context, so the z-indexes below
+    // order its own layers and never reach a neighbouring card.
+    <article className="glass-project group relative isolate h-[360px] w-[210px] shrink-0 snap-start rounded-2xl hover:z-10 md:mx-auto md:h-[618px] md:w-full md:max-w-[480px] lg:max-w-none">
       {/* Texture: clipped to the card's corners on its own layer, because the
           card itself must not clip the rocket's nose. */}
       <div className="absolute inset-0 overflow-hidden rounded-2xl">
@@ -127,15 +129,22 @@ function ProjectCard({ project }: { project: Project }) {
           wrapper has moved up. On phones the canvas is shorter (593px over a
           360px card) and sits 25px left, so the vehicle draws at about board
           24's size with its nose about 20px below the card top, near the
-          middle, and the same nose-to-mid-body framing. */}
-      <div className="pointer-events-none absolute inset-0 [clip-path:inset(-400px_0_0_0_round_16px)]">
-        <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] transition-transform ease-out [transition-duration:450ms] motion-safe:group-hover:-translate-y-[170px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
-          <RocketCard3D />
+          middle, and the same nose-to-mid-body framing.
+          Layers: the glass edge rings (.glass-project ::before and ::after)
+          sit at z-index 1, so the rocket at 2 draws over them where its nose
+          crosses the card's top edge. The top row and the info box are also
+          at 2 and come later, so they stay above the rocket as before.
+          will-change keeps the rising wrapper on its own compositor layer
+          from the start, so the rise never waits on a repaint of the canvas
+          and the hover does not stutter while the canvas draws frames. */}
+      <div className="pointer-events-none absolute inset-0 z-[2] [clip-path:inset(-400px_0_0_0_round_16px)]">
+        <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] transition-transform ease-out will-change-transform [transition-duration:450ms] motion-safe:group-hover:-translate-y-[170px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
+          <RocketCardStage />
         </div>
       </div>
 
       {/* Top row */}
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3.5 md:p-8">
+      <div className="absolute inset-x-0 top-0 z-[2] flex items-center justify-between p-3.5 md:p-8">
         <span className="font-mono text-[9px] tracking-[0.15em] text-prt-text/70 md:text-[13px]">
           {project.num} · <Text copy={project.year} />
         </span>
@@ -148,7 +157,7 @@ function ProjectCard({ project }: { project: Project }) {
 
       {/* Info box */}
       <div
-        className="glass-info absolute inset-x-3.5 bottom-3.5 rounded-xl px-3 pb-3 pt-3 md:inset-x-8 md:bottom-8 md:px-6 md:pb-5 md:pt-[26px] lg:inset-x-5 lg:bottom-5 xl:inset-x-8 xl:bottom-8"
+        className="glass-info absolute inset-x-3.5 bottom-3.5 z-[2] rounded-xl px-3 pb-3 pt-3 md:inset-x-8 md:bottom-8 md:px-6 md:pb-5 md:pt-[26px] lg:inset-x-5 lg:bottom-5 xl:inset-x-8 xl:bottom-8"
         style={
           project.infoTint
             ? ({ "--glass-tint": project.infoTint } as React.CSSProperties)
