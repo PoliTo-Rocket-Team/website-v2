@@ -6,6 +6,7 @@ import { CavourHero } from "@/components/cavour/hero";
 import { CavourStory } from "@/components/cavour/story";
 import { CavourVersions } from "@/components/cavour/versions";
 import { CavourLaunches } from "@/components/cavour/launches";
+import { CavourGallery } from "@/components/cavour/gallery";
 import { CavourNextProject } from "@/components/cavour/next-project";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ export default function CavourPage() {
           <CavourStory />
           <CavourVersions />
           <CavourLaunches />
+          <CavourGallery />
           <CavourNextProject />
         </main>
       </PageSky>

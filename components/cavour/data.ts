@@ -1,3 +1,5 @@
+import type { GalleryItem } from "@/components/gallery/items";
+
 // Cavour's facts, every one from design/specs-from-old-site.md. Figures are
 // set as the boards set them ("2 167 mm"), with no-break spaces so a figure
 // never wraps; only figures go through n(), never running copy. Where the
@@ -217,3 +219,13 @@ export const flights: readonly Flight[] = [
     ],
   },
 ];
+
+/**
+ * 05 Gallery. Placeholders until the dashboard uploads real photos; a photo
+ * then takes a slot as `{ src, alt, caption? }`. An empty list leaves the
+ * section out.
+ */
+export const galleryItems: readonly GalleryItem[] = Array.from({ length: 6 }, (_, i) => ({
+  placeholder: true,
+  alt: `Placeholder for Cavour photo ${i + 1}`,
+}));
