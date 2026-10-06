@@ -13,8 +13,8 @@ export function CavourStory() {
           <div className="mt-4 space-y-6 text-[15px] leading-[24px] text-text-2 md:mt-10 md:text-[17px] md:leading-[27px]">
             <p className="hidden md:block">
               Camillo Benso, Count of Cavour, was one of the leading figures of Italian Unification and the main
-              promoter of Italy&apos;s industrial and scientific development. Born and died in Turin, he was the
-              first prime minister of Italy. The Team&apos;s first project is named after him.
+              promoter of Italy&apos;s industrial and scientific development. He was the first prime minister of
+              Italy. The Team&apos;s first project is named after him.
             </p>
             <p className="hidden md:block">
               In line with the Team&apos;s Mission &amp; Vision, Cavour&apos;s design is simple and pragmatic, built
@@ -22,7 +22,7 @@ export function CavourStory() {
             </p>
             <p className="md:hidden">
               Camillo Benso, Count of Cavour, led Italian Unification and pushed Italy&apos;s industry and science
-              forward. Born and died in Turin, he was Italy&apos;s first prime minister. Cavour is the first rocket of
+              forward. He was Italy&apos;s first prime minister. Cavour is the first rocket of
               the Founding Fathers series.
             </p>
           </div>

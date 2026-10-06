@@ -98,7 +98,7 @@ export function CavourLaunches() {
   return (
     <section className="px-5 pt-14 md:px-16 md:pt-[120px]">
       <div className="mx-auto max-w-[1312px]">
-        <SectionHead eyebrow="04 – LAUNCH HISTORY" title="Three flights. Two countries. One hard landing." />
+        <SectionHead eyebrow="04 – LAUNCH HISTORY" title="Three flights. Three countries. One hard landing." />
         <div className="mt-6 flex flex-col gap-4 md:mt-12 md:gap-0">
           {flights.map((f) => (
             <div key={f.num}>
