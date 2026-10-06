@@ -9,10 +9,8 @@ import { SwipeRow } from "./swipe-row";
 // Cavour live in 3D and a liquid glass info box. Data from
 // design/specs-from-old-site.md.
 //
-// Hover: the rocket rises 170px over 450ms ease-out and its nose leaves the
-// top of the card, and the card's glass edge brightens. The rise is a CSS
-// transform on the canvas wrapper, so it is exact in px and drops out under
-// reduced motion; only the edge change is left then.
+// Hover: only the card's glass edge brightens. The rocket stays where it
+// rests (Huey, 2026-10-06: no hover rise).
 //
 // Board 24 below md: the cards sit side by side in a horizontal swipe row,
 // 210 x 360 each, 10px apart, with scroll-snap, the next card peeking and
@@ -140,7 +138,7 @@ function ProjectCard({ project }: { project: Project }) {
           from the start, so the rise never waits on a repaint of the canvas
           and the hover does not stutter while the canvas draws frames. */}
       <div className="pointer-events-none absolute inset-0 z-[2] [clip-path:inset(-400px_0_0_0_round_16px)]">
-        <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] transition-transform ease-out will-change-transform [transition-duration:450ms] motion-safe:group-hover:-translate-y-[170px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
+        <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
           <RocketCardStage />
         </div>
       </div>
