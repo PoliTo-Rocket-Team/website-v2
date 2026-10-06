@@ -239,9 +239,13 @@ dark band under the hero makes the page look like it starts halfway down (issue 
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
-client match). The hero and footer stars, and the footer's shooting star, stay exactly as
-built. Only the page sky passes `wholePixels` and `minSpacing`. One star in `twinkleEvery` is
-bright, and one bright star in two twinkles; the rest hold still at full brightness.
+client match). The hero and footer skies keep their seeds, positions, sizes and look at rest.
+Their motion changed in issue #59, which replaced issue #33's rule that they stay exactly as
+built: only half their bright stars twinkle, each twinkle and the footer's shooting star run
+through the motion gate (Idle motion below), and under reduced motion every twinkle stops and
+the shooting star is hidden (Accessibility below). Only the page sky passes `wholePixels` and
+`minSpacing`. One star in `twinkleEvery` is bright, and one bright star in two twinkles; the
+rest hold still at full brightness.
 
 **Idle motion** (issue #59): every twinkle, the shooting star and the partners marquee go
 through the motion gate (`motion-gate.ts`). Each runs only while the tab is visible, some of it
