@@ -313,12 +313,20 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   const [failed, setFailed] = useState(false);
   const [plumeGone, setPlumeGone] = useState(false);
   const rate = drawRate(ready, visible, phase !== "settled" || !plumeGone);
-  // The project cards set up their canvases only while this one is not
-  // drawing every frame, so they never take a frame from the warm-up or the
-  // drive-in (scene-schedule.ts).
+  // The project cards set up their canvases only while this one can spare
+  // the frames (scene-schedule.ts): it holds them while it warms up, for the
+  // whole drive-in (on screen or not, so none starts just before the rocket
+  // comes into view), and while the plume fades out on screen. In the
+  // opening hold the rocket waits parked off stage (on some screen sizes its
+  // nose shows, moving less than a pixel a frame), so a frame lost there
+  // shows nothing: it holds nothing then, and hero.tsx closes the queue
+  // shortly before the drive-in.
   // A scene that failed to load never warms up, so it holds nothing.
-  const drawingEveryFrame = supported && !failed && rate === "every-frame";
-  useEffect(() => (drawingEveryFrame ? holdCardSetup() : undefined), [drawingEveryFrame]);
+  const holdCards =
+    supported &&
+    !failed &&
+    (!ready || phase === "drive" || (phase === "settled" && visible && !plumeGone));
+  useEffect(() => (holdCards ? holdCardSetup() : undefined), [holdCards]);
   const wrapRef = useRef<HTMLDivElement>(null);
   // The canvas may draw under the navbar; the bar drops its blur there
   // instead, so the bob keeps going and no frame costs a re-blur (#61).

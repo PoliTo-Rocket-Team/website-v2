@@ -10,6 +10,9 @@ import { queueCardSetup, type SetupDone } from "./scene-schedule";
 // directly, it put three.js into the page's first bundle, and every visitor
 // downloaded and ran it before the hero could start (issue #45).
 const RocketCard3D = dynamic(() => import("./rocket-card-3d"), { ssr: false });
+// The same chunk, fetched on the card's turn so the canvas can start as soon
+// as it mounts (scene-schedule.ts).
+const loadRocketCard3D = () => import("./rocket-card-3d");
 
 function webglSupported() {
   try {
@@ -43,10 +46,10 @@ const POSTER_SIZES = "(min-width: 768px) 480px, 272px";
  *
  * From the first paint the card shows a poster: a still of the canvas's
  * finished frame, so a reader who scrolls down early never meets an empty
- * card. The canvas mounts on its turn in scene-schedule.ts, which runs while
- * the hero is not drawing every frame, nearest cards first; a card coming
- * within a screen of the viewport moves to the front. Once the canvas has
- * drawn, it fades in over the poster.
+ * card. The canvas mounts on its turn in scene-schedule.ts, which runs only
+ * while the hero's rocket can spare the frames, nearest cards first; a card
+ * coming within a screen of the viewport moves to the front. Once the canvas
+ * has drawn, it fades in over the poster.
  */
 export function RocketCardStage() {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -65,14 +68,17 @@ export function RocketCardStage() {
     // Without WebGL the poster is the card's rocket; nothing to queue.
     if (!ok) return;
 
-    const setup = queueCardSetup((done) => {
-      pendingDone.current = done;
-      setMounted(true);
+    const setup = queueCardSetup({
+      load: loadRocketCard3D,
+      start: (done) => {
+        pendingDone.current = done;
+        setMounted(true);
+      },
     });
 
     // A screen of margin: a fast scroll still finds the nearest card set up.
     // It only reorders the queue, so it never mounts a card while the hero
-    // is drawing every frame.
+    // holds the queue.
     const el = wrapRef.current;
     const near = new IntersectionObserver(
       ([e]) => {

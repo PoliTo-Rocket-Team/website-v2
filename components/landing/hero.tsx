@@ -7,7 +7,7 @@ import { brand } from "@/lib/brand-colors";
 import { preloadCavourAssets } from "./cavour-assets";
 import type { RocketStatus } from "./hero-rocket-3d";
 import { EARTH_SIZES, HeroPhoneStage } from "./hero-phone";
-import { holdCardSetup } from "./scene-schedule";
+import { DRIVE_LEAD_MS, holdCardSetup } from "./scene-schedule";
 import { Starfield } from "./starfield";
 
 const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
@@ -77,6 +77,8 @@ export function Hero() {
   preloadCavourAssets();
   const [phase, setPhase] = useState<Phase>("enter");
   const [holdDone, setHoldDone] = useState(false);
+  // The hold is nearly over: the project cards must not start now.
+  const [driveDue, setDriveDue] = useState(false);
   const [rocket, setRocket] = useState<Rocket>("loading");
   const [reduced, setReduced] = useState(false);
   // Which frame is showing: board 24 below md, board 21 from md up. Only that
@@ -110,12 +112,14 @@ export function Hero() {
   // The hold, and the cap on waiting for the rocket, both from mount.
   useEffect(() => {
     const hold = setTimeout(() => setHoldDone(true), HOLD_MS);
+    const due = setTimeout(() => setDriveDue(true), HOLD_MS - DRIVE_LEAD_MS);
     const cap = setTimeout(
       () => setRocket((r) => (r === "loading" ? "unavailable" : r)),
       ROCKET_WAIT_MS,
     );
     return () => {
       clearTimeout(hold);
+      clearTimeout(due);
       clearTimeout(cap);
     };
   }, []);
@@ -131,12 +135,13 @@ export function Hero() {
     }
   }, [phase, reduced, holdDone, rocket]);
 
-  // While the rocket is on its way it is about to load and warm up, and the
-  // project cards' setup would compete with it (scene-schedule.ts). Once it
-  // has mounted, hero-rocket-3d.tsx holds the cards for as long as it draws
-  // every frame. Under reduced motion no rocket mounts, so nothing is held.
-  const rocketLoading = !reduced && rocket === "loading";
-  useEffect(() => (rocketLoading ? holdCardSetup() : undefined), [rocketLoading]);
+  // The project cards' setup would compete with the rocket for frames
+  // (scene-schedule.ts). This holds it while the rocket loads, and from
+  // DRIVE_LEAD_MS before the drive-in until it starts, so a card that has
+  // already started is done by then. From the drive-in on, hero-rocket-3d.tsx
+  // holds it. Under reduced motion no rocket mounts, so nothing is held.
+  const holdCards = !reduced && (rocket === "loading" || (phase === "enter" && driveDue));
+  useEffect(() => (holdCards ? holdCardSetup() : undefined), [holdCards]);
 
   // Called once per mounted rocket. A late report (after the cap) is ignored:
   // the entrance has moved on by then.
