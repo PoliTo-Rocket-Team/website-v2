@@ -208,7 +208,8 @@ repeat-y`), so it shows no seam at any page height. `.page-sky-grain` is the fin
 stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain; it
 also dithers the tile's dark gradients so they show no bands. `.page-sky-fade` is the top fade. On top
 sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
-`wholePixels`): a fractional box under 3px renders as a dash, not a dot. Never ship the sky as one tall image. Its top fades in
+`wholePixels`): a fractional box under 3px renders as a dash, not a dot. Its stars are also
+kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. Its top fades in
 so the hero scrim, which ends on `ground`, meets it without a line.
 
 **Hero** (`.decisions/0004-hero-entrance.md`, `hero.tsx`, `hero-phone.tsx`):
@@ -229,7 +230,7 @@ so the hero scrim, which ends on `ground`, meets it without a line.
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
 client match). The hero and footer stars, and the footer's shooting star, stay exactly as
-built. Only the page sky passes `reducedMotion="still"`.
+built. Only the page sky passes `reducedMotion="still"`, `wholePixels` and `minSpacing`.
 
 **Latest:** featured card plus a three-row list, then a centred "All news" link. The cards are
 `.glass-card` with no texture of their own; the featured card keeps its inset photo

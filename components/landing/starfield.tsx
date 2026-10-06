@@ -18,17 +18,26 @@ function makeStars(
   sizeMin = 1,
   sizeMax = 3.2,
   wholePixels = false,
+  minSpacing = 0,
 ): Star[] {
   const rand = mulberry32(seed);
   const round = wholePixels ? Math.round : (n: number) => n;
-  // Draw order is x, y, size, delay: changing it moves every seeded sky.
-  return Array.from({ length: count }, (_, i) => ({
-    x: rand() * 100,
-    y: rand() * 100,
-    size: round(sizeMin + rand() * (sizeMax - sizeMin)),
-    twinkle: i % twinkleEvery === 0,
-    delay: rand() * 4,
-  }));
+  const tooClose = (a: Star, x: number, y: number) =>
+    Math.abs(a.x - x) < minSpacing && Math.abs(a.y - y) < minSpacing;
+  const stars: Star[] = [];
+  // A spacing too wide for the count would never finish; stop drawing then.
+  for (let draws = 0; stars.length < count && draws < count * 50; draws++) {
+    // Draw order is x, y, size, delay: changing it moves every seeded sky.
+    // A star too close to a kept one is dropped after its four draws, so
+    // with no spacing every star is kept and the sky is as it always was.
+    const x = rand() * 100;
+    const y = rand() * 100;
+    const size = round(sizeMin + rand() * (sizeMax - sizeMin));
+    const delay = rand() * 4;
+    if (stars.some((s) => tooClose(s, x, y))) continue;
+    stars.push({ x, y, size, twinkle: stars.length % twinkleEvery === 0, delay });
+  }
+  return stars;
 }
 
 export function Starfield({
@@ -40,6 +49,7 @@ export function Starfield({
   dimOpacity = 0.35,
   reducedMotion = "twinkle",
   wholePixels = false,
+  minSpacing = 0,
   className = "",
 }: {
   count?: number;
@@ -59,9 +69,16 @@ export function Starfield({
    * hero and footer skies keep their stars as built.
    */
   wholePixels?: boolean;
+  /**
+   * Keep stars apart, in percent of the sky on each axis: a star closer than
+   * this to a kept star on both axes is dropped. Two stars that touch merge
+   * into one dash. The page sky spaces its stars; the hero and footer skies
+   * keep their stars as built.
+   */
+  minSpacing?: number;
   className?: string;
 }) {
-  const stars = makeStars(count, seed, twinkleEvery, sizeMin, sizeMax, wholePixels);
+  const stars = makeStars(count, seed, twinkleEvery, sizeMin, sizeMax, wholePixels, minSpacing);
   const twinkleClass =
     reducedMotion === "still" ? "animate-twinkle motion-reduce:animate-none" : "animate-twinkle";
   return (

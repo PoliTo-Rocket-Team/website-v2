@@ -23,9 +23,11 @@ export function PageSky({
         <div className="page-sky-grain page-sky-fade" />
         {/* The footer's starfield, without its shooting star. Stars are
             placed in percent, so the count is sized for the sky's usual
-            height of about 3600px. Sizes are whole pixels, 2 or 3, so every
-            star renders as a round dot. Unlike the hero and footer skies,
-            this one holds still under reduced motion. */}
+            height of about 3600px. Sizes are whole pixels, 2 or 3, and no
+            two stars sit within 1.5% of each other on both axes, at least
+            4.8px apart from a 320px-wide screen up, so every star renders as
+            its own round dot. Unlike the hero and footer skies, this one
+            holds still under reduced motion. */}
         <Starfield
           count={200}
           seed={31}
@@ -33,6 +35,7 @@ export function PageSky({
           sizeMin={2}
           sizeMax={3.4}
           wholePixels
+          minSpacing={1.5}
           dimOpacity={0.6}
           reducedMotion="still"
           className={starsClassName}
