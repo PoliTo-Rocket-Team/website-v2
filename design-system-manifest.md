@@ -19,7 +19,9 @@ trust that code over the ADR. Unsettled conflicts are listed under "Open gaps".
   `components/ui/` (`components.json`: style `default`, CSS variables on).
 - Three.js through `@react-three/fiber` for the hero rocket and the project card rockets
   (`hero-rocket-3d.tsx`, `rocket-card-3d.tsx`, `rocket-cavour.tsx`, `hero-plume.tsx`,
-  `hero-weathering.ts`).
+  `hero-weathering.ts`). The `/projects/cavour` hero shows a still of the parked rocket
+  (`CAVOUR_STAGE_POSTER`), rendered offline from `cavour-stage-3d.tsx` by
+  `scripts/render-cavour-stage.mjs`; that page loads no 3D.
 - The site is dark only. `app/layout.tsx` sets `defaultTheme="dark"`, `enableSystem={false}`,
   and paints `<html>` with the `ground` colour and `color-scheme: dark` before CSS loads.
 
