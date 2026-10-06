@@ -116,6 +116,26 @@ function FixedCamera() {
   return null;
 }
 
+/**
+ * Tells the owner when this canvas's WebGL context is lost. A lost canvas
+ * paints white over everything under it, so the owner must hide it at once
+ * (rocket-card-stage.tsx). Listens from the first frame, and also reports a
+ * context that is already lost when the canvas mounts.
+ */
+function WatchContext({ onLost }: { onLost: () => void }) {
+  const gl = useThree((s) => s.gl);
+  const onLostRef = useRef(onLost);
+  onLostRef.current = onLost;
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const lost = () => onLostRef.current();
+    if (gl.getContext().isContextLost()) lost();
+    canvas.addEventListener("webglcontextlost", lost);
+    return () => canvas.removeEventListener("webglcontextlost", lost);
+  }, [gl]);
+  return null;
+}
+
 type Props = {
   /** `?cam` on the URL: orbit controls and a live camera readout. */
   tuning: boolean;
@@ -128,9 +148,14 @@ type Props = {
   onReady: () => void;
   /** The scene failed to load. The canvas stays hidden; the poster stays. */
   onFailed: () => void;
+  /**
+   * The canvas's WebGL context is lost, so it can only paint white. The
+   * owner unmounts it and shows the poster again.
+   */
+  onLost: () => void;
 };
 
-export default function RocketCard3D({ tuning, onReadout, onReady, onFailed }: Props) {
+export default function RocketCard3D({ tuning, onReadout, onReady, onFailed, onLost }: Props) {
   return (
     <Canvas
       // Nothing in the scene moves, so the canvas draws only when asked: the
@@ -154,6 +179,7 @@ export default function RocketCard3D({ tuning, onReadout, onReady, onFailed }: P
       style={{ pointerEvents: "none" }}
       eventSource={undefined}
     >
+      <WatchContext onLost={onLost} />
       <ambientLight intensity={0.12} />
       {/* Sun on the camera side, as on the hero: no shadow angles to manage,
           and no shadow map, because a card has nothing to cast onto. */}

@@ -12,6 +12,7 @@ import { SceneErrorBoundary, WarmUp } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
 import { holdCardSetup } from "./scene-schedule";
 import { useClearGlassBarOver } from "./glass-bar";
+import { webglSupported } from "./webgl";
 
 // Three.js hero stage: the code-built Cavour (rocket-cavour.tsx) horizontal,
 // nose right, matching the static render's framing (nose ~95% across, plume
@@ -281,16 +282,6 @@ function FrameDriver({ rate }: { rate: DrawRate }) {
   return null;
 }
 
-// No static fallback by decision 0004: if WebGL is unavailable the hero is
-// just the type — nothing renders here.
-function webglSupported() {
-  try {
-    const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
 
 /** What the hero's phase clock waits for before the drive-in may start. */
 export type RocketStatus = "ready" | "unavailable";
@@ -335,6 +326,8 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   onStatusRef.current = onStatus;
 
   useEffect(() => {
+    // No static fallback by decision 0004: if WebGL is unavailable the hero
+    // is just the type; nothing renders here.
     const ok = webglSupported();
     setSupported(ok);
     if (!ok) onStatusRef.current?.("unavailable");
