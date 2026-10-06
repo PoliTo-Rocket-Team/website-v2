@@ -210,14 +210,17 @@ hero to the apply band, behind Latest, Projects, Inside the team and Partners. I
 layers. `.page-sky-light` is `public/textures/page-streaks-tile.webp`, a seamless 1440 x 1800
 tile cut from the approved background, with the soft diagonal streaks baked onto `ground` at
 the board's 16% strength, blurred so it holds no compression blocks and stored lossless. It
-repeats down the page (`top center / max(100%, 1440px) auto
-repeat-y`), so it shows no seam at any page height. `.page-sky-grain` is the fine film grain, a
+repeats down the page (`max(100%, 1440px) auto repeat-y`), so it shows no seam at any page
+height. `.page-sky-grain` is the fine film grain, a
 stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain; it
 also dithers the tile's dark gradients so they show no bands. On top
 sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
 `wholePixels`): a fractional box under 3px renders as a dash, not a dot. Its stars are also
-kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. The grain
-and the stars start at the sky's top edge, with no offset. Under the hero only (`fadeTop`), the
+kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. The stars
+start at the sky's top edge, with no offset. The tile and the grain are drawn up from the sky's
+bottom edge (`.page-sky-to-footer`), and the footer draws its own down from its top edge, so
+where the sky meets the footer (`/projects`) both run on across the edge at the tile's own
+wrap, with no line and no step in tone (issue #69). Under the hero only (`fadeTop`), the
 streak tile ramps in over one `section` pad (`.page-sky-fade`): the tile is lighter than the
 `ground` the hero scrim ends on, so a hard start would draw a line. No longer fade: a flat
 dark band under the hero makes the page look like it starts halfway down (issue #52).

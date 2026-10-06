@@ -23,8 +23,11 @@ export function PageSky({
           the faded tile lets the backdrop through; over transparency the
           grain would read as a grey band. */}
       <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden bg-ground">
-        <div className={`page-sky-light ${fadeTop ? "page-sky-fade" : ""}`} />
-        <div className="page-sky-grain" />
+        {/* Both layers are drawn up from the sky's bottom edge, so the
+            footer's, drawn down from its top edge, carry straight on below
+            it with no line (.page-sky-to-footer in app/globals.css). */}
+        <div className={`page-sky-light page-sky-to-footer ${fadeTop ? "page-sky-fade" : ""}`} />
+        <div className="page-sky-grain page-sky-to-footer" />
         {/* The footer's starfield, without its shooting star. Stars are
             placed in percent from the sky's top edge, so the count is sized
             for the sky's usual height of about 3600px. Sizes are whole
