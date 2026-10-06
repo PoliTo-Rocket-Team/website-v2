@@ -59,7 +59,8 @@ function Vehicle() {
     <group ref={group}>
       <CavourBuilt weather={weather} length={LENGTH} />
       <group position={[-HALF, 0, 0]}>
-        <Plume />
+        {/* The idle plume: this panel has no drive-in to burn full for. */}
+        <Plume burn="idle" />
       </group>
     </group>
   );
