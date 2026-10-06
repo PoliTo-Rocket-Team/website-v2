@@ -1,8 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { whenSceneIdle, type SetupDone } from "./scene-schedule";
+import { CAVOUR_CARD_POSTER } from "./cavour-assets";
+import { queueCardSetup, type SetupDone } from "./scene-schedule";
 
 // The card's 3D canvas (rocket-card-3d.tsx) is a separate chunk. Imported
 // directly, it put three.js into the page's first bundle, and every visitor
@@ -19,73 +21,111 @@ function webglSupported() {
 }
 
 /**
+ * What the card shows:
+ *  - "poster": the poster, with the canvas (if any) hidden behind it
+ *  - "fading": the drawn canvas fading in over the poster
+ *  - "live":   the canvas alone
+ */
+type Shown = "poster" | "fading" | "live";
+
+// The canvas fades in over an opaque poster, so the rocket never thins out
+// mid-swap; the poster leaves once the fade is over. Under reduced motion
+// there is no fade and the canvas appears at once over the same picture.
+// The same 300ms as the duration-300 on the canvas below.
+const FADE_MS = 300;
+
+// The poster's drawn width: it fills the canvas box's height (1048px from md,
+// 593px below) at its own 480 x 1048 shape. See CAVOUR_CARD_POSTER.
+const POSTER_SIZES = "(min-width: 768px) 480px, 272px";
+
+/**
  * Where a project card's rocket mounts, and when.
  *
- * The canvas mounts at whichever comes first:
- *  - its turn in scene-schedule.ts: after the hero has settled, one card at a
- *    time in idle time, so the vehicle is loaded, compiled and drawn long
- *    before anyone scrolls down to it;
- *  - the card coming near the viewport, for a reader who scrolls down while
- *    the hero is still playing.
+ * From the first paint the card shows a poster: a still of the canvas's
+ * finished frame, so a reader who scrolls down early never meets an empty
+ * card. The canvas mounts on its turn in scene-schedule.ts, which runs while
+ * the hero is not drawing every frame, nearest cards first; a card coming
+ * within a screen of the viewport moves to the front. Once the canvas has
+ * drawn, it fades in over the poster.
  */
 export function RocketCardStage() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [supported, setSupported] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [shown, setShown] = useState<Shown>("poster");
   const [tuning, setTuning] = useState(false);
   const [readout, setReadout] = useState("");
   // The scheduler's "next card" callback, held until this card's setup ends.
   const pendingDone = useRef<SetupDone | null>(null);
-  const setupOver = useRef(false);
 
   useEffect(() => {
     const ok = webglSupported();
     setSupported(ok);
     setTuning(new URLSearchParams(window.location.search).has("cam"));
-    const el = wrapRef.current;
-    if (!el) return;
+    // Without WebGL the poster is the card's rocket; nothing to queue.
+    if (!ok) return;
 
-    // A card scrolled near before its turn mounts at once. The margin is
-    // kept small: at 1440x900 the cards start ~1800px down, and a full
-    // screen of margin would mount all of them under the hero's entrance.
-    const near = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) {
-          setMounted(true);
-          near.disconnect();
-        }
-      },
-      { rootMargin: "30% 0px" },
-    );
-    near.observe(el);
-
-    const cancel = whenSceneIdle((done) => {
-      if (!ok || setupOver.current) return done();
+    const setup = queueCardSetup((done) => {
       pendingDone.current = done;
       setMounted(true);
     });
 
+    // A screen of margin: a fast scroll still finds the nearest card set up.
+    // It only reorders the queue, so it never mounts a card while the hero
+    // is drawing every frame.
+    const el = wrapRef.current;
+    const near = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) {
+          setup.hurry();
+          near.disconnect();
+        }
+      },
+      { rootMargin: "100% 0px" },
+    );
+    if (el) near.observe(el);
+
     return () => {
       near.disconnect();
-      cancel();
+      setup.cancel();
       pendingDone.current?.();
     };
   }, []);
 
-  const onSetupDone = () => {
-    setupOver.current = true;
+  useEffect(() => {
+    if (shown !== "fading") return;
+    const t = window.setTimeout(() => setShown("live"), FADE_MS);
+    return () => window.clearTimeout(t);
+  }, [shown]);
+
+  const setupOver = () => {
     pendingDone.current?.();
     pendingDone.current = null;
+  };
+  const onReady = () => {
+    setShown("fading");
+    setupOver();
   };
 
   return (
     // Fills the wrapper the card gives it, which hangs over the card's top
     // edge so the rocket has somewhere to rise into (projects.tsx).
-    // The canvas starts invisible and RevealOnFirstFrame shows it once it has
-    // actually drawn; see reveal-on-first-frame.tsx for why.
-    <div ref={wrapRef} className="pointer-events-none absolute inset-0 [&_canvas]:opacity-0">
+    // The canvas is hidden from the first paint by CSS, not by an effect, so
+    // its undrawn buffer (white on macOS GPUs) can never show; see
+    // reveal-on-first-frame.tsx. It is shown only once it has drawn.
+    <div
+      ref={wrapRef}
+      className={`pointer-events-none absolute inset-0 ${
+        shown === "poster"
+          ? "[&_canvas]:opacity-0"
+          : "motion-safe:[&_canvas]:transition-opacity motion-safe:[&_canvas]:duration-300 motion-safe:[&_canvas]:ease-out"
+      }`}
+    >
+      {shown !== "live" && (
+        <Image src={CAVOUR_CARD_POSTER} alt="" fill sizes={POSTER_SIZES} className="object-cover" />
+      )}
       {supported && mounted && (
-        <RocketCard3D tuning={tuning} onReadout={setReadout} onSetupDone={onSetupDone} />
+        <RocketCard3D tuning={tuning} onReadout={setReadout} onReady={onReady} onFailed={setupOver} />
       )}
       {tuning && (
         <p className="pointer-events-none absolute bottom-1 left-1 rounded bg-ground/70 px-2 py-1 font-mono text-[10px] text-accent">

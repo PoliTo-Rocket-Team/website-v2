@@ -6,7 +6,6 @@ import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
-import { RevealOnFirstFrame } from "./reveal-on-first-frame";
 import { SceneErrorBoundary, WarmUp } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
 
@@ -122,14 +121,16 @@ type Props = {
   tuning: boolean;
   onReadout: (s: string) => void;
   /**
-   * The card's setup is over: the vehicle is loaded, compiled and drawn, so
-   * the canvas is showing. Also called if the scene fails, so the next card
-   * is not held back.
+   * The vehicle is loaded, compiled and drawn: the canvas holds the finished
+   * picture and may be shown. Until then it stays hidden over the poster
+   * (rocket-card-stage.tsx).
    */
-  onSetupDone: () => void;
+  onReady: () => void;
+  /** The scene failed to load. The canvas stays hidden; the poster stays. */
+  onFailed: () => void;
 };
 
-export default function RocketCard3D({ tuning, onReadout, onSetupDone }: Props) {
+export default function RocketCard3D({ tuning, onReadout, onReady, onFailed }: Props) {
   return (
     <Canvas
       // Nothing in the scene moves, so the canvas draws only when asked: the
@@ -159,12 +160,11 @@ export default function RocketCard3D({ tuning, onReadout, onSetupDone }: Props) 
       <directionalLight position={[6, 16, 20]} intensity={2.1} />
       <directionalLight position={[-10, 4, -8]} intensity={0.6} color="#FFD2B0" />
       {tuning ? <CameraTuner onChange={onReadout} /> : <FixedCamera />}
-      <RevealOnFirstFrame />
       {/* The environment shares the vehicle's Suspense on purpose: with it
           outside, the rocket drew for a few frames before the HDRI arrived
           and flashed blown-out white. Now neither appears until both are
-          ready, and the card's texture shows through until then. */}
-      <SceneErrorBoundary onError={onSetupDone}>
+          ready, and the card's poster shows until then. */}
+      <SceneErrorBoundary onError={onFailed}>
         <Suspense fallback={null}>
           <Environment
             files={CAVOUR_HDRI}
@@ -172,7 +172,7 @@ export default function RocketCard3D({ tuning, onReadout, onSetupDone }: Props) 
             environmentRotation={[-Math.PI / 2, 0, 0]}
           />
           <Vehicle />
-          <WarmUp onWarm={onSetupDone} />
+          <WarmUp onWarm={onReady} />
         </Suspense>
       </SceneErrorBoundary>
     </Canvas>
