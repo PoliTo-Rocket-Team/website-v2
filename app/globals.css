@@ -105,13 +105,21 @@
   }
   /* Section rhythm (the `section` spacing token in tailwind.config.ts):
      56px on phones (board 24), 120px from md (board 21). Each section pads
-     its top and bottom by it, so every gap between sections is the same. */
+     its top and bottom by it, so every gap between sections is the same.
+     --hero-bottom-space is the empty hero left below its last line of text,
+     which already counts toward the gap after the hero. On phones the body
+     copy's last line ends 35px above the 650px frame's bottom at 390 wide
+     (hero-phone.tsx). From md the fact strip's 16.5px line box ends at y404.5
+     of the 436px bottom band (hero.tsx), 31.5 board px that scale with the
+     board. */
   :root {
     --section-pad: 56px;
+    --hero-bottom-space: 35px;
   }
   @media (min-width: 768px) {
     :root {
       --section-pad: 120px;
+      --hero-bottom-space: calc(31.5px * var(--hero-scale, 1));
     }
   }
   html {
@@ -164,8 +172,11 @@
    film grain, never as specks or scratches, and leaves the sky as dark as
    the board. Its frequency and opacity are matched by eye to board 21 at
    100% and 200%, recorded as an exception in design-system-manifest.md.
-   The footer paints the same two layers (footer.tsx). .page-sky-fade is the
-   page sky's own top fade into the hero scrim. */
+   The footer paints the same two layers (footer.tsx). .page-sky-fade ramps
+   the streak tile in over one section pad where the sky meets the hero: the
+   tile is about ten levels lighter than the ground the hero scrim ends on, so
+   a hard start would draw a line. The grain and the stars start at the top
+   edge. */
   .page-sky-light,
   .page-sky-grain {
     position: absolute;
@@ -173,8 +184,8 @@
     pointer-events: none;
   }
   .page-sky-fade {
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
-    mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
+    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
   }
   .page-sky-light {
     background: theme("colors.ground") url("/textures/page-streaks-tile.webp")

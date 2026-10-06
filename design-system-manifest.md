@@ -100,8 +100,11 @@ Rules:
   `--section-pad` in `app/globals.css`): 56px on phones (board 24), 120px from md (board 21).
   Every landing section pads its top and bottom by it (`py-section`), the apply band and
   partners included, so the gap between any two adjacent sections is twice the token: 112px
-  on phones, 240px from md. The hero has no pad of its own, so the page sky adds `pt-section`
-  under it; the footer's top pad and the /projects page's bottom pad are `section` too. Never
+  on phones, 240px from md. The hero has no pad of its own, so the page sky adds one under it,
+  less `--hero-bottom-space` (the empty hero below its last line of text, `app/globals.css`):
+  the gap from that line to the Track record eyebrow is the same 112px / 240px. The footer's
+  top pad and the /projects page's bottom pad are `section` too, and /projects keeps one
+  `section` pad between the bar and its header. Never
   set a section's vertical padding with another value. Sides are `px-5 md:px-16` (board 24
   gives phones 20px sides). Sections below the hero have no borders
   between them and no background of their own: they sit on the page sky.
@@ -176,8 +179,9 @@ Inside the team, Partners, Apply band, footer.
 
 **Navbar** (board 21): `.glass-bar`, fixed, 72px tall from md. Logo left on the 64px column,
 link row centred on the page, actions right; all three are centred on the bar's middle by
-flex, never by fixed offsets. Page tops that clear the bar count from 72px (`/projects` is
-`md:pt-[170px]`, 98px under the bar as on board 22). Below lg the link row moves into the menu (below), opened by a menu
+flex, never by fixed offsets. Page tops that clear the bar count from 72px (64px on phones):
+`/projects` is the bar plus one `section` pad, 120px under the bar from md, 56px on phones.
+This departs from board 22's 98px so the page keeps the section rhythm (issue #52). Below lg the link row moves into the menu (below), opened by a menu
 icon right of the actions (`navbar.tsx`).
 
 **Navbar on phones** (board 24, below md): the same glass bar, 64px tall, 20px side padding.
@@ -206,11 +210,14 @@ the board's 16% strength, blurred so it holds no compression blocks and stored l
 repeats down the page (`top center / max(100%, 1440px) auto
 repeat-y`), so it shows no seam at any page height. `.page-sky-grain` is the fine film grain, a
 stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain; it
-also dithers the tile's dark gradients so they show no bands. `.page-sky-fade` is the top fade. On top
+also dithers the tile's dark gradients so they show no bands. On top
 sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
 `wholePixels`): a fractional box under 3px renders as a dash, not a dot. Its stars are also
-kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. Its top fades in
-so the hero scrim, which ends on `ground`, meets it without a line.
+kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. The grain
+and the stars start at the sky's top edge, with no offset. Under the hero only (`fadeTop`), the
+streak tile ramps in over one `section` pad (`.page-sky-fade`): the tile is lighter than the
+`ground` the hero scrim ends on, so a hard start would draw a line. No longer fade: a flat
+dark band under the hero makes the page look like it starts halfway down (issue #52).
 
 **Hero** (`.decisions/0004-hero-entrance.md`, `hero.tsx`, `hero-phone.tsx`):
 - Plays once per load. Title and slogan stagger in, gathered. Hold 2s (`HOLD_MS`). The rocket

@@ -12,15 +12,16 @@ import { PageSky } from "@/components/landing/page-sky";
 // throughout"). One sky runs behind every section from below the hero to the
 // apply band: a repeating streak tile, a grain layer and stars. The sections
 // inside it paint no background of their own. Every section pads its top and
-// bottom by the `section` token; the hero has no pad of its own, so the sky
-// adds one, and the gap after the hero matches every other section gap.
+// bottom by the `section` token. The hero has no pad of its own, so the sky
+// adds one, less the empty hero already below its last line of text: the gap
+// from that line to the Track record eyebrow matches every other section gap.
 export default function LandingPage() {
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
       <main>
         <Hero />
-        <PageSky className="pt-section" starsClassName="top-[240px]">
+        <PageSky fadeTop className="pt-[calc(var(--section-pad)-var(--hero-bottom-space))]">
           <Latest />
           <Projects />
           <InsideTeam />
