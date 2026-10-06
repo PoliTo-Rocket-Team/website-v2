@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type 
 import Image from "next/image";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ArrowLeft, ArrowRight, Maximize2, X } from "lucide-react";
-import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { isPhoto, ringOffset, wrapIndex, type FilledGallery, type GalleryItem } from "./items";
 
 // Boards 23 / 23m (carousel) and 23L (lightbox). The current photo sits
@@ -55,6 +55,12 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
   const [current, setCurrent] = useState(0);
   const [open, setOpen] = useState(false);
   const regionRef = useRef<HTMLDivElement>(null);
+  // The control that opened the lightbox gets focus back when it closes.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const openFrom = (opener: HTMLElement) => {
+    openerRef.current = opener;
+    setOpen(true);
+  };
   const step = (by: number) => setCurrent((i) => wrapIndex(i, by, count));
 
   // A slide that jumps more than one place (round the back of the ring) moves
@@ -138,7 +144,7 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
           <button
             type="button"
             aria-label={`Open photo ${current + 1} of ${count}: ${item.alt}`}
-            onClick={(e) => tapped(e) && setOpen(true)}
+            onClick={(e) => tapped(e) && openFrom(e.currentTarget)}
             className="absolute inset-0 z-[2] cursor-zoom-in rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60"
           />
 
@@ -161,7 +167,7 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
           <button
             type="button"
             aria-label="Open the photo full screen"
-            onClick={() => setOpen(true)}
+            onClick={(e) => openFrom(e.currentTarget)}
             className={`${glassButton} absolute right-3 top-3 z-[3] h-9 w-9 md:right-4 md:top-4 md:h-12 md:w-12`}
           >
             <Maximize2 aria-hidden className="h-3.5 w-3.5 md:h-4 md:w-4" strokeWidth={1.75} />
@@ -195,7 +201,7 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
         open={open}
         onOpenChange={setOpen}
         label={label}
-        onClosed={() => regionRef.current?.focus()}
+        onClosed={() => (openerRef.current ?? regionRef.current)?.focus()}
       />
     </div>
   );
@@ -230,10 +236,16 @@ function Lightbox({
     e.preventDefault();
   };
 
+  // It fades in and closes at once. Radix unmounts a closing layer only when
+  // its exit animation sends `animationend`, and the scroll lock, focus trap
+  // and focus return end only on that unmount. A tab that draws no frames
+  // never sends it, so the page stayed locked. With no closed-state animation
+  // Radix unmounts at once. `motion-safe:` keeps reduced motion still, which
+  // `motion-reduce:animate-none` did not: it loses to `data-[state]` variants.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay className="bg-ground motion-reduce:animate-none" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-ground motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           onKeyDown={onKeyDown}
@@ -241,7 +253,7 @@ function Lightbox({
             e.preventDefault();
             onClosed();
           }}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center px-5 text-prt-text duration-200 focus:outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center px-5 text-prt-text focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
         >
           <DialogTitle className="sr-only">{label}</DialogTitle>
           <p className="absolute left-5 top-6 font-mono text-[13px] tracking-[0.1em] md:left-[62px] md:top-12 md:text-sm">
