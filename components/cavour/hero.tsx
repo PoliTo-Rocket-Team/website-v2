@@ -35,7 +35,7 @@ export function CavourHero() {
           </p>
           <div className="flex items-center gap-4 md:flex-col md:items-end md:gap-3">
             <Pill tone="success">FLOWN ×3 · 2023</Pill>
-            <p className="font-mono text-[11px] tracking-[0.2em] text-prt-muted md:text-xs">OCT 2021 – OCT 2023</p>
+            <p className="font-mono text-[11px] tracking-[0.2em] text-prt-muted md:text-xs">JUN 2022 – OCT 2023</p>
           </div>
         </div>
 
