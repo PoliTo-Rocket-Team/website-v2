@@ -1,5 +1,8 @@
+import { TwinkleStar } from "./twinkle-star";
+
 // Deterministic starfield: seeded PRNG so SSR and client render identical stars.
-type Star = { x: number; y: number; size: number; twinkle: boolean; delay: number };
+// A bright star shows at full opacity; the rest at dimOpacity.
+type Star = { x: number; y: number; size: number; bright: boolean; delay: number };
 
 function mulberry32(seed: number) {
   return () => {
@@ -35,11 +38,20 @@ function makeStars(
     const size = round(sizeMin + rand() * (sizeMax - sizeMin));
     const delay = rand() * 4;
     if (stars.some((s) => tooClose(s, x, y))) continue;
-    stars.push({ x, y, size, twinkle: stars.length % twinkleEvery === 0, delay });
+    stars.push({ x, y, size, bright: stars.length % twinkleEvery === 0, delay });
   }
   return stars;
 }
 
+// Of the bright stars, one in TWINKLE_EVERY_BRIGHT twinkles; the others hold
+// still at full brightness, so the sky at rest is the same (issue #59).
+const TWINKLE_EVERY_BRIGHT = 2;
+
+/**
+ * A seeded sky of still stars, a few of them twinkling. Each twinkle runs only
+ * while the motion gate allows it (motion-gate.ts): on screen, clear of glass,
+ * tab visible. None runs under reduced motion.
+ */
 export function Starfield({
   count = 34,
   seed = 42,
@@ -47,22 +59,17 @@ export function Starfield({
   sizeMin = 1,
   sizeMax = 3.2,
   dimOpacity = 0.35,
-  reducedMotion = "twinkle",
   wholePixels = false,
   minSpacing = 0,
   className = "",
 }: {
   count?: number;
   seed?: number;
+  /** One star in this many is bright; 0 makes none bright. */
   twinkleEvery?: number;
   sizeMin?: number;
   sizeMax?: number;
   dimOpacity?: number;
-  /**
-   * What twinkling stars do under prefers-reduced-motion. The hero and footer
-   * skies keep twinkling as built; the page sky between them holds still.
-   */
-  reducedMotion?: "twinkle" | "still";
   /**
    * Round each star to a whole pixel size. A fractional box under 3px
    * rasterises as a short dash, not a dot; the page sky rounds, while the
@@ -79,24 +86,22 @@ export function Starfield({
   className?: string;
 }) {
   const stars = makeStars(count, seed, twinkleEvery, sizeMin, sizeMax, wholePixels, minSpacing);
-  const twinkleClass =
-    reducedMotion === "still" ? "animate-twinkle motion-reduce:animate-none" : "animate-twinkle";
+  let bright = 0;
   return (
     <div aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
-      {stars.map((s, i) => (
-        <span
-          key={i}
-          className={`absolute rounded-full bg-white ${s.twinkle ? twinkleClass : ""}`}
-          style={{
-            left: `${s.x}%`,
-            top: `${s.y}%`,
-            width: s.size,
-            height: s.size,
-            opacity: s.twinkle ? undefined : dimOpacity,
-            animationDelay: `${s.delay}s`,
-          }}
-        />
-      ))}
+      {stars.map((s, i) => {
+        const style = {
+          left: `${s.x}%`,
+          top: `${s.y}%`,
+          width: s.size,
+          height: s.size,
+          opacity: s.bright ? undefined : dimOpacity,
+        };
+        if (s.bright && bright++ % TWINKLE_EVERY_BRIGHT === 0) {
+          return <TwinkleStar key={i} style={{ ...style, animationDelay: `${s.delay}s` }} />;
+        }
+        return <span key={i} className="absolute rounded-full bg-white" style={style} />;
+      })}
     </div>
   );
 }

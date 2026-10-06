@@ -131,12 +131,13 @@ type Phase = "enter" | "drive" | "settled";
 
 // Render budget (issue #48): the site must stay light. The canvas draws every
 // display frame only while the rocket really moves — the hold, the drive-in,
-// and the plume easing down to idle after it. Parked, only the slow bob and
-// the idle plume move, and they read the same at 30 fps, so it draws at most
-// that. Off screen it draws nothing.
-const PARKED_FPS = 30;
+// and the plume easing down to idle after it. Parked, only the slow bob (one
+// lap in 9s) and the idle plume's faint flicker move, and they read the same
+// at 15 fps, so it draws at most that (issue #59; 30 before). Off screen it
+// draws nothing.
+const PARKED_FPS = 15;
 // Display frames land a little either side of their slot. Without this slack
-// a 60 Hz screen would miss every other 30 fps slot by a hair and drop to 20.
+// a 60 Hz screen would miss a 15 fps slot by a hair and wait a frame more.
 const FRAME_SLACK_MS = 2;
 
 /**

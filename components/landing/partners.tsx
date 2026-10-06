@@ -1,7 +1,9 @@
 import Image from "next/image";
+import { Marquee } from "./marquee";
 import { RocketArrow } from "./rocket-arrow";
 
-// Board 08 / 21 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on hover.
+// Board 08 / 21 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on
+// hover and while nobody can see it (marquee.tsx).
 // Full-color logos (grayscale was explicitly rejected). Edge fade masks on site only.
 // Static list for now; partners will come from the database, with real URLs.
 // Every logo is a link; "#" stands in until the URLs exist.
@@ -88,13 +90,11 @@ export function Partners() {
         </a>
       </div>
 
-      <div className="group relative mt-6 flex h-14 items-center overflow-hidden md:mt-14 md:block md:h-auto [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]">
-        <div className="flex w-max animate-marquee items-center motion-reduce:animate-none group-hover:[animation-play-state:paused]">
-          {loop.map((logo, i) => (
-            <LogoItem key={i} logo={logo} />
-          ))}
-        </div>
-      </div>
+      <Marquee>
+        {loop.map((logo, i) => (
+          <LogoItem key={i} logo={logo} />
+        ))}
+      </Marquee>
     </section>
   );
 }
