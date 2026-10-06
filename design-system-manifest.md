@@ -239,7 +239,9 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   (`hero-rocket-3d.tsx`). The hero draws every frame only through the entrance and the plume's
   ease to idle. Parked, it draws at most 10 fps while someone scrolls, points or types, and
   holds a still frame once nobody has for 5s; the next input resumes the bob where it stopped
-  (issue #63). Off screen or in a hidden tab it draws nothing. The card canvases draw
+  (issue #63). The bob, the flame flicker and the smoke move by real elapsed time, so the
+  10 fps cap shows fewer frames, never slower motion. Off screen or in a hidden tab it draws
+  nothing. The card canvases draw
   only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and

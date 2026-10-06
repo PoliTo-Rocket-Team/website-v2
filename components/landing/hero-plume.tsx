@@ -219,15 +219,16 @@ function Smoke({ throttle }: { throttle: { current: number } }) {
     return { positions, sizes, alphas, heats };
   }, []);
 
+  // `delta` is real elapsed time (SceneClock in hero-rocket-3d.tsx), so the
+  // smoke drifts at full speed however few frames the canvas draws.
   useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05);
     const { positions, sizes, alphas, heats } = buffers;
     const list = puffs.current;
     for (let i = 0; i < SMOKE_COUNT; i++) {
       const p = list[i];
-      p.age += dt;
+      p.age += delta;
       if (p.age >= SMOKE_LIFE) {
-        p.age -= SMOKE_LIFE;
+        p.age %= SMOKE_LIFE;
         p.seed = Math.random();
         p.y = (Math.random() - 0.5) * 0.25;
         p.vy = (Math.random() - 0.5) * 0.5;

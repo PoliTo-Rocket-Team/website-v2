@@ -168,11 +168,13 @@ function drawRate(ready: boolean, visible: boolean, moving: boolean): DrawRate {
 }
 
 /**
- * Scene time for a canvas that does not draw all the time. Between two draws
- * it moves on by the time between them, but never by more than one parked
- * gap: after a still frame, a hidden tab or a trip off screen the bob and
- * the plume carry on from where they stopped instead of jumping ahead. (R3F's
- * own clock would restart at zero on every setFrameloop.)
+ * Scene time for a canvas that does not draw all the time. While it draws,
+ * scene time is wall-clock time: each draw moves it on by the real time since
+ * the one before, so at 10 fps the bob, the flicker and the smoke move at
+ * full speed in fewer frames, never in slow motion. While it does not draw (a
+ * still frame, a hidden tab, off screen) the clock is paused, so the next
+ * draw carries on from where the last one stopped instead of jumping ahead.
+ * (R3F's own clock would restart at zero on every setFrameloop.)
  */
 class SceneClock {
   private seconds = 0;
@@ -180,11 +182,14 @@ class SceneClock {
 
   /** Scene seconds for a draw at `now` (ms, performance.now() time). */
   at(now: number): number {
-    if (this.last !== null) {
-      this.seconds += Math.min(Math.max(now - this.last, 0), PARKED_GAP_MS) / 1000;
-    }
+    if (this.last !== null) this.seconds += Math.max(now - this.last, 0) / 1000;
     this.last = now;
     return this.seconds;
+  }
+
+  /** Drawing stopped: the time until the next draw does not count. */
+  pause(): void {
+    this.last = null;
   }
 }
 
@@ -193,9 +198,10 @@ class SceneClock {
  * then none once they have been away PARKED_STILL_MS; any input wakes it.
  * It waits on a timer, not on every display frame, so a parked hero does not
  * wake the page 60 times a second to draw 10. A hidden tab gets no animation
- * frames, so it draws nothing there. Returns the stop.
+ * frames, so it draws nothing there. `still` runs when it stops drawing.
+ * Returns the stop.
  */
-function driveParked(draw: (now: number) => void): () => void {
+function driveParked(draw: (now: number) => void, still: () => void): () => void {
   let lastInput = performance.now();
   let drawing = false;
   let timer = 0;
@@ -205,6 +211,7 @@ function driveParked(draw: (now: number) => void): () => void {
       draw(now);
       if (now - lastInput > PARKED_STILL_MS) {
         drawing = false;
+        still();
         return;
       }
       timer = window.setTimeout(next, PARKED_GAP_MS);
@@ -237,10 +244,23 @@ function FrameDriver({ rate }: { rate: DrawRate }) {
   const dpr = useThree((s) => s.viewport.dpr);
   const clock = useMemo(() => new SceneClock(), []);
 
+  // A hidden tab gets no animation frames: the time it stays hidden does not
+  // count.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) clock.pause();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [clock]);
+
   useEffect(() => {
     const draw = (now: number) => advance(clock.at(now));
-    if (rate === "parked") return driveParked(draw);
-    if (rate !== "every-frame") return;
+    if (rate === "parked") return driveParked(draw, () => clock.pause());
+    if (rate !== "every-frame") {
+      clock.pause();
+      return;
+    }
     let id = requestAnimationFrame(function tick(now) {
       id = requestAnimationFrame(tick);
       draw(now);
@@ -250,7 +270,9 @@ function FrameDriver({ rate }: { rate: DrawRate }) {
 
   // A resize clears the canvas; redraw the still scene once it lands.
   useEffect(() => {
-    if (rate === "on-resize") advance(clock.at(performance.now()));
+    if (rate !== "on-resize") return;
+    advance(clock.at(performance.now()));
+    clock.pause();
   }, [rate, width, height, dpr, advance, clock]);
 
   return null;
