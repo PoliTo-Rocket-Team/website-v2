@@ -10,8 +10,9 @@ import { Starfield } from "./starfield";
 // with its nose near (325, 182), "BORN FOR / SPACE" 52px on two lines right
 // below the rocket at y≈384, then the body copy at 14px from y≈510. All three
 // text blocks are centred between the 20px edges (issue #67). The earth
-// photo starts at y215 and is smaller than the desktop one. Positions run from
-// the left and right 20px edges, so wider phones keep the same shape.
+// photo starts at y215 and is smaller than the desktop one. Text runs from the
+// left and right 20px edges and the rocket from the centre line, so every
+// width below md keeps the 390 shape centred instead of drifting right.
 //
 // The rocket canvas keeps the hero's 2400x280 proportions at 0.29 scale, so
 // the same camera draws the same rocket at about 330px long. A canvas sized
@@ -22,7 +23,10 @@ const ROCKET_W = 2400 * ROCKET_SCALE;
 const ROCKET_H = 280 * ROCKET_SCALE;
 const ROCKET_TILT = -15; // deg, on top of the stage's -6°
 // The canvas centre sits 182px left of and 70px below the nose once tilted.
-const ROCKET_CENTER = { right: 247, top: 252 };
+// On the 390 board that centre is at x143, 52px left of the frame's middle.
+// Holding that offset from the middle (not from the right edge) keeps the 390
+// framing exactly and the parked rocket centred up to md (issue #67).
+const ROCKET_CENTER = { fromMiddle: -52, top: 252 };
 const EARTH_TOP = 215;
 
 /**
@@ -124,7 +128,7 @@ export function HeroPhoneStage({
           style={{
             width: ROCKET_W,
             height: ROCKET_H,
-            left: `calc(100% - ${ROCKET_CENTER.right}px)`,
+            left: `calc(50% + ${ROCKET_CENTER.fromMiddle}px)`,
             top: ROCKET_CENTER.top,
             transform: `translate(-50%, -50%) rotate(${ROCKET_TILT}deg)`,
           }}
