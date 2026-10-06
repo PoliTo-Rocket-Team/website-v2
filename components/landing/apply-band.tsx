@@ -8,7 +8,7 @@ import Link from "next/link";
 // heading and a full-width "Apply to join" button.
 export function ApplyBand() {
   return (
-    <section className="relative isolate overflow-hidden bg-accent px-5 py-16 text-accent-on-accent md:px-16 md:py-[120px]">
+    <section className="relative isolate overflow-hidden bg-accent px-5 py-section text-accent-on-accent md:px-16">
       <Image
         src="/textures/apply-band.webp"
         alt=""

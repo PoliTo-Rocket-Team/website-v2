@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import { useTexture } from "@react-three/drei";
+import { useLayoutEffect } from "react";
+import { useThree } from "@react-three/fiber";
+import { useEnvironment, useTexture } from "@react-three/drei";
 import * as THREE from "three";
-import { applyWeathering, PROFILES, type WeatherUniforms } from "./hero-weathering";
+import { applyWeathering, PROFILES, type WeatherFor, type WeatherUniforms } from "./hero-weathering";
+import { CAVOUR_DECAL, CAVOUR_HDRI, CAVOUR_LIVERY } from "./cavour-assets";
 
 // Cavour built from code instead of the 1.7 MB GLB. Every number below was
 // measured off design/cavour.glb (see the rocket-surface skill), in
@@ -182,7 +184,7 @@ type Mats = {
 
 // Same numbers as the GLB branch in hero-rocket-3d.tsx: that file is the
 // reference for the look; this only reproduces it on built geometry.
-function makeMaterials(livery: THREE.Texture, decal: THREE.Texture, weather: WeatherUniforms): Mats {
+function makeMaterials(livery: THREE.Texture, decal: THREE.Texture, weather: WeatherFor): Mats {
   for (const t of [livery, decal]) {
     t.flipY = false;
     t.colorSpace = THREE.SRGBColorSpace;
@@ -248,11 +250,18 @@ function makeMaterials(livery: THREE.Texture, decal: THREE.Texture, weather: Wea
   return { livery: paint(livery, 0.6, false), decal: paint(decal, 0.4, true), text, aluminium, titanium, seam };
 }
 
-// Built once per page, not once per canvas: the hero and the four project
-// cards all show the same vehicle, and geometry is safe to share across WebGL
-// contexts (three uploads it to each on first draw). Materials are NOT shared,
-// because each canvas drives its own weather uniforms.
-let sharedGeo: ReturnType<typeof buildGeometry> | null = null;
+// Each canvas draws the vehicle from its own view, so each has its own weather
+// uniforms (where the hull sits, the belly light, the wear dials). The
+// materials are shared, so they look the uniforms up by renderer: three
+// compiles a material once per WebGL context and hands the renderer to that
+// compile (hero-weathering.ts). One canvas holds one vehicle.
+const weatherByRenderer = new WeakMap<THREE.WebGLRenderer, WeatherUniforms>();
+const weatherFor: WeatherFor = (renderer) => {
+  const weather = weatherByRenderer.get(renderer);
+  if (!weather) throw new Error("A Cavour material compiled on a canvas with no CavourBuilt in it.");
+  return weather;
+};
+
 function buildGeometry() {
   const body: [number, number][] = [[0, R], [NOSE_START, R]];
   NOSE_R.forEach((r, i) => body.push([NOSE_START + i * NOSE_STEP, r]));
@@ -263,16 +272,36 @@ function buildGeometry() {
     ring: lathe([[-0.0036, 0.036], [0, 0.036]], 64),
     throat: lathe([[-0.016, 0.015], [0.004, 0.015]], 48),
     bell: lathe([[-0.027, 0.027], [-0.021, 0.024], [-0.014, 0.02], [-0.008, 0.017]], 64),
+    tail: new THREE.CircleGeometry(R, 96),
     fin: finGeometry(),
     decal: hullPatch(DECAL),
     text: hullPatch(TEXT),
   };
 }
 
+// Built once per page, not once per canvas: the hero and every project card
+// show the same vehicle. Geometry, materials and textures are plain objects
+// that any number of WebGL contexts can draw; each context still uploads the
+// buffers and compiles the shaders for itself, which no sharing can avoid
+// short of drawing everything in one canvas. Never disposed: the page keeps
+// them for as long as it shows a Cavour.
+let shared: { geo: ReturnType<typeof buildGeometry>; mats: Mats } | null = null;
+function cavourParts(livery: THREE.Texture, decal: THREE.Texture) {
+  return (shared ??= { geo: buildGeometry(), mats: makeMaterials(livery, decal, weatherFor) });
+}
+
 export default function CavourBuilt({ weather, length }: { weather: WeatherUniforms; length: number }) {
-  const [livery, decal] = useTexture(["/design/cavour/livery.png", "/design/cavour/decal-strip.png"]);
-  const mats = useMemo(() => makeMaterials(livery, decal, weather), [livery, decal, weather]);
-  const geo = (sharedGeo ??= buildGeometry());
+  const [livery, decal] = useTexture([CAVOUR_LIVERY, CAVOUR_DECAL]);
+  const { geo, mats } = cavourParts(livery, decal);
+  const gl = useThree((s) => s.gl);
+  // Registered before the scene's first compile: layout effects run before
+  // WarmUp's compile and before the canvas draws its first frame.
+  useLayoutEffect(() => {
+    weatherByRenderer.set(gl, weather);
+    return () => {
+      weatherByRenderer.delete(gl);
+    };
+  }, [gl, weather]);
 
   const scale = length / BBOX_LEN;
   const shadow = { castShadow: true, receiveShadow: true };
@@ -281,9 +310,7 @@ export default function CavourBuilt({ weather, length }: { weather: WeatherUnifo
       <group position-y={-(BBOX_MIN + BBOX_LEN / 2)}>
         <mesh geometry={geo.body} material={mats.livery} {...shadow} />
         {/* tail bulkhead so the tube never reads hollow */}
-        <mesh rotation-x={Math.PI / 2} material={mats.seam} position-y={0.0005}>
-          <circleGeometry args={[R, 96]} />
-        </mesh>
+        <mesh geometry={geo.tail} rotation-x={Math.PI / 2} material={mats.seam} position-y={0.0005} />
         {SEAM_Y.map((y) => (
           <mesh key={y} geometry={geo.seam} material={mats.seam} position-y={y} />
         ))}
@@ -306,4 +333,8 @@ export default function CavourBuilt({ weather, length }: { weather: WeatherUnifo
   );
 }
 
-useTexture.preload(["/design/cavour/livery.png", "/design/cavour/decal-strip.png"]);
+// Load and decode once, when this chunk first runs, for every canvas on the
+// page: the hero and the cards all read these from the same loader cache, so
+// the HDRI and both textures are fetched and parsed once, not once per canvas.
+useTexture.preload([CAVOUR_LIVERY, CAVOUR_DECAL]);
+useEnvironment.preload({ files: CAVOUR_HDRI });

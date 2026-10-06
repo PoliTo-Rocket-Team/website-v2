@@ -103,6 +103,25 @@
   * {
     @apply border-border;
   }
+  /* Section rhythm (the `section` spacing token in tailwind.config.ts):
+     56px on phones (board 24), 120px from md (board 21). Each section pads
+     its top and bottom by it, so every gap between sections is the same.
+     --hero-bottom-space is the empty hero left below its last line of text,
+     which already counts toward the gap after the hero. On phones the body
+     copy's last line ends 35px above the 650px frame's bottom at 390 wide
+     (hero-phone.tsx). From md the fact strip's 16.5px line box ends at y404.5
+     of the 436px bottom band (hero.tsx), 31.5 board px that scale with the
+     board. */
+  :root {
+    --section-pad: 56px;
+    --hero-bottom-space: 35px;
+  }
+  @media (min-width: 768px) {
+    :root {
+      --section-pad: 120px;
+      --hero-bottom-space: calc(31.5px * var(--hero-scale, 1));
+    }
+  }
   html {
     font-family:
       "Plus Jakarta Sans",
@@ -146,25 +165,37 @@
    centred, and it scales up with the page on wider screens. Its top fades in
    so the hero's own scrim meets it without a line.
    .page-sky-grain is the fine film grain, a separate stitched SVG noise tile:
-   webp compression drops the grain from the streak tile. Its white specks
-   and opacity are matched by eye to board 21, recorded as an exception in
-   design-system-manifest.md. */
+   webp compression drops the grain from the streak tile, and the grain also
+   dithers the tile's dark gradients so they show no bands. It is one octave
+   of pixel-fine grey noise in soft-light blend, with no threshold: it
+   lightens and darkens the sky around its own tone, so it reads as even
+   film grain, never as specks or scratches, and leaves the sky as dark as
+   the board. Its frequency and opacity are matched by eye to board 21 at
+   100% and 200%, recorded as an exception in design-system-manifest.md.
+   The footer paints the same two layers (footer.tsx). .page-sky-fade ramps
+   the streak tile in over one section pad where the sky meets the hero: the
+   tile is about ten levels lighter than the ground the hero scrim ends on, so
+   a hard start would draw a line. The grain and the stars start at the top
+   edge. */
   .page-sky-light,
   .page-sky-grain {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
-    mask-image: linear-gradient(to bottom, transparent 0, #000 320px);
+  }
+  .page-sky-fade {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
+    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
   }
   .page-sky-light {
     background: theme("colors.ground") url("/textures/page-streaks-tile.webp")
       top center / max(100%, 1440px) auto repeat-y;
   }
   .page-sky-grain {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1.4 0 0 0 -.6'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-size: 160px 160px;
-    opacity: 0.05;
+    mix-blend-mode: soft-light;
+    opacity: 0.6;
   }
 
   /* Liquid glass (board 21 spec table). Every glass surface draws its edge as
@@ -266,6 +297,16 @@
     -webkit-backdrop-filter: blur(24px);
     backdrop-filter: blur(24px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    transition:
+      -webkit-backdrop-filter 300ms ease-out,
+      backdrop-filter 300ms ease-out;
+  }
+  /* While the hero canvas shows under the bar, the bar drops its blur and
+   keeps the same tint, so a canvas frame never forces a re-blur (issue #63,
+   glass-bar.ts). The sky there is near black, so the bar reads the same. */
+  html[data-glass-bar="clear"] .glass-bar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
   .glass-bar::after {
     content: "";

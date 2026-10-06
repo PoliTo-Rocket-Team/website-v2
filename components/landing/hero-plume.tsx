@@ -28,7 +28,8 @@ const CORE_VERT = /* glsl */ `
 
 const CORE_FRAG = /* glsl */ `
   uniform float uTime;
-  uniform float uThrottle; // 1 = full burn (drive-in), ~0.4 = parked idle
+  uniform float uThrottle; // 1 = full burn (drive-in), 0.3 = idle before the drive-in
+  uniform float uFade; // 1 = burning, 0 = gone (the fade-out once parked)
   varying vec2 vUv;
 
   float random(vec2 st) {
@@ -79,8 +80,9 @@ const CORE_FRAG = /* glsl */ `
     col = mix(col, ember, smoothstep(0.2, 0.6, de) * (1.0 - core * 0.5));
     col = mix(col, smoke, smoothstep(0.5, 1.0, de));
 
-    // Idle look (parked): the soft pale plume of the original Blender render —
-    // a short pink-white glow at the bell, no jet. Blends in as throttle drops.
+    // Idle look (before the drive-in): the soft pale plume of the original
+    // Blender render — a short pink-white glow at the bell, no jet. Blends in
+    // as throttle drops.
     vec3 idleCol = mix(vec3(0.95, 0.8, 0.85), vec3(1.0, 0.97, 0.95), core);
     float idle = 1.0 - smoothstep(0.35, 0.9, uThrottle);
     col = mix(col, idleCol, idle);
@@ -88,6 +90,7 @@ const CORE_FRAG = /* glsl */ `
     float alpha = (body * 0.6 + core * 0.9) * flame * (0.7 + 0.4 * n) * mix(0.35, 1.0, uThrottle);
     alpha *= mix(1.0, 0.8 + 0.2 * (1.0 - n), idle); // calmer at idle
     alpha *= 1.0 - smoothstep(0.82, 1.0, d); // never a hard edge at the plane's end
+    alpha *= uFade;
     gl_FragColor = vec4(col * alpha, alpha);
   }
 `;
@@ -109,6 +112,8 @@ function radialTexture(stops: [number, string][], size = 128) {
 
 // ---- Glow sprites: additive halos at the throat and along the first meters ---
 
+// `opacity` is the glow at full presence; Plume scales it by the fade through
+// the sprite's userData.
 function Glow({ position, size, color, opacity }: { position: [number, number, number]; size: number; color: string; opacity: number }) {
   const map = useMemo(
     () =>
@@ -122,7 +127,7 @@ function Glow({ position, size, color, opacity }: { position: [number, number, n
   );
   useEffect(() => () => map.dispose(), [map]);
   return (
-    <sprite position={position} scale={[size, size, 1]}>
+    <sprite position={position} scale={[size, size, 1]} userData={{ opacity }}>
       <spriteMaterial map={map} color={color} opacity={opacity} transparent depthWrite={false} blending={THREE.AdditiveBlending} />
     </sprite>
   );
@@ -166,7 +171,7 @@ const SMOKE_FRAG = /* glsl */ `
 
 type Puff = { age: number; y: number; vy: number; seed: number };
 
-function Smoke({ throttle }: { throttle: { current: number } }) {
+function Smoke({ throttle, fade }: { throttle: { current: number }; fade: { current: number } }) {
   const pixelRatio = useThree((s) => s.gl.getPixelRatio());
   const geom = useRef<THREE.BufferGeometry>(null!);
   const puffs = useRef<Puff[]>([]);
@@ -219,15 +224,18 @@ function Smoke({ throttle }: { throttle: { current: number } }) {
     return { positions, sizes, alphas, heats };
   }, []);
 
+  // `delta` is real elapsed time (SceneClock in hero-rocket-3d.tsx), so the
+  // smoke drifts at full speed however few frames the canvas draws.
   useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05);
+    // Gone: the plume group is hidden, so there is nothing to move.
+    if (fade.current === 0) return;
     const { positions, sizes, alphas, heats } = buffers;
     const list = puffs.current;
     for (let i = 0; i < SMOKE_COUNT; i++) {
       const p = list[i];
-      p.age += dt;
+      p.age += delta;
       if (p.age >= SMOKE_LIFE) {
-        p.age -= SMOKE_LIFE;
+        p.age %= SMOKE_LIFE;
         p.seed = Math.random();
         p.y = (Math.random() - 0.5) * 0.25;
         p.vy = (Math.random() - 0.5) * 0.5;
@@ -240,7 +248,7 @@ function Smoke({ throttle }: { throttle: { current: number } }) {
       positions[i * 3 + 2] = -0.5; // behind the core plane
       // Grows as it cools; fades out over the second half of its life
       sizes[i] = 40 + t * 210;
-      alphas[i] = 0.55 * Math.min(1, t * 5.0) * (1 - Math.pow(t, 1.4)) * (0.12 + 0.88 * throttle.current);
+      alphas[i] = 0.55 * Math.min(1, t * 5.0) * (1 - Math.pow(t, 1.4)) * (0.12 + 0.88 * throttle.current) * fade.current;
       heats[i] = Math.exp(-t * 6.0);
     }
     const g = geom.current;
@@ -268,14 +276,42 @@ function Smoke({ throttle }: { throttle: { current: number } }) {
 const IDLE_THROTTLE = 0.3;
 const THROTTLE_RATE = 1.4; // 1/s, exponential approach
 
-export default function Plume({ fullBurn = false }: { fullBurn?: boolean }) {
+// Once the rocket has parked the plume fades out to nothing over FADE_S,
+// eased in and out, and stays off: the parked rocket only bobs (ADR 0004).
+const FADE_S = 1.25;
+
+/**
+ * What the engine is doing. One value, so the plume can never be asked to
+ * burn full and fade out at once.
+ *  - "idle": before the drive-in, the soft idle plume
+ *  - "full": the drive-in, full burn
+ *  - "out":  parked; the plume fades out, then draws nothing
+ */
+export type Burn = "idle" | "full" | "out";
+
+/** Ease in and out (smoothstep) of a linear 0..1 fade. */
+const eased = (p: number) => p * p * (3 - 2 * p);
+
+type Props = {
+  burn: Burn;
+  /** Called whenever the plume becomes gone (faded out) or comes back. */
+  onGoneChange?: (gone: boolean) => void;
+};
+
+export default function Plume({ burn, onGoneChange }: Props) {
+  const rootRef = useRef<THREE.Group>(null!);
   const coreRef = useRef<THREE.Mesh>(null!);
   const glowRef = useRef<THREE.Group>(null!);
-  const throttle = useRef(fullBurn ? 1 : IDLE_THROTTLE);
+  const throttle = useRef(burn === "full" ? 1 : IDLE_THROTTLE);
+  // Linear fade progress (1 = burning, 0 = gone) and its eased value. A plume
+  // that mounts already "out" starts gone: there was no burn to fade.
+  const progress = useRef(burn === "out" ? 0 : 1);
+  const fade = useRef(progress.current);
+  const gone = useRef<boolean | null>(null);
   const coreMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uThrottle: { value: 1 } },
+        uniforms: { uTime: { value: 0 }, uThrottle: { value: 1 }, uFade: { value: 1 } },
         vertexShader: CORE_VERT,
         fragmentShader: CORE_FRAG,
         transparent: true,
@@ -291,13 +327,28 @@ export default function Plume({ fullBurn = false }: { fullBurn?: boolean }) {
   useEffect(() => () => coreMaterial.dispose(), [coreMaterial]);
 
   useFrame((state, delta) => {
+    // Fade: out once parked, back in if the engine ever lights again.
+    const step = delta / FADE_S;
+    progress.current =
+      burn === "out" ? Math.max(progress.current - step, 0) : Math.min(progress.current + step, 1);
+    fade.current = eased(progress.current);
+    const nowGone = progress.current === 0;
+    if (nowGone !== gone.current) {
+      gone.current = nowGone;
+      onGoneChange?.(nowGone);
+    }
+    // Gone: hide the whole plume so it costs no draw calls.
+    if (rootRef.current) rootRef.current.visible = !nowGone;
+    if (nowGone) return;
+
     const t = state.clock.elapsedTime;
-    // Throttle eases toward its target: full burn on the way in, idle when parked
-    const target = fullBurn ? 1 : IDLE_THROTTLE;
+    // Throttle eases toward its target: full burn on the way in, idle otherwise
+    const target = burn === "full" ? 1 : IDLE_THROTTLE;
     throttle.current += (target - throttle.current) * (1 - Math.exp(-delta * THROTTLE_RATE));
     const th = throttle.current;
     coreMaterial.uniforms.uTime.value = t;
     coreMaterial.uniforms.uThrottle.value = th;
+    coreMaterial.uniforms.uFade.value = fade.current;
     if (coreRef.current) {
       // Engine breathing: slight flicker in length and width, rougher at idle
       const rough = 1.6 - th * 0.6;
@@ -307,12 +358,16 @@ export default function Plume({ fullBurn = false }: { fullBurn?: boolean }) {
     if (glowRef.current) {
       const g = 0.5 + 0.5 * th;
       glowRef.current.scale.set(g, g, 1);
+      for (const glow of glowRef.current.children) {
+        const sprite = glow as THREE.Sprite;
+        sprite.material.opacity = (sprite.userData.opacity as number) * fade.current;
+      }
     }
   });
 
   return (
-    <group>
-      <Smoke throttle={throttle} />
+    <group ref={rootRef} visible={progress.current > 0}>
+      <Smoke throttle={throttle} fade={fade} />
       <mesh ref={coreRef} position={[-CORE_LENGTH / 2 + 0.4, 0, 0]} material={coreMaterial}>
         <planeGeometry args={[CORE_LENGTH, CORE_HEIGHT]} />
       </mesh>

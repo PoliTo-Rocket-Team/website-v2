@@ -1,18 +1,21 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
-import { RevealOnFirstFrame } from "./reveal-on-first-frame";
+import { SceneErrorBoundary, WarmUp } from "./scene-ready";
+import { CAVOUR_HDRI } from "./cavour-assets";
 
 // The vehicle in a project card, seen from above and in front: the hero shows
 // the whole rocket side-on, so the card is a close-up from an angle you cannot
 // get out of a flat render. Same model, materials and HDRI as the hero
 // (rocket-cavour.tsx, hero-rocket-3d.tsx) so the two read as one vehicle.
-const HDRI = "/design/hdri/studio_small_03.hdr";
+//
+// This file is the card's canvas and its tuning. It loads as its own chunk:
+// rocket-card-stage.tsx decides when to mount it (see scene-schedule.ts).
 const LENGTH = 32;
 const HALF = LENGTH / 2;
 
@@ -47,10 +50,6 @@ const PARKED_X = 1.2;
 const WEAR_SCALE = 2.5;
 const WEAR_AMOUNT = 0.45;
 
-const REDUCED =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 function Vehicle() {
   const group = useRef<THREE.Group>(null!);
   /** The group the vehicle sits in directly: its frame IS rocket space. */
@@ -70,16 +69,12 @@ function Vehicle() {
     [],
   );
 
-  useFrame((state) => {
+  // The vehicle never moves, and the canvas only draws on demand (warm-up,
+  // resize), so there is no idle drift: a card at rest draws no frames
+  // (issue #48). This runs on those few frames only.
+  useFrame(() => {
     if (!group.current) return;
-    // Barely-there drift, same intent as the hero's: keeps it from reading as
-    // a sticker without ever becoming a bounce.
-    const drift = REDUCED ? 0 : Math.sin(state.clock.elapsedTime * 0.5) * 0.04;
-    group.current.rotation.x = drift;
-    group.current.position.y = PARKED_Y;
-    group.current.position.x = PARKED_X;
-    group.current.position.z = PARKED_Z;
-    // Pin the procedural wear to the hull through the lean, turn and climb.
+    // Pin the procedural wear to the hull through the lean.
     group.current.updateMatrixWorld();
     weather.uRocketInv.value.copy(frame.current.matrixWorld).invert();
   });
@@ -87,7 +82,7 @@ function Vehicle() {
   // The model is built along X with the nose at +X; stand it up nose-first,
   // less 16° so it leans to the right.
   return (
-    <group ref={group}>
+    <group ref={group} position={[PARKED_X, PARKED_Y, PARKED_Z]}>
       <group ref={frame} rotation={[0, 0, Math.PI / 2 - LEAN]}>
         <CavourBuilt weather={weather} length={LENGTH} />
       </group>
@@ -121,106 +116,65 @@ function FixedCamera() {
   return null;
 }
 
-function webglSupported() {
-  try {
-    const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
+type Props = {
+  /** `?cam` on the URL: orbit controls and a live camera readout. */
+  tuning: boolean;
+  onReadout: (s: string) => void;
+  /**
+   * The vehicle is loaded, compiled and drawn: the canvas holds the finished
+   * picture and may be shown. Until then it stays hidden over the poster
+   * (rocket-card-stage.tsx).
+   */
+  onReady: () => void;
+  /** The scene failed to load. The canvas stays hidden; the poster stays. */
+  onFailed: () => void;
+};
 
-export default function RocketCard3D() {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [supported, setSupported] = useState(false);
-  const [visible, setVisible] = useState(false);
-  // Flips once, the first time the card comes within a screen of the viewport,
-  // and the Canvas mounts then. Before this the four cards each built Cavour
-  // and compiled its shaders on page load, under the hero's own entrance,
-  // which is where the first-load stutter came from (issue #29).
-  const [mounted, setMounted] = useState(false);
-  const [tuning, setTuning] = useState(false);
-  const [readout, setReadout] = useState("");
-
-  useEffect(() => {
-    setSupported(webglSupported());
-    setTuning(new URLSearchParams(window.location.search).has("cam"));
-    const el = wrapRef.current;
-    if (!el) return;
-
-    // Only paint while the section is on screen: this is the page's second
-    // canvas and the hero already owns a frame loop.
-    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0 });
-    io.observe(el);
-
-    // Mount a little early so the rocket is built by the time it scrolls in.
-    // A full screen of margin was too generous: at 1440x900 the cards start
-    // ~1800px down, inside that margin, so all four still mounted on load.
-    const near = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) {
-          setMounted(true);
-          near.disconnect();
-        }
-      },
-      { rootMargin: "30% 0px" },
-    );
-    near.observe(el);
-
-    return () => {
-      io.disconnect();
-      near.disconnect();
-    };
-  }, []);
-
+export default function RocketCard3D({ tuning, onReadout, onReady, onFailed }: Props) {
   return (
-    // Fills the wrapper the card gives it, which hangs over the card's top
-    // edge so the rocket has somewhere to rise into (projects.tsx).
-    // The canvas starts invisible and RevealOnFirstFrame shows it once it has
-    // actually drawn; see reveal-on-first-frame.tsx for why.
-    <div ref={wrapRef} className="pointer-events-none absolute inset-0 [&_canvas]:opacity-0">
-      {supported && mounted && (
-        <Canvas
-          // "demand" rather than "never" while off screen: "never" leaves the
-          // WebGL buffer undrawn, and on a real GPU that shows as white until
-          // the first frame. "demand" still costs nothing between frames.
-          frameloop={visible ? "always" : "demand"}
-          dpr={[1, 1.5]}
-          resize={{ offsetSize: true }}
-          gl={{ alpha: true, antialias: true }}
-          camera={{ fov: FOV, near: 1, far: 200, position: [EYE.x, EYE.y, EYE.z] }}
-          // The canvas is taller than the card and hangs over its top edge, so
-          // it must never take pointer events: hover belongs to the card, and
-          // the part of the rocket sticking out above it is not a hover target.
-          style={{ pointerEvents: "none" }}
-          eventSource={undefined}
-        >
-          <ambientLight intensity={0.12} />
-          {/* Sun on the camera side, as on the hero: no shadow angles to manage,
-              and no shadow map, because a card has nothing to cast onto. */}
-          <directionalLight position={[6, 16, 20]} intensity={2.1} />
-          <directionalLight position={[-10, 4, -8]} intensity={0.6} color="#FFD2B0" />
-          {tuning ? <CameraTuner onChange={setReadout} /> : <FixedCamera />}
-          <RevealOnFirstFrame />
-          {/* The environment shares the vehicle's Suspense on purpose: with it
-              outside, the rocket drew for a few frames before the HDRI arrived
-              and flashed blown-out white. Now neither appears until both are
-              ready, and the card's texture shows through until then. */}
-          <Suspense fallback={null}>
-            <Environment
-              files={HDRI}
-              environmentIntensity={0.45}
-              environmentRotation={[-Math.PI / 2, 0, 0]}
-            />
-            <Vehicle />
-          </Suspense>
-        </Canvas>
-      )}
-      {tuning && (
-        <p className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/70 px-2 py-1 font-mono text-[10px] text-accent">
-          {readout}
-        </p>
-      )}
-    </div>
+    <Canvas
+      // Nothing in the scene moves, so the canvas draws only when asked: the
+      // warm-up (scene-ready.tsx), a resize, and the ?cam tuner's orbit
+      // controls. The hover rise is a CSS transform on the canvas wrapper
+      // (projects.tsx) and needs no frames. Under reduced motion this is the
+      // same: the warm-up draws the finished vehicle, then nothing.
+      // Not "never": that leaves the WebGL buffer undrawn, which shows white
+      // on a real GPU, and ignores the warm-up's invalidate.
+      frameloop="demand"
+      dpr={[1, 1.5]}
+      // No scroll tracking: the canvas takes no pointer events, so its page
+      // position is never used, and tracking it would draw a frame on every
+      // scroll.
+      resize={{ offsetSize: true, scroll: false }}
+      gl={{ alpha: true, antialias: true }}
+      camera={{ fov: FOV, near: 1, far: 200, position: [EYE.x, EYE.y, EYE.z] }}
+      // The canvas is taller than the card and hangs over its top edge, so
+      // it must never take pointer events: hover belongs to the card, and
+      // the part of the rocket sticking out above it is not a hover target.
+      style={{ pointerEvents: "none" }}
+      eventSource={undefined}
+    >
+      <ambientLight intensity={0.12} />
+      {/* Sun on the camera side, as on the hero: no shadow angles to manage,
+          and no shadow map, because a card has nothing to cast onto. */}
+      <directionalLight position={[6, 16, 20]} intensity={2.1} />
+      <directionalLight position={[-10, 4, -8]} intensity={0.6} color="#FFD2B0" />
+      {tuning ? <CameraTuner onChange={onReadout} /> : <FixedCamera />}
+      {/* The environment shares the vehicle's Suspense on purpose: with it
+          outside, the rocket drew for a few frames before the HDRI arrived
+          and flashed blown-out white. Now neither appears until both are
+          ready, and the card's poster shows until then. */}
+      <SceneErrorBoundary onError={onFailed}>
+        <Suspense fallback={null}>
+          <Environment
+            files={CAVOUR_HDRI}
+            environmentIntensity={0.45}
+            environmentRotation={[-Math.PI / 2, 0, 0]}
+          />
+          <Vehicle />
+          <WarmUp onWarm={onReady} />
+        </Suspense>
+      </SceneErrorBoundary>
+    </Canvas>
   );
 }

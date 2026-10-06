@@ -27,7 +27,7 @@ const featured: Post & { cta: string; image: string } = {
   date: "12 OCT 2025",
   title: "VES Mark II static fire complete",
   excerpt:
-    "Full-duration burn on the VES test stand. Next stop: flight qualification at EuRoC 2026.",
+    "Full-duration burn on the VES test stand. Next: flight qualification at EuRoC 2026.",
   image: "/design/news/team-photo.jpg",
   cta: "Read the record",
 };
@@ -69,14 +69,17 @@ export function Latest() {
     // Board 24 below md: 20px sides, 56px top and bottom, 26px heading, one
     // column: the featured card (photo 150px tall) and only the first news
     // card (IREC 2025). The other two news cards are desktop-only.
-    <section className="px-5 py-14 md:px-16 md:py-[120px]">
+    // Board 21 from lg: the section fits one 1440 x 900 screen below the
+    // navbar, so the gaps around the cards are 40px and the cards row is
+    // 560px tall.
+    <section className="px-5 py-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
         {/* Header */}
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end md:gap-8">
-          <div>
+          <div className="md:max-w-[760px]">
             <p className="font-mono text-xs tracking-[0.3em] text-accent">TRACK RECORD</p>
-            <h2 className="mt-4 text-[26px] font-bold leading-[1.25] tracking-[-0.025em] md:max-w-[16ch] md:text-[48px]">
-              We fly against the best student teams on earth.
+            <h2 className="mt-4 text-[26px] font-bold leading-[1.25] tracking-[-0.025em] md:text-[48px]">
+              <span className="md:block">We fly against the best</span> student teams on earth.
             </h2>
           </div>
           <p className="max-w-[460px] text-[15px] leading-relaxed text-text-2 md:text-[17px]">
@@ -85,57 +88,63 @@ export function Latest() {
           </p>
         </div>
 
-        {/* Grid: featured card + list */}
-        <div className="mt-6 grid gap-5 md:mt-16 lg:grid-cols-[1.58fr_1fr]">
+        {/* Grid: featured card + list. From lg the row is at least 560px and
+            both columns stretch to it; it grows only if the list needs more. */}
+        <div className="mt-6 grid gap-5 md:mt-10 lg:grid-cols-[1.58fr_1fr] lg:grid-rows-[minmax(560px,auto)]">
           {/* Featured */}
-          <article className="glass-card flex flex-col justify-between rounded-xl p-5 md:p-11">
-            <div>
+          <article className="glass-card flex flex-col gap-3.5 rounded-xl p-5 md:p-8">
+            <div className="flex items-center justify-between gap-3">
               <TagLine post={featured} />
-              <h3 className="mt-4 text-[20px] font-bold leading-[1.2] tracking-[-0.02em] md:mt-6 md:text-[34px] md:leading-snug">
-                {featured.title}
-              </h3>
-              <p className="mt-3 max-w-[46ch] text-[14px] leading-[22px] text-text-2 md:mt-5 md:text-[17px] md:leading-relaxed">
-                {featured.excerpt}
-              </p>
+              <Link
+                href="#"
+                className="group/cta inline-flex shrink-0 items-center gap-3 text-[14px] font-medium text-accent transition-colors hover:text-accent-hover md:text-base"
+              >
+                {featured.cta}
+                {/* No room for the arrow beside the tag line on a phone. */}
+                <RocketArrow className="hidden opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover/cta:translate-x-1.5 group-hover/cta:opacity-100 md:inline-block" />
+              </Link>
             </div>
-            {/* Fixed at 2.2:1 rather than flex-1: letting it absorb the list
-                column's slack made its shape depend on the viewport. */}
-            <div className="relative mt-4 h-[150px] w-full overflow-hidden rounded-[6px] md:mt-10 md:aspect-[2.2/1] md:h-auto">
+            <h3 className="text-[20px] font-bold leading-[1.2] tracking-[-0.02em] md:text-[34px]">
+              {featured.title}
+            </h3>
+            <p className="text-[14px] leading-[22px] text-text-2 md:text-[17px] md:leading-relaxed">
+              {featured.excerpt}
+            </p>
+            {/* From lg the photo takes what the card has left after the text,
+                so the card matches the list column. Below lg the card has no
+                set height, so the photo keeps a fixed shape. */}
+            <div className="relative h-[150px] w-full overflow-hidden rounded-[6px] md:aspect-[2.2/1] md:h-auto lg:aspect-auto lg:min-h-0 lg:flex-1">
               <Image
                 src={featured.image}
                 alt=""
                 fill
-                sizes="(min-width: 1024px) 50vw, 90vw"
+                // The featured card's inner width: from lg the 1.58fr of
+                // (content − 20px gap), content 100vw − 128px up to 1312px,
+                // less its 2 × 44px padding; below lg the whole column.
+                sizes="(min-width: 1440px) 703px, (min-width: 1024px) calc(61.2vw - 179px), (min-width: 768px) calc(100vw - 216px), calc(100vw - 80px)"
                 placeholder="blur"
                 blurDataURL={newsBlur[featured.image]}
                 className="object-cover"
               />
             </div>
-            <Link
-              href="#"
-              className="group/cta mt-3 inline-flex items-center gap-3 self-start text-[15px] font-medium md:mt-10 md:text-base text-accent transition-colors hover:text-accent-hover"
-            >
-              {featured.cta}
-              <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover/cta:translate-x-1.5 group-hover/cta:opacity-100" />
-            </Link>
           </article>
 
           {/* List */}
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-5 lg:gap-3">
             {posts.map((post, i) => (
               <article
                 key={post.title}
-                className={`glass-card flex-1 flex-col justify-center rounded-xl p-5 md:flex md:py-10 ${i === 0 ? "flex" : "hidden"} md:pl-10 md:pr-16 lg:min-h-[250px]`}
+                className={`glass-card flex-1 flex-col justify-center gap-2.5 rounded-xl p-5 md:flex md:p-8 lg:py-0 ${i === 0 ? "flex" : "hidden"}`}
               >
                 <TagLine post={post} />
-                <h3 className="mt-3 text-[16px] font-semibold leading-[1.2] md:text-[21px] md:leading-snug">{post.title}</h3>
-                <p className="mt-2 text-[14px] leading-[21px] text-text-2 md:mt-3 md:text-[17px] md:leading-relaxed">{post.excerpt}</p>
+                <h3 className="text-[16px] font-semibold leading-[1.2] md:text-[21px] md:leading-snug">{post.title}</h3>
+                <p className="text-[14px] leading-[21px] text-text-2 md:text-[17px] md:leading-relaxed">{post.excerpt}</p>
               </article>
             ))}
           </div>
         </div>
 
-        <div className="mt-6 text-center md:mt-16">
+        <div className="mt-6 text-center md:mt-10">
           <Link
             href="#"
             className="group inline-flex items-center gap-3 font-mono text-base tracking-wide text-prt-text transition-colors hover:text-accent"

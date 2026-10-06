@@ -4,16 +4,21 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import * as THREE from "three";
-import Plume from "./hero-plume";
+import Plume, { type Burn } from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
+import { SceneErrorBoundary, WarmUp } from "./scene-ready";
+import { CAVOUR_HDRI } from "./cavour-assets";
+import { holdCardSetup } from "./scene-schedule";
+import { useClearGlassBarOver } from "./glass-bar";
 
 // Three.js hero stage: the code-built Cavour (rocket-cavour.tsx) horizontal,
 // nose right, matching the static render's framing (nose ~95% across, plume
 // trailing to the left edge). The Blender GLB it was measured from lives in
 // design/cavour.glb, out of public/ so it is never served.
-// Idle: hover bob only (decision 0004: no shake); plume lives in hero-plume.tsx.
+// Idle: hover bob only (decision 0004: no shake); the plume fades out once
+// parked (hero-plume.tsx).
 // Scroll fly-out stays on the CSS wrapper in hero.tsx.
 
 // Canvas 2400x280, centred where the old 1480px stage was: ~750px of room
@@ -26,10 +31,10 @@ const REDUCED =
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// IBL: a real small-studio HDRI (Poly Haven, CC0). Real softboxes and
-// falloff give the metals proper streaks and the orange paint a believable
-// sheen — the previous hand-built strip environment read flat and cartoony.
-const HDRI = "/design/hdri/studio_small_03.hdr";
+// IBL: a real small-studio HDRI (Poly Haven, CC0), CAVOUR_HDRI. Real
+// softboxes and falloff give the metals proper streaks and the orange paint a
+// believable sheen — the previous hand-built strip environment read flat and
+// cartoony.
 
 // Belly light: the lit earth under the rocket, white. Two parts, both
 // driven by how low the rocket sits on screen: the environment's light on
@@ -49,7 +54,13 @@ const BELLY_PARKED = 0.15; // env gate once settled (0 = none, 1 = all)
 // every few frames is invisible.
 const DOM_READ_EVERY = 4;
 
-function Rocket({ fullBurn }: { fullBurn: boolean }) {
+function Rocket({
+  burn,
+  onPlumeGoneChange,
+}: {
+  burn: Burn;
+  onPlumeGoneChange: (gone: boolean) => void;
+}) {
   const group = useRef<THREE.Group>(null!);
   const earth = useRef<THREE.DirectionalLight>(null!);
   const canvas = useThree((s) => s.gl.domElement);
@@ -111,26 +122,162 @@ function Rocket({ fullBurn }: { fullBurn: boolean }) {
       <directionalLight ref={earth} intensity={0} color="#ffffff" />
       <CavourBuilt weather={weather} length={LENGTH} />
       <group position={[-HALF, 0, 0]}>
-        <Plume fullBurn={fullBurn} />
+        <Plume burn={burn} onGoneChange={onPlumeGoneChange} />
       </group>
     </group>
   );
 }
 
+/** The hero's entrance, as hero.tsx runs it (decision 0004). */
+type Phase = "enter" | "drive" | "settled";
+
+/** The engine through the entrance: full burn on the drive-in, out once parked. */
+const BURN: Record<Phase, Burn> = { enter: "idle", drive: "full", settled: "out" };
+
+// Render budget (issue #48): the site must stay light. The canvas draws every
+// display frame only while something really moves — the hold, the drive-in,
+// and the plume fading out after it. Parked there is no plume, only the slow
+// bob (one lap in 9s, at most ~4px a second). It reads the same at 10 fps, so
+// it draws at most that (issue #63; 15 in #59, 30 before). Once nobody has scrolled, pointed or typed for
+// PARKED_STILL_MS, it holds a still frame, and the next input wakes it where
+// it stopped (SceneClock). Off screen it draws nothing.
+const PARKED_FPS = 10;
+const PARKED_GAP_MS = 1000 / PARKED_FPS;
+const PARKED_STILL_MS = 5000;
+// What counts as someone at the page. Scroll covers the keyboard and the
+// scrollbar too.
+const WAKE_EVENTS = ["pointermove", "pointerdown", "wheel", "scroll", "keydown", "touchstart"] as const;
+
 /**
- * Compiles every shader in the scene during the 2 s gathered hold, while the
- * stage is parked off screen and nothing is moving. Without this the rocket's
- * five weathered materials and both plume shaders compiled on the first frame
- * of the drive-in, which was the stutter left after issue #29 (~330 ms).
- * compileAsync uses the GPU's parallel-compile path, so it does not block.
+ * How often the canvas draws. One value, so no mix of flags can ask for two
+ * rates at once.
+ *  - "every-frame": warming up, or the rocket is on the move
+ *  - "parked":      the bob at PARKED_FPS, then a still
+ *                   frame while nobody is at the page
+ *  - "on-resize":   reduced motion; the finished scene, redrawn only when a
+ *                   resize clears the canvas
+ *  - "none":        off screen; the last frame stays up
  */
-function WarmUp() {
-  const { gl, scene, camera } = useThree();
+type DrawRate = "every-frame" | "parked" | "on-resize" | "none";
+
+function drawRate(ready: boolean, visible: boolean, moving: boolean): DrawRate {
+  // Warm-up draws even off screen (on phones the stage waits fully outside
+  // the viewport during the hold), so the rocket has drawn before the
+  // drive-in starts.
+  if (!ready) return "every-frame";
+  if (!visible) return "none";
+  if (REDUCED) return "on-resize";
+  return moving ? "every-frame" : "parked";
+}
+
+/**
+ * Scene time for a canvas that does not draw all the time. While it draws,
+ * scene time is wall-clock time: each draw moves it on by the real time since
+ * the one before, so the bob and the plume move at full speed however few
+ * frames are drawn, never in slow motion. While it does not draw (a
+ * still frame, a hidden tab, off screen) the clock is paused, so the next
+ * draw carries on from where the last one stopped instead of jumping ahead.
+ * (R3F's own clock would restart at zero on every setFrameloop.)
+ */
+class SceneClock {
+  private seconds = 0;
+  private last: number | null = null;
+
+  /** Scene seconds for a draw at `now` (ms, performance.now() time). */
+  at(now: number): number {
+    if (this.last !== null) this.seconds += Math.max(now - this.last, 0) / 1000;
+    this.last = now;
+    return this.seconds;
+  }
+
+  /** Drawing stopped: the time until the next draw does not count. */
+  pause(): void {
+    this.last = null;
+  }
+}
+
+/**
+ * Draws parked: one frame every PARKED_GAP_MS while someone is at the page,
+ * then none once they have been away PARKED_STILL_MS; any input wakes it.
+ * It waits on a timer, not on every display frame, so a parked hero does not
+ * wake the page 60 times a second to draw 10. A hidden tab gets no animation
+ * frames, so it draws nothing there. `still` runs when it stops drawing.
+ * Returns the stop.
+ */
+function driveParked(draw: (now: number) => void, still: () => void): () => void {
+  let lastInput = performance.now();
+  let drawing = false;
+  let timer = 0;
+  let frame = 0;
+  const next = () => {
+    frame = requestAnimationFrame((now) => {
+      draw(now);
+      if (now - lastInput > PARKED_STILL_MS) {
+        drawing = false;
+        still();
+        return;
+      }
+      timer = window.setTimeout(next, PARKED_GAP_MS);
+    });
+  };
+  const wake = () => {
+    lastInput = performance.now();
+    if (drawing) return;
+    drawing = true;
+    next();
+  };
+  wake();
+  for (const type of WAKE_EVENTS) window.addEventListener(type, wake, { passive: true });
+  return () => {
+    for (const type of WAKE_EVENTS) window.removeEventListener(type, wake);
+    window.clearTimeout(timer);
+    cancelAnimationFrame(frame);
+  };
+}
+
+/**
+ * Drives a `frameloop="never"` canvas at its draw rate, on one SceneClock for
+ * every rate, so switching rate never restarts or jumps the bob or the plume.
+ * A hidden tab gets no animation frames, so it draws nothing there either.
+ */
+function FrameDriver({ rate }: { rate: DrawRate }) {
+  const advance = useThree((s) => s.advance);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+  const dpr = useThree((s) => s.viewport.dpr);
+  const clock = useMemo(() => new SceneClock(), []);
+
+  // A hidden tab gets no animation frames: the time it stays hidden does not
+  // count.
   useEffect(() => {
-    // A rejected promise (lost context) just means the normal first-draw
-    // compile happens instead, so there is nothing to handle.
-    gl.compileAsync(scene, camera).catch(() => {});
-  }, [gl, scene, camera]);
+    const onVisibility = () => {
+      if (document.hidden) clock.pause();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [clock]);
+
+  useEffect(() => {
+    const draw = (now: number) => advance(clock.at(now));
+    if (rate === "parked") return driveParked(draw, () => clock.pause());
+    if (rate !== "every-frame") {
+      clock.pause();
+      return;
+    }
+    let id = requestAnimationFrame(function tick(now) {
+      id = requestAnimationFrame(tick);
+      draw(now);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [rate, advance, clock]);
+
+  // A resize clears the canvas; redraw the still scene once it lands.
+  useEffect(() => {
+    if (rate !== "on-resize") return;
+    advance(clock.at(performance.now()));
+    clock.pause();
+  }, [rate, width, height, dpr, advance, clock]);
+
   return null;
 }
 
@@ -145,13 +292,52 @@ function webglSupported() {
   }
 }
 
-export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean }) {
+/** What the hero's phase clock waits for before the drive-in may start. */
+export type RocketStatus = "ready" | "unavailable";
+
+type Props = {
+  /** Where the entrance is: the plume burns full during "drive". */
+  phase: Phase;
+  /**
+   * "ready" once the rocket is loaded, compiled and drawn (off stage), so the
+   * drive-in never starts on a blank canvas. "unavailable" when there will be
+   * no rocket: no WebGL, or the scene failed to load. Called once.
+   */
+  onStatus?: (status: RocketStatus) => void;
+};
+
+export default function HeroRocket3D({ phase, onStatus }: Props) {
   const [supported, setSupported] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [plumeGone, setPlumeGone] = useState(false);
+  const rate = drawRate(ready, visible, phase !== "settled" || !plumeGone);
+  // The project cards set up their canvases only while this one can spare
+  // the frames (scene-schedule.ts): it holds them while it warms up, for the
+  // whole drive-in (on screen or not, so none starts just before the rocket
+  // comes into view), and while the plume fades out on screen. In the
+  // opening hold the rocket waits parked off stage (on some screen sizes its
+  // nose shows, moving less than a pixel a frame), so a frame lost there
+  // shows nothing: it holds nothing then, and hero.tsx closes the queue
+  // shortly before the drive-in.
+  // A scene that failed to load never warms up, so it holds nothing.
+  const holdCards =
+    supported &&
+    !failed &&
+    (!ready || phase === "drive" || (phase === "settled" && visible && !plumeGone));
+  useEffect(() => (holdCards ? holdCardSetup() : undefined), [holdCards]);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // The canvas may draw under the navbar; the bar drops its blur there
+  // instead, so the bob keeps going and no frame costs a re-blur (#61).
+  useClearGlassBarOver(wrapRef, supported && !failed);
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
 
   useEffect(() => {
-    setSupported(webglSupported());
+    const ok = webglSupported();
+    setSupported(ok);
+    if (!ok) onStatusRef.current?.("unavailable");
     const el = wrapRef.current;
     if (!el) return;
     // Keep the canvas mounted; only pause the frame loop while offscreen so
@@ -161,6 +347,11 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
     return () => io.disconnect();
   }, []);
 
+  const onWarm = () => {
+    setReady(true);
+    onStatusRef.current?.("ready");
+  };
+
   return (
     // The canvas starts invisible and RevealOnFirstFrame shows it once it has
     // actually drawn; see reveal-on-first-frame.tsx for why.
@@ -168,11 +359,15 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
       {supported && (
         <div className="absolute inset-0">
           <Canvas
-            frameloop={visible ? "always" : "never"}
+            // R3F never draws on its own: FrameDriver below draws at the rate
+            // drawRate picks.
+            frameloop="never"
             dpr={[1, 1.5]}
             // The wrapper animates transforms (rotation!) — measure the layout
             // box, not the transformed bounding rect, or the canvas mis-sizes.
-            resize={{ offsetSize: true }}
+            // No scroll tracking: the canvas takes no pointer events, so its
+            // page position is never used.
+            resize={{ offsetSize: true, scroll: false }}
             gl={{ alpha: true, antialias: true }}
             // "soft" asks for PCFSoftShadowMap, which three now silently swaps
             // for PCFShadowMap and warns. Ask for the real one: same picture.
@@ -182,7 +377,6 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
             // foreshortening of a 200mm photo instead of a diagram's flatness.
             camera={{ fov: 14, position: [0, 0, 32.6], near: 1, far: 200 }}
           >
-            <Environment files={HDRI} environmentIntensity={0.45} environmentRotation={[-Math.PI / 2, 0, 0]} />
             {/* Sun sits on the camera side, a little high: the screen-facing
                 half is lit, shadows fall away behind the rocket, so no angle
                 management. The HDRI adds the broad soft sheen. */}
@@ -202,13 +396,26 @@ export default function HeroRocket3D({ fullBurn = false }: { fullBurn?: boolean 
               shadow-camera-far={80}
             />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
+            <FrameDriver rate={rate} />
             <RevealOnFirstFrame />
-            <Suspense fallback={null}>
-              <Rocket fullBurn={fullBurn} />
-              {/* Inside the Suspense so it runs after the textures resolve and
-                  the materials exist, not before. */}
-              <WarmUp />
-            </Suspense>
+            <SceneErrorBoundary
+              onError={() => {
+                setFailed(true);
+                onStatusRef.current?.("unavailable");
+              }}
+            >
+              {/* The environment, the rocket and the warm-up share one
+                  Suspense: the rocket is ready only when all of it is. */}
+              <Suspense fallback={null}>
+                <Environment
+                  files={CAVOUR_HDRI}
+                  environmentIntensity={0.45}
+                  environmentRotation={[-Math.PI / 2, 0, 0]}
+                />
+                <Rocket burn={BURN[phase]} onPlumeGoneChange={setPlumeGone} />
+                <WarmUp onWarm={onWarm} />
+              </Suspense>
+            </SceneErrorBoundary>
           </Canvas>
         </div>
       )}

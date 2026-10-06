@@ -65,7 +65,9 @@ Rules:
   a comment: hero sky `#010101` (the earth photo's measured black, `hero.tsx`), star-dimming
   radial fades (`hero.tsx`, `navbar.tsx`), the `.hero-type` gradient (`app/globals.css`), the
   `RocketArrow` grey hull and fin fills (`rocket-arrow.tsx`; its ring and nose use
-  `fill-prt-text` and `fill-accent`), and the page sky grain, matched by eye to board 21, and the
+  `fill-prt-text` and `fill-accent`), and the page sky grain (one octave of pixel-fine grey SVG
+  noise in soft-light blend at 60%, with no threshold, so it reads as even film grain, not as
+  specks, and keeps the sky's tone; matched by eye to board 21 at 100% and 200%), and the
   board 21 spec values for the liquid glass utilities, the navbar bar included
   (`.page-sky-grain`, `.glass-*` in `app/globals.css`).
   A new exception needs the same kind of comment.
@@ -94,8 +96,17 @@ Rules:
 ## Spacing, layout, shape
 
 - Content width: `max-w-[1312px]` centred. Navbar and partner strip use `max-w-[1440px]`.
-- Section padding: `px-5 py-14 md:px-16 md:py-[120px]` (partners `md:py-[100px]`): board 24
-  gives phones 20px sides and 56px top and bottom. The apply band is `py-16` on phones. Sections below the hero have no borders
+- Section rhythm: one spacing token, `section` (`tailwind.config.ts`, value in
+  `--section-pad` in `app/globals.css`): 56px on phones (board 24), 120px from md (board 21).
+  Every landing section pads its top and bottom by it (`py-section`), the apply band and
+  partners included, so the gap between any two adjacent sections is twice the token: 112px
+  on phones, 240px from md. The hero has no pad of its own, so the page sky adds one under it,
+  less `--hero-bottom-space` (the empty hero below its last line of text, `app/globals.css`):
+  the gap from that line to the Track record eyebrow is the same 112px / 240px. The footer's
+  top pad and the /projects page's bottom pad are `section` too, and /projects keeps one
+  `section` pad between the bar and its header. Never
+  set a section's vertical padding with another value. Sides are `px-5 md:px-16` (board 24
+  gives phones 20px sides). Sections below the hero have no borders
   between them and no background of their own: they sit on the page sky.
 - Section header: eyebrow and title left, intro or link right, `md:flex-row md:items-end`,
   then content at `mt-16`.
@@ -120,6 +131,9 @@ Rules:
   bottom edge white 8% to 25% to 8% (brightest in the middle), shadow `0 8px 24px` black
   35%. The bar spans the viewport; its contents stay on the 1440 board columns. No UI
   package in the repo ships a glass surface, so it is CSS beside the other glass.
+  While the hero canvas shows under the bar, the bar has no blur and keeps the same fill,
+  so a canvas frame never forces a re-blur; the blur fades out and back in over 300ms
+  ease-out (issue #63, `glass-bar.ts`, `html[data-glass-bar="clear"]` in `app/globals.css`).
 - The legacy `border border-hairline bg-panel` card is not used on the landing page any more.
 - From md the hero is a fixed 1440 x 900 board. It scales down only, by
   `min(1, vw/1440, vh/900)`. Section height is clamped to 900 to 1080 board px. An inline script
@@ -137,7 +151,7 @@ Rules:
 - Brand assets (board 21) are in `public/brand/` and `public/textures/`. The navbar and footer
   use `prt-logo-white.svg`; never recolour or stretch the logo. Project cards use
   `project-cavour.webp`, `project-ves.webp`, `project-efesto.webp`; the apply band uses
-  `apply-band.webp`; the footer uses `streaks.webp`. The navbar on phones and the menu use
+  `apply-band.webp`; the footer uses the page sky tile. The navbar on phones and the menu use
   `prt-mark-white.svg`. Photos use `next/image` with
   `placeholder="blur"` from `news-blur.ts`.
 - Reach for an existing `components/ui/` primitive before writing a new control. Toasts go
@@ -166,8 +180,11 @@ All values from `tailwind.config.ts`, except the rocket rise, which is set on th
 **Landing order** (`app/page.tsx`, board 21): navbar, hero, Latest (track record), Projects,
 Inside the team, Partners, Apply band, footer.
 
-**Navbar** (board 21): `.glass-bar`, fixed, 100px tall from md, logo, link row and actions
-in the board 04 places. Below lg the link row moves into the menu (below), opened by a menu
+**Navbar** (board 21): `.glass-bar`, fixed, 72px tall from md. Logo left on the 64px column,
+link row centred on the page, actions right; all three are centred on the bar's middle by
+flex, never by fixed offsets. Page tops that clear the bar count from 72px (64px on phones):
+`/projects` is the bar plus one `section` pad, 120px under the bar from md, 56px on phones.
+This departs from board 22's 98px so the page keeps the section rhythm (issue #52). Below lg the link row moves into the menu (below), opened by a menu
 icon right of the actions (`navbar.tsx`).
 
 **Navbar on phones** (board 24, below md): the same glass bar, 64px tall, 20px side padding.
@@ -192,17 +209,27 @@ lines up with the tagline and its width matches the tagline's first line: the br
 hero to the apply band, behind Latest, Projects, Inside the team and Partners. It has three
 layers. `.page-sky-light` is `public/textures/page-streaks-tile.webp`, a seamless 1440 x 1800
 tile cut from the approved background, with the soft diagonal streaks baked onto `ground` at
-the board's 16% strength. It repeats down the page (`top center / max(100%, 1440px) auto
+the board's 16% strength, blurred so it holds no compression blocks and stored lossless. It
+repeats down the page (`top center / max(100%, 1440px) auto
 repeat-y`), so it shows no seam at any page height. `.page-sky-grain` is the fine film grain, a
-stitched SVG noise tile at low opacity, kept apart because webp compression drops grain. On top
-sits a `Starfield` with no shooting star. Never ship the sky as one tall image. Its top fades in
-so the hero scrim, which ends on `ground`, meets it without a line.
+stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain; it
+also dithers the tile's dark gradients so they show no bands. On top
+sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
+`wholePixels`): a fractional box under 3px renders as a dash, not a dot. Its stars are also
+kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. The grain
+and the stars start at the sky's top edge, with no offset. Under the hero only (`fadeTop`), the
+streak tile ramps in over one `section` pad (`.page-sky-fade`): the tile is lighter than the
+`ground` the hero scrim ends on, so a hard start would draw a line. No longer fade: a flat
+dark band under the hero makes the page look like it starts halfway down (issue #52).
 
 **Hero** (`.decisions/0004-hero-entrance.md`, `hero.tsx`, `hero-phone.tsx`):
 - Plays once per load. Title and slogan stagger in, gathered. Hold 2s (`HOLD_MS`). The rocket
   climbs in from off-screen lower-left over the type for 7s (`DRIVE_MS`), nose easing 14° to 6°,
   while title and slogan part on the same curve. Body copy, hairline and fact strip fade in after.
 - No pinning, no scroll effect, no lift-off, no replay. The parked rocket only bobs; no shake.
+- The entrance burns its full plume and smoke. Once parked, the plume and smoke fade out to
+  nothing over 1.25s, eased in and out (`FADE_S`, `hero-plume.tsx`), and stay off while the
+  rocket is parked.
 - The belly light rises as the rocket climbs and fades once parked, driven by the rocket's
   screen height. Do not add a fixed fill lamp from below (`handoff-hero-rocket.md` §4).
 - No PNG fallback. Without WebGL the hero is text only.
@@ -211,12 +238,33 @@ so the hero scrim, which ends on `ground`, meets it without a line.
   with its nose near (325, 182), then "BORN FOR / SPACE" right below the rocket at y≈384, then
   the body copy from y≈510. The earth photo starts at y215, smaller than on desktop. No
   hairline or fact strip. Only the frame that is showing mounts the rocket canvas.
-- Render budget: pixel ratio capped at 1.5, shadow map 1024 (`hero-rocket-3d.tsx`).
+- Render budget: pixel ratio capped at 1.5 on every canvas, shadow map 1024
+  (`hero-rocket-3d.tsx`). The hero draws every frame only through the entrance and the plume's
+  fade-out. Parked, with no plume, it draws only the bob: at most 10 fps while someone
+  scrolls, points or types, and a still frame once nobody has for 5s; the next input resumes
+  the bob where it stopped (issue #63). The bob, the flame flicker and the smoke move by real
+  elapsed time, so fewer frames never mean slower motion. Off screen or in a hidden tab it
+  draws nothing. The card canvases draw
+  only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
-client match). The hero and footer stars, and the footer's shooting star, stay exactly as
-built. Only the page sky passes `reducedMotion="still"`.
+client match). The hero and footer skies keep their seeds, positions, sizes and look at rest.
+Their motion changed in issue #59, which replaced issue #33's rule that they stay exactly as
+built: only half their bright stars twinkle, each twinkle and the footer's shooting star run
+through the motion gate (Idle motion below), and under reduced motion every twinkle stops and
+the shooting star is hidden (Accessibility below). Only the page sky passes `wholePixels` and
+`minSpacing`. One star in `twinkleEvery` is bright, and one bright star in two twinkles; the
+rest hold still at full brightness.
+
+**Idle motion** (issue #59): every twinkle, the shooting star and the partners marquee go
+through the motion gate (`motion-gate.ts`). Each runs only while the tab is visible, some of it
+shows below the navbar and none of it shows under the navbar, and no surface with a
+`backdrop-filter` covers its centre. Otherwise it pauses where it stands. The gate does not
+cover the hero canvas: parked, it draws by the Render budget above, also while part of it sits
+under the navbar, where the bar drops its blur instead (Spacing, layout, shape above). The gate does not watch the phone menu
+either, so motion behind an open menu keeps the state it had. New continuous motion uses the
+gate.
 
 **Latest:** featured card plus a three-row list, then a centred "All news" link. The cards are
 `.glass-card` with no texture of their own; the featured card keeps its inset photo
@@ -253,7 +301,7 @@ figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
 **Partners:** no box and no fill; the page sky shows behind the logos. On phones (board 24):
 26px heading, "Become a partner", then the logos at half size (25px, the Sophia mark 38px) in
 a 56px marquee. Full-colour logos,
-never greyscale. Right-to-left loop, 40s, paused on hover and still under reduced motion,
+never greyscale. Right-to-left loop, 40s, paused on hover and off screen, still under reduced motion,
 edges faded with a mask. Each logo is a link (`partners.tsx`, HANDOFF).
 
 **Apply band** (board 21): `bg-accent` (`#FF5E00`) with `public/textures/apply-band.webp` on
@@ -263,20 +311,23 @@ top in multiply at 60%. Eyebrow just "APPLY", with no year, at every width; head
 24): stacked, a 44px heading ("Build the next / one with us."), body 17px, and a full-width
 button.
 
-**Footer:** its own background: `ground` with `public/textures/streaks.webp` at 30% in screen
-blend, a starfield and one shooting star about every 20s in the upper half. Brand block, then
+**Footer:** its own background: the page sky's streak tile and grain (`.page-sky-light`,
+`.page-sky-grain`, no top fade), so it shows board 21's even dark streaks with no blotches,
+plus a starfield and one shooting star about every 20s in the upper half. Brand block, then
 four columns (About, Projects, Get involved, Contact); the email link is accent
-(`footer.tsx`). Phones (board 24): brand block, then the columns 2 x 2, then the address lines
+(`footer.tsx`). From lg the brand block and the four columns are one row, each as wide as its
+widest line, spread edge to edge, so every gap between columns is the same, brand to About
+included. Phones (board 24): brand block, then the columns 2 x 2, then the address lines
 stacked.
 
 ## Accessibility
 
 - Reduced motion: the hero jumps to its settled state and mounts no rocket (`hero.tsx`). The
-  hero bob, the card rocket's drift and its hover rise, the page sky's star twinkle and the
-  partners marquee are off under reduced motion (`hero-rocket-3d.tsx`, `rocket-card-3d.tsx`,
-  `projects.tsx`, `app/page.tsx`, `partners.tsx`). The hero and footer star twinkle and the
-  footer shooting star are kept as built (issue #33). Any new motion must honour
-  `prefers-reduced-motion`.
+  hero bob, the card rocket's hover rise, every star twinkle and the partners marquee are off
+  under reduced motion, and the footer shooting star is hidden (`hero-rocket-3d.tsx`,
+  `projects.tsx`, `twinkle-star.tsx`, `marquee.tsx`, `shooting-star.tsx`). Nothing on the
+  landing page animates continuously then (issue #59 replaced issue #33's kept twinkle). The
+  card rocket has no idle motion at all. Any new motion must honour `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.
   Meaningful images carry real alt text; logo links carry `aria-label` (`partners.tsx`).
 - External links open with `target="_blank" rel="noopener noreferrer"` (`partners.tsx`).

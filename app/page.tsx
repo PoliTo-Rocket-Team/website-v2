@@ -6,40 +6,27 @@ import { InsideTeam } from "@/components/landing/inside-team";
 import { Partners } from "@/components/landing/partners";
 import { ApplyBand } from "@/components/landing/apply-band";
 import { LandingFooter } from "@/components/landing/footer";
-import { Starfield } from "@/components/landing/starfield";
+import { PageSky } from "@/components/landing/page-sky";
 
 // Approved landing page per Pencil board 21 ("Home v3, footer background
 // throughout"). One sky runs behind every section from below the hero to the
 // apply band: a repeating streak tile, a grain layer and stars. The sections
-// inside it paint no background of their own.
+// inside it paint no background of their own. Every section pads its top and
+// bottom by the `section` token. The hero has no pad of its own, so the sky
+// adds one, less the empty hero already below its last line of text: the gap
+// from that line to the Track record eyebrow matches every other section gap.
 export default function LandingPage() {
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
       <main>
         <Hero />
-        <div className="relative isolate">
-          <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
-            <div className="page-sky-light" />
-            <div className="page-sky-grain" />
-            {/* The footer's starfield, without its shooting star. Stars are
-                placed in percent, so the count is sized for the sky's usual
-                height of about 3600px. Unlike the hero and footer skies, this
-                one holds still under reduced motion. */}
-            <Starfield
-              count={200}
-              seed={31}
-              twinkleEvery={9}
-              dimOpacity={0.6}
-              reducedMotion="still"
-              className="top-[240px]"
-            />
-          </div>
+        <PageSky fadeTop className="pt-[calc(var(--section-pad)-var(--hero-bottom-space))]">
           <Latest />
           <Projects />
           <InsideTeam />
           <Partners />
-        </div>
+        </PageSky>
         <ApplyBand />
       </main>
       <LandingFooter />
