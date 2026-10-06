@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import CavourStage3D from "@/components/landing/cavour-stage-3d";
+import { CavourRocketStage } from "./rocket-stage";
 import { keyFacts } from "./data";
 import { Pill } from "./parts";
 
@@ -48,7 +48,7 @@ export function CavourHero() {
             sizes="(min-width: 768px) 1312px, 100vw"
             className="object-cover"
           />
-          <CavourStage3D />
+          <CavourRocketStage />
           <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
             <span className="md:hidden">CVR 100-75-3 · DRAG TO ORBIT</span>
             <span className="hidden md:inline">

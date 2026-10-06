@@ -85,7 +85,7 @@ function FlightCard({ flight }: { flight: Flight }) {
         {flight.award && (
           <p className="mt-3 flex items-start gap-2 font-mono text-[10px] tracking-[0.15em] text-accent">
             <Award aria-hidden className="h-3.5 w-3.5 shrink-0" />
-            <span>{flight.award.phoneName}</span>
+            <span>{flight.award.name}</span>
           </p>
         )}
         <Stats stats={flight.phoneStats} className="mt-3 grid grid-cols-3 border-t border-hairline pt-3" />

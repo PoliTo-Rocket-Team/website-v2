@@ -133,7 +133,7 @@ export type Flight = {
   summary: string;
   /** Board 23m's shorter card copy. */
   phoneSummary: string;
-  award?: { name: string; phoneName: string; citation?: string };
+  award?: { name: string; citation?: string };
   stats: readonly [Stat, Stat, Stat, Stat];
   /** Board 23m's card keeps three numbers, with shorter labels. */
   phoneStats: readonly [Stat, Stat, Stat];
@@ -176,7 +176,6 @@ export const flights: readonly Flight[] = [
     phoneSummary: `Apogee within ${n("100 m")} of the ${n("3 048 m")} target. 13th in 10k ft COTS at the Team's first competition.`,
     award: {
       name: "DR. GIL MOORE AWARD FOR INNOVATION",
-      phoneName: "DR. GIL MOORE AWARD FOR INNOVATION",
       citation: "3D-printed multilayered fins for flutter suppression",
     },
     stats: [
@@ -204,7 +203,6 @@ export const flights: readonly Flight[] = [
     phoneSummary: `Boost and coast nominal; recovery failed, ${n("75 m/s")} impact. Still 8th of 25 teams.`,
     award: {
       name: "ANACOM BEST TELEMETRY SPECTRAL SIGNATURE AWARD",
-      phoneName: "ANACOM BEST TELEMETRY AWARD",
     },
     stats: [
       { value: n("2 800 m"), label: "APOGEE" },
