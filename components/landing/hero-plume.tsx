@@ -268,10 +268,21 @@ function Smoke({ throttle }: { throttle: { current: number } }) {
 const IDLE_THROTTLE = 0.3;
 const THROTTLE_RATE = 1.4; // 1/s, exponential approach
 
-export default function Plume({ fullBurn = false }: { fullBurn?: boolean }) {
+// Close enough to idle that the rest of the ease cannot be seen; the canvas
+// may then drop to its parked frame rate (hero-rocket-3d.tsx).
+const IDLE_EPSILON = 0.01;
+
+type Props = {
+  fullBurn?: boolean;
+  /** Called whenever the plume starts or stops resting at its idle throttle. */
+  onIdleChange?: (idle: boolean) => void;
+};
+
+export default function Plume({ fullBurn = false, onIdleChange }: Props) {
   const coreRef = useRef<THREE.Mesh>(null!);
   const glowRef = useRef<THREE.Group>(null!);
   const throttle = useRef(fullBurn ? 1 : IDLE_THROTTLE);
+  const idle = useRef<boolean | null>(null);
   const coreMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -296,6 +307,11 @@ export default function Plume({ fullBurn = false }: { fullBurn?: boolean }) {
     const target = fullBurn ? 1 : IDLE_THROTTLE;
     throttle.current += (target - throttle.current) * (1 - Math.exp(-delta * THROTTLE_RATE));
     const th = throttle.current;
+    const nowIdle = !fullBurn && Math.abs(th - IDLE_THROTTLE) < IDLE_EPSILON;
+    if (nowIdle !== idle.current) {
+      idle.current = nowIdle;
+      onIdleChange?.(nowIdle);
+    }
     coreMaterial.uniforms.uTime.value = t;
     coreMaterial.uniforms.uThrottle.value = th;
     if (coreRef.current) {
