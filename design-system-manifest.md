@@ -65,7 +65,9 @@ Rules:
   a comment: hero sky `#010101` (the earth photo's measured black, `hero.tsx`), star-dimming
   radial fades (`hero.tsx`, `navbar.tsx`), the `.hero-type` gradient (`app/globals.css`), the
   `RocketArrow` grey hull and fin fills (`rocket-arrow.tsx`; its ring and nose use
-  `fill-prt-text` and `fill-accent`), and the page sky grain, matched by eye to board 21, and the
+  `fill-prt-text` and `fill-accent`), and the page sky grain (one octave of pixel-fine grey SVG
+  noise in soft-light blend at 60%, with no threshold, so it reads as even film grain, not as
+  specks, and keeps the sky's tone; matched by eye to board 21 at 100% and 200%), and the
   board 21 spec values for the liquid glass utilities, the navbar bar included
   (`.page-sky-grain`, `.glass-*` in `app/globals.css`).
   A new exception needs the same kind of comment.
@@ -94,8 +96,14 @@ Rules:
 ## Spacing, layout, shape
 
 - Content width: `max-w-[1312px]` centred. Navbar and partner strip use `max-w-[1440px]`.
-- Section padding: `px-5 py-14 md:px-16 md:py-[120px]` (partners `md:py-[100px]`): board 24
-  gives phones 20px sides and 56px top and bottom. The apply band is `py-16` on phones. Sections below the hero have no borders
+- Section rhythm: one spacing token, `section` (`tailwind.config.ts`, value in
+  `--section-pad` in `app/globals.css`): 56px on phones (board 24), 120px from md (board 21).
+  Every landing section pads its top and bottom by it (`py-section`), the apply band and
+  partners included, so the gap between any two adjacent sections is twice the token: 112px
+  on phones, 240px from md. The hero has no pad of its own, so the page sky adds `pt-section`
+  under it; the footer's top pad and the /projects page's bottom pad are `section` too. Never
+  set a section's vertical padding with another value. Sides are `px-5 md:px-16` (board 24
+  gives phones 20px sides). Sections below the hero have no borders
   between them and no background of their own: they sit on the page sky.
 - Section header: eyebrow and title left, intro or link right, `md:flex-row md:items-end`,
   then content at `mt-16`.
@@ -137,7 +145,7 @@ Rules:
 - Brand assets (board 21) are in `public/brand/` and `public/textures/`. The navbar and footer
   use `prt-logo-white.svg`; never recolour or stretch the logo. Project cards use
   `project-cavour.webp`, `project-ves.webp`, `project-efesto.webp`; the apply band uses
-  `apply-band.webp`; the footer uses `streaks.webp`. The navbar on phones and the menu use
+  `apply-band.webp`; the footer uses the page sky tile. The navbar on phones and the menu use
   `prt-mark-white.svg`. Photos use `next/image` with
   `placeholder="blur"` from `news-blur.ts`.
 - Reach for an existing `components/ui/` primitive before writing a new control. Toasts go
@@ -166,8 +174,10 @@ All values from `tailwind.config.ts`, except the rocket rise, which is set on th
 **Landing order** (`app/page.tsx`, board 21): navbar, hero, Latest (track record), Projects,
 Inside the team, Partners, Apply band, footer.
 
-**Navbar** (board 21): `.glass-bar`, fixed, 100px tall from md, logo, link row and actions
-in the board 04 places. Below lg the link row moves into the menu (below), opened by a menu
+**Navbar** (board 21): `.glass-bar`, fixed, 72px tall from md. Logo left on the 64px column,
+link row centred on the page, actions right; all three are centred on the bar's middle by
+flex, never by fixed offsets. Page tops that clear the bar count from 72px (`/projects` is
+`md:pt-[170px]`, 98px under the bar as on board 22). Below lg the link row moves into the menu (below), opened by a menu
 icon right of the actions (`navbar.tsx`).
 
 **Navbar on phones** (board 24, below md): the same glass bar, 64px tall, 20px side padding.
@@ -192,10 +202,13 @@ lines up with the tagline and its width matches the tagline's first line: the br
 hero to the apply band, behind Latest, Projects, Inside the team and Partners. It has three
 layers. `.page-sky-light` is `public/textures/page-streaks-tile.webp`, a seamless 1440 x 1800
 tile cut from the approved background, with the soft diagonal streaks baked onto `ground` at
-the board's 16% strength. It repeats down the page (`top center / max(100%, 1440px) auto
+the board's 16% strength, blurred so it holds no compression blocks and stored lossless. It
+repeats down the page (`top center / max(100%, 1440px) auto
 repeat-y`), so it shows no seam at any page height. `.page-sky-grain` is the fine film grain, a
-stitched SVG noise tile at low opacity, kept apart because webp compression drops grain. On top
-sits a `Starfield` with no shooting star. Never ship the sky as one tall image. Its top fades in
+stitched SVG noise tile at low opacity, kept apart because webp compression drops grain; it
+also dithers the tile's dark gradients so they show no bands. `.page-sky-fade` is the top fade. On top
+sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
+`wholePixels`): a fractional box under 3px renders as a dash, not a dot. Never ship the sky as one tall image. Its top fades in
 so the hero scrim, which ends on `ground`, meets it without a line.
 
 **Hero** (`.decisions/0004-hero-entrance.md`, `hero.tsx`, `hero-phone.tsx`):
@@ -263,10 +276,13 @@ top in multiply at 60%. Eyebrow just "APPLY", with no year, at every width; head
 24): stacked, a 44px heading ("Build the next / one with us."), body 17px, and a full-width
 button.
 
-**Footer:** its own background: `ground` with `public/textures/streaks.webp` at 30% in screen
-blend, a starfield and one shooting star about every 20s in the upper half. Brand block, then
+**Footer:** its own background: the page sky's streak tile and grain (`.page-sky-light`,
+`.page-sky-grain`, no top fade), so it shows board 21's even dark streaks with no blotches,
+plus a starfield and one shooting star about every 20s in the upper half. Brand block, then
 four columns (About, Projects, Get involved, Contact); the email link is accent
-(`footer.tsx`). Phones (board 24): brand block, then the columns 2 x 2, then the address lines
+(`footer.tsx`). From lg the brand block and the four columns are one row, each as wide as its
+widest line, spread edge to edge, so every gap between columns is the same, brand to About
+included. Phones (board 24): brand block, then the columns 2 x 2, then the address lines
 stacked.
 
 ## Accessibility

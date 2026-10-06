@@ -19,6 +19,12 @@ const config = {
       },
     },
     extend: {
+      spacing: {
+        // The one section rhythm: every landing section pads its top and
+        // bottom by this, so the gap between any two adjacent sections is
+        // twice it. The value lives in --section-pad (app/globals.css).
+        section: "var(--section-pad)",
+      },
       colors: {
         // PRT design tokens (Pencil variables, board 00; brand colours from
         // board 21, lib/brand-colors.ts)

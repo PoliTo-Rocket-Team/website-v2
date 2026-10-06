@@ -11,15 +11,25 @@ function mulberry32(seed: number) {
   };
 }
 
-function makeStars(count: number, seed: number, twinkleEvery = 6, sizeMin = 1, sizeMax = 3.2): Star[] {
+function makeStars(
+  count: number,
+  seed: number,
+  twinkleEvery = 6,
+  sizeMin = 1,
+  sizeMax = 3.2,
+  wholePixels = false,
+): Star[] {
   const rand = mulberry32(seed);
-  return Array.from({ length: count }, (_, i) => ({
-    x: rand() * 100,
-    y: rand() * 100,
-    size: sizeMin + rand() * (sizeMax - sizeMin),
-    twinkle: i % twinkleEvery === 0,
-    delay: rand() * 4,
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    const size = sizeMin + rand() * (sizeMax - sizeMin);
+    return {
+      x: rand() * 100,
+      y: rand() * 100,
+      size: wholePixels ? Math.round(size) : size,
+      twinkle: i % twinkleEvery === 0,
+      delay: rand() * 4,
+    };
+  });
 }
 
 export function Starfield({
@@ -30,6 +40,7 @@ export function Starfield({
   sizeMax = 3.2,
   dimOpacity = 0.35,
   reducedMotion = "twinkle",
+  wholePixels = false,
   className = "",
 }: {
   count?: number;
@@ -43,9 +54,15 @@ export function Starfield({
    * skies keep twinkling as built; the page sky between them holds still.
    */
   reducedMotion?: "twinkle" | "still";
+  /**
+   * Round each star to a whole pixel size. A fractional box under 3px
+   * rasterises as a short dash, not a dot; the page sky rounds, while the
+   * hero and footer skies keep their stars as built.
+   */
+  wholePixels?: boolean;
   className?: string;
 }) {
-  const stars = makeStars(count, seed, twinkleEvery, sizeMin, sizeMax);
+  const stars = makeStars(count, seed, twinkleEvery, sizeMin, sizeMax, wholePixels);
   const twinkleClass =
     reducedMotion === "still" ? "animate-twinkle motion-reduce:animate-none" : "animate-twinkle";
   return (

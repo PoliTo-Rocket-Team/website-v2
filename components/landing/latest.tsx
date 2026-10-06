@@ -69,7 +69,7 @@ export function Latest() {
     // Board 24 below md: 20px sides, 56px top and bottom, 26px heading, one
     // column: the featured card (photo 150px tall) and only the first news
     // card (IREC 2025). The other two news cards are desktop-only.
-    <section className="px-5 py-14 md:px-16 md:py-[120px]">
+    <section className="px-5 py-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
         {/* Header */}
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end md:gap-8">

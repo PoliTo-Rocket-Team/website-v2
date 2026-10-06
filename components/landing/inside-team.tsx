@@ -22,7 +22,7 @@ export function InsideTeam() {
     // Board 24 below md: 20px sides, 56px top and bottom, 26px heading,
     // figures 2 x 2 with 52px numbers (each under its own rule), link cards
     // stacked.
-    <section className="px-5 py-14 md:px-16 md:py-[120px]">
+    <section className="px-5 py-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end md:gap-8">
           <div>

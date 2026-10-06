@@ -7,25 +7,32 @@ import { Starfield } from "./starfield";
 // apply band; /projects runs it behind the whole page above the footer.
 export function PageSky({
   children,
+  className = "",
   starsClassName = "",
 }: {
   children: ReactNode;
+  /** Layout on the sky itself, for example the section rhythm's top pad. */
+  className?: string;
   /** Offsets the stars, for example to start them below the hero scrim. */
   starsClassName?: string;
 }) {
   return (
-    <div className="relative isolate">
+    <div className={`relative isolate ${className}`}>
       <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="page-sky-light" />
-        <div className="page-sky-grain" />
+        <div className="page-sky-light page-sky-fade" />
+        <div className="page-sky-grain page-sky-fade" />
         {/* The footer's starfield, without its shooting star. Stars are
             placed in percent, so the count is sized for the sky's usual
-            height of about 3600px. Unlike the hero and footer skies, this
-            one holds still under reduced motion. */}
+            height of about 3600px. Sizes are whole pixels, 2 or 3, so every
+            star renders as a round dot. Unlike the hero and footer skies,
+            this one holds still under reduced motion. */}
         <Starfield
           count={200}
           seed={31}
           twinkleEvery={9}
+          sizeMin={2}
+          sizeMax={3.4}
+          wholePixels
           dimOpacity={0.6}
           reducedMotion="still"
           className={starsClassName}
