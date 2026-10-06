@@ -24,6 +24,16 @@ const ROCKET_TILT = -15; // deg, on top of the stage's -6°
 const ROCKET_CENTER = { right: 247, top: 252 };
 const EARTH_TOP = 215;
 
+/**
+ * `sizes` for the earth photo, shared by both hero frames. Each frame
+ * preloads the photo even while CSS hides it, so the two must resolve to the
+ * same file at every width or the browser fetches it twice. Below md the
+ * phone frame is 100vw wide. From md the desktop box is max(1800px × scale,
+ * 100vw) on screen (hero.tsx), and scale is at most 100vw / 1440: 1800px from
+ * 1440 to 1800 wide, at most 125vw below that, 100vw above.
+ */
+export const EARTH_SIZES = "(min-width: 1800px) 100vw, (min-width: 1440px) 1800px, (min-width: 768px) 125vw, 100vw";
+
 type Props = {
   /** Class that parts title and slogan on the drive-in curve, if running. */
   separateClass: string;
@@ -51,7 +61,7 @@ export function HeroPhoneStage({
     <div className="relative h-full w-full md:hidden">
       {/* Earth from y215 to the bottom, its hard top edge blended into the sky */}
       <div className="absolute inset-x-0 bottom-0" style={{ top: EARTH_TOP }}>
-        <Image src="/design/earth-limb-sym.jpg" alt="" fill priority sizes="100vw" className="object-cover object-top" />
+        <Image src="/design/earth-limb-sym.jpg" alt="" fill priority sizes={EARTH_SIZES} className="object-cover object-top" />
       </div>
       <div
         className="absolute inset-x-0 h-16"

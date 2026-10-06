@@ -118,7 +118,10 @@ export function Latest() {
                 src={featured.image}
                 alt=""
                 fill
-                sizes="(min-width: 1024px) 50vw, 90vw"
+                // The featured card's inner width: from lg the 1.58fr of
+                // (content − 20px gap), content 100vw − 128px up to 1312px,
+                // less its 2 × 44px padding; below lg the whole column.
+                sizes="(min-width: 1440px) 703px, (min-width: 1024px) calc(61.2vw - 179px), (min-width: 768px) calc(100vw - 216px), calc(100vw - 80px)"
                 placeholder="blur"
                 blurDataURL={newsBlur[featured.image]}
                 className="object-cover"

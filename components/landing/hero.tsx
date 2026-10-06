@@ -6,8 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { brand } from "@/lib/brand-colors";
 import { preloadCavourAssets } from "./cavour-assets";
 import type { RocketStatus } from "./hero-rocket-3d";
-import { HeroPhoneStage } from "./hero-phone";
-import { markHeroSettled } from "./scene-schedule";
+import { EARTH_SIZES, HeroPhoneStage } from "./hero-phone";
+import { holdCardSetup } from "./scene-schedule";
 import { Starfield } from "./starfield";
 
 const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
@@ -131,11 +131,12 @@ export function Hero() {
     }
   }, [phase, reduced, holdDone, rocket]);
 
-  // The project cards set up their own canvases only after this, so they do
-  // not compete with the entrance for frames (scene-schedule.ts).
-  useEffect(() => {
-    if (phase === "settled") markHeroSettled();
-  }, [phase]);
+  // While the rocket is on its way it is about to load and warm up, and the
+  // project cards' setup would compete with it (scene-schedule.ts). Once it
+  // has mounted, hero-rocket-3d.tsx holds the cards for as long as it draws
+  // every frame. Under reduced motion no rocket mounts, so nothing is held.
+  const rocketLoading = !reduced && rocket === "loading";
+  useEffect(() => (rocketLoading ? holdCardSetup() : undefined), [rocketLoading]);
 
   // Called once per mounted rocket. A late report (after the cap) is ignored:
   // the entrance has moved on by then.
@@ -221,7 +222,14 @@ export function Hero() {
           {/* earth-limb-sym.jpg = the photo's left half mirrored at the arc
               peak (scripted from earth-limb.jpg), so the limb arc is
               symmetric around the center */}
-          <Image src="/design/earth-limb-sym.jpg" alt="" fill priority sizes="100vw" className="object-cover object-top" />
+          <Image
+            src="/design/earth-limb-sym.jpg"
+            alt=""
+            fill
+            priority
+            sizes={EARTH_SIZES}
+            className="object-cover object-top"
+          />
         </div>
 
         {/* Soft blend over the earth image's hard top edge (behind the slogan) */}
