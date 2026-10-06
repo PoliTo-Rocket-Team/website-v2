@@ -28,7 +28,7 @@ const CORE_VERT = /* glsl */ `
 
 const CORE_FRAG = /* glsl */ `
   uniform float uTime;
-  uniform float uThrottle; // 1 = full burn (drive-in), ~0.4 = parked idle
+  uniform float uThrottle; // 1 = full burn (drive-in), 0.3 = idle before the drive-in
   uniform float uFade; // 1 = burning, 0 = gone (the fade-out once parked)
   varying vec2 vUv;
 
@@ -80,8 +80,9 @@ const CORE_FRAG = /* glsl */ `
     col = mix(col, ember, smoothstep(0.2, 0.6, de) * (1.0 - core * 0.5));
     col = mix(col, smoke, smoothstep(0.5, 1.0, de));
 
-    // Idle look (parked): the soft pale plume of the original Blender render —
-    // a short pink-white glow at the bell, no jet. Blends in as throttle drops.
+    // Idle look (before the drive-in): the soft pale plume of the original
+    // Blender render — a short pink-white glow at the bell, no jet. Blends in
+    // as throttle drops.
     vec3 idleCol = mix(vec3(0.95, 0.8, 0.85), vec3(1.0, 0.97, 0.95), core);
     float idle = 1.0 - smoothstep(0.35, 0.9, uThrottle);
     col = mix(col, idleCol, idle);
