@@ -297,6 +297,16 @@
     -webkit-backdrop-filter: blur(24px);
     backdrop-filter: blur(24px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    transition:
+      -webkit-backdrop-filter 300ms ease-out,
+      backdrop-filter 300ms ease-out;
+  }
+  /* While the hero canvas shows under the bar, the bar drops its blur and
+   keeps the same tint, so a canvas frame never forces a re-blur (issue #63,
+   glass-bar.ts). The sky there is near black, so the bar reads the same. */
+  html[data-glass-bar="clear"] .glass-bar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
   .glass-bar::after {
     content: "";

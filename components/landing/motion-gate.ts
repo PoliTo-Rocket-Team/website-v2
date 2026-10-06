@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type RefObject } from "react";
+import { BAR_PX, barStripMargin } from "./glass-bar";
 
 // The motion gate (issue #59): a continuous landing animation (a twinkle, the
 // shooting star, the partners marquee) runs only while someone can see it
@@ -21,9 +22,8 @@ import { useEffect, useState, type RefObject } from "react";
 // element's centre, only when the element crosses an edge, the window resizes,
 // or the tab comes back: never on every frame.
 
-// The navbar is 72px tall from md (navbar.tsx). On phones it is 64px, so there
-// motion stops 8px early, which nobody can see.
-const BAR_PX = 72;
+// The bar is BAR_PX tall from md (glass-bar.ts). On phones it is 64px, so
+// there motion stops 8px early, which nobody can see.
 
 type Gated = { setRun: (run: boolean) => void; belowBar: boolean; underBar: boolean };
 
@@ -65,8 +65,7 @@ function watch(mark: (g: Gated, touching: boolean) => void, rootMargin: string) 
   );
 }
 
-// The strip's root is the screen with its bottom pulled up to the bar line.
-// A root margin cannot mix a length and the screen height, so the strip
+// The strip's root is the bar's strip (barStripMargin), so the strip
 // observer is rebuilt when the screen height changes.
 function rebuildStrip() {
   if (strip && stripHeight === window.innerHeight) return;
@@ -76,7 +75,7 @@ function rebuildStrip() {
     (g, touching) => {
       g.underBar = touching;
     },
-    `0px 0px ${BAR_PX - stripHeight}px 0px`,
+    barStripMargin(stripHeight),
   );
   gated.forEach((_, el) => strip?.observe(el));
 }
