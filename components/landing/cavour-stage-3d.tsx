@@ -1,17 +1,18 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import Plume from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
 
 // The /projects/cavour hero panel (boards 23 and 23m): the code-built Cavour
-// side-on, nose right, idling on its plume, and the visitor can drag to orbit
-// it. Same model, HDRI, lights and plume as the homepage hero
+// side-on, nose right, parked (no drift, no idle plume, like the homepage
+// hero once it has parked), and the visitor can drag to orbit it. The canvas
+// draws only on demand: on load, on resize and while a drag or its damping
+// moves the camera, so the idle page draws nothing (#71). Same model, HDRI, lights and plume as the homepage hero
 // (hero-rocket-3d.tsx), so the two read as one vehicle; only the framing and
 // the orbit are this panel's own.
 const HDRI = "/design/hdri/studio_small_03.hdr";
@@ -26,10 +27,6 @@ const HALF = LENGTH / 2;
 const FOV = 14;
 const WIDTH_SHARE = 0.76;
 const RIGHT_SHIFT = 0.07; // share of the panel width
-
-const REDUCED =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function Vehicle() {
   const group = useRef<THREE.Group>(null!);
@@ -47,21 +44,18 @@ function Vehicle() {
     [],
   );
 
-  useFrame((state) => {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
     if (!group.current) return;
-    // The hero's barely-there hover drift; still under reduced motion.
-    group.current.position.y = REDUCED ? 0 : Math.sin(state.clock.elapsedTime * 0.7) * 0.15;
     group.current.updateMatrixWorld();
     weather.uRocketInv.value.copy(group.current.matrixWorld).invert();
-  });
+    // Draw once the vehicle (and the HDRI above it) has mounted.
+    invalidate();
+  }, [weather, invalidate]);
 
   return (
     <group ref={group}>
       <CavourBuilt weather={weather} length={LENGTH} />
-      <group position={[-HALF, 0, 0]}>
-        {/* The idle plume: this panel has no drive-in to burn full for. */}
-        <Plume burn="idle" />
-      </group>
     </group>
   );
 }
@@ -107,16 +101,10 @@ function webglSupported() {
 
 export default function CavourStage3D() {
   const [supported, setSupported] = useState(false);
-  const [visible, setVisible] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSupported(webglSupported());
-    const el = wrapRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0 });
-    io.observe(el);
-    return () => io.disconnect();
   }, []);
 
   return (
@@ -125,7 +113,7 @@ export default function CavourStage3D() {
     <div ref={wrapRef} className="absolute inset-0 [&_canvas]:opacity-0">
       {supported && (
         <Canvas
-          frameloop={visible ? "always" : "demand"}
+          frameloop="demand"
           dpr={[1, 1.5]}
           resize={{ offsetSize: true }}
           gl={{ alpha: true, antialias: true }}
