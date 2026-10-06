@@ -63,7 +63,13 @@ export default async function Apply() {
         <h2 className="text-lg md:text-4xl font-bold text-center text-primary mb-4 md:mb-8">
           Open Positions
         </h2>
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <p className="text-center text-muted-foreground px-4 py-5">
+              Loading open positions…
+            </p>
+          }
+        >
           <OpenPositions />
         </Suspense>
       </div>
