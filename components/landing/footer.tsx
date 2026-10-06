@@ -53,6 +53,9 @@ export function LandingFooter() {
     // section rhythm's and the gap after the apply band matches the others.
     <footer className="relative isolate overflow-hidden bg-ground pt-section">
       <div aria-hidden className="absolute inset-0 -z-10">
+        {/* Drawn down from the top edge, where the page sky above ends its
+            tiles, so a sky that meets the footer runs on into it with no
+            line (.page-sky-to-footer in app/globals.css). */}
         <div className="page-sky-light" />
         <div className="page-sky-grain" />
         <Starfield count={52} seed={23} twinkleEvery={7} />

@@ -172,11 +172,16 @@
    film grain, never as specks or scratches, and leaves the sky as dark as
    the board. Its frequency and opacity are matched by eye to board 21 at
    100% and 200%, recorded as an exception in design-system-manifest.md.
-   The footer paints the same two layers (footer.tsx). .page-sky-fade ramps
-   the streak tile in over one section pad where the sky meets the hero: the
-   tile is about ten levels lighter than the ground the hero scrim ends on, so
-   a hard start would draw a line. The grain and the stars start at the top
-   edge. */
+   The footer paints the same two layers (footer.tsx), drawn down from its
+   top edge. The page sky draws both up from its bottom edge instead
+   (.page-sky-to-footer), so where the sky meets the footer the tiles meet at
+   their own wrap, the same join the sky repeats down the page: the streaks and
+   the grain run on across the edge with no line and no step in tone (issue
+   #69). Were both drawn from the top, the footer would restart the tile
+   wherever the sky happened to end. .page-sky-fade ramps the streak tile in
+   over one section pad where the sky meets the hero: the tile is about ten
+   levels lighter than the ground the hero scrim ends on, so a hard start would
+   draw a line. The stars start at the top edge. */
   .page-sky-light,
   .page-sky-grain {
     position: absolute;
@@ -196,6 +201,12 @@
     background-size: 160px 160px;
     mix-blend-mode: soft-light;
     opacity: 0.6;
+  }
+  .page-sky-light.page-sky-to-footer {
+    background-position: bottom center;
+  }
+  .page-sky-grain.page-sky-to-footer {
+    background-position: left bottom;
   }
 
   /* Liquid glass (board 21 spec table). Every glass surface draws its edge as
