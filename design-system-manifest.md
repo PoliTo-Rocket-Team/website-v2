@@ -234,13 +234,20 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   hairline or fact strip. Only the frame that is showing mounts the rocket canvas.
 - Render budget: pixel ratio capped at 1.5 on every canvas, shadow map 1024
   (`hero-rocket-3d.tsx`). The hero draws every frame only through the entrance and the plume's
-  ease to idle; parked, it draws at most 30 fps, and nothing off screen. The card canvases draw
+  ease to idle; parked, it draws at most 15 fps (issue #59), and nothing off screen. The card canvases draw
   only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
 client match). The hero and footer stars, and the footer's shooting star, stay exactly as
-built. Only the page sky passes `reducedMotion="still"`, `wholePixels` and `minSpacing`.
+built. Only the page sky passes `wholePixels` and `minSpacing`. One star in `twinkleEvery` is
+bright, and one bright star in two twinkles; the rest hold still at full brightness.
+
+**Idle motion** (issue #59): a page at rest draws no frames. Every continuous animation (a
+twinkle, the shooting star, the partners marquee) goes through the motion gate
+(`motion-gate.ts`): it runs only while the tab is visible, it is on screen and wholly below the
+navbar, and no surface with a `backdrop-filter` covers it. Otherwise it pauses where it stands.
+So nothing animates under glass. New continuous motion uses the gate too.
 
 **Latest:** featured card plus a three-row list, then a centred "All news" link. The cards are
 `.glass-card` with no texture of their own; the featured card keeps its inset photo
@@ -277,7 +284,7 @@ figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
 **Partners:** no box and no fill; the page sky shows behind the logos. On phones (board 24):
 26px heading, "Become a partner", then the logos at half size (25px, the Sophia mark 38px) in
 a 56px marquee. Full-colour logos,
-never greyscale. Right-to-left loop, 40s, paused on hover and still under reduced motion,
+never greyscale. Right-to-left loop, 40s, paused on hover and off screen, still under reduced motion,
 edges faded with a mask. Each logo is a link (`partners.tsx`, HANDOFF).
 
 **Apply band** (board 21): `bg-accent` (`#FF5E00`) with `public/textures/apply-band.webp` on
@@ -299,11 +306,11 @@ stacked.
 ## Accessibility
 
 - Reduced motion: the hero jumps to its settled state and mounts no rocket (`hero.tsx`). The
-  hero bob, the card rocket's hover rise, the page sky's star twinkle and the partners marquee
-  are off under reduced motion (`hero-rocket-3d.tsx`, `projects.tsx`, `app/page.tsx`,
-  `partners.tsx`). The card rocket has no idle motion at all. The hero and footer star twinkle and the
-  footer shooting star are kept as built (issue #33). Any new motion must honour
-  `prefers-reduced-motion`.
+  hero bob, the card rocket's hover rise, every star twinkle and the partners marquee are off
+  under reduced motion, and the footer shooting star is hidden (`hero-rocket-3d.tsx`,
+  `projects.tsx`, `twinkle-star.tsx`, `marquee.tsx`, `shooting-star.tsx`). Nothing on the
+  landing page animates continuously then (issue #59 replaced issue #33's kept twinkle). The
+  card rocket has no idle motion at all. Any new motion must honour `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.
   Meaningful images carry real alt text; logo links carry `aria-label` (`partners.tsx`).
 - External links open with `target="_blank" rel="noopener noreferrer"` (`partners.tsx`).

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ShootingStar } from "./shooting-star";
 import { Starfield } from "./starfield";
 
 // Board 21 footer. Its own background: the page sky's streak tile and grain
@@ -55,10 +56,7 @@ export function LandingFooter() {
         <div className="page-sky-light" />
         <div className="page-sky-grain" />
         <Starfield count={52} seed={23} twinkleEvery={7} />
-        <span
-          aria-hidden
-          className="absolute left-[70%] top-[12%] h-px w-28 animate-shooting-star bg-gradient-to-r from-white to-transparent"
-        />
+        <ShootingStar />
       </div>
 
       <div className="px-5 pb-12 md:px-16">
