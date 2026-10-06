@@ -8,26 +8,30 @@ import { Starfield } from "./starfield";
 export function PageSky({
   children,
   className = "",
-  starsClassName = "",
+  fadeTop = false,
 }: {
   children: ReactNode;
   /** Layout on the sky itself, for example the section rhythm's top pad. */
   className?: string;
-  /** Offsets the stars, for example to start them below the hero scrim. */
-  starsClassName?: string;
+  /** Ramps the streak tile in from the top edge, where the sky meets the
+      hero's ground-coloured bottom (.page-sky-fade in app/globals.css). */
+  fadeTop?: boolean;
 }) {
   return (
     <div className={`relative isolate ${className}`}>
-      <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="page-sky-light page-sky-fade" />
-        <div className="page-sky-grain page-sky-fade" />
+      {/* bg-ground gives the grain's soft-light blend an opaque base where
+          the faded tile lets the backdrop through; over transparency the
+          grain would read as a grey band. */}
+      <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden bg-ground">
+        <div className={`page-sky-light ${fadeTop ? "page-sky-fade" : ""}`} />
+        <div className="page-sky-grain" />
         {/* The footer's starfield, without its shooting star. Stars are
-            placed in percent, so the count is sized for the sky's usual
-            height of about 3600px. Sizes are whole pixels, 2 or 3, and no
-            two stars sit within 1.5% of each other on both axes, at least
-            4.8px apart from a 320px-wide screen up, so every star renders as
-            its own round dot. Unlike the hero and footer skies, this one
-            holds still under reduced motion. */}
+            placed in percent from the sky's top edge, so the count is sized
+            for the sky's usual height of about 3600px. Sizes are whole
+            pixels, 2 or 3, and no two stars sit within 1.5% of each other on
+            both axes, at least 4.8px apart from a 320px-wide screen up, so
+            every star renders as its own round dot. Unlike the hero and
+            footer skies, this one holds still under reduced motion. */}
         <Starfield
           count={200}
           seed={31}
@@ -38,7 +42,6 @@ export function PageSky({
           minSpacing={1.5}
           dimOpacity={0.6}
           reducedMotion="still"
-          className={starsClassName}
         />
       </div>
       {children}

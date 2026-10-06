@@ -19,10 +19,11 @@ export default function ProjectsPage() {
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        {/* The top clears the fixed bar (64px, 72px from md) and keeps board
-            22's 48px / 98px under it. The bottom is the section rhythm, so the
-            gap to the footer matches every other section gap. */}
-        <main className="px-5 pb-section pt-[112px] md:px-16 md:pt-[170px]">
+        {/* The top clears the fixed bar (64px, 72px from md, navbar.tsx) and
+            then keeps one section pad under it, so the header sits on the
+            same rhythm as every section. The bottom is the section rhythm
+            too, so the gap to the footer matches every other section gap. */}
+        <main className="px-5 pb-section pt-[calc(64px+var(--section-pad))] md:px-16 md:pt-[calc(72px+var(--section-pad))]">
           <div className="mx-auto max-w-[1312px]">
             <header>
               <p className="font-mono text-xs tracking-[0.3em] text-accent">PROJECTS</p>
