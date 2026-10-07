@@ -160,13 +160,18 @@
    (app/page.tsx).
    .page-sky-light is a seamless tile cut from the approved background, with
    the soft diagonal streaks baked onto ground at the board's 16% strength
-   (public/textures/page-streaks-tile.webp, 1440 x 1800). It repeats down the
-   page with no seam, so the sky has no fixed height. It is 1440px wide and
-   centred, and it scales up with the page on wider screens. Its top fades in
-   so the hero's own scrim meets it without a line.
+   (public/textures/page-streaks-tile.webp, 1440 x 1800, lossless). It repeats
+   down the page with no seam, so the sky has no fixed height. It is 1440px
+   wide and centred, and it scales up with the page on wider screens. Its top
+   fades in so the hero's own scrim meets it without a line.
+   The tile carries its own dither. Its tones span only about 15 grey levels,
+   so a plain 8-bit tile draws each level as a flat column with an edge (issue
+   #87). Instead the tile is a smooth field under an 8 x 8 ordered (Bayer)
+   dither of one level, which reads as one even tone at any scale. 1800 is a
+   multiple of 8, so the dither runs on across the tile's wrap. The grain
+   cannot do this job: on a 1x screen its noise renders flat.
    .page-sky-grain is the fine film grain, a separate stitched SVG noise tile:
-   webp compression drops the grain from the streak tile, and the grain also
-   dithers the tile's dark gradients so they show no bands. It is one octave
+   webp compression drops the grain from the streak tile. It is one octave
    of pixel-fine grey noise in soft-light blend, with no threshold: it
    lightens and darkens the sky around its own tone, so it reads as even
    film grain, never as specks or scratches, and leaves the sky as dark as
