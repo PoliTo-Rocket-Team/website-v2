@@ -3,7 +3,13 @@ title = "website-v2 gitleaks config"
 [extend]
 useDefault = true
 
-# Add a fingerprint here only for a documented fake value, never a real credential.
+# Add an entry here only for a documented non-secret value, never a real credential.
 [allowlist]
 regexTarget = "match"
-regexes = []
+regexes = [
+  # Public LinkedIn profile handles in lib/about/team.ts, not credentials. Their
+  # length matches the default linkedin-client-id (14) and linkedin-client-secret
+  # (16) rules. Each entry is one exact handle; do not widen it.
+  '''linkedin: "lorenzopezzolato"''',
+  '''linkedin: "nicolascerutti"''',
+]
