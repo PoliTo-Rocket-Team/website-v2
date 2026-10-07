@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 // A Team page section's eyebrow and title (manifest, Type: the eyebrow and
 // section title patterns), left-aligned or centred with an intro under it. A
-// section with no eyebrow (Advisors) starts at its title.
+// section with no eyebrow (Departments, Advisors) starts at its title.
 
 export function SectionHead({
   eyebrow,
