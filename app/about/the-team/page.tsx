@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AboutTabs } from "@/components/about/about-tabs";
 import { Advisors } from "@/components/about/advisors";
 import { CoreMembers } from "@/components/about/core-members";
 import { Departments } from "@/components/about/departments";
@@ -17,7 +16,7 @@ export const metadata: Metadata = {
   description: team.description,
 };
 
-// Boards 26 (desktop) and 26m (phone): the About tabs, the header and its
+// Boards 26 (desktop) and 26m (phone): the header and its
 // figures, then who leads, the departments, the advisors, the numbers and
 // every core member, all drawn from one record (lib/about/team.ts). The page
 // sky runs behind everything above the apply band; the sections paint no
@@ -32,8 +31,10 @@ export default function TeamPage() {
         <main className="pb-section pt-16 md:pt-[72px]">
           <div className="px-5 md:px-16">
             <div className="mx-auto max-w-[1312px]">
-              <AboutTabs current="/about/the-team" />
-              <header className="mt-9 md:mt-[62px]">
+              {/* The About pages are in the navbar's About menu (board 27), so
+                  the page starts with its header: 40px under the bar on
+                  phones, 96px from md (boards 26m and 26). */}
+              <header className="pt-10 md:pt-24">
                 <p className="font-mono text-xs tracking-[0.3em] text-accent">{header.eyebrow}</p>
                 <h1 className="mt-4 text-[34px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-6 md:text-[64px] md:leading-[1.03]">
                   {header.title}

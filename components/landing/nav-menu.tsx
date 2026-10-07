@@ -15,7 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import { RocketArrow } from "./rocket-arrow";
 
-export type NavLink = { href: string; label: string };
+export type NavPage = { href: string; label: string };
+/** A navbar link with pages under it (About): a hover menu from lg, sub-links in the sidebar. */
+export type NavSection = NavPage & { pages: readonly NavPage[] };
+export type NavLink = NavPage | NavSection;
 
 /** A link is current on its own page and on every page under it. */
 export function isCurrentLink(pathname: string | null, href: string): boolean {
@@ -25,7 +28,8 @@ export function isCurrentLink(pathname: string | null, href: string): boolean {
 // Board 24b: below the width where the link row fits, the menu icon opens a
 // 330px glass sidebar from the right, full height, over a dimmed page. Top:
 // the PRT mark and a close icon. Then the links at 28px with a RocketArrow,
-// the current page in accent. At the foot: the white "Apply" and the outlined
+// the current page in accent. A link with pages under it (About) lists them
+// below it, indented, at 17px in grey. At the foot: the white "Apply" and the outlined
 // "Sign in", with no email. It is the repo's Radix dialog
 // (components/ui/dialog), so focus, Escape and scroll lock come with it; the
 // content is the primitive itself because the shadcn DialogContent is a
@@ -79,6 +83,26 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
                         <RocketArrow className="text-[15px] opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
                       </Link>
                     </DialogClose>
+                    {"pages" in l && (
+                      <ul className="-mt-1.5 pb-3 pl-5">
+                        {l.pages.map((p) => {
+                          const currentPage = isCurrentLink(pathname, p.href);
+                          return (
+                            <li key={p.href}>
+                              <DialogClose asChild>
+                                <Link
+                                  href={p.href}
+                                  aria-current={currentPage ? "page" : undefined}
+                                  className={`flex h-10 items-center text-[17px] transition-colors hover:text-accent ${currentPage ? "text-accent" : "text-text-2"}`}
+                                >
+                                  {p.label}
+                                </Link>
+                              </DialogClose>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </li>
                 );
               })}

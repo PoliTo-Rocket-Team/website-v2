@@ -326,10 +326,15 @@
   /* While the hero canvas shows under the bar, the bar drops its blur and
    keeps the same tint, so a canvas frame never forces a re-blur (issue #63,
    glass-bar.ts). The sky there is near black, so the bar reads the same. */
-  html[data-glass-bar="clear"] .glass-bar {
+  html[data-glass-bar="clear"] .glass-bar,
+  html[data-glass-bar="clear"] .glass-hang {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+  /* The bottom edge leaves a gap where a hanging panel joins the bar
+   (`.glass-hang` below), so bar and panel read as one shape. The gap runs
+   between --bar-join-from and --bar-join-to, set on <html> by glass-bar.ts;
+   unset, the two are equal and the edge is whole. */
   .glass-bar::after {
     content: "";
     position: absolute;
@@ -341,7 +346,39 @@
       rgba(255, 255, 255, 0.25) 50%,
       rgba(255, 255, 255, 0.08)
     );
+    --join-mask: linear-gradient(
+      90deg,
+      #000 var(--bar-join-from, 0px),
+      transparent var(--bar-join-from, 0px),
+      transparent var(--bar-join-to, 0px),
+      #000 var(--bar-join-to, 0px)
+    );
+    -webkit-mask-image: var(--join-mask);
+    mask-image: var(--join-mask);
     pointer-events: none;
+  }
+
+  /* A panel hanging from the navbar (board 27, the About menu): flush under
+   the bar with no top edge, so the two read as one surface. Same ink, blur
+   and shadow as the bar. Its fill is the tone the bar's 200deg sheen has
+   along its bottom edge above the panel (about 2.7% white at the panel's
+   left to 2% at its right, at 1024 to 1440 wide), flat down the panel, so
+   there is no step in colour at the join. Side and bottom edges are 1px
+   white 12%, the bottom corners 12px. The shadow is clipped at the top so it
+   never darkens the bar. */
+  .glass-hang {
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.027), rgba(255, 255, 255, 0.02)),
+      rgba(10, 10, 10, 0.35);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    border-radius: 0 0 12px 12px;
+    box-shadow:
+      inset 1px 0 0 rgba(255, 255, 255, 0.12),
+      inset -1px 0 0 rgba(255, 255, 255, 0.12),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+      0 8px 24px rgba(0, 0, 0, 0.35);
+    clip-path: inset(0 -32px -32px -32px);
   }
 
   /* Project info box. Efesto's texture is bright grey, so its card sets

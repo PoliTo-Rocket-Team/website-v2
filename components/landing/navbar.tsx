@@ -15,10 +15,22 @@ import { NavMenu, type NavLink } from "./nav-menu";
 // (32px tall) and a menu icon. No Apply or Sign in on the bar: both live in
 // the board 24b sidebar with the links (nav-menu.tsx). From md to lg the menu
 // also stands in for the link row, which does not clear the logo yet; Apply
-// and Sign in are back on the bar there.
+// and Sign in are back on the bar there. From lg, About opens the board 27
+// hover menu of the About pages (nav-hover-menu.tsx); the other links have
+// none (Projects has its own page).
 const links: NavLink[] = [
   { href: "/projects", label: "Projects" },
-  { href: "/about/the-team", label: "About" },
+  {
+    href: "/about/the-team",
+    label: "About",
+    // Only The Team is built; the footer links the other three already.
+    pages: [
+      { href: "/about/the-team", label: "The Team" },
+      { href: "/about/alumni", label: "Alumni" },
+      { href: "/about/our-university", label: "Our University" },
+      { href: "/about/mission-vision", label: "Mission & Vision" },
+    ],
+  },
   { href: "/outreach", label: "Outreach" },
   { href: "/partners", label: "Partners" },
 ];
