@@ -54,7 +54,7 @@ export type DivisionAsHead = Person & { kind: "division"; division: string };
 
 export type GroupMember = DepartmentHead | DivisionAsHead;
 
-/** One slide of the departments carousel. Members alternate left and right columns, in order. */
+/** One slide of the departments carousel. Members fill the grid row by row, in order. */
 export type DepartmentGroup = { name: string; members: UpTo<GroupMember, 10> };
 
 export type Departments = {
@@ -67,11 +67,11 @@ export type Departments = {
 /** Principal advisors (faculty, the founder) have their role in accent; specialists in grey. */
 export type Advisor = Person & { role?: string; standing: "principal" | "specialist" };
 
+/** The Advisors section has a title and no eyebrow (board 26). */
 export type Advisors = {
-  eyebrow: string;
   title: string;
   intro: string;
-  /** In order; they alternate left and right columns on desktop. */
+  /** In order; they fill three columns row by row on desktop. */
   people: readonly [Advisor, ...Advisor[]];
 };
 
