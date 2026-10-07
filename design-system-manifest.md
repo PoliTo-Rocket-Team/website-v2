@@ -70,8 +70,8 @@ Rules:
   `fill-prt-text` and `fill-accent`), and the page sky grain (one octave of pixel-fine grey SVG
   noise in soft-light blend at 60%, with no threshold, so it reads as even film grain, not as
   specks, and keeps the sky's tone; matched by eye to board 21 at 100% and 200%), and the
-  board 21 spec values for the liquid glass utilities, the navbar bar included
-  (`.page-sky-grain`, `.glass-*` in `app/globals.css`).
+  board 21 spec values for the liquid glass utilities, the navbar bar and the panel that
+  hangs from it included (`.page-sky-grain`, `.glass-*` in `app/globals.css`).
   A new exception needs the same kind of comment.
 
 ## Type
@@ -204,6 +204,20 @@ flex, never by fixed offsets. Page tops that clear the bar count from 72px (64px
 This departs from board 22's 98px so the page keeps the section rhythm (issue #52). Below lg the link row moves into the menu (below), opened by a menu
 icon right of the actions (`navbar.tsx`).
 
+**About menu** (board 27, issue #93, `nav-hover-menu.tsx`): from lg, hovering or keyboard focus
+on About opens a panel of the About pages (The Team, Alumni, Our University, Mission &
+Vision). No other link has one; Projects has its own page. The panel is `.glass-hang`: it
+hangs flush from the bar under About, 36px left of the link's text, with no top edge, white
+12% side and bottom edges, 12px bottom corners and the bar's shadow clipped at the top. Its
+fill is the tone of the bar's bottom edge above it, and the bar's bottom edge leaves a gap
+over it (`openBarJoin` in `glass-bar.ts`), so bar and panel read as one shape with no line
+and no step in tone at the join. A 2px `accent` line runs from the top of About's line down
+to the last page. Pages are 16px, 12px apart, left-aligned with About: the current one
+`prt-text`, the rest `text-2`, hover and keyboard highlight `accent`. It is the repo's Radix
+dropdown menu, not modal: Escape, leaving (after 150ms) and an outside click close it; Tab
+leaves it. Clicking About, or Enter on it, still goes to `/about/the-team`. It fades in over
+150ms only under `motion-safe:` and closes at once.
+
 **Navbar on phones** (board 24, below md): the same glass bar, 64px tall, 20px side padding.
 The PRT mark only (`prt-mark-white.svg`, 32px tall) on the left and the menu icon on the
 right. There is no Apply and no Sign in on the bar: both are in the menu.
@@ -212,7 +226,8 @@ right. There is no Apply and no Sign in on the bar: both are in the menu.
 `.glass-sidebar` (ink at 70% under the 200deg sheen, blur 32px, a 1px left edge, a shadow onto
 the page). The page behind dims (`ground` at 55% and a slight blur). Top: the mark and a close
 icon. Then Projects, About, Outreach and Partners at 28px bold, each 66px tall over a
-`white-10` rule with a `RocketArrow`; the current page is `accent`. At the foot: the white
+`white-10` rule with a `RocketArrow`; the current page is `accent`. The About pages sit
+under About, indented 20px, 17px `text-2` (the current one `accent`). At the foot: the white
 "Apply" (`bg-prt-text`, full width) and the outlined "Sign in" (`border-white-10`), with no
 email. It is the repo's Radix dialog (`components/ui/dialog`), so
 focus, Escape and scroll lock come with it; the slide in is off under reduced motion.

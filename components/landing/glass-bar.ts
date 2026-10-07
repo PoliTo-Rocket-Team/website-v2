@@ -79,3 +79,18 @@ export function useClearGlassBarOver(ref: RefObject<Element | null>, active: boo
     };
   }, [ref, active]);
 }
+
+/**
+ * Opens a gap in the bar's bottom edge over [from, to], in px from the left
+ * of the screen, where a panel hangs from the bar (`.glass-hang`), so bar and
+ * panel read as one shape. Returns the call that closes the gap again.
+ */
+export function openBarJoin(from: number, to: number): () => void {
+  const style = document.documentElement.style;
+  style.setProperty("--bar-join-from", `${from}px`);
+  style.setProperty("--bar-join-to", `${to}px`);
+  return () => {
+    style.removeProperty("--bar-join-from");
+    style.removeProperty("--bar-join-to");
+  };
+}
