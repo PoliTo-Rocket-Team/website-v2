@@ -329,12 +329,34 @@ has a clickable card: the name is the link, and its `::after` covers the card, s
 card is the target. The card takes `.glass-linked`, and keyboard focus shows an accent outline
 4px outside it. A project with no page has no link.
 
-**Cavour page** (`/projects/cavour`, boards 23 and 23m, `components/cavour/`): hero, story,
-versions, launch history, gallery, next project.
-- The hero shows a still of the parked rocket on the Cavour texture (Stack above), not 3D.
-- The launch history reads its flights from `lib/projects.ts` (`cavourLaunches`), the same
-  record /projects uses. `components/cavour/data.ts` adds only the page's own copy (title,
-  place, configuration, summary, two more numbers), keyed by launch date (issue #72).
+**Project pages** (`/projects/cavour`, `/projects/ves`, `/projects/efesto`; boards 23 to 25 and
+23m to 25m): one template, `components/project-page/`, draws every project page from one typed
+record per project (`lib/project-pages/`). There are no per-project components; a new project
+page is a new record and a thin route. The built Cavour page is the layout reference.
+- Order: hero, 01 The name and 02 The design side by side, then versions, launch history, the
+  plan, numbered reasons and gallery, then the next project.
+- A section the record has no data for is an absent key, and the page leaves it out entirely,
+  with no note about what is missing. Section numbers follow the sections that render, so they
+  always run 01, 02, 03 ... (`sectionsOf` in `lib/project-pages/index.ts`).
+- The hero shows the visual panel on the project's texture only when the record has a visual:
+  Cavour's still of the parked rocket (Stack above, not 3D), VES's texture alone with its
+  caption (no render exists, and the page says nothing about one), Efesto none. Up to six key
+  facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
+  and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
+  `hero.tsx`); a shorter set is one row of six.
+- Versions: one highlighted version, bold under an accent pill on desktop and the default tab
+  on phones. A spec with no value shows the dimmed dash (`Value` in `parts.tsx`).
+- The launch history reads each campaign's facts from `lib/projects.ts` (`cavourLaunches`,
+  `vesLaunches`), the same record /projects uses; the page record adds only its own copy, keyed
+  by launch date (issue #72). A campaign that did not fly gives its own four numbers and reads
+  "DID NOT FLY"; a setback takes the orange pill, never red.
+- The plan (board 25): steps done, the one under way, next and later, in that order by the
+  record's shape. Desktop: a row of steps under a top rule, the step under way in accent.
+  Phones: a vertical timeline with dots. Numbered reasons (board 25 "Why liquid"): up to three,
+  in columns on desktop, stacked on phones.
+- Next project loops Cavour, VES, Efesto, back to Cavour (`pageSlugs` in `lib/projects.ts`).
+  "Open <name>" is the white pill and "All projects" the outlined one, as built for Cavour
+  (boards 24 and 25 draw the open button orange; the built page wins).
 - Gallery (boards 23, 23m and 23L, `components/gallery/gallery.tsx`): a carousel with the
   current photo centred (760 x 480, phones 300 x 220) and its neighbours smaller at 35%
   opacity, clipped by the page edge. It wraps, never autoplays and does not move while idle.
@@ -418,6 +440,6 @@ stacked.
   292px on phones) until the two boards agree.
 - **Between phone and desktop.** Boards 21 and 24 cover 1440px and 390px. From 768px to
   1023px the page uses the desktop layout with the menu in place of the link row.
-- **Subroutes.** `/projects` and `/projects/cavour` are built (Page rules above). The VES and
-  Efesto pages, `/about/*`, `/outreach`, `/partners`, `/apply` and the news page are still
-  being designed (HANDOFF "Todo").
+- **Subroutes.** `/projects` and the three project pages are built (Page rules above).
+  `/about/*`, `/outreach`, `/partners`, `/apply` and the news page are still being designed
+  (HANDOFF "Todo").

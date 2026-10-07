@@ -30,11 +30,16 @@ export type Launch = {
 
 export type WorkLine = { code: string; name: string };
 
-/** A project page that exists. Add a route here when its page ships. */
-export type ProjectPage = "/projects/cavour";
+/** The projects that have their own page (lib/project-pages), in the next-project loop's order. */
+export const pageSlugs = ["cavour", "ves", "efesto"] as const;
+
+export type PageSlug = (typeof pageSlugs)[number];
+
+/** A project page that exists. */
+export type ProjectPage = `/projects/${PageSlug}`;
 
 type ProjectBase = {
-  slug: string;
+  slug: PageSlug;
   /** Its own page, when it has one: the card links there. No page, no link. */
   href?: ProjectPage;
   index: string;
@@ -115,6 +120,31 @@ export const cavourLaunches = [
 
 export type CavourLaunch = (typeof cavourLaunches)[number];
 
+/**
+ * VES's two campaigns, the one source for both /projects and /projects/ves.
+ * Literal for the same reason as Cavour's: the page knows IREC 2025 never flew.
+ */
+export const vesLaunches = [
+  {
+    date: "12 Oct 2024",
+    where: "EuRoC, Santa Margarida, Portugal · Mark I",
+    flight: { apogee: `3${nb}160 m`, maxSpeed: "259 m/s", nominal: true, country: "Portugal" },
+    result: "Nominal flight. Split on descent, both halves recovered. 6th of 25 teams.",
+  },
+  {
+    date: "13 Jul 2025",
+    where: "IREC, Midland, Texas · Mark II",
+    flight: null,
+    result:
+      "Did not fly. COTS motor failed on ignition (manufacturer defect). Avionics, recovery and nose cone recovered intact.",
+    award: {
+      name: "1ST PLACE · DESIGN & BUILD QUALITY",
+      short: "1ST PLACE DESIGN & BUILD QUALITY",
+      citation: "of 140+ universities",
+    },
+  },
+] as const satisfies readonly Launch[];
+
 export const projects: readonly Project[] = [
   {
     kind: "vehicle",
@@ -144,6 +174,7 @@ export const projects: readonly Project[] = [
   {
     kind: "vehicle",
     slug: "ves",
+    href: "/projects/ves",
     index: "02",
     years: "2023 – 2025",
     name: "VES",
@@ -163,26 +194,12 @@ export const projects: readonly Project[] = [
     ],
     texture: "/textures/project-ves.webp",
     logSummary: "2 CAMPAIGNS",
-    launches: [
-      {
-        date: "12 Oct 2024",
-        where: "EuRoC, Santa Margarida, Portugal · Mark I",
-        flight: { apogee: `3${nb}160 m`, maxSpeed: "259 m/s", nominal: true, country: "Portugal" },
-        result: "Nominal flight. Split on descent, both halves recovered. 6th of 25 teams.",
-      },
-      {
-        date: "13 Jul 2025",
-        where: "IREC, Midland, Texas · Mark II",
-        flight: null,
-        result:
-          "Did not fly. COTS motor failed on ignition (manufacturer defect). Avionics, recovery and nose cone recovered intact.",
-        award: { name: "1ST PLACE DESIGN & BUILD QUALITY" },
-      },
-    ],
+    launches: vesLaunches,
   },
   {
     kind: "engine",
     slug: "efesto",
+    href: "/projects/efesto",
     index: "03",
     years: "2023 – NOW",
     name: "Efesto",

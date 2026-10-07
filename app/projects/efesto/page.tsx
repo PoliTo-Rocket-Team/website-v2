@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { ProjectPage, projectPageMetadata } from "@/components/project-page/project-page";
 
-export const metadata: Metadata = projectPageMetadata("cavour");
+export const metadata: Metadata = projectPageMetadata("efesto");
 
 export default function Page() {
-  return <ProjectPage slug="cavour" />;
+  return <ProjectPage slug="efesto" />;
 }
