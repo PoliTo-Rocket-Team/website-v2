@@ -6,7 +6,7 @@ import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
-import { SceneErrorBoundary, WarmUp } from "./scene-ready";
+import { SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
 
 // The vehicle in a project card, seen from above and in front: the hero shows
@@ -112,26 +112,6 @@ function FixedCamera() {
   useEffect(() => {
     camera.lookAt(TARGET);
   }, [camera]);
-  return null;
-}
-
-/**
- * Tells the owner when this canvas's WebGL context is lost. A lost canvas
- * paints white over everything under it, so the owner must hide it at once
- * (rocket-card-stage.tsx). Listens from the first frame, and also reports a
- * context that is already lost when the canvas mounts.
- */
-function WatchContext({ onLost }: { onLost: () => void }) {
-  const gl = useThree((s) => s.gl);
-  const onLostRef = useRef(onLost);
-  onLostRef.current = onLost;
-  useEffect(() => {
-    const canvas = gl.domElement;
-    const lost = () => onLostRef.current();
-    if (gl.getContext().isContextLost()) lost();
-    canvas.addEventListener("webglcontextlost", lost);
-    return () => canvas.removeEventListener("webglcontextlost", lost);
-  }, [gl]);
   return null;
 }
 
