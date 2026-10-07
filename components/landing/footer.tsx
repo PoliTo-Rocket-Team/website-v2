@@ -24,7 +24,6 @@ const columns = [
     links: [
       ["Cavour", "/projects/cavour"],
       ["VES", "/projects/ves"],
-      ["VES Mark II", "/projects/ves-mark-ii"],
       ["Efesto", "/projects/efesto"],
     ],
   },
