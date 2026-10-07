@@ -11,15 +11,20 @@ import { CopyText, Pill } from "./parts";
 // in one row under the intro, facts 3 x 2.
 
 /**
- * A phone column is about 106px at 360 wide. Facts as long as board 25m's
- * "Regenerative" are set at its 17px; shorter ones keep board 23m's 20px.
+ * A set holding a value as long as board 25's "Regenerative" needs room a
+ * short set does not. A phone column is about 106px at 360 wide, so it is set
+ * at board 25m's 17px, not board 23m's 20px. A six-column desktop row is
+ * about 149px at 1024 wide, under the 172px such a value takes at 28px, so it
+ * stays 3 x 2 until xl, where a column is 192px.
  */
 const LONG_FACT = 10;
-const phoneFactSize = (facts: Hero["facts"]) =>
-  facts.some((f) => f.value.length > LONG_FACT) ? "text-[17px]" : "text-[20px]";
+const factLayout = (facts: Hero["facts"]) =>
+  facts.some((f) => f.value.length > LONG_FACT)
+    ? { grid: "md:grid-cols-3 md:gap-y-6 xl:grid-cols-6 xl:gap-y-0", size: "text-[17px]" }
+    : { grid: "md:grid-cols-6", size: "text-[20px]" };
 
 export function ProjectHero({ project, hero }: { project: Project; hero: Hero }) {
-  const factSize = phoneFactSize(hero.facts);
+  const facts = factLayout(hero.facts);
   return (
     <section className="px-5 pt-[88px] md:px-16 md:pt-[164px]">
       <div className="mx-auto max-w-[1312px]">
@@ -78,14 +83,14 @@ export function ProjectHero({ project, hero }: { project: Project; hero: Hero })
           </div>
         )}
 
-        <dl className="mt-6 grid grid-cols-3 md:mt-10 md:grid-cols-6 md:border-t md:border-hairline md:pt-6">
+        <dl className={`mt-6 grid grid-cols-3 md:mt-10 ${facts.grid} md:border-t md:border-hairline md:pt-6`}>
           {hero.facts.map((f) => (
             // Label under the value, as drawn; the markup keeps term before value.
             <div key={f.label.text} className="flex flex-col-reverse border-t border-hairline py-3 md:border-0 md:py-0">
               <dt className="mt-1 font-mono text-[9px] tracking-[0.2em] text-dim md:mt-2 md:text-[10px]">
                 <CopyText copy={f.label} />
               </dt>
-              <dd className={`whitespace-nowrap ${factSize} font-bold tracking-[-0.02em] md:text-[28px]`}>{f.value}</dd>
+              <dd className={`whitespace-nowrap ${facts.size} font-bold tracking-[-0.02em] md:text-[28px]`}>{f.value}</dd>
             </div>
           ))}
         </dl>

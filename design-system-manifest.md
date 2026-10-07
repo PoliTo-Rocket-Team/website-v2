@@ -341,7 +341,9 @@ page is a new record and a thin route. The built Cavour page is the layout refer
 - The hero shows the visual panel on the project's texture only when the record has a visual:
   Cavour's still of the parked rocket (Stack above, not 3D), VES's texture alone with its
   caption (no render exists, and the page says nothing about one), Efesto none. Up to six key
-  facts; on phones a set with a value longer than ten characters is set at 17px, else 20px.
+  facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
+  and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
+  `hero.tsx`); a shorter set is one row of six.
 - Versions: one highlighted version, bold under an accent pill on desktop and the default tab
   on phones. A spec with no value shows the dimmed dash (`Value` in `parts.tsx`).
 - The launch history reads each campaign's facts from `lib/projects.ts` (`cavourLaunches`,
