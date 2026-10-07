@@ -14,6 +14,11 @@ const DialogPortal = DialogPrimitive.Portal
 
 const DialogClose = DialogPrimitive.Close
 
+// It fades in and goes at once on close. Radix unmounts a closing layer only
+// when its exit animation sends `animationend`, and the scroll lock lives in
+// the overlay, so a tab that draws no frames would stay locked (issue #79).
+// `motion-safe:` keeps reduced motion still; a trailing
+// `motion-reduce:animate-none` loses to `data-[state]` variants (issue #80).
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -21,7 +26,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/80 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0",
       className
     )}
     {...props}
