@@ -148,16 +148,34 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
   // From lg each slide is as wide as its group's grid, and no wider than the
   // content column. The first and last slides get the side padding that lets
   // them reach the centre. `--peek-start` is how far right of the centre the
-  // next group begins, for anything placed on the peeking group.
+  // next group begins (and, mirrored, left of it the previous group ends).
   const widths = groups.map((g) => groupLayout(g).width);
   const root: Vars = {
     "--first-w": `${widths[0]}px`,
     "--last-w": `${widths[count - 1]}px`,
     "--peek-start": `calc(min(${widths[current]}px, 100cqw) / 2 + ${SLIDE_GAP}px)`,
+    // The chevron's inset: 16px into the peeking group, and never past the
+    // section's side padding, so it cannot widen the page on a narrow lg screen.
+    "--peek-at": `min(50% + var(--peek-start) + 16px, 100% + 8px)`,
   };
+
+  // From lg, a large chevron sits on the dimmed group that peeks in at the
+  // edge, as on the old site, and steps the carousel to it.
+  const peek =
+    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-colors duration-200 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
 
   return (
     <div style={root} className="relative [container-type:inline-size]">
+      {current < count - 1 && (
+        <button type="button" aria-label="Next group" onClick={() => go(current + 1)} className={`${peek} left-[var(--peek-at)]`}>
+          <ChevronRight aria-hidden className="h-11 w-11" strokeWidth={1.25} />
+        </button>
+      )}
+      {current > 0 && (
+        <button type="button" aria-label="Previous group" onClick={() => go(current - 1)} className={`${peek} right-[var(--peek-at)]`}>
+          <ChevronLeft aria-hidden className="h-11 w-11" strokeWidth={1.25} />
+        </button>
+      )}
       {/* Bleeds to the screen edge on phones, so the next group peeks in
           from the edge; from lg it stays on the content column, the current
           group centred and the next one clipped at the column's edge. */}

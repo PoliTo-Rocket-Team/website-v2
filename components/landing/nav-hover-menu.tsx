@@ -100,7 +100,8 @@ export function NavHoverMenu({ section, className }: { section: NavSection; clas
     };
   }, []);
 
-  const fadeIn = "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150";
+  // No fade: the panel shows the moment the pointer reaches the link.
+  const fadeIn = "";
 
   return (
     <DropdownMenu
@@ -120,7 +121,7 @@ export function NavHoverMenu({ section, className }: { section: NavSection; clas
           // Full bar height, so the panel hangs from the bar's bottom edge
           // and the pointer never crosses a gap on its way down.
           // Paper while its menu shows, as board 27 draws it under the pointer.
-          className={`flex h-full items-center ${className} data-[state=open]:text-prt-text`}
+          className={`flex h-full items-center outline-none focus-visible:underline focus-visible:decoration-accent focus-visible:decoration-2 focus-visible:underline-offset-8 ${className} data-[state=open]:text-prt-text`}
           onPointerEnter={(e) => e.pointerType === "mouse" && openBy(true)}
           onPointerLeave={closeSoon}
           // A click follows the link; it does not toggle the menu.
@@ -150,6 +151,11 @@ export function NavHoverMenu({ section, className }: { section: NavSection; clas
               tabbedForward.current = false;
               e.preventDefault();
               tabbableAfter(trigger)?.focus();
+            } else if (openedByPointer.current) {
+              // A menu the mouse opened gives focus back to nothing, so the
+              // link shows no focus ring after the pointer leaves.
+              e.preventDefault();
+              (document.activeElement as HTMLElement | null)?.blur();
             } else if (document.activeElement !== trigger) {
               focusReturning.current = true;
             }
