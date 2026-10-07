@@ -25,12 +25,29 @@ import { SectionHead } from "../section-head";
 /** Whether the row has years past its left and right edges. */
 type Overflow = { left: boolean; right: boolean };
 
+/** How wide the fade is on an edge with more years past it, in px. */
+const FADE = 48;
+
 /** The fade on an edge with more years past it. */
 function maskOf({ left, right }: Overflow): string | undefined {
   if (!left && !right) return undefined;
-  const from = left ? "transparent 0, black 48px" : "black 0";
-  const to = right ? "black calc(100% - 48px), transparent 100%" : "black 100%";
+  const from = left ? `transparent 0, black ${FADE}px` : "black 0";
+  const to = right ? `black calc(100% - ${FADE}px), transparent 100%` : "black 100%";
   return `linear-gradient(to right, ${from}, ${to})`;
+}
+
+/**
+ * Where an unscrolled row must scroll so the selected pill sits clear of the
+ * right fade, centred where the row allows; undefined when it already does.
+ * Both rects are the browser's, so the pill's place is measured from the
+ * row's own inner edge, never from the page.
+ */
+function scrollToShow(row: HTMLElement, pill: HTMLElement): number | undefined {
+  if (row.scrollWidth <= row.clientWidth) return undefined;
+  const start = pill.getBoundingClientRect().left - row.getBoundingClientRect().left - row.clientLeft + row.scrollLeft;
+  const end = start + pill.offsetWidth;
+  if (end <= row.scrollLeft + row.clientWidth - FADE) return undefined;
+  return start - (row.clientWidth - pill.offsetWidth) / 2;
 }
 
 function ArrowButton({ side, enabled, onClick }: { side: "left" | "right"; enabled: boolean; onClick: () => void }) {
@@ -77,9 +94,8 @@ function YearSwitch({ years }: { years: NonEmpty<AcademicYear> }) {
     const row = rowRef.current;
     const pill = row?.querySelector<HTMLElement>('[data-state="active"]');
     if (!row || !pill) return;
-    if (pill.offsetLeft + pill.offsetWidth > row.clientWidth) {
-      row.scrollLeft = pill.offsetLeft - (row.clientWidth - pill.offsetWidth) / 2;
-    }
+    const left = scrollToShow(row, pill);
+    if (left !== undefined) row.scrollLeft = left;
   }, []);
 
   const step = (direction: -1 | 1) => {
