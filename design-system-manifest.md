@@ -161,12 +161,18 @@ Rules:
   `placeholder="blur"` from `news-blur.ts`.
 - Reach for an existing `components/ui/` primitive before writing a new control. Toasts go
   through `sonner` (`app/layout.tsx`).
-- Dialogs are the repo's Radix dialog (`components/ui/dialog`): the phone menu and the
-  gallery lightbox too. They animate only on open, and only under `motion-safe:` (a fade, or
-  the menu's slide). They close at once, with no exit animation: Radix unmounts a closing
-  layer only when its exit animation sends `animationend`, a tab that draws no frames never
-  sends it, and the page then stayed scroll-locked (issues #79, #80). Do not use
-  `motion-reduce:animate-none` for this: it loses to the `data-[state]` variants.
+- Dialogs on redesigned pages use the repo's Radix dialog (`components/ui/dialog`) for
+  `Dialog`, `DialogPortal`, `DialogOverlay`, `DialogTitle` and `DialogClose`, and build their
+  content on `DialogPrimitive.Content` itself, as the phone menu (`nav-menu.tsx`) and the
+  gallery lightbox (`gallery.tsx`) do. They animate only on open, and only under
+  `motion-safe:` (a fade, or the menu's slide). They close at once, with no exit animation:
+  Radix unmounts a closing layer only when its exit animation sends `animationend`, a tab that
+  draws no frames never sends it, and the page then stayed scroll-locked (issues #79, #80). Do
+  not use `motion-reduce:animate-none` for this: it loses to the `data-[state]` variants.
+  `DialogOverlay` follows this rule; the shared `DialogContent` export does not. It still
+  exit-animates (`data-[state=closed]:animate-out`), and its open animation is not under
+  `motion-safe:` (`components/ui/dialog.tsx`). Only the older dialogs use it
+  (`add-position-dialog.tsx`, `file-preview-dialog.tsx`); do not use it on a redesigned page.
 - Every WebGL canvas starts hidden with `opacity-0` on its wrapper and is revealed by
   `RevealOnFirstFrame` after the second frame. This stops the white flash
   (`reveal-on-first-frame.tsx`, `handoff-hero-rocket.md` §9).
