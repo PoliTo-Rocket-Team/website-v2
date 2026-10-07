@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavHoverMenu } from "./nav-hover-menu";
-import { isCurrentLink, type NavLink } from "./nav-menu";
+import { isCurrentNavLink, type NavLink } from "./nav-menu";
 
 // The navbar's link row from lg. On a page under one of the links (board 26:
 // About on /about/the-team) that link is paper and the rest grey; on a page
@@ -11,11 +11,11 @@ import { isCurrentLink, type NavLink } from "./nav-menu";
 // A link with pages under it (About) opens its board 27 hover menu.
 export function NavLinks({ links }: { links: NavLink[] }) {
   const pathname = usePathname();
-  const anyCurrent = links.some((l) => isCurrentLink(pathname, l.href));
+  const anyCurrent = links.some((l) => isCurrentNavLink(pathname, l));
   return (
     <>
       {links.map((l) => {
-        const current = isCurrentLink(pathname, l.href);
+        const current = isCurrentNavLink(pathname, l);
         const className = `pointer-events-auto text-[17px] transition-colors hover:text-accent ${
           current ? "font-medium text-prt-text" : anyCurrent ? "text-text-2" : "text-prt-text"
         }`;
