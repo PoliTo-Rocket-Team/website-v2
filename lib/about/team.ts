@@ -232,8 +232,7 @@ export const team: TeamPage = {
   },
 
   advisors: {
-    eyebrow: "ADVISORS",
-    title: "The people who guide us.",
+    title: "Advisors",
     intro: "Faculty of Politecnico and specialists who support the Team.",
     people: [
       {

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { DepartmentGroup, Departments as DepartmentsData, DivisionLead, GroupMember } from "@/lib/about/types";
-import { Avatar, Contacts } from "./person";
+import { groupLayout } from "./group-layout";
+import { Avatar, Contacts, PersonCell } from "./person";
 import { SectionHead } from "./section-head";
 
 // Boards 26, 26d, 26e, 26f and 26m, "Departments": a carousel of groups,
@@ -13,56 +14,46 @@ import { SectionHead } from "./section-head";
 // a swipe or a trackpad scrolls it natively and the dots follow. Nothing
 // folds away: every head and lead is always shown.
 //
-// Inside a group, from lg: two mirror-image columns about a dashed centre
-// line, the members alternating left and right in order, each head with its
-// division leads under it. Below lg: one column, 60px heads and the leads in
-// a tight two-column grid with 26px photos.
+// Inside a group, from lg: a grid of person cells, its columns set by the
+// group (`groupLayout`), each head with its division leads under it in two
+// columns. Below lg: one column, 60px heads and the leads in a tight
+// two-column grid with 26px photos.
 
-/** A side of the centre line, from lg. Phones always have the photo first. */
-type Side = "left" | "right";
-
-function Lead({ lead, side }: { lead: DivisionLead; side: Side }) {
+function Lead({ lead }: { lead: DivisionLead }) {
   return (
-    <li className={`flex items-start gap-2 lg:items-center lg:gap-[13px] ${side === "left" ? "lg:flex-row-reverse lg:text-right" : ""}`}>
+    <li className="flex items-start gap-2">
       <Avatar
         person={lead}
-        sizeClass="h-[26px] w-[26px] lg:h-[52px] lg:w-[52px]"
-        sizes="52px"
+        sizeClass="h-[26px] w-[26px] lg:h-7 lg:w-7"
+        sizes="28px"
         fallback="initials"
-        initialsClass="text-[8px] lg:text-[11px]"
+        initialsClass="text-[8px]"
       />
-      <div className={`min-w-0 ${side === "left" ? "lg:flex lg:flex-col lg:items-end" : ""}`}>
-        <p className="text-[12px] font-semibold leading-tight text-prt-text lg:text-[14px]">{lead.name}</p>
-        <p className="mt-0.5 text-[11px] leading-tight text-prt-muted lg:text-[12px]">{lead.division}</p>
+      <div className="min-w-0">
+        <p className="text-[12px] font-semibold leading-tight text-prt-text">{lead.name}</p>
+        <p className="mt-0.5 text-[11px] leading-tight text-prt-muted">{lead.division}</p>
         <Contacts person={lead} iconClass="h-3 w-3" className="mt-1 gap-2" />
       </div>
     </li>
   );
 }
 
-function Member({ member, side }: { member: GroupMember; side: Side }) {
-  const role = member.kind === "head" ? member.role : member.division;
-  const leads = member.kind === "head" ? member.leads : [];
+function Member({ member }: { member: GroupMember }) {
+  const head = member.kind === "head";
+  const leads = head ? member.leads : [];
   return (
-    <div className={`flex flex-col ${side === "left" ? "lg:items-end" : "lg:items-start"}`}>
-      <div className={`flex items-center gap-3 lg:gap-[23px] ${side === "left" ? "lg:flex-row-reverse lg:text-right" : ""}`}>
-        <Avatar person={member} sizeClass="h-[60px] w-[60px] lg:h-[120px] lg:w-[120px]" sizes="120px" fallback="mark" />
-        <div className={`min-w-0 ${side === "left" ? "lg:flex lg:flex-col lg:items-end" : ""}`}>
-          <p className="text-[16px] font-semibold leading-tight tracking-[-0.01em] text-prt-text lg:text-[22px]">{member.name}</p>
-          <p className={`mt-0.5 text-[13px] leading-tight lg:mt-1.5 lg:text-[16px] ${member.kind === "head" ? "text-accent" : "text-text-2"}`}>
-            {role}
-          </p>
-          <Contacts person={member} iconClass="h-4 w-4 lg:h-[18px] lg:w-[18px]" className="mt-1.5 lg:mt-2.5" />
-        </div>
-      </div>
+    <div>
+      <PersonCell
+        person={member}
+        role={head ? member.role : member.division}
+        accent={head}
+        phone={{ avatar: "h-[60px] w-[60px]", gap: "gap-3" }}
+        fallback="mark-to-initials"
+      />
       {leads.length > 0 && (
-        <ul
-          className={`ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:mt-5 lg:flex lg:flex-col lg:gap-3 ${
-            side === "left" ? "lg:ml-0 lg:mr-[34px] lg:items-end" : "lg:ml-[34px]"
-          }`}
-        >
+        <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-4 lg:gap-y-3.5 lg:border-l lg:border-white-10 lg:pl-5">
           {leads.map((l) => (
-            <Lead key={l.division} lead={l} side={side} />
+            <Lead key={l.division} lead={l} />
           ))}
         </ul>
       )}
@@ -70,19 +61,31 @@ function Member({ member, side }: { member: GroupMember; side: Side }) {
   );
 }
 
+/** CSS custom properties the classes below read. */
+type Vars = Record<`--${string}`, string | number>;
+
+const px = (name: `--${string}`, value: number): Vars => ({ [name]: `${value}px` });
+
 function Group({ group }: { group: DepartmentGroup }) {
+  const { columns, gap } = groupLayout(group);
+  const grid: Vars = { "--cols": columns, "--gap": `${gap}px` };
   return (
     <>
       <h3 className="text-[20px] font-bold tracking-[-0.02em] lg:text-center lg:text-[30px]">{group.name}</h3>
-      <div className="relative mt-5 grid grid-cols-1 gap-y-6 lg:mt-9 lg:grid-cols-2 lg:gap-x-20 lg:gap-y-14">
-        <span aria-hidden className="absolute inset-y-0 left-1/2 hidden border-l border-dashed border-dim lg:block" />
+      <div
+        style={grid}
+        className="mt-5 grid grid-cols-1 gap-y-6 lg:mt-8 lg:grid-cols-[repeat(var(--cols),minmax(0,1fr))] lg:gap-x-[var(--gap)] lg:gap-y-10"
+      >
         {group.members.map((m, i) => (
-          <Member key={`${m.name}-${i}`} member={m} side={i % 2 === 0 ? "left" : "right"} />
+          <Member key={`${m.name}-${i}`} member={m} />
         ))}
       </div>
     </>
   );
 }
+
+/** The space between two slides from lg, px (`lg:gap-10` on the scroller). */
+const SLIDE_GAP = 40;
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -142,8 +145,19 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
   const arrow =
     "flex h-11 w-11 items-center justify-center rounded-full border text-prt-text transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 disabled:cursor-default disabled:border-white-5 disabled:text-dim";
 
+  // From lg each slide is as wide as its group's grid, and no wider than the
+  // content column. The first and last slides get the side padding that lets
+  // them reach the centre. `--peek-start` is how far right of the centre the
+  // next group begins, for anything placed on the peeking group.
+  const widths = groups.map((g) => groupLayout(g).width);
+  const root: Vars = {
+    "--first-w": `${widths[0]}px`,
+    "--last-w": `${widths[count - 1]}px`,
+    "--peek-start": `calc(min(${widths[current]}px, 100cqw) / 2 + ${SLIDE_GAP}px)`,
+  };
+
   return (
-    <div>
+    <div style={root} className="relative [container-type:inline-size]">
       {/* Bleeds to the screen edge on phones, so the next group peeks in
           from the edge; from lg it stays on the content column, the current
           group centred and the next one clipped at the column's edge. */}
@@ -154,7 +168,7 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
         aria-label={label}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:px-[calc((100%-840px)/2)] lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
+        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:gap-10 lg:pl-[calc((100cqw_-_min(var(--first-w),100cqw))_/_2)] lg:pr-[calc((100cqw_-_min(var(--last-w),100cqw))_/_2)] lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
       >
         {groups.map((g, i) => (
           <div
@@ -165,7 +179,8 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
             role="group"
             aria-roledescription="slide"
             aria-label={`${i + 1} of ${count}: ${g.name}`}
-            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:w-[840px] lg:max-w-none lg:snap-center lg:px-0 ${
+            style={px("--w", widths[i])}
+            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:w-[min(var(--w),100cqw)] lg:max-w-none lg:snap-center lg:px-0 ${
               i === current ? "opacity-100" : "opacity-[0.35]"
             }`}
           >
@@ -175,7 +190,7 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
       </div>
 
       {count > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-6 lg:mt-14">
+        <div className="mt-10 flex items-center justify-center gap-6 lg:mt-12">
           <button
             type="button"
             aria-label="Previous group"
