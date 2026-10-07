@@ -164,7 +164,7 @@
    down the page with no seam, so the sky has no fixed height. It is 1440px
    wide and centred, and it scales up with the page on wider screens. Its top
    fades in so the hero's own scrim meets it without a line.
-   The tile carries its own dither. Its tones span only about 15 grey levels,
+   The tile carries its own dither. Its tones span only 16 grey levels,
    so a plain 8-bit tile draws each level as a flat column with an edge (issue
    #87). Instead the tile is a smooth field under an 8 x 8 ordered (Bayer)
    dither of one level, which reads as one even tone at any scale. 1800 is a
