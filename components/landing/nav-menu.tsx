@@ -17,6 +17,11 @@ import { RocketArrow } from "./rocket-arrow";
 
 export type NavLink = { href: string; label: string };
 
+/** A link is current on its own page and on every page under it. */
+export function isCurrentLink(pathname: string | null, href: string): boolean {
+  return pathname === href || (pathname?.startsWith(`${href}/`) ?? false);
+}
+
 // Board 24b: below the width where the link row fits, the menu icon opens a
 // 330px glass sidebar from the right, full height, over a dimmed page. Top:
 // the PRT mark and a close icon. Then the links at 28px with a RocketArrow,
@@ -61,7 +66,7 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
           <nav className="mt-9">
             <ul>
               {links.map((l) => {
-                const current = pathname === l.href || pathname?.startsWith(`${l.href}/`);
+                const current = isCurrentLink(pathname, l.href);
                 return (
                   <li key={l.href} className="border-b border-white-10">
                     <DialogClose asChild>

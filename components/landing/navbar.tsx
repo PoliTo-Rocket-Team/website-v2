@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { NavLinks } from "./nav-links";
 import { NavMenu, type NavLink } from "./nav-menu";
 
 // Board 04 navbar, with board 21's logo and bar: a 72px bar, white PRT logo
@@ -48,11 +49,7 @@ export function LandingNavbar() {
         {/* Centred on the page, not between logo and actions: the row spans
             the bar, and only its links take the pointer. */}
         <nav className="pointer-events-none absolute inset-0 hidden items-center justify-center gap-[44px] lg:flex">
-          {links.map((l) => (
-            <Link key={l.href} href={l.href} className="pointer-events-auto text-[17px] text-prt-text transition-colors hover:text-accent">
-              {l.label}
-            </Link>
-          ))}
+          <NavLinks links={links} />
         </nav>
 
         <div className="relative z-10 flex items-center md:gap-3">
