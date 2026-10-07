@@ -32,9 +32,8 @@ const EYE = TARGET.clone().addScaledVector(VIEW_DIRECTION, VIEW_DISTANCE);
 /** Vertical field of view, in degrees, over the whole hanging canvas. */
 const FOV = 30;
 
-// The vehicle holds still in the scene. The card's hover rise is a CSS
-// transform on the canvas wrapper (projects.tsx), so its distance and timing
-// are exact in px and ms. The parked pose shows the vehicle from the nose to
+// The vehicle holds still in the scene, and the card has no hover rise. The
+// parked pose shows the vehicle from the nose to
 // mid-body above the card's info box.
 const PARKED_Y = 1.05;
 const PARKED_Z = -14; // pushed back from the camera, so it reads at the board 21 size
@@ -160,8 +159,7 @@ export default function RocketCard3D({ tuning, onReadout, onReady, onFailed, onL
     <Canvas
       // Nothing in the scene moves, so the canvas draws only when asked: the
       // warm-up (scene-ready.tsx), a resize, and the ?cam tuner's orbit
-      // controls. The hover rise is a CSS transform on the canvas wrapper
-      // (projects.tsx) and needs no frames. Under reduced motion this is the
+      // controls. Under reduced motion this is the
       // same: the warm-up draws the finished vehicle, then nothing.
       // Not "never": that leaves the WebGL buffer undrawn, which shows white
       // on a real GPU, and ignores the warm-up's invalidate.

@@ -281,11 +281,10 @@ news cards are desktop-only (from md).
 `design/specs-from-old-site.md`, each on its texture, 618px tall, with a `.glass-info` box
 inset 32px at the bottom (20px from lg to xl). From md to lg the cards stack, 480px wide at
 most. Each card renders Cavour live in 3D. At rest it shows from the nose to
-mid-body above the info box. On hover the rocket rises 170px over 450ms ease-out and its nose
-leaves the card top; on leave it sinks back the same way. The rise is a CSS transform on the
-canvas wrapper, which hangs above and below the card and is clipped to the card's sides and
-bottom only. The vehicle and camera hold still in the scene. Under reduced motion there is no
-rise; only the glass edge brightens. At rest the nose sits about 30px below the card top and
+mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
+the rocket stays where it rests. The canvas wrapper hangs above and below the card and is clipped to the card's sides and
+bottom only. The vehicle and camera hold still in the scene.
+At rest the nose sits about 30px below the card top and
 the flags show just above the info box. The canvas takes no pointer events. No raycast hover
 (`projects.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
 `rocket-card-3d.tsx`, not the JSX. Any new vehicle model follows
@@ -328,7 +327,7 @@ stacked.
 ## Accessibility
 
 - Reduced motion: the hero jumps to its settled state and mounts no rocket (`hero.tsx`). The
-  hero bob, the card rocket's hover rise, every star twinkle and the partners marquee are off
+  hero bob, every star twinkle and the partners marquee are off
   under reduced motion, and the footer shooting star is hidden (`hero-rocket-3d.tsx`,
   `projects.tsx`, `twinkle-star.tsx`, `marquee.tsx`, `shooting-star.tsx`). Nothing on the
   landing page animates continuously then (issue #59 replaced issue #33's kept twinkle). The
