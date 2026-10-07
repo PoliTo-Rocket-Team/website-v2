@@ -19,7 +19,7 @@ export function Advisors({ advisors }: { advisors: AdvisorsData }) {
         <SectionHead title={advisors.title} intro={advisors.intro} align="centre" />
         <div
           style={grid}
-          className="mx-auto mt-8 grid max-w-[var(--w)] grid-cols-1 gap-y-3.5 lg:mt-14 lg:grid-cols-3 lg:gap-x-[var(--gap)] lg:gap-y-10"
+          className="mx-auto mt-8 grid max-w-[var(--w)] grid-cols-1 gap-y-3.5 lg:mt-14 lg:grid-cols-3 lg:gap-x-[var(--gap)] lg:gap-y-12"
         >
           {advisors.people.map((a) => (
             <PersonCell

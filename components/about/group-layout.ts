@@ -5,15 +5,15 @@ import type { DepartmentGroup } from "@/lib/about/types";
 // does not read this; it is always one column.
 
 /** One person cell's column, and the gaps between columns: heads with leads, single people. All px. */
-export const CELL = 310;
-export const HEAD_GAP = 15;
-const PERSON_GAP = 0;
+export const CELL = 340;
+export const HEAD_GAP = 72;
+const PERSON_GAP = 72;
 
 export type GroupLayout = {
   columns: 2 | 3;
   /** The column gap, px. */
   gap: number;
-  /** The whole grid's width at full size, px: 960 for three head columns, 620 for two people columns. */
+  /** The whole grid's width at full size, px: 1164 for three columns, 752 for two. */
   width: number;
 };
 
