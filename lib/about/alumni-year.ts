@@ -28,10 +28,14 @@ export function yearsNewestFirst(list: NonEmpty<AcademicYear>): NonEmpty<Academi
   return [first!, ...rest];
 }
 
-/** The year a `?year=` value names, or the newest year when it names none. */
+/**
+ * The year a `?year=` value names. When it names none, the newest year with
+ * real people in it, so the page never opens on placeholder names; the newest
+ * year when every year is a placeholder.
+ */
 export function selectedYear(list: NonEmpty<AcademicYear>, slug: string | undefined): AcademicYear {
   const years = yearsNewestFirst(list);
-  return years.find((y) => yearSlug(y) === slug) ?? years[0];
+  return years.find((y) => yearSlug(y) === slug) ?? years.find((y) => !y.placeholder) ?? years[0];
 }
 
 /** The small tag beside a name: a founder's, or a department head's or division lead's. */
@@ -46,7 +50,7 @@ export type ShownGroup = {
   entries: NonEmpty<Entry>;
   /** Department groups print their head count beside the heading. */
   counted: boolean;
-  /** Department groups fold after 2 rows, the others after 3 (issue #95). */
+  /** Department groups and Advisors fold after 2 rows, the others after 3 (issue #95, board 28b). */
   firstRows: 2 | 3;
 };
 
@@ -103,7 +107,7 @@ function departmentGroups(year: DepartmentYear, founders: readonly Founder[]): S
   }
   const [firstAdvisor, ...advisors] = year.advisors;
   if (firstAdvisor !== undefined) {
-    groups.push({ name: "Advisors", entries: leadsFirst([firstAdvisor, ...advisors], founders), counted: false, firstRows: 3 });
+    groups.push({ name: "Advisors", entries: leadsFirst([firstAdvisor, ...advisors], founders), counted: false, firstRows: 2 });
   }
   return groups;
 }
