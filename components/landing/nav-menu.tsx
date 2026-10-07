@@ -24,7 +24,9 @@ export type NavLink = { href: string; label: string };
 // "Sign in", with no email. It is the repo's Radix dialog
 // (components/ui/dialog), so focus, Escape and scroll lock come with it; the
 // content is the primitive itself because the shadcn DialogContent is a
-// centred modal.
+// centred modal. It slides in and goes at once on close, so Radix unmounts it
+// without waiting on an `animationend` that a frameless tab never sends
+// (issue #79); the slide runs only under `motion-safe:` (issue #80).
 export function NavMenu({ links, className }: { links: NavLink[]; className?: string }) {
   const pathname = usePathname();
   return (
@@ -36,10 +38,10 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
         <Menu aria-hidden className="h-6 w-6" strokeWidth={2} />
       </DialogTrigger>
       <DialogPortal>
-        <DialogOverlay className="bg-ground/55 backdrop-blur-[3px] motion-reduce:animate-none" />
+        <DialogOverlay className="bg-ground/55 backdrop-blur-[3px]" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="glass-sidebar fixed inset-y-0 right-0 z-50 flex w-[330px] max-w-full flex-col pb-8 pl-7 pr-6 text-prt-text duration-300 ease-out focus:outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right motion-reduce:animate-none"
+          className="glass-sidebar fixed inset-y-0 right-0 z-50 flex w-[330px] max-w-full flex-col pb-8 pl-7 pr-6 text-prt-text duration-300 ease-out focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-right"
         >
           <DialogTitle className="sr-only">Menu</DialogTitle>
           <div className="flex h-16 shrink-0 items-center justify-between">
