@@ -142,8 +142,23 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
   const arrow =
     "flex h-11 w-11 items-center justify-center rounded-full border text-prt-text transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 disabled:cursor-default disabled:border-white-5 disabled:text-dim";
 
+  // From lg, a large chevron sits on the dimmed group that peeks in at the
+  // edge, as on the old site, and steps the carousel to it.
+  const peek =
+    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-colors duration-200 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
+
   return (
-    <div>
+    <div className="relative">
+      {current < count - 1 && (
+        <button type="button" aria-label="Next group" onClick={() => go(current + 1)} className={`${peek} left-[calc(50%+436px)]`}>
+          <ChevronRight aria-hidden className="h-11 w-11" strokeWidth={1.25} />
+        </button>
+      )}
+      {current > 0 && (
+        <button type="button" aria-label="Previous group" onClick={() => go(current - 1)} className={`${peek} right-[calc(50%+436px)]`}>
+          <ChevronLeft aria-hidden className="h-11 w-11" strokeWidth={1.25} />
+        </button>
+      )}
       {/* Bleeds to the screen edge on phones, so the next group peeks in
           from the edge; from lg it stays on the content column, the current
           group centred and the next one clipped at the column's edge. */}
