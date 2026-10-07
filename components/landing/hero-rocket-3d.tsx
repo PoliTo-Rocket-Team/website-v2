@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import * as THREE from "three";
@@ -8,7 +8,7 @@ import Plume, { type Burn } from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
-import { SceneErrorBoundary, WarmUp } from "./scene-ready";
+import { SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
 import { holdCardSetup } from "./scene-schedule";
 import { useClearGlassBarOver } from "./glass-bar";
@@ -286,23 +286,99 @@ function FrameDriver({ rate }: { rate: DrawRate }) {
 /** What the hero's phase clock waits for before the drive-in may start. */
 export type RocketStatus = "ready" | "unavailable";
 
+/**
+ * Which canvas the hero shows. A canvas exists only while the stage names
+ * one, and every new canvas gets a new id used as its React key, so React
+ * builds a fresh <canvas> element with a fresh WebGL context: a canvas whose
+ * context is gone is never shown again (issue #77; the cards do the same,
+ * rocket-card-stage.tsx).
+ *  - "hidden":      the page is hidden, or not shown yet: no canvas
+ *  - "unavailable": no rocket for this page load: no WebGL, or the scene
+ *                   failed to load
+ *  - "warming":     the canvas loads and compiles its scene, still invisible
+ *  - "ready":       the canvas has drawn the scene
+ */
+type Stage =
+  | { kind: "hidden" }
+  | { kind: "unavailable" }
+  | { kind: "warming" | "ready"; canvas: number };
+
+type StageEvent =
+  /** The page is shown (first load, or shown again): mount a new canvas. */
+  | { type: "shown"; canvas: number }
+  /** The page is shown, and this browser cannot draw WebGL. */
+  | { type: "unsupported" }
+  /** Next hid the page (cacheComponents): drop the canvas. */
+  | { type: "hidden" }
+  /** The canvas has compiled and drawn its scene. */
+  | { type: "warm"; canvas: number }
+  /** The canvas's context is lost: drop it and mount `next` in its place. */
+  | { type: "lost"; canvas: number; next: number }
+  /** The scene failed to load: no rocket for this page load. */
+  | { type: "failed"; canvas: number };
+
+const HIDDEN: Stage = { kind: "hidden" };
+
+// Each canvas event moves only the canvas it names, so a late report from a
+// canvas that is already gone changes nothing.
+function step(stage: Stage, e: StageEvent): Stage {
+  if (stage.kind === "unavailable") return stage;
+  if (e.type === "hidden") return HIDDEN;
+  if (e.type === "shown") return stage.kind === "hidden" ? { kind: "warming", canvas: e.canvas } : stage;
+  if (e.type === "unsupported") return stage.kind === "hidden" ? { kind: "unavailable" } : stage;
+  if (stage.kind === "hidden" || stage.canvas !== e.canvas) return stage;
+  if (e.type === "lost") return { kind: "warming", canvas: e.next };
+  if (e.type === "failed") return { kind: "unavailable" };
+  return stage.kind === "warming" ? { kind: "ready", canvas: e.canvas } : stage;
+}
+
 type Props = {
   /** Where the entrance is: the plume burns full during "drive". */
   phase: Phase;
   /**
    * "ready" once the rocket is loaded, compiled and drawn (off stage), so the
    * drive-in never starts on a blank canvas. "unavailable" when there will be
-   * no rocket: no WebGL, or the scene failed to load. Called once.
+   * no rocket: no WebGL, or the scene failed to load. Called at most once
+   * per mounted canvas, and never for a canvas already dropped.
    */
   onStatus?: (status: RocketStatus) => void;
 };
 
+/**
+ * The hero's rocket canvas, and when it exists.
+ *
+ * Next keeps the home page mounted but hidden when you leave it
+ * (cacheComponents), and R3F loses the hidden canvas's WebGL context on
+ * purpose; a lost canvas paints white or blank. So hiding the page drops the
+ * canvas, and every showing mounts a new one, as does a lost context. The
+ * hero has no poster (decision 0004), so a new canvas opens straight into the
+ * scene hero.tsx names, which on a return is the settled one, and stays
+ * invisible until it has drawn.
+ */
 export default function HeroRocket3D({ phase, onStatus }: Props) {
-  const [supported, setSupported] = useState(false);
+  const [stage, setStage] = useState<Stage>(HIDDEN);
+  // The stage as of the last event, ahead of React's render, so a callback
+  // can tell at once whether its canvas is still the one shown.
+  const stageNow = useRef(stage);
+  const canvasIds = useRef(0);
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
+  /** Applies one event; true when it changed the stage. */
+  const send = (e: StageEvent): boolean => {
+    const next = step(stageNow.current, e);
+    if (next === stageNow.current) return false;
+    stageNow.current = next;
+    setStage(next);
+    return true;
+  };
+  const report = (e: StageEvent, status: RocketStatus) => {
+    if (send(e)) onStatusRef.current?.(status);
+  };
+
   const [visible, setVisible] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
   const [plumeGone, setPlumeGone] = useState(false);
+  const live = stage.kind === "warming" || stage.kind === "ready";
+  const ready = stage.kind === "ready";
   const rate = drawRate(ready, visible, phase !== "settled" || !plumeGone);
   // The project cards set up their canvases only while this one can spare
   // the frames (scene-schedule.ts): it holds them while it warms up, for the
@@ -311,26 +387,33 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   // opening hold the rocket waits parked off stage (on some screen sizes its
   // nose shows, moving less than a pixel a frame), so a frame lost there
   // shows nothing: it holds nothing then, and hero.tsx closes the queue
-  // shortly before the drive-in.
-  // A scene that failed to load never warms up, so it holds nothing.
+  // shortly before the drive-in. A new canvas warms up again, so a return to
+  // the page holds the queue again until it is ready.
+  // No canvas (hidden, no WebGL, a failed scene) holds nothing.
   const holdCards =
-    supported &&
-    !failed &&
-    (!ready || phase === "drive" || (phase === "settled" && visible && !plumeGone));
+    stage.kind === "warming" ||
+    (ready && (phase === "drive" || (phase === "settled" && visible && !plumeGone)));
   useEffect(() => (holdCards ? holdCardSetup() : undefined), [holdCards]);
   const wrapRef = useRef<HTMLDivElement>(null);
   // The canvas may draw under the navbar; the bar drops its blur there
   // instead, so the bob keeps going and no frame costs a re-blur (#61).
-  useClearGlassBarOver(wrapRef, supported && !failed);
-  const onStatusRef = useRef(onStatus);
-  onStatusRef.current = onStatus;
+  useClearGlassBarOver(wrapRef, live);
 
-  useEffect(() => {
+  // Before the first paint of every showing, so the page never shows a
+  // canvas from its last visit, even for one frame.
+  useLayoutEffect(() => {
     // No static fallback by decision 0004: if WebGL is unavailable the hero
     // is just the type; nothing renders here.
-    const ok = webglSupported();
-    setSupported(ok);
-    if (!ok) onStatusRef.current?.("unavailable");
+    if (stageNow.current.kind === "hidden") {
+      if (webglSupported()) send({ type: "shown", canvas: ++canvasIds.current });
+      else report({ type: "unsupported" }, "unavailable");
+    }
+    return () => {
+      send({ type: "hidden" });
+    };
+  }, []);
+
+  useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     // Keep the canvas mounted; only pause the frame loop while offscreen so
@@ -340,18 +423,16 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
     return () => io.disconnect();
   }, []);
 
-  const onWarm = () => {
-    setReady(true);
-    onStatusRef.current?.("ready");
-  };
+  const canvas = live ? stage.canvas : null;
 
   return (
     // The canvas starts invisible and RevealOnFirstFrame shows it once it has
     // actually drawn; see reveal-on-first-frame.tsx for why.
     <div ref={wrapRef} className="relative h-full w-full [&_canvas]:opacity-0">
-      {supported && (
+      {canvas !== null && (
         <div className="absolute inset-0">
           <Canvas
+            key={canvas}
             // R3F never draws on its own: FrameDriver below draws at the rate
             // drawRate picks.
             frameloop="never"
@@ -389,14 +470,12 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
               shadow-camera-far={80}
             />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
+            <WatchContext
+              onLost={() => send({ type: "lost", canvas, next: ++canvasIds.current })}
+            />
             <FrameDriver rate={rate} />
             <RevealOnFirstFrame />
-            <SceneErrorBoundary
-              onError={() => {
-                setFailed(true);
-                onStatusRef.current?.("unavailable");
-              }}
-            >
+            <SceneErrorBoundary onError={() => report({ type: "failed", canvas }, "unavailable")}>
               {/* The environment, the rocket and the warm-up share one
                   Suspense: the rocket is ready only when all of it is. */}
               <Suspense fallback={null}>
@@ -406,7 +485,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
                   environmentRotation={[-Math.PI / 2, 0, 0]}
                 />
                 <Rocket burn={BURN[phase]} onPlumeGoneChange={setPlumeGone} />
-                <WarmUp onWarm={onWarm} />
+                <WarmUp onWarm={() => report({ type: "warm", canvas }, "ready")} />
               </Suspense>
             </SceneErrorBoundary>
           </Canvas>

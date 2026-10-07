@@ -75,3 +75,23 @@ export class SceneErrorBoundary extends Component<
     return this.state.failed ? null : this.props.children;
   }
 }
+
+/**
+ * Tells the owner when this canvas's WebGL context is lost. A lost canvas
+ * paints white over everything under it, so the owner must drop it at once
+ * (rocket-card-stage.tsx, hero-rocket-3d.tsx). Listens from the first frame,
+ * and also reports a context that is already lost when the canvas mounts.
+ */
+export function WatchContext({ onLost }: { onLost: () => void }) {
+  const gl = useThree((s) => s.gl);
+  const onLostRef = useRef(onLost);
+  onLostRef.current = onLost;
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const lost = () => onLostRef.current();
+    if (gl.getContext().isContextLost()) lost();
+    canvas.addEventListener("webglcontextlost", lost);
+    return () => canvas.removeEventListener("webglcontextlost", lost);
+  }, [gl]);
+  return null;
+}

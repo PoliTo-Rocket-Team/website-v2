@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { brand } from "@/lib/brand-colors";
 import { preloadCavourAssets } from "./cavour-assets";
 import type { RocketStatus } from "./hero-rocket-3d";
@@ -20,6 +20,10 @@ const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
 //             decelerating, nose easing from 14° to 6° up; parks at 6°.
 //             Title rises and slogan drops on the same curve to make room
 //   settled — copy fades in
+//   rest    — the page is shown again: Next keeps a page you leave mounted
+//             but hidden (cacheComponents), and showing it restarts every CSS
+//             animation, so the hero draws its settled layout with no
+//             animation at all
 // The entrance plays once per page load; there is no scroll lift-off.
 //
 // The drive-in starts only when BOTH the hold is over AND the rocket has
@@ -28,7 +32,7 @@ const HeroRocket3D = dynamic(() => import("./hero-rocket-3d"), { ssr: false });
 // so the CSS flight ran over a blank canvas and the rocket popped in
 // mid-flight or already parked (issue #45). On a fast load the rocket is
 // ready inside the hold and nothing changes.
-type Phase = "enter" | "drive" | "settled";
+type Phase = "enter" | "drive" | "settled" | "rest";
 /** Where the rocket is; "unavailable" means the hero runs as text only. */
 type Rocket = "loading" | RocketStatus;
 
@@ -41,6 +45,8 @@ const ROCKET_WAIT_MS = 10000;
 const TITLE_GATHER_Y = 64; // px the title sits lower while gathered
 const SLOGAN_GATHER_Y = -96; // px the slogan sits higher while gathered
 const DRIVE_MS = 7000; // rocket drive-in duration (Starship pace)
+// Where the drive-in parks the rocket: its last keyframe (tailwind.config.ts).
+const PARKED_TRANSFORM = "translate(0, 0) rotate(-6deg)";
 
 // Board fit, as CSS vars so the inline <script> below can set them before the
 // SSR'd hero ever paints (no unscaled flash on load):
@@ -101,6 +107,15 @@ export function Hero() {
     }
   }, []);
 
+  // Showing the page again restarts its CSS animations, so once the entrance
+  // has begun, every new showing jumps to its end (decision 0004: once per
+  // page load). Before the first paint, so no frame of a replay shows. A
+  // page hidden during the opening hold has shown nothing yet and starts it
+  // over; the first mount (and Strict Mode's re-run of it) is in "enter" too.
+  useLayoutEffect(() => {
+    setPhase((p) => (p === "enter" ? p : "rest"));
+  }, []);
+
   // Keep the fit vars fresh on resize (initial values come from the inline
   // script; this also covers client-side navigations to this page).
   useEffect(() => {
@@ -148,11 +163,13 @@ export function Hero() {
   const onRocketStatus = (status: RocketStatus) =>
     setRocket((r) => (r === "loading" ? status : r));
 
+  // Nothing animates: reduced motion, or the page shown again.
+  const still = reduced || phase === "rest";
+
   // Body/hairline/strip stay hidden until the rocket has settled.
   // Under reduced motion it is shown from the first paint and never fades:
   // motion-safe keeps the server-rendered "hidden" off for those readers.
-  const copyVisible = phase === "settled";
-  const copyClass = reduced ? "" : copyVisible ? "animate-hero-fade" : "motion-safe:opacity-0";
+  const copyClass = still ? "" : phase === "settled" ? "animate-hero-fade" : "motion-safe:opacity-0";
 
   // Title/slogan: gathered while entering, then part on the drive-in curve.
   // The animation fills forward, so they stay put once settled. The gathered
@@ -160,7 +177,7 @@ export function Hero() {
   // the "enter" phase before it can know the reader's motion setting, and
   // under reduced motion that first paint must already be the settled layout,
   // not a gathered block that jumps apart once the page's script runs.
-  const separateClass = reduced
+  const separateClass = still
     ? ""
     : phase === "enter"
       ? "motion-safe:[transform:translateY(var(--gather-y))]"
@@ -169,18 +186,26 @@ export function Hero() {
     ["--gather-y" as string]: `${gatherY}px`,
   });
 
-  const wordClass = reduced ? "" : "animate-word-up motion-reduce:animate-none";
-  const sloganClass = reduced ? "" : "animate-slogan-down motion-reduce:animate-none";
+  const wordClass = still ? "" : "animate-word-up motion-reduce:animate-none";
+  const sloganClass = still ? "" : "animate-slogan-down motion-reduce:animate-none";
 
   // The rocket's flight stage: parked offscreen during the hold, then the
-  // drive-in. Both frames place it; only the one showing mounts it.
+  // drive-in, then parked where the drive-in ends. Both frames place it;
+  // only the one showing mounts it.
   const rocketStage = (
     <div
       data-rocket-stage
-      className={`h-full w-full ${phase === "enter" ? "" : "animate-rocket-drive-in"}`}
-      style={phase === "enter" ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" } : undefined}
+      className={`h-full w-full ${phase === "drive" || phase === "settled" ? "animate-rocket-drive-in" : ""}`}
+      style={
+        phase === "enter"
+          ? { transform: "translate(-105vw, 36vh) rotate(-14deg)" }
+          : phase === "rest"
+            ? { transform: PARKED_TRANSFORM }
+            : undefined
+      }
     >
-      <HeroRocket3D phase={phase} onStatus={onRocketStatus} />
+      {/* At rest the rocket's scene is the settled one. */}
+      <HeroRocket3D phase={phase === "rest" ? "settled" : phase} onStatus={onRocketStatus} />
     </div>
   );
 
