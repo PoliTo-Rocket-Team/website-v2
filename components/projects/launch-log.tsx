@@ -16,7 +16,9 @@ function Result({ launch }: { launch: Launch }) {
     <>
       <p className={resultTone(launch)}>{launch.result}</p>
       {launch.award && (
-        <p className="mt-1.5 font-mono text-[11px] tracking-[0.15em] text-accent">{launch.award}</p>
+        <p className="mt-1.5 font-mono text-[11px] tracking-[0.15em] text-accent">
+          {launch.award.short ?? launch.award.name}
+        </p>
       )}
     </>
   );

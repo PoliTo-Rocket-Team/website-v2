@@ -8,7 +8,10 @@ import { Children, useEffect, useRef, useState, type ReactNode } from "react";
 // bleeds to the screen edges so a card can peek past the section padding.
 // From md the row is whatever layout `className` gives it (a grid), and the
 // dots are gone. Vertical overflow is clipped on phones only: the scroller
-// would otherwise scroll down into the card rockets' hanging canvases.
+// would otherwise scroll down into the card rockets' hanging canvases. So the
+// clip edge sits below the cards' whole shadow (`.glass-project`: 16px down,
+// 40px blur, so 56px), not across it, where it drew a hard line (issue #50).
+// The dots pull back up by the extra 36px, so they stay 20px under the cards.
 export function SwipeRow({
   children,
   label,
@@ -54,11 +57,11 @@ export function SwipeRow({
         ref={rowRef}
         role="group"
         aria-label={label}
-        className={`-mx-5 flex snap-x snap-mandatory scroll-px-5 gap-[10px] overflow-x-auto overflow-y-hidden px-5 pb-5 [scrollbar-width:none] md:mx-0 md:overflow-visible md:px-0 md:pb-0 [&::-webkit-scrollbar]:hidden ${className ?? ""}`}
+        className={`-mx-5 flex snap-x snap-mandatory scroll-px-5 gap-[10px] -mb-9 overflow-x-auto overflow-y-hidden px-5 pb-14 [scrollbar-width:none] md:mx-0 md:mb-0 md:overflow-visible md:px-0 md:pb-0 [&::-webkit-scrollbar]:hidden ${className ?? ""}`}
       >
         {children}
       </div>
-      <div className="flex items-center justify-center gap-[5px] md:hidden">
+      <div className="relative flex items-center justify-center gap-[5px] md:hidden">
         {Array.from({ length: count }, (_, i) => (
           <button
             key={i}

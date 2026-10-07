@@ -16,13 +16,16 @@ export type Flight = {
   country: string;
 };
 
+/** An award won at a campaign. `short` is board 22's label where the full name is too long for the log. */
+export type Award = { name: string; short?: string; citation?: string };
+
 /** One campaign on the launch log. `flight` is null when the vehicle never left the pad. */
 export type Launch = {
   date: string;
   where: string;
   flight: Flight | null;
   result: string;
-  award?: string;
+  award?: Award;
 };
 
 export type WorkLine = { code: string; name: string };
@@ -79,6 +82,39 @@ export function statusOf(project: Project): ProjectStatus {
 // so "3 143 m" never wraps inside the number.
 const nb = " ";
 
+/**
+ * Cavour's three flights, the one source for both /projects and /projects/cavour.
+ * Kept literal (`as const`) so the Cavour page can key its own copy by launch
+ * date and know that every one of these flew.
+ */
+export const cavourLaunches = [
+  {
+    date: "29 Apr 2023",
+    where: "Bavaria, Germany · test launch",
+    flight: { apogee: `1${nb}331 m`, maxSpeed: "163 m/s", nominal: true, country: "Germany" },
+    result: "Nominal. Recovered intact, reusable.",
+  },
+  {
+    date: "22 Jun 2023",
+    where: "Spaceport America Cup, New Mexico",
+    flight: { apogee: `3${nb}143 m`, maxSpeed: "295 m/s", nominal: true, country: "USA" },
+    result: "Nominal. 20th of 119 universities.",
+    award: {
+      name: "DR. GIL MOORE AWARD FOR INNOVATION",
+      citation: "3D-printed multilayered fins for flutter suppression",
+    },
+  },
+  {
+    date: "13 Oct 2023",
+    where: "EuRoC, Santa Margarida, Portugal",
+    flight: { apogee: `2${nb}800 m`, maxSpeed: "266 m/s", nominal: false, country: "Portugal" },
+    result: "Boost nominal. Recovery failed, 75 m/s impact.",
+    award: { name: "ANACOM BEST TELEMETRY SPECTRAL SIGNATURE AWARD", short: "ANACOM BEST TELEMETRY AWARD" },
+  },
+] as const satisfies readonly Launch[];
+
+export type CavourLaunch = (typeof cavourLaunches)[number];
+
 export const projects: readonly Project[] = [
   {
     kind: "vehicle",
@@ -103,28 +139,7 @@ export const projects: readonly Project[] = [
     ],
     texture: "/textures/project-cavour.webp",
     logSummary: "3 FLIGHTS",
-    launches: [
-      {
-        date: "29 Apr 2023",
-        where: "Bavaria, Germany · test launch",
-        flight: { apogee: `1${nb}331 m`, maxSpeed: "163 m/s", nominal: true, country: "Germany" },
-        result: "Nominal. Recovered intact, reusable.",
-      },
-      {
-        date: "22 Jun 2023",
-        where: "Spaceport America Cup, New Mexico",
-        flight: { apogee: `3${nb}143 m`, maxSpeed: "295 m/s", nominal: true, country: "USA" },
-        result: "Nominal. 20th of 119 universities.",
-        award: "DR. GIL MOORE AWARD FOR INNOVATION",
-      },
-      {
-        date: "13 Oct 2023",
-        where: "EuRoC, Santa Margarida, Portugal",
-        flight: { apogee: `2${nb}800 m`, maxSpeed: "266 m/s", nominal: false, country: "Portugal" },
-        result: "Boost nominal. Recovery failed, 75 m/s impact.",
-        award: "ANACOM BEST TELEMETRY AWARD",
-      },
-    ],
+    launches: cavourLaunches,
   },
   {
     kind: "vehicle",
@@ -161,7 +176,7 @@ export const projects: readonly Project[] = [
         flight: null,
         result:
           "Did not fly. COTS motor failed on ignition (manufacturer defect). Avionics, recovery and nose cone recovered intact.",
-        award: "1ST PLACE DESIGN & BUILD QUALITY",
+        award: { name: "1ST PLACE DESIGN & BUILD QUALITY" },
       },
     ],
   },

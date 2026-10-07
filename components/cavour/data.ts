@@ -1,4 +1,5 @@
 import type { GalleryItem } from "@/components/gallery/items";
+import { cavourLaunches, type Award, type CavourLaunch, type Launch } from "@/lib/projects";
 
 // Cavour's facts, every one from design/specs-from-old-site.md. Figures are
 // set as the boards set them ("2 167 mm"), with no-break spaces so a figure
@@ -124,6 +125,77 @@ export type FlightOutcome = "nominal" | "recovery-failed";
 
 type Stat = { value: string; label: string };
 
+/** A number only this page shows; `phoneLabel` is board 23m's shorter label. */
+type PageStat = Stat & { phoneLabel?: string };
+
+/**
+ * This page's own copy for one launch. The facts (date, apogee, max speed,
+ * result, award) are the shared record's, in lib/projects.ts; nothing here
+ * repeats them. A flight that was not nominal must say what went wrong.
+ */
+type FlightStory<L extends CavourLaunch> = {
+  title: string;
+  place: string;
+  config: ConfigId;
+  summary: string;
+  /** Board 23m's shorter card copy. */
+  phoneSummary: string;
+  /** The two numbers after apogee and max speed. */
+  stats: readonly [PageStat, PageStat];
+  /** Which of those two board 23m's card keeps. */
+  phoneStat: 0 | 1;
+} & (L["flight"]["nominal"] extends true ? { setback?: never } : { setback: Exclude<FlightOutcome, "nominal"> });
+
+const stories: { [D in CavourLaunch["date"]]: FlightStory<Extract<CavourLaunch, { date: D }>> } = {
+  "29 Apr 2023": {
+    title: "Test launch",
+    place: "Bavaria, Germany",
+    config: "100-54-6",
+    summary:
+      `First flight. The site's apogee limit meant a smaller K-class motor, so Cavour stayed under the ceiling on purpose. The main parachute opened early, likely a faulty tether. Landed at ${n("6.9 m/s")}, airframe intact, ready to fly again.`,
+    phoneSummary:
+      "Under the site's apogee limit on purpose with a K-class motor. Main opened early; landed intact.",
+    stats: [
+      { value: "9.8 G", label: "BOOST ACCEL", phoneLabel: "BOOST" },
+      { value: "6.9 m/s", label: "LANDING" },
+    ],
+    phoneStat: 0,
+  },
+  "22 Jun 2023": {
+    title: "Spaceport America Cup",
+    place: "New Mexico, USA",
+    config: "100-75-4",
+    summary: `Launched from pad B2 at 09:20 local. Apogee landed within ${n("100 m")} of the ${n("3 048 m")} target. The main parachute deployed early again, but the rocket came back reusable. 13th in the 10k ft COTS category, and the first Italian team at the Spaceport America Cup.`,
+    phoneSummary: `Apogee within ${n("100 m")} of the ${n("3 048 m")} target. 13th in 10k ft COTS at the Team's first competition.`,
+    stats: [
+      { value: "17.3 G", label: "BOOST ACCEL" },
+      { value: "20 / 119", label: "OVERALL RANK", phoneLabel: "OVERALL" },
+    ],
+    phoneStat: 1,
+  },
+  "13 Oct 2023": {
+    title: "European Rocketry Challenge",
+    place: "Santa Margarida, Portugal",
+    config: "100-75-4",
+    setback: "recovery-failed",
+    summary:
+      `Third flight in one year, at 14:45 local. Boost and coast were nominal. The recovery system failed and Cavour hit the ground at ${n("75 m/s")}. Still 8th overall of 25 selected teams, and the first PoliTo team at EuRoC.`,
+    phoneSummary: `Boost and coast nominal; recovery failed, ${n("75 m/s")} impact. Still 8th of 25 teams.`,
+    stats: [
+      { value: "14 G", label: "BOOST ACCEL" },
+      { value: "75 m/s", label: "IMPACT" },
+    ],
+    phoneStat: 1,
+  },
+};
+
+/** The motor a configuration flies, from its spec column. */
+function motorOf(id: ConfigId): string {
+  const motor = configs.find((c) => c.id === id)?.specs.motor;
+  if (!motor) throw new Error(`Cavour configuration ${id} names no motor`);
+  return motor;
+}
+
 export type Flight = {
   num: string;
   date: string;
@@ -133,92 +205,35 @@ export type Flight = {
   motor: string;
   outcome: FlightOutcome;
   summary: string;
-  /** Board 23m's shorter card copy. */
   phoneSummary: string;
-  award?: { name: string; citation?: string };
+  award?: Award;
   stats: readonly [Stat, Stat, Stat, Stat];
   /** Board 23m's card keeps three numbers, with shorter labels. */
   phoneStats: readonly [Stat, Stat, Stat];
 };
 
-export const flights: readonly Flight[] = [
-  {
-    num: "01",
-    date: "29 Apr 2023",
-    title: "Test launch",
-    place: "Bavaria, Germany",
-    config: "100-54-6",
-    motor: "CTI K940",
-    outcome: "nominal",
-    summary:
-      `First flight. The site's apogee limit meant a smaller K-class motor, so Cavour stayed under the ceiling on purpose. The main parachute opened early, likely a faulty tether. Landed at ${n("6.9 m/s")}, airframe intact, ready to fly again.`,
-    phoneSummary:
-      "Under the site's apogee limit on purpose with a K-class motor. Main opened early; landed intact.",
-    stats: [
-      { value: n("1 331 m"), label: "APOGEE" },
-      { value: "163 m/s", label: "MAX SPEED" },
-      { value: "9.8 G", label: "BOOST ACCEL" },
-      { value: "6.9 m/s", label: "LANDING" },
-    ],
-    phoneStats: [
-      { value: n("1 331 m"), label: "APOGEE" },
-      { value: "163 m/s", label: "MAX SPEED" },
-      { value: "9.8 G", label: "BOOST" },
-    ],
-  },
-  {
-    num: "02",
-    date: "22 Jun 2023",
-    title: "Spaceport America Cup",
-    place: "New Mexico, USA",
-    config: "100-75-4",
-    motor: "CTI L1350",
-    outcome: "nominal",
-    summary: `Launched from pad B2 at 09:20 local. Apogee landed within ${n("100 m")} of the ${n("3 048 m")} target. The main parachute deployed early again, but the rocket came back reusable. 13th in the 10k ft COTS category, and the first Italian team at the Spaceport America Cup.`,
-    phoneSummary: `Apogee within ${n("100 m")} of the ${n("3 048 m")} target. 13th in 10k ft COTS at the Team's first competition.`,
-    award: {
-      name: "DR. GIL MOORE AWARD FOR INNOVATION",
-      citation: "3D-printed multilayered fins for flutter suppression",
-    },
-    stats: [
-      { value: n("3 143 m"), label: "APOGEE" },
-      { value: "295 m/s", label: "MAX SPEED" },
-      { value: "17.3 G", label: "BOOST ACCEL" },
-      { value: "20 / 119", label: "OVERALL RANK" },
-    ],
-    phoneStats: [
-      { value: n("3 143 m"), label: "APOGEE" },
-      { value: "295 m/s", label: "MAX SPEED" },
-      { value: "20 / 119", label: "OVERALL" },
-    ],
-  },
-  {
-    num: "03",
-    date: "13 Oct 2023",
-    title: "European Rocketry Challenge",
-    place: "Santa Margarida, Portugal",
-    config: "100-75-4",
-    motor: "CTI L1350",
-    outcome: "recovery-failed",
-    summary:
-      `Third flight in one year, at 14:45 local. Boost and coast were nominal. The recovery system failed and Cavour hit the ground at ${n("75 m/s")}. Still 8th overall of 25 selected teams, and the first PoliTo team at EuRoC.`,
-    phoneSummary: `Boost and coast nominal; recovery failed, ${n("75 m/s")} impact. Still 8th of 25 teams.`,
-    award: {
-      name: "ANACOM BEST TELEMETRY SPECTRAL SIGNATURE AWARD",
-    },
-    stats: [
-      { value: n("2 800 m"), label: "APOGEE" },
-      { value: "266 m/s", label: "MAX SPEED" },
-      { value: "14 G", label: "BOOST ACCEL" },
-      { value: "75 m/s", label: "IMPACT" },
-    ],
-    phoneStats: [
-      { value: n("2 800 m"), label: "APOGEE" },
-      { value: "266 m/s", label: "MAX SPEED" },
-      { value: "75 m/s", label: "IMPACT" },
-    ],
-  },
-];
+/** The launch history: the shared launches, in order, each with this page's copy. */
+export const flights: readonly Flight[] = cavourLaunches.map((launch, i) => {
+  const shared: Launch = launch;
+  const story = stories[launch.date];
+  const apogee = { value: launch.flight.apogee, label: "APOGEE" };
+  const maxSpeed = { value: launch.flight.maxSpeed, label: "MAX SPEED" };
+  const phone = story.stats[story.phoneStat];
+  return {
+    num: String(i + 1).padStart(2, "0"),
+    date: launch.date,
+    title: story.title,
+    place: story.place,
+    config: story.config,
+    motor: motorOf(story.config),
+    outcome: story.setback ?? "nominal",
+    summary: story.summary,
+    phoneSummary: story.phoneSummary,
+    award: shared.award,
+    stats: [apogee, maxSpeed, ...story.stats],
+    phoneStats: [apogee, maxSpeed, { value: phone.value, label: phone.phoneLabel ?? phone.label }],
+  };
+});
 
 /**
  * 05 Gallery. Placeholders until the dashboard uploads real photos; a photo
