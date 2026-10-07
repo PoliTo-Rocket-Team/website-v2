@@ -15,7 +15,7 @@ export const team: TeamPage = {
     eyebrow: "ABOUT · THE TEAM",
     title: "The Team",
     intro:
-      "In the 2024–2025 academic year the Team has more than 150 undergraduate and graduate students. They come from almost every course at Politecnico di Torino, and from more than 30 countries.",
+      "In the {academicYear} academic year the Team has more than 150 undergraduate and graduate students. They come from almost every course at Politecnico di Torino, and from more than 30 countries.",
     stats: [
       { value: "150+", label: { text: "MEMBERS" } },
       { value: "30+", label: { text: "COUNTRIES" } },
