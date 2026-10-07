@@ -19,6 +19,7 @@ export type AboutTab = (typeof tabs)[number]["href"];
 export function AboutTabs({ current }: { current: AboutTab }) {
   return (
     <nav aria-label="About">
+      {/* Below md the row fits in 13px instead of scrolling; board 26m scrolls it (deviation accepted on PR #91). */}
       <ul className="flex justify-between gap-3 border-b border-white-10 md:justify-start md:gap-8">
         {tabs.map((t) => {
           const isCurrent = t.href === current;
