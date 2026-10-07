@@ -75,19 +75,30 @@ export function Contacts({
   className?: string;
 }) {
   const { linkedin, email } = contactsOf(person);
-  if (linkedin === undefined && email === undefined) return null;
   const link = "text-prt-muted transition-colors duration-300 ease-out hover:text-accent";
+  // Every person shows both icons (boards 26 and 26m). One with no address
+  // yet is dimmed and not a link, so it never leads nowhere; it becomes a
+  // link as soon as the record gets the address.
+  const missing = "text-dim";
   return (
     <span className={`flex items-center gap-3 ${className}`}>
-      {linkedin !== undefined && (
+      {linkedin !== undefined ? (
         <a href={linkedin} target="_blank" rel="noopener noreferrer" aria-label={`${person.name} on LinkedIn`} className={link}>
           <Linkedin aria-hidden className={iconClass} strokeWidth={1.5} />
         </a>
+      ) : (
+        <span aria-hidden className={missing}>
+          <Linkedin className={iconClass} strokeWidth={1.5} />
+        </span>
       )}
-      {email !== undefined && (
+      {email !== undefined ? (
         <a href={email} aria-label={`Email ${person.name}`} className={link}>
           <Mail aria-hidden className={iconClass} strokeWidth={1.5} />
         </a>
+      ) : (
+        <span aria-hidden className={missing}>
+          <Mail className={iconClass} strokeWidth={1.5} />
+        </span>
       )}
     </span>
   );
