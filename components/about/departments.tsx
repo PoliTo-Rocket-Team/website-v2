@@ -22,18 +22,18 @@ import { SectionHead } from "./section-head";
 
 function Lead({ lead }: { lead: DivisionLead }) {
   return (
-    <li className="flex items-start gap-2">
+    <li className="flex items-start gap-2 lg:gap-3">
       <Avatar
         person={lead}
-        sizeClass="h-[26px] w-[26px] lg:h-7 lg:w-7"
-        sizes="28px"
+        sizeClass="h-[26px] w-[26px] lg:h-10 lg:w-10"
+        sizes="40px"
         fallback="initials"
-        initialsClass="text-[8px]"
+        initialsClass="text-[8px] lg:text-[11px]"
       />
       <div className="min-w-0">
-        <p className="text-[12px] font-semibold leading-tight text-prt-text">{lead.name}</p>
-        <p className="mt-0.5 text-[11px] leading-tight text-prt-muted">{lead.division}</p>
-        <Contacts person={lead} iconClass="h-3 w-3" className="mt-1 gap-2" />
+        <p className="text-[12px] font-semibold leading-tight text-prt-text lg:text-[15px]">{lead.name}</p>
+        <p className="mt-0.5 text-[11px] leading-tight text-prt-muted lg:text-[13px]">{lead.division}</p>
+        <Contacts person={lead} iconClass="h-3 w-3 lg:h-3.5 lg:w-3.5" className="mt-1 gap-2 lg:mt-1.5" />
       </div>
     </li>
   );
@@ -52,7 +52,7 @@ function Member({ member }: { member: GroupMember }) {
         fallback="mark-to-initials"
       />
       {leads.length > 0 && (
-        <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-4 lg:gap-y-3.5 lg:border-l lg:border-white-10 lg:pl-5">
+        <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-5 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5">
           {leads.map((l) => (
             <Lead key={l.division} lead={l} />
           ))}
