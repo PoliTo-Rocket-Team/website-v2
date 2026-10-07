@@ -111,8 +111,10 @@ Rules:
   gives phones 20px sides). Sections below the hero have no borders
   between them and no background of their own: they sit on the page sky.
 - Section header: eyebrow and title left, intro or link right, `md:flex-row md:items-end`,
-  then content at `mt-16`.
-- Grids: Latest `lg:grid-cols-[1.58fr_1fr]` with `gap-5`; Projects `lg:grid-cols-3`;
+  then the content under it: 40px in Latest (`md:mt-10`, board 21), 56px in Projects
+  (`md:mt-14`), 24px on phones.
+- Grids: Latest `lg:grid-cols-[1.58fr_1fr]` with `gap-5`, and from lg a cards row at least
+  560px tall (`lg:grid-rows-[minmax(560px,auto)]`); Projects `lg:grid-cols-3`;
   Inside the team: figures and link cards `lg:grid-cols-4`; otherwise `gap-4`.
 - Radii: glass cards `rounded-xl`; project cards `rounded-2xl` (16px) and their info boxes
   `rounded-xl` (12px); inset photos `rounded-[6px]`; buttons, pills and tags `rounded-full`.
@@ -127,7 +129,8 @@ Rules:
   | `.glass-info` | project info box | `rgba(10,10,10,.6)` (Efesto `.82` via `--glass-tint`) plus a 200deg sheen | 24px | 1px as the card edge, inset `0 1px 0` white 18% |
 
   Each edge is a gradient ring on `::before`, cut out with a mask. A project card's edge
-  brightens on hover through a second ring on `::after`.
+  brightens on hover through a second ring on `::after`. `.glass-linked` gives a `.glass-info`
+  card that links to its page the same brighter edge on hover and on keyboard focus.
 - The navbar is `.glass-bar`: a full-width bar fixed to the top edge, not floating (no side
   margins, no radius). Fill `rgba(10,10,10,.35)` under the 200deg sheen, blur 24px, a 1px
   bottom edge white 8% to 25% to 8% (brightest in the middle), shadow `0 8px 24px` black
@@ -158,6 +161,18 @@ Rules:
   `placeholder="blur"` from `news-blur.ts`.
 - Reach for an existing `components/ui/` primitive before writing a new control. Toasts go
   through `sonner` (`app/layout.tsx`).
+- Dialogs on redesigned pages use the repo's Radix dialog (`components/ui/dialog`) for
+  `Dialog`, `DialogPortal`, `DialogOverlay`, `DialogTitle` and `DialogClose`, and build their
+  content on `DialogPrimitive.Content` itself, as the phone menu (`nav-menu.tsx`) and the
+  gallery lightbox (`gallery.tsx`) do. They animate only on open, and only under
+  `motion-safe:` (a fade, or the menu's slide). They close at once, with no exit animation:
+  Radix unmounts a closing layer only when its exit animation sends `animationend`, a tab that
+  draws no frames never sends it, and the page then stayed scroll-locked (issues #79, #80). Do
+  not use `motion-reduce:animate-none` for this: it loses to the `data-[state]` variants.
+  `DialogOverlay` follows this rule; the shared `DialogContent` export does not. It still
+  exit-animates (`data-[state=closed]:animate-out`), and its open animation is not under
+  `motion-safe:` (`components/ui/dialog.tsx`). Only the older dialogs use it
+  (`add-position-dialog.tsx`, `file-preview-dialog.tsx`); do not use it on a redesigned page.
 - Every WebGL canvas starts hidden with `opacity-0` on its wrapper and is revealed by
   `RevealOnFirstFrame` after the second frame. This stops the white flash
   (`reveal-on-first-frame.tsx`, `handoff-hero-rocket.md` §9).
@@ -167,7 +182,6 @@ Rules:
 | Name | Value | Use |
 |---|---|---|
 | Hover transitions | 300ms ease-out | cards, arrows, textures, glass edges |
-| Project rocket rise | 170px, 450ms ease-out | project card hover (`projects.tsx`) |
 | `word-up`, `slogan-down` | 0.7s `cubic-bezier(0.22,1,0.36,1)` | hero type in |
 | `hero-fade` | 0.9s ease-out | hero copy once settled |
 | `rocket-drive-in`, `hero-separate` | 7s linear, easing baked into stops | hero entrance |
@@ -175,7 +189,8 @@ Rules:
 | `twinkle` | 4s ease-in-out infinite | stars |
 | `shooting-star` | 20s linear infinite | footer |
 
-All values from `tailwind.config.ts`, except the rocket rise, which is set on the card.
+All values from `tailwind.config.ts`. A project card has no hover motion (issue #73): only its
+glass edge brightens.
 
 ## Page rules
 
@@ -271,11 +286,17 @@ under the navbar, where the bar drops its blur instead (Spacing, layout, shape a
 either, so motion behind an open menu keeps the state it had. New continuous motion uses the
 gate.
 
-**Latest:** featured card plus a three-row list, then a centred "All news" link. The cards are
-`.glass-card` with no texture of their own; the featured card keeps its inset photo
-(`latest.tsx`). Phones (board 24): one column, the featured card (20px title, photo 150px
-tall), then only the first news card (IREC 2025), 20px below, then "All news". The other two
-news cards are desktop-only (from md).
+**Latest** (track record, board 21, `latest.tsx`): featured card plus a three-row list, then
+a centred "All news" link. The cards are `.glass-card` with no texture of their own. From lg
+the section fits one 1440 x 900 screen under the navbar: 40px from the header to the cards and
+from the cards to "All news", and a cards row at least 560px tall that both columns stretch
+to. The list cards are 12px apart there and centre their text. The featured card: the tag
+line on the left and "Read the record" (accent, with a `RocketArrow` from md) at the top
+right on the same row; then the title (34px), the excerpt, and the inset photo. From lg the
+photo fills what the card has left under the text, so the card matches the list column;
+from md to lg it keeps a 2.2:1 shape. Phones (board 24): one column, the featured card (20px
+title, photo 150px tall, no arrow), then only the first news card (IREC 2025), 20px below,
+then "All news". The other two news cards are desktop-only (from md).
 
 **Projects:** exactly three cards, Cavour, VES and Efesto, with the board 21 data from
 `design/specs-from-old-site.md`, each on its texture, 618px tall, with a `.glass-info` box
@@ -294,9 +315,34 @@ Phones (board 24): the cards sit side by side in a horizontal swipe row (`swipe-
 pager dots below (the current one an 18px pill). The row bleeds to the screen edges. The
 card scales down: 14px insets, a 24px name, 11px description, 8px / 10px spec labels and
 values. The rocket keeps the nose-to-mid-body framing, its nose about 20px below the card top.
+The row clips its vertical overflow (the hanging canvases), so it ends below the cards' whole
+shadow (56px), and the dots pull back up to sit 20px under the cards: the clip never cuts the
+shadow into a line (issue #50, `swipe-row.tsx`).
 Phone copy is shorter (`phone` text in `projects.tsx`): VES "130 mm, all-SRAD systems. Mark II
 won Design & Build at IREC 2025.", years "24–25", Cavour motor "Solid L", VES "MARKS" "Mk I–II",
 Efesto fuel "Ethanol".
+
+**/projects** (boards 22 and 22m, `app/projects/page.tsx`, `components/projects/`): the header
+figures, then one `.glass-info` card per project: texture panel, facts, then the launch log
+(Efesto: work lines). Every fact comes from `lib/projects.ts`. A project with its own page
+has a clickable card: the name is the link, and its `::after` covers the card, so the whole
+card is the target. The card takes `.glass-linked`, and keyboard focus shows an accent outline
+4px outside it. A project with no page has no link.
+
+**Cavour page** (`/projects/cavour`, boards 23 and 23m, `components/cavour/`): hero, story,
+versions, launch history, gallery, next project.
+- The hero shows a still of the parked rocket on the Cavour texture (Stack above), not 3D.
+- The launch history reads its flights from `lib/projects.ts` (`cavourLaunches`), the same
+  record /projects uses. `components/cavour/data.ts` adds only the page's own copy (title,
+  place, configuration, summary, two more numbers), keyed by launch date (issue #72).
+- Gallery (boards 23, 23m and 23L, `components/gallery/gallery.tsx`): a carousel with the
+  current photo centred (760 x 480, phones 300 x 220) and its neighbours smaller at 35%
+  opacity, clipped by the page edge. It wraps, never autoplays and does not move while idle.
+  Arrows, swipe, the arrow keys or a tap on a neighbour step it; dots below, the current one
+  an accent pill. The open button or a tap on the photo opens the lightbox: a full-screen
+  `ground` dialog with the photo contained, "n / total" top left, close top right, prev and
+  next beside the photo and a one-line caption. Both share one index. Until real photos
+  exist, the slots are glass placeholders.
 
 **Inside the team:** four figures, then four `.glass-card` link cards. Phones (board 24):
 figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
@@ -342,7 +388,7 @@ stacked.
 1. Colours come from the PRT tokens, or are a commented exception from the list above.
 2. Fonts are Archivo or Geist Mono, in the type patterns above.
 3. Width, padding, radii and glass surfaces match the layout rules.
-4. Hover uses the 300ms ease-out pattern (the project rocket rise is 450ms); links use
+4. Hover uses the 300ms ease-out pattern, with no rise on a project card; links use
    `RocketArrow`.
 5. The hero still follows ADR 0004: once, no pinning, no replay, no shake, no PNG.
 6. Sections below the hero paint no background of their own; the page sky is the repeating
@@ -359,7 +405,8 @@ stacked.
 - **Footer projects.** The landing Projects section shows three projects (board 21), but the
   footer's Projects column still lists VES Mark II separately, as board 21's footer does.
 - **Hover turn.** `handoff-hero-rocket.md` §8 describes a card hover where the rocket turns its
-  nose toward the viewer. Board 21 replaced it with a straight rise; the handoff is stale there.
+  nose toward the viewer, and board 21 a straight rise. Neither is built: the card rocket stays
+  where it rests (Huey, 2026-10-06, issue #73). The handoff and the board are stale there.
 - **Focus styles.** Landing links and pills have no `focus-visible` style. Only
   `components/ui/` primitives do (`components/ui/button.tsx`).
 - **Unused keyframes.** `rocket-hover`, `rocket-fly-in` and `shoot` in `tailwind.config.ts`
@@ -371,5 +418,6 @@ stacked.
   292px on phones) until the two boards agree.
 - **Between phone and desktop.** Boards 21 and 24 cover 1440px and 390px. From 768px to
   1023px the page uses the desktop layout with the menu in place of the link row.
-- **Subroutes.** `/projects`, `/projects/[slug]`, `/about/*`, `/outreach`, `/partners`,
-  `/apply` and the news page are still being designed (HANDOFF "Todo").
+- **Subroutes.** `/projects` and `/projects/cavour` are built (Page rules above). The VES and
+  Efesto pages, `/about/*`, `/outreach`, `/partners`, `/apply` and the news page are still
+  being designed (HANDOFF "Todo").
