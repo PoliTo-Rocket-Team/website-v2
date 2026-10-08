@@ -176,6 +176,12 @@ Rules:
 - Every WebGL canvas starts hidden with `opacity-0` on its wrapper and is revealed by
   `RevealOnFirstFrame` after the second frame. This stops the white flash
   (`reveal-on-first-frame.tsx`, `handoff-hero-rocket.md` §9).
+- Back on the home page, the hero has no animation: no fly-in, no crossfade, no flame, even
+  when the page was left mid-flight or in the opening hold (issue #111). It shows the
+  rocket's last drawn frame at once, copied from the live canvas as the page hid
+  (`last-frame.ts`) and drawn at rest, plume off. Once the new canvas has drawn, it takes
+  the frame's place in one paint, with no transition: both show the parked rocket. A page
+  that never drew the rocket holds no frame, so this is no poster and ADR 0004 holds.
 
 ## Motion
 
@@ -185,6 +191,7 @@ Rules:
 | `word-up`, `slogan-down` | 0.7s `cubic-bezier(0.22,1,0.36,1)` | hero type in |
 | `hero-fade` | 0.9s ease-out | hero copy once settled |
 | `rocket-drive-in`, `hero-separate` | 7s linear, easing baked into stops | hero entrance |
+| Hero canvas fade-in | 200ms ease-out, `motion-safe:` only | a hero canvas that replaces a lost one (`hero-rocket-3d.tsx`) |
 | `marquee` | 40s linear infinite | partners strip |
 | `twinkle` | 4s ease-in-out infinite | stars |
 | `shooting-star` | 20s linear infinite | footer |

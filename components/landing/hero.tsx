@@ -107,13 +107,20 @@ export function Hero() {
     }
   }, []);
 
-  // Showing the page again restarts its CSS animations, so once the entrance
-  // has begun, every new showing jumps to its end (decision 0004: once per
-  // page load). Before the first paint, so no frame of a replay shows. A
-  // page hidden during the opening hold has shown nothing yet and starts it
-  // over; the first mount (and Strict Mode's re-run of it) is in "enter" too.
+  // Showing the page again restarts its CSS animations, so every new showing
+  // jumps to the end of the entrance (decision 0004: once per page load).
+  // That holds even when the page was left in the opening hold: a return
+  // has no fly-in (Huey's ruling on issue #111). Before the first paint, so
+  // no frame of a replay shows. A showing counts as a return only once the
+  // page has painted, so the first mount and Strict Mode's re-run of it,
+  // which runs before any paint, still play the entrance.
+  const painted = useRef(false);
   useLayoutEffect(() => {
-    setPhase((p) => (p === "enter" ? p : "rest"));
+    if (painted.current) setPhase("rest");
+    const frame = requestAnimationFrame(() => {
+      painted.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   // Keep the fit vars fresh on resize (initial values come from the inline

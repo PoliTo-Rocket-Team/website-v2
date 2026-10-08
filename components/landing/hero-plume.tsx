@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, type Ref } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -301,13 +301,22 @@ export type Burn = "idle" | "full" | "out";
 /** Ease in and out (smoothstep) of a linear 0..1 fade. */
 const eased = (p: number) => p * p * (3 - 2 * p);
 
+/**
+ * Puts the plume out at once, with no fade, for the one frame the hero copies
+ * as the page hides (last-frame.ts, issue #111): a return shows the rocket at
+ * rest, and at rest the plume is off. The canvas is dropped right after, so
+ * nobody sees the cut.
+ */
+export type PlumeHandle = { putOut(): void };
+
 type Props = {
   burn: Burn;
   /** Called whenever the plume becomes gone (faded out) or comes back. */
   onGoneChange?: (gone: boolean) => void;
+  ref?: Ref<PlumeHandle>;
 };
 
-export default function Plume({ burn, onGoneChange }: Props) {
+export default function Plume({ burn, onGoneChange, ref }: Props) {
   const rootRef = useRef<THREE.Group>(null!);
   const coreRef = useRef<THREE.Mesh>(null!);
   const glowRef = useRef<THREE.Group>(null!);
@@ -334,6 +343,18 @@ export default function Plume({ burn, onGoneChange }: Props) {
     [],
   );
   useEffect(() => () => coreMaterial.dispose(), [coreMaterial]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      putOut() {
+        progress.current = 0;
+        fade.current = 0;
+        if (rootRef.current) rootRef.current.visible = false;
+      },
+    }),
+    [],
+  );
 
   useFrame((state, delta) => {
     // Fade: out once parked, back in if the engine ever lights again.

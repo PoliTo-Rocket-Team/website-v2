@@ -1,13 +1,23 @@
 "use client";
 
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  Suspense,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
+import { Canvas, useFrame, useThree, type RootState } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import * as THREE from "three";
-import Plume, { type Burn } from "./hero-plume";
+import Plume, { type Burn, type PlumeHandle } from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
+import { LastFrame, type AtRest } from "./last-frame";
 import { SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
 import { holdCardSetup } from "./scene-schedule";
@@ -58,12 +68,15 @@ const DOM_READ_EVERY = 4;
 function Rocket({
   burn,
   onPlumeGoneChange,
+  ref,
 }: {
   burn: Burn;
   onPlumeGoneChange: (gone: boolean) => void;
+  ref?: Ref<AtRest>;
 }) {
   const group = useRef<THREE.Group>(null!);
   const earth = useRef<THREE.DirectionalLight>(null!);
+  const plume = useRef<PlumeHandle>(null);
   const canvas = useThree((s) => s.gl.domElement);
   const stage = useRef<HTMLElement | null>(null);
   const frame = useRef(0);
@@ -79,6 +92,22 @@ function Rocket({
       uWearAmount: { value: 1 },
     }),
     [],
+  );
+
+  // The held frame of a return shows the rocket at rest whenever the page was
+  // left (issue #111): plume off and belly light at its parked trace, as
+  // hero.tsx shows the stage parked. The light keeps the direction it last
+  // read; at the parked trace that is not visible.
+  useImperativeHandle(
+    ref,
+    () => ({
+      putAtRest() {
+        plume.current?.putOut();
+        if (earth.current) earth.current.intensity = EARTH_PARKED;
+        weather.uBelly.value = BELLY_PARKED;
+      },
+    }),
+    [weather],
   );
 
   useFrame((state) => {
@@ -123,7 +152,7 @@ function Rocket({
       <directionalLight ref={earth} intensity={0} color="#ffffff" />
       <CavourBuilt weather={weather} length={LENGTH} />
       <group position={[-HALF, 0, 0]}>
-        <Plume burn={burn} onGoneChange={onPlumeGoneChange} />
+        <Plume ref={plume} burn={burn} onGoneChange={onPlumeGoneChange} />
       </group>
     </group>
   );
@@ -239,14 +268,15 @@ function driveParked(draw: (now: number) => void, still: () => void): () => void
 /**
  * Drives a `frameloop="never"` canvas at its draw rate, on one SceneClock for
  * every rate, so switching rate never restarts or jumps the bob or the plume.
+ * The clock outlives the canvas, so a new canvas carries on the bob where the
+ * last one stopped and matches its held frame (issue #111).
  * A hidden tab gets no animation frames, so it draws nothing there either.
  */
-function FrameDriver({ rate }: { rate: DrawRate }) {
+function FrameDriver({ rate, clock }: { rate: DrawRate; clock: SceneClock }) {
   const advance = useThree((s) => s.advance);
   const width = useThree((s) => s.size.width);
   const height = useThree((s) => s.size.height);
   const dpr = useThree((s) => s.viewport.dpr);
-  const clock = useMemo(() => new SceneClock(), []);
 
   // A hidden tab gets no animation frames: the time it stays hidden does not
   // count.
@@ -301,19 +331,38 @@ export type RocketStatus = "ready" | "unavailable";
 type Stage =
   | { kind: "hidden" }
   | { kind: "unavailable" }
-  | { kind: "warming" | "ready"; canvas: number };
+  | { kind: "warming" | "ready"; canvas: number; reveal: Reveal };
+
+/**
+ * How a new canvas comes into view (issue #111).
+ *  - "at-once":         RevealOnFirstFrame shows it as it draws: the first
+ *                       load, or a showing with no frame held
+ *  - "fade":            it replaces a lost canvas after the rocket has drawn,
+ *                       so it fades in once drawn, never a pop
+ *  - "over-last-frame": a return with the rocket's last frame held: the frame
+ *                       shows at once, and the canvas takes its place in one
+ *                       paint once drawn, with no transition. Both show the
+ *                       parked rocket, plume off, so the swap is not seen.
+ */
+type Reveal = "at-once" | "fade" | "over-last-frame";
+
+/** The fade in of a canvas that replaces a lost one. */
+const FADE_IN = "motion-safe:transition-opacity motion-safe:duration-200 motion-safe:ease-out";
 
 type StageEvent =
   /** The page is shown (first load, or shown again): mount a new canvas. */
-  | { type: "shown"; canvas: number }
+  | { type: "shown"; canvas: number; reveal: Reveal }
   /** The page is shown, and this browser cannot draw WebGL. */
   | { type: "unsupported" }
   /** Next hid the page (cacheComponents): drop the canvas. */
   | { type: "hidden" }
   /** The canvas has compiled and drawn its scene. */
   | { type: "warm"; canvas: number }
-  /** The canvas's context is lost: drop it and mount `next` in its place. */
-  | { type: "lost"; canvas: number; next: number }
+  /**
+   * The canvas's context is lost: drop it and mount `next` in its place. A
+   * lost context draws nothing, so no frame is held for it.
+   */
+  | { type: "lost"; canvas: number; next: number; reveal: Exclude<Reveal, "over-last-frame"> }
   /** The scene failed to load: no rocket for this page load. */
   | { type: "failed"; canvas: number };
 
@@ -324,12 +373,14 @@ const HIDDEN: Stage = { kind: "hidden" };
 function step(stage: Stage, e: StageEvent): Stage {
   if (stage.kind === "unavailable") return stage;
   if (e.type === "hidden") return HIDDEN;
-  if (e.type === "shown") return stage.kind === "hidden" ? { kind: "warming", canvas: e.canvas } : stage;
+  if (e.type === "shown") {
+    return stage.kind === "hidden" ? { kind: "warming", canvas: e.canvas, reveal: e.reveal } : stage;
+  }
   if (e.type === "unsupported") return stage.kind === "hidden" ? { kind: "unavailable" } : stage;
   if (stage.kind === "hidden" || stage.canvas !== e.canvas) return stage;
-  if (e.type === "lost") return { kind: "warming", canvas: e.next };
+  if (e.type === "lost") return { kind: "warming", canvas: e.next, reveal: e.reveal };
   if (e.type === "failed") return { kind: "unavailable" };
-  return stage.kind === "warming" ? { kind: "ready", canvas: e.canvas } : stage;
+  return stage.kind === "warming" ? { ...stage, kind: "ready" } : stage;
 }
 
 type Props = {
@@ -350,10 +401,18 @@ type Props = {
  * Next keeps the home page mounted but hidden when you leave it
  * (cacheComponents), and R3F loses the hidden canvas's WebGL context on
  * purpose; a lost canvas paints white or blank. So hiding the page drops the
- * canvas, and every showing mounts a new one, as does a lost context. The
- * hero has no poster (decision 0004), so a new canvas opens straight into the
- * scene hero.tsx names, which on a return is the settled one, and stays
- * invisible until it has drawn.
+ * canvas, and every showing mounts a new one, as does a lost context. A new
+ * canvas opens straight into the scene hero.tsx names, which on a return is
+ * the settled one, and stays invisible until it has drawn.
+ *
+ * A new context must upload and compile the scene before it draws, so a
+ * return would show no rocket for a moment, then a pop (issue #111). As the
+ * page hides, the live canvas draws the rocket at rest once more and that
+ * frame is copied (LastFrame), so a page left mid-entrance holds no plume; on
+ * a return that copy shows at once and the new canvas takes its place, with
+ * no transition, once drawn.
+ * The copy is the rocket's own frame, not a poster or a static asset, so
+ * decision 0004 holds: a page that never drew the rocket shows none.
  */
 export default function HeroRocket3D({ phase, onStatus }: Props) {
   const [stage, setStage] = useState<Stage>(HIDDEN);
@@ -361,6 +420,14 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   // can tell at once whether its canvas is still the one shown.
   const stageNow = useRef(stage);
   const canvasIds = useRef(0);
+  // The live canvas's R3F state, so the hide can copy its last frame.
+  const three = useRef<RootState | null>(null);
+  const rocket = useRef<AtRest>(null);
+  const lastFrame = useMemo(() => new LastFrame(), []);
+  const clock = useMemo(() => new SceneClock(), []);
+  // Whether any canvas of this page has drawn the scene: until one has, a
+  // canvas replacing a lost one shows as it draws, like the first load's.
+  const drawnBefore = useRef(false);
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
   /** Applies one event; true when it changed the stage. */
@@ -373,6 +440,13 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   };
   const report = (e: StageEvent, status: RocketStatus) => {
     if (send(e)) onStatusRef.current?.(status);
+  };
+  const warm = (canvas: number) => {
+    if (!send({ type: "warm", canvas })) return;
+    // The new canvas draws newer frames than the held one.
+    drawnBefore.current = true;
+    lastFrame.drop();
+    onStatusRef.current?.("ready");
   };
 
   const [visible, setVisible] = useState(false);
@@ -405,10 +479,19 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
     // No static fallback by decision 0004: if WebGL is unavailable the hero
     // is just the type; nothing renders here.
     if (stageNow.current.kind === "hidden") {
-      if (webglSupported()) send({ type: "shown", canvas: ++canvasIds.current });
-      else report({ type: "unsupported" }, "unavailable");
+      if (webglSupported()) {
+        const reveal = lastFrame.isHeld ? "over-last-frame" : "at-once";
+        send({ type: "shown", canvas: ++canvasIds.current, reveal });
+      } else report({ type: "unsupported" }, "unavailable");
     }
     return () => {
+      // React runs this before the canvas's own cleanup, so its context is
+      // still live here. A canvas still warming has drawn nothing newer, so
+      // a frame held from before stays held.
+      const s = three.current;
+      const r = rocket.current;
+      if (stageNow.current.kind === "ready" && s && r) lastFrame.capture(s.gl, s.scene, s.camera, r);
+      clock.pause();
       send({ type: "hidden" });
     };
   }, []);
@@ -424,15 +507,30 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   }, []);
 
   const canvas = live ? stage.canvas : null;
+  const reveal = live ? stage.reveal : null;
+  // The held frame shows from the first paint of a return until the new
+  // canvas has drawn. Then, in the same paint, the frame goes and the canvas
+  // shows: a return has no animation (Huey's ruling on issue #111).
+  const frameShown = stage.kind === "warming" && reveal === "over-last-frame";
+  const canvasShow =
+    reveal === "fade"
+      ? `${FADE_IN} ${ready ? "opacity-100" : "opacity-0"}`
+      : reveal === "over-last-frame" && !ready
+        ? "opacity-0"
+        : "";
 
   return (
-    // The canvas starts invisible and RevealOnFirstFrame shows it once it has
-    // actually drawn; see reveal-on-first-frame.tsx for why.
-    <div ref={wrapRef} className="relative h-full w-full [&_canvas]:opacity-0">
+    <div ref={wrapRef} className="relative h-full w-full">
+      <canvas
+        ref={lastFrame.attach}
+        aria-hidden
+        className={`absolute inset-0 h-full w-full ${frameShown ? "opacity-100" : "opacity-0"}`}
+      />
       {canvas !== null && (
-        <div className="absolute inset-0">
+        // The canvas starts invisible and RevealOnFirstFrame shows it once it
+        // has actually drawn; see reveal-on-first-frame.tsx for why.
+        <div key={canvas} className={`absolute inset-0 [&_canvas]:opacity-0 ${canvasShow}`}>
           <Canvas
-            key={canvas}
             // R3F never draws on its own: FrameDriver below draws at the rate
             // drawRate picks.
             frameloop="never"
@@ -443,6 +541,9 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
             // page position is never used.
             resize={{ offsetSize: true, scroll: false }}
             gl={{ alpha: true, antialias: true }}
+            onCreated={(state) => {
+              three.current = state;
+            }}
             // "soft" asks for PCFSoftShadowMap, which three now silently swaps
             // for PCFShadowMap and warns. Ask for the real one: same picture.
             shadows="percentage"
@@ -471,9 +572,16 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
             />
             <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
             <WatchContext
-              onLost={() => send({ type: "lost", canvas, next: ++canvasIds.current })}
+              onLost={() =>
+                send({
+                  type: "lost",
+                  canvas,
+                  next: ++canvasIds.current,
+                  reveal: drawnBefore.current ? "fade" : "at-once",
+                })
+              }
             />
-            <FrameDriver rate={rate} />
+            <FrameDriver rate={rate} clock={clock} />
             <RevealOnFirstFrame />
             <SceneErrorBoundary onError={() => report({ type: "failed", canvas }, "unavailable")}>
               {/* The environment, the rocket and the warm-up share one
@@ -484,8 +592,8 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
                   environmentIntensity={0.45}
                   environmentRotation={[-Math.PI / 2, 0, 0]}
                 />
-                <Rocket burn={BURN[phase]} onPlumeGoneChange={setPlumeGone} />
-                <WarmUp onWarm={() => report({ type: "warm", canvas }, "ready")} />
+                <Rocket ref={rocket} burn={BURN[phase]} onPlumeGoneChange={setPlumeGone} />
+                <WarmUp onWarm={() => warm(canvas)} />
               </Suspense>
             </SceneErrorBoundary>
           </Canvas>
