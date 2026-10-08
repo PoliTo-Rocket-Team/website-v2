@@ -47,8 +47,8 @@ export function ProjectPage({ slug }: { slug: PageSlug }) {
           ))}
           <NextProject project={next} teaser={teaserOf(next.slug)} />
         </main>
+        <LandingFooter inSky />
       </PageSky>
-      <LandingFooter />
     </div>
   );
 }

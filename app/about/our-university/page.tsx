@@ -26,8 +26,8 @@ export default function OurUniversityPage() {
           <Politecnico politecnico={university.politecnico} />
           <Support support={university.support} />
         </main>
+        <LandingFooter inSky />
       </PageSky>
-      <LandingFooter />
     </div>
   );
 }

@@ -50,9 +50,10 @@ export default function AlumniPage({ searchParams }: { searchParams: SearchParam
           <PageHeader {...alumni.header} stats={headerStats(alumni)} />
           <Founders founders={alumni.founders} />
           {/* The page stays static: the URL is read only inside this
-              boundary, whose fallback is the newest year, so a link with no
-              ?year= shows no change when the stream lands. */}
-          <Suspense fallback={<Years initial={yearSlug(years[0])} />}>
+              boundary, whose fallback is the year a link with no ?year=
+              opens on (the newest), so the stream lands with no
+              change: no jump in the year switch, the page height or the sky. */}
+          <Suspense fallback={<Years initial={yearSlug(selectedYear(years, undefined))} />}>
             <YearsFromUrl searchParams={searchParams} />
           </Suspense>
         </main>

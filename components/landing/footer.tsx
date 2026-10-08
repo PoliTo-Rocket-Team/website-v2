@@ -46,17 +46,27 @@ const columns = [
   },
 ];
 
-export function LandingFooter() {
+export function LandingFooter({ inSky = false }: {
+  /**
+   * The footer sits inside a PageSky, which already paints the streak tile
+   * and grain behind it; the footer then adds only its own stars and
+   * shooting star, so the sky runs on into it with no line.
+   */
+  inSky?: boolean;
+} = {}) {
   return (
     // pt-section: the footer is the last section, so its top pad is the
     // section rhythm's and the gap after the apply band matches the others.
-    <footer className="relative isolate overflow-hidden bg-ground pt-section">
+    <footer className={`relative isolate overflow-hidden pt-section ${inSky ? "" : "bg-ground"}`}>
       <div aria-hidden className="absolute inset-0 -z-10">
-        {/* Drawn down from the top edge, where the page sky above ends its
-            tiles, so a sky that meets the footer runs on into it with no
-            line (.page-sky-to-footer in app/globals.css). */}
-        <div className="page-sky-light" />
-        <div className="page-sky-grain" />
+        {/* On its own (after the apply band) the footer paints the page
+            sky's tile and grain itself, drawn down from its top edge. */}
+        {!inSky && (
+          <>
+            <div className="page-sky-light" />
+            <div className="page-sky-grain" />
+          </>
+        )}
         <Starfield count={52} seed={23} twinkleEvery={7} />
         <ShootingStar />
       </div>

@@ -27,8 +27,8 @@ export default function MissionVisionPage() {
           <Path path={mission.path} />
           <Beliefs beliefs={mission.beliefs} />
         </main>
+        <LandingFooter inSky />
       </PageSky>
-      <LandingFooter />
     </div>
   );
 }
