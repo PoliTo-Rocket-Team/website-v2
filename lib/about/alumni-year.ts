@@ -28,14 +28,10 @@ export function yearsNewestFirst(list: NonEmpty<AcademicYear>): NonEmpty<Academi
   return [first!, ...rest];
 }
 
-/**
- * The year a `?year=` value names. When it names none, the newest year with
- * real people in it, so the page never opens on placeholder names; the newest
- * year when every year is a placeholder.
- */
+/** The year a `?year=` value names, or the newest year when it names none (Huey). */
 export function selectedYear(list: NonEmpty<AcademicYear>, slug: string | undefined): AcademicYear {
   const years = yearsNewestFirst(list);
-  return years.find((y) => yearSlug(y) === slug) ?? years.find((y) => !y.placeholder) ?? years[0];
+  return years.find((y) => yearSlug(y) === slug) ?? years[0];
 }
 
 /** The small tag beside a name: a founder's, or a department head's or division lead's. */
