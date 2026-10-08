@@ -1,14 +1,23 @@
 "use client";
 
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import { Canvas, useFrame, useThree, type RootState } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import * as THREE from "three";
-import Plume, { type Burn } from "./hero-plume";
+import Plume, { type Burn, type PlumeHandle } from "./hero-plume";
 import CavourBuilt from "./rocket-cavour";
 import type { WeatherUniforms } from "./hero-weathering";
 import { RevealOnFirstFrame } from "./reveal-on-first-frame";
-import { LastFrame } from "./last-frame";
+import { LastFrame, type AtRest } from "./last-frame";
 import { SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
 import { holdCardSetup } from "./scene-schedule";
@@ -59,12 +68,15 @@ const DOM_READ_EVERY = 4;
 function Rocket({
   burn,
   onPlumeGoneChange,
+  ref,
 }: {
   burn: Burn;
   onPlumeGoneChange: (gone: boolean) => void;
+  ref?: Ref<AtRest>;
 }) {
   const group = useRef<THREE.Group>(null!);
   const earth = useRef<THREE.DirectionalLight>(null!);
+  const plume = useRef<PlumeHandle>(null);
   const canvas = useThree((s) => s.gl.domElement);
   const stage = useRef<HTMLElement | null>(null);
   const frame = useRef(0);
@@ -80,6 +92,22 @@ function Rocket({
       uWearAmount: { value: 1 },
     }),
     [],
+  );
+
+  // The held frame of a return shows the rocket at rest whenever the page was
+  // left (issue #111): plume off and belly light at its parked trace, as
+  // hero.tsx shows the stage parked. The light keeps the direction it last
+  // read; at the parked trace that is not visible.
+  useImperativeHandle(
+    ref,
+    () => ({
+      putAtRest() {
+        plume.current?.putOut();
+        if (earth.current) earth.current.intensity = EARTH_PARKED;
+        weather.uBelly.value = BELLY_PARKED;
+      },
+    }),
+    [weather],
   );
 
   useFrame((state) => {
@@ -124,7 +152,7 @@ function Rocket({
       <directionalLight ref={earth} intensity={0} color="#ffffff" />
       <CavourBuilt weather={weather} length={LENGTH} />
       <group position={[-HALF, 0, 0]}>
-        <Plume burn={burn} onGoneChange={onPlumeGoneChange} />
+        <Plume ref={plume} burn={burn} onGoneChange={onPlumeGoneChange} />
       </group>
     </group>
   );
@@ -382,8 +410,10 @@ type Props = {
  *
  * A new context must upload and compile the scene before it draws, so a
  * return would show no rocket for a moment, then a pop (issue #111). As the
- * page hides, the live canvas's last frame is copied (LastFrame); on a return
- * that copy shows at once and the new canvas fades in over it once drawn.
+ * page hides, the live canvas draws the rocket at rest once more and that
+ * frame is copied (LastFrame), so a page left mid-entrance holds no plume; on
+ * a return that copy shows at once and the new canvas fades in over it once
+ * drawn.
  * The copy is the rocket's own frame, not a poster or a static asset, so
  * decision 0004 holds: a page that never drew the rocket shows none.
  */
@@ -395,6 +425,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   const canvasIds = useRef(0);
   // The live canvas's R3F state, so the hide can copy its last frame.
   const three = useRef<RootState | null>(null);
+  const rocket = useRef<AtRest>(null);
   const lastFrame = useMemo(() => new LastFrame(), []);
   const clock = useMemo(() => new SceneClock(), []);
   // Whether any canvas of this page has drawn the scene: until one has,
@@ -461,7 +492,8 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
       // still live here. A canvas still warming has drawn nothing newer, so
       // a frame held from before stays held.
       const s = three.current;
-      if (stageNow.current.kind === "ready" && s) lastFrame.capture(s.gl, s.scene, s.camera);
+      const r = rocket.current;
+      if (stageNow.current.kind === "ready" && s && r) lastFrame.capture(s.gl, s.scene, s.camera, r);
       clock.pause();
       send({ type: "hidden" });
     };
@@ -560,7 +592,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
                   environmentIntensity={0.45}
                   environmentRotation={[-Math.PI / 2, 0, 0]}
                 />
-                <Rocket burn={BURN[phase]} onPlumeGoneChange={setPlumeGone} />
+                <Rocket ref={rocket} burn={BURN[phase]} onPlumeGoneChange={setPlumeGone} />
                 <WarmUp onWarm={() => warm(canvas)} />
               </Suspense>
             </SceneErrorBoundary>

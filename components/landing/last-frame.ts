@@ -1,5 +1,8 @@
 import type { Camera, Scene, WebGLRenderer } from "three";
 
+/** Poses the live scene as the parked rocket, plume off, for one copy. */
+export type AtRest = { putAtRest(): void };
+
 /**
  * The hero rocket's last drawn frame, kept on a plain 2D canvas while the
  * home page is hidden (issue #111).
@@ -41,17 +44,21 @@ export class LastFrame {
   }
 
   /**
-   * Draws the live scene once more and copies it. The copy runs in the same
-   * task as the draw, while the drawing buffer still holds it, so the canvas
-   * needs no `preserveDrawingBuffer`. A lost context holds nothing.
+   * Poses the live scene at rest, draws it once more and copies it, so a
+   * page left mid-entrance still holds the parked rocket with its plume off.
+   * The canvas is dropped right after, so nobody sees the pose change. The
+   * copy runs in the same task as the draw, while the drawing buffer still
+   * holds it, so the canvas needs no `preserveDrawingBuffer`. A lost context
+   * holds nothing.
    */
-  capture(gl: WebGLRenderer, scene: Scene, camera: Camera): void {
+  capture(gl: WebGLRenderer, scene: Scene, camera: Camera, rocket: AtRest): void {
     this.held = false;
     const out = this.target;
     const src = gl.domElement;
     if (!out || gl.getContext().isContextLost() || src.width === 0 || src.height === 0) return;
     const ctx = out.getContext("2d");
     if (!ctx) return;
+    rocket.putAtRest();
     gl.render(scene, camera);
     // Setting the size also clears the old frame.
     out.width = src.width;
