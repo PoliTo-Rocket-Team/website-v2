@@ -80,14 +80,19 @@ export function LandingFooter({ inSky = false }: {
             {/* Brand. The block is as wide as the tagline's first line, and the
                 logo fills it, so the logo's left edge and width follow the
                 tagline whatever the font renders at. */}
-            <div className="w-max">
+            <div className="w-max max-w-full">
               <Link href="/" className="block" aria-label="Polito Rocket Team">
+                {/* w-0 + min-w-full: the logo adds nothing to the block's
+                    max-content width, then fills it. With a plain w-full,
+                    Safari counts the SVG's own 943px in the block's width, so
+                    on a phone the logo grew past the screen and pushed the
+                    right-hand link columns off it. */}
                 <Image
                   src="/brand/prt-logo-white.svg"
                   alt=""
                   width={943}
                   height={137}
-                  className="h-auto w-full"
+                  className="h-auto w-0 min-w-full"
                 />
               </Link>
               <p className="mt-[21px] text-[14px] leading-[22px] text-prt-muted md:text-[15px] md:leading-6">
