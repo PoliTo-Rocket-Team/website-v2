@@ -9,7 +9,8 @@ const SKY_BANDS = 8;
 // The page sky (board 21): a repeating streak tile, a grain layer and stars,
 // with no shooting star. It sits behind its children, which paint no
 // background of their own. The homepage runs it from below the hero to the
-// apply band; /projects runs it behind the whole page above the footer.
+// apply band; /projects and the project pages run it behind the whole page,
+// footer included.
 export function PageSky({
   children,
   className = "",
@@ -28,11 +29,13 @@ export function PageSky({
           the faded tile lets the backdrop through; over transparency the
           grain would read as a grey band. */}
       <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden bg-ground">
-        {/* Both layers are drawn up from the sky's bottom edge, so the
-            footer's, drawn down from its top edge, carry straight on below
-            it with no line (.page-sky-to-footer in app/globals.css). */}
-        <div className={`page-sky-light page-sky-to-footer ${fadeTop ? "page-sky-fade" : ""}`} />
-        <div className="page-sky-grain page-sky-to-footer" />
+                {/* Both layers are drawn down from the sky's top edge, so every page
+            shows the same texture at the same height under the navbar,
+            whatever the page's length. A page whose sky runs into the footer
+            puts the footer inside the sky (LandingFooter inSky), so the tile
+            carries on into it with no line. */}
+        <div className={`page-sky-light ${fadeTop ? "page-sky-fade" : ""}`} />
+        <div className="page-sky-grain" />
         {/* The footer's starfield, without its shooting star, laid in
             fixed bands of 1800px (the streak tile's height) from the top.
             Stars sit in percent of their band, never of the whole page, so

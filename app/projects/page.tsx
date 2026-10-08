@@ -64,8 +64,8 @@ export default function ProjectsPage() {
             </div>
           </div>
         </main>
+        <LandingFooter inSky />
       </PageSky>
-      <LandingFooter />
     </div>
   );
 }
