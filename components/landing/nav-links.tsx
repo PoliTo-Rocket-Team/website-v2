@@ -19,7 +19,7 @@ export function NavLinks({ links }: { links: NavLink[] }) {
         const className = `pointer-events-auto text-[17px] transition-colors hover:text-accent ${
           current ? "font-medium text-prt-text" : anyCurrent ? "text-text-2" : "text-prt-text"
         }`;
-        if ("pages" in l) return <NavHoverMenu key={l.href} section={l} className={className} />;
+        if ("pages" in l) return <NavHoverMenu key={l.label} section={l} className={className} />;
         return (
           <Link key={l.href} href={l.href} aria-current={current ? "page" : undefined} className={className}>
             {l.label}

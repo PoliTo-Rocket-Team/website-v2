@@ -5,12 +5,13 @@ import { RocketArrow } from "./rocket-arrow";
 // Board 08 / 21 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on
 // hover and while nobody can see it (marquee.tsx).
 // Full-color logos (grayscale was explicitly rejected). Edge fade masks on site only.
-// Static list for now; partners will come from the database, with real URLs.
-// Every logo is a link; "#" stands in until the URLs exist.
+// Static list for now; partners will come from the database. A logo with a
+// site links to it in a new tab (URLs from the live partners page); one with
+// none is a plain logo, never a dead link.
 // `tall` marks a near-square mark that board 21 draws taller than the wordmarks.
 // `width` and `height` are the file's own pixels: they give the logo its true
 // shape before it loads, and its drawn width for `sizes`.
-type Logo = { href: string } & (
+type Logo = { href?: string } & (
   | { src: string; width: number; height: number; alt: string; tall?: boolean }
   | { text: string }
 );
@@ -25,44 +26,38 @@ function logoSizes(width: number, height: number, tall?: boolean) {
 }
 
 const logos: Logo[] = [
-  { src: "/design/sponsors/color-altium.png", width: 743, height: 163, alt: "Altium", href: "#" },
-  { src: "/design/sponsors/color-ansys.png", width: 207, height: 66, alt: "Ansys", href: "#" },
-  { text: "BETA CAE Systems", href: "#" }, // SVG is UTF-16; styled text until it is converted
-  { src: "/design/sponsors/color-camerana.png", width: 1600, height: 508, alt: "Camerana", href: "#" },
-  { src: "/design/sponsors/color-esss.png", width: 768, height: 260, alt: "eSSS", href: "#" },
-  { src: "/design/sponsors/color-evomisure.png", width: 742, height: 137, alt: "Evomisure", href: "#" },
-  { src: "/design/sponsors/color-explorer.png", width: 310, height: 78, alt: "Explorer", href: "#" },
-  { src: "/design/sponsors/color-magicar.png", width: 857, height: 324, alt: "Magicar", href: "#" },
-  { src: "/design/sponsors/color-mul2.png", width: 173, height: 100, alt: "Mul2", href: "#" },
-  { src: "/design/sponsors/color-siemens.png", width: 794, height: 127, alt: "Siemens", href: "#" },
-  { src: "/design/sponsors/color-sophia.png", width: 514, height: 463, alt: "Sophia", href: "#", tall: true },
+  { src: "/design/sponsors/color-altium.png", width: 743, height: 163, alt: "Altium", href: "https://www.altium.com/" },
+  { src: "/design/sponsors/color-ansys.png", width: 207, height: 66, alt: "Ansys", href: "https://www.ansys.com/" },
+  { text: "BETA CAE Systems", href: "https://www.beta-cae.com/" }, // SVG is UTF-16; styled text until it is converted
+  { src: "/design/sponsors/color-camerana.png", width: 1600, height: 508, alt: "Camerana", href: "https://www.scuolacamerana.it/" },
+  { src: "/design/sponsors/color-esss.png", width: 768, height: 260, alt: "eSSS", href: "https://www.esss.com/" },
+  { src: "/design/sponsors/color-evomisure.png", width: 742, height: 137, alt: "Evomisure", href: "https://www.evomisure.it/" },
+  { src: "/design/sponsors/color-explorer.png", width: 310, height: 78, alt: "Explorer", href: "https://www.explorercases.com/" },
+  { src: "/design/sponsors/color-magicar.png", width: 857, height: 324, alt: "Magicar" },
+  { src: "/design/sponsors/color-mul2.png", width: 173, height: 100, alt: "Mul2", href: "http://www.mul2.polito.it/" },
+  { src: "/design/sponsors/color-siemens.png", width: 794, height: 127, alt: "Siemens", href: "https://www.siemens.com/it/it.html" },
+  { src: "/design/sponsors/color-sophia.png", width: 514, height: 463, alt: "Sophia", href: "https://www.sophiahightech.com/", tall: true },
 ];
 
 function LogoItem({ logo }: { logo: Logo }) {
-  // Real partner sites open in a new tab; the "#" placeholder stays put.
-  const external = logo.href !== "#";
+  const className = "mx-[18px] flex shrink-0 items-center opacity-80 md:mx-10 transition-opacity duration-300 hover:opacity-100";
+  const mark =
+    "text" in logo ? (
+      <span className="whitespace-nowrap font-mono text-[11px] font-semibold md:text-lg tracking-wide text-text-2">{logo.text}</span>
+    ) : (
+      <Image
+        src={logo.src}
+        alt={logo.alt}
+        width={logo.width}
+        height={logo.height}
+        sizes={logoSizes(logo.width, logo.height, logo.tall)}
+        className={`w-auto object-contain ${logo.tall ? "h-[38px] md:h-[76px]" : "h-[25px] md:h-[50px]"}`}
+      />
+    );
+  if (logo.href === undefined) return <span className={className}>{mark}</span>;
   return (
-    <a
-      href={logo.href}
-      target={external ? "_blank" : undefined}
-      rel={external ? "noopener noreferrer" : undefined}
-      aria-label={"text" in logo ? logo.text : logo.alt}
-      className="mx-[18px] flex shrink-0 items-center opacity-80 md:mx-10 transition-opacity duration-300 hover:opacity-100"
-    >
-      {"text" in logo ? (
-        <span className="whitespace-nowrap font-mono text-[11px] font-semibold md:text-lg tracking-wide text-text-2">
-          {logo.text}
-        </span>
-      ) : (
-        <Image
-          src={logo.src}
-          alt={logo.alt}
-          width={logo.width}
-          height={logo.height}
-          sizes={logoSizes(logo.width, logo.height, logo.tall)}
-          className={`w-auto object-contain ${logo.tall ? "h-[38px] md:h-[76px]" : "h-[25px] md:h-[50px]"}`}
-        />
-      )}
+    <a href={logo.href} target="_blank" rel="noopener noreferrer" aria-label={"text" in logo ? logo.text : logo.alt} className={className}>
+      {mark}
     </a>
   );
 }

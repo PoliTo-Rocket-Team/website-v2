@@ -21,9 +21,7 @@ import { NavMenu, type NavLink } from "./nav-menu";
 const links: NavLink[] = [
   { href: "/projects", label: "Projects" },
   {
-    href: "/about/the-team",
     label: "About",
-    // Only The Team is built; the footer links the other three already.
     pages: [
       { href: "/about/the-team", label: "The Team" },
       { href: "/about/alumni", label: "Alumni" },
