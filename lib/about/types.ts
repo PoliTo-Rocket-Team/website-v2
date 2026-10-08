@@ -100,13 +100,16 @@ export type CoreMembers = {
 
 export type HeaderStat = { value: string; label: Copy };
 
+/** An About page header's figures: always four. */
+export type HeaderStats = readonly [HeaderStat, HeaderStat, HeaderStat, HeaderStat];
+
 export type TeamPage = {
   description: string;
   header: {
     eyebrow: string;
     title: string;
     intro: string;
-    stats: readonly [HeaderStat, HeaderStat, HeaderStat, HeaderStat];
+    stats: HeaderStats;
   };
   orgChart: OrgChart;
   departments: Departments;
