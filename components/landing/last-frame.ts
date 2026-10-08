@@ -10,7 +10,7 @@ export type AtRest = { putAtRest(): void };
  * Next keeps the page mounted but hidden (cacheComponents), and every
  * showing needs a new WebGL context (issue #77), which must upload and
  * compile the scene before it can draw. The held frame fills that gap: it
- * shows at once on a return, and the new canvas fades in over it once drawn.
+ * shows at once on a return, and the new canvas takes its place once drawn.
  * It is a copy of the live scene taken as the page hides, never a stored
  * asset, so decision 0004's "no static fallback" still holds: no live canvas
  * ever drew, no frame is held.

@@ -335,22 +335,19 @@ type Stage =
 
 /**
  * How a new canvas comes into view (issue #111).
- *  - "at-once":         no canvas of this page has drawn yet (first load):
- *                       RevealOnFirstFrame shows it as it draws, as before
- *  - "fade":            a later canvas fades in once it has drawn, never a pop
- *  - "over-last-frame": a return with the rocket's last frame held: the
- *                       frame shows at once, the canvas fades in over it
+ *  - "at-once":         RevealOnFirstFrame shows it as it draws: the first
+ *                       load, or a showing with no frame held
+ *  - "fade":            it replaces a lost canvas after the rocket has drawn,
+ *                       so it fades in once drawn, never a pop
+ *  - "over-last-frame": a return with the rocket's last frame held: the frame
+ *                       shows at once, and the canvas takes its place in one
+ *                       paint once drawn, with no transition. Both show the
+ *                       parked rocket, plume off, so the swap is not seen.
  */
 type Reveal = "at-once" | "fade" | "over-last-frame";
 
-function revealFor(drawnBefore: boolean, frameHeld: boolean): Reveal {
-  if (!drawnBefore) return "at-once";
-  return frameHeld ? "over-last-frame" : "fade";
-}
-
-/** The crossfade from the held frame to the new canvas. */
+/** The fade in of a canvas that replaces a lost one. */
 const FADE_IN = "motion-safe:transition-opacity motion-safe:duration-200 motion-safe:ease-out";
-const FADE_OUT = "motion-safe:transition-opacity motion-safe:duration-200 motion-safe:ease-in";
 
 type StageEvent =
   /** The page is shown (first load, or shown again): mount a new canvas. */
@@ -412,8 +409,8 @@ type Props = {
  * return would show no rocket for a moment, then a pop (issue #111). As the
  * page hides, the live canvas draws the rocket at rest once more and that
  * frame is copied (LastFrame), so a page left mid-entrance holds no plume; on
- * a return that copy shows at once and the new canvas fades in over it once
- * drawn.
+ * a return that copy shows at once and the new canvas takes its place, with
+ * no transition, once drawn.
  * The copy is the rocket's own frame, not a poster or a static asset, so
  * decision 0004 holds: a page that never drew the rocket shows none.
  */
@@ -428,8 +425,8 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   const rocket = useRef<AtRest>(null);
   const lastFrame = useMemo(() => new LastFrame(), []);
   const clock = useMemo(() => new SceneClock(), []);
-  // Whether any canvas of this page has drawn the scene: until one has,
-  // a new canvas is the first load's and shows as it always did.
+  // Whether any canvas of this page has drawn the scene: until one has, a
+  // canvas replacing a lost one shows as it draws, like the first load's.
   const drawnBefore = useRef(false);
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
@@ -483,7 +480,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
     // is just the type; nothing renders here.
     if (stageNow.current.kind === "hidden") {
       if (webglSupported()) {
-        const reveal = revealFor(drawnBefore.current, lastFrame.isHeld);
+        const reveal = lastFrame.isHeld ? "over-last-frame" : "at-once";
         send({ type: "shown", canvas: ++canvasIds.current, reveal });
       } else report({ type: "unsupported" }, "unavailable");
     }
@@ -512,24 +509,27 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   const canvas = live ? stage.canvas : null;
   const reveal = live ? stage.reveal : null;
   // The held frame shows from the first paint of a return until the new
-  // canvas has drawn, then fades out under it. It appears at once: only its
-  // fade out has a transition.
+  // canvas has drawn. Then, in the same paint, the frame goes and the canvas
+  // shows: a return has no animation (Huey's ruling on issue #111).
   const frameShown = stage.kind === "warming" && reveal === "over-last-frame";
-  // A canvas after the first load's fades in once drawn, never a pop.
-  const canvasFade =
-    reveal === null || reveal === "at-once" ? "" : `${FADE_IN} ${ready ? "opacity-100" : "opacity-0"}`;
+  const canvasShow =
+    reveal === "fade"
+      ? `${FADE_IN} ${ready ? "opacity-100" : "opacity-0"}`
+      : reveal === "over-last-frame" && !ready
+        ? "opacity-0"
+        : "";
 
   return (
     <div ref={wrapRef} className="relative h-full w-full">
       <canvas
         ref={lastFrame.attach}
         aria-hidden
-        className={`absolute inset-0 h-full w-full ${frameShown ? "opacity-100" : `opacity-0 ${FADE_OUT}`}`}
+        className={`absolute inset-0 h-full w-full ${frameShown ? "opacity-100" : "opacity-0"}`}
       />
       {canvas !== null && (
         // The canvas starts invisible and RevealOnFirstFrame shows it once it
         // has actually drawn; see reveal-on-first-frame.tsx for why.
-        <div key={canvas} className={`absolute inset-0 [&_canvas]:opacity-0 ${canvasFade}`}>
+        <div key={canvas} className={`absolute inset-0 [&_canvas]:opacity-0 ${canvasShow}`}>
           <Canvas
             // R3F never draws on its own: FrameDriver below draws at the rate
             // drawRate picks.
