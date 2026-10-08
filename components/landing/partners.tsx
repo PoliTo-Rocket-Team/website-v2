@@ -1,69 +1,40 @@
-import Image from "next/image";
+import { PartnerLogo, type LogoHeights } from "@/components/partners/partner-logo";
+import { partners, type Partner } from "@/lib/partners";
 import { Marquee } from "./marquee";
 import { RocketArrow } from "./rocket-arrow";
 
 // Board 08 / 21 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on
 // hover and while nobody can see it (marquee.tsx).
-// Full-color logos (grayscale was explicitly rejected). Edge fade masks on site only.
-// Static list for now; partners will come from the database. A logo with a
-// site links to it in a new tab (URLs from the live partners page); one with
-// none is a plain logo, never a dead link.
-// `tall` marks a near-square mark that board 21 draws taller than the wordmarks.
-// `width` and `height` are the file's own pixels: they give the logo its true
-// shape before it loads, and its drawn width for `sizes`.
-type Logo = { href?: string } & (
-  | { src: string; width: number; height: number; alt: string; tall?: boolean }
-  | { text: string }
-);
+// Full-color logos (grayscale was explicitly rejected); a logo too dark for
+// the page is drawn white (`darkLogo`). Edge fade masks on site only.
+// The logos are every partner in lib/partners.ts, the record the Partners
+// page reads, in its order. A logo with a site links to it in a new tab; one
+// with none is a plain logo, never a dead link. A near-square mark is drawn
+// taller than the wordmarks, as board 21 draws Sophia.
 
 /** Drawn heights in px, below md and from md (the h-[…] classes below). */
-const LOGO_H = { regular: [25, 50], tall: [38, 76] } as const;
+const LOGO_H: LogoHeights = { wordmark: [25, 50], mark: [38, 76] };
 
-/** `sizes` for a logo drawn at a fixed height: its width at each height. */
-function logoSizes(width: number, height: number, tall?: boolean) {
-  const [phone, desktop] = LOGO_H[tall ? "tall" : "regular"].map((h) => Math.ceil((h * width) / height));
-  return `(min-width: 768px) ${desktop}px, ${phone}px`;
-}
-
-const logos: Logo[] = [
-  { src: "/design/sponsors/color-altium.png", width: 743, height: 163, alt: "Altium", href: "https://www.altium.com/" },
-  { src: "/design/sponsors/color-ansys.png", width: 207, height: 66, alt: "Ansys", href: "https://www.ansys.com/" },
-  { text: "BETA CAE Systems", href: "https://www.beta-cae.com/" }, // SVG is UTF-16; styled text until it is converted
-  { src: "/design/sponsors/color-camerana.png", width: 1600, height: 508, alt: "Camerana", href: "https://www.scuolacamerana.it/" },
-  { src: "/design/sponsors/color-esss.png", width: 768, height: 260, alt: "eSSS", href: "https://www.esss.com/" },
-  { src: "/design/sponsors/color-evomisure.png", width: 742, height: 137, alt: "Evomisure", href: "https://www.evomisure.it/" },
-  { src: "/design/sponsors/color-explorer.png", width: 310, height: 78, alt: "Explorer", href: "https://www.explorercases.com/" },
-  { src: "/design/sponsors/color-magicar.png", width: 857, height: 324, alt: "Magicar" },
-  { src: "/design/sponsors/color-mul2.png", width: 173, height: 100, alt: "Mul2", href: "http://www.mul2.polito.it/" },
-  { src: "/design/sponsors/color-siemens.png", width: 794, height: 127, alt: "Siemens", href: "https://www.siemens.com/it/it.html" },
-  { src: "/design/sponsors/color-sophia.png", width: 514, height: 463, alt: "Sophia", href: "https://www.sophiahightech.com/", tall: true },
-];
-
-function LogoItem({ logo }: { logo: Logo }) {
+function LogoItem({ partner }: { partner: Partner }) {
   const className = "mx-[18px] flex shrink-0 items-center opacity-80 md:mx-10 transition-opacity duration-300 hover:opacity-100";
-  const mark =
-    "text" in logo ? (
-      <span className="whitespace-nowrap font-mono text-[11px] font-semibold md:text-lg tracking-wide text-text-2">{logo.text}</span>
-    ) : (
-      <Image
-        src={logo.src}
-        alt={logo.alt}
-        width={logo.width}
-        height={logo.height}
-        sizes={logoSizes(logo.width, logo.height, logo.tall)}
-        className={`w-auto object-contain ${logo.tall ? "h-[38px] md:h-[76px]" : "h-[25px] md:h-[50px]"}`}
-      />
-    );
-  if (logo.href === undefined) return <span className={className}>{mark}</span>;
+  const mark = (
+    <PartnerLogo
+      logo={partner.logo}
+      alt={partner.name}
+      heights={LOGO_H}
+      className={partner.logo.kind === "mark" ? "h-[38px] md:h-[76px]" : "h-[25px] md:h-[50px]"}
+    />
+  );
+  if (partner.website === undefined) return <span className={className}>{mark}</span>;
   return (
-    <a href={logo.href} target="_blank" rel="noopener noreferrer" aria-label={"text" in logo ? logo.text : logo.alt} className={className}>
+    <a href={partner.website} target="_blank" rel="noopener noreferrer" aria-label={partner.name} className={className}>
       {mark}
     </a>
   );
 }
 
 export function Partners() {
-  const loop = [...logos, ...logos];
+  const loop = [...partners, ...partners];
   return (
     // No box and no fill: the page sky shows behind the logo strip. Board 24
     // below md: 20px sides, 56px top and bottom, 26px heading, then "Become a
@@ -86,8 +57,8 @@ export function Partners() {
       </div>
 
       <Marquee>
-        {loop.map((logo, i) => (
-          <LogoItem key={i} logo={logo} />
+        {loop.map((partner, i) => (
+          <LogoItem key={i} partner={partner} />
         ))}
       </Marquee>
     </section>
