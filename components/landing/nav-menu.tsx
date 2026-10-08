@@ -16,8 +16,11 @@ import {
 import { RocketArrow } from "./rocket-arrow";
 
 export type NavPage = { href: string; label: string };
-/** A navbar link with pages under it (About): a hover menu from lg, sub-links in the sidebar. */
-export type NavSection = NavPage & { pages: readonly NavPage[] };
+/**
+ * A navbar entry with pages under it (About). It has no page of its own: it
+ * opens a hover menu from lg and lists its pages in the sidebar.
+ */
+export type NavSection = { label: string; pages: readonly [NavPage, ...NavPage[]] };
 export type NavLink = NavPage | NavSection;
 
 /** A link is current on its own page and on every page under it. */
@@ -25,9 +28,9 @@ export function isCurrentLink(pathname: string | null, href: string): boolean {
   return pathname === href || (pathname?.startsWith(`${href}/`) ?? false);
 }
 
-/** A navbar link is current on its own page and on any of its section's pages (About on /about/alumni). */
+/** A link is current on its page and the pages under it; a section, on any of its pages (About on /about/alumni). */
 export function isCurrentNavLink(pathname: string | null, link: NavLink): boolean {
-  return isCurrentLink(pathname, link.href) || ("pages" in link && link.pages.some((p) => isCurrentLink(pathname, p.href)));
+  return "pages" in link ? link.pages.some((p) => isCurrentLink(pathname, p.href)) : isCurrentLink(pathname, link.href);
 }
 
 // Board 24b: below the width where the link row fits, the menu icon opens a
@@ -77,17 +80,24 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
               {links.map((l) => {
                 const current = isCurrentNavLink(pathname, l);
                 return (
-                  <li key={l.href} className="border-b border-white-10">
-                    <DialogClose asChild>
-                      <Link
-                        href={l.href}
-                        aria-current={current ? "page" : undefined}
-                        className={`group flex h-[66px] items-center justify-between text-[28px] font-bold tracking-[-0.02em] transition-colors hover:text-accent ${current ? "text-accent" : ""}`}
-                      >
+                  <li key={l.label} className="border-b border-white-10">
+                    {"pages" in l ? (
+                      // A section is a heading over its pages, not a link.
+                      <p className={`flex h-[66px] items-center text-[28px] font-bold tracking-[-0.02em] ${current ? "text-accent" : ""}`}>
                         {l.label}
-                        <RocketArrow className="text-[15px] opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
-                      </Link>
-                    </DialogClose>
+                      </p>
+                    ) : (
+                      <DialogClose asChild>
+                        <Link
+                          href={l.href}
+                          aria-current={current ? "page" : undefined}
+                          className={`group flex h-[66px] items-center justify-between text-[28px] font-bold tracking-[-0.02em] transition-colors hover:text-accent ${current ? "text-accent" : ""}`}
+                        >
+                          {l.label}
+                          <RocketArrow className="text-[15px] opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
+                        </Link>
+                      </DialogClose>
+                    )}
                     {"pages" in l && (
                       <ul className="-mt-1.5 pb-3 pl-5">
                         {l.pages.map((p) => {
