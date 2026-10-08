@@ -7,17 +7,17 @@ session cookie; server code reads the user id from that cookie, then turns the m
 ## The shape
 
 1. **Better Auth is built in one place.** `getAuth()` in [lib/auth.ts](../lib/auth.ts) configures
-   email + password (with required email verification), Google, a 10-minute session cookie cache
-   and a `customSession` plugin. The catch-all route
-   [app/api/auth/[...all]/route.ts](../app/api/auth/[...all]/route.ts) serves it. Client code uses
-   `authClient`, `signIn`, `signUp` and `useSession` from [lib/auth-client.ts](../lib/auth-client.ts);
-   it never calls `/api/auth` by hand.
+   Google as the only sign-in provider, a 10-minute session cookie cache and a `customSession`
+   plugin. The catch-all route [app/api/auth/[...all]/route.ts](../app/api/auth/[...all]/route.ts)
+   serves it. Client code uses `authClient`, `signIn` and `useSession` from
+   [lib/auth-client.ts](../lib/auth-client.ts); it never calls `/api/auth` by hand.
 
 2. **The edge gate only checks that a cookie exists.** [proxy.ts](../proxy.ts) sends a request for
    `/dashboard/*` or `/apply/<slug>` to `/login?cb=<path>` when `getSessionCookie` finds nothing,
    sends a signed-in user on `/login` to the `cb` path (`callbackPath` in
-   [lib/auth-callback.ts](../lib/auth-callback.ts)), and sends `/sign-up` and `/sign-in` to `/login`. It does not validate the session or
-   check any role.
+   [lib/auth-callback.ts](../lib/auth-callback.ts), which falls back to `/dashboard` for any `cb`
+   that resolves off-site), and sends `/sign-up` and `/sign-in` to `/login`. It does not validate
+   the session or check any role.
 
 3. **Server code gets the user id from `getCurrentUserId()`.**
    [lib/current-user.ts](../lib/current-user.ts) reads Better Auth's signed cookie cache with
