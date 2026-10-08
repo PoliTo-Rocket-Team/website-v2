@@ -14,7 +14,8 @@ test("falls back when cb is missing or not a path", () => {
 });
 
 test("falls back on every form that resolves off-site", () => {
-  for (const raw of ["//evil.com", "/\\evil.com", "/\t/evil.com", "/\n/evil.com", "/\r/evil.com", "/\\\t\\evil.com"]) {
+  for (const raw of ["//evil.com", "/\\evil.com", "/\t/evil.com", "/\n/evil.com", "/\r/evil.com", "/\\\t\\evil.com",
+    "/.//evil.com", "/..//evil.com", "/a/..//evil.com", "/%2e//evil.com", "/./\\evil.com", "/x/../\t/evil.com"]) {
     assert.equal(callbackPath(raw), DEFAULT_CALLBACK, JSON.stringify(raw));
   }
 });

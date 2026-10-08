@@ -11,18 +11,26 @@ const SIGN_IN_PATHS = ["/login", "/sign-in", "/sign-up"];
 // the resolved origin catches every such form, not only the ones we list.
 const SITE = "https://site.invalid";
 
+function onSite(path: string): URL | null {
+  try {
+    const url = new URL(path, SITE);
+    return url.origin === SITE ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export function callbackPath(raw: string | null | undefined): string {
   if (!raw || !raw.startsWith("/")) return DEFAULT_CALLBACK;
-  let url: URL;
-  try {
-    url = new URL(raw, SITE);
-  } catch {
-    return DEFAULT_CALLBACK;
-  }
-  if (url.origin !== SITE) return DEFAULT_CALLBACK;
+  const url = onSite(raw);
+  if (!url) return DEFAULT_CALLBACK;
   const { pathname } = url;
   if (SIGN_IN_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`))) {
     return DEFAULT_CALLBACK;
   }
-  return pathname + url.search + url.hash;
+  // Dot-segment removal can leave a pathname that starts with `//` (from
+  // `/.//evil.com`), which the redirect then reads as another host. So the
+  // value we hand out must itself resolve on this site.
+  const path = pathname + url.search + url.hash;
+  return onSite(path) ? path : DEFAULT_CALLBACK;
 }
