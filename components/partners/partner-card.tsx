@@ -8,9 +8,9 @@ import { ReadMore } from "./read-more";
 //
 // From md, hovering the card (or tabbing to its link) swaps the one-liner for
 // the partner's own text, shrinks the logo and lights the edge in faint
-// accent (board 31b). Both texts share one grid cell, so the card is always
-// as tall as the longer one, and the cards of a row stretch to the tallest:
-// nothing moves on hover. On phones "Read more" opens the same text (31m).
+// accent (board 31b). Both texts share one grid cell, and every card has the
+// one fixed height below, so nothing moves on hover. On phones "Read more"
+// opens the same text (31m), and the card grows to hold it.
 // A partner with no website shows no link; one with no text of its own has
 // no swap and no "Read more".
 
@@ -25,16 +25,23 @@ const logoClass = {
 /** The widest a logo is drawn: a card's inner width on desktop. */
 const LOGO_MAX_W = 370;
 
+/**
+ * The one desktop card height (Huey's card-size ruling on #107): it holds an
+ * about and a support text at the limits in lib/partners.ts, so the card never
+ * scrolls and never grows. A card is narrowest where its column count starts,
+ * so each step is sized there: 2 columns at 768px (308px card), 3 at 1024px
+ * (283px), 1280px (368px), and from 1440px, where the content width stops at
+ * 1312px (421px). Each is the tallest card measured with limit-length texts,
+ * plus one line of text (22px) for how the words of a new text wrap.
+ */
+const cardHeight = "md:h-[552px] lg:h-[594px] xl:h-[504px] min-[1440px]:h-[460px]";
+
 const swap = "transition-opacity duration-300 ease-out motion-reduce:transition-none";
 
 function Story({ story }: { story: PartnerStory }) {
   return (
     <div className="space-y-2 text-[14px] leading-[1.55]">
-      {story.about.map((paragraph) => (
-        <p key={paragraph} className="text-text-2">
-          {paragraph}
-        </p>
-      ))}
+      <p className="text-text-2">{story.about}</p>
       {story.support !== undefined && <p className="text-prt-text">{story.support}</p>}
     </div>
   );
@@ -58,7 +65,7 @@ function WebsiteLink({ partner, href, label }: { partner: Partner; href: string;
 export function PartnerCard({ partner }: { partner: Partner }) {
   const { story, website } = partner;
   return (
-    <article className="glass-card group relative flex w-full flex-col rounded-xl p-5 md:p-7">
+    <article className={`glass-card group relative flex w-full flex-col rounded-xl p-5 md:p-7 ${cardHeight}`}>
       {/* The faint accent edge of board 31b, over the glass edge. */}
       <span
         aria-hidden

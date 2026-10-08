@@ -5,12 +5,14 @@
 // (Magicar), no text of their own (JEToP).
 //
 // Order is the live partners page's order, and both surfaces keep it.
-// The about and support texts are the live page's, as written there; the
-// one-liners are board 31's.
+// The about and support texts are the live page's, shortened to the limits
+// below (Huey's card-size ruling on #107) with their meaning and facts kept;
+// the one-liners are board 31's.
 //
 // Adding a partner: one entry here, the logo in public/design/sponsors/, then
 // `pnpm logos:check`, which measures the logo and fails until `darkLogo`
-// matches the measurement.
+// matches the measurement, and `pnpm partners:check`, which fails while a
+// text is over its limit.
 
 import type { HeaderStats } from "./about/types";
 import { university } from "./about/university";
@@ -36,7 +38,7 @@ export type PartnerTier = "main" | "media";
 
 /** The partner's own text: about them, then what they do for the Team. */
 export type PartnerStory = {
-  about: readonly [string, ...string[]];
+  about: string;
   support?: string;
 };
 
@@ -51,7 +53,63 @@ export type Partner = {
   story?: PartnerStory;
 };
 
-export const partners: readonly Partner[] = [
+/**
+ * The most characters (Unicode code points) each partner text may hold.
+ * Every desktop card has one fixed height, sized in
+ * components/partners/partner-card.tsx for an about and a support text at
+ * these limits, so a longer text would spill out of its card. The future
+ * dashboard's form reads the same numbers.
+ */
+export const PARTNER_TEXT_LIMITS = {
+  oneLiner: 80,
+  about: 220,
+  support: 160,
+} as const;
+
+export type PartnerTextField = keyof typeof PARTNER_TEXT_LIMITS;
+
+/** One text over its limit, named so a form or a build log can say which. */
+export type TextOverLimit = {
+  partner: string;
+  field: PartnerTextField;
+  length: number;
+  limit: number;
+};
+
+/** The length a limit counts: code points, so "ò" is one character. */
+export function textLength(text: string): number {
+  return [...text].length;
+}
+
+/** Every text of this partner that is over its limit; empty when all fit. */
+export function textsOverLimit(partner: Partner): TextOverLimit[] {
+  const texts: [PartnerTextField, string | undefined][] = [
+    ["oneLiner", partner.oneLiner],
+    ["about", partner.story?.about],
+    ["support", partner.story?.support],
+  ];
+  return texts.flatMap(([field, text]) => {
+    const limit = PARTNER_TEXT_LIMITS[field];
+    if (text === undefined || textLength(text) <= limit) return [];
+    return [{ partner: partner.name, field, length: textLength(text), limit }];
+  });
+}
+
+/**
+ * The record as it may be read: throws while any text is over its limit, so
+ * `next build` (which renders both pages that import this file) and
+ * `pnpm partners:check` fail on it.
+ */
+function withinTextLimits(list: readonly Partner[]): readonly Partner[] {
+  const over = list.flatMap(textsOverLimit);
+  if (over.length > 0) {
+    const lines = over.map((o) => `  ${o.partner}: ${o.field} is ${o.length} characters, limit ${o.limit}`);
+    throw new Error(`Partner texts over their limit (lib/partners.ts):\n${lines.join("\n")}`);
+  }
+  return list;
+}
+
+export const partners: readonly Partner[] = withinTextLimits([
   {
     name: "Sòphia High Tech",
     logo: { src: "/design/sponsors/color-sophia.png", width: 514, height: 463, kind: "mark", darkLogo: false },
@@ -59,11 +117,9 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Additive manufacturing equipment for Efesto, our liquid engine.",
     story: {
-      about: [
-        "Sòphia High Tech, certified according to the Quality Standard AS/EN9100, operates in the Aerospace field, focusing on the design, development and production of metal alloy components using Additive Manufacturing and CNC Machining. Sòphia uses the most advanced technological processes: to produce complex components in shape and geometry, Sòphia uses Additive Manufacturing (SLM), according to ECSS-Q-ST-70-80C.",
-      ],
-      support:
-        "Sophia High Tech supports the team in the development of project Efesto by providing state-of-the-art equipment, which will be crucial for the success of the project.",
+      about:
+        "Sòphia High Tech, certified to AS/EN9100, designs and produces metal alloy aerospace components by Additive Manufacturing (SLM, to ECSS-Q-ST-70-80C) and CNC Machining.",
+      support: "Sòphia High Tech supports project Efesto with state-of-the-art equipment, crucial for the project's success.",
     },
   },
   {
@@ -73,9 +129,8 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "PLM software that runs the Team's work from design to production.",
     story: {
-      about: [
-        "Siemens is one of the world's largest industrial conglomerates, operating in several sectors including energy, aerospace, and digital services. Siemens PLM software represents a comprehensive suite of tools designed to manage and optimize the entire lifecycle of a product, from conception through production to the end of its useful life. These tools enable integration between the various modules, ensuring smooth management of data and activities.",
-      ],
+      about:
+        "Siemens is one of the world's largest industrial conglomerates, in energy, aerospace and digital services. Its PLM software manages a product's whole lifecycle, from conception through production to end of life.",
       support: "Siemens provides a comprehensive suite of software that will be critical for the Team to take its activities forward.",
     },
   },
@@ -86,11 +141,10 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Probes and sensors for our wind tunnel tests, light enough to fly.",
     story: {
-      about: [
-        "EvoMisure, founded in 2016, aims to provide turnkey measurement solutions, customized for aerodynamic applications. It supplies probes for velocity and pressure measurements, customized and flexible rakes, suitable for both wind tunnel testing and real-world applications. EvoMisure sensors enable companies to implement precise and reliable measurement systems.",
-      ],
+      about:
+        "EvoMisure, founded in 2016, provides turnkey measurement solutions for aerodynamics: velocity and pressure probes and custom rakes, for wind tunnel testing and real-world applications.",
       support:
-        "EvoMisure is supporting the Polito Rocket Team with the development of a wind tunnel test. The ease of use of their sensors, compact design, and low weight make them ideal for future flight tests as well.",
+        "EvoMisure supports the Team's wind tunnel test. Their sensors are easy to use, compact and light, which makes them ideal for future flight tests too.",
     },
   },
   {
@@ -100,9 +154,9 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Altium Designer licences for the rocket's onboard electronics.",
     story: {
-      about: [
-        "Altium is one of the world's leading companies in the development of electronic design software, offering advanced tools for the creation of PCBs and complex systems. Through its Education program, Altium supports the PoliTo Rocket Team by providing professional licenses for Altium Designer, allowing members to design advanced electronic circuits and acquire fundamental skills in the field of electronic engineering, which are essential for the development of our rocket's onboard systems.",
-      ],
+      about: "Altium is one of the world's leading companies in electronic design software, with advanced tools for creating PCBs and complex systems.",
+      support:
+        "Through its Education program, Altium gives the Team Altium Designer licenses to design advanced circuits for our rocket's onboard systems.",
     },
   },
   {
@@ -112,10 +166,9 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Mechanical machining and parts for our builds.",
     story: {
-      about: [
-        "ASSOCAM Scuola Camerana, is a Turin-based organisation rooted in the city's industrial fabric that has been providing post-diploma training since 1959. It brings together experienced technicians and teachers, as well as a large number of laboratories and machinery for students. In particular, it is a training agency of Unione Industriali and Camera di Commercio of Turin with a focus on technological training applied to industrial processes.",
-      ],
-      support: "Assocam Scuola Camerana provides the team with the necessary mechanical machining and components for its activities.",
+      about:
+        "ASSOCAM Scuola Camerana, rooted in Turin's industry, has given post-diploma training since 1959. A training agency of Unione Industriali and Camera di Commercio of Turin, it has many labs and machines.",
+      support: "Assocam Scuola Camerana provides the Team with the mechanical machining and components it needs for its activities.",
     },
   },
   {
@@ -125,11 +178,9 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Tough cases to carry our equipment safely to every launch.",
     story: {
-      about: [
-        "EXPLORER CASES is a range of indestructible and waterproof cases which guarantee maximum protection when transporting professional equipment manufactured by GT line. It is a leading brand in the sector, established internationally.",
-        "Constant investment in R&D has allowed them to develop efficient solutions, for which they have obtained multiple certifications. The cases are subjected to strict laboratory tests to guarantee their reliability to extreme conditions of use.",
-      ],
-      support: "Explorer cases supports the team by providing its cases for the safe and practical transport of our equipment.",
+      about:
+        "Explorer Cases, made by GT Line, are indestructible, waterproof cases for professional equipment. Constant R&D has earned them multiple certifications, and strict lab tests prove them for extreme use.",
+      support: "Explorer Cases supports the Team by providing its cases for the safe and practical transport of our equipment.",
     },
   },
   {
@@ -139,10 +190,8 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Engineering simulation software.",
     story: {
-      about: [
-        "With more than 50 years of experience, Ansys is the world reference in engineering simulation. Its solutions are used by market leaders in all industries to revolutionize design, enabling engineers to explore and predict how products will perform in the real world.",
-        "Reducing prototype costs and production time, improving quality, reducing risk, accelerating innovation across all industries to push the boundaries the predictive power of Ansys simulation is at your fingertips.",
-      ],
+      about:
+        "With more than 50 years of experience, Ansys is the world reference in engineering simulation, letting engineers predict how products will perform in the real world while cutting prototype costs and time.",
     },
   },
   {
@@ -152,11 +201,8 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Simulation software, consulting and training.",
     story: {
-      about: [
-        "ESSS is a leading engineering solutions and scientific software company specializing in advanced simulations for industries such as aerospace, automotive, and energy.",
-        "It offers tools for finite element analysis, computational fluid dynamics and multiphysics simulations, enabling companies to optimize design processes, reduce costs and improve efficiency.",
-        "With dedicated consulting and training, ESSS supports innovation and helps customers achieve new standards of competitiveness.",
-      ],
+      about:
+        "ESSS is a leading engineering and scientific software company. It offers finite element, fluid dynamics and multiphysics simulation, with consulting and training, for aerospace, automotive and energy.",
     },
   },
   {
@@ -166,11 +212,9 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "3D printers, printing materials and additive manufacturing know-how.",
     story: {
-      about: [
-        "Mul2 Research Group is a research project within Politecnico di Torino's Dept. of Mechanical and Aerospace Engineering, devoted to the development of advanced structural models for MULSs with particular attention given to the multifield analysis and the fluid-structure interactions.",
-      ],
-      support:
-        "Mul2 provides material support, with 3D printers and 3D printing materials, along with technical support for the additive manufacturing processes.",
+      about:
+        "Mul2 is a research group in Politecnico di Torino's Dept. of Mechanical and Aerospace Engineering, developing advanced structural models for MULSs, with a focus on multifield and fluid-structure analysis.",
+      support: "Mul2 provides 3D printers and 3D printing materials, along with technical support for the additive manufacturing processes.",
     },
   },
   {
@@ -179,11 +223,10 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "The livery of VES, designed and crafted by hand.",
     story: {
-      about: [
-        "Distinguished by outstanding professionalism and dedication, Carrozzeria Magicar of Fossano (CN) is an example of the commitment and passion of the Italian and Piedmontese entrepreneurship.",
-      ],
+      about:
+        "Distinguished by outstanding professionalism and dedication, Carrozzeria Magicar of Fossano (CN) is an example of the commitment and passion of Italian and Piedmontese entrepreneurship.",
       support:
-        "We are proud to have Magicar as a partner in the Vittorio Emanuele II (VES) project, where their expertise plays a key role in designing and crafting the vehicle's livery. Their support brings quality and character to a project that celebrates innovation and heritage.",
+        "Magicar designs and crafts the livery of our Vittorio Emanuele II (VES) project, bringing quality and character to a project of innovation and heritage.",
     },
   },
   {
@@ -193,11 +236,10 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "Outreach support and access to the ORBIT platform.",
     story: {
-      about: [
-        "Astrospace is an innovative startup dedicated to sharing humanity's journey through space. Through social media, the ORBIT platform, and an information portal, it provides updates on space exploration, astronomy, and the space economy. Additionally, it creates books, merchandise, and organizes community events to inspire and engage enthusiasts.",
-      ],
+      about:
+        "Astrospace is an innovative startup sharing humanity's journey through space: news on space exploration, astronomy and the space economy, plus books, merchandise and community events.",
       support:
-        "Astrospace supports teams by offering discounted access to the ORBIT platform and promoting activities such as scientific communication, outreach, event organization, and more through collaborative efforts.",
+        "Astrospace offers discounted access to the ORBIT platform, and promotes science communication, outreach and event organization through collaborative efforts.",
     },
   },
   {
@@ -207,9 +249,8 @@ export const partners: readonly Partner[] = [
     tier: "main",
     oneLiner: "ANSA and META software, with technical support.",
     story: {
-      about: [
-        "BETA CAE Systems transformed CAE by introducing revolutionary automation software tools and practices into Simulation and Analysis processes almost 30 years ago. Today, BETA CAE Systems is a world leader of Engineering Simulation, thanks to their softwares deployed in the Aerospace, Defense, Automotive, Biomechanics, Electronics, Energy and other Industries.",
-      ],
+      about:
+        "BETA CAE Systems transformed CAE almost 30 years ago with automation software for simulation and analysis. Today it is a world leader in engineering simulation, in aerospace, defense, automotive, energy and more.",
       support: "BETA CAE Systems provides material support with the ANSA and META software suites, as well as technical support to the Team.",
     },
   },
@@ -220,7 +261,7 @@ export const partners: readonly Partner[] = [
     tier: "media",
     oneLiner: "Junior Enterprise of Politecnico di Torino.",
   },
-];
+]);
 
 export function partnersOf(tier: PartnerTier): readonly Partner[] {
   return partners.filter((p) => p.tier === tier);
