@@ -100,6 +100,7 @@ export function decodePng(png: Uint8Array): Pixels {
   }
 
   const channels = CHANNELS[colorType];
+  const key = transparentKey(colorType, transparency);
   const stride = width * channels;
   const raw = unfilter(inflateSync(Buffer.concat(data)), stride, height, channels);
   const rgba = new Uint8Array(width * height * 4);
@@ -108,12 +109,16 @@ export function decodePng(png: Uint8Array): Pixels {
     const s = p * channels;
     const d = p * 4;
     switch (colorType) {
-      case 0: // grey
-        rgba.set([raw[s], raw[s], raw[s], 255], d);
+      case 0: // grey; a tRNS key makes one grey level transparent
+        rgba.set([raw[s], raw[s], raw[s], key?.[0] === raw[s] ? 0 : 255], d);
         break;
-      case 2: // RGB
-        rgba.set([raw[s], raw[s + 1], raw[s + 2], 255], d);
+      case 2: {
+        // RGB; a tRNS key makes one colour transparent
+        const [r, g, b] = [raw[s], raw[s + 1], raw[s + 2]];
+        const hit = key !== undefined && key[0] === r && key[1] === g && key[2] === b;
+        rgba.set([r, g, b, hit ? 0 : 255], d);
         break;
+      }
       case 3: {
         // palette
         if (palette === undefined) throw new Error("palette PNG has no PLTE chunk");
@@ -130,6 +135,20 @@ export function decodePng(png: Uint8Array): Pixels {
     }
   }
   return { width, height, rgba };
+}
+
+/**
+ * The one fully transparent sample a grey (type 0) or RGB (type 2) PNG's tRNS
+ * chunk names: 2 bytes a channel, of which an 8-bit image uses the low byte
+ * (PNG spec, section 11.3.2.1). Palette PNGs read tRNS as per-entry alpha
+ * instead, and types 4 and 6 must not carry one, so it is refused by name.
+ */
+function transparentKey(colorType: number, transparency: Buffer | undefined): number[] | undefined {
+  if (transparency === undefined || colorType === 3) return undefined;
+  const samples = colorType === 0 ? 1 : colorType === 2 ? 3 : 0;
+  if (samples === 0) throw new Error(`a tRNS chunk is not allowed on PNG colour type ${colorType}`);
+  if (transparency.length !== samples * 2) throw new Error(`tRNS chunk has ${transparency.length} bytes, expected ${samples * 2}`);
+  return Array.from({ length: samples }, (_, i) => transparency.readUInt16BE(i * 2));
 }
 
 /** Undoes the PNG per-row filters (PNG spec, section 9). */
