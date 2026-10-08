@@ -63,7 +63,9 @@ Server Component renders it.
      return queryAllPositionSnapshot();
    }
    ```
-   Call sites: `getAllPositionSnapshotCached` and `getActivePositionSnapshotCached` in
+   Call sites: `getAllPositionSnapshotCached` and `getPublicSnapshotCached` (the positions
+   plus the recruitment switch, filtered by `isPublic` from
+   [lib/apply/positions.ts](../lib/apply/positions.ts) after the cache hit) in
    [get-apply-positions.ts](../app/actions/get-apply-positions.ts), and
    `getDivisionStructureSnapshotCached` (tag `org-structure`) in
    [get-member-scopes.ts](../app/actions/get-member-scopes.ts). The cached function never reads the

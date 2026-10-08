@@ -10,6 +10,7 @@
     "preview": "next build && next start",
     "deploy": "vercel --prod",
     "upload": "vercel --prod",
+    "test": "tsx --test \"lib/**/*.test.ts\"",
     "logos:check": "tsx scripts/logos-check.ts",
     "partners:check": "tsx scripts/partners-check.ts",
     "db:generate": "drizzle-kit generate",

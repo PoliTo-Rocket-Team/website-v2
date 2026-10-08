@@ -37,8 +37,8 @@ export function isCurrentNavLink(pathname: string | null, link: NavLink): boolea
 // 330px glass sidebar from the right, full height, over a dimmed page. Top:
 // the PRT mark and a close icon. Then the links at 28px with a RocketArrow,
 // the current page in accent. A link with pages under it (About) lists them
-// below it, indented, at 17px in grey. At the foot: the white "Apply" and the outlined
-// "Sign in", with no email. It is the repo's Radix dialog
+// below it, indented, at 17px in grey. Apply is the last link (issue #119).
+// At the foot: the outlined "Sign in", with no email. It is the repo's Radix dialog
 // (components/ui/dialog), so focus, Escape and scroll lock come with it; the
 // content is the primitive itself because the shadcn DialogContent is a
 // centred modal. It slides in and goes at once on close, so Radix unmounts it
@@ -124,15 +124,7 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
             </ul>
           </nav>
 
-          <div className="mt-auto flex flex-col gap-3">
-            <DialogClose asChild>
-              <Link
-                href="/apply"
-                className="block rounded-full bg-prt-text py-3 text-center text-base font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80"
-              >
-                Apply
-              </Link>
-            </DialogClose>
+          <div className="mt-auto">
             <DialogClose asChild>
               <Link
                 href="/sign-in"

@@ -62,11 +62,13 @@ catches type fallout.
 
 ## Known inconsistencies (not the pattern)
 
-- **`0005` is not in the journal.**
+- **`0005_restore_application_files` is not in the journal.**
   [0005_restore_application_files.sql](../drizzle/0005_restore_application_files.sql) creates
-  `application_files` and the `cv_file_id` / `cover_letter_file_id` columns, but `_journal.json`
-  stops at `0004`, so `pnpm db:migrate` skips it. `application_files` is in `db/schema/public.ts`
-  but not in `meta/0004_snapshot.json`, so the next `pnpm db:generate` will likely emit it again.
+  `application_files` and the `cv_file_id` / `cover_letter_file_id` columns, but it has no
+  journal entry, so `pnpm db:migrate` skips it. The next `pnpm db:generate` after it
+  (`0005_recruitment_setting`, issue #119) emitted those statements again; they were cut from
+  that file by hand, and its snapshot (`meta/0005_snapshot.json`) now holds them, so later
+  generates no longer repeat them. The journal's `0005` tag is `0005_recruitment_setting`.
   [get-applications.ts](../app/actions/get-applications.ts) carries a fallback query for when these
   columns are missing.
 - **`0005` is written defensively** (`IF NOT EXISTS`, `DO $$ ... EXCEPTION WHEN duplicate_object`),

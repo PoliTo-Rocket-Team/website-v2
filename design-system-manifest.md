@@ -52,8 +52,8 @@ and code that cannot take a class (the `<html>` paint in `app/layout.tsx`, the h
 Rules:
 
 - Orange `accent` is the one brand colour. Use it for section eyebrows, hover text, the
-  Launch tag and the apply band. Do not add a second accent. The navbar Apply pill is
-  not orange any more (board 21): it is `prt-text` with `ground` text.
+  Launch tag and the apply band. Do not add a second accent. The navbar has no Apply
+  pill any more: Apply is a link like the others (issue #119).
 - Tags and status pills pair a `-soft` fill with the solid text colour: Launch = accent,
   Competition = warning, Outreach = success, Team = `white-10` with `prt-text`
   (`latest.tsx`, HANDOFF board 05). Project status pills sit on a texture, so they follow
@@ -147,8 +147,9 @@ Rules:
 
 ## Components
 
-- Buttons: navbar Apply = paper pill (`bg-prt-text`, text `ground`, hover opacity 90%),
-  board 21. Sign in = ghost pill (`border-white-10`, hover `border-strong`) (`navbar.tsx`).
+- Buttons: the primary pill is paper (`bg-prt-text`, text `ground`, hover opacity 90%),
+  as "Apply for this role" on /apply. Sign in = ghost pill (`border-white-10`, hover
+  `border-strong`) (`navbar.tsx`).
   On the orange band the button is `bg-ground` with `prt-text` (`apply-band.tsx`).
 - Text links with an arrow use `RocketArrow` (`components/landing/rocket-arrow.tsx`), not a
   `→` glyph. Hover: link to `text-accent`, arrow `translate-x-1.5`, opacity 0.8 to 1, 300ms
@@ -227,16 +228,16 @@ leaves it. Clicking About, or Enter on it, still goes to `/about/the-team`. It f
 
 **Navbar on phones** (board 24, below md): the same glass bar, 64px tall, 20px side padding.
 The PRT mark only (`prt-mark-white.svg`, 32px tall) on the left and the menu icon on the
-right. There is no Apply and no Sign in on the bar: both are in the menu.
+right. There is no Sign in on the bar: it is in the menu.
 
 **Menu** (board 24b, `nav-menu.tsx`): a sidebar from the right, 330px wide and full height,
 `.glass-sidebar` (ink at 70% under the 200deg sheen, blur 32px, a 1px left edge, a shadow onto
 the page). The page behind dims (`ground` at 55% and a slight blur). Top: the mark and a close
-icon. Then Projects, About, Outreach and Partners at 28px bold, each 66px tall over a
+icon. Then Projects, About, Outreach, Partners and Apply at 28px bold, each 66px tall over a
 `white-10` rule with a `RocketArrow`; the current page is `accent`. The About pages sit
-under About, indented 20px, 17px `text-2` (the current one `accent`). At the foot: the white
-"Apply" (`bg-prt-text`, full width) and the outlined "Sign in" (`border-white-10`), with no
-email. It is the repo's Radix dialog (`components/ui/dialog`), so
+under About, indented 20px, 17px `text-2` (the current one `accent`). At the foot: the
+outlined "Sign in" (`border-white-10`), full width, with no email. Apply is a link, never a
+button (issue #119). It is the repo's Radix dialog (`components/ui/dialog`), so
 focus, Escape and scroll lock come with it; the slide in is off under reduced motion.
 
 **Brand:** the navbar logo is `prt-logo-white.svg` at 220px wide from md, and the mark on
@@ -388,6 +389,23 @@ page is a new record and a thin route. The built Cavour page is the layout refer
   next beside the photo and a one-line caption. Both share one index. Until real photos
   exist, the slots are glass placeholders.
 
+**/apply** (boards 34, 34b, 34c, 34m and 34bm, issue #119, `app/apply/page.tsx`,
+`components/apply/`): the About page header with four figures (2 x 2 on phones), the
+positions, then the questions; the footer sits in the sky. The number of public positions
+picks one of three states (`applyListing` in `lib/apply/positions.ts`): none open shows
+"Roles we recruit for", an accent notice card with "Follow for updates" and every placeholder
+role (34b); one to four show the open ones, then "Other roles we recruit for" with the
+placeholders of departments that have nothing open (34c); five or more show only the open
+ones (34). A position is public when it is open, not deleted and the site-wide recruitment
+switch is on (`isPublic`). Placeholder roles are a typed record in code
+(`lib/apply/placeholder-roles.ts`), never read from the database, and carry a grey "CLOSED"
+tag. Department pills filter the list when more than one department shows. Each department is
+a `.glass-card` list whose rows are one Radix accordion: one row open at a time, opening and
+closing at once, the open row on `white-5`. An open position ends with the voluntary note and
+the paper "Apply for this role" pill to `/apply/<id>-<title>`; an open placeholder ends with a
+lock and "This position is not accepting applications right now.", with no button. The
+questions are the same accordion, a plus that turns to a minus.
+
 **Inside the team:** four figures, then four `.glass-card` link cards. Phones (board 24):
 figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
 (`inside-team.tsx`).
@@ -462,6 +480,6 @@ stacked.
   292px on phones) until the two boards agree.
 - **Between phone and desktop.** Boards 21 and 24 cover 1440px and 390px. From 768px to
   1023px the page uses the desktop layout with the menu in place of the link row.
-- **Subroutes.** `/projects` and the three project pages are built (Page rules above).
-  `/about/*`, `/outreach`, `/partners`, `/apply` and the news page are still being designed
+- **Subroutes.** `/projects`, the three project pages and `/apply` are built (Page rules
+  above). `/about/*`, `/outreach`, `/partners` and the news page are still being designed
   (HANDOFF "Todo").
