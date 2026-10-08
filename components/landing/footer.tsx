@@ -39,9 +39,9 @@ const columns = [
     head: "CONTACT",
     links: [
       ["info@politorocketteam.it", "mailto:info@politorocketteam.it"],
-      ["Instagram", "https://instagram.com/politorocketteam"],
-      ["LinkedIn", "https://linkedin.com/company/polito-rocket-team"],
-      ["X / Twitter", "https://x.com/politorocketteam"],
+      ["Instagram", "https://www.instagram.com/politorocketteam"],
+      ["LinkedIn", "https://www.linkedin.com/company/politorocketteam"],
+      ["X / Twitter", "https://x.com/PoliTo_RT"],
     ],
   },
 ];

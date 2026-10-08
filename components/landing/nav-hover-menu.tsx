@@ -12,8 +12,8 @@ import { isCurrentLink, type NavSection } from "./nav-menu";
 // it (About) drops a glass panel that hangs flush from the bar, under the
 // link. A 2px accent line starts beside the link inside the bar and runs down
 // past the last page; the pages are 16px, left-aligned with the link, 12px
-// apart, the current one in paper and the rest grey. Clicking the link, or
-// Enter on it, still goes to its own page.
+// apart, the current one in paper and the rest grey. The entry itself has no
+// page: clicking it, or Enter or Space on it, opens the menu.
 //
 // It is the repo's Radix dropdown menu (components/ui/dropdown-menu), not
 // modal, so the menu roles, arrow keys, Escape, focus return and outside
@@ -38,7 +38,7 @@ export function NavHoverMenu({ section, className }: { section: NavSection; clas
   // Only a menu the pointer opened closes when the pointer leaves it.
   const openedByPointer = useRef(false);
   const closeTimer = useRef<number | undefined>(undefined);
-  const triggerRef = useRef<HTMLAnchorElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   // Focus that comes back to the link as the menu closes must not reopen it.
   const focusReturning = useRef(false);
   const tabbedForward = useRef(false);
@@ -58,20 +58,12 @@ export function NavHoverMenu({ section, className }: { section: NavSection; clas
     closeTimer.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
   };
 
-  const onTriggerFocus = (e: FocusEvent<HTMLAnchorElement>) => {
+  const onTriggerFocus = (e: FocusEvent<HTMLButtonElement>) => {
     if (focusReturning.current) {
       focusReturning.current = false;
       return;
     }
     if (e.currentTarget.matches(":focus-visible")) openBy(false);
-  };
-
-  // Enter follows the link, as on every other navbar link. Radix would take
-  // it to toggle the menu, so it is handled here and never reaches Radix.
-  const onTriggerKeyDown = (e: KeyboardEvent<HTMLAnchorElement>) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    e.currentTarget.click();
   };
 
   const onMenuKeyDown = (e: KeyboardEvent) => {
@@ -114,23 +106,22 @@ export function NavHoverMenu({ section, className }: { section: NavSection; clas
       }}
     >
       <DropdownMenuTrigger asChild>
-        <Link
+        <button
           ref={triggerRef}
-          href={section.href}
-          aria-current={isCurrentLink(pathname, section.href) ? "page" : undefined}
+          type="button"
+          aria-current={section.pages.some((p) => isCurrentLink(pathname, p.href)) ? "page" : undefined}
           // Full bar height, so the panel hangs from the bar's bottom edge
           // and the pointer never crosses a gap on its way down.
           // Paper while its menu shows, as board 27 draws it under the pointer.
           className={`flex h-full items-center outline-none focus-visible:underline focus-visible:decoration-accent focus-visible:decoration-2 focus-visible:underline-offset-8 ${className} data-[state=open]:text-prt-text`}
           onPointerEnter={(e) => e.pointerType === "mouse" && openBy(true)}
           onPointerLeave={closeSoon}
-          // A click follows the link; it does not toggle the menu.
+          // A mouse press opens it through hover already; it must not toggle it shut.
           onPointerDown={(e) => e.pointerType === "mouse" && e.preventDefault()}
           onFocus={onTriggerFocus}
-          onKeyDown={onTriggerKeyDown}
         >
           {section.label}
-        </Link>
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
         <DropdownMenuPrimitive.Content
