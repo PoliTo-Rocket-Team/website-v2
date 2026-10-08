@@ -162,7 +162,8 @@
    the soft diagonal streaks baked onto ground at the board's 16% strength
    (public/textures/page-streaks-tile.webp, 1440 x 1800, lossless). It repeats
    down the page with no seam, so the sky has no fixed height. It is 1440px
-   wide and centred, and it scales up with the page on wider screens. Its top
+   wide and centred, and it scales up with the page on wider screens; on a
+   phone it scales down to the page width. Its top
    fades in so the hero's own scrim meets it without a line.
    The tile carries its own dither. Its tones span only 16 grey levels,
    so a plain 8-bit tile draws each level as a flat column with an edge (issue
@@ -196,9 +197,17 @@
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
     mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
   }
+  /* On a phone the tile scales down to the page width, as on the phone
+     boards: kept at 1440px, a phone would show only the tile's plain middle
+     and no streaks. From 768px up it keeps its full 1440px. */
   .page-sky-light {
     background: theme("colors.ground") url("/textures/page-streaks-tile.webp")
-      top center / max(100%, 1440px) auto repeat-y;
+      top center / 100% auto repeat-y;
+  }
+  @media (min-width: 768px) {
+    .page-sky-light {
+      background-size: max(100%, 1440px) auto;
+    }
   }
   .page-sky-grain {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
