@@ -139,16 +139,17 @@ export function decodePng(png: Uint8Array): Pixels {
 
 /**
  * The one fully transparent sample a grey (type 0) or RGB (type 2) PNG's tRNS
- * chunk names: 2 bytes a channel, of which an 8-bit image uses the low byte
- * (PNG spec, section 11.3.2.1). Palette PNGs read tRNS as per-entry alpha
- * instead, and types 4 and 6 must not carry one, so it is refused by name.
+ * chunk names: 2 bytes a channel. Only 8-bit images are read, and the spec
+ * (section 11.3.2.1) has decoders mask such a sample to its low byte, since
+ * encoders need not zero the high one. Palette PNGs read tRNS as per-entry
+ * alpha instead, and types 4 and 6 must not carry one, so it is refused by name.
  */
 function transparentKey(colorType: number, transparency: Buffer | undefined): number[] | undefined {
   if (transparency === undefined || colorType === 3) return undefined;
   const samples = colorType === 0 ? 1 : colorType === 2 ? 3 : 0;
   if (samples === 0) throw new Error(`a tRNS chunk is not allowed on PNG colour type ${colorType}`);
   if (transparency.length !== samples * 2) throw new Error(`tRNS chunk has ${transparency.length} bytes, expected ${samples * 2}`);
-  return Array.from({ length: samples }, (_, i) => transparency.readUInt16BE(i * 2));
+  return Array.from({ length: samples }, (_, i) => transparency.readUInt16BE(i * 2) & 0xff);
 }
 
 /** Undoes the PNG per-row filters (PNG spec, section 9). */
