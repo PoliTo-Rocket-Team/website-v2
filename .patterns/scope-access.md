@@ -15,7 +15,8 @@ session cookie; server code reads the user id from that cookie, then turns the m
 
 2. **The edge gate only checks that a cookie exists.** [proxy.ts](../proxy.ts) sends a request for
    `/dashboard/*` or `/apply/<slug>` to `/login?cb=<path>` when `getSessionCookie` finds nothing,
-   and sends a signed-in user away from `/login` and `/sign-up`. It does not validate the session or
+   sends a signed-in user on `/login` to the `cb` path (`callbackPath` in
+   [lib/auth-callback.ts](../lib/auth-callback.ts)), and sends `/sign-up` and `/sign-in` to `/login`. It does not validate the session or
    check any role.
 
 3. **Server code gets the user id from `getCurrentUserId()`.**
