@@ -23,6 +23,10 @@ import {
   isPublic,
   type Recruitment,
 } from "@/lib/apply/positions";
+import {
+  canSwitchRecruitment,
+  type RecruitmentControl,
+} from "@/lib/apply/recruitment-switch";
 
 export const POSITIONS_CACHE_TAG = "apply-positions";
 export const PUBLIC_POSITIONS_CACHE_TAG = "public-apply-positions";
@@ -248,6 +252,19 @@ export async function getPositionsPageData(): Promise<{
     editableDivisions,
     positions: mapPositionsWithEditScope(positions, scopeInfo),
   };
+}
+
+/**
+ * The dashboard's recruitment switch: its stored state, read fresh, and
+ * whether the signed-in member may change it. Everyone else sees it read-only.
+ */
+export async function getRecruitmentControl(): Promise<RecruitmentControl> {
+  const [scopeInfo, recruitment] = await Promise.all([
+    getScopeInfoForCurrentUser("positions"),
+    queryRecruitment(),
+  ]);
+
+  return { recruitment, canSwitch: canSwitchRecruitment(scopeInfo) };
 }
 
 export type PublicPositions =

@@ -12,9 +12,9 @@ import {
   ownApplications,
   personFor,
   positions,
-  recruitment,
   type DummyPosition,
 } from "./team";
+import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
 
 // The dummy side of the apply data interface (issue #150): the positions of
 // ./team.ts with the text the public pages show, the test developer as the
@@ -143,8 +143,6 @@ function applyPosition(p: DummyPosition): ApplyPosition {
   };
 }
 
-const dummyRecruitment: Recruitment = { isOpen: recruitment.open };
-
 /**
  * How many positions /apply shows as open, from its `open` query value: a
  * whole number from 0 up, capped at the open positions there are. Anything
@@ -203,11 +201,13 @@ const sentInThisServer = new SentApplications();
 
 /**
  * The apply pages as a test developer sees them: signed in as `viewer` (null
- * is signed out), with `/apply` limited by its `open` selector.
+ * is signed out), with `/apply` limited by its `open` selector, and the
+ * recruitment switch as this browser left it (./recruitment.ts).
  */
 export function dummyApplyData(
   viewer: ViewerKind | null,
   openSelector: string | null,
+  recruitment: Recruitment = DEFAULT_DUMMY_RECRUITMENT,
   sent: SentApplications = sentInThisServer,
 ): ApplyData {
   const all = positions.map(applyPosition);
@@ -218,12 +218,12 @@ export function dummyApplyData(
 
   return {
     publicPositions: async () => {
-      const open = all.filter((p) => isPublic(p, dummyRecruitment));
+      const open = all.filter((p) => isPublic(p, recruitment));
       return limit === null ? open : open.slice(0, limit);
     },
     position: async (id) => {
       const position = all.find((p) => p.id === id);
-      return position === undefined ? null : { position, recruitment: dummyRecruitment };
+      return position === undefined ? null : { position, recruitment };
     },
     applicant: async () => (viewer === null ? null : applicantFor(viewer)),
     hasApplied: async (userId, positionId) => alreadySent(userId, positionId),

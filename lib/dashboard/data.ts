@@ -1,3 +1,5 @@
+import type { Recruitment } from "@/lib/apply/positions";
+import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "./access";
 import type { Overview } from "./overview";
 import type { AlumniDirectory, MemberDirectory, MemberEdit, TeamTree } from "./team";
@@ -22,6 +24,10 @@ export interface DashboardData {
   teamTree(): Promise<TeamTree>;
   /** Writes from the Team pages; null where this source stores none yet. */
   readonly teamWrites: TeamWrites | null;
+  /** The site-wide recruitment switch (issue #121): its state, and whether this viewer may flip it. */
+  recruitment(): Promise<RecruitmentControl>;
+  /** Flips the switch when this viewer may, and refreshes /apply; otherwise writes nothing. */
+  setRecruitment(recruitment: Recruitment): Promise<SwitchRecruitmentResult>;
 }
 
 /**
