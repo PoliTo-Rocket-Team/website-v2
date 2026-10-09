@@ -55,8 +55,15 @@ export const REFERRAL_SOURCES = [
   "Other",
 ] as const;
 
-/** The largest PDF the form takes, as the old upload route did. */
-export const MAX_PDF_BYTES = 20 * 1024 * 1024;
+/**
+ * The largest PDF the form takes. Both files travel in one server action
+ * request, and Vercel refuses a request body over 4.5 MB before our code runs,
+ * so two of these plus the text fields must fit under that (issue #127).
+ */
+export const MAX_PDF_BYTES = 2 * 1024 * 1024;
+
+/** The limit as the form words it: in each file field's hint and in its error. */
+export const MAX_PDF_LABEL = "2 MB";
 
 /** What a position asks of its applicants beyond the fixed fields. */
 export type PositionAsks = {
@@ -69,8 +76,14 @@ const name = z.string().trim().min(1, "Required.").max(100, "Too long.");
 const pdf = z
   .instanceof(File, { message: "Add a PDF." })
   .refine((f) => f.size > 0, "Add a PDF.")
-  .refine((f) => f.size <= MAX_PDF_BYTES, "The file is over 20 MB.")
+  .refine((f) => f.size <= MAX_PDF_BYTES, `The file is over ${MAX_PDF_LABEL}.`)
   .refine((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"), "PDF only.");
+
+/** Why a picked file cannot be sent, or null when it can: the same checks the submit runs on it. */
+export function pdfProblem(file: File): string | null {
+  const result = pdf.safeParse(file);
+  return result.success ? null : (result.error.issues[0]?.message ?? "Add a PDF.");
+}
 
 function isPastDate(iso: string): boolean {
   const date = new Date(`${iso}T00:00:00Z`);

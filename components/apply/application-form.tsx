@@ -8,10 +8,12 @@ import { RocketLaunch } from "@/components/landing/rocket-arrow";
 import {
   DEGREE_PROGRAMMES,
   GENDERS,
+  MAX_PDF_LABEL,
   ORIGINS,
   REFERRAL_SOURCES,
   STUDY_PROGRAMMES,
   parseApplicationForm,
+  pdfProblem,
   type FieldErrors,
   type FormDefaults,
   type PositionAsks,
@@ -51,6 +53,14 @@ export function ApplicationForm({
       const { [field]: _, ...rest } = e;
       return rest;
     });
+
+  /** Keeps a picked or dropped PDF, and flags it on its field at once when it cannot be sent. */
+  const pickPdf = (field: "cv" | "motivationLetter", keep: (file: File | null) => void) => (file: File | null) => {
+    keep(file);
+    const problem = file === null ? null : pdfProblem(file);
+    if (problem === null) clear(field);
+    else setErrors((e) => ({ ...e, [field]: problem }));
+  };
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -192,23 +202,17 @@ export function ApplicationForm({
         <div className="grid gap-x-3 gap-y-5 md:grid-cols-2">
           <PdfField
             label="CV / Résumé"
-            hint="PDF"
+            hint={`PDF, up to ${MAX_PDF_LABEL}`}
             file={cv}
-            onFile={(f) => {
-              setCv(f);
-              clear("cv");
-            }}
+            onFile={pickPdf("cv", setCv)}
             error={errors.cv}
           />
           {asks.requiresMotivationLetter && (
             <PdfField
               label="Motivation letter"
-              hint="PDF, 1 page max"
+              hint={`PDF, 1 page, up to ${MAX_PDF_LABEL}`}
               file={letter}
-              onFile={(f) => {
-                setLetter(f);
-                clear("motivationLetter");
-              }}
+              onFile={pickPdf("motivationLetter", setLetter)}
               error={errors.motivationLetter}
             />
           )}

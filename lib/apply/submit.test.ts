@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { MAX_PDF_BYTES } from "./application-form";
 import { submitApplication, type NewApplication, type SubmitDeps, type SubmitPosition } from "./submit";
 
 const PDF = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n");
@@ -116,6 +117,18 @@ describe("submitApplication", () => {
       const { deps, files, saved } = fakes();
       const result = await submitApplication(7, fd, deps);
       assert.equal(result.ok, false);
+      assert.ok(!result.ok && result.reason === "invalid");
+      assert.equal(saved.length, 0);
+      assert.equal(files.size, 0);
+    }
+  });
+
+  test("refuses a PDF over the size limit as invalid, and stores no file", async () => {
+    const big = new Uint8Array(MAX_PDF_BYTES + 1);
+    big.set(PDF);
+    for (const fd of [form({ cv: big }), form({ letter: big })]) {
+      const { deps, files, saved } = fakes();
+      const result = await submitApplication(7, fd, deps);
       assert.ok(!result.ok && result.reason === "invalid");
       assert.equal(saved.length, 0);
       assert.equal(files.size, 0);
