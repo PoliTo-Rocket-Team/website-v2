@@ -29,7 +29,7 @@ export function StatePopover({ children }: { children: ReactNode }) {
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className="fixed inset-x-0 bottom-0 z-50 max-h-[calc(100svh-24px)] overflow-y-auto rounded-t-[20px] border-t border-border-strong bg-panel px-6 pb-10 pt-3 text-center text-prt-text shadow-2xl focus:outline-none md:inset-0 md:m-auto md:h-fit md:w-[440px] md:max-w-[calc(100vw-40px)] md:rounded-2xl md:border md:px-11 md:pb-12 md:pt-16 motion-safe:data-[state=open]:duration-300 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-md:motion-safe:data-[state=open]:slide-in-from-bottom md:motion-safe:data-[state=open]:zoom-in-95"
+          className="fixed inset-x-0 bottom-0 z-50 max-h-[calc(100svh-24px)] overflow-y-auto rounded-t-[20px] border-t border-border-strong bg-panel px-6 pb-10 pt-3 text-center text-prt-text shadow-2xl focus:outline-none md:inset-0 md:m-auto md:h-fit md:w-[440px] md:max-w-[calc(100vw-40px)] md:rounded-2xl md:border md:px-10 md:pb-12 md:pt-16 motion-safe:data-[state=open]:duration-300 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-md:motion-safe:data-[state=open]:slide-in-from-bottom md:motion-safe:data-[state=open]:zoom-in-95"
         >
           <span aria-hidden className="mx-auto mb-7 block h-1 w-10 rounded-full bg-dim md:hidden" />
           {children}
