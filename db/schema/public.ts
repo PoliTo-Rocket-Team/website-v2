@@ -251,7 +251,8 @@ export const applications = pgTable("applications", {
 
 export const applicationFiles = pgTable("application_files", {
   id: serial("id").primaryKey(),
-  r2Key: text("r2_key").notNull().unique(),
+  /** The file's pathname in the private file store. The column keeps its old name. */
+  pathname: text("r2_key").notNull().unique(),
   originalFilename: text("original_filename").notNull(),
   mimeType: text("mime_type"),
   fileSize: bigint("file_size", { mode: "number" }),
@@ -262,7 +263,7 @@ export const applicationFiles = pgTable("application_files", {
   }).defaultNow(),
   userId: text("user_id").references(() => users.id),
 }, (table) => ({
-  r2KeyIdx: index("application_files_r2_key_idx").on(table.r2Key),
+  r2KeyIdx: index("application_files_r2_key_idx").on(table.pathname),
   fileHashIdx: index("application_files_file_hash_idx").on(table.fileHash),
 }));
 

@@ -7,7 +7,7 @@ import { Positions } from "@/components/apply/positions";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
-import { getPublicPositions } from "@/app/actions/get-apply-positions";
+import { openApplyData } from "@/lib/apply/open";
 import { applyPage, applyStats } from "@/lib/apply/page";
 import { applyListing, type ApplyListing } from "@/lib/apply/positions";
 
@@ -20,7 +20,9 @@ export const metadata: Metadata = {
 // 34bm on phones: the header and its figures (2 x 2 on phones), the
 // positions in the state their count picks (applyListing), then the
 // questions. The footer sits in the sky, as on the About pages.
-export default function ApplyPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default function ApplyPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
@@ -29,7 +31,7 @@ export default function ApplyPage() {
           {/* Until the read answers, the header shows without its figures:
               a count shown early would be a guess. */}
           <Suspense fallback={<PageHeader {...applyPage.header} />}>
-            <LiveApplyContent />
+            <LiveApplyContent searchParams={searchParams} />
           </Suspense>
           <Faq />
         </main>
@@ -41,11 +43,12 @@ export default function ApplyPage() {
 
 // Positions are read on request only, so `next build` never queries the
 // database. With no database configured the page shows the none-open state.
-async function LiveApplyContent() {
+// In dummy mode (lib/apply/pick.ts), `?open=<n>` shows n open positions.
+async function LiveApplyContent({ searchParams }: { searchParams: SearchParams }) {
   await connection();
-  const result = await getPublicPositions();
-  const positions = result.status === "available" ? result.positions : [];
-  return <ApplyContent listing={applyListing(positions)} />;
+  const { open } = await searchParams;
+  const data = await openApplyData(typeof open === "string" ? open : null);
+  return <ApplyContent listing={applyListing(await data.publicPositions())} />;
 }
 
 function ApplyContent({ listing }: { listing: ApplyListing }) {

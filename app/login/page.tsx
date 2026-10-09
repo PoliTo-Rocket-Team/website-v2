@@ -2,7 +2,9 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { connection } from "next/server";
 import { GoogleSignInButton } from "@/components/login-form";
+import { TestDeveloperSignIn } from "@/components/test-developer-sign-in";
 
 export const metadata: Metadata = {
   title: "Sign in | Polito Rocket Team",
@@ -11,7 +13,9 @@ export const metadata: Metadata = {
 
 // Boards 36 (desktop) and 36m (phone): a full-height split with no navbar and
 // no footer. The image side is a 420px band on top on phones.
-export default function LoginPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default function LoginPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <main className="flex min-h-svh flex-col bg-ground md:flex-row">
       <ImageSide />
@@ -35,6 +39,9 @@ export default function LoginPage() {
               <GoogleSignInButton />
             </Suspense>
           </div>
+          <Suspense fallback={null}>
+            <TestDeveloperEntry searchParams={searchParams} />
+          </Suspense>
           <p className="mt-9 text-[12px] leading-relaxed text-text-2">
             The dashboard is available to team members only. Other accounts can apply for open
             positions.
@@ -55,6 +62,14 @@ export default function LoginPage() {
       </section>
     </main>
   );
+}
+
+// Previews and `next dev` only (issue #141). Read at request time, never
+// prerendered, so a build promoted to production cannot carry it.
+async function TestDeveloperEntry({ searchParams }: { searchParams: SearchParams }) {
+  await connection();
+  const cb = (await searchParams).cb;
+  return <TestDeveloperSignIn cb={typeof cb === "string" ? cb : null} />;
 }
 
 function ImageSide() {

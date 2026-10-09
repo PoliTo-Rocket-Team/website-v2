@@ -15,6 +15,13 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 
 3. Create a Neon project and set `DATABASE_URL`.
 
+   Uploaded files live in two Vercel Blob stores, and `vercel env pull` brings
+   their credentials: `BLOB_READ_WRITE_TOKEN` for the private store
+   (`prt-applications`: application files and order documents), and
+   `PUBLIC_BLOB_STORE_ID` with `VERCEL_OIDC_TOKEN` for the public store
+   (`prt-public`: profile photos). The helpers are in [`lib/storage`](lib/storage).
+   Tests do not touch either store.
+
 4. Apply the schema and load seed data:
 
    ```bash
