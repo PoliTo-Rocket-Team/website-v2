@@ -17,14 +17,23 @@ session cookie; server code reads the user id from that cookie, then turns the m
    sends a signed-in user on `/login` to the `cb` path (`callbackPath` in
    [lib/auth-callback.ts](../lib/auth-callback.ts), which falls back to `/dashboard` for any `cb`
    that resolves off-site), and sends `/sign-up` and `/sign-in` to `/login`. It does not validate
-   the session or check any role.
+   the session or check any role. On previews and under `next dev` a test developer cookie
+   (`testDeveloperViewer` in [lib/test-developer.ts](../lib/test-developer.ts)) also counts as
+   signed in; in production the cookie is ignored.
 
-3. **Server code gets the user id from `getCurrentUserId()`.**
+3. **Dashboard pages read through one data interface.** `openDashboardData()` in
+   [lib/dashboard/open.ts](../lib/dashboard/open.ts) returns the viewer and their data: the dummy
+   arrays in `lib/dummy-data/` for a test developer, else the signed-in account's rows
+   ([lib/dashboard/database.ts](../lib/dashboard/database.ts)), else null. The viewer's kind and
+   `canReach`/`sidebarFor` in [lib/dashboard/access.ts](../lib/dashboard/access.ts) decide what
+   shows. The legacy dashboard pages still use the shape below.
+
+4. **Server code gets the user id from `getCurrentUserId()`.**
    [lib/current-user.ts](../lib/current-user.ts) reads Better Auth's signed cookie cache with
    `getCookieCache` and returns the user id or `null`. `getCurrentMemberId()` in
    [app/actions/get-memberId.ts](../app/actions/get-memberId.ts) maps it to `users.member`.
 
-4. **Access is a `ScopeInfo` for one target.**
+5. **Access is a `ScopeInfo` for one target.**
    [app/actions/get-member-scopes.ts](../app/actions/get-member-scopes.ts) reads the member's
    `scopes` rows, keeps those whose `target` is the asked target or `"all"`, and folds them into:
 
@@ -40,7 +49,7 @@ session cookie; server code reads the user id from that cookie, then turns the m
    `access_level: "edit"` adds to the `edit` flags and sets as well. No signed-in user, no member,
    or no matching scope gives the empty `ScopeInfo`.
 
-5. **Consumers bail early, then widen or filter.** Each consumer returns an empty result on
+6. **Consumers bail early, then widen or filter.** Each consumer returns an empty result on
    `isEmptyScopeInfo`, shows everything for admin/org, and otherwise filters by department or
    division id:
 
