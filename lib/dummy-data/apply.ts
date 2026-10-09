@@ -107,20 +107,25 @@ export const positionText = {
 } as const satisfies Readonly<Record<(typeof positions)[number]["id"], PositionText>>;
 
 /** The short codes a position's code is built from (`AER-MSA-001`). */
-const departmentCode = { 1: "OPS", 2: "AER", 3: "REC", 4: "ELE", 5: "STR" } as const satisfies Readonly<
+const departmentCode = { 1: "AER", 2: "STR", 3: "RCV", 4: "CAS", 5: "ELT", 6: "OPS" } as const satisfies Readonly<
   Record<(typeof departments)[number]["id"], string>
 >;
 /** A division's code, and its name as the public pages print it (they add "Division" themselves). */
 const divisionLabel = {
-  1: { code: "OPS", name: "Operations" },
-  2: { code: "SFT", name: "Safety" },
-  3: { code: "MSA", name: "Mission Analysis" },
-  4: { code: "RSY", name: "Recovery Systems" },
-  5: { code: "AVS", name: "Avionics Software" },
-  6: { code: "MFG", name: "Manufacturing" },
-  7: { code: "OPA", name: "Optimization and Analysis" },
-  8: { code: "STA", name: "Structures Analysis" },
-  9: { code: "COM", name: "Communications" },
+  1: { code: "MSA", name: "Mission Analysis" },
+  2: { code: "AOA", name: "Optimization and Analysis" },
+  3: { code: "DAM", name: "Design & Manufacturing" },
+  4: { code: "SAN", name: "Structures Analysis" },
+  5: { code: "PRC", name: "Parachutes" },
+  6: { code: "RES", name: "Recovery Systems" },
+  7: { code: "FCS", name: "Flight Control Systems" },
+  8: { code: "SYE", name: "Systems Engineering" },
+  9: { code: "HDW", name: "Hardware" },
+  10: { code: "SWD", name: "Avionics Software" },
+  11: { code: "CMS", name: "Communications" },
+  12: { code: "LGS", name: "Logistics" },
+  13: { code: "SFT", name: "Safety" },
+  14: { code: "SPN", name: "Sponsorship" },
 } as const satisfies Readonly<Record<(typeof divisions)[number]["id"], { code: string; name: string }>>;
 
 function applyPosition(p: DummyPosition): ApplyPosition {

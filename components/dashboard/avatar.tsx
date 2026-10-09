@@ -1,11 +1,14 @@
 import { initialsOf } from "@/lib/dashboard/viewer";
 
 const SIZES = {
+  xs: "h-5 w-5 text-[8px]",
   sm: "h-7 w-7 text-[10px]",
   md: "h-8 w-8 text-[11px]",
+  ml: "h-11 w-11 text-[13px]",
   /** The applicant at the top of the detail panel (board 41b). */
   panel: "h-12 w-12 text-[15px]",
   lg: "h-12 w-12 text-[15px] md:h-[72px] md:w-[72px] md:text-[22px]",
+  xl: "h-16 w-16 text-[18px]",
 } as const;
 
 // Initials in a circle (boards 40 and 40m). The accent fill marks the viewer

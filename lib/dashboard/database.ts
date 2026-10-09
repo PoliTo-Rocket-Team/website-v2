@@ -26,8 +26,17 @@ import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import { getCurrentUserId } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
-import type { NavCounts } from "./access";
+import { canReach, type NavCounts } from "./access";
 import { DashboardRefused, type DashboardData } from "./data";
+import {
+  alumniDirectory,
+  buildTeamTree,
+  divisionDirectory,
+  seasonAt,
+  teamDirectory,
+  type MemberDirectory,
+} from "./team";
+import { alumniOf, readTeamSnapshot, rosterOf } from "./team-database";
 import {
   checklistProgress,
   type ApplicationStatus,
@@ -410,6 +419,19 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
   return fresh > 0 ? { applications: fresh } : {};
 }
 
+/** The Members page: the whole team for the operations lead, the lead's own division for a division lead. */
+async function membersOf(identity: Identity): Promise<MemberDirectory> {
+  const division = identity.role?.divisionId ?? identity.divisionIds[0] ?? null;
+  if (identity.kind !== "operations-lead" && (identity.kind !== "division-lead" || division === null)) {
+    return { scope: "division", division: "", rows: [] };
+  }
+  const snapshot = await readTeamSnapshot();
+  const roster = rosterOf(snapshot);
+  return identity.kind === "operations-lead"
+    ? teamDirectory(roster, snapshot.org, identity.memberId)
+    : divisionDirectory(roster, snapshot.org, division!, identity.memberId);
+}
+
 // Positions and Applications (boards 41, 41b, 41c, issue #142) -----------------
 
 type DbStatus = (typeof applications.$inferSelect)["status"];
@@ -635,6 +657,18 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     viewer,
     navCounts: () => navCountsOf(identity),
     overview: () => overviewOf(identity),
+    members: () => membersOf(identity),
+    alumni: async () =>
+      alumniDirectory(canReach(identity.kind, "alumni") ? alumniOf(await readTeamSnapshot()) : []),
+    teamTree: async () => {
+      const snapshot = await readTeamSnapshot();
+      const roster = canReach(identity.kind, "team-tree") ? rosterOf(snapshot) : [];
+      return buildTeamTree(roster, snapshot.org, seasonAt(new Date()), identity.memberId);
+    },
+    // The Team pages' writes are the test developer's only for now: the
+    // schema has no flag for an alumnus on the site, and member changes
+    // need their own audited, scope-checked actions.
+    teamWrites: null,
     recruitment: getRecruitmentControl,
     setRecruitment: (next) =>
       switchRecruitment(next, {

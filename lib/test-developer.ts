@@ -39,6 +39,9 @@ export const TEST_DEVELOPER_COOKIE_MAX_AGE_S = 7 * 24 * 60 * 60;
 /** What a test developer changed on the dummy team (lib/dummy-data/state.ts); cleared on sign out. */
 export const TEST_DEVELOPER_STATE_COOKIE = "prt_test_developer_state";
 
+/** What a test developer changed on the Team pages (lib/dummy-data/edits.ts); cleared on sign out. */
+export const TEST_DEVELOPER_EDITS_COOKIE = "prt_test_developer_edits";
+
 /** The viewer a test developer cookie names, or null when the gate is off or the value is not a viewer. */
 export function testDeveloperViewer(
   cookieValue: string | null | undefined,
@@ -90,5 +93,11 @@ export function testDeveloperSignIn(url: URL, env: GateEnv = processGateEnv()): 
  */
 export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()): Response {
   if (!testDeveloperOn(env)) return notFound();
-  return redirect("/login", url, cookieHeader("", 0, url), cookieHeader("", 0, url, TEST_DEVELOPER_STATE_COOKIE));
+  return redirect(
+    "/login",
+    url,
+    cookieHeader("", 0, url),
+    cookieHeader("", 0, url, TEST_DEVELOPER_STATE_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_EDITS_COOKIE),
+  );
 }

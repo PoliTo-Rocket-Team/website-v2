@@ -6,6 +6,7 @@ import type { DivisionOrders, Order } from "./orders";
 import type { Overview } from "./overview";
 import type { ApplicationStage, ApplicationsPage, PositionsPage } from "./recruitment";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
+import type { AlumniDirectory, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
@@ -29,6 +30,14 @@ export interface DashboardData {
   readonly viewer: DashboardViewer;
   navCounts(): Promise<NavCounts>;
   overview(): Promise<Overview>;
+  /** The Members page (#143): the whole team, or the lead's own division. */
+  members(): Promise<MemberDirectory>;
+  /** The Alumni page (#143). */
+  alumni(): Promise<AlumniDirectory>;
+  /** The Team tree (#143), built from this year's roster. */
+  teamTree(): Promise<TeamTree>;
+  /** Writes from the Team pages; null where this source stores none yet. */
+  readonly teamWrites: TeamWrites | null;
   /** The site-wide recruitment switch (issue #121): its state, and whether this viewer may flip it. */
   recruitment(): Promise<RecruitmentControl>;
   /**
@@ -66,6 +75,16 @@ export interface DashboardData {
   withdrawApplication(applicationId: number): Promise<WriteResult<null>>;
   /** Removes the sign-in; the rest only as ticked. The page signs out after. */
   deleteAccount(options: DeleteAccount): Promise<WriteResult<null>>;
+}
+
+/**
+ * Each answers whether the change was made: false when the viewer may not
+ * make it or the person is not theirs to change.
+ */
+export interface TeamWrites {
+  setShownOnSite(alumnusId: number, shown: boolean): Promise<boolean>;
+  saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
+  moveToAlumni(personId: number): Promise<boolean>;
 }
 
 /** A read or write the viewer does not reach. */

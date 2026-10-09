@@ -12,6 +12,7 @@ import {
   type RosterPerson,
   type TeamOverview,
 } from "@/lib/dashboard/overview";
+import { divisionIdOf } from "@/lib/dashboard/team";
 import {
   ago,
   appliedLabels,
@@ -29,6 +30,7 @@ import { applications as baseApplications, type DummyApplication } from "./appli
 import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
 import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
+import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
 import {
   dummyDeleteAccount,
   dummyMyAccount,
@@ -53,6 +55,7 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
+import { dummyTeamPages } from "./team-pages";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -83,6 +86,16 @@ const NOW = new Date(DUMMY_NOW);
 /** Monday of the week DUMMY_NOW falls in, at midnight in Turin. */
 const MONDAY = new Date("2026-10-05T00:00:00+02:00");
 
+/** The division a person works in: null for the team leader, a head, or someone not yet placed. */
+function divisionIdOfPerson(person: DummyPerson): number | null {
+  return divisionIdOf(person.placement);
+}
+
+/** The viewer's own division; the division lead and the member viewers both have one. */
+function myDivisionId(kind: "division-lead" | "member"): number {
+  return divisionIdOfPerson(personFor[kind])!;
+}
+
 /** Who a test developer signed in as `kind` is: the dashboard's user card and the navbar show this name. */
 export function dummyViewer(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
@@ -104,7 +117,7 @@ function departmentOf(divisionId: number) {
 /** The positions a viewer reaches: the whole team, or the lead's division. */
 function positionsFor(kind: ViewerKind, team: Team): readonly DummyPosition[] {
   if (kind === "operations-lead") return team.positions;
-  if (kind === "division-lead") return team.positions.filter((p) => p.divisionId === personFor[kind].divisionId);
+  if (kind === "division-lead") return team.positions.filter((p) => p.divisionId === myDivisionId(kind));
   return [];
 }
 
@@ -158,7 +171,7 @@ function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
       },
     ];
   });
-  const unplaced = kind === "operations-lead" ? people.filter((p) => p.divisionId === null) : [];
+  const unplaced = kind === "operations-lead" ? people.filter((p) => p.placement.role === "member" && p.placement.divisionId === null) : [];
   const unassigned: AttentionItem[] =
     unplaced.length === 0
       ? []
@@ -176,7 +189,7 @@ function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
 function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): ActivityItem[] {
   const me = personFor[kind];
   const events =
-    kind === "operations-lead" ? activity : activity.filter((a) => a.divisionId === me.divisionId);
+    kind === "operations-lead" ? activity : activity.filter((a) => a.divisionId === divisionIdOfPerson(me));
   return events.slice(0, 5).map((a) => ({
     actor: a.actor,
     text: a.text,
@@ -214,8 +227,8 @@ function teamOverview(kind: "operations-lead" | "division-lead", team: Team): Te
     };
   }
 
-  const division = divisionOf(personFor[kind].divisionId);
-  const members = people.filter((p) => p.divisionId === division.id);
+  const division = divisionOf(myDivisionId(kind));
+  const members = people.filter((p) => divisionIdOfPerson(p) === division.id);
   return {
     shape: "team",
     stats: [
@@ -237,21 +250,21 @@ function sinceLine(isoDate: string): string {
 
 /** The lead first, then up to two others, then the viewer (board 40m). */
 function rosterPreview(me: DummyPerson): RosterPerson[] {
-  const division = people.filter((p) => p.divisionId === me.divisionId);
-  const lead = division.filter((p) => p.role === "division-lead");
-  const others = division.filter((p) => p.role !== "division-lead" && p.id !== me.id).slice(0, 2);
+  const division = people.filter((p) => divisionIdOfPerson(p) === divisionIdOfPerson(me));
+  const lead = division.filter((p) => p.placement.role === "division-lead");
+  const others = division.filter((p) => p.placement.role !== "division-lead" && p.id !== me.id).slice(0, 2);
   return [...lead, ...others, me].map((p) => ({
     name: p.name,
-    role: p.id === me.id ? "You" : p.role === "division-lead" ? "Division lead" : "Member",
-    lead: p.role === "division-lead",
+    role: p.id === me.id ? "You" : p.placement.role === "division-lead" ? "Division lead" : "Member",
+    lead: p.placement.role === "division-lead",
     self: p.id === me.id,
   }));
 }
 
 function memberOverview(): PersonalOverview {
   const me = personFor.member;
-  const division = divisionOf(me.divisionId);
-  const department = departmentOf(me.divisionId);
+  const division = divisionOf(myDivisionId("member"));
+  const department = departmentOf(division.id);
   const items: ChecklistItem[] = [
     { label: "Name and division", detail: "Set by your division lead", done: true, action: null },
     { label: "Email", detail: me.email, done: true, action: null },
@@ -268,7 +281,7 @@ function memberOverview(): PersonalOverview {
       action: me.linkedin !== null ? null : { label: "Add", href: "/dashboard/profile" },
     },
   ];
-  const size = people.filter((p) => p.divisionId === me.divisionId).length;
+  const size = people.filter((p) => divisionIdOfPerson(p) === division.id).length;
   return {
     shape: "personal",
     person: {
@@ -351,7 +364,7 @@ function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
     return { scope: "team", positions: rows };
   }
   if (kind === "division-lead") {
-    const division = divisionOf(personFor[kind].divisionId).name;
+    const division = divisionOf(myDivisionId(kind)).name;
     return { scope: "division", division, positions: rows };
   }
   throw new DashboardRefused("positions");
@@ -403,15 +416,17 @@ const notApplicant = "This page is for applicants.";
 
 /**
  * The dashboard as the test developer sees it, looking as `kind`, with the
- * recruitment switch read from and kept in `recruitment` (./recruitment.ts)
- * and their Positions and Applications changes in `changes` (./state.ts).
- * Other writes check what was sent as the database side does, store nothing,
- * and answer what the page shows next.
+ * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
+ * their Positions and Applications changes in `changes` (./state.ts), and
+ * their Team page edits in `teamEdits` (./edits.ts). Other writes check what
+ * was sent as the database side does, store nothing, and answer what the page
+ * shows next.
  */
 export function dummyDashboardData(
   kind: ViewerKind,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
+  teamEdits: TeamEditsStore = NO_TEAM_EDITS,
 ): DashboardData {
   const team = teamOf(recruitment.current, changes.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
@@ -426,6 +441,7 @@ export function dummyDashboardData(
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
+    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team),
 

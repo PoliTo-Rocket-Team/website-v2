@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { TestDeveloperSignIn } from "@/components/test-developer-sign-in";
 import {
   TEST_DEVELOPER_COOKIE,
+  TEST_DEVELOPER_EDITS_COOKIE,
   TEST_DEVELOPER_STATE_COOKIE,
   testDeveloperOn,
   testDeveloperSignIn,
@@ -104,4 +105,5 @@ test("sign-out clears the cookie and the dummy team's changes, and goes to /logi
   const cleared = response.headers.getSetCookie();
   assert.match(cleared[0] ?? "", new RegExp(`^${TEST_DEVELOPER_COOKIE}=;.*Max-Age=0`));
   assert.match(cleared[1] ?? "", new RegExp(`^${TEST_DEVELOPER_STATE_COOKIE}=;.*Max-Age=0`));
+  assert.match(cleared[2] ?? "", new RegExp(`^${TEST_DEVELOPER_EDITS_COOKIE}=;.*Max-Age=0`));
 });

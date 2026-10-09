@@ -6,6 +6,7 @@ import {
   type MyAccount,
   type MyProfile,
 } from "@/lib/dashboard/self";
+import { divisionIdOf } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { departments, divisions, ownApplications, positions, type DummyPerson } from "./team";
 
@@ -32,7 +33,7 @@ function signInOf(person: DummyPerson): DummySignIn {
 }
 
 export function dummyMyProfile(person: DummyPerson): MyProfile {
-  const division = divisions.find((d) => d.id === person.divisionId);
+  const division = divisions.find((d) => d.id === divisionIdOf(person.placement));
   const login = signInOf(person);
   return {
     name: person.name,

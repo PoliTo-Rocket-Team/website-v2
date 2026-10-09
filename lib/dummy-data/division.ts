@@ -10,6 +10,7 @@ import {
   type DivisionAccess,
 } from "@/lib/dashboard/division-access";
 import { checkNewOrder, checkQuote, type DivisionOrders, type Order, type OrderStatus } from "@/lib/dashboard/orders";
+import { divisionIdOf } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { divisions, people, type DummyPerson } from "./team";
 
@@ -40,9 +41,9 @@ export type DummyGrant = {
 };
 
 export const accessGrants = [
-  { id: 1, personId: 3, divisionId: 3, target: "applications", level: "view", givenById: 2, givenOn: "2026-10-02" },
-  { id: 2, personId: 4, divisionId: 3, target: "positions", level: "edit", givenById: 2, givenOn: "2026-09-28" },
-  { id: 3, personId: 3, divisionId: 3, target: "members", level: "view", givenById: 2, givenOn: "2026-10-02" },
+  { id: 1, personId: 3, divisionId: 1, target: "applications", level: "view", givenById: 2, givenOn: "2026-10-02" },
+  { id: 2, personId: 4, divisionId: 1, target: "positions", level: "edit", givenById: 2, givenOn: "2026-09-28" },
+  { id: 3, personId: 3, divisionId: 1, target: "members", level: "view", givenById: 2, givenOn: "2026-10-02" },
 ] as const satisfies readonly DummyGrant[];
 
 export type DummyOrder = {
@@ -64,20 +65,20 @@ export type DummyOrder = {
 export const ordersYear = 2026;
 
 export const orders = [
-  { id: 1, divisionId: 3, requesterId: 2, item: "Steel wire", reason: "For the launch rail", link: "https://amzn.eu/d/076iqsM1", unitPrice: 5955, quantity: 2, shipping: null, status: "waiting", requestedOn: "2026-10-08" },
-  { id: 2, divisionId: 3, requesterId: 2, item: "CO2 cartridges", reason: "Ejection tests at Roccaraso", link: null, unitPrice: 12480, quantity: 1, shipping: null, status: "waiting", requestedOn: "2026-10-07" },
-  { id: 3, divisionId: 3, requesterId: 3, item: "Mini 3-ring system", reason: "Recovery bay mock-up", link: null, unitPrice: 15000, quantity: 1, shipping: 1330, status: "waiting", requestedOn: "2026-10-06" },
-  { id: 4, divisionId: 3, requesterId: 2, item: "Loctite", reason: "Launch rail screws", link: null, unitPrice: 1180, quantity: 3, shipping: null, status: "ordered", requestedOn: "2026-10-01" },
-  { id: 5, divisionId: 3, requesterId: 4, item: "M4 heated inserts", reason: "Roccaraso launch", link: null, unitPrice: 2300, quantity: 3, shipping: null, status: "ordered", requestedOn: "2026-09-29" },
-  { id: 6, divisionId: 3, requesterId: 3, item: "Concave mirror", reason: "Optical test bench", link: null, unitPrice: 4824, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-09-22" },
-  { id: 7, divisionId: 3, requesterId: 4, item: "Carbon fibre tube, 100 mm", reason: "Airframe test section", link: null, unitPrice: 42000, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-09-10" },
-  { id: 8, divisionId: 3, requesterId: 2, item: "StratoLogger CF altimeter", reason: "Dual-deploy backup", link: null, unitPrice: 6490, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-07-15" },
-  { id: 9, divisionId: 3, requesterId: 3, item: "Parachute, 1.2 m", reason: "Main recovery chute", link: null, unitPrice: 18900, quantity: 1, shipping: 1500, status: "delivered", requestedOn: "2026-06-30" },
-  { id: 10, divisionId: 3, requesterId: 4, item: "Raspberry Pi 5", reason: "Ground station", link: null, unitPrice: 8990, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-05-12" },
-  { id: 11, divisionId: 3, requesterId: 2, item: "Load cell, 500 kg", reason: "Static fire stand", link: null, unitPrice: 31450, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-04-03" },
-  { id: 12, divisionId: 3, requesterId: 3, item: "Shock cord, 6 m", reason: "Recovery harness", link: null, unitPrice: 2275, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-03-18" },
-  { id: 13, divisionId: 3, requesterId: 4, item: "GPS module", reason: "Telemetry board", link: null, unitPrice: 4890, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-02-20" },
-  { id: 14, divisionId: 3, requesterId: 2, item: "Aluminium plate 6061, 5 mm", reason: "Fin can", link: null, unitPrice: 33000, quantity: 2, shipping: 2671, status: "delivered", requestedOn: "2026-01-27" },
+  { id: 1, divisionId: 1, requesterId: 2, item: "Steel wire", reason: "For the launch rail", link: "https://amzn.eu/d/076iqsM1", unitPrice: 5955, quantity: 2, shipping: null, status: "waiting", requestedOn: "2026-10-08" },
+  { id: 2, divisionId: 1, requesterId: 2, item: "CO2 cartridges", reason: "Ejection tests at Roccaraso", link: null, unitPrice: 12480, quantity: 1, shipping: null, status: "waiting", requestedOn: "2026-10-07" },
+  { id: 3, divisionId: 1, requesterId: 3, item: "Mini 3-ring system", reason: "Recovery bay mock-up", link: null, unitPrice: 15000, quantity: 1, shipping: 1330, status: "waiting", requestedOn: "2026-10-06" },
+  { id: 4, divisionId: 1, requesterId: 2, item: "Loctite", reason: "Launch rail screws", link: null, unitPrice: 1180, quantity: 3, shipping: null, status: "ordered", requestedOn: "2026-10-01" },
+  { id: 5, divisionId: 1, requesterId: 4, item: "M4 heated inserts", reason: "Roccaraso launch", link: null, unitPrice: 2300, quantity: 3, shipping: null, status: "ordered", requestedOn: "2026-09-29" },
+  { id: 6, divisionId: 1, requesterId: 3, item: "Concave mirror", reason: "Optical test bench", link: null, unitPrice: 4824, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-09-22" },
+  { id: 7, divisionId: 1, requesterId: 4, item: "Carbon fibre tube, 100 mm", reason: "Airframe test section", link: null, unitPrice: 42000, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-09-10" },
+  { id: 8, divisionId: 1, requesterId: 2, item: "StratoLogger CF altimeter", reason: "Dual-deploy backup", link: null, unitPrice: 6490, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-07-15" },
+  { id: 9, divisionId: 1, requesterId: 3, item: "Parachute, 1.2 m", reason: "Main recovery chute", link: null, unitPrice: 18900, quantity: 1, shipping: 1500, status: "delivered", requestedOn: "2026-06-30" },
+  { id: 10, divisionId: 1, requesterId: 4, item: "Raspberry Pi 5", reason: "Ground station", link: null, unitPrice: 8990, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-05-12" },
+  { id: 11, divisionId: 1, requesterId: 2, item: "Load cell, 500 kg", reason: "Static fire stand", link: null, unitPrice: 31450, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-04-03" },
+  { id: 12, divisionId: 1, requesterId: 3, item: "Shock cord, 6 m", reason: "Recovery harness", link: null, unitPrice: 2275, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-03-18" },
+  { id: 13, divisionId: 1, requesterId: 4, item: "GPS module", reason: "Telemetry board", link: null, unitPrice: 4890, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-02-20" },
+  { id: 14, divisionId: 1, requesterId: 2, item: "Aluminium plate 6061, 5 mm", reason: "Fin can", link: null, unitPrice: 33000, quantity: 2, shipping: 2671, status: "delivered", requestedOn: "2026-01-27" },
 ] as const satisfies readonly DummyOrder[];
 
 function personOf(id: number): DummyPerson {
@@ -98,13 +99,13 @@ function localId(): number {
 }
 
 function accessPerson(p: DummyPerson): AccessPerson {
-  return { id: p.id, name: p.name, standing: p.role === "member" ? "member" : "lead" };
+  return { id: p.id, name: p.name, standing: p.placement.role === "member" ? "member" : "lead" };
 }
 
 /** Board 43 for a lead; null for anyone who leads no division. */
 export function dummyDivisionAccess(lead: DummyPerson): DivisionAccess | null {
-  if (lead.role !== "division-lead" || lead.divisionId === null) return null;
-  const divisionId = lead.divisionId;
+  if (lead.placement.role !== "division-lead") return null;
+  const divisionId = lead.placement.divisionId;
   const grants = accessGrants
     .filter((g) => g.divisionId === divisionId)
     .map((g): AccessGrant => ({
@@ -121,7 +122,7 @@ export function dummyDivisionAccess(lead: DummyPerson): DivisionAccess | null {
       heldAccess.filter((h) => h.personId === lead.id && h.target === target).map((h) => ({ target, level: h.level })),
     ),
     grants,
-    people: people.filter((p) => p.divisionId === divisionId && p.id !== lead.id).map(accessPerson),
+    people: people.filter((p) => divisionIdOf(p.placement) === divisionId && p.id !== lead.id).map(accessPerson),
   };
 }
 
@@ -160,8 +161,8 @@ export function dummyRemoveAccess(lead: DummyPerson, grantId: number): WriteResu
 
 /** Board 44 for a lead; null for anyone who leads no division. */
 export function dummyDivisionOrders(lead: DummyPerson): DivisionOrders | null {
-  if (lead.role !== "division-lead" || lead.divisionId === null) return null;
-  const divisionId = lead.divisionId;
+  if (lead.placement.role !== "division-lead") return null;
+  const divisionId = lead.placement.divisionId;
   return {
     division: { id: divisionId, name: divisionOf(divisionId).name },
     year: ordersYear,

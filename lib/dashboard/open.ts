@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { getSessionCookie } from "better-auth/cookies";
 import { dummyDashboardData } from "@/lib/dummy-data";
+import { parseEdits, serializeEdits, type TeamEditsStore } from "@/lib/dummy-data/edits";
 import {
   DUMMY_RECRUITMENT_COOKIE,
   dummyRecruitmentCookieValue,
@@ -14,6 +15,7 @@ import { parseDummyState, serializeDummyState, type DummyStateStore } from "@/li
 import {
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_COOKIE_MAX_AGE_S,
+  TEST_DEVELOPER_EDITS_COOKIE,
   TEST_DEVELOPER_STATE_COOKIE,
   testDeveloperViewer,
 } from "@/lib/test-developer";
@@ -32,7 +34,10 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
   const jar = await cookies();
   const viewer = testDeveloperViewer(jar.get(TEST_DEVELOPER_COOKIE)?.value);
   if (viewer !== null) {
-    return dashboardOpening(dummyDashboardData(viewer, dummyRecruitmentIn(jar), dummyStateIn(jar)), true);
+    return dashboardOpening(
+      dummyDashboardData(viewer, dummyRecruitmentIn(jar), dummyStateIn(jar), dummyTeamEditsIn(jar)),
+      true,
+    );
   }
   // A plain Headers: getSessionCookie cannot read Next's request headers.
   const holdsSessionToken = getSessionCookie(new Headers(await headers())) !== null;
@@ -70,5 +75,13 @@ function dummyStateIn(jar: Jar): DummyStateStore {
   return {
     current: parseDummyState(jar.get(TEST_DEVELOPER_STATE_COOKIE)?.value),
     save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_STATE_COOKIE, serializeDummyState(next)),
+  };
+}
+
+/** Edits on the Team pages (issue #143, lib/dummy-data/edits.ts). */
+function dummyTeamEditsIn(jar: Jar): TeamEditsStore {
+  return {
+    current: parseEdits(jar.get(TEST_DEVELOPER_EDITS_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_EDITS_COOKIE, serializeEdits(next)),
   };
 }
