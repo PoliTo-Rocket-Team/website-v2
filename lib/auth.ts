@@ -1,7 +1,9 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { customSession } from "better-auth/plugins";
 import { getDb } from "@/db/client";
+import { devTesterPlugin } from "@/lib/dev-tester-plugin";
+import { testerSignInOn } from "@/lib/dev-tester";
 import {
   betterAuthAccounts,
   betterAuthSessions,
@@ -17,13 +19,8 @@ const trustedOrigins = [
 ].filter((origin): origin is string => Boolean(origin));
 
 export function getAuth() {
-  const authDb = getDb();
-
-  return betterAuth({
-    baseURL: authBaseUrl as string,
-    secret: process.env.BETTER_AUTH_SECRET as string,
-    trustedOrigins,
-    database: drizzleAdapter(authDb, {
+  return createAuth(
+    drizzleAdapter(getDb(), {
       provider: "pg",
       camelCase: true,
       schema: {
@@ -33,6 +30,16 @@ export function getAuth() {
         verification: betterAuthVerifications,
       },
     }),
+  );
+}
+
+/** getAuth() over any database adapter; tests pass an in-memory one. */
+export function createAuth(database: BetterAuthOptions["database"]) {
+  return betterAuth({
+    baseURL: authBaseUrl as string,
+    secret: process.env.BETTER_AUTH_SECRET as string,
+    trustedOrigins,
+    database,
     // Google is the only way to sign in (issue #118): no email and password,
     // so no verification or reset emails.
     socialProviders: {
@@ -56,6 +63,9 @@ export function getAuth() {
           email: user.email,
         };
       }),
+      // Local-only tester sign-in (issue #129): registered on `next dev`
+      // only, so previews and production keep the plugins above alone.
+      ...(testerSignInOn() ? [devTesterPlugin()] : []),
     ],
   });
 }
