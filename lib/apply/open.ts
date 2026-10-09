@@ -7,7 +7,9 @@ import { DUMMY_RECRUITMENT_COOKIE } from "@/lib/dummy-data/recruitment";
 import { TEST_DEVELOPER_COOKIE } from "@/lib/test-developer";
 import type { ApplyData } from "./data";
 import { databaseApplyData } from "./database";
-import { pickApplyData } from "./pick";
+import { pickApplyData, plainApplyRequest, type ApplySides } from "./pick";
+
+const sides: ApplySides = { database: () => databaseApplyData, dummy: dummyApplyData };
 
 /**
  * This request's apply data (./pick.ts decides which side). `openSelector`
@@ -22,6 +24,16 @@ export async function openApplyData(openSelector: string | null = null): Promise
       openSelector,
       recruitmentCookie: jar.get(DUMMY_RECRUITMENT_COOKIE)?.value,
     },
-    { database: () => databaseApplyData, dummy: dummyApplyData },
+    sides,
   );
+}
+
+/**
+ * The apply data of a plain visit, read from the environment alone, so
+ * `next build` can prerender /apply with it (issue #163). On the database
+ * side its positions come from the cached public read, which the dashboard
+ * refreshes with updateTag(PUBLIC_POSITIONS_CACHE_TAG).
+ */
+export function plainApplyData(): ApplyData {
+  return pickApplyData(plainApplyRequest(processDummyModeEnv()), sides);
 }

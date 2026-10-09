@@ -4,7 +4,9 @@ import { dummyApplyData, SentApplications } from "@/lib/dummy-data/apply";
 import type { ApplyData } from "./data";
 import { submitDepsOf } from "./data";
 import type { DummyModeEnv } from "@/lib/dummy-data/mode";
-import { pickApplyData, type ApplySides } from "./pick";
+import { DUMMY_RECRUITMENT_COOKIE } from "@/lib/dummy-data/recruitment";
+import { config as proxyConfig } from "@/proxy";
+import { applyListIsPerRequest, pickApplyData, plainApplyRequest, type ApplySides } from "./pick";
 import { submitApplication } from "./submit";
 
 const PRODUCTION: DummyModeEnv = { NODE_ENV: "production", VERCEL_ENV: "production", DATABASE_URL: "postgres://u@h/db" };
@@ -64,6 +66,43 @@ test("a preview picks the dummy side, with the cookie's viewer and the selector"
     ["non-member", "3"],
     [null, null],
   ]);
+});
+
+describe("/apply is rendered per request only for a dummy-mode request carrying a selector (issue #163)", () => {
+  test("a plain visit is never per request, on a preview or in production", () => {
+    for (const env of [PREVIEW, PRODUCTION, PRODUCTION_NO_DB]) {
+      assert.equal(applyListIsPerRequest({ env, openSelector: null, recruitmentCookie: undefined }), false);
+    }
+  });
+
+  test("on a preview, the open selector or the dummy recruitment cookie makes it per request", () => {
+    assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: "0", recruitmentCookie: null }), true);
+    assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: "", recruitmentCookie: null }), true);
+    assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: null, recruitmentCookie: "closed" }), true);
+  });
+
+  test("in production, neither does: the database side ignores both", () => {
+    for (const env of [PRODUCTION, PRODUCTION_NO_DB]) {
+      assert.equal(applyListIsPerRequest({ env, openSelector: "0", recruitmentCookie: "closed" }), false);
+    }
+  });
+
+  test("the prerendered page picks its side from the environment alone", () => {
+    const { side } = databaseSpy();
+    const { sides: s, dummyCalls } = sides(side);
+    assert.equal(pickApplyData(plainApplyRequest(PRODUCTION), s), side);
+    assert.notEqual(pickApplyData(plainApplyRequest(PREVIEW), s), side);
+    assert.deepEqual(dummyCalls, [[null, null]]);
+  });
+
+  test("the proxy runs on /apply only for the open query and the dummy recruitment cookie", () => {
+    const apply = proxyConfig.matcher.filter((m) => typeof m !== "string");
+    assert.deepEqual(apply, [
+      { source: "/apply", has: [{ type: "query", key: "open" }] },
+      { source: "/apply", has: [{ type: "cookie", key: DUMMY_RECRUITMENT_COOKIE }] },
+    ]);
+    assert.ok(!proxyConfig.matcher.includes("/apply"), "a plain visit never reaches the proxy");
+  });
 });
 
 const PDF = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n");
