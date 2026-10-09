@@ -353,12 +353,5 @@ export function buildTeamTree(
   };
 }
 
-/** How many of a division's members a tree card lists before "+N more": all when five or fewer. */
-export function shownMembers(members: readonly TreePerson[], limit = 4): { shown: readonly TreePerson[]; more: number } {
-  if (members.length <= limit + 1) return { shown: members, more: 0 };
-  // The viewer is always listed.
-  const self = members.find((m) => m.self);
-  const head = members.slice(0, limit);
-  const shown = self && !head.includes(self) ? [...head.slice(0, limit - 1), self] : head;
-  return { shown, more: members.length - shown.length };
-}
+/** The `view` query value that opens the Team tree expanded (board 54b), so the view can be linked. */
+export const EXPANDED_VIEW = "all";

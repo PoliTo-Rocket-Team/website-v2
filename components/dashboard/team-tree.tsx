@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, type CSSProperties } from "react";
-import { ChevronDown, ChevronUp, Crosshair, Shrink } from "lucide-react";
+import { ChevronDown, ChevronUp, LocateFixed } from "lucide-react";
 import {
+  EXPANDED_VIEW,
   matchesQuery,
-  shownMembers,
   type TeamTree,
   type TreeDepartment,
   type TreeDivision,
@@ -14,12 +14,13 @@ import { Avatar } from "./avatar";
 import { SearchField } from "./directory";
 import { PANEL } from "./panel";
 
-// The Team tree (boards 42 and 42b), drawn from the roster the data
-// interface returns. Folded (42): the team leader, the departments, and the
+// The Team tree (boards 54 and 54b), drawn from the roster the data
+// interface returns. Folded (54): the team leader, the departments, and the
 // branch that is open, the viewer's own path first, highlighted in accent.
-// Expanding another department opens every department (42b); "Collapse all"
-// folds back. Below xl, where six departments no longer fit side by side,
-// the folded tree is a stacked list instead.
+// Expanding another department opens every department (54b), each one's
+// divisions stacked under its head; "Collapse" folds back. Below xl, where
+// six departments no longer fit side by side, the folded tree is a stacked
+// list instead. `?view=all` opens on the expanded tree, so it can be linked.
 
 type Open = { readonly departmentId: number | null; readonly divisionId: number | null };
 
@@ -53,34 +54,41 @@ function everyone(tree: TeamTree): TreePerson[] {
   ];
 }
 
-export function TeamTreeView({ tree }: { tree: TeamTree }) {
-  const [expanded, setExpanded] = useState(false);
+export function TeamTreeView({ tree, startExpanded = false }: { tree: TeamTree; startExpanded?: boolean }) {
+  const [expanded, setExpandedState] = useState(startExpanded);
   const [open, setOpen] = useState<Open>(() => openOnPath(tree));
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<number | null>(null);
+
+  const setExpanded = (next: boolean) => {
+    setExpandedState(next);
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set("view", EXPANDED_VIEW);
+    else url.searchParams.delete("view");
+    window.history.replaceState(window.history.state, "", url);
+  };
+
+  const fold = (next: Open) => {
+    setExpanded(false);
+    setOpen(next);
+  };
 
   const find = (next: string) => {
     setQuery(next);
     const match = next.trim() === "" ? null : everyone(tree).find((p) => matchesQuery([p.name], next)) ?? null;
     setFound(match?.id ?? null);
     const place = match ? locate(tree, match.id) : null;
-    if (place) {
-      setExpanded(false);
-      setOpen(place);
-    }
+    if (place) fold(place);
   };
 
   const showMe = () => {
-    setExpanded(false);
-    setOpen(openOnPath(tree));
+    fold(openOnPath(tree));
     setQuery("");
     setFound(null);
   };
 
   const people = `${tree.size} ${tree.size === 1 ? "person" : "people"}`;
-  const detail = expanded
-    ? `${tree.season} team · ${people}. All departments expanded.`
-    : `${tree.season} team · ${people}.${tree.path ? " Your path is highlighted." : ""}`;
+  const detail = `${tree.season} team · ${people}.${tree.path ? " Your path is highlighted." : ""}`;
 
   return (
     <div>
@@ -91,24 +99,25 @@ export function TeamTreeView({ tree }: { tree: TeamTree }) {
         </header>
         <div className="flex flex-wrap items-center gap-2">
           <SearchField value={query} onChange={find} placeholder="Find someone" className="sm:w-[240px]" />
-          {tree.path && (
-            <button type="button" onClick={showMe} className={PILL}>
-              <Crosshair aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-              Show me
-            </button>
-          )}
-          {expanded && (
+          {expanded ? (
             <button type="button" onClick={() => setExpanded(false)} className={PILL}>
-              <Shrink aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-              Collapse all
+              <LocateFixed aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              Collapse
             </button>
+          ) : (
+            tree.path && (
+              <button type="button" onClick={showMe} className={PILL}>
+                <LocateFixed aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+                Show me
+              </button>
+            )
           )}
         </div>
       </div>
 
       <section className={`${PANEL} mt-6 overflow-x-auto p-3 md:p-8`}>
         {expanded ? (
-          <ExpandedTree tree={tree} found={found} />
+          <ExpandedTree tree={tree} open={open} found={found} onFold={fold} />
         ) : (
           <>
             <div className="xl:hidden">
@@ -124,7 +133,7 @@ export function TeamTreeView({ tree }: { tree: TeamTree }) {
   );
 }
 
-// Folded (board 42): cards laid out at their board sizes on one canvas, joined
+// Folded (board 54): cards laid out at their board sizes on one canvas, joined
 // by lines. The canvas never grows past those sizes, and in a narrower panel
 // it narrows as a whole: every left edge and width is a share of the canvas,
 // so all six departments stay in view with the leader centred over them.
@@ -216,8 +225,7 @@ function FoldedTree({ tree, open, found, onOpen, onExpandAll }: FoldedProps) {
 
     if (openDivision && people.length > 0) {
       const parentDiv = divBoxes[divisions.indexOf(openDivision)];
-      const line3 = parentDiv.y + parentDiv.h + DROP;
-      const personTop = line3 + DROP;
+      const personTop = parentDiv.y + parentDiv.h + 2 * DROP;
       const pStart = rowStart(parentDiv.x, personRow, width);
       personBoxes = people.map((p, i): Box => ({
         x: pStart + i * (PERSON.w + PERSON.gap),
@@ -225,10 +233,14 @@ function FoldedTree({ tree, open, found, onOpen, onExpandAll }: FoldedProps) {
         w: PERSON.w,
         h: p.self ? PERSON.self : PERSON.h,
       }));
-      const selfIndex = people.findIndex((p) => p.self);
-      lines.push({ x1: centre(parentDiv), y1: parentDiv.y + parentDiv.h, x2: centre(parentDiv), y2: line3, accent: selfIndex >= 0 });
-      lines.push(...run([centre(parentDiv), ...personBoxes.map(centre)], line3, selfIndex >= 0 ? centre(parentDiv) : null, selfIndex >= 0 ? centre(personBoxes[selfIndex]) : null));
-      personBoxes.forEach((box, i) => lines.push({ x1: centre(box), y1: line3, x2: centre(box), y2: personTop, accent: i === selfIndex }));
+      // One drop from the division into its row of people (board 54).
+      lines.push({
+        x1: centre(parentDiv),
+        y1: parentDiv.y + parentDiv.h,
+        x2: centre(parentDiv),
+        y2: personTop,
+        accent: people.some((p) => p.self),
+      });
       height = personTop + Math.max(...personBoxes.map((b) => b.h));
     }
   }
@@ -463,14 +475,30 @@ function PersonCard({ person, lead, found }: { person: TreePerson; lead: boolean
   );
 }
 
-// Expanded (board 42b): one column per department, each division listed.
+// Expanded (board 54b): the same leader and head row as the folded tree, and
+// under each head every division of that department, stacked in its column.
 
 /** The centre of column `i` of six, 12px apart, as a CSS length. */
 function columnCentre(i: number): string {
   return `calc((100% - ${5 * GAP}px) / 6 * ${i + 0.5} + ${GAP * i}px)`;
 }
 
-function ExpandedTree({ tree, found }: { tree: TeamTree; found: number | null }) {
+/** The short line joining a card to the one above it, in line with the cards' avatars (board 54b). */
+function Connector() {
+  return <span aria-hidden className="ml-[21px] block h-4 border-l border-border-strong" />;
+}
+
+function ExpandedTree({
+  tree,
+  open,
+  found,
+  onFold,
+}: {
+  tree: TeamTree;
+  open: Open;
+  found: number | null;
+  onFold: (open: Open) => void;
+}) {
   const departments = tree.departments;
   const pathIndex = departments.findIndex((d) => d.id === tree.path?.departmentId);
   const six = departments.length === 6;
@@ -511,63 +539,75 @@ function ExpandedTree({ tree, found }: { tree: TeamTree; found: number | null })
           ))}
         </div>
       )}
-      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 ${six ? "mt-4 xl:mt-0 xl:grid-cols-6" : "mt-6"}`}>
-        {departments.map((department) => (
-          <div key={department.id} className="flex flex-col gap-3">
-            <div
-              className={`rounded-xl border px-3.5 py-3 ${cardTone(department.id === tree.path?.departmentId || (found !== null && department.head?.id === found))}`}
-            >
-              <p
-                className={`font-mono text-[9px] uppercase tracking-[0.12em] ${department.id === tree.path?.departmentId ? "text-accent" : "text-dim"}`}
-              >
-                {department.name}
-              </p>
-              <p className="mt-1 truncate text-[13px] font-semibold">{department.head?.name ?? department.name}</p>
-              {department.head && <p className="text-[12px] text-prt-muted">Head</p>}
+      <div className={`grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 ${six ? "mt-4 xl:mt-0 xl:grid-cols-6" : "mt-6"}`}>
+        {departments.map((department) => {
+          const isOpen = department.id === open.departmentId;
+          const onPath = department.id === tree.path?.departmentId;
+          return (
+            <div key={department.id} className="flex flex-col">
+              <div className="min-h-[96px]">
+                <DepartmentCard
+                  department={department}
+                  onPath={onPath}
+                  isOpen={isOpen}
+                  found={found !== null && department.head?.id === found}
+                  onToggle={() =>
+                    onFold(isOpen ? open : { departmentId: department.id, divisionId: null })
+                  }
+                />
+              </div>
+              {department.divisions.map((division) => (
+                <div key={division.id}>
+                  <Connector />
+                  <ExpandedDivision
+                    division={division}
+                    onPath={onPath && division.id === tree.path?.divisionId}
+                    found={found}
+                  />
+                </div>
+              ))}
             </div>
-            {department.divisions.map((division) => (
-              <ExpandedDivision
-                key={division.id}
-                division={division}
-                onPath={department.id === tree.path?.departmentId && division.id === tree.path?.divisionId}
-                found={found}
-              />
-            ))}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
+/** A small mono tag beside a name: LEAD, YOU. */
+function Tag({ children }: { children: string }) {
+  return <span className="ml-1.5 inline-block whitespace-nowrap font-mono text-[8px] font-normal uppercase tracking-[0.2em] text-accent">{children}</span>;
+}
+
+/** A division and every one of its people, the lead first (board 54b). */
 function ExpandedDivision({ division, onPath, found }: { division: TreeDivision; onPath: boolean; found: number | null }) {
-  const { shown, more } = shownMembers(division.members);
-  const foundHere = found !== null && division.members.some((m) => m.id === found) && !shown.some((m) => m.id === found);
-  const list = foundHere ? [...shown, division.members.find((m) => m.id === found)!] : shown;
+  const people = [...(division.lead ? [division.lead] : []), ...division.members];
   return (
-    <div className={`rounded-xl border px-3 py-3 ${cardTone(onPath)}`}>
-      <p className="text-[12px] font-semibold leading-snug">{division.name}</p>
-      {division.lead && (
-        <div className={`mt-2 flex items-center gap-2 border-b border-hairline pb-2.5 ${division.lead.id === found ? "text-accent" : ""}`}>
-          <Avatar name={division.lead.name} size="xs" accent />
-          <span className="truncate text-[12px] font-medium">{division.lead.name}</span>
-        </div>
-      )}
-      <ul className="mt-2 flex flex-col gap-1">
-        {list.map((member) => (
-          <li
-            key={member.id}
-            className={`flex items-center gap-2 rounded-md px-1 py-1 ${member.self ? "bg-accent/[0.08]" : ""} ${member.id === found ? "ring-1 ring-accent" : ""}`}
-          >
-            <Avatar name={member.name} size="xs" />
-            <span className={`truncate text-[12px] ${member.self ? "font-semibold text-prt-text" : "text-text-2"}`}>{member.name}</span>
-            {member.self && <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.2em] text-accent">You</span>}
-          </li>
-        ))}
+    <div className={`rounded-xl border px-3 pb-2.5 pt-3 ${cardTone(onPath)}`}>
+      <p className="text-[13px] font-semibold leading-snug">{division.name}</p>
+      <ul className="mt-2 flex flex-col">
+        {people.map((person) => {
+          const lead = person.id === division.lead?.id;
+          return (
+            <li
+              key={person.id}
+              className={`-mx-1.5 flex min-h-[26px] items-center gap-2 rounded-md px-1.5 ${person.self ? "bg-accent/[0.1]" : ""} ${
+                person.id === found ? "ring-1 ring-accent" : ""
+              }`}
+            >
+              <Avatar name={person.name} size="xs" accent={lead} />
+              {/* The name wraps rather than cut when a tag leaves it too little room. */}
+              <span
+                className={`min-w-0 py-1 text-[11px] leading-tight ${lead || person.self ? "font-semibold text-prt-text" : "text-text-2"}`}
+              >
+                {person.name}
+                {lead && <Tag>Lead</Tag>}
+                {person.self && <Tag>You</Tag>}
+              </span>
+            </li>
+          );
+        })}
       </ul>
-      {more - (foundHere ? 1 : 0) > 0 && (
-        <p className="mt-1.5 px-1 text-[11px] text-dim">+{more - (foundHere ? 1 : 0)} more</p>
-      )}
     </div>
   );
 }
