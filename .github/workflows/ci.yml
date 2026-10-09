@@ -32,13 +32,27 @@ jobs:
           FABRIKA_GLOBAL_WARNING_DISABLED: "1"
         run: pnpm exec fabrika guard decisions-index validate
 
+  # Runs the unit tests (`lib/**/*.test.ts`). It needs no secrets and no
+  # database: every test that reads env passes its own values in.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
   # The one check the merge queue requires. It always runs, so a pull request
   # never waits on a job that did not start. It also enforces `ready-for:human`
   # on queue entries: the merge_group payload carries no labels, so it reads
   # the pull request's live labels and fails while the hold is on.
   ci-required:
     if: always()
-    needs: [typecheck]
+    needs: [typecheck, test]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -68,9 +82,18 @@ jobs:
           echo "pull request #${pr}: no ready-for:human hold."
       - env:
           TYPECHECK: ${{ needs.typecheck.result }}
+          TEST: ${{ needs.test.result }}
         run: |
+          failed=0
           if [ "$TYPECHECK" != success ]; then
             echo "::error::typecheck concluded ${TYPECHECK}."
+            failed=1
+          fi
+          if [ "$TEST" != success ]; then
+            echo "::error::test concluded ${TEST}."
+            failed=1
+          fi
+          if [ "$failed" != 0 ]; then
             exit 1
           fi
-          echo "typecheck: success."
+          echo "typecheck: success. test: success."
