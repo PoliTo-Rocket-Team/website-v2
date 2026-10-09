@@ -47,16 +47,22 @@ client component as props.
    }
    ```
 
-6. **Pass actions as props.** The page imports the actions and hands them to the client list
-   ([dashboard/positions/page.tsx](../app/(legacy)/dashboard/positions/page.tsx) →
-   [components/apply-positions-list.tsx](../components/apply-positions-list.tsx)). The client calls
-   them, updates local state on success, and shows a toast (see
+6. **Call the actions from the client.** The legacy list took the actions as props
+   ([components/apply-positions-list.tsx](../components/apply-positions-list.tsx)). The dashboard's
+   client components import them from
+   [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the
+   arguments and writes through the dashboard data interface
+   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): a test developer's write changes only a
+   cookie, an account's goes through `runAuditQuery` in
+   [lib/dashboard/database.ts](../lib/dashboard/database.ts) after a scope check. The client shows
+   the change at once (`useOptimistic`) and a toast when the write is refused (see
    [client-form-submit.md](./client-form-submit.md)).
 
 ## When this applies
 
 Any write to an app table in `public`. Call sites today: `handleDelete`, `handleEditPosition` and
-`handleAddPosition` in `server-actions.ts`, and `sendApplication` in
+`handleAddPosition` in `server-actions.ts` (no page calls them since issue #142),
+`setPositionOpen` and `setApplicationStage` in `lib/dashboard/database.ts`, and `sendApplication` in
 [app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). Several writes that must land
 together go through `runAuditBatch` instead: one `db.batch` with the audit setup first. A batch
 cannot pass one insert's id to the next, so a later write finds an earlier row by a unique value
