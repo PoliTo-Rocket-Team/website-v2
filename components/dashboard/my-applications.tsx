@@ -28,13 +28,16 @@ import {
 } from "@/lib/dashboard/my-applications";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { ConfirmDialog } from "./confirm-dialog";
-import { EYEBROW, GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
+import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
 
 type Actions = {
   withdrawApplication: (applicationId: number) => Promise<WriteResult<null>>;
   chooseInterviewSlot: (applicationId: number, slotId: number) => Promise<WriteResult<InterviewSlot>>;
 };
+
+/** "ACTIVE · 2" over each list: board 50's mono label, a step brighter than a field label. */
+const LIST_LABEL = "font-mono text-[11px] uppercase tracking-[0.3em] text-prt-muted";
 
 const PILL_TONES: Readonly<Record<Pill["tone"], string>> = {
   neutral: "bg-white-10 text-text-2",
@@ -105,7 +108,7 @@ export function MyApplicationsView({ applications, ...actions }: { applications:
 
       {active.length > 0 && (
         <section aria-label="Active applications" className="mt-6">
-          <h2 className={EYEBROW}>Active · {active.length}</h2>
+          <h2 className={LIST_LABEL}>Active · {active.length}</h2>
           <ul className="mt-3 flex flex-col gap-4 md:gap-5">
             {active.map((a) => (
               <li key={a.id}>
@@ -124,7 +127,7 @@ export function MyApplicationsView({ applications, ...actions }: { applications:
 
       {past.length > 0 && (
         <section aria-label="Past applications" className="mt-6 md:mt-7">
-          <h2 className={EYEBROW}>Past · {past.length}</h2>
+          <h2 className={LIST_LABEL}>Past · {past.length}</h2>
           <ul className="mt-3 flex flex-col gap-3">
             {past.map((p) => (
               <li key={p.id}>

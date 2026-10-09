@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ImageIcon, X, ZoomIn, ZoomOut } from "lucide-react";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
@@ -68,7 +68,6 @@ export function PhotoCropDialog({
   const [crop, setCrop] = useState<Crop | null>(null);
   const [stage, setStage] = useState(0);
   const image = useRef<HTMLImageElement | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ distance: number; zoom: number } | null>(null);
 
@@ -92,13 +91,13 @@ export function PhotoCropDialog({
     if (natural !== null && box > 0) setCrop(centredCrop(natural.width, natural.height, box));
   }, [natural, box]);
 
-  useEffect(() => {
-    const el = stageRef.current;
+  // Measured as the stage mounts: the dialog's portal mounts it after this component's first effects.
+  const measureStage = useCallback((el: HTMLDivElement | null) => {
     if (el === null) return;
     const observer = new ResizeObserver(([entry]) => setStage(Math.round(entry.contentRect.width)));
     observer.observe(el);
     return () => observer.disconnect();
-  }, [src]);
+  }, []);
 
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -148,7 +147,7 @@ export function PhotoCropDialog({
 
           <div className="mt-6 grid gap-6 sm:grid-cols-[360px_1fr]">
             <div
-              ref={stageRef}
+              ref={measureStage}
               role="application"
               aria-label="Photo to crop. Drag to move it."
               onPointerDown={down}
