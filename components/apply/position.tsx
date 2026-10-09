@@ -51,13 +51,14 @@ function Header({ position }: { position: PositionView }) {
         <span aria-hidden className="mx-3 max-md:hidden">
           ·
         </span>
-        {/* On phones the line breaks only at the dot, never inside a name. */}
-        <span className="max-md:mt-2 max-md:block">
-          <span className="whitespace-nowrap">{position.department.toUpperCase()} DEPARTMENT</span>
-          <span aria-hidden className="mx-3">
+        {/* On phones each name is a flex item, so the line wraps at the dot first.
+            A name wider than the screen still wraps inside itself instead of widening the page. */}
+        <span className="max-md:mt-2 max-md:flex max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-2">
+          <span className="md:whitespace-nowrap">{position.department.toUpperCase()} DEPARTMENT</span>
+          <span aria-hidden className="md:mx-3">
             ·
           </span>
-          <span className="whitespace-nowrap">{position.division.toUpperCase()} DIVISION</span>
+          <span className="md:whitespace-nowrap">{position.division.toUpperCase()} DIVISION</span>
         </span>
       </p>
       <h1 className="mt-3 text-[34px] font-bold leading-[1.1] tracking-[-0.025em] md:mt-5 md:text-[64px] md:leading-[1.05]">
