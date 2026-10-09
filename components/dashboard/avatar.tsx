@@ -3,6 +3,8 @@ import { initialsOf } from "@/lib/dashboard/viewer";
 const SIZES = {
   sm: "h-7 w-7 text-[10px]",
   md: "h-8 w-8 text-[11px]",
+  /** The applicant at the top of the detail panel (board 41b). */
+  panel: "h-12 w-12 text-[15px]",
   lg: "h-12 w-12 text-[15px] md:h-[72px] md:w-[72px] md:text-[22px]",
 } as const;
 

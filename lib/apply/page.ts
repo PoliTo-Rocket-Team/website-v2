@@ -130,7 +130,7 @@ export const positionPage = {
   eyebrow: "APPLY FOR THIS ROLE",
   signIn: {
     title: "Sign in to apply",
-    body: "Sign in with Google to open the form. Your application is linked to your account, so we know who sent each one.",
+    terms: "By signing in, you agree to our Terms of Service and Privacy Policy.",
   },
   sent: {
     title: "Application sent",
@@ -157,6 +157,11 @@ export const positionPage = {
     sending: "Sending",
   },
 } as const;
+
+/** Board 35e's sign-in line, naming the role the form is for. */
+export function signInMessage(title: string): string {
+  return `Sign in with Google to open the form for ${title}. Your application is linked to your account, so we know who sent each one.`;
+}
 
 /** Board 35c's thanks line. */
 export function sentMessage(a: { firstName: string; title: string; division: string; email: string }): string {

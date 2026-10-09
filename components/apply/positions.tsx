@@ -212,16 +212,31 @@ function ClosedTag({ className }: { className: string }) {
   );
 }
 
+// An open row (board 34) puts the description on the left, filling the row,
+// and the two skill lists side by side on the right, about 620px together.
+// A closed row keeps the description over the skills. Phones stack both.
 function RoleDetails({ role }: { role: Role }) {
+  const skills = (
+    <>
+      <Skills label="REQUIRED SKILLS" skills={role.required} kind="required" />
+      {role.desirable.length > 0 && <Skills label="DESIRABLE SKILLS" skills={role.desirable} kind="desirable" />}
+    </>
+  );
   return (
     <>
-      <p className="max-w-[760px] whitespace-pre-line text-[15px] leading-[1.6] text-text-2 md:pt-2 md:text-[16px]">
-        {role.description}
-      </p>
-      <div className="mt-6 grid gap-5 md:mt-7 md:grid-cols-[396px_1fr] md:gap-0">
-        <Skills label="REQUIRED SKILLS" skills={role.required} kind="required" />
-        {role.desirable.length > 0 && <Skills label="DESIRABLE SKILLS" skills={role.desirable} kind="desirable" />}
-      </div>
+      {role.status === "open" ? (
+        <div className="md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,620px)] md:gap-14 md:pt-2">
+          <p className="whitespace-pre-line text-[15px] leading-[1.6] text-text-2 md:text-[16px]">{role.description}</p>
+          <div className="mt-6 grid gap-5 md:mt-0 md:grid-cols-2 md:gap-6">{skills}</div>
+        </div>
+      ) : (
+        <>
+          <p className="max-w-[760px] whitespace-pre-line text-[15px] leading-[1.6] text-text-2 md:pt-2 md:text-[16px]">
+            {role.description}
+          </p>
+          <div className="mt-6 grid gap-5 md:mt-7 md:grid-cols-[396px_1fr] md:gap-0">{skills}</div>
+        </>
+      )}
       {role.status === "open" ? (
         <div className="mt-6 flex flex-col-reverse gap-4 border-white-5 md:mt-7 md:flex-row md:items-center md:justify-between md:border-t md:pt-5">
           <p className="text-center text-[13px] leading-snug text-prt-muted md:text-left">{applyPage.voluntary}</p>

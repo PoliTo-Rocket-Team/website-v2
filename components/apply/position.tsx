@@ -1,14 +1,18 @@
 import { ArrowLeft, Check, Lock, Plus } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
+import { StatePopover } from "@/components/apply/state-popover";
 import { GoogleSignInButton } from "@/components/login-form";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
-import { positionPage, sentMessage } from "@/lib/apply/page";
+import { DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { positionPage, sentMessage, signInMessage } from "@/lib/apply/page";
 
 // The position page /apply/<slug> (boards 35, 35b, 35c and 35d, with 35m to
 // 35dm on phones): a back link, the meta line, the title, the description and
-// the two skill lists, then one card for the state the page is in. The column
-// is 1040px wide, centred.
+// the two skill lists, then the form (board 35). In every other state the page
+// shows only that top part, under a popover for the state (issue #147). The
+// column is 1040px wide, centred.
 
 export type PositionView = {
   code: string;
@@ -20,7 +24,7 @@ export type PositionView = {
   desirable: readonly string[];
 };
 
-export function PositionLayout({ position, children }: { position: PositionView; children: ReactNode }) {
+export function PositionLayout({ position, children }: { position: PositionView; children?: ReactNode }) {
   return (
     <div className="px-5 md:px-16">
       <div className="mx-auto max-w-[1040px]">
@@ -33,7 +37,7 @@ export function PositionLayout({ position, children }: { position: PositionView;
         </Link>
         <Header position={position} />
         <Skills required={position.required} desirable={position.desirable} />
-        <div className="mt-10 md:mt-16">{children}</div>
+        {children !== undefined && <div className="mt-10 md:mt-16">{children}</div>}
       </div>
     </div>
   );
@@ -110,33 +114,29 @@ function SkillList({ title, skills, icon }: { title: string; skills: readonly st
   );
 }
 
-/** The card shown in place of the form (boards 35b, 35c, 35d): 560px wide from md. */
-function StateCard({ children }: { children: ReactNode }) {
-  return <div className="glass-card max-w-[560px] rounded-xl p-6 md:p-9">{children}</div>;
+/** The popover's title: the dialog's label. */
+function PopoverTitle({ children }: { children: ReactNode }) {
+  return <DialogTitle className="text-[28px] font-bold leading-tight tracking-[-0.02em]">{children}</DialogTitle>;
 }
 
-function CardTitle({ children }: { children: ReactNode }) {
-  return <h2 className="text-[24px] font-bold leading-tight tracking-[-0.02em]">{children}</h2>;
+function PopoverBody({ children }: { children: ReactNode }) {
+  return <DialogDescription className="mt-3 text-[15px] leading-[1.6] text-text-2">{children}</DialogDescription>;
 }
 
-function CardBody({ children }: { children: ReactNode }) {
-  return <p className="mt-2 text-[15px] leading-[1.6] text-text-2">{children}</p>;
-}
-
-function CardIcon({ tone, children }: { tone: "accent" | "neutral"; children: ReactNode }) {
+function PopoverIcon({ tone, children }: { tone: "accent" | "neutral"; children: ReactNode }) {
   const look = tone === "accent" ? "border-accent/40 bg-accent-soft text-accent" : "border-white-10 bg-white-5 text-text-2";
   return (
-    <span aria-hidden className={`mb-5 flex h-14 w-14 items-center justify-center rounded-full border ${look}`}>
+    <span aria-hidden className={`mx-auto mb-7 flex h-14 w-14 items-center justify-center rounded-full border ${look}`}>
       {children}
     </span>
   );
 }
 
-function CardLink({ href, children }: { href: string; children: ReactNode }) {
+function PopoverLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
       href={href}
-      className="group mt-6 inline-flex h-12 items-center justify-center gap-4 rounded-full border border-white-10 px-6 text-[15px] font-semibold text-prt-text transition-colors duration-300 ease-out hover:border-border-strong hover:text-accent max-md:w-full"
+      className="group mt-9 flex h-12 w-full items-center justify-center gap-4 rounded-full border border-white-10 px-6 text-[15px] font-semibold text-prt-text transition-colors duration-300 ease-out hover:border-border-strong hover:text-accent"
     >
       {children}
       <RocketArrow className="opacity-80 transition duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
@@ -144,48 +144,56 @@ function CardLink({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-/** Board 35b: signed out. Google brings the user back to this page. */
-export function SignInCard({ returnTo }: { returnTo: string }) {
+/** Boards 35e and 35em: signed out. Google brings the user back to this page. */
+export function SignInPopover({ title, returnTo }: { title: string; returnTo: string }) {
   return (
-    <StateCard>
-      <p className="font-mono text-[11px] tracking-[0.3em] text-accent">{positionPage.eyebrow}</p>
+    <StatePopover>
+      <Image
+        src="/brand/prt-mark-white.svg"
+        alt=""
+        width={444}
+        height={220}
+        className="mx-auto mb-10 h-8 w-auto max-md:hidden"
+      />
+      <p className="font-mono text-[11px] tracking-[0.1em] text-accent">{positionPage.eyebrow}</p>
       <div className="mt-3">
-        <CardTitle>{positionPage.signIn.title}</CardTitle>
+        <PopoverTitle>{positionPage.signIn.title}</PopoverTitle>
       </div>
-      <CardBody>{positionPage.signIn.body}</CardBody>
-      <div className="mt-7 max-md:[&_button]:w-full max-md:[&_button]:justify-center">
-        <Suspense fallback={<div className="h-11" aria-hidden />}>
+      <PopoverBody>{signInMessage(title)}</PopoverBody>
+      <div className="mt-9 [&_button]:h-12 [&_button]:w-full [&_button]:justify-center [&_button]:text-[16px]">
+        <Suspense fallback={<div className="h-12" aria-hidden />}>
           <GoogleSignInButton returnTo={returnTo} />
         </Suspense>
       </div>
-    </StateCard>
+      <p className="mt-9 text-[13px] leading-[1.5] text-prt-muted md:-mx-4 md:text-[12px]">{positionPage.signIn.terms}</p>
+    </StatePopover>
   );
 }
 
-/** Board 35c: this user has applied for this position. */
-export function SentCard(props: { firstName: string; title: string; division: string; email: string }) {
+/** Boards 35c and 35cm: this user has applied for this position. */
+export function SentPopover(props: { firstName: string; title: string; division: string; email: string }) {
   return (
-    <StateCard>
-      <CardIcon tone="accent">
-        <Check className="h-5 w-5" />
-      </CardIcon>
-      <CardTitle>{positionPage.sent.title}</CardTitle>
-      <CardBody>{sentMessage(props)}</CardBody>
-      <CardLink href="/apply">{positionPage.sent.action}</CardLink>
-    </StateCard>
+    <StatePopover>
+      <PopoverIcon tone="accent">
+        <Check className="h-6 w-6" />
+      </PopoverIcon>
+      <PopoverTitle>{positionPage.sent.title}</PopoverTitle>
+      <PopoverBody>{sentMessage(props)}</PopoverBody>
+      <PopoverLink href="/apply">{positionPage.sent.action}</PopoverLink>
+    </StatePopover>
   );
 }
 
-/** Board 35d: the position is closed, deleted, or recruitment is off. */
-export function ClosedCard() {
+/** Boards 35d and 35dm: the position is closed, deleted, or recruitment is off. */
+export function ClosedPopover() {
   return (
-    <StateCard>
-      <CardIcon tone="neutral">
-        <Lock className="h-5 w-5" />
-      </CardIcon>
-      <CardTitle>{positionPage.closed.title}</CardTitle>
-      <CardBody>{positionPage.closed.body}</CardBody>
-      <CardLink href="/apply">{positionPage.closed.action}</CardLink>
-    </StateCard>
+    <StatePopover>
+      <PopoverIcon tone="neutral">
+        <Lock className="h-6 w-6" />
+      </PopoverIcon>
+      <PopoverTitle>{positionPage.closed.title}</PopoverTitle>
+      <PopoverBody>{positionPage.closed.body}</PopoverBody>
+      <PopoverLink href="/apply">{positionPage.closed.action}</PopoverLink>
+    </StatePopover>
   );
 }
