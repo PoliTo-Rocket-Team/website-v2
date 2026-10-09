@@ -62,8 +62,7 @@ session cookie; server code reads the user id from that cookie, then turns the m
 ## When this applies
 
 Any server read or route that shows member-only data. Pass the target that matches the
-`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check, but
-do not have it yet (see [audited-mutations.md](./audited-mutations.md)). There are no automated tests
+`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; only the recruitment switch has it so far (see [audited-mutations.md](./audited-mutations.md)). There are no automated tests
 for the scope logic yet.
 
 ## Why it is not obvious
@@ -86,4 +85,6 @@ for the scope logic yet.
 - **Cookie cache only.** `getCurrentUserId()` reads only the cookie cache (`maxAge` 10 minutes in
   `lib/auth.ts`). It does not fall back to Better Auth's `getSession`, so it never checks the
   session row in the database.
-- **Unguarded mutations.** The position actions run with no session or scope check.
+- **Unguarded mutations.** The position actions run with no session or scope check. The
+  recruitment switch's action (`handleSetRecruitment`) is the exception: it reads
+  `getScopeInfoForCurrentUser("positions")` and refuses unless `hasOrgEdit || hasAdminEdit`.

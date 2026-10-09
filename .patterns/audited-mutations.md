@@ -56,15 +56,19 @@ client component as props.
 ## When this applies
 
 Any write to an app table in `public`. Call sites today: `handleDelete`, `handleEditPosition` and
-`handleAddPosition` in `server-actions.ts`, and `sendApplication` in
+`handleAddPosition` in `server-actions.ts`, `handleSetRecruitment` (the site-wide recruitment
+switch, an upsert on `recruitment_setting`) in the same file, and `sendApplication` in
 [app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). Several writes that must land
 together go through `runAuditBatch` instead: one `db.batch` with the audit setup first. A batch
 cannot pass one insert's id to the next, so a later write finds an earlier row by a unique value
 (the application finds its file rows by `r2_key`). Better Auth writes its own
 tables through its adapter and does not use `runAuditQuery`. The application submit's rules live
 in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and R2 passed in, so
-[submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes; the other mutations have no
-automated tests.
+[submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes. The recruitment switch does
+the same: its scope rule lives in [lib/apply/recruitment-switch.ts](../lib/apply/recruitment-switch.ts)
+with the scope read, the write and the cache refresh passed in, and
+[recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts) tests each scope case. The other
+mutations have no automated tests.
 
 ## Why it is not obvious
 
@@ -78,8 +82,8 @@ automated tests.
 
 ## Known inconsistencies (not the pattern)
 
-- **No access check in the mutations.** None of the three actions checks the session or the
-  caller's scope. Reads compute `canEdit` from `ScopeInfo` (see [scope-access.md](./scope-access.md)),
+- **No access check in the position mutations.** None of the three position actions checks the
+  session or the caller's scope (`handleSetRecruitment` does; copy it). Reads compute `canEdit` from `ScopeInfo` (see [scope-access.md](./scope-access.md)),
   but a `"use server"` export is a public endpoint, and these accept any `id`. A new mutation should
   check scope on the server; do not copy this gap.
 - **No server-side validation.** Input is validated only in the client forms
