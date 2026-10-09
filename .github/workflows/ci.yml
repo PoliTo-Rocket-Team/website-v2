@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [huey/landing-page, dev]
 
@@ -30,3 +31,46 @@ jobs:
         env:
           FABRIKA_GLOBAL_WARNING_DISABLED: "1"
         run: pnpm exec fabrika guard decisions-index validate
+
+  # The one check the merge queue requires. It always runs, so a pull request
+  # never waits on a job that did not start. It also enforces `ready-for:human`
+  # on queue entries: the merge_group payload carries no labels, so it reads
+  # the pull request's live labels and fails while the hold is on.
+  ci-required:
+    if: always()
+    needs: [typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - name: hold a pull request labelled ready-for:human
+        if: github.event_name == 'merge_group'
+        env:
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          if [[ ! "$HEAD_REF" =~ ^refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-[0-9a-f]{40}$ ]]; then
+            echo "::error::merge queue head ref '${HEAD_REF}' names no pull request, so its ready-for:human hold is unread."
+            exit 1
+          fi
+          pr="${BASH_REMATCH[1]}"
+          if ! labels="$(gh api "repos/${REPO}/pulls/${pr}" --jq '.labels[].name')"; then
+            echo "::error::could not read the labels of pull request #${pr}, so its ready-for:human hold is unread."
+            exit 1
+          fi
+          if printf '%s\n' "$labels" | grep -Fxq 'ready-for:human'; then
+            echo "::error::pull request #${pr} carries ready-for:human, which holds it for Huey. To release it, remove the label, then queue the pull request again."
+            exit 1
+          fi
+          echo "pull request #${pr}: no ready-for:human hold."
+      - env:
+          TYPECHECK: ${{ needs.typecheck.result }}
+        run: |
+          if [ "$TYPECHECK" != success ]; then
+            echo "::error::typecheck concluded ${TYPECHECK}."
+            exit 1
+          fi
+          echo "typecheck: success."
