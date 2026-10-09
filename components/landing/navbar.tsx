@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { NavAccount } from "./nav-account";
 import { NavLinks } from "./nav-links";
 import { NavMenu, type NavLink } from "./nav-menu";
 
@@ -18,6 +19,11 @@ import { NavMenu, type NavLink } from "./nav-menu";
 // back on the bar there. From lg, About opens the board 27 hover menu of the
 // About pages (nav-hover-menu.tsx); the other links have none (Projects has
 // its own page).
+//
+// Signed in, Sign in gives way to the viewer's initials and name, linking to
+// the dashboard (HANDOFF "Logged in: Apply + name+avatar", issue #157). The
+// bar asks who is signed in from the browser (nav-account.tsx), so every
+// page that carries it stays prerendered.
 const links: NavLink[] = [
   { href: "/projects", label: "Projects" },
   {
@@ -64,12 +70,7 @@ export function LandingNavbar() {
         </nav>
 
         <div className="relative z-10 flex items-center md:gap-3">
-          <Link
-            href="/login"
-            className="hidden rounded-full border border-white-10 px-5 py-2.5 text-[15px] font-medium text-prt-text transition-colors hover:border-border-strong md:inline-block"
-          >
-            Sign in
-          </Link>
+          <NavAccount />
           <NavMenu links={links} className="-mr-2 lg:hidden" />
         </div>
       </div>

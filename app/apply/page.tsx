@@ -28,12 +28,13 @@ export default function ApplyPage({ searchParams }: { searchParams: SearchParams
       <LandingNavbar />
       <PageSky>
         <main className="pb-section pt-16 md:pt-[72px]">
-          {/* Until the read answers, the header shows without its figures:
-              a count shown early would be a guess. */}
-          <Suspense fallback={<PageHeader {...applyPage.header} />}>
+          {/* The header's figures and the positions come from one read, so
+              they wait for it together and paint together (issue #157).
+              Until then the sky under the bar stays empty: a header shown
+              first would have the positions pop in under it. */}
+          <Suspense fallback={<div aria-hidden="true" className="min-h-svh" />}>
             <LiveApplyContent searchParams={searchParams} />
           </Suspense>
-          <Faq />
         </main>
         <LandingFooter inSky />
       </PageSky>
@@ -56,6 +57,7 @@ function ApplyContent({ listing }: { listing: ApplyListing }) {
     <>
       <PageHeader {...applyPage.header} stats={applyStats(listing)} statsOnPhone="two-by-two" />
       <Positions listing={listing} />
+      <Faq />
     </>
   );
 }

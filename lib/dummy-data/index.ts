@@ -83,7 +83,8 @@ const NOW = new Date(DUMMY_NOW);
 /** Monday of the week DUMMY_NOW falls in, at midnight in Turin. */
 const MONDAY = new Date("2026-10-05T00:00:00+02:00");
 
-function viewerFor(kind: ViewerKind): DashboardViewer {
+/** Who a test developer signed in as `kind` is: the dashboard's user card and the navbar show this name. */
+export function dummyViewer(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
     return { kind, name: applicant.name, role: "Applicant", session: "test-developer" };
   }
@@ -418,7 +419,7 @@ export function dummyDashboardData(
   const canSwitch = canSwitchRecruitmentAs(kind);
 
   return {
-    viewer: viewerFor(kind),
+    viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind, team),
     overview: async () => overviewFor(kind, team),
     recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),

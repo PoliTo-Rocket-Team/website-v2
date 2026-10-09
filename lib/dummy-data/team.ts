@@ -88,15 +88,18 @@ export const personFor = {
 } as const satisfies Readonly<Record<"operations-lead" | "division-lead" | "member", DummyPerson>>;
 
 // In board 41's order. How many applications each has, and how many are new,
-// comes from ./applications.ts, never from a number kept here.
+// comes from ./applications.ts, never from a number kept here. Ids make the
+// codes (`positionCode`), so the closed Flight Simulator Developer is id 2:
+// AER-MSA-002, as board 34b's placeholder of the same role, so one role shows
+// one code on `/apply?open=0` and on its own page (issue #157).
 export const positions = [
   { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 3, open: true, updatedAt: "2026-10-07T11:20:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
   { id: 8, title: "Aerodynamicist", slug: "8-aerodynamicist", divisionId: 7, open: true, updatedAt: "2026-10-04T09:40:00+02:00", question: "Which CFD or wind tunnel work have you done?", requiresMotivationLetter: false },
-  { id: 7, title: "Flight Simulator Developer", slug: "7-flight-simulator-developer", divisionId: 3, open: false, updatedAt: "2026-09-08T15:00:00+02:00", question: "Which languages do you write simulations in?", requiresMotivationLetter: false },
+  { id: 2, title: "Flight Simulator Developer", slug: "2-flight-simulator-developer", divisionId: 3, open: false, updatedAt: "2026-09-08T15:00:00+02:00", question: "Which languages do you write simulations in?", requiresMotivationLetter: false },
   { id: 9, title: "Structural Engineer", slug: "9-structural-engineer", divisionId: 8, open: true, updatedAt: "2026-10-02T10:30:00+02:00", question: "Have you used FEM software, and which?", requiresMotivationLetter: false },
   { id: 3, title: "Recovery Systems Engineer", slug: "3-recovery-systems-engineer", divisionId: 4, open: true, updatedAt: "2026-09-09T12:00:00+02:00", question: "Have you designed or packed a parachute before?", requiresMotivationLetter: false },
   { id: 5, title: "Firmware Developer", slug: "5-firmware-developer", divisionId: 5, open: true, updatedAt: "2026-10-09T11:00:00+02:00", question: "Which microcontrollers have you written firmware for?", requiresMotivationLetter: false },
-  { id: 2, title: "Safety Officer", slug: "2-safety-officer", divisionId: 2, open: true, updatedAt: "2026-10-06T14:10:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
+  { id: 7, title: "Safety Officer", slug: "7-safety-officer", divisionId: 2, open: true, updatedAt: "2026-10-06T14:10:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
   { id: 10, title: "Graphic Designer", slug: "10-graphic-designer", divisionId: 9, open: false, updatedAt: "2026-08-10T10:00:00+02:00", question: "Share a link to your portfolio.", requiresMotivationLetter: false },
   { id: 4, title: "Trajectory Analyst", slug: "4-trajectory-analyst", divisionId: 3, open: true, updatedAt: "2026-10-05T16:45:00+02:00", question: "Which tools have you used for trajectory work?", requiresMotivationLetter: false },
   { id: 6, title: "CFD Analyst", slug: "6-cfd-analyst", divisionId: 3, open: true, updatedAt: "2026-09-30T09:15:00+02:00", question: "Which CFD or wind tunnel work have you done?", requiresMotivationLetter: false },
@@ -136,5 +139,5 @@ export type DummyApplication = {
 /** The non-member test developer's own applications (board 45b). */
 export const ownApplications = [
   { positionId: 1, sent: "9 Oct 2026", status: "in-review" },
-  { positionId: 2, sent: "2 Oct 2026", status: "received" },
+  { positionId: 7, sent: "2 Oct 2026", status: "received" },
 ] as const satisfies readonly DummyApplication[];

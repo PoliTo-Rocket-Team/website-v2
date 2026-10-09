@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { signIn } from "@/lib/auth-client";
 import { callbackPath } from "@/lib/auth-callback";
@@ -9,13 +8,15 @@ import { Icons } from "@/components/ui/icons";
 
 // The only way to sign in (issue #118). Google returns the user to the page
 // given, else to the `cb` page that sent them to /login, or to the dashboard.
+// The `cb` value is read on click, not while rendering: a render-time
+// `useSearchParams` keeps the button out of the prerendered page, so it
+// popped in after the scripts loaded (issue #157).
 export function GoogleSignInButton({ returnTo }: { returnTo?: string }) {
-  const searchParams = useSearchParams();
   const [pending, setPending] = useState(false);
-  const callbackURL = callbackPath(returnTo ?? searchParams.get("cb"));
 
   const signInWithGoogle = async () => {
     setPending(true);
+    const callbackURL = callbackPath(returnTo ?? new URLSearchParams(window.location.search).get("cb"));
     try {
       await signIn.social({ provider: "google", callbackURL });
     } catch (err) {

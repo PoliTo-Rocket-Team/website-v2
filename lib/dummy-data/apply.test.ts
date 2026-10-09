@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyListing, isPublic } from "@/lib/apply/positions";
+import { applyListing, isPublic, positionCode } from "@/lib/apply/positions";
 import { dummyApplyData, SentApplications } from "./apply";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
+import { positions } from "./team";
 
 const fresh = () => new SentApplications();
 
@@ -31,4 +32,20 @@ test("each position-page state has a position: closed, signed out, form and sent
   const sent = await Promise.all(open.map((id) => applicant.hasApplied(me.id, id)));
   assert.ok(sent.includes(true), "already applied to an open position");
   assert.ok(sent.includes(false), "an open position left to apply to");
+});
+
+// Issue #157's role. Graphic Designer (id 10) is closed too, and its board 34b
+// code OPS-CMS-002 cannot come from its id; that one is left for its own fix.
+test("the closed Flight Simulator Developer shows one code on /apply?open=0 and on its own page", async () => {
+  const data = dummyApplyData(null, "0", DEFAULT_DUMMY_RECRUITMENT, fresh());
+  const listing = applyListing(await data.publicPositions());
+  assert.equal(listing.kind, "none");
+  const listed = listing.kind === "none" ? listing.placeholders.flatMap((g) => g.roles) : [];
+  const dummy = positions.find((p) => p.title === "Flight Simulator Developer");
+  assert.ok(dummy && !dummy.open, "a closed Flight Simulator Developer");
+  const page = await data.position(dummy.id);
+  assert.ok(page && !isPublic(page.position, page.recruitment));
+  const row = listed.find((r) => r.title === dummy.title);
+  assert.ok(row, "listed on /apply?open=0");
+  assert.equal(row.code, positionCode(page.position));
 });
