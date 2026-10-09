@@ -15,10 +15,12 @@ import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { NO_EDITS, type TeamEdits } from "./edits";
 import {
   activity,
+  applicant,
   departments,
   divisions,
   ownApplications,
   people,
+  personFor,
   positions,
   recruitment,
   roster,
@@ -30,19 +32,6 @@ import { dummyTeamPages } from "./team-pages";
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts, with no database, so it works on a
 // preview that has no DATABASE_URL.
-
-/** The applicant the non-member viewer signs in as; not on the team, so not in `people`. */
-const applicant = { name: "Chiara Lombardi", email: "chiara.lombardi@gmail.com" } as const;
-
-function personById(id: number): DummyPerson {
-  return people.find((p) => p.id === id)!;
-}
-
-const personFor = {
-  "operations-lead": personById(1),
-  "division-lead": personById(2),
-  member: personById(5),
-} as const satisfies Readonly<Record<Exclude<ViewerKind, "non-member">, DummyPerson>>;
 
 /** The division a person works in: null for the team leader, a head, or someone not yet placed. */
 function divisionIdOfPerson(person: DummyPerson): number | null {
