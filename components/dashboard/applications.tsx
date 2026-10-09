@@ -38,6 +38,13 @@ const STAGE_DOT: Readonly<Record<ApplicationStage, string>> = {
 
 const COLUMNS = "lg:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)_110px]";
 
+// The detail panel and the room the list leaves for it are one pair (board 41b):
+// the panel is 460px wide, and the list card ends 28px before it. The shell's
+// main already pads 40px on the right, so the list adds 460 + 28 - 40 = 448px.
+// Below xl the content column is too narrow to share, so the panel lies over it.
+const PANEL_WIDTH = "md:w-[460px]";
+const ROOM_FOR_PANEL = "xl:mr-[448px]";
+
 export function ApplicationsView({
   page,
   initialPosition,
@@ -68,7 +75,7 @@ export function ApplicationsView({
     });
 
   return (
-    <div className={chosen ? "xl:mr-[420px]" : ""}>
+    <div className={chosen ? ROOM_FOR_PANEL : ""}>
       <header>
         <h1 className="text-[24px] font-bold leading-tight tracking-[-0.01em] md:text-[28px]">Applications</h1>
         <p className="mt-1 text-[14px] text-prt-muted">Applications for the positions you lead.</p>
@@ -154,7 +161,7 @@ function DetailPanel({
         <DialogPrimitive.Content
           aria-describedby={undefined}
           onInteractOutside={(event) => event.preventDefault()}
-          className="fixed inset-0 z-40 flex flex-col bg-ground text-prt-text focus:outline-none md:left-auto md:w-[460px] md:border-l md:border-hairline motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200"
+          className={`fixed inset-0 z-40 flex flex-col bg-ground text-prt-text focus:outline-none md:left-auto ${PANEL_WIDTH} md:border-l md:border-hairline motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200`}
         >
           {application && <Detail application={application} onMove={onMove} />}
         </DialogPrimitive.Content>
