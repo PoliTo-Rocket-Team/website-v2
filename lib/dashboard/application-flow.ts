@@ -88,20 +88,48 @@ export type ApplicationMove = LeadMove | ApplicantMove;
 /**
  * A legal move's outcome. `joinsTeam` is true for Confirm join alone: it is
  * the one move after which the data source adds the person to the team.
+ * `changed` is false when the move leaves the state as it was (opening an
+ * application past New, ticking the NDA box to what it already says): a data
+ * source then writes nothing, so it never rewrites an interview's times and
+ * booking from a stale page.
  */
 export type MoveResult =
-  | { readonly ok: true; readonly state: ApplicationState; readonly joinsTeam: boolean }
+  | { readonly ok: true; readonly state: ApplicationState; readonly joinsTeam: boolean; readonly changed: boolean }
   | { readonly ok: false; readonly reason: string };
 
 /** The most times one offer may hold. */
 export const MAX_OFFERED_SLOTS = 20;
 
-function moved(state: ApplicationState, joinsTeam = false): MoveResult {
+type Next = { readonly ok: true; readonly state: ApplicationState; readonly joinsTeam: boolean } | { readonly ok: false; readonly reason: string };
+
+function moved(state: ApplicationState, joinsTeam = false): Next {
   return { ok: true, state, joinsTeam };
 }
 
-function illegal(reason: string): MoveResult {
+function illegal(reason: string): Next {
   return { ok: false, reason };
+}
+
+function sameSlot(a: InterviewSlot, b: InterviewSlot): boolean {
+  return Date.parse(a.start) === Date.parse(b.start) && a.minutes === b.minutes;
+}
+
+/** Whether two states say the same thing: same stage, same times, same booking, same dates. */
+export function sameState(a: ApplicationState, b: ApplicationState): boolean {
+  switch (a.stage) {
+    case "interview": {
+      if (b.stage !== "interview") return false;
+      if (a.offered.length !== b.offered.length || !a.offered.every((s, i) => sameSlot(s, b.offered[i]))) return false;
+      if (a.booked === null || b.booked === null) return a.booked === b.booked;
+      return sameSlot(a.booked.slot, b.booked.slot) && Date.parse(a.booked.at) === Date.parse(b.booked.at);
+    }
+    case "accepted":
+      return b.stage === "accepted" && Date.parse(a.acceptedAt) === Date.parse(b.acceptedAt) && a.ndaArrived === b.ndaArrived;
+    case "joined":
+      return b.stage === "joined" && Date.parse(a.joinedAt) === Date.parse(b.joinedAt);
+    default:
+      return a.stage === b.stage;
+  }
 }
 
 /** The offered slots, checked: some, not too many, one length, each in the future, none twice. */
@@ -123,6 +151,11 @@ export function checkOffer(slots: readonly InterviewSlot[], now: Date): { ok: tr
 
 /** The state after `move`, or why the move is not allowed from here. */
 export function applyMove(state: ApplicationState, move: ApplicationMove, now: Date): MoveResult {
+  const next = nextState(state, move, now);
+  return next.ok ? { ...next, changed: !sameState(state, next.state) } : next;
+}
+
+function nextState(state: ApplicationState, move: ApplicationMove, now: Date): Next {
   const at = now.toISOString();
   switch (move.kind) {
     case "open":

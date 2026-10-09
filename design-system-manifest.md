@@ -62,7 +62,9 @@ Rules:
 - Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
   `stage-pill.tsx`): New and "Interview · no time yet" = `white-10` with `prt-text`, In review =
   `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
-  `white-5` with `prt-muted`. `info` is for this pill only; it is not a second accent.
+  `white-5` with `prt-muted`. `info` marks In review and nothing else: on the stage pill and tag, and
+  on the panel's stage menu trigger and its dot (`toneSurface`, `toneDot`). It is not a second
+  accent.
 - The legacy palettes `rocket`, `space`, `mission`, `cosmos` and the shadcn role variables in
   `app/globals.css` serve `app/(legacy)/` and `components/ui/` only. Do not use them on a
   redesigned surface. Note the shadcn `accent` name is taken by the PRT orange

@@ -130,3 +130,27 @@ test("a new position in a division the lead does not lead is refused", async () 
   const ops = await session("operations-lead").data.positions();
   assert.ok(ops.newPosition.divisions.length > 1);
 });
+
+test("Accept leaves the person's other applications at their stages", async () => {
+  const ops = session("operations-lead");
+  const all = (await ops.data.applications()).applications;
+  const giulia = all.find((a) => a.applicant.name === "Giulia Rossi" && a.position.division === "Mission Analysis Division")!;
+  const othersBefore = all.filter((a) => a.applicant.email === giulia.applicant.email && a.id !== giulia.id);
+  assert.ok(othersBefore.length > 0);
+  assert.deepEqual(await ops.data.moveApplication(giulia.id, { kind: "accept" }), { ok: true, value: null });
+
+  const next = (await session("operations-lead", ops.saved()).data.applications()).applications;
+  assert.equal(next.find((a) => a.id === giulia.id)?.state.stage, "accepted");
+  for (const other of othersBefore) assert.deepEqual(next.find((a) => a.id === other.id)?.state, other.state);
+  assert.deepEqual(
+    next.find((a) => a.id === giulia.id)?.otherApplications.map((o) => o.stage),
+    giulia.otherApplications.map((o) => o.stage),
+  );
+});
+
+test("opening an application already at interview writes nothing and keeps its times and booking", async () => {
+  const lead = session("division-lead");
+  const booked = (await lead.data.applications()).applications.find((a) => a.state.stage === "interview" && a.state.booked !== null)!;
+  assert.deepEqual(await lead.data.moveApplication(booked.id, { kind: "open" }), { ok: true, value: null });
+  assert.deepEqual(lead.saved(), EMPTY_DUMMY_STATE);
+});

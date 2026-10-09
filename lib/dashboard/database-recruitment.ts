@@ -445,6 +445,8 @@ async function moveApplication(identity: Identity, applicationId: number, move: 
   const now = new Date();
   const result = applyMove(before, move, now);
   if (!result.ok) return refused(result.reason);
+  // A move that changes nothing writes nothing: "open" on an interview keeps its times and booking.
+  if (!result.changed) return written(null);
   const after = result.state;
   // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
   const unchanged = and(eq(applications.id, row.id), eq(applications.status, row.status));
@@ -491,7 +493,6 @@ async function moveApplication(identity: Identity, applicationId: number, move: 
     case "new":
     case "in-review":
     case "rejected":
-      if (after.stage === before.stage) return written(null);
       await runAuditQuery((db) => db.update(applications).set({ status: statusFor[after.stage] }).where(unchanged));
       return written(null);
   }

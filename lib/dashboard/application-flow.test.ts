@@ -51,6 +51,28 @@ test("opening a New application moves it to In review; opening any other changes
   }
 });
 
+test("a move that leaves the state as it was reports no change, so a data source writes nothing", () => {
+  const booked = after(STATES.interview, { kind: "book", start: thu.start });
+  for (const state of [...Object.values(STATES), booked].filter((s) => s.stage !== "new")) {
+    const opened = applyMove(state, { kind: "open" }, now);
+    assert.ok(opened.ok);
+    assert.equal(opened.changed, false);
+  }
+  const untouched = applyMove(STATES.accepted, { kind: "set-nda", arrived: false }, now);
+  assert.ok(untouched.ok);
+  assert.equal(untouched.changed, false);
+  for (const [state, move] of [
+    [STATES.new, { kind: "open" }],
+    [booked, { kind: "offer-interview", slots: [thu, fri] }],
+    [STATES.accepted, { kind: "set-nda", arrived: true }],
+    [STATES.interview, { kind: "accept" }],
+  ] as const) {
+    const result = applyMove(state, move, now);
+    assert.ok(result.ok);
+    assert.equal(result.changed, true);
+  }
+});
+
 test("each move is legal only from the stages the flow allows", () => {
   assert.deepEqual(legalFrom({ kind: "offer-interview", slots: [thu] }), ["new", "in-review", "interview"]);
   assert.deepEqual(legalFrom({ kind: "book", start: thu.start }), ["interview"]);

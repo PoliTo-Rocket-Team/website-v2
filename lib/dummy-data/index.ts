@@ -539,6 +539,7 @@ export function dummyDashboardData(
       // The dummy team is seen from DUMMY_NOW, so its moves happen then too.
       const result = applyMove(current.state, move, NOW);
       if (!result.ok) return refused(result.reason);
+      if (!result.changed) return written(null);
       // Confirm join adds no one here: the dummy roster is the arrays in ./team.ts.
       await change({ kind: "application", id, state: result.state, initial: base.state });
       return written(null);
