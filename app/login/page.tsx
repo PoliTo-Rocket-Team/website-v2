@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { GoogleSignInButton } from "@/components/login-form";
-import { TestDeveloperSignIn } from "@/components/test-developer-sign-in";
+import { TestDeveloperSignIn, TestDeveloperSignInSpace } from "@/components/test-developer-sign-in";
 
 export const metadata: Metadata = {
   title: "Sign in | Polito Rocket Team",
@@ -12,7 +12,10 @@ export const metadata: Metadata = {
 };
 
 // Boards 36 (desktop) and 36m (phone): a full-height split with no navbar and
-// no footer. The image side is a 420px band on top on phones.
+// no footer. The image side is a 420px band on top on phones. The whole
+// sign-in panel is in the prerendered page, its background preloaded like
+// the image side's; only the test developer entry waits for the request, in
+// a space its own size (issue #157).
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default function LoginPage({ searchParams }: { searchParams: SearchParams }) {
@@ -24,6 +27,7 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
           src="/login/gray.webp"
           alt=""
           fill
+          priority
           sizes="(min-width: 768px) 50vw, 100vw"
           className="object-cover object-top"
         />
@@ -35,11 +39,9 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
           </h1>
           <p className="mt-2 text-[15px] text-text-2">Use your Google account to continue.</p>
           <div className="mt-7">
-            <Suspense fallback={<div className="h-11 w-[208px]" aria-hidden="true" />}>
-              <GoogleSignInButton />
-            </Suspense>
+            <GoogleSignInButton />
           </div>
-          <Suspense fallback={null}>
+          <Suspense fallback={<TestDeveloperSignInSpace />}>
             <TestDeveloperEntry searchParams={searchParams} />
           </Suspense>
           <p className="mt-9 text-[12px] leading-relaxed text-text-2">

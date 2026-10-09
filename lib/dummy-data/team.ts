@@ -78,14 +78,17 @@ export const personFor = {
   member: people[4],
 } as const satisfies Readonly<Record<"operations-lead" | "division-lead" | "member", DummyPerson>>;
 
+// Ids make the codes (`positionCode`), so the closed Flight Simulator Developer
+// is id 2: AER-MSA-002, as board 34b's placeholder of the same role, so one
+// role shows one code on `/apply?open=0` and on its own page (issue #157).
 export const positions = [
   { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 3, open: true, applications: 14, newApplications: 8, daysSinceLastApplication: 0, newSinceMonday: 3 },
-  { id: 2, title: "Safety Officer", slug: "2-safety-officer", divisionId: 2, open: true, applications: 9, newApplications: 4, daysSinceLastApplication: 1, newSinceMonday: 2 },
+  { id: 7, title: "Safety Officer", slug: "7-safety-officer", divisionId: 2, open: true, applications: 9, newApplications: 4, daysSinceLastApplication: 1, newSinceMonday: 2 },
   { id: 3, title: "Recovery Systems Engineer", slug: "3-recovery-systems-engineer", divisionId: 4, open: true, applications: 2, newApplications: 0, daysSinceLastApplication: 30, newSinceMonday: 0 },
   { id: 4, title: "Trajectory Analyst", slug: "4-trajectory-analyst", divisionId: 3, open: true, applications: 6, newApplications: 0, daysSinceLastApplication: 4, newSinceMonday: 0 },
   { id: 5, title: "Firmware Developer", slug: "5-firmware-developer", divisionId: 5, open: true, applications: 3, newApplications: 0, daysSinceLastApplication: 5, newSinceMonday: 0 },
   { id: 6, title: "CFD Analyst", slug: "6-cfd-analyst", divisionId: 3, open: true, applications: 5, newApplications: 0, daysSinceLastApplication: 9, newSinceMonday: 0 },
-  { id: 7, title: "Flight Simulator Developer", slug: "7-flight-simulator-developer", divisionId: 3, open: false, applications: 0, newApplications: 0, daysSinceLastApplication: null, newSinceMonday: 0 },
+  { id: 2, title: "Flight Simulator Developer", slug: "2-flight-simulator-developer", divisionId: 3, open: false, applications: 0, newApplications: 0, daysSinceLastApplication: null, newSinceMonday: 0 },
 ] as const satisfies readonly DummyPosition[];
 
 /** The roster count for the year; `people` holds only the ones the pages name. */
@@ -121,5 +124,5 @@ export type DummyApplication = {
 /** The non-member test developer's own applications (board 45b). */
 export const ownApplications = [
   { positionId: 1, sent: "9 Oct 2026", status: "in-review" },
-  { positionId: 2, sent: "2 Oct 2026", status: "received" },
+  { positionId: 7, sent: "2 Oct 2026", status: "received" },
 ] as const satisfies readonly DummyApplication[];

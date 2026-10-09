@@ -11,13 +11,13 @@ import type { ApplyListing, DepartmentGroup, Role } from "@/lib/apply/positions"
 // 34b and 34c; 34m and 34bm on phones): a section title, department filter
 // pills when more than one department shows, then one glass list per
 // department. Every row is an item of one Radix accordion, so one row is open
-// at a time; the first starts open, as the boards draw it. Rows open and
-// close at once, with no animation.
+// at a time. Every row starts closed: the boards draw one open only to show
+// the open layout (issue #157). Rows open and close at once, with no
+// animation.
 
 export function Positions({ listing }: { listing: ApplyListing }) {
-  const first = (listing.kind === "none" ? listing.placeholders : listing.open)[0]?.roles[0]?.key;
   return (
-    <AccordionPrimitive.Root type="single" collapsible defaultValue={first}>
+    <AccordionPrimitive.Root type="single" collapsible>
       {listing.kind === "none" ? (
         <Section title={applyPage.noneTitle} groups={listing.placeholders} notice={<Notice />} />
       ) : (

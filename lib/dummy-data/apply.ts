@@ -41,7 +41,7 @@ export const positionText = {
     motivationLetter: true,
     createdAt: "2026-09-28T09:00:00Z",
   },
-  2: {
+  7: {
     description:
       "You own the technical safety of the rocket, from fixes on paper to the final word on the pad. You run the hazard analyses that find failure points before they reach the launch site.",
     required: ["Seeing safety as a systems problem, not paperwork"],
@@ -86,7 +86,7 @@ export const positionText = {
     motivationLetter: false,
     createdAt: "2026-10-05T09:00:00Z",
   },
-  7: {
+  2: {
     description:
       "You improve the team's flight simulators. You model rocket systems such as engines, sensors and controls, and look for efficient ways to run them.",
     required: ["MATLAB", "Simulink", "Python"],

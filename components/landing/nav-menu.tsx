@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { NavMenuAccount, useNavViewer } from "./nav-account";
 import { RocketArrow } from "./rocket-arrow";
 
 export type NavPage = { href: string; label: string };
@@ -38,7 +39,8 @@ export function isCurrentNavLink(pathname: string | null, link: NavLink): boolea
 // the PRT mark and a close icon. Then the links at 28px with a RocketArrow,
 // the current page in accent. A link with pages under it (About) lists them
 // below it, indented, at 17px in grey. Apply is the last link (issue #119).
-// At the foot: the outlined "Sign in", with no email. It is the repo's Radix dialog
+// At the foot: the outlined "Sign in", with no email, or once signed in the
+// viewer's initials and name, linking to the dashboard (issue #157). It is the repo's Radix dialog
 // (components/ui/dialog), so focus, Escape and scroll lock come with it; the
 // content is the primitive itself because the shadcn DialogContent is a
 // centred modal. It slides in and goes at once on close, so Radix unmounts it
@@ -46,6 +48,7 @@ export function isCurrentNavLink(pathname: string | null, link: NavLink): boolea
 // (issue #79); the slide runs only under `motion-safe:` (issue #80).
 export function NavMenu({ links, className }: { links: NavLink[]; className?: string }) {
   const pathname = usePathname();
+  const viewer = useNavViewer();
   return (
     <Dialog>
       <DialogTrigger
@@ -126,12 +129,7 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
 
           <div className="mt-auto">
             <DialogClose asChild>
-              <Link
-                href="/login"
-                className="block rounded-full border border-white-10 py-3 text-center text-base font-medium transition-colors hover:border-border-strong"
-              >
-                Sign in
-              </Link>
+              <NavMenuAccount viewer={viewer} />
             </DialogClose>
           </div>
         </DialogPrimitive.Content>

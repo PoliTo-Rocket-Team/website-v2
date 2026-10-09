@@ -30,7 +30,8 @@ import {
 // built from the arrays in ./team.ts, with no database, so it works on a
 // preview that has no DATABASE_URL.
 
-function viewerFor(kind: ViewerKind): DashboardViewer {
+/** Who a test developer signed in as `kind` is: the dashboard's user card and the navbar show this name. */
+export function dummyViewer(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
     return { kind, name: applicant.name, role: "Applicant", session: "test-developer" };
   }
@@ -252,7 +253,7 @@ function navCountsFor(kind: ViewerKind): NavCounts {
 /** The dashboard as the test developer sees it, looking as `kind`. */
 export function dummyDashboardData(kind: ViewerKind): DashboardData {
   return {
-    viewer: viewerFor(kind),
+    viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind),
     overview: async () => overviewFor(kind),
   };

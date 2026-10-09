@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyListing, isPublic } from "@/lib/apply/positions";
+import { applyListing, isPublic, positionCode } from "@/lib/apply/positions";
 import { dummyApplyData, SentApplications } from "./apply";
 
 const fresh = () => new SentApplications();
@@ -30,4 +30,20 @@ test("each position-page state has a position: closed, signed out, form and sent
   const sent = await Promise.all(open.map((id) => applicant.hasApplied(me.id, id)));
   assert.ok(sent.includes(true), "already applied to an open position");
   assert.ok(sent.includes(false), "an open position left to apply to");
+});
+
+test("a closed position shows the same code on /apply?open=0 and on its own page", async () => {
+  const data = dummyApplyData(null, "0", fresh());
+  const listing = applyListing(await data.publicPositions());
+  assert.equal(listing.kind, "none");
+  const listed = listing.kind === "none" ? listing.placeholders.flatMap((g) => g.roles) : [];
+  const closed = (await Promise.all([1, 2, 3, 4, 5, 6, 7].map((id) => data.position(id))))
+    .filter((r) => r !== null && !isPublic(r.position, r.recruitment))
+    .map((r) => r!.position);
+  assert.ok(closed.length >= 1);
+  for (const position of closed) {
+    const row = listed.find((r) => r.title === position.title);
+    assert.ok(row, `${position.title} is listed on /apply?open=0`);
+    assert.equal(row.code, positionCode(position), `${position.title}`);
+  }
 });
