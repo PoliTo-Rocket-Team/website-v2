@@ -40,6 +40,8 @@ import {
   type PersonalOverview,
   type TeamOverview,
 } from "./overview";
+import { databaseDivisionPages } from "./database-division";
+import { databaseSelfPages } from "./database-self";
 import { viewerKindOf, type DashboardViewer, type ViewerKind } from "./viewer";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -70,6 +72,9 @@ type Identity = {
   departmentIds: number[];
   kind: ViewerKind;
 };
+
+/** Who the signed-in account is; the page modules beside this one read it. */
+export type DashboardIdentity = Identity;
 
 async function readIdentity(userId: string): Promise<Identity | null> {
   const db = getDb();
@@ -446,6 +451,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
         save: saveRecruitment,
         refresh: () => updateTag(PUBLIC_POSITIONS_CACHE_TAG),
       }),
+    ...databaseDivisionPages(identity),
+    ...databaseSelfPages(identity),
   };
 }
 

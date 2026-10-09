@@ -36,7 +36,7 @@ export const DASHBOARD_PAGES = [
     key: "my-profile",
     label: "My profile",
     href: "/dashboard/profile",
-    reach: { "division-lead": "main", member: "main" },
+    reach: { "operations-lead": "main", "division-lead": "main", member: "main" },
   },
   {
     key: "team-tree",
