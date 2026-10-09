@@ -27,11 +27,13 @@ import { applications as baseApplications, type DummyApplication } from "./appli
 import { applyDummyChange, type DummyChange, type DummyState } from "./state";
 import {
   activity,
+  applicant,
   departments,
   divisions,
   DUMMY_NOW,
   ownApplications,
   people,
+  personFor,
   positions as basePositions,
   recruitment,
   roster,
@@ -64,15 +66,6 @@ const NOW = new Date(DUMMY_NOW);
 
 /** Monday of the week DUMMY_NOW falls in, at midnight in Turin. */
 const MONDAY = new Date("2026-10-05T00:00:00+02:00");
-
-/** The applicant the non-member viewer signs in as; not on the team, so not in `people`. */
-const applicant = { name: "Chiara Lombardi", email: "chiara.lombardi@gmail.com" } as const;
-
-const personFor = {
-  "operations-lead": people[0],
-  "division-lead": people[1],
-  member: people[4],
-} as const satisfies Readonly<Record<Exclude<ViewerKind, "non-member">, DummyPerson>>;
 
 function viewerFor(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
