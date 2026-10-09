@@ -80,6 +80,46 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
+#### Sign in as a tester (local only)
+
+On `pnpm dev` you can sign in as one of four seeded testers, with no Google
+account. This exists only under `next dev`: on Vercel previews, on production
+and on `pnpm build` / `pnpm start`, the routes below are not registered and
+answer 404. Sign-in there stays Google only.
+
+1. Load the testers into your own development branch (never a preview or
+   production database):
+
+   ```bash
+   pnpm db:migrate
+   pnpm db:seed
+   ```
+
+2. Start `pnpm dev`.
+3. Open `http://localhost:3000/api/auth/dev-tester` and pick a tester, or go
+   straight to its sign-in link:
+
+   ```text
+   http://localhost:3000/api/auth/dev-tester/sign-in?tester=<key>&cb=<path>
+   ```
+
+   `cb` is the page to land on (default `/dashboard`). The link sets the same
+   Better Auth session cookies a Google sign-in sets, so a browser or a
+   Playwright script that opens it is signed in for every later page. To
+   switch tester, open another tester's link.
+
+| Tester | `key` | Who it is | What it can see |
+| --- | --- | --- | --- |
+| Tester Applicant | `applicant` | Not a member, no scopes | The application form on an open position, for example `/apply/15-mission-analyst` |
+| Tester Member | `member` | Member in Mission Analysis, no scopes | `/dashboard`, with no edit rights |
+| Tester Division Lead | `division-lead` | Leads Mission Analysis; division-level `edit` on everything in it | `/dashboard`, and that division's positions and applications |
+| Tester Operations Lead | `operations-lead` | In Operations; org-level `edit` on `positions` | `/dashboard`, including the site-wide recruitment switch |
+
+The testers' ids, emails and names live in `lib/dev-tester.ts` and
+`db/seed.sql`; nothing comes from `.env`. The gate is `testerSignInOn()` in
+`lib/dev-tester.ts`, and `lib/dev-tester.test.ts` proves it is off outside
+`next dev`.
+
 ### Production
 
 - Keep production on a separate Neon branch or database.
