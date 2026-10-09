@@ -10,7 +10,9 @@ import {
   type RosterPerson,
   type TeamOverview,
 } from "@/lib/dashboard/overview";
+import { divisionIdOf } from "@/lib/dashboard/team";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
+import { NO_EDITS, type TeamEdits } from "./edits";
 import {
   activity,
   departments,
@@ -23,6 +25,7 @@ import {
   type DummyPerson,
   type DummyPosition,
 } from "./team";
+import { dummyTeamPages } from "./team-pages";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts, with no database, so it works on a
@@ -31,11 +34,25 @@ import {
 /** The applicant the non-member viewer signs in as; not on the team, so not in `people`. */
 const applicant = { name: "Chiara Lombardi", email: "chiara.lombardi@gmail.com" } as const;
 
+function personById(id: number): DummyPerson {
+  return people.find((p) => p.id === id)!;
+}
+
 const personFor = {
-  "operations-lead": people[0],
-  "division-lead": people[1],
-  member: people[4],
+  "operations-lead": personById(1),
+  "division-lead": personById(2),
+  member: personById(5),
 } as const satisfies Readonly<Record<Exclude<ViewerKind, "non-member">, DummyPerson>>;
+
+/** The division a person works in: null for the team leader, a head, or someone not yet placed. */
+function divisionIdOfPerson(person: DummyPerson): number | null {
+  return divisionIdOf(person.placement);
+}
+
+/** The viewer's own division; the division lead and the member viewers both have one. */
+function myDivisionId(kind: "division-lead" | "member"): number {
+  return divisionIdOfPerson(personFor[kind])!;
+}
 
 function viewerFor(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
@@ -57,7 +74,7 @@ function departmentOf(divisionId: number) {
 /** The positions a viewer's figures count: the whole team, or the lead's division. */
 function positionsFor(kind: ViewerKind): readonly DummyPosition[] {
   if (kind === "operations-lead") return positions;
-  if (kind === "division-lead") return positions.filter((p) => p.divisionId === personFor[kind].divisionId);
+  if (kind === "division-lead") return positions.filter((p) => p.divisionId === myDivisionId(kind));
   return [];
 }
 
@@ -91,7 +108,8 @@ function attentionFor(kind: ViewerKind): AttentionItem[] {
       detail: `${departmentOf(p.divisionId).name} · consider editing or closing it`,
       action: { label: "Open", href: `/dashboard/positions?position=${p.slug}` },
     }));
-  const unplaced = kind === "operations-lead" ? people.filter((p) => p.divisionId === null) : [];
+  const unplaced =
+    kind === "operations-lead" ? people.filter((p) => p.placement.role === "member" && p.placement.divisionId === null) : [];
   const unassigned: AttentionItem[] =
     unplaced.length === 0
       ? []
@@ -109,7 +127,7 @@ function attentionFor(kind: ViewerKind): AttentionItem[] {
 function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): ActivityItem[] {
   const me = personFor[kind];
   const events =
-    kind === "operations-lead" ? activity : activity.filter((a) => a.divisionId === me.divisionId);
+    kind === "operations-lead" ? activity : activity.filter((a) => a.divisionId === divisionIdOfPerson(me));
   return events.slice(0, 5).map((a) => ({
     actor: a.actor,
     text: a.text,
@@ -143,8 +161,8 @@ function teamOverview(kind: "operations-lead" | "division-lead"): TeamOverview {
     };
   }
 
-  const division = divisionOf(personFor[kind].divisionId);
-  const members = people.filter((p) => p.divisionId === division.id);
+  const division = divisionOf(myDivisionId(kind));
+  const members = people.filter((p) => divisionIdOfPerson(p) === division.id);
   return {
     shape: "team",
     stats: [
@@ -166,21 +184,21 @@ function sinceLine(isoDate: string): string {
 
 /** The lead first, then up to two others, then the viewer (board 40m). */
 function rosterPreview(me: DummyPerson): RosterPerson[] {
-  const division = people.filter((p) => p.divisionId === me.divisionId);
-  const lead = division.filter((p) => p.role === "division-lead");
-  const others = division.filter((p) => p.role !== "division-lead" && p.id !== me.id).slice(0, 2);
+  const division = people.filter((p) => divisionIdOfPerson(p) === divisionIdOfPerson(me));
+  const lead = division.filter((p) => p.placement.role === "division-lead");
+  const others = division.filter((p) => p.placement.role !== "division-lead" && p.id !== me.id).slice(0, 2);
   return [...lead, ...others, me].map((p) => ({
     name: p.name,
-    role: p.id === me.id ? "You" : p.role === "division-lead" ? "Division lead" : "Member",
-    lead: p.role === "division-lead",
+    role: p.id === me.id ? "You" : p.placement.role === "division-lead" ? "Division lead" : "Member",
+    lead: p.placement.role === "division-lead",
     self: p.id === me.id,
   }));
 }
 
 function memberOverview(): PersonalOverview {
   const me = personFor.member;
-  const division = divisionOf(me.divisionId);
-  const department = departmentOf(me.divisionId);
+  const division = divisionOf(myDivisionId("member"));
+  const department = departmentOf(division.id);
   const items: ChecklistItem[] = [
     { label: "Name and division", detail: "Set by your division lead", done: true, action: null },
     { label: "Email", detail: me.email, done: true, action: null },
@@ -197,7 +215,7 @@ function memberOverview(): PersonalOverview {
       action: me.linkedin !== null ? null : { label: "Add", href: "/dashboard/profile" },
     },
   ];
-  const size = people.filter((p) => p.divisionId === me.divisionId).length;
+  const size = people.filter((p) => divisionIdOfPerson(p) === division.id).length;
   return {
     shape: "personal",
     person: {
@@ -256,11 +274,19 @@ function navCountsFor(kind: ViewerKind): NavCounts {
   return fresh > 0 ? { applications: fresh } : {};
 }
 
-/** The dashboard as the test developer sees it, looking as `kind`. */
-export function dummyDashboardData(kind: ViewerKind): DashboardData {
+/**
+ * The dashboard as the test developer sees it, looking as `kind`, with the
+ * edits they made on the Team pages; `save` keeps the next edits (a cookie).
+ */
+export function dummyDashboardData(
+  kind: ViewerKind,
+  edits: TeamEdits = NO_EDITS,
+  save: (next: TeamEdits) => Promise<void> = async () => {},
+): DashboardData {
   return {
     viewer: viewerFor(kind),
     navCounts: async () => navCountsFor(kind),
     overview: async () => overviewFor(kind),
+    ...dummyTeamPages(kind, edits, save),
   };
 }

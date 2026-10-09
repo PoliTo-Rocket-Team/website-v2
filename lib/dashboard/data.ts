@@ -1,5 +1,6 @@
 import type { NavCounts } from "./access";
 import type { Overview } from "./overview";
+import type { AlumniDirectory, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 
 /**
@@ -13,4 +14,22 @@ export interface DashboardData {
   readonly viewer: DashboardViewer;
   navCounts(): Promise<NavCounts>;
   overview(): Promise<Overview>;
+  /** The Members page (#143): the whole team, or the lead's own division. */
+  members(): Promise<MemberDirectory>;
+  /** The Alumni page (#143). */
+  alumni(): Promise<AlumniDirectory>;
+  /** The Team tree (#143), built from this year's roster. */
+  teamTree(): Promise<TeamTree>;
+  /** Writes from the Team pages; null where this source stores none yet. */
+  readonly teamWrites: TeamWrites | null;
+}
+
+/**
+ * Each answers whether the change was made: false when the viewer may not
+ * make it or the person is not theirs to change.
+ */
+export interface TeamWrites {
+  setShownOnSite(alumnusId: number, shown: boolean): Promise<boolean>;
+  saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
+  moveToAlumni(personId: number): Promise<boolean>;
 }

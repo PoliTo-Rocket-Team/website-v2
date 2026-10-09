@@ -1,7 +1,7 @@
 import type { ViewerKind } from "./viewer";
 
 // Which viewer reaches which dashboard page, and where the page sits in that
-// viewer's sidebar (boards 40, 40m, 41c, 43, 44, 45b, 46). One row per page:
+// viewer's sidebar (boards 40, 40m, 41c, 42, 43, 44, 45b, 46). One row per page:
 // a new page adds one row. A viewer missing from a row's `reach` does not
 // reach the page. Site content, admin Access and the Activity log are not
 // designed yet, so they have no row.
@@ -42,7 +42,7 @@ export const DASHBOARD_PAGES = [
     key: "team-tree",
     label: "Team tree",
     href: "/dashboard/team-tree",
-    reach: { "division-lead": "main" },
+    reach: { "division-lead": "main", member: "main" },
   },
   {
     key: "positions",
