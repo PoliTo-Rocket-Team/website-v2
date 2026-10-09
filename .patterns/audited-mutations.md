@@ -66,19 +66,29 @@ recruitment switch (an upsert on `recruitment_setting`, in `saveRecruitment` in
 [lib/dashboard/database.ts](../lib/dashboard/database.ts), called through the dashboard data
 interface's `setRecruitment`), `setPositionOpen` and `setApplicationStage` in
 `lib/dashboard/database.ts`, and `sendApplication` in
-[app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). Several writes that must land
-together go through `runAuditBatch` instead: one `db.batch` with the audit setup first. A batch
-cannot pass one insert's id to the next, so a later write finds an earlier row by a unique value
-(the application finds its file rows by their unique Blob pathname). Better Auth writes its own
-tables through its adapter and does not use `runAuditQuery`. The application submit's rules live
-in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and private file store passed in, so
-[submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes. The recruitment switch does
-the same: its rule lives in [lib/apply/recruitment-switch.ts](../lib/apply/recruitment-switch.ts)
-with the permission, the write and the cache refresh passed in, and
-[recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts) tests each scope case. Its
-action reaches the write through the dashboard data interface (`setRecruitment` in
-[lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts through
-`runAuditQuery`; a test developer's dummy side keeps the state in a cookie and writes no row
+[app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). The dashboard's writes
+([app/dashboard/actions.ts](../app/dashboard/actions.ts)) take one more step: each action checks the
+viewer reaches the page, then hands the input to the dashboard data interface, whose database side
+([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts),
+[lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts)) checks the input and the
+viewer's own scope again before it writes through `runAuditQuery` or `runAuditBatch`. A test
+developer's write goes to the dummy side, which checks the same rules and stores nothing. The
+Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
+leave the scope check to the data interface: its database side checks the viewer reaches the
+position or application before it writes through `runAuditQuery`, and a test developer's dummy
+side keeps the change in a cookie and writes no row. Several
+writes that must land together go through `runAuditBatch` instead: one `db.batch` with the audit
+setup first. A batch cannot pass one insert's id to the next, so a later write finds an earlier row
+by a unique value (the application finds its file rows by their unique Blob pathname). Better Auth
+writes its own tables through its adapter and does not use `runAuditQuery`. The application submit's
+rules live in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and private file
+store passed in, so [submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes. The
+recruitment switch does the same: its rule lives in
+[lib/apply/recruitment-switch.ts](../lib/apply/recruitment-switch.ts) with the permission, the write
+and the cache refresh passed in, and [recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
+tests each scope case. Its action reaches the write through the dashboard data interface
+(`setRecruitment` in [lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts
+through `runAuditQuery`; a test developer's dummy side keeps the state in a cookie and writes no row
 ([lib/dummy-data/recruitment.ts](../lib/dummy-data/recruitment.ts)). The other mutations have no
 automated tests.
 

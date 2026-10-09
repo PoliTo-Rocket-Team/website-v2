@@ -27,6 +27,16 @@ import {
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
+import { refused, written } from "@/lib/dashboard/write";
+import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
+import {
+  dummyDeleteAccount,
+  dummyMyAccount,
+  dummyMyProfile,
+  dummySaveLinkedin,
+  dummySetPhoto,
+  dummyWithdraw,
+} from "./self";
 import {
   activity,
   applicant,
@@ -49,8 +59,9 @@ import type { DummyRecruitmentStore } from "./recruitment";
 // so it works on a preview that has no DATABASE_URL. What a test developer
 // changes is laid over those arrays: the recruitment switch (#121,
 // ./recruitment.ts) and the positions and applications they changed
-// (./state.ts). A write only saves through the store the caller hands in (a
-// cookie, lib/dashboard/open.ts).
+// (./state.ts). Those writes save only through the store the caller hands in
+// (a cookie, lib/dashboard/open.ts); the other pages' writes (./division.ts,
+// ./self.ts) store nothing.
 
 /** The dummy team as this test developer has left it. */
 type Team = {
@@ -381,10 +392,20 @@ function applicationsPage(kind: ViewerKind, team: Team): ApplicationsPage {
   };
 }
 
+/** The person the viewer is on the team; null for the applicant. */
+function teamPersonFor(kind: ViewerKind): DummyPerson | null {
+  return kind === "non-member" ? null : personFor[kind];
+}
+
+const notOnTeam = "This page is for team members.";
+const notApplicant = "This page is for applicants.";
+
 /**
  * The dashboard as the test developer sees it, looking as `kind`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts)
- * and their other changes in `changes` (./state.ts).
+ * and their Positions and Applications changes in `changes` (./state.ts).
+ * Other writes check what was sent as the database side does, store nothing,
+ * and answer what the page shows next.
  */
 export function dummyDashboardData(
   kind: ViewerKind,
@@ -393,6 +414,7 @@ export function dummyDashboardData(
 ): DashboardData {
   const team = teamOf(recruitment.current, changes.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
+  const person = teamPersonFor(kind);
   const canSwitch = canSwitchRecruitmentAs(kind);
 
   return {
@@ -419,5 +441,22 @@ export function dummyDashboardData(
       }
       await change({ kind: "application", id, stage, initial: base.stage });
     },
+
+    divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person)),
+    giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, input)),
+    removeAccess: async (grantId) => (person === null ? refused(notOnTeam) : dummyRemoveAccess(person, grantId)),
+
+    divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
+    placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),
+
+    myProfile: async () => (person === null ? null : dummyMyProfile(person)),
+    saveLinkedin: async (text) => (person === null ? refused(notOnTeam) : dummySaveLinkedin(text)),
+    setPhoto: async (photo) => (person === null ? refused(notOnTeam) : dummySetPhoto(photo)),
+    requestLeave: async () => (person === null ? refused(notOnTeam) : written(null)),
+
+    myAccount: async () => (person === null ? dummyMyAccount(applicant) : null),
+    withdrawApplication: async (id) => (person === null ? dummyWithdraw(applicant, id) : refused(notApplicant)),
+    deleteAccount: async (options) =>
+      person === null ? dummyDeleteAccount(options) : refused("Leave the team first. Once your lead confirms, you can delete your account."),
   };
 }

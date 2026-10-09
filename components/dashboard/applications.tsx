@@ -71,7 +71,7 @@ export function ApplicationsView({
     startTransition(async () => {
       setStage({ id, stage });
       const result = await setApplicationStage(id, stage);
-      if (!result.ok) toast.error(result.message);
+      if (!result.ok) toast.error(result.error);
     });
 
   return (

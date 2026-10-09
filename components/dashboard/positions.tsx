@@ -3,7 +3,8 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { RadioTower } from "lucide-react";
 import { toast } from "sonner";
-import { setPositionOpen, setRecruitment, type WriteResult } from "@/app/dashboard/recruitment-actions";
+import { setPositionOpen, setRecruitment } from "@/app/dashboard/recruitment-actions";
+import type { WriteResult } from "@/lib/dashboard/write";
 import type { RecruitmentControl } from "@/lib/apply/recruitment-switch";
 import {
   departmentsOf,
@@ -23,14 +24,14 @@ import { PANEL } from "./panel";
 // written through the same interface; this page only draws it as board 41.
 
 /** Flip a switch at once; a refusal flips it back and says why. */
-function useOptimisticSwitch(value: boolean, write: (next: boolean) => Promise<WriteResult>) {
+function useOptimisticSwitch(value: boolean, write: (next: boolean) => Promise<WriteResult<null>>) {
   const [shown, setShown] = useOptimistic(value);
   const [pending, startTransition] = useTransition();
   const flip = (next: boolean) =>
     startTransition(async () => {
       setShown(next);
       const result = await write(next);
-      if (!result.ok) toast.error(result.message);
+      if (!result.ok) toast.error(result.error);
     });
   return [shown, flip, pending] as const;
 }

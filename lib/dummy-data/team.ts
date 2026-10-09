@@ -105,7 +105,7 @@ export const positions = [
 /** The roster count for the year; `people` holds only the ones the pages name. */
 export const roster = { season: "2026–27", members: 152 } as const;
 
-/** The switch's state before a test developer flips it (./state.ts holds the flip). */
+/** The switch's state before a test developer flips it (#121's cookie in ./recruitment.ts holds the flip). */
 export const recruitment = { open: true, since: "1 Oct" } as const;
 
 export type DummyActivity = {
