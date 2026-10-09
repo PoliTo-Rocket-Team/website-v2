@@ -4,6 +4,7 @@
 // the Overview read the same people. Later dashboard pages add their arrays
 // beside these.
 
+import type { ApplicationStatus } from "@/lib/dashboard/overview";
 import type { OrgDepartment, OrgDivision, Placement } from "@/lib/dashboard/team";
 
 export type DummyDepartment = OrgDepartment;
@@ -315,3 +316,11 @@ export const ownApplications = [
   { positionId: 1, sent: "9 Oct 2026", status: "in-review" },
   { positionId: 7, sent: "2 Oct 2026", status: "received" },
 ] as const satisfies readonly DummyApplication[];
+
+/**
+ * The member viewer's own applications: the one that brought her onto the
+ * team, so her sidebar lists My applications (board 52).
+ */
+export const memberOwnApplications = [
+  { positionId: 1, sent: "28 Sep 2025", status: "accepted" },
+] as const satisfies readonly { positionId: number; sent: string; status: ApplicationStatus }[];

@@ -29,6 +29,8 @@ import type { Upload, WriteResult } from "./write";
 export interface DashboardData {
   readonly viewer: DashboardViewer;
   navCounts(): Promise<NavCounts>;
+  /** Whether the viewer has sent at least one application: the sidebar lists My applications only then. */
+  hasOwnApplications(): Promise<boolean>;
   overview(): Promise<Overview>;
   /** The Members page (#143): the whole team, or the lead's own division. */
   members(): Promise<MemberDirectory>;

@@ -6,11 +6,11 @@ import Link from "next/link";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import type { NavSection } from "@/lib/dashboard/access";
+import type { MenuPage, NavSection } from "@/lib/dashboard/access";
 import type { DashboardViewer } from "@/lib/dashboard/viewer";
 import { Sidebar } from "./sidebar";
 
-// The dashboard frame (boards 40 to 46): a 248px sidebar fixed on the left
+// The dashboard frame (boards 51b, 52, 56): a 248px sidebar fixed on the left
 // and the page to its right, 40px in. Below md the sidebar becomes a drawer
 // from the left under a 56px bar with the mark and a menu button. The drawer
 // is the repo's Radix dialog, built on the primitive as nav-menu.tsx is: it
@@ -18,17 +18,19 @@ import { Sidebar } from "./sidebar";
 export function DashboardShell({
   viewer,
   sections,
+  menuPage,
   children,
 }: {
   viewer: DashboardViewer;
   sections: readonly NavSection[];
+  menuPage: MenuPage | null;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="min-h-svh bg-ground text-prt-text">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-hairline bg-panel/50 md:block">
-        <Sidebar viewer={viewer} sections={sections} />
+        <Sidebar viewer={viewer} sections={sections} menuPage={menuPage} />
       </aside>
 
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-hairline bg-ground/90 px-5 backdrop-blur md:hidden">
@@ -50,7 +52,7 @@ export function DashboardShell({
               className="fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] border-r border-hairline bg-ground focus:outline-none motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-left"
             >
               <DialogTitle className="sr-only">Dashboard menu</DialogTitle>
-              <Sidebar viewer={viewer} sections={sections} onNavigate={() => setOpen(false)} />
+              <Sidebar viewer={viewer} sections={sections} menuPage={menuPage} onNavigate={() => setOpen(false)} />
             </DialogPrimitive.Content>
           </DialogPortal>
         </Dialog>

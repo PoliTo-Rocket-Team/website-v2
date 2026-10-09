@@ -15,7 +15,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import type { DashboardPageKey, NavSection } from "@/lib/dashboard/access";
+import type { DashboardPageKey, MenuPage, NavSection } from "@/lib/dashboard/access";
 import type { DashboardViewer } from "@/lib/dashboard/viewer";
 import { UserCard } from "./user-card";
 
@@ -39,31 +39,35 @@ function isCurrent(pathname: string | null, href: string): boolean {
   return pathname === href || (pathname?.startsWith(`${href}/`) ?? false);
 }
 
-// Boards 40 to 46: the PRT mark and "Dashboard", the viewer's groups of
-// pages (a small mono heading over each group but the first), and the user
-// card at the foot. The current page sits on white-5 with its icon in accent.
+// Boards 51b, 52 and 56: the full PRT logo, linking to the site home, then
+// the "Dashboard" title on the group headings' left edge, 22px apart; then
+// the viewer's groups of pages (a small mono heading over each group but the
+// first), and the user card and its menu at the foot. The current page sits
+// on white-5 with its icon in accent.
 export function Sidebar({
   viewer,
   sections,
+  menuPage,
   onNavigate,
 }: {
   viewer: DashboardViewer;
   sections: readonly NavSection[];
+  menuPage: MenuPage | null;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   return (
-    <div className="flex h-full flex-col px-3 pb-3">
+    <div className="flex h-full flex-col px-3 pb-[18px] pt-6">
       <Link
-        href="/dashboard"
-        onClick={onNavigate}
-        className="flex h-[76px] shrink-0 items-center gap-3 px-2.5 text-[15px] font-semibold"
+        href="/"
+        aria-label="PoliTo Rocket Team home"
+        className="block w-[220px] max-w-full shrink-0 rounded-sm focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-white-10"
       >
-        <Image src="/brand/prt-mark-white.svg" alt="" width={444} height={220} className="h-8 w-auto" />
-        Dashboard
+        <Image src="/brand/prt-logo-white.svg" alt="" width={943} height={137} priority className="h-auto w-full" />
       </Link>
+      <p className="mt-[22px] shrink-0 text-[18px] font-bold leading-5">Dashboard</p>
 
-      <nav aria-label="Dashboard" className="flex-1 overflow-y-auto">
+      <nav aria-label="Dashboard" className="mt-[22px] flex-1 overflow-y-auto">
         {sections.map((section) => (
           <div key={section.group} className={section.label ? "mt-6" : ""}>
             {section.label && (
@@ -100,7 +104,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <UserCard viewer={viewer} />
+      <UserCard viewer={viewer} menuPage={menuPage} onNavigate={onNavigate} />
     </div>
   );
 }

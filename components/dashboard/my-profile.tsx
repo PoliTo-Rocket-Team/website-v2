@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Linkedin, Lock, Mail, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { checkPhoto, normalizeLinkedin, PHOTO_TYPES, type LeaveState, type MyProfile } from "@/lib/dashboard/self";
-import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
+import { initialsOf } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL } from "./account-parts";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -22,7 +22,7 @@ type Actions = {
 // site shows it, the details their lead sets, LinkedIn, the account, and
 // Leave or delete. Props in, nothing fetched; every change lives in this
 // page's state once the write answers.
-export function MyProfileView({ profile, session, ...actions }: { profile: MyProfile; session: ViewerSession } & Actions) {
+export function MyProfileView({ profile, ...actions }: { profile: MyProfile } & Actions) {
   const [leave, setLeave] = useState<LeaveState>(profile.leave);
   return (
     <>
@@ -30,7 +30,7 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
       <div className="mt-6 flex flex-col gap-5">
         <PhotoCard name={profile.name} photoUrl={profile.photoUrl} uploadPhoto={actions.uploadPhoto} removePhoto={actions.removePhoto} />
         <DetailsCard profile={profile} saveLinkedin={actions.saveLinkedin} />
-        <AccountCard signIn={profile.signIn} session={session} />
+        <AccountCard signIn={profile.signIn} />
         <LeaveCard leave={leave} onLeft={() => setLeave("leave-requested")} requestLeave={actions.requestLeave} />
       </div>
     </>

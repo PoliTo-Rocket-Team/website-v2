@@ -92,7 +92,7 @@ export function MyAccountView({ account, session, ...actions }: { account: MyAcc
           )}
         </Card>
 
-        <AccountCard signIn={account.signIn} session={session} />
+        <AccountCard signIn={account.signIn} />
         <DangerZone session={session} deleteAccount={actions.deleteAccount} />
       </div>
 

@@ -19,7 +19,7 @@ export function PageHeader({ title, intro, action }: { title: string; intro: str
 export const PRIMARY_PILL =
   "inline-flex h-9 items-center justify-center gap-2 rounded-full bg-prt-text px-4 text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-wait disabled:opacity-70";
 
-/** The outlined pill: a secondary action in a row ("Sign out", "Save changes", "Withdraw"). */
+/** The outlined pill: a secondary action in a row ("Save changes", "Withdraw"). */
 export const GHOST_PILL =
   "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-full border border-white-10 px-3.5 text-[13px] font-medium text-prt-text transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60";
 

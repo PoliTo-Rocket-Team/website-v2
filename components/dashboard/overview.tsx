@@ -1,31 +1,61 @@
 import Link from "next/link";
-import { Check, FileText, Inbox, Info, Pencil, Timer, UserPlus, type LucideIcon } from "lucide-react";
-import type {
-  ApplicationStatus,
-  AttentionKind,
-  Checklist,
-  OwnApplication,
-  Overview,
-  PersonalOverview,
-  Roster,
-  Stat,
-  TeamOverview,
+import { Check, FileText, Hourglass, Inbox, Info, Pencil, Timer, UserPlus, type LucideIcon } from "lucide-react";
+import {
+  interviewOrder,
+  interviewSlot,
+  interviewSummary,
+  type ActivityItem,
+  type ApplicationStatus,
+  type AttentionItem,
+  type AttentionKind,
+  type Checklist,
+  type OwnApplication,
+  type Overview,
+  type PersonalOverview,
+  type Roster,
+  type Stat,
+  type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { Avatar } from "./avatar";
 import { PANEL, Panel, RowAction } from "./panel";
 
-// The Overview page (boards 40 and 40m). Props in, nothing fetched: the page
-// hands over what the dashboard data interface answered.
+// The Overview page: board 40 for the operations lead, 56 for a division
+// lead, 52 for a member. Props in, nothing fetched: the page hands over what
+// the dashboard data interface answered.
 export function OverviewView({ overview }: { overview: Overview }) {
-  return overview.shape === "team" ? <TeamView overview={overview} /> : <PersonalView overview={overview} />;
+  switch (overview.shape) {
+    case "team":
+      return <LeadView stats={overview.stats} attention={overview.attention} interviews={[]} activity={overview.activity} />;
+    case "division":
+      return (
+        <LeadView
+          stats={overview.stats}
+          attention={overview.attention}
+          interviews={overview.interviews}
+          activity={overview.activity}
+        />
+      );
+    case "personal":
+      return <PersonalView overview={overview} />;
+  }
 }
 
 const GRID = "mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]";
 
-// Board 40: four figures, then what needs the lead's attention beside the
-// recent activity.
-function TeamView({ overview }: { overview: TeamOverview }) {
-  const { stats, attention, activity } = overview;
+// Boards 40 and 56: four figures, then what needs the lead's attention (and,
+// on 56, the upcoming interviews under it) beside the recent activity.
+function LeadView({
+  stats,
+  attention,
+  interviews,
+  activity,
+}: {
+  stats: readonly Stat[];
+  attention: readonly AttentionItem[];
+  interviews: readonly UpcomingInterview[];
+  activity: readonly ActivityItem[];
+}) {
+  const left = attention.length > 0 || interviews.length > 0;
   return (
     <>
       <h1 className="sr-only">Overview</h1>
@@ -34,29 +64,16 @@ function TeamView({ overview }: { overview: TeamOverview }) {
           <StatCard key={stat.label} stat={stat} />
         ))}
       </div>
-      {(attention.length > 0 || activity.length > 0) && (
+      {(left || activity.length > 0) && (
         <div className={GRID}>
-          {attention.length > 0 && (
-            <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`}>
-              {attention.map((item) => {
-                const Icon = ATTENTION_ICONS[item.kind];
-                return (
-                  <li key={item.title} className="flex items-center gap-4 px-5 py-3.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-hairline bg-white-5 text-text-2">
-                      <Icon aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[14px] font-medium">{item.title}</span>
-                      <span className="block text-[13px] text-prt-muted">{item.detail}</span>
-                    </span>
-                    <RowAction {...item.action} />
-                  </li>
-                );
-              })}
-            </Panel>
+          {left && (
+            <div className="flex min-w-0 flex-col gap-4">
+              {attention.length > 0 && <AttentionPanel attention={attention} />}
+              {interviews.length > 0 && <InterviewsPanel interviews={interviews} />}
+            </div>
           )}
           {activity.length > 0 && (
-            <Panel title="Recent activity" className={attention.length === 0 ? "lg:col-start-2" : ""}>
+            <Panel title="Recent activity" className={left ? "" : "lg:col-start-2"}>
               {activity.map((item) => (
                 <li key={`${item.text}-${item.when}`} className="flex items-start gap-3 px-5 py-3.5">
                   <Avatar name={item.actor} size="sm" accent={item.self} />
@@ -74,10 +91,68 @@ function TeamView({ overview }: { overview: TeamOverview }) {
   );
 }
 
+function AttentionPanel({ attention }: { attention: readonly AttentionItem[] }) {
+  return (
+    <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`}>
+      {attention.map((item) => {
+        const Icon = ATTENTION_ICONS[item.kind];
+        return (
+          <li key={item.title} className="flex items-center gap-4 px-5 py-3.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-hairline bg-white-5 text-text-2">
+              <Icon aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-medium">{item.title}</span>
+              <span className="block text-[13px] text-prt-muted">{item.detail}</span>
+            </span>
+            <RowAction {...item.action} />
+          </li>
+        );
+      })}
+    </Panel>
+  );
+}
+
+// Board 56: booked interviews under a date tile with their time on the right,
+// then the ones waiting for the applicant to pick a time.
+function InterviewsPanel({ interviews }: { interviews: readonly UpcomingInterview[] }) {
+  return (
+    <Panel title="Upcoming interviews" meta={interviewSummary(interviews)}>
+      {interviewOrder(interviews).map((interview) => {
+        const slot = interview.state === "booked" ? interviewSlot(interview.start, interview.end) : null;
+        return (
+          <li key={`${interview.applicant}-${interview.position}`} className="flex items-center gap-3.5 px-5 py-3.5">
+            {slot ? (
+              <span className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg border border-accent/30 bg-accent-soft text-accent">
+                <span className="text-[15px] font-bold leading-none">{slot.day}</span>
+                <span className="mt-1 font-mono text-[9px] leading-none tracking-[0.15em]">{slot.month}</span>
+              </span>
+            ) : (
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-hairline bg-white-5 text-text-2">
+                <Hourglass aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[14px] font-medium">{interview.applicant}</span>
+              <span className="block truncate text-[13px] text-prt-muted">{interview.position}</span>
+            </span>
+            {slot ? (
+              <span className="shrink-0 text-right text-[13px] font-semibold tabular-nums">{slot.when}</span>
+            ) : (
+              <span className="shrink-0 text-right text-[13px] text-prt-muted">Waiting for a time</span>
+            )}
+          </li>
+        );
+      })}
+    </Panel>
+  );
+}
+
 const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   applications: Inbox,
   "quiet-position": Timer,
   unassigned: UserPlus,
+  "no-photo": Timer,
 };
 
 function StatCard({ stat }: { stat: Stat }) {

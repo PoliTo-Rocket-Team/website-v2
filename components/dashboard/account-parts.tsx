@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn } from "lucide-react";
 import { toast } from "sonner";
@@ -9,10 +9,10 @@ import type { SignIn } from "@/lib/dashboard/self";
 import type { ViewerSession } from "@/lib/dashboard/viewer";
 import { TEST_DEVELOPER_SIGN_OUT_HREF } from "@/lib/test-developer";
 import { PANEL } from "./panel";
-import { GHOST_PILL } from "./page-header";
 
 // Parts My profile (board 45) and My account (board 45b) share: the titled
-// card, the Account card, signing out, and the danger buttons.
+// card, the Account card and the danger buttons; and signing out, which the
+// user menu (user-card.tsx) and deleting an account both do.
 
 /** A titled card; `danger` gives the red edge and tint of "Leave or delete". */
 export function Card({
@@ -62,10 +62,8 @@ export function useSignOut(session: ViewerSession): () => Promise<void> {
   };
 }
 
-/** The Account card: how the person signs in, and Sign out. */
-export function AccountCard({ signIn, session }: { signIn: SignIn; session: ViewerSession }) {
-  const signOut = useSignOut(session);
-  const [pending, setPending] = useState(false);
+/** The Account card: how the person signs in. Sign out lives in the user menu (board 51b). */
+export function AccountCard({ signIn }: { signIn: SignIn }) {
   return (
     <Card title="Account">
       <div className="flex items-center gap-3.5 px-5 py-4 md:px-[22px]">
@@ -76,18 +74,6 @@ export function AccountCard({ signIn, session }: { signIn: SignIn; session: View
           <span className="block text-[14px] font-medium">Signed in with Google</span>
           <span className="block truncate text-[13px] text-prt-muted">{signIn.email}</span>
         </span>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={async () => {
-            setPending(true);
-            await signOut();
-            setPending(false);
-          }}
-          className={GHOST_PILL}
-        >
-          Sign out
-        </button>
       </div>
     </Card>
   );
