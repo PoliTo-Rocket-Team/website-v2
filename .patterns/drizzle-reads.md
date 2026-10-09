@@ -72,10 +72,9 @@ Server Component renders it.
    session; the per-viewer filter runs outside it. The tag constants are exported so writers can
    invalidate them (see [audited-mutations.md](./audited-mutations.md)).
 
-7. **Render through Suspense.** A page wraps an async `*Content` component that awaits the read in
-   `<Suspense>` with a skeleton fallback
-   ([dashboard/positions/page.tsx](../app/(legacy)/dashboard/positions/page.tsx),
-   [dashboard/applications/page.tsx](../app/(legacy)/dashboard/applications/page.tsx)).
+7. **Render through Suspense.** A page wraps an async component that awaits the read in
+   `<Suspense>` ([dashboard/positions/page.tsx](../app/dashboard/positions/page.tsx),
+   [dashboard/applications/page.tsx](../app/dashboard/applications/page.tsx)).
 
 ## When this applies
 

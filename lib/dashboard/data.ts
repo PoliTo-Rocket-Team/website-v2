@@ -4,6 +4,7 @@ import type { NavCounts } from "./access";
 import type { AccessGrant, DivisionAccess } from "./division-access";
 import type { DivisionOrders, Order } from "./orders";
 import type { Overview } from "./overview";
+import type { ApplicationStage, ApplicationsPage, PositionsPage } from "./recruitment";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumniDirectory, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
@@ -16,10 +17,14 @@ import type { Upload, WriteResult } from "./write";
  * DashboardOpening (./opening.ts). A later page adds one method here and to
  * both implementations.
  *
- * A read answers null when the viewer has nothing on that page (an applicant
- * has no division). A write takes what the browser sent as it came, checks
- * it, and answers a WriteResult (./write.ts); a test developer's write lands
- * nowhere and answers what the page shows next.
+ * Positions and Applications (issue #142) answer only what the viewer
+ * reaches, and a read or write there the viewer does not reach rejects with
+ * DashboardRefused, so a server action needs no check of its own; a test
+ * developer's write there changes only a cookie. The other pages' reads answer
+ * null when the viewer has nothing on that page (an applicant has no
+ * division), and their writes take what the browser sent as it came, check
+ * it, and answer a WriteResult (./write.ts); a test developer's write there
+ * lands nowhere and answers what the page shows next.
  */
 export interface DashboardData {
   readonly viewer: DashboardViewer;
@@ -35,8 +40,17 @@ export interface DashboardData {
   readonly teamWrites: TeamWrites | null;
   /** The site-wide recruitment switch (issue #121): its state, and whether this viewer may flip it. */
   recruitment(): Promise<RecruitmentControl>;
-  /** Flips the switch when this viewer may, and refreshes /apply; otherwise writes nothing. */
+  /**
+   * Flips the switch when this viewer may, and refreshes /apply; otherwise
+   * writes nothing. A refusal is its answer, not a DashboardRefused.
+   */
   setRecruitment(recruitment: Recruitment): Promise<SwitchRecruitmentResult>;
+  /** Boards 41 and 41c (issue #142). The switch on board 41 is `recruitment()`. */
+  positions(): Promise<PositionsPage>;
+  /** Board 41b (issue #142). */
+  applications(): Promise<ApplicationsPage>;
+  setPositionOpen(positionId: number, open: boolean): Promise<void>;
+  setApplicationStage(applicationId: number, stage: ApplicationStage): Promise<void>;
 
   /** Board 43: the division lead's Access page. */
   divisionAccess(): Promise<DivisionAccess | null>;
@@ -71,4 +85,12 @@ export interface TeamWrites {
   setShownOnSite(alumnusId: number, shown: boolean): Promise<boolean>;
   saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
   moveToAlumni(personId: number): Promise<boolean>;
+}
+
+/** A read or write the viewer does not reach. */
+export class DashboardRefused extends Error {
+  constructor(what: string) {
+    super(`Not allowed: ${what}`);
+    this.name = "DashboardRefused";
+  }
 }

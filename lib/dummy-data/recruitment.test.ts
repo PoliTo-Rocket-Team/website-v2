@@ -6,6 +6,7 @@ import { VIEWER_KINDS } from "@/lib/dashboard/viewer";
 import { dummyApplyData } from "./apply";
 import { dummyDashboardData } from "./index";
 import { dummyRecruitmentCookieValue, dummyRecruitmentOf, type DummyRecruitmentStore } from "./recruitment";
+import { EMPTY_DUMMY_STATE, type DummyStateStore } from "./state";
 
 // The recruitment switch on a preview (issue #121): the test developer's flip
 // lives in a cookie, and the dummy dashboard and /apply both follow it.
@@ -23,7 +24,8 @@ function jar(start: string | undefined) {
 test("the operations lead flips the dummy switch and it is kept; every other viewer is refused and nothing is kept", async () => {
   for (const kind of VIEWER_KINDS) {
     const { store, set } = jar(undefined);
-    const data = dummyDashboardData(kind, store);
+    const changes: DummyStateStore = { current: EMPTY_DUMMY_STATE, save: async () => assert.fail("not a switch write") };
+    const data = dummyDashboardData(kind, store, changes);
     const allowed = kind === "operations-lead";
     assert.equal((await data.recruitment()).canSwitch, allowed, kind);
     const result = await data.setRecruitment({ isOpen: false });

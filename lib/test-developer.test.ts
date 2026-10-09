@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { TestDeveloperSignIn } from "@/components/test-developer-sign-in";
 import {
   TEST_DEVELOPER_COOKIE,
+  TEST_DEVELOPER_EDITS_COOKIE,
+  TEST_DEVELOPER_STATE_COOKIE,
   testDeveloperOn,
   testDeveloperSignIn,
   testDeveloperSignOut,
@@ -97,8 +99,11 @@ test("a value that is not one of the four viewers signs nobody in", () => {
   assert.equal(testDeveloperViewer("admin", LOCAL_DEV), null);
 });
 
-test("sign-out clears the cookie and goes to /login", () => {
+test("sign-out clears the cookie and the dummy team's changes, and goes to /login", () => {
   const response = testDeveloperSignOut(new URL("http://localhost:3000/api/test-developer/sign-out"), LOCAL_DEV);
   assert.equal(response.headers.get("location"), "http://localhost:3000/login");
-  assert.match(response.headers.get("set-cookie") ?? "", new RegExp(`^${TEST_DEVELOPER_COOKIE}=;.*Max-Age=0`));
+  const cleared = response.headers.getSetCookie();
+  assert.match(cleared[0] ?? "", new RegExp(`^${TEST_DEVELOPER_COOKIE}=;.*Max-Age=0`));
+  assert.match(cleared[1] ?? "", new RegExp(`^${TEST_DEVELOPER_STATE_COOKIE}=;.*Max-Age=0`));
+  assert.match(cleared[2] ?? "", new RegExp(`^${TEST_DEVELOPER_EDITS_COOKIE}=;.*Max-Age=0`));
 });

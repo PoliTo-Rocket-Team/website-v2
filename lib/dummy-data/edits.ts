@@ -6,8 +6,6 @@
 
 import type { MemberEdit } from "@/lib/dashboard/team";
 
-export const TEST_DEVELOPER_EDITS_COOKIE = "prt_test_developer_edits";
-
 export type TeamEdits = {
   /** Alumni whose "On the site" switch was flipped, by id. */
   readonly shownOnSite: Readonly<Record<number, boolean>>;
@@ -18,6 +16,15 @@ export type TeamEdits = {
 };
 
 export const NO_EDITS: TeamEdits = { shownOnSite: {}, members: {}, movedToAlumni: {} };
+
+/** Where the dummy dashboard reads and keeps these edits. */
+export type TeamEditsStore = {
+  readonly current: TeamEdits;
+  save(next: TeamEdits): Promise<void>;
+};
+
+/** No edits, and nowhere to keep any. */
+export const NO_TEAM_EDITS: TeamEditsStore = { current: NO_EDITS, save: async () => {} };
 
 /** A cookie holds about 4 KB; past this many entries a map keeps its newest. */
 const MAX_ENTRIES = 60;
