@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { getApplicant, hasApplied, type Applicant } from "@/app/actions/get-applicant";
 import { getPositionWithRecruitment } from "@/app/actions/get-apply-positions";
 import { ApplicationForm } from "@/components/apply/application-form";
-import { ClosedCard, PositionLayout, SentCard, SignInCard, type PositionView } from "@/components/apply/position";
+import { ClosedPopover, PositionLayout, SentPopover, SignInPopover, type PositionView } from "@/components/apply/position";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
@@ -28,8 +28,9 @@ export function generateStaticParams(): { slug: string }[] {
 }
 
 // The position page (boards 35, 35b, 35c and 35d; 35m to 35dm on phones),
-// inside the page sky like /apply. Signed-out visitors see the page too: the
-// sign-in card stands in for the form (issue #120), so proxy.ts lets them in.
+// inside the page sky like /apply. Signed-out visitors see the page too: a
+// sign-in popover stands over it in place of the form (issues #120 and #147),
+// so proxy.ts lets them in.
 export default function PositionPage({ params }: { params: Promise<{ slug: string }> }) {
   return (
     <div className="relative bg-ground">
@@ -46,7 +47,7 @@ export default function PositionPage({ params }: { params: Promise<{ slug: strin
   );
 }
 
-/** The one card under the description, by the page's state, in this order. */
+/** What the page shows for the form, by its state, in this order: a popover, or the form itself. */
 type CardState =
   | { kind: "closed" }
   | { kind: "signed-out" }
@@ -88,28 +89,30 @@ async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
   const state = await cardState(position, recruitment.isOpen);
 
   return (
-    <PositionLayout position={view}>
-      {state.kind === "closed" && <ClosedCard />}
-      {state.kind === "signed-out" && <SignInCard returnTo={`/apply/${canonical}`} />}
+    <>
+      <PositionLayout position={view}>
+        {state.kind === "form" ? (
+          <ApplicationForm
+            email={state.applicant.email}
+            defaults={state.applicant.defaults}
+            asks={{
+              questions: position.custom_questions ?? [],
+              requiresMotivationLetter: position.requires_motivation_letter,
+            }}
+            send={sendApplication.bind(null, position.id)}
+          />
+        ) : undefined}
+      </PositionLayout>
+      {state.kind === "closed" && <ClosedPopover />}
+      {state.kind === "signed-out" && <SignInPopover title={view.title} returnTo={`/apply/${canonical}`} />}
       {state.kind === "sent" && (
-        <SentCard
+        <SentPopover
           firstName={state.applicant.defaults.firstName}
           title={view.title}
           division={view.division}
           email={state.applicant.email}
         />
       )}
-      {state.kind === "form" && (
-        <ApplicationForm
-          email={state.applicant.email}
-          defaults={state.applicant.defaults}
-          asks={{
-            questions: position.custom_questions ?? [],
-            requiresMotivationLetter: position.requires_motivation_letter,
-          }}
-          send={sendApplication.bind(null, position.id)}
-        />
-      )}
-    </PositionLayout>
+    </>
   );
 }
