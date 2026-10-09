@@ -51,12 +51,13 @@ function Header({ position }: { position: PositionView }) {
         <span aria-hidden className="mx-3 max-md:hidden">
           ·
         </span>
+        {/* On phones the line breaks only at the dot, never inside a name. */}
         <span className="max-md:mt-2 max-md:block">
-          {position.department.toUpperCase()} DEPARTMENT
+          <span className="whitespace-nowrap">{position.department.toUpperCase()} DEPARTMENT</span>
           <span aria-hidden className="mx-3">
             ·
           </span>
-          {position.division.toUpperCase()} DIVISION
+          <span className="whitespace-nowrap">{position.division.toUpperCase()} DIVISION</span>
         </span>
       </p>
       <h1 className="mt-3 text-[34px] font-bold leading-[1.1] tracking-[-0.025em] md:mt-5 md:text-[64px] md:leading-[1.05]">
