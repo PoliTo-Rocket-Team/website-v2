@@ -14,7 +14,7 @@ Ground-up rewrite of politorocketteam.it. Not just a landing page: it's also a d
 
 ## Prior work
 - `~/Documents/projects/website-v2` — earlier attempt. Stack: Next.js, Tailwind, shadcn/Radix, Better Auth (magic link + Google), Drizzle + Neon Postgres, Vercel.
-- Existing routes there: `/`, `/apply`, `/login`, `/sign-in`, `/sign-up`, `/reset-password`, `/dashboard`, `/dashboard/applications`, `/dashboard/positions`, `/dashboard/members`.
+- Existing routes there: `/`, `/apply`, `/login` (Google only, issue #118), `/dashboard`, `/dashboard/applications`, `/dashboard/positions`, `/dashboard/members`.
 - Auth + dashboard logic from website-v2 can likely be reused; the UI gets redesigned.
 
 ## Design

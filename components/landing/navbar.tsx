@@ -70,7 +70,7 @@ export function LandingNavbar() {
             Apply
           </Link>
           <Link
-            href="/sign-in"
+            href="/login"
             className="hidden rounded-full border border-white-10 px-5 py-2.5 text-[15px] font-medium text-prt-text transition-colors hover:border-border-strong md:inline-block"
           >
             Sign in

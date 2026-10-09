@@ -8,7 +8,6 @@ import {
   betterAuthUsers,
   betterAuthVerifications,
 } from "@/db/schema";
-import { sendVerificationEmail, sendPasswordResetEmail } from "./email";
 
 const authBaseUrl = process.env.BETTER_AUTH_URL;
 const trustedOrigins = [
@@ -34,28 +33,8 @@ export function getAuth() {
         verification: betterAuthVerifications,
       },
     }),
-    emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: true,
-      sendResetPassword: async ({ user, url }) => {
-        await sendPasswordResetEmail({
-          to: user.email,
-          name: user.name || user.email,
-          resetUrl: url,
-        });
-      },
-    },
-    emailVerification: {
-      sendOnSignUp: true,
-      autoSignInAfterVerification: true,
-      sendVerificationEmail: async ({ user, url }) => {
-        await sendVerificationEmail({
-          to: user.email,
-          name: user.name || user.email,
-          verificationUrl: url,
-        });
-      },
-    },
+    // Google is the only way to sign in (issue #118): no email and password,
+    // so no verification or reset emails.
     socialProviders: {
       google: {
         prompt: "select_account",
