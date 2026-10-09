@@ -23,10 +23,12 @@ import {
 } from "./self";
 import {
   activity,
+  applicant,
   departments,
   divisions,
   ownApplications,
   people,
+  personFor,
   positions,
   recruitment,
   roster,
@@ -37,15 +39,6 @@ import {
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts, with no database, so it works on a
 // preview that has no DATABASE_URL.
-
-/** The applicant the non-member viewer signs in as; not on the team, so not in `people`. */
-const applicant = { name: "Chiara Lombardi", email: "chiara.lombardi@gmail.com" } as const;
-
-const personFor = {
-  "operations-lead": people[0],
-  "division-lead": people[1],
-  member: people[4],
-} as const satisfies Readonly<Record<Exclude<ViewerKind, "non-member">, DummyPerson>>;
 
 function viewerFor(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
