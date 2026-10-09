@@ -322,7 +322,7 @@ function rosterPreview(me: DummyPerson): RosterPerson[] {
   const others = division.filter((p) => p.placement.role !== "division-lead" && p.id !== me.id).slice(0, 2);
   return [...lead, ...others, me].map((p) => ({
     name: p.name,
-    role: p.id === me.id ? "You" : p.placement.role === "division-lead" ? "Division lead" : "Member",
+    role: p.placement.role === "division-lead" ? "Division lead" : "Member",
     lead: p.placement.role === "division-lead",
     self: p.id === me.id,
   }));
@@ -365,6 +365,7 @@ function memberOverview(): PersonalOverview {
     roster: {
       title: division.name,
       detail: `${department.name} · ${size} people`,
+      size,
       people: rosterPreview(me),
     },
     applications: null,

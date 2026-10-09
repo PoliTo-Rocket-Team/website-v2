@@ -422,7 +422,7 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
       const lead = r.type === "lead" || r.type === "head";
       return {
         name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
-        role: self ? "You" : lead ? "Division lead" : "Member",
+        role: lead ? "Division lead" : "Member",
         lead,
         self,
       };
@@ -433,6 +433,7 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
     roster = {
       title: role.divisionName ?? "",
       detail: `${role.departmentName ?? ""} · ${plural(people.length, "person", "people")}`,
+      size: people.length,
       people: [...leads, ...others, ...me],
     };
   }

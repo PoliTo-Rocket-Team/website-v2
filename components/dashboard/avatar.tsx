@@ -8,6 +8,8 @@ const SIZES = {
   /** The applicant at the top of the detail panel (board 41b). */
   panel: "h-12 w-12 text-[15px]",
   lg: "h-12 w-12 text-[15px] md:h-[72px] md:w-[72px] md:text-[22px]",
+  /** The person at the top of their own Overview (boards 52 and 52m). */
+  person: "h-14 w-14 text-[18px] md:h-[72px] md:w-[72px] md:text-[22px]",
   xl: "h-16 w-16 text-[18px]",
 } as const;
 

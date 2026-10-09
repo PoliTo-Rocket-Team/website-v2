@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
+import { pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
 import type { ViewerKind } from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
@@ -41,4 +41,12 @@ test("My profile and My account are in the user menu, never the sidebar", () => 
   assert.equal(userMenuPageFor("member")?.label, "My profile");
   assert.equal(userMenuPageFor("division-lead")?.label, "My profile");
   assert.equal(userMenuPageFor("operations-lead")?.label, "My profile");
+});
+
+test("the phone top bar names the page by its longest matching address", () => {
+  assert.equal(pageTitleFor("/dashboard"), "Overview");
+  assert.equal(pageTitleFor("/dashboard/applications"), "Applications");
+  assert.equal(pageTitleFor("/dashboard/applications/42"), "Applications");
+  assert.equal(pageTitleFor("/dashboard/profile"), "My profile");
+  assert.equal(pageTitleFor("/apply"), null);
 });

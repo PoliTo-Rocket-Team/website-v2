@@ -173,3 +173,15 @@ export function userMenuPageFor(kind: ViewerKind): MenuPage | null {
   const page = DASHBOARD_PAGES.find((row) => placeOf(row, kind) === "user-menu");
   return page ? { key: page.key, label: page.label, href: page.href } : null;
 }
+
+/**
+ * The title the phone top bar shows for the page at `pathname` (boards 50m-b,
+ * 52m, 56m): the page whose address is the longest match, so a page under
+ * /dashboard/applications still reads "Applications". Null off the dashboard.
+ */
+export function pageTitleFor(pathname: string): string | null {
+  const page = DASHBOARD_PAGES.filter(
+    (row) => pathname === row.href || pathname.startsWith(`${row.href}/`),
+  ).sort((a, b) => b.href.length - a.href.length)[0];
+  return page?.label ?? null;
+}

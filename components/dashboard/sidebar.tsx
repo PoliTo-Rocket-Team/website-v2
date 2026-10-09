@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import type { DashboardPageKey, MenuPage, NavSection } from "@/lib/dashboard/access";
 import type { DashboardViewer } from "@/lib/dashboard/viewer";
-import { UserCard } from "./user-card";
+import { UserCard, type UserMenuForm } from "./user-card";
 
 const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   overview: LayoutGrid,
@@ -43,28 +44,38 @@ function isCurrent(pathname: string | null, href: string): boolean {
 // the "Dashboard" title on the group headings' left edge, 22px apart; then
 // the viewer's groups of pages (a small mono heading over each group but the
 // first), and the user card and its menu at the foot. The current page sits
-// on white-5 with its icon in accent.
+// on white-5 with its icon in accent. On phones it is the menu sheet (board
+// 50m-b): the same column with a close button beside the logo, and the user
+// card opens its menu as a bottom sheet.
 export function Sidebar({
   viewer,
   sections,
   menuPage,
+  userMenu,
   onNavigate,
+  close,
 }: {
   viewer: DashboardViewer;
   sections: readonly NavSection[];
   menuPage: MenuPage | null;
+  userMenu: UserMenuForm;
   onNavigate?: () => void;
+  /** The sheet's close button, beside the logo; the fixed sidebar has none. */
+  close?: ReactNode;
 }) {
   const pathname = usePathname();
   return (
     <div className="flex h-full flex-col px-3 pb-[18px] pt-6">
-      <Link
-        href="/"
-        aria-label="PoliTo Rocket Team home"
-        className="block w-[220px] max-w-full shrink-0 rounded-sm focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-white-10"
-      >
-        <Image src="/brand/prt-logo-white.svg" alt="" width={943} height={137} priority className="h-auto w-full" />
-      </Link>
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <Link
+          href="/"
+          aria-label="PoliTo Rocket Team home"
+          className="block w-[220px] min-w-0 max-w-full shrink rounded-sm focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-white-10"
+        >
+          <Image src="/brand/prt-logo-white.svg" alt="" width={943} height={137} priority className="h-auto w-full" />
+        </Link>
+        {close}
+      </div>
       <p className="mt-[22px] shrink-0 text-[18px] font-bold leading-5">Dashboard</p>
 
       <nav aria-label="Dashboard" className="mt-[22px] flex-1 overflow-y-auto">
@@ -104,7 +115,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <UserCard viewer={viewer} menuPage={menuPage} onNavigate={onNavigate} />
+      <UserCard viewer={viewer} menuPage={menuPage} form={userMenu} onNavigate={onNavigate} />
     </div>
   );
 }
