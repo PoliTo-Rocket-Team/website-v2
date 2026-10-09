@@ -1,7 +1,22 @@
-# Huey owns the files that set how work flows in this repo. fabrika reads this
-# list to know who may approve an epic's plan and changes to these files.
-/.decisions/                @hueypov
-/CLAUDE.md                  @hueypov
-/.claude/settings.json      @hueypov
-/.fabrika.jsonc             @hueypov
+# The shipper merges every pull request whose required verdicts pass at head,
+# through the merge queue. The repo's own rule files (.decisions/, AGENTS.md,
+# CLAUDE.md, .fabrika.jsonc, the design manifest) are not listed here; they
+# stay gated by the required governance verdict (`governedRoots` in
+# .fabrika.jsonc). Huey can hold any pull request with the `ready-for:human`
+# label, which the `ci-required` check enforces in the queue.
+#
+# Fabrika's fixed control-plane boundary (fabrika-cli) names these paths, and
+# its codeowners-cp guard requires them owned, so changes to workflows, agent
+# settings and git hooks still need Huey's sign-off.
+/.claude/                   @hueypov
 /.github/                   @hueypov
+**/lefthook*                @hueypov
+**/.lefthook*               @hueypov
+
+# Named by Fabrika's control-plane list; none exist here yet. The rows keep
+# `fabrika guard codeowners-cp check` green and cover the paths if they appear.
+/.claude-plugin/                @hueypov
+/packages/ci-required/          @hueypov
+/packages/fabrika-cli/src/ci/   @hueypov
+/biome.jsonc                    @hueypov
+/biome-plugins/                 @hueypov
