@@ -8,7 +8,7 @@ import { applicationFiles, applications, users } from "@/db/schema";
 import { submitApplication, type NewApplication, type SubmitResult } from "@/lib/apply/submit";
 import { getCurrentUserId } from "@/lib/current-user";
 import { runAuditBatch } from "@/lib/db-audit";
-import { deleteFile, uploadFileWithType } from "@/utils/r2";
+import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 
 /** Sends an application for one position. Every rule is checked here, on the server (lib/apply/submit.ts). */
 export async function sendApplication(positionId: number, form: FormData): Promise<SubmitResult> {
@@ -33,12 +33,8 @@ export async function sendApplication(positionId: number, form: FormData): Promi
       };
     },
     hasApplied,
-    putPdf: async (key, bytes) => {
-      await uploadFileWithType(Buffer.from(bytes), key, "application/pdf");
-    },
-    deletePdf: async (key) => {
-      await deleteFile(key);
-    },
+    putPdf: (key, bytes) => uploadPrivateFile(key, bytes, "application/pdf"),
+    deletePdf: deletePrivateFile,
     save: saveApplication,
     newFileName: randomUUID,
   });
@@ -57,14 +53,14 @@ function isUniqueViolation(error: unknown): boolean {
 /**
  * The profile update, the file rows and the application in one batch, which
  * the neon-http driver runs as one transaction: all of it lands or none of it
- * does. The application finds its file rows by their unique R2 keys, since a
+ * does. The application finds its file rows by their unique pathnames, since a
  * batch cannot pass one insert's ids to the next.
  */
 async function saveApplication(application: NewApplication): Promise<"saved" | "already-applied"> {
   const { userId, positionId, profile, answers, cv, motivationLetter } = application;
   const files = motivationLetter ? [cv, motivationLetter] : [cv];
   const fileIdOf = (key: string) =>
-    sql`(select ${applicationFiles.id} from ${applicationFiles} where ${applicationFiles.r2Key} = ${key})`;
+    sql`(select ${applicationFiles.id} from ${applicationFiles} where ${applicationFiles.pathname} = ${key})`;
   const customAnswers =
     answers.length === 0
       ? sql`'{}'::jsonb[]`
@@ -93,7 +89,7 @@ async function saveApplication(application: NewApplication): Promise<"saved" | "
         .where(eq(users.id, userId)),
       db.insert(applicationFiles).values(
         files.map((f) => ({
-          r2Key: f.key,
+          pathname: f.key,
           originalFilename: f.filename,
           mimeType: "application/pdf",
           fileSize: f.size,

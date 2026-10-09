@@ -10,36 +10,15 @@ import {
   divisions,
 } from "@/db/schema";
 import { getCurrentUserId } from "@/lib/current-user";
-import { getFile } from "@/utils/r2";
+import { parsePrivatePathname } from "@/lib/storage/pathname";
+import { readPrivateFile } from "@/lib/storage/private-store";
 
 type MatchedFile = {
   id: number;
-  r2Key: string;
+  pathname: string;
   originalFilename: string;
   fileHash: string | null;
 };
-
-async function readResponseBodyAsBuffer(body: unknown) {
-  if (
-    body &&
-    typeof body === "object" &&
-    "transformToByteArray" in body &&
-    typeof body.transformToByteArray === "function"
-  ) {
-    return Buffer.from(await body.transformToByteArray());
-  }
-
-  if (
-    body &&
-    typeof body === "object" &&
-    "arrayBuffer" in body &&
-    typeof body.arrayBuffer === "function"
-  ) {
-    return Buffer.from(await body.arrayBuffer());
-  }
-
-  throw new Error("Unsupported file response body");
-}
 
 type ApplicationAccessRow = {
   id: number;
@@ -64,7 +43,7 @@ async function validateFileAccessByFileHash(
   const [matchedFile] = await db
     .select({
       id: applicationFiles.id,
-      r2Key: applicationFiles.r2Key,
+      pathname: applicationFiles.pathname,
       originalFilename: applicationFiles.originalFilename,
       fileHash: applicationFiles.fileHash,
     })
@@ -161,24 +140,24 @@ export async function GET(
       return new NextResponse("Access denied", { status: 403 });
     }
 
-    const response = await getFile(matchedFile.r2Key);
-    if (!response.Body) {
+    // The bytes are streamed from the private store; its URL never leaves the server.
+    const pathname = parsePrivatePathname(matchedFile.pathname);
+    const file = pathname === null ? null : await readPrivateFile(pathname);
+    if (file === null) {
       return new NextResponse("File not found", { status: 404 });
     }
 
-    const buffer = await readResponseBodyAsBuffer(response.Body);
-
     const headers = new Headers();
-    headers.set("Content-Type", response.ContentType || "application/pdf");
-    headers.set("Content-Length", buffer.length.toString());
+    headers.set("Content-Type", file.contentType || "application/pdf");
+    headers.set("Content-Length", file.size.toString());
     headers.set(
       "Content-Disposition",
       download ? `attachment; filename="${filename}"` : "inline",
     );
     headers.set("Cache-Control", "private, max-age=3600");
-    headers.set("ETag", response.ETag || "");
+    headers.set("ETag", file.etag);
 
-    return new NextResponse(buffer, { status: 200, headers });
+    return new NextResponse(file.stream, { status: 200, headers });
   } catch (error) {
     console.error("File serving error:", error);
     return new NextResponse("Internal server error", { status: 500 });
