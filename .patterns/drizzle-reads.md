@@ -63,7 +63,9 @@ Server Component renders it.
      return queryAllPositionSnapshot();
    }
    ```
-   Call sites: `getAllPositionSnapshotCached` and `getActivePositionSnapshotCached` in
+   Call sites: `getAllPositionSnapshotCached` and `getPublicSnapshotCached` (the positions
+   plus the recruitment switch, filtered by `isPublic` from
+   [lib/apply/positions.ts](../lib/apply/positions.ts) after the cache hit) in
    [get-apply-positions.ts](../app/actions/get-apply-positions.ts), and
    `getDivisionStructureSnapshotCached` (tag `org-structure`) in
    [get-member-scopes.ts](../app/actions/get-member-scopes.ts). The cached function never reads the
@@ -104,3 +106,10 @@ Better Auth's own tables are read by Better Auth, not by these helpers. Writes f
   errors that mention `application_files` columns and re-runs the query without them. It guards
   against those columns being missing; migration `0005`, which adds them, is not in the Drizzle
   journal (see [schema-migrations.md](./schema-migrations.md)). Do not copy it into new reads.
+- **Missing-table fallback for the recruitment switch.** `queryRecruitment` in
+  [get-apply-positions.ts](../app/actions/get-apply-positions.ts) catches Postgres error `42P01`
+  (undefined table) and returns the default, recruitment on. Every other error still throws. It
+  exists because no deploy runs migrations, so a database can serve the new code before
+  `0005_recruitment_setting` and `0006_recruitment_setting_row` reach it. Its fallback equals the
+  default row `0006` inserts, so the cached answer is the same either way. Remove it once both
+  migrations are applied on every database. Like the entry above, do not copy it into new reads.

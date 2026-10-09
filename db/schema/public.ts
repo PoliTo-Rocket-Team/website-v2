@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -183,6 +184,27 @@ export const applyPositions = pgTable("apply_positions", {
   isDeletedIdx: index("apply_positions_is_deleted_idx").on(table.isDeleted),
   statusIdx: index("apply_positions_status_idx").on(table.status),
 }));
+
+// The site-wide recruitment switch (issue #119). One row: the primary key can
+// only be `true`, so a second row cannot exist. With the switch off no
+// position is public, whatever its own status (`isPublic` in
+// lib/apply/positions.ts). Missing row or table reads as on.
+export const recruitmentSetting = pgTable(
+  "recruitment_setting",
+  {
+    id: boolean("id").primaryKey().default(true),
+    isOpen: boolean("is_open").default(true).notNull(),
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "string",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    singleRow: check("recruitment_setting_single_row", sql`id`),
+  }),
+);
 
 export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),

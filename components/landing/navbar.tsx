@@ -4,20 +4,20 @@ import { NavLinks } from "./nav-links";
 import { NavMenu, type NavLink } from "./nav-menu";
 
 // Board 04 navbar, with board 21's logo and bar: a 72px bar, white PRT logo
-// 220px wide at x64 · links centred on the page, 17px, gap 44 · actions
-// right-aligned at x1376: Apply = paper pill with ink text (10/24), Sign in =
-// white-10 stroke pill (10/20). Logo, links and actions are all centred on
+// 220px wide at x64 · links centred on the page, 17px, gap 44 · Sign in
+// right-aligned at x1376, a white-10 stroke pill (10/20). Apply is the last
+// link (issue #119), not a button. Logo, links and Sign in are all centred on
 // the bar's middle by flex, not by offsets. The bar is full-width liquid
 // glass fixed to the top edge (`.glass-bar`); its contents stay on the 1440
 // board's columns.
 //
 // Board 24 (phone, below md): a 64px bar with 20px sides, the PRT mark only
-// (32px tall) and a menu icon. No Apply or Sign in on the bar: both live in
-// the board 24b sidebar with the links (nav-menu.tsx). From md to lg the menu
-// also stands in for the link row, which does not clear the logo yet; Apply
-// and Sign in are back on the bar there. From lg, About opens the board 27
-// hover menu of the About pages (nav-hover-menu.tsx); the other links have
-// none (Projects has its own page).
+// (32px tall) and a menu icon. No Sign in on the bar: it lives in the board
+// 24b sidebar with the links (nav-menu.tsx). From md to lg the menu also
+// stands in for the link row, which does not clear the logo yet; Sign in is
+// back on the bar there. From lg, About opens the board 27 hover menu of the
+// About pages (nav-hover-menu.tsx); the other links have none (Projects has
+// its own page).
 const links: NavLink[] = [
   { href: "/projects", label: "Projects" },
   {
@@ -31,6 +31,7 @@ const links: NavLink[] = [
   },
   { href: "/outreach", label: "Outreach" },
   { href: "/partners", label: "Partners" },
+  { href: "/apply", label: "Apply" },
 ];
 
 export function LandingNavbar() {
@@ -58,17 +59,11 @@ export function LandingNavbar() {
 
         {/* Centred on the page, not between logo and actions: the row spans
             the bar, and only its links take the pointer. */}
-        <nav className="pointer-events-none absolute inset-0 hidden items-center justify-center gap-[44px] lg:flex">
+        <nav className="pointer-events-none absolute inset-0 hidden items-center justify-center gap-8 lg:flex xl:gap-[44px]">
           <NavLinks links={links} />
         </nav>
 
         <div className="relative z-10 flex items-center md:gap-3">
-          <Link
-            href="/apply"
-            className="hidden rounded-full bg-prt-text px-6 py-2.5 text-[15px] font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80 md:inline-block"
-          >
-            Apply
-          </Link>
           <Link
             href="/login"
             className="hidden rounded-full border border-white-10 px-5 py-2.5 text-[15px] font-medium text-prt-text transition-colors hover:border-border-strong md:inline-block"

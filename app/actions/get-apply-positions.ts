@@ -12,7 +12,17 @@ import {
 } from "./get-member-scopes";
 import type { Division } from "@/db/types";
 import { getDb, isDatabaseConfigured } from "@/db/client";
-import { applyPositions, departments, divisions } from "@/db/schema";
+import {
+  applyPositions,
+  departments,
+  divisions,
+  recruitmentSetting,
+} from "@/db/schema";
+import {
+  DEFAULT_RECRUITMENT,
+  isPublic,
+  type Recruitment,
+} from "@/lib/apply/positions";
 
 export const POSITIONS_CACHE_TAG = "apply-positions";
 export const PUBLIC_POSITIONS_CACHE_TAG = "public-apply-positions";
@@ -57,16 +67,13 @@ function basePositionSelection() {
   };
 }
 
-async function queryPositionSnapshot(
-  activeOnly = false,
-): Promise<PositionSnapshotRow[]> {
+async function queryPositionSnapshot(): Promise<PositionSnapshotRow[]> {
   const db = getDb();
 
   const whereClauses = [
     eq(applyPositions.isDeleted, false),
     isNull(divisions.closedAt),
     isNull(departments.closedAt),
-    activeOnly ? eq(applyPositions.status, true) : undefined,
   ];
 
   return db
@@ -78,12 +85,32 @@ async function queryPositionSnapshot(
     .orderBy(asc(divisions.deptId), asc(applyPositions.title));
 }
 
-async function queryAllPositionSnapshot(): Promise<PositionSnapshotRow[]> {
-  return queryPositionSnapshot();
+/** Postgres' "undefined_table" error: the recruitment migration has not run here yet. */
+const UNDEFINED_TABLE = "42P01";
+
+function isUndefinedTable(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if ((e as { code?: unknown }).code === UNDEFINED_TABLE) return true;
+  }
+  return false;
 }
 
-async function queryActivePositionSnapshot(): Promise<PositionSnapshotRow[]> {
-  return queryPositionSnapshot(true);
+// The stored recruitment switch. No row, or no table on a database the
+// migration has not reached yet, reads as the default: recruitment on. Only
+// the missing table is caught; any other error still throws.
+async function queryRecruitment(): Promise<Recruitment> {
+  const db = getDb();
+
+  try {
+    const [row] = await db
+      .select({ isOpen: recruitmentSetting.isOpen })
+      .from(recruitmentSetting)
+      .limit(1);
+    return row ?? DEFAULT_RECRUITMENT;
+  } catch (error) {
+    if (isUndefinedTable(error)) return DEFAULT_RECRUITMENT;
+    throw error;
+  }
 }
 
 async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
@@ -92,18 +119,26 @@ async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
   cacheTag(POSITIONS_CACHE_TAG);
   cacheLife("weeks");
 
-  return queryAllPositionSnapshot();
+  return queryPositionSnapshot();
 }
 
-async function getActivePositionSnapshotCached(): Promise<
-  PositionSnapshotRow[]
-> {
+// The public read: the positions and the recruitment switch under one tag, so
+// a position edit and the dashboard switch (#121) both refresh /apply with
+// updateTag(PUBLIC_POSITIONS_CACHE_TAG).
+async function getPublicSnapshotCached(): Promise<{
+  positions: PositionSnapshotRow[];
+  recruitment: Recruitment;
+}> {
   "use cache";
 
   cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
   cacheLife("weeks");
 
-  return queryActivePositionSnapshot();
+  const [positions, recruitment] = await Promise.all([
+    queryPositionSnapshot(),
+    queryRecruitment(),
+  ]);
+  return { positions, recruitment };
 }
 
 function toApplyPosition(
@@ -224,10 +259,12 @@ export async function getPublicPositions(): Promise<PublicPositions> {
     return { status: "database-not-configured" };
   }
 
-  const positions = await getActivePositionSnapshotCached();
+  const { positions, recruitment } = await getPublicSnapshotCached();
 
   return {
     status: "available",
-    positions: positions.map((position) => toApplyPosition(position)),
+    positions: positions
+      .filter((position) => isPublic(position, recruitment))
+      .map((position) => toApplyPosition(position)),
   };
 }
