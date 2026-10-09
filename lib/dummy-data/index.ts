@@ -35,7 +35,8 @@ import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { sentLabel } from "@/lib/dashboard/my-applications";
 import { NO_OWN_STORE, type OwnChanges, type OwnChangesStore } from "./own";
-import { ownApplicationsOf, isWithdrawn } from "./own-applications";
+import { dummyDetails, ownApplicationsOf, isWithdrawn } from "./own-applications";
+import type { YourDetails } from "@/lib/dashboard/details";
 import {
   dummyChooseSlot,
   dummyDeleteAccount,
@@ -454,6 +455,7 @@ export function dummyDashboardData(
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(kind, me, own.current);
+  const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [kind]: details } });
 
   return {
     viewer: dummyViewer(kind),
@@ -489,7 +491,13 @@ export function dummyDashboardData(
     placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(kind, person, own.current, leaveStateOf(person))),
-    saveLinkedin: async (text) => (person === null ? refused(notOnTeam) : dummySaveLinkedin(text)),
+    async saveLinkedin(text) {
+      if (person === null) return refused(notOnTeam);
+      const result = dummySaveLinkedin(text);
+      // LinkedIn is one of the details, as on the database side (`users.linkedin`).
+      if (result.ok) await saveOwnDetails({ ...dummyDetails(kind, own.current), linkedin: result.value ?? "" });
+      return result;
+    },
     setPhoto: async (photo) => (person === null ? refused(notOnTeam) : dummySetPhoto(photo)),
     async leaveTeam(reason) {
       if (person === null) return refused(notOnTeam);
@@ -503,8 +511,8 @@ export function dummyDashboardData(
 
     myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current) : null),
     async saveDetails(input) {
-      const result = dummySaveDetails(input);
-      if (result.ok) await own.save({ ...own.current, details: { ...own.current.details, [kind]: result.value } });
+      const result = dummySaveDetails(input, person === null ? "applicant" : "member", dummyDetails(kind, own.current));
+      if (result.ok) await saveOwnDetails(result.value);
       return result;
     },
     deleteAccount: async (options) => dummyDeleteAccount(options),

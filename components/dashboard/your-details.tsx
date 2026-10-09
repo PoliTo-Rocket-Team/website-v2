@@ -7,10 +7,12 @@ import { DEGREE_PROGRAMMES, STUDY_PROGRAMMES } from "@/lib/apply/application-for
 import {
   DETAIL_FIELDS,
   detailText,
+  editableDetailKeys,
   levelLabel,
-  parseDetails,
+  parseDetailsChange,
   type DetailErrors,
   type DetailKey,
+  type DetailsEditor,
   type YourDetails,
 } from "@/lib/dashboard/details";
 import type { WriteResult } from "@/lib/dashboard/write";
@@ -48,16 +50,18 @@ export function DetailValue({ label, value }: { label: string; value: string | n
 // "Your details" (boards 51 and 55): the fields the apply form starts from,
 // two columns on phones and three from md, and Edit, which opens the panel
 // on the right (a full page with a back arrow on phones). Every change lives
-// in this card's state once the write answers.
+// in this card's state once the write answers. The card shows, and Save
+// sends, only the fields its editor may write (`editableDetailKeys`).
 export function YourDetailsCard({
   details,
-  keys,
+  editor,
   saveDetails,
 }: {
   details: YourDetails;
-  keys: readonly DetailKey[];
+  editor: DetailsEditor;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
 }) {
+  const keys = editableDetailKeys(editor);
   const [saved, setSaved] = useState(details);
   const [editing, setEditing] = useState(false);
   return (
@@ -72,7 +76,7 @@ export function YourDetailsCard({
         open={editing}
         onOpenChange={setEditing}
         details={saved}
-        keys={keys}
+        editor={editor}
         saveDetails={saveDetails}
         onSaved={(next) => {
           setSaved(next);
@@ -87,17 +91,18 @@ function DetailsDrawer({
   open,
   onOpenChange,
   details,
-  keys,
+  editor,
   saveDetails,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   details: YourDetails;
-  keys: readonly DetailKey[];
+  editor: DetailsEditor;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
   onSaved: (details: YourDetails) => void;
 }) {
+  const keys = editableDetailKeys(editor);
   const [draft, setDraft] = useState<Record<DetailKey, string>>(details);
   const [errors, setErrors] = useState<DetailErrors>({});
   const [pending, setPending] = useState(false);
@@ -112,7 +117,7 @@ function DetailsDrawer({
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const checked = parseDetails(draft);
+    const checked = parseDetailsChange(draft, editor);
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
     try {

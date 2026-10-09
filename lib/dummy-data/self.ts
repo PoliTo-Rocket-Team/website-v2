@@ -1,5 +1,11 @@
 import { positionCode } from "@/lib/apply/positions";
-import { parseDetails, firstDetailError, type YourDetails } from "@/lib/dashboard/details";
+import {
+  applyDetailsChange,
+  firstDetailError,
+  parseDetailsChange,
+  type DetailsEditor,
+  type YourDetails,
+} from "@/lib/dashboard/details";
 import {
   canWithdraw,
   pickableSlot,
@@ -58,7 +64,7 @@ export function dummyMyProfile(kind: ViewerKind, person: DummyPerson, changes: O
     name: person.name,
     role: division ? `${person.title} · ${division.name}` : person.title,
     teamEmail: login.teamEmail,
-    linkedin: details.linkedin === "" ? person.linkedin : details.linkedin,
+    linkedin: details.linkedin === "" ? null : details.linkedin,
     photoUrl: null,
     signIn: { provider: "google", email: login.signInEmail },
     leave,
@@ -77,10 +83,13 @@ export function dummySetPhoto(photo: Upload | null): WriteResult<null> {
   return error === null ? written(null) : refused(error);
 }
 
-/** The details the edit form sent, checked as the database side checks them. */
-export function dummySaveDetails(input: unknown): WriteResult<YourDetails> {
-  const parsed = parseDetails(input);
-  return parsed.ok ? written(parsed.value) : refused(firstDetailError(parsed.errors));
+/**
+ * The details after a save, checked as the database side checks them: only
+ * the fields `editor` may write change, every other keeps its saved value.
+ */
+export function dummySaveDetails(input: unknown, editor: DetailsEditor, current: YourDetails): WriteResult<YourDetails> {
+  const parsed = parseDetailsChange(input, editor);
+  return parsed.ok ? written(applyDetailsChange(current, parsed.value)) : refused(firstDetailError(parsed.errors));
 }
 
 export function dummyMyAccount(applicant: { name: string; email: string }, changes: OwnChanges): MyAccount {

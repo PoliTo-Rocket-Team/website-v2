@@ -24,7 +24,14 @@ import { parsePrivatePathname, parsePublicPathname, publicPathname } from "@/lib
 import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import type { DashboardIdentity } from "./database";
-import { columnsFromDetails, detailsFromColumns, firstDetailError, parseDetails, type YourDetails } from "./details";
+import {
+  columnsFromDetails,
+  detailsFromColumns,
+  firstDetailError,
+  parseDetailsChange,
+  type DetailsEditor,
+  type YourDetails,
+} from "./details";
 import {
   canWithdraw,
   pickableSlot,
@@ -181,8 +188,13 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
   };
 }
 
+/** An applicant edits every field on My account; anyone on the team edits only My profile's. */
+function detailsEditorOf(identity: DashboardIdentity): DetailsEditor {
+  return identity.kind === "non-member" ? "applicant" : "member";
+}
+
 async function saveDetails(identity: DashboardIdentity, input: unknown): Promise<WriteResult<YourDetails>> {
-  const parsed = parseDetails(input);
+  const parsed = parseDetailsChange(input, detailsEditorOf(identity));
   if (!parsed.ok) return refused(firstDetailError(parsed.errors));
   await runAuditQuery((db) =>
     db
@@ -190,7 +202,7 @@ async function saveDetails(identity: DashboardIdentity, input: unknown): Promise
       .set({ ...columnsFromDetails(parsed.value), updatedAt: sql`now()` })
       .where(eq(users.id, identity.userId)),
   );
-  return written(parsed.value);
+  return written(await readDetails(identity.userId));
 }
 
 /**

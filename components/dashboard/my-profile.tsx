@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { MEMBER_DETAIL_KEYS, type YourDetails } from "@/lib/dashboard/details";
+import type { YourDetails } from "@/lib/dashboard/details";
 import { checkPhoto, MAX_LEAVE_REASON, normalizeLinkedin, type LeaveState, type MyProfile } from "@/lib/dashboard/self";
 import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
@@ -35,7 +35,7 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
       <div className="mt-6 flex flex-col gap-5">
         <PhotoCard name={profile.name} photoUrl={profile.photoUrl} uploadPhoto={actions.uploadPhoto} removePhoto={actions.removePhoto} />
         <DetailsCard profile={profile} saveLinkedin={actions.saveLinkedin} />
-        <YourDetailsCard details={profile.details} keys={MEMBER_DETAIL_KEYS} saveDetails={actions.saveDetails} />
+        <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
         <AccountCard signIn={profile.signIn} />
         <LeaveOrDelete leave={profile.leave} session={session} leaveTeam={actions.leaveTeam} deleteAccount={actions.deleteAccount} />
       </div>

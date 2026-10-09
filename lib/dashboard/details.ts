@@ -60,10 +60,28 @@ export const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: 
 ];
 
 /** The fields My profile's "Your details" shows (board 55): its Details card has the name and LinkedIn. */
-export const MEMBER_DETAIL_KEYS: readonly DetailKey[] = ["politoId", "programme", "level", "phone", "country", "birthDate"];
+const MEMBER_DETAIL_KEYS: readonly DetailKey[] = ["politoId", "programme", "level", "phone", "country", "birthDate"];
 
 /** Every field, for My account (board 51). */
-export const ACCOUNT_DETAIL_KEYS: readonly DetailKey[] = DETAIL_FIELDS.map((f) => f.key);
+const ACCOUNT_DETAIL_KEYS: readonly DetailKey[] = DETAIL_FIELDS.map((f) => f.key);
+
+/**
+ * Who saves "Your details": an applicant on My account, or a team member on
+ * My profile. It decides which fields the save may write.
+ */
+export type DetailsEditor = "applicant" | "member";
+
+/**
+ * The fields each editor's "Your details" writes. A member's name is set by
+ * their lead and their LinkedIn by the Details card, so their save never
+ * touches either.
+ */
+export function editableDetailKeys(editor: DetailsEditor): readonly DetailKey[] {
+  return editor === "member" ? MEMBER_DETAIL_KEYS : ACCOUNT_DETAIL_KEYS;
+}
+
+/** A save of "Your details": only the fields the editor may write, each checked. */
+export type DetailsChange = Partial<YourDetails>;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
@@ -117,23 +135,50 @@ const detailsSchema = z.object({
 
 export type DetailErrors = Partial<Record<DetailKey, string>>;
 
+/** One message per bad field: the first the check found. */
+function errorsOf(error: z.ZodError): DetailErrors {
+  const errors: DetailErrors = {};
+  for (const issue of error.issues) errors[issue.path[0] as DetailKey] ??= issue.message;
+  return errors;
+}
+
 /**
  * The details as the edit form sent them, checked: the clean values, or one
  * message per bad field. The browser and the server run the same check.
  */
 export function parseDetails(input: unknown): { ok: true; value: YourDetails } | { ok: false; errors: DetailErrors } {
   const result = detailsSchema.safeParse(input);
-  const errors: DetailErrors = {};
-  if (!result.success) {
-    for (const issue of result.error.issues) {
-      const key = issue.path[0] as DetailKey;
-      errors[key] ??= issue.message;
-    }
-    return { ok: false, errors };
-  }
+  if (!result.success) return { ok: false, errors: errorsOf(result.error) };
   const linkedin = normalizeLinkedin(result.data.linkedin);
   if (!linkedin.ok) return { ok: false, errors: { linkedin: linkedin.error } };
   return { ok: true, value: { ...result.data, linkedin: linkedin.value ?? "" } };
+}
+
+/**
+ * A save of "Your details" as the edit form sent it, checked: only the
+ * fields `editor` may write are read, so anything else sent is dropped
+ * before it reaches a column. The browser and the server run the same check.
+ */
+export function parseDetailsChange(
+  input: unknown,
+  editor: DetailsEditor,
+): { ok: true; value: DetailsChange } | { ok: false; errors: DetailErrors } {
+  const keys = editableDetailKeys(editor);
+  const picked: Record<string, unknown> = {};
+  const sent = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  for (const key of keys) picked[key] = sent[key];
+  const result = detailsSchema.pick(Object.fromEntries(keys.map((k) => [k, true] as const))).safeParse(picked);
+  if (!result.success) return { ok: false, errors: errorsOf(result.error) };
+  const change: DetailsChange = result.data;
+  if (change.linkedin === undefined) return { ok: true, value: change };
+  const linkedin = normalizeLinkedin(change.linkedin);
+  if (!linkedin.ok) return { ok: false, errors: { linkedin: linkedin.error } };
+  return { ok: true, value: { ...change, linkedin: linkedin.value ?? "" } };
+}
+
+/** The details after a save: the changed fields as sent, every other as it was. */
+export function applyDetailsChange(current: YourDetails, change: DetailsChange): YourDetails {
+  return { ...current, ...change };
 }
 
 /** The first message of a failed check, for a toast. */
@@ -174,20 +219,31 @@ export function detailsFromColumns(row: DetailColumns): YourDetails {
   };
 }
 
-/** The `users` columns to write for saved details; an empty field clears its column. */
-export function columnsFromDetails(details: YourDetails): DetailColumns {
-  const orNull = (s: string) => (s === "" ? null : s);
-  return {
-    firstName: orNull(details.firstName),
-    lastName: orNull(details.lastName),
-    phone: orNull(details.phone),
-    politoId: orNull(details.politoId),
-    program: orNull(details.programme),
-    levelOfStudy: orNull(details.level),
-    country: orNull(details.country),
-    dateOfBirth: orNull(details.birthDate),
-    linkedin: details.linkedin === "" ? null : `https://www.${details.linkedin}`,
-  };
+/** The column each detail lives in. */
+const COLUMN_OF: Readonly<Record<DetailKey, keyof DetailColumns>> = {
+  firstName: "firstName",
+  lastName: "lastName",
+  phone: "phone",
+  politoId: "politoId",
+  programme: "program",
+  level: "levelOfStudy",
+  country: "country",
+  birthDate: "dateOfBirth",
+  linkedin: "linkedin",
+};
+
+/**
+ * The `users` columns a save writes: one per field in the change and no
+ * other, so a column the change does not name keeps its value. An empty
+ * field clears its column.
+ */
+export function columnsFromDetails(change: DetailsChange): Partial<DetailColumns> {
+  const columns: Partial<DetailColumns> = {};
+  for (const [key, value] of Object.entries(change) as [DetailKey, string | undefined][]) {
+    if (value === undefined) continue;
+    columns[COLUMN_OF[key]] = value === "" ? null : key === "linkedin" ? `https://www.${value}` : value;
+  }
+  return columns;
 }
 
 /** What the apply form keeps that "Your details" does not. */

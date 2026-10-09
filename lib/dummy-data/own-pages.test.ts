@@ -111,6 +111,23 @@ test("saved details prefill the matching fields of the apply form", async () => 
   assert.equal((await open("non-member").saveDetails({ ...(await open("non-member").myAccount())!.details, phone: "333" })).ok, false);
 });
 
+test("a member's Your details save keeps the LinkedIn they just changed and the name their lead set", async () => {
+  const { open } = browser();
+  const before = (await open("member").myProfile())!;
+  assert.deepEqual(await open("member").saveLinkedin("linkedin.com/in/elif-new"), { ok: true, value: "linkedin.com/in/elif-new" });
+
+  // The card's copy of the details was loaded before the LinkedIn change; a
+  // tampered request also tries to rename the member.
+  const saved = await open("member").saveDetails({ ...before.details, firstName: "Someone", lastName: "Else", phone: "+39 340 999 0000" });
+  assert.equal(saved.ok, true);
+
+  const after = (await open("member").myProfile())!;
+  assert.equal(after.linkedin, "linkedin.com/in/elif-new");
+  assert.equal(after.details.linkedin, "linkedin.com/in/elif-new");
+  assert.deepEqual([after.details.firstName, after.details.lastName], [before.details.firstName, before.details.lastName]);
+  assert.equal(after.details.phone, "+39 340 999 0000");
+});
+
 test("a member who leaves shows in Alumni and still has their profile", async () => {
   const { open } = browser();
   const me = (await open("member").myProfile())!;
