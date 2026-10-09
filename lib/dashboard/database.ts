@@ -3,7 +3,12 @@ import "server-only";
 import { and, count, desc, eq, inArray, isNull, max } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
-import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import {
+  getRecruitmentControl,
+  POSITIONS_CACHE_TAG,
+  PUBLIC_POSITIONS_CACHE_TAG,
+} from "@/app/actions/get-apply-positions";
+import { getScopeInfoForCurrentUser } from "@/app/actions/get-member-scopes";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applicationFiles,
@@ -17,6 +22,8 @@ import {
   scopes,
   users,
 } from "@/db/schema";
+import type { Recruitment } from "@/lib/apply/positions";
+import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import { getCurrentUserId } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
 import type { NavCounts } from "./access";
@@ -475,12 +482,9 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
 
 async function positionsPage(identity: Identity): Promise<PositionsPage> {
   if (!isLead(identity)) throw new DashboardRefused("positions");
-  const [positions, open] = await Promise.all([readPositionRows(identity, new Date()), readRecruitmentOpen()]);
-  if (identity.kind === "operations-lead") {
-    // Writing the switch is #121's; until it lands the dashboard shows it read-only.
-    return { scope: "team", recruitment: { open, switchable: false }, positions };
-  }
-  return { scope: "division", division: identity.role?.divisionName ?? null, recruitment: { open }, positions };
+  const positions = await readPositionRows(identity, new Date());
+  if (identity.kind === "operations-lead") return { scope: "team", positions };
+  return { scope: "division", division: identity.role?.divisionName ?? null, positions };
 }
 
 function documentOf(
@@ -626,12 +630,34 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     viewer,
     navCounts: () => navCountsOf(identity),
     overview: () => overviewOf(identity),
+    recruitment: getRecruitmentControl,
+    setRecruitment: (next) =>
+      switchRecruitment(next, {
+        // Read on the server, from the caller's positions scope rows.
+        maySwitch: async () => canSwitchRecruitment(await getScopeInfoForCurrentUser("positions")),
+        save: saveRecruitment,
+        refresh: () => updateTag(PUBLIC_POSITIONS_CACHE_TAG),
+      }),
     positions: () => positionsPage(identity),
     applications: () => applicationsPage(identity),
     setPositionOpen: (id, open) => setPositionOpen(identity, id, open),
     setApplicationStage: (id, stage) => setApplicationStage(identity, id, stage),
-    setRecruitmentOpen: async () => {
-      throw new DashboardRefused("the recruitment switch");
-    },
   };
+}
+
+/**
+ * Stores the switch through runAuditQuery, so the audit trigger on
+ * `recruitment_setting` logs who set it and the new value.
+ */
+async function saveRecruitment(recruitment: Recruitment): Promise<void> {
+  const updatedAt = new Date().toISOString();
+  await runAuditQuery((db) =>
+    db
+      .insert(recruitmentSetting)
+      .values({ id: true, isOpen: recruitment.isOpen, updatedAt })
+      .onConflictDoUpdate({
+        target: recruitmentSetting.id,
+        set: { isOpen: recruitment.isOpen, updatedAt },
+      }),
+  );
 }

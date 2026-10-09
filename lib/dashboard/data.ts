@@ -1,3 +1,5 @@
+import type { Recruitment } from "@/lib/apply/positions";
+import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "./access";
 import type { Overview } from "./overview";
 import type { ApplicationStage, ApplicationsPage, PositionsPage } from "./recruitment";
@@ -18,17 +20,19 @@ export interface DashboardData {
   readonly viewer: DashboardViewer;
   navCounts(): Promise<NavCounts>;
   overview(): Promise<Overview>;
-  /** Boards 41 and 41c (issue #142). */
+  /** The site-wide recruitment switch (issue #121): its state, and whether this viewer may flip it. */
+  recruitment(): Promise<RecruitmentControl>;
+  /**
+   * Flips the switch when this viewer may, and refreshes /apply; otherwise
+   * writes nothing. A refusal is its answer, not a DashboardRefused.
+   */
+  setRecruitment(recruitment: Recruitment): Promise<SwitchRecruitmentResult>;
+  /** Boards 41 and 41c (issue #142). The switch on board 41 is `recruitment()`. */
   positions(): Promise<PositionsPage>;
   /** Board 41b (issue #142). */
   applications(): Promise<ApplicationsPage>;
   setPositionOpen(positionId: number, open: boolean): Promise<void>;
   setApplicationStage(applicationId: number, stage: ApplicationStage): Promise<void>;
-  /**
-   * Turns recruitment on or off site-wide. Only the operations lead may, and
-   * only where the switch is writable (`PositionsPage.recruitment.switchable`).
-   */
-  setRecruitmentOpen(open: boolean): Promise<void>;
 }
 
 /** A read or write the viewer does not reach. */

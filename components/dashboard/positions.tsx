@@ -3,7 +3,8 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { RadioTower } from "lucide-react";
 import { toast } from "sonner";
-import { setPositionOpen, setRecruitmentOpen, type WriteResult } from "@/app/dashboard/recruitment-actions";
+import { setPositionOpen, setRecruitment, type WriteResult } from "@/app/dashboard/recruitment-actions";
+import type { RecruitmentControl } from "@/lib/apply/recruitment-switch";
 import {
   departmentsOf,
   filterPositions,
@@ -18,7 +19,8 @@ import { PANEL } from "./panel";
 
 // The Positions page (boards 41 and 41c). Props in, nothing fetched: the page
 // hands over what the dashboard data interface answered, and the switches
-// write through its server actions.
+// write through its server actions. The site-wide switch is #121's, read and
+// written through the same interface; this page only draws it as board 41.
 
 /** Flip a switch at once; a refusal flips it back and says why. */
 function useOptimisticSwitch(value: boolean, write: (next: boolean) => Promise<WriteResult>) {
@@ -33,7 +35,7 @@ function useOptimisticSwitch(value: boolean, write: (next: boolean) => Promise<W
   return [shown, flip, pending] as const;
 }
 
-export function PositionsView({ page }: { page: PositionsPage }) {
+export function PositionsView({ page, recruitment }: { page: PositionsPage; recruitment: RecruitmentControl }) {
   const [tab, setTab] = useState<PositionTab>("all");
   const [department, setDepartment] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -53,9 +55,9 @@ export function PositionsView({ page }: { page: PositionsPage }) {
       </header>
 
       {page.scope === "team" ? (
-        <RecruitmentSwitch open={page.recruitment.open} switchable={page.recruitment.switchable} />
+        <RecruitmentSwitch open={recruitment.recruitment.isOpen} canSwitch={recruitment.canSwitch} />
       ) : (
-        <RecruitmentNotice open={page.recruitment.open} />
+        <RecruitmentNotice open={recruitment.recruitment.isOpen} />
       )}
 
       <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center">
@@ -137,8 +139,8 @@ function PositionItem({ row, team }: { row: PositionRow; team: boolean }) {
 }
 
 // Board 41: the site-wide switch, the operations lead's alone.
-function RecruitmentSwitch({ open: saved, switchable }: { open: boolean; switchable: boolean }) {
-  const [open, flip] = useOptimisticSwitch(saved, setRecruitmentOpen);
+function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitch: boolean }) {
+  const [open, flip] = useOptimisticSwitch(saved, setRecruitment);
   return (
     <section
       className={`mt-6 flex items-center gap-4 rounded-xl border px-4 py-4 transition-colors duration-300 ease-out md:px-5 ${
@@ -161,7 +163,7 @@ function RecruitmentSwitch({ open: saved, switchable }: { open: boolean; switcha
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <Toggle checked={open} onCheckedChange={flip} label="Recruitment is open" tone="success" disabled={!switchable} />
+        <Toggle checked={open} onCheckedChange={flip} label="Recruitment is open" tone="success" disabled={!canSwitch} />
         <span className="text-[11px] text-prt-muted">Operations lead only</span>
       </div>
     </section>

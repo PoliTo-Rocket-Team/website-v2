@@ -25,19 +25,18 @@ export type PositionRow = {
 /**
  * Who the page is for decides its shape. The operations lead sees the whole
  * team and the site-wide recruitment switch (board 41); a division lead sees
- * their division's roles and a notice of the switch's state (board 41c).
+ * their division's roles and a notice of the switch's state (board 41c). The
+ * switch itself is #121's, read through `DashboardData.recruitment()`.
  */
 export type PositionsPage =
   | {
       readonly scope: "team";
-      readonly recruitment: { readonly open: boolean; readonly switchable: boolean };
       readonly positions: readonly PositionRow[];
     }
   | {
       readonly scope: "division";
       /** The lead's division; null when their access names none. */
       readonly division: string | null;
-      readonly recruitment: { readonly open: boolean };
       readonly positions: readonly PositionRow[];
     };
 

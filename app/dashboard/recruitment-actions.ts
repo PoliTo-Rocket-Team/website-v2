@@ -37,7 +37,11 @@ export async function setApplicationStage(applicationId: number, stage: Applicat
   return write((data) => data.setApplicationStage(applicationId, stage));
 }
 
-export async function setRecruitmentOpen(open: boolean): Promise<WriteResult> {
+/** The site-wide switch is #121's: its own write answers a refusal rather than throwing one. */
+export async function setRecruitment(open: boolean): Promise<WriteResult> {
   if (typeof open !== "boolean") return { ok: false, message: "That change is not valid." };
-  return write((data) => data.setRecruitmentOpen(open));
+  return write(async (data) => {
+    const result = await data.setRecruitment({ isOpen: open });
+    if (result.status === "refused") throw new DashboardRefused("the recruitment switch");
+  });
 }

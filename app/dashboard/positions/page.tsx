@@ -27,5 +27,6 @@ async function LivePositions() {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer.kind, "positions")) notFound();
-  return <PositionsView page={await data.positions()} />;
+  const [page, recruitment] = await Promise.all([data.positions(), data.recruitment()]);
+  return <PositionsView page={page} recruitment={recruitment} />;
 }

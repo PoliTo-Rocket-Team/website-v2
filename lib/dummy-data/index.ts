@@ -1,3 +1,5 @@
+import type { Recruitment } from "@/lib/apply/positions";
+import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import {
@@ -24,7 +26,7 @@ import {
 } from "@/lib/dashboard/recruitment";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
-import { applyDummyChange, type DummyChange, type DummyState } from "./state";
+import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import {
   activity,
   applicant,
@@ -40,12 +42,15 @@ import {
   type DummyPerson,
   type DummyPosition,
 } from "./team";
+import type { DummyRecruitmentStore } from "./recruitment";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
 // so it works on a preview that has no DATABASE_URL. What a test developer
-// changes (./state.ts) is laid over those arrays; a write only saves the new
-// state, through the `save` the caller hands in (a cookie, lib/dashboard/open.ts).
+// changes is laid over those arrays: the recruitment switch (#121,
+// ./recruitment.ts) and the positions and applications they changed
+// (./state.ts). A write only saves through the store the caller hands in (a
+// cookie, lib/dashboard/open.ts).
 
 /** The dummy team as this test developer has left it. */
 type Team = {
@@ -54,9 +59,9 @@ type Team = {
   readonly applications: readonly DummyApplication[];
 };
 
-function teamOf(state: DummyState): Team {
+function teamOf({ isOpen }: Recruitment, state: DummyState): Team {
   return {
-    recruitmentOpen: state.recruitmentOpen ?? recruitment.open,
+    recruitmentOpen: isOpen,
     positions: basePositions.map((p) => ({ ...p, open: state.positionOpen[p.id] ?? p.open })),
     applications: baseApplications.map((a) => ({ ...a, stage: state.applicationStage[a.id] ?? a.stage })),
   };
@@ -331,11 +336,11 @@ function positionRow(p: DummyPosition, team: Team): PositionRow {
 function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
   const rows = positionsFor(kind, team).map((p) => positionRow(p, team));
   if (kind === "operations-lead") {
-    return { scope: "team", recruitment: { open: team.recruitmentOpen, switchable: true }, positions: rows };
+    return { scope: "team", positions: rows };
   }
   if (kind === "division-lead") {
     const division = divisionOf(personFor[kind].divisionId).name;
-    return { scope: "division", division, recruitment: { open: team.recruitmentOpen }, positions: rows };
+    return { scope: "division", division, positions: rows };
   }
   throw new DashboardRefused("positions");
 }
@@ -376,19 +381,28 @@ function applicationsPage(kind: ViewerKind, team: Team): ApplicationsPage {
   };
 }
 
-/** The dashboard as the test developer sees it, looking as `kind`, after the changes in `state`. */
+/**
+ * The dashboard as the test developer sees it, looking as `kind`, with the
+ * recruitment switch read from and kept in `recruitment` (./recruitment.ts)
+ * and their other changes in `changes` (./state.ts).
+ */
 export function dummyDashboardData(
   kind: ViewerKind,
-  state: DummyState,
-  save: (next: DummyState) => Promise<void>,
+  recruitment: DummyRecruitmentStore,
+  changes: DummyStateStore,
 ): DashboardData {
-  const team = teamOf(state);
-  const change = (c: DummyChange) => save(applyDummyChange(state, c));
+  const team = teamOf(recruitment.current, changes.current);
+  const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
+  const canSwitch = canSwitchRecruitmentAs(kind);
 
   return {
     viewer: viewerFor(kind),
     navCounts: async () => navCountsFor(kind, team),
     overview: async () => overviewFor(kind, team),
+    recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),
+    // Nothing is cached in dummy mode: /apply reads the cookie on each request.
+    setRecruitment: (next) =>
+      switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team),
 
@@ -404,11 +418,6 @@ export function dummyDashboardData(
         throw new DashboardRefused(`application ${id}`);
       }
       await change({ kind: "application", id, stage, initial: base.stage });
-    },
-
-    async setRecruitmentOpen(open) {
-      if (kind !== "operations-lead") throw new DashboardRefused("the recruitment switch");
-      await change({ kind: "recruitment", open, initial: recruitment.open });
     },
   };
 }

@@ -1,65 +1,62 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DashboardRefused } from "@/lib/dashboard/data";
-import { stageCounts } from "@/lib/dashboard/recruitment";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import { isPublic, type Recruitment } from "@/lib/apply/positions";
+import { pickApplyData } from "@/lib/apply/pick";
+import { VIEWER_KINDS } from "@/lib/dashboard/viewer";
+import { dummyApplyData } from "./apply";
 import { dummyDashboardData } from "./index";
-import { EMPTY_DUMMY_STATE, type DummyState } from "./state";
+import { dummyRecruitmentCookieValue, dummyRecruitmentOf, type DummyRecruitmentStore } from "./recruitment";
+import { EMPTY_DUMMY_STATE, type DummyStateStore } from "./state";
 
-/** The dummy dashboard, with the state a write saves kept for the next read. */
-function session(kind: ViewerKind, state: DummyState = EMPTY_DUMMY_STATE) {
-  let saved = state;
-  const data = dummyDashboardData(kind, state, async (next) => {
-    saved = next;
-  });
-  return { data, saved: () => saved };
+// The recruitment switch on a preview (issue #121): the test developer's flip
+// lives in a cookie, and the dummy dashboard and /apply both follow it.
+
+/** A store standing in for the cookie jar: what the switch's action would set. */
+function jar(start: string | undefined) {
+  const set: string[] = [];
+  const store: DummyRecruitmentStore = {
+    current: dummyRecruitmentOf(start),
+    save: async (r) => void set.push(dummyRecruitmentCookieValue(r)),
+  };
+  return { store, set };
 }
 
-test("the sidebar's new count is the Applications page's New tab", async () => {
-  for (const kind of ["operations-lead", "division-lead"] as const) {
-    const { data } = session(kind);
-    const [counts, page] = await Promise.all([data.navCounts(), data.applications()]);
-    assert.equal(counts.applications, stageCounts(page.applications).new);
+test("the operations lead flips the dummy switch and it is kept; every other viewer is refused and nothing is kept", async () => {
+  for (const kind of VIEWER_KINDS) {
+    const { store, set } = jar(undefined);
+    const changes: DummyStateStore = { current: EMPTY_DUMMY_STATE, save: async () => assert.fail("not a switch write") };
+    const data = dummyDashboardData(kind, store, changes);
+    const allowed = kind === "operations-lead";
+    assert.equal((await data.recruitment()).canSwitch, allowed, kind);
+    const result = await data.setRecruitment({ isOpen: false });
+    assert.deepEqual(result, allowed ? { status: "switched", recruitment: { isOpen: false } } : { status: "refused" }, kind);
+    assert.deepEqual(set, allowed ? ["closed"] : [], kind);
   }
 });
 
-test("a division lead sees only their division's positions and applications (board 41c)", async () => {
-  const { data } = session("division-lead");
-  const positions = await data.positions();
-  assert.equal(positions.scope, "division");
-  assert.ok(positions.positions.length > 0);
-  assert.ok(positions.positions.every((p) => p.division === "Mission Analysis Division"));
-  const refs = new Set(positions.positions.map((p) => p.ref));
-  assert.ok((await data.applications()).applications.every((a) => refs.has(a.position.ref)));
-});
-
-test("members and applicants reach neither page", async () => {
-  for (const kind of ["member", "non-member"] as const) {
-    const { data } = session(kind);
-    await assert.rejects(data.positions(), DashboardRefused);
-    await assert.rejects(data.applications(), DashboardRefused);
+test("the cookie reads back what was saved, and anything else reads as recruitment on", () => {
+  for (const isOpen of [true, false]) {
+    const r: Recruitment = { isOpen };
+    assert.deepEqual(dummyRecruitmentOf(dummyRecruitmentCookieValue(r)), r);
   }
+  for (const other of [undefined, null, "", "false", "OPEN"]) assert.deepEqual(dummyRecruitmentOf(other), { isOpen: true });
 });
 
-test("a test developer's write changes only the saved state, and the next read shows it", async () => {
-  const lead = session("operations-lead");
-  await lead.data.setRecruitmentOpen(false);
-  const page = await session("operations-lead", lead.saved()).data.positions();
-  assert.equal(page.recruitment.open, false);
+test("on a preview, /apply and every position page follow the cookie; in production it is never read", async () => {
+  const preview = { NODE_ENV: "production", VERCEL_ENV: "preview" };
+  const read = (cookie: string, env = preview) =>
+    pickApplyData(
+      { env, viewerCookie: null, openSelector: null, recruitmentCookie: cookie },
+      { database: () => "database" as never, dummy: dummyApplyData },
+    );
 
-  const first = (await lead.data.applications()).applications[0];
-  const before = (await lead.data.navCounts()).applications ?? 0;
-  await lead.data.setApplicationStage(first.id, "in-review");
-  const after = session("operations-lead", lead.saved()).data;
-  assert.equal((await after.navCounts()).applications, before - 1);
-});
+  const closed = read("closed");
+  assert.deepEqual(await closed.publicPositions(), []);
+  for (const id of [1, 2, 3, 4, 5, 6, 7]) {
+    const page = (await closed.position(id))!;
+    assert.equal(isPublic(page.position, page.recruitment), false, `position ${id}`);
+  }
+  assert.ok((await read("open").publicPositions()).length >= 5);
 
-test("only the operations lead flips recruitment, and a lead changes only their own division", async () => {
-  const division = session("division-lead");
-  await assert.rejects(division.data.setRecruitmentOpen(false), DashboardRefused);
-  const elsewhere = (await session("operations-lead").data.positions()).positions.find(
-    (p) => p.division !== "Mission Analysis Division",
-  )!;
-  await assert.rejects(division.data.setPositionOpen(elsewhere.id, false), DashboardRefused);
-  assert.deepEqual(division.saved(), EMPTY_DUMMY_STATE);
+  assert.equal(read("closed", { NODE_ENV: "production", VERCEL_ENV: "production" }), "database");
 });
