@@ -5,7 +5,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { GoogleSignInButton } from "@/components/login-form";
 import { RocketFlame } from "@/components/login/rocket-flame";
-import { TestDeveloperSignIn } from "@/components/test-developer-sign-in";
+import { TestDeveloperSignIn, TestDeveloperSignInSpace } from "@/components/test-developer-sign-in";
 import { brand } from "@/lib/brand-colors";
 
 export const metadata: Metadata = {
@@ -14,7 +14,10 @@ export const metadata: Metadata = {
 };
 
 // Boards 36 (desktop) and 36m (phone): a full-height split with no navbar and
-// no footer. The image side is a 420px band on top on phones.
+// no footer. The image side is a 420px band on top on phones. The whole
+// sign-in panel is in the prerendered page, its background preloaded like
+// the image side's; only the test developer entry waits for the request, in
+// a space its own size (issue #157).
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default function LoginPage({ searchParams }: { searchParams: SearchParams }) {
@@ -30,6 +33,7 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
           src="/login/gray.webp"
           alt=""
           fill
+          priority
           sizes="(min-width: 768px) 50vw, 100vw"
           className="object-cover object-[50%_59%]"
         />
@@ -40,13 +44,11 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
             <h1 className="text-[36px] font-bold leading-[1.1]">Sign in</h1>
             <p className="text-[16px] leading-[1.1] text-text-2">Use your Google account to continue.</p>
           </div>
-          <Suspense fallback={<div className="h-11 w-[209px]" aria-hidden="true" />}>
-            <GoogleSignInButton />
-          </Suspense>
+          <GoogleSignInButton />
         </div>
 
         <div className="relative flex w-full max-w-[360px] flex-col items-center text-center md:row-start-3 md:self-start">
-          <Suspense fallback={null}>
+          <Suspense fallback={<TestDeveloperSignInSpace />}>
             <TestDeveloperEntry searchParams={searchParams} />
           </Suspense>
           <p className="mt-7 max-w-[300px] text-[12px] leading-[1.6] text-prt-text/70 md:max-w-[320px]">

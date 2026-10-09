@@ -50,7 +50,7 @@ const featured: readonly Featured[] = [
     answer: { question: "Have you worked with safety procedures before?", answer: "Only in the workshop course, where we followed the machine shop checklist." },
   },
   {
-    positionId: 2,
+    positionId: 7,
     applicant: { name: "Aylin Fidan", email: "aylin.fidan@gmail.com", phone: "+39 320 554 7710", politoId: "321447", year: "Year 2 Master's", degree: "Chemical Engineering" },
     appliedAt: "2026-10-08T18:40:00+02:00",
     answer: { question: "Have you worked with safety procedures before?", answer: "I wrote the risk assessment for my bachelor's thesis lab work." },
@@ -68,7 +68,7 @@ const featured: readonly Featured[] = [
     answer: { question: "Have you worked with safety procedures before?", answer: "Not formally, but I am happy to learn the team's procedures." },
   },
   {
-    positionId: 2,
+    positionId: 7,
     applicant: { name: "Mehmet Han", email: "mehmet.han@gmail.com", phone: "+39 328 447 9013", politoId: "322019", year: "Year 3 Bachelor's", degree: "Mechanical Engineering" },
     appliedAt: "2026-10-06T11:45:00+02:00",
     answer: { question: "Have you worked with safety procedures before?", answer: "I was a safety steward at my high school robotics club for two years." },
@@ -84,12 +84,12 @@ const featured: readonly Featured[] = [
 /** How many applications each position holds, by stage. Featured ones count as new. */
 const counts: Readonly<Record<number, Readonly<Record<ApplicationStage, number>>>> = {
   1: { new: 8, "in-review": 3, accepted: 1, rejected: 2 },
-  2: { new: 4, "in-review": 2, accepted: 1, rejected: 2 },
+  2: { new: 0, "in-review": 0, accepted: 0, rejected: 0 },
   3: { new: 0, "in-review": 0, accepted: 0, rejected: 0 },
   4: { new: 3, "in-review": 1, accepted: 1, rejected: 1 },
   5: { new: 2, "in-review": 0, accepted: 0, rejected: 0 },
   6: { new: 0, "in-review": 2, accepted: 1, rejected: 2 },
-  7: { new: 0, "in-review": 0, accepted: 0, rejected: 0 },
+  7: { new: 4, "in-review": 2, accepted: 1, rejected: 2 },
   8: { new: 1, "in-review": 1, accepted: 1, rejected: 2 },
   9: { new: 0, "in-review": 1, accepted: 0, rejected: 2 },
   10: { new: 0, "in-review": 0, accepted: 3, rejected: 18 },
