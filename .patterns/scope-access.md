@@ -21,16 +21,22 @@ session cookie; server code reads the user id from that cookie, then turns the m
    (`testDeveloperViewer` in [lib/test-developer.ts](../lib/test-developer.ts)) also counts as
    signed in; in production the cookie is ignored.
 
-3. **Dashboard pages read through one data interface.** `openDashboardData()` in
-   [lib/dashboard/open.ts](../lib/dashboard/open.ts) returns the viewer and their data: the dummy
-   arrays in `lib/dummy-data/` for a test developer, else the signed-in account's rows
-   ([lib/dashboard/database.ts](../lib/dashboard/database.ts)), else null. The viewer's kind and
+3. **Dashboard pages read through one data interface.** `openDashboard()` in
+   [lib/dashboard/open.ts](../lib/dashboard/open.ts) returns a `DashboardOpening`
+   ([lib/dashboard/opening.ts](../lib/dashboard/opening.ts)). It is `open` with the viewer and
+   their data: the dummy arrays in `lib/dummy-data/` for a test developer, else the signed-in
+   account's rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts)). With no session
+   token it is `signed-out`, and the page sends the visitor to `/login`. With a token but no
+   account it is `account-unresolved`, and the shell shows a sign-out screen: `/login` would send
+   a token holder back to `/dashboard`, so a redirect there would loop. The viewer's kind and
    `canReach`/`sidebarFor` in [lib/dashboard/access.ts](../lib/dashboard/access.ts) decide what
    shows. The legacy dashboard pages still use the shape below.
 
 4. **Server code gets the user id from `getCurrentUserId()`.**
    [lib/current-user.ts](../lib/current-user.ts) reads Better Auth's signed cookie cache with
-   `getCookieCache` and returns the user id or `null`. `getCurrentMemberId()` in
+   `getCookieCache`. The cache lives 10 minutes and the session token 7 days, so when the cache
+   has lapsed and a token is present it asks Better Auth for the session. It returns the user id
+   or `null`. `getCurrentMemberId()` in
    [app/actions/get-memberId.ts](../app/actions/get-memberId.ts) maps it to `users.member`.
 
 5. **Access is a `ScopeInfo` for one target.**

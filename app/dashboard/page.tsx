@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { OverviewView } from "@/components/dashboard/overview";
 import { canReach } from "@/lib/dashboard/access";
-import { openDashboardData } from "@/lib/dashboard/open";
+import { openDashboard } from "@/lib/dashboard/open";
 
 export const metadata: Metadata = {
   title: "Overview · Dashboard · PoliTo Rocket Team",
@@ -20,8 +20,11 @@ export default function OverviewPage() {
 }
 
 async function LiveOverview() {
-  const data = await openDashboardData();
-  if (!data) redirect("/login?cb=/dashboard");
+  const opening = await openDashboard();
+  if (opening.kind === "signed-out") redirect("/login?cb=/dashboard");
+  // The layout shows the sign-out screen in place of this page.
+  if (opening.kind === "account-unresolved") return null;
+  const { data } = opening;
   if (!canReach(data.viewer.kind, "overview")) notFound();
   return <OverviewView overview={await data.overview()} />;
 }

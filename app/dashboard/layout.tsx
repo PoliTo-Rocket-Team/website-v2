@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { AccountUnresolved } from "@/components/dashboard/account-unresolved";
 import { DashboardShell } from "@/components/dashboard/shell";
 import { sidebarFor } from "@/lib/dashboard/access";
-import { openDashboardData } from "@/lib/dashboard/open";
+import { openDashboard } from "@/lib/dashboard/open";
 
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
@@ -22,8 +23,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 }
 
 async function SignedInShell({ children }: { children: ReactNode }) {
-  const data = await openDashboardData();
-  if (!data) redirect("/login?cb=/dashboard");
+  const opening = await openDashboard();
+  if (opening.kind === "signed-out") redirect("/login?cb=/dashboard");
+  // A token holder sent to /login would bounce straight back (proxy.ts).
+  if (opening.kind === "account-unresolved") return <AccountUnresolved />;
+  const { data } = opening;
   const counts = await data.navCounts();
   return (
     <DashboardShell viewer={data.viewer} sections={sidebarFor(data.viewer.kind, counts)}>
