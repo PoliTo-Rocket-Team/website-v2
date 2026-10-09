@@ -56,19 +56,24 @@ client component as props.
 ## When this applies
 
 Any write to an app table in `public`. Call sites today: `handleDelete`, `handleEditPosition` and
-`handleAddPosition` in `server-actions.ts`, `handleSetRecruitment` (the site-wide recruitment
-switch, an upsert on `recruitment_setting`) in the same file, and `sendApplication` in
+`handleAddPosition` in `server-actions.ts`, the site-wide recruitment switch (an upsert on
+`recruitment_setting`, in `saveRecruitment` in [lib/dashboard/database.ts](../lib/dashboard/database.ts),
+called by `handleSetRecruitment` in `server-actions.ts`), and `sendApplication` in
 [app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). Several writes that must land
 together go through `runAuditBatch` instead: one `db.batch` with the audit setup first. A batch
 cannot pass one insert's id to the next, so a later write finds an earlier row by a unique value
-(the application finds its file rows by `r2_key`). Better Auth writes its own
+(the application finds its file rows by their unique Blob pathname). Better Auth writes its own
 tables through its adapter and does not use `runAuditQuery`. The application submit's rules live
-in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and R2 passed in, so
+in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and private file store passed in, so
 [submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes. The recruitment switch does
-the same: its scope rule lives in [lib/apply/recruitment-switch.ts](../lib/apply/recruitment-switch.ts)
-with the scope read, the write and the cache refresh passed in, and
-[recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts) tests each scope case. The other
-mutations have no automated tests.
+the same: its rule lives in [lib/apply/recruitment-switch.ts](../lib/apply/recruitment-switch.ts)
+with the permission, the write and the cache refresh passed in, and
+[recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts) tests each scope case. Its
+action reaches the write through the dashboard data interface (`setRecruitment` in
+[lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts through
+`runAuditQuery`; a test developer's dummy side keeps the state in a cookie and writes no row
+([lib/dummy-data/recruitment.ts](../lib/dummy-data/recruitment.ts)). The other mutations have no
+automated tests.
 
 ## Why it is not obvious
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ScopeInfo } from "@/app/actions/get-member-scopes";
 import type { Recruitment } from "./positions";
-import { switchRecruitment } from "./recruitment-switch";
+import { canSwitchRecruitment, switchRecruitment } from "./recruitment-switch";
 
 /** A positions scope: the empty one (no one signed in, or no scope row), plus the given fields. */
 function scope(fields: Partial<ScopeInfo> = {}): ScopeInfo {
@@ -24,7 +24,7 @@ async function flip(caller: ScopeInfo, to: Recruitment) {
   const saved: Recruitment[] = [];
   let refreshed = 0;
   const result = await switchRecruitment(to, {
-    scope: async () => caller,
+    maySwitch: async () => canSwitchRecruitment(caller),
     save: async (recruitment) => void saved.push(recruitment),
     refresh: () => void refreshed++,
   });

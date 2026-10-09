@@ -1,11 +1,9 @@
 import { Suspense } from "react";
-import {
-  getPositionsPageData,
-  getRecruitmentControl,
-} from "@/app/actions/get-apply-positions";
+import { getPositionsPageData } from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { RecruitmentSwitch } from "@/components/recruitment-switch";
+import { openDashboard } from "@/lib/dashboard/open";
 import {
   handleDelete,
   handleEditPosition,
@@ -13,8 +11,12 @@ import {
   handleSetRecruitment,
 } from "./server-actions";
 
+// The switch reads through the dashboard data interface: the database for a
+// signed-in member, the dummy cookie for a test developer (lib/dashboard/open.ts).
 async function RecruitmentContent() {
-  const control = await getRecruitmentControl();
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return null;
+  const control = await opening.data.recruitment();
 
   return (
     <RecruitmentSwitch {...control} onSetRecruitment={handleSetRecruitment} />
@@ -51,7 +53,10 @@ function PositionsFallback() {
 export default function Positions() {
   return (
     <div className="w-full">
-      <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
+      {/* mb-16 at every width: the list lifts its Add Position button 48px
+          (-translate-y-12) into this gap, and the switch card above it must
+          clear that button on phones too. */}
+      <div className="flex flex-col space-y-4 md:space-y-8 mb-16">
         <h2 className="text-lg md:text-2xl font-bold text-primary">
           Positions
         </h2>
