@@ -25,20 +25,20 @@ type PositionText = {
   readonly description: string;
   readonly required: readonly string[];
   readonly desirable: readonly string[];
-  readonly questions: readonly string[];
-  readonly motivationLetter: boolean;
   readonly createdAt: string;
 };
 
-/** What the public pages show for each position in ./team.ts, by id. */
+/**
+ * What the public pages show for each position in ./team.ts, by id. The
+ * question the form asks and whether it wants a motivation letter are the
+ * position's own (./team.ts), so the dashboard's answers match the form.
+ */
 export const positionText = {
   1: {
     description:
       "You work with the other divisions to design the geometry of the new rocket, and run the first simulations to check the mission goals are met. After launch, you compare the flight computer data with the simulations.",
     required: ["Basic MATLAB and Python", "Basic body and flight dynamics"],
     desirable: ["The RocketPy library", "Basic aerodynamics"],
-    questions: ["Which simulation tool have you used most, and for what?"],
-    motivationLetter: true,
     createdAt: "2026-09-28T09:00:00Z",
   },
   2: {
@@ -46,8 +46,6 @@ export const positionText = {
       "You own the technical safety of the rocket, from fixes on paper to the final word on the pad. You run the hazard analyses that find failure points before they reach the launch site.",
     required: ["Seeing safety as a systems problem, not paperwork"],
     desirable: ["Risk or hazard analysis"],
-    questions: [],
-    motivationLetter: true,
     createdAt: "2026-09-28T09:00:00Z",
   },
   3: {
@@ -55,8 +53,6 @@ export const positionText = {
       "You design the parachutes and the system that opens them, and test them on the ground before every flight. You work with the structures team on where each part sits in the rocket.",
     required: ["Basic mechanics", "CAD, such as SolidWorks"],
     desirable: ["Textiles or sewing", "Basic fluid dynamics"],
-    questions: ["Tell us about something you built with your hands."],
-    motivationLetter: false,
     createdAt: "2026-09-29T09:00:00Z",
   },
   4: {
@@ -64,8 +60,6 @@ export const positionText = {
       "You predict where the rocket goes and where it lands, for every launch site and every wind. Your numbers set the launch angle and the recovery area.",
     required: ["Basic MATLAB or Python", "Basic flight mechanics"],
     desirable: ["Monte Carlo methods"],
-    questions: [],
-    motivationLetter: false,
     createdAt: "2026-09-30T09:00:00Z",
   },
   5: {
@@ -73,8 +67,6 @@ export const positionText = {
       "You write the software that runs on the flight computer: sensor reading, data logging and the flight logic. You test it on the bench with the hardware engineers.",
     required: ["C or C++", "Basic electronics"],
     desirable: ["Microcontrollers such as STM32", "Git"],
-    questions: ["Which microcontroller have you programmed, and what did it do?"],
-    motivationLetter: true,
     createdAt: "2026-10-02T09:00:00Z",
   },
   6: {
@@ -82,8 +74,6 @@ export const positionText = {
       "You study how the air flows around the rocket with CFD, and work out the forces on it in flight. Your results shape the nose cone and the fins.",
     required: ["Basic fluid dynamics", "The wish to learn"],
     desirable: ["CFD software", "Meshing software"],
-    questions: [],
-    motivationLetter: false,
     createdAt: "2026-10-05T09:00:00Z",
   },
   7: {
@@ -91,11 +81,30 @@ export const positionText = {
       "You improve the team's flight simulators. You model rocket systems such as engines, sensors and controls, and look for efficient ways to run them.",
     required: ["MATLAB", "Simulink", "Python"],
     desirable: ["Flight mechanics", "A lower-level programming language"],
-    questions: [],
-    motivationLetter: false,
     createdAt: "2026-06-01T09:00:00Z",
   },
-} as const satisfies Readonly<Record<DummyPosition["id"], PositionText>>;
+  8: {
+    description:
+      "You run the aerodynamic analysis of the rocket in flight, from CFD to wind tunnel tests, and look for the shape that flies best.",
+    required: ["Basic fluid dynamics", "The wish to learn"],
+    desirable: ["CFD software", "Wind tunnel testing"],
+    createdAt: "2026-09-28T09:00:00Z",
+  },
+  9: {
+    description:
+      "You size the rocket's structure and check it holds in flight with FEM analysis, working with the teams that build it.",
+    required: ["Basic structural mechanics", "The wish to learn"],
+    desirable: ["FEM software", "Composite materials"],
+    createdAt: "2026-09-25T09:00:00Z",
+  },
+  10: {
+    description:
+      "You design the team's posters, social posts and the graphics on the rocket, and keep the team's look the same everywhere.",
+    required: ["A portfolio of your work"],
+    desirable: ["Figma", "Adobe Illustrator"],
+    createdAt: "2026-06-01T09:00:00Z",
+  },
+} as const satisfies Readonly<Record<(typeof positions)[number]["id"], PositionText>>;
 
 /** The short codes a position's code is built from (`AER-MSA-001`). */
 const departmentCode = { 1: "OPS", 2: "AER", 3: "REC", 4: "ELE", 5: "STR" } as const satisfies Readonly<
@@ -109,6 +118,9 @@ const divisionLabel = {
   4: { code: "RSY", name: "Recovery Systems" },
   5: { code: "AVS", name: "Avionics Software" },
   6: { code: "MFG", name: "Manufacturing" },
+  7: { code: "OPA", name: "Optimization and Analysis" },
+  8: { code: "STA", name: "Structures Analysis" },
+  9: { code: "COM", name: "Communications" },
 } as const satisfies Readonly<Record<(typeof divisions)[number]["id"], { code: string; name: string }>>;
 
 function applyPosition(p: DummyPosition): ApplyPosition {
@@ -123,9 +135,9 @@ function applyPosition(p: DummyPosition): ApplyPosition {
     description: text.description,
     required_skills: [...text.required],
     desirable_skills: [...text.desirable],
-    custom_questions: [...text.questions],
+    custom_questions: [p.question],
     created_at: text.createdAt,
-    requires_motivation_letter: text.motivationLetter,
+    requires_motivation_letter: p.requiresMotivationLetter,
     is_deleted: false,
     div_name: divisionLabel[division.id].name,
     div_code: divisionLabel[division.id].code,

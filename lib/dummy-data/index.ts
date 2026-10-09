@@ -1,7 +1,7 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "@/lib/dashboard/access";
-import type { DashboardData } from "@/lib/dashboard/data";
+import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import {
   checklistProgress,
   type ActivityItem,
@@ -12,7 +12,21 @@ import {
   type RosterPerson,
   type TeamOverview,
 } from "@/lib/dashboard/overview";
+import {
+  ago,
+  appliedLabels,
+  fileSize,
+  quietDays,
+  quietNote,
+  type ApplicationEntry,
+  type ApplicationStage,
+  type ApplicationsPage,
+  type PositionRow,
+  type PositionsPage,
+} from "@/lib/dashboard/recruitment";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
+import { applications as baseApplications, type DummyApplication } from "./applications";
+import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
 import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
 import {
@@ -28,10 +42,11 @@ import {
   applicant,
   departments,
   divisions,
+  DUMMY_NOW,
   ownApplications,
   people,
   personFor,
-  positions,
+  positions as basePositions,
   recruitment,
   roster,
   type DummyPerson,
@@ -40,8 +55,33 @@ import {
 import type { DummyRecruitmentStore } from "./recruitment";
 
 // The test developer's side of the dashboard data interface: every answer is
-// built from the arrays in ./team.ts, with no database, so it works on a
-// preview that has no DATABASE_URL.
+// built from the arrays in ./team.ts and ./applications.ts, with no database,
+// so it works on a preview that has no DATABASE_URL. What a test developer
+// changes is laid over those arrays: the recruitment switch (#121,
+// ./recruitment.ts) and the positions and applications they changed
+// (./state.ts). Those writes save only through the store the caller hands in
+// (a cookie, lib/dashboard/open.ts); the other pages' writes (./division.ts,
+// ./self.ts) store nothing.
+
+/** The dummy team as this test developer has left it. */
+type Team = {
+  readonly recruitmentOpen: boolean;
+  readonly positions: readonly DummyPosition[];
+  readonly applications: readonly DummyApplication[];
+};
+
+function teamOf({ isOpen }: Recruitment, state: DummyState): Team {
+  return {
+    recruitmentOpen: isOpen,
+    positions: basePositions.map((p) => ({ ...p, open: state.positionOpen[p.id] ?? p.open })),
+    applications: baseApplications.map((a) => ({ ...a, stage: state.applicationStage[a.id] ?? a.stage })),
+  };
+}
+
+const NOW = new Date(DUMMY_NOW);
+
+/** Monday of the week DUMMY_NOW falls in, at midnight in Turin. */
+const MONDAY = new Date("2026-10-05T00:00:00+02:00");
 
 function viewerFor(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
@@ -60,43 +100,63 @@ function departmentOf(divisionId: number) {
   return departments.find((d) => d.id === division.departmentId)!;
 }
 
-/** The positions a viewer's figures count: the whole team, or the lead's division. */
-function positionsFor(kind: ViewerKind): readonly DummyPosition[] {
-  if (kind === "operations-lead") return positions;
-  if (kind === "division-lead") return positions.filter((p) => p.divisionId === personFor[kind].divisionId);
+/** The positions a viewer reaches: the whole team, or the lead's division. */
+function positionsFor(kind: ViewerKind, team: Team): readonly DummyPosition[] {
+  if (kind === "operations-lead") return team.positions;
+  if (kind === "division-lead") return team.positions.filter((p) => p.divisionId === personFor[kind].divisionId);
   return [];
 }
 
-function newApplications(list: readonly DummyPosition[]): number {
-  return list.reduce((sum, p) => sum + p.newApplications, 0);
+function applicationsTo(list: readonly DummyPosition[], team: Team): DummyApplication[] {
+  const ids = new Set(list.map((p) => p.id));
+  return team.applications.filter((a) => ids.has(a.positionId));
 }
 
-function sinceMonday(list: readonly DummyPosition[]): string {
-  return `+${list.reduce((sum, p) => sum + p.newSinceMonday, 0)} since Monday`;
+function newApplications(list: readonly DummyPosition[], team: Team): number {
+  return applicationsTo(list, team).filter((a) => a.stage === "new").length;
+}
+
+function sinceMonday(list: readonly DummyPosition[], team: Team): string {
+  const fresh = applicationsTo(list, team).filter((a) => a.stage === "new" && new Date(a.appliedAt) >= MONDAY);
+  return `+${fresh.length} since Monday`;
+}
+
+/** The latest application to a position, or its last edit when it has none. */
+function lastActivity(position: DummyPosition, team: Team): Date {
+  const times = applicationsTo([position], team).map((a) => new Date(a.appliedAt).getTime());
+  return new Date(times.length > 0 ? Math.max(...times) : new Date(position.updatedAt).getTime());
 }
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-function attentionFor(kind: ViewerKind): AttentionItem[] {
-  const scoped = positionsFor(kind);
-  const fresh = scoped
-    .filter((p) => p.newApplications > 0)
-    .map((p): AttentionItem => ({
-      kind: "applications",
-      title: `${plural(p.newApplications, "new application", "new applications")} for ${p.title}`,
-      detail: `${departmentOf(p.divisionId).name} · ${divisionOf(p.divisionId).name}`,
-      action: { label: "Review", href: `/dashboard/applications?position=${p.slug}` },
-    }));
-  const quiet = scoped
-    .filter((p) => p.open && (p.daysSinceLastApplication ?? 0) >= 30)
-    .map((p): AttentionItem => ({
-      kind: "quiet-position",
-      title: `${p.title} has had no applications in ${p.daysSinceLastApplication} days`,
-      detail: `${departmentOf(p.divisionId).name} · consider editing or closing it`,
-      action: { label: "Open", href: `/dashboard/positions?position=${p.slug}` },
-    }));
+function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
+  const scoped = positionsFor(kind, team);
+  const fresh = scoped.flatMap((p): AttentionItem[] => {
+    const n = newApplications([p], team);
+    if (n === 0) return [];
+    return [
+      {
+        kind: "applications",
+        title: `${plural(n, "new application", "new applications")} for ${p.title}`,
+        detail: `${departmentOf(p.divisionId).name} · ${divisionOf(p.divisionId).name}`,
+        action: { label: "Review", href: `/dashboard/applications?position=${p.slug}` },
+      },
+    ];
+  });
+  const quiet = scoped.flatMap((p): AttentionItem[] => {
+    const days = quietDays(p.open, lastActivity(p, team), NOW);
+    if (days === null) return [];
+    return [
+      {
+        kind: "quiet-position",
+        title: `${p.title} has had no applications in ${days} days`,
+        detail: `${departmentOf(p.divisionId).name} · consider editing or closing it`,
+        action: { label: "Open", href: `/dashboard/positions?position=${p.slug}` },
+      },
+    ];
+  });
   const unplaced = kind === "operations-lead" ? people.filter((p) => p.divisionId === null) : [];
   const unassigned: AttentionItem[] =
     unplaced.length === 0
@@ -124,14 +184,18 @@ function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): Activi
   }));
 }
 
-function teamOverview(kind: "operations-lead" | "division-lead", { isOpen }: Recruitment): TeamOverview {
-  const scoped = positionsFor(kind);
+function teamOverview(kind: "operations-lead" | "division-lead", team: Team): TeamOverview {
+  const scoped = positionsFor(kind, team);
   const open = scoped.filter((p) => p.open);
   const recruitmentStat = {
     label: "Recruitment",
-    value: isOpen ? "Open" : "Closed",
-    detail: isOpen ? `Public on the site since ${recruitment.since}` : "Positions are hidden on the site",
-    live: isOpen,
+    value: team.recruitmentOpen ? "Open" : "Closed",
+    detail: team.recruitmentOpen
+      ? recruitment.open
+        ? `Public on the site since ${recruitment.since}`
+        : "Public on the site"
+      : "Positions are hidden on the site",
+    live: team.recruitmentOpen,
   };
 
   if (kind === "operations-lead") {
@@ -139,12 +203,12 @@ function teamOverview(kind: "operations-lead" | "division-lead", { isOpen }: Rec
     return {
       shape: "team",
       stats: [
-        { label: "New applications", value: String(newApplications(scoped)), detail: sinceMonday(scoped) },
+        { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
         { label: "Open positions", value: String(open.length), detail: `In ${openDepartments.size} departments` },
         recruitmentStat,
         { label: "Team members", value: String(roster.members), detail: `${roster.season} roster` },
       ],
-      attention: attentionFor(kind),
+      attention: attentionFor(kind, team),
       activity: activityFor(kind),
     };
   }
@@ -154,12 +218,12 @@ function teamOverview(kind: "operations-lead" | "division-lead", { isOpen }: Rec
   return {
     shape: "team",
     stats: [
-      { label: "New applications", value: String(newApplications(scoped)), detail: sinceMonday(scoped) },
+      { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
       { label: "Open positions", value: String(open.length), detail: division.name },
       recruitmentStat,
       { label: "Division members", value: String(members.length), detail: `${roster.season} roster` },
     ],
-    attention: attentionFor(kind),
+    attention: attentionFor(kind, team),
     activity: activityFor(kind),
   };
 }
@@ -227,14 +291,14 @@ function memberOverview(): PersonalOverview {
   };
 }
 
-function applicantOverview(): PersonalOverview {
+function applicantOverview(team: Team): PersonalOverview {
   return {
     shape: "personal",
     person: { name: applicant.name, line: `Applicant · ${applicant.email}`, since: null, edit: null },
     checklist: null,
     roster: null,
     applications: ownApplications.map((a) => {
-      const position = positions.find((p) => p.id === a.positionId)!;
+      const position = team.positions.find((p) => p.id === a.positionId)!;
       return {
         title: position.title,
         detail: `${departmentOf(position.divisionId).name} · sent ${a.sent}`,
@@ -245,21 +309,87 @@ function applicantOverview(): PersonalOverview {
   };
 }
 
-function overviewFor(kind: ViewerKind, current: Recruitment): Overview {
+function overviewFor(kind: ViewerKind, team: Team): Overview {
   switch (kind) {
     case "operations-lead":
     case "division-lead":
-      return teamOverview(kind, current);
+      return teamOverview(kind, team);
     case "member":
       return memberOverview();
     case "non-member":
-      return applicantOverview();
+      return applicantOverview(team);
   }
 }
 
-function navCountsFor(kind: ViewerKind): NavCounts {
-  const fresh = newApplications(positionsFor(kind));
+function navCountsFor(kind: ViewerKind, team: Team): NavCounts {
+  const fresh = newApplications(positionsFor(kind, team), team);
   return fresh > 0 ? { applications: fresh } : {};
+}
+
+// Positions and Applications (boards 41, 41b, 41c) -----------------------------
+
+function positionRow(p: DummyPosition, team: Team): PositionRow {
+  const received = applicationsTo([p], team);
+  return {
+    id: p.id,
+    ref: p.slug,
+    title: p.title,
+    division: divisionOf(p.divisionId).name,
+    department: departmentOf(p.divisionId).name,
+    open: p.open,
+    applications: received.length,
+    newApplications: received.filter((a) => a.stage === "new").length,
+    quiet: quietNote(quietDays(p.open, lastActivity(p, team), NOW)),
+    updated: ago(new Date(p.updatedAt), NOW),
+  };
+}
+
+function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
+  const rows = positionsFor(kind, team).map((p) => positionRow(p, team));
+  if (kind === "operations-lead") {
+    return { scope: "team", positions: rows };
+  }
+  if (kind === "division-lead") {
+    const division = divisionOf(personFor[kind].divisionId).name;
+    return { scope: "division", division, positions: rows };
+  }
+  throw new DashboardRefused("positions");
+}
+
+/** "ROSSI_GIULIA_CV.pdf" */
+function cvName(name: string): string {
+  const words = name.toUpperCase().split(/\s+/);
+  return `${[words[words.length - 1], ...words.slice(0, -1)].join("_")}_CV.pdf`;
+}
+
+function applicationEntry(a: DummyApplication, position: DummyPosition): ApplicationEntry {
+  return {
+    id: a.id,
+    stage: a.stage,
+    applicant: { name: a.applicant.name, email: a.applicant.email, phone: a.applicant.phone, politoId: a.applicant.politoId },
+    studies: { year: a.applicant.year, degree: a.applicant.degree },
+    position: { ref: position.slug, title: position.title },
+    applied: appliedLabels(new Date(a.appliedAt), NOW),
+    documents: [
+      { kind: "cv", name: cvName(a.applicant.name), size: fileSize(a.cvBytes), href: null },
+      ...(position.requiresMotivationLetter
+        ? [{ kind: "motivation-letter" as const, name: "Motivation_letter.pdf", size: fileSize(a.letterBytes), href: null }]
+        : []),
+    ],
+    answers: [a.answer],
+  };
+}
+
+function applicationsPage(kind: ViewerKind, team: Team): ApplicationsPage {
+  if (kind !== "operations-lead" && kind !== "division-lead") throw new DashboardRefused("applications");
+  const scoped = positionsFor(kind, team);
+  const byId = new Map(scoped.map((p) => [p.id, p]));
+  return {
+    positions: scoped.map((p) => ({ ref: p.slug, title: p.title })),
+    applications: applicationsTo(scoped, team)
+      .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
+      .map((a) => applicationEntry(a, byId.get(a.positionId)!)),
+  };
 }
 
 /** The person the viewer is on the team; null for the applicant. */
@@ -272,21 +402,45 @@ const notApplicant = "This page is for applicants.";
 
 /**
  * The dashboard as the test developer sees it, looking as `kind`, with the
- * recruitment switch read from and kept in `recruitment` (./recruitment.ts).
+ * recruitment switch read from and kept in `recruitment` (./recruitment.ts)
+ * and their Positions and Applications changes in `changes` (./state.ts).
  * Other writes check what was sent as the database side does, store nothing,
  * and answer what the page shows next.
  */
-export function dummyDashboardData(kind: ViewerKind, recruitment: DummyRecruitmentStore): DashboardData {
+export function dummyDashboardData(
+  kind: ViewerKind,
+  recruitment: DummyRecruitmentStore,
+  changes: DummyStateStore,
+): DashboardData {
+  const team = teamOf(recruitment.current, changes.current);
+  const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(kind);
   const canSwitch = canSwitchRecruitmentAs(kind);
+
   return {
     viewer: viewerFor(kind),
-    navCounts: async () => navCountsFor(kind),
-    overview: async () => overviewFor(kind, recruitment.current),
+    navCounts: async () => navCountsFor(kind, team),
+    overview: async () => overviewFor(kind, team),
     recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
+    positions: async () => positionsPage(kind, team),
+    applications: async () => applicationsPage(kind, team),
+
+    async setPositionOpen(id, open) {
+      const base = basePositions.find((p) => p.id === id);
+      if (!base || !positionsFor(kind, team).some((p) => p.id === id)) throw new DashboardRefused(`position ${id}`);
+      await change({ kind: "position", id, open, initial: base.open });
+    },
+
+    async setApplicationStage(id, stage: ApplicationStage) {
+      const base = baseApplications.find((a) => a.id === id);
+      if (!base || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
+        throw new DashboardRefused(`application ${id}`);
+      }
+      await change({ kind: "application", id, stage, initial: base.stage });
+    },
 
     divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person)),
     giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, input)),

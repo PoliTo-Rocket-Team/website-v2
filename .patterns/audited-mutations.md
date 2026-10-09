@@ -47,25 +47,36 @@ client component as props.
    }
    ```
 
-6. **Pass actions as props.** The page imports the actions and hands them to the client list
-   ([dashboard/positions/page.tsx](../app/(legacy)/dashboard/positions/page.tsx) →
-   [components/apply-positions-list.tsx](../components/apply-positions-list.tsx)). The client calls
-   them, updates local state on success, and shows a toast (see
+6. **Call the actions from the client.** The legacy list took the actions as props
+   ([components/apply-positions-list.tsx](../components/apply-positions-list.tsx)). The dashboard's
+   client components import them from
+   [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the
+   arguments and writes through the dashboard data interface
+   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): a test developer's write changes only a
+   cookie, an account's goes through `runAuditQuery` in
+   [lib/dashboard/database.ts](../lib/dashboard/database.ts) after a scope check. The client shows
+   the change at once (`useOptimistic`) and a toast when the write is refused (see
    [client-form-submit.md](./client-form-submit.md)).
 
 ## When this applies
 
 Any write to an app table in `public`. Call sites today: `handleDelete`, `handleEditPosition` and
-`handleAddPosition` in `server-actions.ts`, the site-wide recruitment switch (an upsert on
-`recruitment_setting`, in `saveRecruitment` in [lib/dashboard/database.ts](../lib/dashboard/database.ts),
-called by `handleSetRecruitment` in `server-actions.ts`), and `sendApplication` in
+`handleAddPosition` in `server-actions.ts` (no page calls them since issue #142), the site-wide
+recruitment switch (an upsert on `recruitment_setting`, in `saveRecruitment` in
+[lib/dashboard/database.ts](../lib/dashboard/database.ts), called through the dashboard data
+interface's `setRecruitment`), `setPositionOpen` and `setApplicationStage` in
+`lib/dashboard/database.ts`, and `sendApplication` in
 [app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). The dashboard's writes
 ([app/dashboard/actions.ts](../app/dashboard/actions.ts)) take one more step: each action checks the
 viewer reaches the page, then hands the input to the dashboard data interface, whose database side
 ([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts),
 [lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts)) checks the input and the
 viewer's own scope again before it writes through `runAuditQuery` or `runAuditBatch`. A test
-developer's write goes to the dummy side, which checks the same rules and stores nothing. Several
+developer's write goes to the dummy side, which checks the same rules and stores nothing. The
+Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
+leave the scope check to the data interface: its database side checks the viewer reaches the
+position or application before it writes through `runAuditQuery`, and a test developer's dummy
+side keeps the change in a cookie and writes no row. Several
 writes that must land together go through `runAuditBatch` instead: one `db.batch` with the audit
 setup first. A batch cannot pass one insert's id to the next, so a later write finds an earlier row
 by a unique value (the application finds its file rows by their unique Blob pathname). Better Auth

@@ -29,12 +29,18 @@ export type DummyPosition = {
   readonly slug: string;
   readonly divisionId: number;
   readonly open: boolean;
-  readonly applications: number;
-  readonly newApplications: number;
-  readonly daysSinceLastApplication: number | null;
-  /** Of the new applications, how many came in since Monday. */
-  readonly newSinceMonday: number;
+  /** When the role was last edited (boards 41 and 41c, "Updated"). */
+  readonly updatedAt: string;
+  /** The role's own question on the application form. */
+  readonly question: string;
+  readonly requiresMotivationLetter: boolean;
 };
+
+/**
+ * The moment the dummy team is seen from: every "2 days ago" and "Today" on
+ * the dashboard counts back from here, so the pages read the same any day.
+ */
+export const DUMMY_NOW = "2026-10-09T16:00:00+02:00";
 
 export const departments = [
   { id: 1, name: "Operations" },
@@ -51,6 +57,9 @@ export const divisions = [
   { id: 4, name: "Recovery Systems Division", departmentId: 3 },
   { id: 5, name: "Avionics Software Division", departmentId: 4 },
   { id: 6, name: "Manufacturing Division", departmentId: 5 },
+  { id: 7, name: "Optimization and Analysis Division", departmentId: 2 },
+  { id: 8, name: "Structures Analysis Division", departmentId: 5 },
+  { id: 9, name: "Communications Division", departmentId: 1 },
 ] as const satisfies readonly DummyDivision[];
 
 export const people = [
@@ -78,19 +87,25 @@ export const personFor = {
   member: people[4],
 } as const satisfies Readonly<Record<"operations-lead" | "division-lead" | "member", DummyPerson>>;
 
+// In board 41's order. How many applications each has, and how many are new,
+// comes from ./applications.ts, never from a number kept here.
 export const positions = [
-  { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 3, open: true, applications: 14, newApplications: 8, daysSinceLastApplication: 0, newSinceMonday: 3 },
-  { id: 2, title: "Safety Officer", slug: "2-safety-officer", divisionId: 2, open: true, applications: 9, newApplications: 4, daysSinceLastApplication: 1, newSinceMonday: 2 },
-  { id: 3, title: "Recovery Systems Engineer", slug: "3-recovery-systems-engineer", divisionId: 4, open: true, applications: 2, newApplications: 0, daysSinceLastApplication: 30, newSinceMonday: 0 },
-  { id: 4, title: "Trajectory Analyst", slug: "4-trajectory-analyst", divisionId: 3, open: true, applications: 6, newApplications: 0, daysSinceLastApplication: 4, newSinceMonday: 0 },
-  { id: 5, title: "Firmware Developer", slug: "5-firmware-developer", divisionId: 5, open: true, applications: 3, newApplications: 0, daysSinceLastApplication: 5, newSinceMonday: 0 },
-  { id: 6, title: "CFD Analyst", slug: "6-cfd-analyst", divisionId: 3, open: true, applications: 5, newApplications: 0, daysSinceLastApplication: 9, newSinceMonday: 0 },
-  { id: 7, title: "Flight Simulator Developer", slug: "7-flight-simulator-developer", divisionId: 3, open: false, applications: 0, newApplications: 0, daysSinceLastApplication: null, newSinceMonday: 0 },
+  { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 3, open: true, updatedAt: "2026-10-07T11:20:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
+  { id: 8, title: "Aerodynamicist", slug: "8-aerodynamicist", divisionId: 7, open: true, updatedAt: "2026-10-04T09:40:00+02:00", question: "Which CFD or wind tunnel work have you done?", requiresMotivationLetter: false },
+  { id: 7, title: "Flight Simulator Developer", slug: "7-flight-simulator-developer", divisionId: 3, open: false, updatedAt: "2026-09-08T15:00:00+02:00", question: "Which languages do you write simulations in?", requiresMotivationLetter: false },
+  { id: 9, title: "Structural Engineer", slug: "9-structural-engineer", divisionId: 8, open: true, updatedAt: "2026-10-02T10:30:00+02:00", question: "Have you used FEM software, and which?", requiresMotivationLetter: false },
+  { id: 3, title: "Recovery Systems Engineer", slug: "3-recovery-systems-engineer", divisionId: 4, open: true, updatedAt: "2026-09-09T12:00:00+02:00", question: "Have you designed or packed a parachute before?", requiresMotivationLetter: false },
+  { id: 5, title: "Firmware Developer", slug: "5-firmware-developer", divisionId: 5, open: true, updatedAt: "2026-10-09T11:00:00+02:00", question: "Which microcontrollers have you written firmware for?", requiresMotivationLetter: false },
+  { id: 2, title: "Safety Officer", slug: "2-safety-officer", divisionId: 2, open: true, updatedAt: "2026-10-06T14:10:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
+  { id: 10, title: "Graphic Designer", slug: "10-graphic-designer", divisionId: 9, open: false, updatedAt: "2026-08-10T10:00:00+02:00", question: "Share a link to your portfolio.", requiresMotivationLetter: false },
+  { id: 4, title: "Trajectory Analyst", slug: "4-trajectory-analyst", divisionId: 3, open: true, updatedAt: "2026-10-05T16:45:00+02:00", question: "Which tools have you used for trajectory work?", requiresMotivationLetter: false },
+  { id: 6, title: "CFD Analyst", slug: "6-cfd-analyst", divisionId: 3, open: true, updatedAt: "2026-09-30T09:15:00+02:00", question: "Which CFD or wind tunnel work have you done?", requiresMotivationLetter: false },
 ] as const satisfies readonly DummyPosition[];
 
 /** The roster count for the year; `people` holds only the ones the pages name. */
 export const roster = { season: "2026–27", members: 152 } as const;
 
+/** The switch's state before a test developer flips it (#121's cookie in ./recruitment.ts holds the flip). */
 export const recruitment = { open: true, since: "1 Oct" } as const;
 
 export type DummyActivity = {
