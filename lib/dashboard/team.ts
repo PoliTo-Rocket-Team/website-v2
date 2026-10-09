@@ -4,9 +4,25 @@
 // fetch nothing. The tree is built here from the roster alone, so a person
 // added to the roster is a node.
 
+/** The two seats beside the team leader (board 54c): the Project Manager and the Chief Engineer. */
+export const BOARD_SEATS = ["project-manager", "chief-engineer"] as const;
+export type BoardSeat = (typeof BOARD_SEATS)[number];
+
+export const BOARD_SEAT_TITLES: Readonly<Record<BoardSeat, string>> = {
+  "project-manager": "Project Manager",
+  "chief-engineer": "Chief Engineer",
+};
+
+/** The seat a role's title names, in any case and spacing; null for any other title. */
+export function boardSeatOf(title: string): BoardSeat | null {
+  const key = title.trim().replace(/\s+/g, " ").toLowerCase();
+  return BOARD_SEATS.find((seat) => BOARD_SEAT_TITLES[seat].toLowerCase() === key) ?? null;
+}
+
 /** Where someone sits on the team, which also says what they lead. */
 export type Placement =
   | { readonly role: "team-leader" }
+  | { readonly role: "board"; readonly seat: BoardSeat }
   | { readonly role: "head"; readonly departmentId: number }
   | { readonly role: "division-lead"; readonly divisionId: number }
   /** A division of null: added to the roster, not yet placed. */
@@ -102,6 +118,8 @@ function roleLabelOf(placement: Placement, org: OrgChart): string {
   switch (placement.role) {
     case "team-leader":
       return "Team Leader";
+    case "board":
+      return BOARD_SEAT_TITLES[placement.seat];
     case "head": {
       const department = org.departments.find((d) => d.id === placement.departmentId);
       return department ? `Head of ${department.name}` : "Head";
@@ -113,7 +131,7 @@ function roleLabelOf(placement: Placement, org: OrgChart): string {
   }
 }
 
-const ROLE_ORDER: Readonly<Record<TeamRole, number>> = { "team-leader": 0, head: 1, "division-lead": 2, member: 3 };
+const ROLE_ORDER: Readonly<Record<TeamRole, number>> = { "team-leader": 0, board: 1, head: 2, "division-lead": 3, member: 4 };
 
 export function memberRowOf(entry: RosterEntry, org: OrgChart, selfId: number | null = null): MemberRow {
   const departmentId = departmentIdOf(entry.placement, org);
@@ -278,7 +296,7 @@ export function pagerItems(current: number, last: number): (number | null)[] {
   return pages.flatMap((p, i) => (i > 0 && p - pages[i - 1] > 1 ? [null, p] : [p]));
 }
 
-// Team tree (boards 42 and 42b)
+// Team tree (boards 54c and 54c-m)
 
 export type TreePerson = {
   readonly id: number;
@@ -305,10 +323,15 @@ export type TreeDepartment = {
   readonly size: number;
 };
 
+/** Someone in a board seat, under the team leader and over the heads. */
+export type TreeBoardMember = { readonly seat: BoardSeat; readonly person: TreePerson };
+
 export type TeamTree = {
   /** "2026–27" */
   readonly season: string;
   readonly leader: TreePerson | null;
+  /** The Project Manager, then the Chief Engineer: whoever holds each seat. */
+  readonly board: readonly TreeBoardMember[];
   readonly departments: readonly TreeDepartment[];
   /** Everyone on the roster. */
   readonly size: number;
@@ -342,16 +365,23 @@ export function buildTeamTree(
   });
 
   const leader = roster.find((e) => e.placement.role === "team-leader");
+  const board = BOARD_SEATS.flatMap((seat): TreeBoardMember[] => {
+    const holder = roster.find((e) => e.placement.role === "board" && e.placement.seat === seat);
+    return holder ? [{ seat, person: node(holder) }] : [];
+  });
   const me = roster.find((e) => e.id === selfId);
   const myDepartment = me ? departmentIdOf(me.placement, org) : null;
   return {
     season,
     leader: leader ? node(leader) : null,
+    board,
     departments,
     size: roster.length,
     path: me && myDepartment !== null ? { departmentId: myDepartment, divisionId: divisionIdOf(me.placement) } : null,
   };
 }
 
-/** The `view` query value that opens the Team tree expanded (board 54b), so the view can be linked. */
-export const EXPANDED_VIEW = "all";
+/** A division as the tree names it: "Mission Analysis Division" reads "Mission Analysis" (board 54c). */
+export function divisionLabel(name: string): string {
+  return name.replace(/\s+Division$/i, "");
+}
