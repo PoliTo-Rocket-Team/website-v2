@@ -98,7 +98,8 @@ for the scope logic yet.
   join on `users.id`) or `getCurrentMemberId()` + `getScopeInfoForMember(memberId, target)` (two
   queries). The file route goes a third way, through `getUserScope` in
   [get-user-scope.ts](../app/actions/get-user-scope.ts), and narrows a union with a cast.
-- **Cookie cache only.** `getCurrentUserId()` reads only the cookie cache (`maxAge` 10 minutes in
-  `lib/auth.ts`). It does not fall back to Better Auth's `getSession`, so it never checks the
-  session row in the database.
+- **Fallback cannot refresh the cache.** When the cookie cache has lapsed, `getCurrentUserId()`
+  asks Better Auth's `getSession`, which reads the database. A Server Component cannot set cookies,
+  so the cache stays lapsed and every request reads the database until a client call refreshes it.
+  With no `DATABASE_URL` the fallback is skipped and the answer is null.
 - **Unguarded mutations.** The position actions run with no session or scope check.
