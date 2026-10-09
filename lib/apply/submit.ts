@@ -5,14 +5,15 @@ import {
   type ApplicationFields,
   type FieldErrors,
 } from "./application-form";
+import { privatePathname, type PrivatePathname } from "../storage/pathname";
 import { isPublic, type PositionState, type Recruitment } from "./positions";
 import type { SubmitResult } from "./submit-result";
 
 export type { SubmitResult } from "./submit-result";
 
 // Sending an application (issue #120). The server action wires this to the
-// session, the database and R2; the rules live here, so the tests run them
-// with fakes. Nothing the browser sends is trusted: the user comes from the
+// session, the database and the private file store; the rules live here, so
+// the tests run them with fakes. Nothing the browser sends is trusted: the user comes from the
 // session, the position is read again and must still be public, the fields
 // are parsed with the form's own schema, and each file must carry PDF bytes.
 
@@ -26,9 +27,9 @@ export type SubmitPosition = PositionState & {
   requiresMotivationLetter: boolean;
 };
 
-/** A PDF stored in R2 under a key the server chose. */
+/** A PDF in the private file store, under a pathname the server chose. */
 export type StoredPdf = {
-  key: string;
+  key: PrivatePathname;
   filename: string;
   size: number;
   /** First 16 hex digits of the SHA-256: the dashboard's file link. */
@@ -49,8 +50,8 @@ export type SubmitDeps = {
   applicant(): Promise<Applicant | null>;
   position(id: number): Promise<{ position: SubmitPosition; recruitment: Recruitment } | null>;
   hasApplied(userId: string, positionId: number): Promise<boolean>;
-  putPdf(key: string, bytes: Uint8Array): Promise<void>;
-  deletePdf(key: string): Promise<void>;
+  putPdf(key: PrivatePathname, bytes: Uint8Array): Promise<void>;
+  deletePdf(key: PrivatePathname): Promise<void>;
   /** Writes the profile, the file rows and the application in one transaction. */
   save(application: NewApplication): Promise<"saved" | "already-applied">;
   /** A fresh random name for a stored file. */
@@ -91,7 +92,7 @@ export async function submitApplication(
   const stored: StoredPdf[] = [];
   const store = async (file: File, content: Uint8Array): Promise<StoredPdf> => {
     const pdf: StoredPdf = {
-      key: `applications/${deps.newFileName()}.pdf`,
+      key: privatePathname("application", `${deps.newFileName()}.pdf`),
       filename: file.name,
       size: content.byteLength,
       hash: createHash("sha256").update(content).digest("hex").slice(0, 16),
@@ -130,7 +131,7 @@ async function pdfBytes(file: File): Promise<Uint8Array | null> {
   return isPdfBytes(content) ? content : null;
 }
 
-/** Deletes the files of an application that was not saved, so R2 keeps no orphan. */
+/** Deletes the files of an application that was not saved, so the store keeps no orphan. */
 async function removeAll(stored: readonly StoredPdf[], deps: SubmitDeps): Promise<void> {
   await Promise.all(
     stored.map((pdf) =>
