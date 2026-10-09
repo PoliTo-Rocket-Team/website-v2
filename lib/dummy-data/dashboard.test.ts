@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DashboardRefused } from "@/lib/dashboard/data";
-import { stageCounts } from "@/lib/dashboard/recruitment";
+import { newCount } from "@/lib/dashboard/recruitment";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
 import { dummyRecruitmentCookieValue, dummyRecruitmentOf, type DummyRecruitmentStore } from "./recruitment";
@@ -32,7 +32,7 @@ test("the sidebar's new count is the Applications page's New tab", async () => {
   for (const kind of ["operations-lead", "division-lead"] as const) {
     const { data } = session(kind);
     const [counts, page] = await Promise.all([data.navCounts(), data.applications()]);
-    assert.equal(counts.applications, stageCounts(page.applications).new);
+    assert.equal(counts.applications, newCount(page.applications));
   }
 });
 
@@ -63,11 +63,13 @@ test("a test developer's write changes only the saved state, and the next read s
   assert.equal(overview.shape, "team");
   if (overview.shape === "team") assert.equal(overview.stats.find((s) => s.label === "Recruitment")?.value, "Closed");
 
-  const first = (await lead.data.applications()).applications[0];
+  const fresh = (await lead.data.applications()).applications.find((a) => a.state.stage === "new")!;
   const before = (await lead.data.navCounts()).applications ?? 0;
-  await lead.data.setApplicationStage(first.id, "in-review");
+  assert.deepEqual(await lead.data.moveApplication(fresh.id, { kind: "open" }), { ok: true, value: null });
   const after = session("operations-lead", lead.saved()).data;
   assert.equal((await after.navCounts()).applications, before - 1);
+  const opened = (await after.applications()).applications.find((a) => a.id === fresh.id)!;
+  assert.equal(opened.state.stage, "in-review");
 });
 
 test("only the operations lead flips recruitment, and a lead changes only their own division", async () => {
@@ -79,4 +81,52 @@ test("only the operations lead flips recruitment, and a lead changes only their 
   await assert.rejects(division.data.setPositionOpen(elsewhere.id, false), DashboardRefused);
   assert.deepEqual(division.saved(), EMPTY_DUMMY_STATE);
   assert.equal(division.savedRecruitment(), undefined);
+});
+
+test("an illegal move is refused and saves nothing", async () => {
+  const lead = session("division-lead");
+  const fresh = (await lead.data.applications()).applications.find((a) => a.state.stage === "new")!;
+  const result = await lead.data.moveApplication(fresh.id, { kind: "confirm-join" });
+  assert.equal(result.ok, false);
+  assert.deepEqual(lead.saved(), EMPTY_DUMMY_STATE);
+});
+
+test("a lead moves only applications to their own division's roles", async () => {
+  const theirs = (await session("operations-lead").data.applications()).applications.find(
+    (a) => a.position.division !== "Mission Analysis Division",
+  )!;
+  const lead = session("division-lead");
+  await assert.rejects(lead.data.moveApplication(theirs.id, { kind: "reject" }), DashboardRefused);
+  assert.deepEqual(lead.saved(), EMPTY_DUMMY_STATE);
+});
+
+test("a new position is made in the lead's division, coded from it, closed unless opened, and listed next read", async () => {
+  const lead = session("division-lead");
+  const page = await lead.data.positions();
+  assert.deepEqual(page.newPosition.divisions.map((d) => d.name), ["Mission Analysis Division"]);
+  const input = {
+    divisionId: page.newPosition.divisions[0].id,
+    title: "Trajectory Analyst II",
+    description: "You plan and check rocket trajectories.",
+    required: ["Python or MATLAB"],
+    desirable: [],
+    questions: ["Tell us about a simulation you built."],
+    motivationLetter: true,
+  };
+  const result = await lead.data.createPosition(input);
+  assert.ok(result.ok);
+  if (result.ok) assert.equal(result.value.code, `AER-MSA-${String(page.newPosition.nextId).padStart(3, "0")}`);
+  const listed = (await session("division-lead", lead.saved()).data.positions()).positions.find((p) => p.title === "Trajectory Analyst II");
+  assert.equal(listed?.open, false);
+});
+
+test("a new position in a division the lead does not lead is refused", async () => {
+  const lead = session("division-lead");
+  await assert.rejects(
+    lead.data.createPosition({ divisionId: 13, title: "Safety Officer II", description: "Safety.", required: ["Care"] }),
+    DashboardRefused,
+  );
+  assert.deepEqual(lead.saved(), EMPTY_DUMMY_STATE);
+  const ops = await session("operations-lead").data.positions();
+  assert.ok(ops.newPosition.divisions.length > 1);
 });

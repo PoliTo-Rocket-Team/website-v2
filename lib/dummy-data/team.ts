@@ -267,7 +267,7 @@ export const personFor = {
 // AER-MSA-002, as board 34b's placeholder of the same role, so one role shows
 // one code on `/apply?open=0` and on its own page (issue #157).
 export const positions = [
-  { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 1, open: true, updatedAt: "2026-10-07T11:20:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
+  { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 1, open: true, updatedAt: "2026-10-07T11:20:00+02:00", question: "Tell us about a simulation you built.", requiresMotivationLetter: true },
   { id: 8, title: "Aerodynamicist", slug: "8-aerodynamicist", divisionId: 2, open: true, updatedAt: "2026-10-04T09:40:00+02:00", question: "Which CFD or wind tunnel work have you done?", requiresMotivationLetter: false },
   { id: 2, title: "Flight Simulator Developer", slug: "2-flight-simulator-developer", divisionId: 1, open: false, updatedAt: "2026-09-08T15:00:00+02:00", question: "Which languages do you write simulations in?", requiresMotivationLetter: false },
   { id: 9, title: "Structural Engineer", slug: "9-structural-engineer", divisionId: 4, open: true, updatedAt: "2026-10-02T10:30:00+02:00", question: "Have you used FEM software, and which?", requiresMotivationLetter: false },

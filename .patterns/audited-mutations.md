@@ -64,8 +64,8 @@ Any write to an app table in `public`. Call sites today: `handleDelete`, `handle
 `handleAddPosition` in `server-actions.ts` (no page calls them since issue #142), the site-wide
 recruitment switch (an upsert on `recruitment_setting`, in `saveRecruitment` in
 [lib/dashboard/database.ts](../lib/dashboard/database.ts), called through the dashboard data
-interface's `setRecruitment`), `setPositionOpen` and `setApplicationStage` in
-`lib/dashboard/database.ts`, and `sendApplication` in
+interface's `setRecruitment`), `setPositionOpen`, `createPosition` and `moveApplication` in
+[lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts), and `sendApplication` in
 [app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). The dashboard's writes
 ([app/dashboard/actions.ts](../app/dashboard/actions.ts)) take one more step: each action checks the
 viewer reaches the page, then hands the input to the dashboard data interface, whose database side
@@ -76,7 +76,11 @@ developer's write goes to the dummy side, which checks the same rules and stores
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
 position or application before it writes through `runAuditQuery`, and a test developer's dummy
-side keeps the change in a cookie and writes no row. Several
+side keeps the change in a cookie and writes no row. An application move (issue #171) first asks
+`applyMove` in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) whether
+it is legal, and each update is guarded on the status it was read in. Confirm join is one
+data-modifying `WITH` statement through `runAuditQuery` (`db.execute` with a `sql` template), because the
+new `members` row's id must reach the `users` link and the `roles` row in the same write. Several
 writes that must land together go through `runAuditBatch` instead: one `db.batch` with the audit
 setup first. A batch cannot pass one insert's id to the next, so a later write finds an earlier row
 by a unique value (the application finds its file rows by their unique Blob pathname). Better Auth

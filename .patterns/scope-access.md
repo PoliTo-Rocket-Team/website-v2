@@ -77,7 +77,7 @@ session cookie; server code reads the user id from that cookie, then turns the m
 ## When this applies
 
 Any server read or route that shows member-only data. Pass the target that matches the
-`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; the dashboard's writes have it (the recruitment switch, and the position and application writes in [lib/dashboard/database.ts](../lib/dashboard/database.ts); see [audited-mutations.md](./audited-mutations.md)). There are no automated tests
+`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; the dashboard's writes have it (the recruitment switch, and the position and application writes in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts); see [audited-mutations.md](./audited-mutations.md)). There are no automated tests
 for the scope logic yet.
 
 ## Why it is not obvious
@@ -105,4 +105,4 @@ for the scope logic yet.
   or scope check. The dashboard's writes are the exception: the recruitment switch's database side
   (`setRecruitment`) reads `getScopeInfoForCurrentUser("positions")` and refuses unless
   `hasOrgEdit || hasAdminEdit`, and the position and application writes refuse a row outside the
-  lead's scope ([lib/dashboard/database.ts](../lib/dashboard/database.ts)).
+  lead's scope ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts)).

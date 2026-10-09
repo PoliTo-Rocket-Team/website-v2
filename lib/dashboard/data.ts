@@ -4,7 +4,9 @@ import type { NavCounts } from "./access";
 import type { AccessGrant, DivisionAccess } from "./division-access";
 import type { DivisionOrders, Order } from "./orders";
 import type { Overview } from "./overview";
-import type { ApplicationStage, ApplicationsPage, PositionsPage } from "./recruitment";
+import type { LeadMove } from "./application-flow";
+import type { CreatedPosition } from "./new-position";
+import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumniDirectory, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
@@ -45,12 +47,23 @@ export interface DashboardData {
    * writes nothing. A refusal is its answer, not a DashboardRefused.
    */
   setRecruitment(recruitment: Recruitment): Promise<SwitchRecruitmentResult>;
-  /** Boards 41 and 41c (issue #142). The switch on board 41 is `recruitment()`. */
+  /** Boards 41 and 57 (issues #142, #171). The switch on board 41 is `recruitment()`. */
   positions(): Promise<PositionsPage>;
-  /** Board 41b (issue #142). */
+  /** Boards 58 and 58b (issue #171). */
   applications(): Promise<ApplicationsPage>;
   setPositionOpen(positionId: number, open: boolean): Promise<void>;
-  setApplicationStage(applicationId: number, stage: ApplicationStage): Promise<void>;
+  /**
+   * New position (boards 57a, 57b). A division the viewer may not post in
+   * rejects with DashboardRefused; fields that fail `checkNewPosition`
+   * (./new-position.ts), which the drawer runs first, answer the first error.
+   */
+  createPosition(input: unknown): Promise<WriteResult<CreatedPosition>>;
+  /**
+   * One step on an application (boards 58 to 58i). Which steps are legal is
+   * ./application-flow.ts's; an illegal one answers why and writes nothing.
+   * Only Confirm join adds the person to the team.
+   */
+  moveApplication(applicationId: number, move: LeadMove): Promise<WriteResult<null>>;
 
   /** Board 43: the division lead's Access page. */
   divisionAccess(): Promise<DivisionAccess | null>;

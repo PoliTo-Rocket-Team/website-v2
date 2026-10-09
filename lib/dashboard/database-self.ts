@@ -98,7 +98,9 @@ async function setPhoto(identity: DashboardIdentity, photo: Upload | null): Prom
 const statusOf: Readonly<Record<(typeof applications.$inferSelect)["status"], ApplicationStatus>> = {
   received: "received",
   pending: "in-review",
+  interview: "in-review",
   accepted: "accepted",
+  joined: "accepted",
   rejected: "declined",
   accepted_by_another_team: "declined",
 };

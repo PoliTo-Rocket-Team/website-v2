@@ -1,0 +1,553 @@
+import "server-only";
+
+import { and, asc, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { updateTag } from "next/cache";
+import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import { getDb } from "@/db/client";
+import {
+  applicationFiles,
+  applications,
+  applyPositions,
+  departments,
+  divisions,
+  interviewSlots,
+  members,
+  roles,
+  users,
+} from "@/db/schema";
+import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { applyMove, type ApplicationState, type InterviewSlot, type LeadMove, type OfferedSlots } from "./application-flow";
+import { DashboardRefused } from "./data";
+import type { DashboardIdentity } from "./database";
+import { checkNewPosition, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
+import {
+  ago,
+  appliedLabels,
+  fileSize,
+  quietDays,
+  quietNote,
+  type ApplicationDocument,
+  type ApplicationEntry,
+  type ApplicationsPage,
+  type OtherApplication,
+  type PositionRow,
+  type PositionsPage,
+} from "./recruitment";
+import { refused, written, type WriteResult } from "./write";
+
+// The Positions and Applications pages read from and written to the database
+// (boards 57 and 58, issue #171, after #142). Reads follow
+// .patterns/drizzle-reads.md; writes follow .patterns/audited-mutations.md:
+// each checks the viewer reaches the position or application, asks
+// ./application-flow.ts whether the move is legal, then writes through
+// runAuditQuery or runAuditBatch. Only Confirm join touches the team tables.
+
+type Identity = DashboardIdentity;
+type DbStatus = (typeof applications.$inferSelect)["status"];
+
+function isLead(identity: Identity): boolean {
+  return identity.kind === "operations-lead" || identity.kind === "division-lead";
+}
+
+// Positions -------------------------------------------------------------------
+
+/** The positions a lead reaches, with what the table shows for each. */
+async function readPositionRows(identity: Identity, now: Date): Promise<PositionRow[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: applyPositions.id,
+      title: applyPositions.title,
+      status: applyPositions.status,
+      created_at: applyPositions.createdAt,
+      division_id: divisions.id,
+      division_name: divisions.name,
+      dept_id: departments.id,
+      dept_name: departments.name,
+    })
+    .from(applyPositions)
+    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .where(and(eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .orderBy(desc(applyPositions.createdAt));
+  const scoped =
+    identity.kind === "operations-lead"
+      ? rows
+      : rows.filter((r) => identity.divisionIds.includes(r.division_id) || identity.departmentIds.includes(r.dept_id));
+  if (scoped.length === 0) return [];
+
+  const tallies = await db
+    .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
+    .from(applications)
+    .where(inArray(applications.applyPositionId, scoped.map((r) => r.id)))
+    .groupBy(applications.applyPositionId, applications.status);
+
+  return scoped.map((r) => {
+    const own = tallies.filter((t) => t.position_id === r.id);
+    const latest = own.reduce<string | null>((at, t) => (t.last !== null && (at === null || t.last > at) ? t.last : at), null);
+    const created = new Date(r.created_at);
+    return {
+      id: r.id,
+      ref: String(r.id),
+      title: r.title ?? "Untitled position",
+      division: r.division_name,
+      department: r.dept_name,
+      open: r.status,
+      applications: own.reduce((sum, t) => sum + t.n, 0),
+      newApplications: own.filter((t) => t.status === "received").reduce((sum, t) => sum + t.n, 0),
+      quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
+      // The table has no edit time; a role's creation is the last change it records.
+      updated: ago(created, now),
+    };
+  });
+}
+
+/** The open divisions a viewer may post a role in: every one for the operations lead, else those their figures cover. */
+async function readPostableDivisions(identity: Identity): Promise<DivisionChoice[]> {
+  if (!isLead(identity)) return [];
+  const rows = await getDb()
+    .select({
+      id: divisions.id,
+      name: divisions.name,
+      div_code: divisions.code,
+      dept_id: departments.id,
+      dept_name: departments.name,
+      dept_code: departments.code,
+    })
+    .from(divisions)
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .where(and(isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .orderBy(asc(departments.name), asc(divisions.name));
+  return rows
+    .filter(
+      (r) =>
+        identity.kind === "operations-lead" || identity.divisionIds.includes(r.id) || identity.departmentIds.includes(r.dept_id),
+    )
+    .map((r) => ({ id: r.id, name: r.name, department: r.dept_name, deptCode: r.dept_code ?? "", divCode: r.div_code ?? "" }));
+}
+
+async function readNextPositionId(): Promise<number> {
+  const [row] = await getDb().select({ last: max(applyPositions.id) }).from(applyPositions);
+  return (row?.last ?? 0) + 1;
+}
+
+async function positionsPage(identity: Identity): Promise<PositionsPage> {
+  if (!isLead(identity)) throw new DashboardRefused("positions");
+  const [positions, divisionChoices, nextId] = await Promise.all([
+    readPositionRows(identity, new Date()),
+    readPostableDivisions(identity),
+    readNextPositionId(),
+  ]);
+  const newPosition = { divisions: divisionChoices, nextId };
+  if (identity.kind === "operations-lead") return { scope: "team", positions, newPosition };
+  return { scope: "division", division: identity.role?.divisionName ?? null, positions, newPosition };
+}
+
+async function reachablePositionIds(identity: Identity): Promise<Set<number>> {
+  if (!isLead(identity)) return new Set();
+  return new Set((await readPositionRows(identity, new Date())).map((p) => p.id));
+}
+
+async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
+  if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
+  await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
+  updateTag(POSITIONS_CACHE_TAG);
+  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+}
+
+async function createPosition(identity: Identity, input: unknown): Promise<WriteResult<CreatedPosition>> {
+  const division = (await readPostableDivisions(identity)).find(
+    (d) => d.id === (input as { divisionId?: unknown } | null)?.divisionId,
+  );
+  if (!division) throw new DashboardRefused("a position in that division");
+  const checked = checkNewPosition(input);
+  if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
+  const { position } = checked;
+  const [row] = await runAuditQuery((db) =>
+    db
+      .insert(applyPositions)
+      .values({
+        status: position.open,
+        divisionId: division.id,
+        title: position.title,
+        description: position.description,
+        requiredSkills: [...position.required],
+        desirableSkills: [...position.desirable],
+        customQuestions: [...position.questions],
+        requiresMotivationLetter: position.motivationLetter,
+      })
+      .returning({ id: applyPositions.id }),
+  );
+  updateTag(POSITIONS_CACHE_TAG);
+  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  return written({ id: row.id, code: newPositionCode(division, row.id) });
+}
+
+// Applications ----------------------------------------------------------------
+
+type SlotRow = { application_id: number; starts_at: string; ends_at: string; chosen: boolean; chosen_at: string | null; created_at: string };
+
+type StateRow = {
+  status: DbStatus;
+  applied_at: string;
+  accepted_at: string | null;
+  nda_arrived_at: string | null;
+  joined_at: string | null;
+};
+
+function slotOf(row: SlotRow): InterviewSlot {
+  return {
+    start: new Date(row.starts_at).toISOString(),
+    minutes: Math.round((Date.parse(row.ends_at) - Date.parse(row.starts_at)) / 60_000),
+  };
+}
+
+/**
+ * Where a stored application stands. "Accepted by another team" reads as
+ * Rejected: this team did not take them. An interview row with no times left
+ * reads as In review, the step before times are offered.
+ */
+function stateOf(row: StateRow, slots: readonly SlotRow[]): ApplicationState {
+  switch (row.status) {
+    case "received":
+      return { stage: "new" };
+    case "pending":
+      return { stage: "in-review" };
+    case "interview": {
+      if (slots.length === 0) return { stage: "in-review" };
+      const sorted = [...slots].sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
+      const offered = sorted.map(slotOf) as unknown as OfferedSlots;
+      const chosen = sorted.find((s) => s.chosen);
+      return {
+        stage: "interview",
+        offered,
+        booked: chosen ? { slot: slotOf(chosen), at: new Date(chosen.chosen_at ?? chosen.created_at).toISOString() } : null,
+      };
+    }
+    case "accepted":
+      return { stage: "accepted", acceptedAt: row.accepted_at ?? row.applied_at, ndaArrived: row.nda_arrived_at !== null };
+    case "joined":
+      return { stage: "joined", joinedAt: row.joined_at ?? row.accepted_at ?? row.applied_at };
+    case "rejected":
+    case "accepted_by_another_team":
+      return { stage: "rejected" };
+  }
+}
+
+async function readSlots(applicationIds: readonly number[]): Promise<Map<number, SlotRow[]>> {
+  const bySlot = new Map<number, SlotRow[]>();
+  if (applicationIds.length === 0) return bySlot;
+  const rows = await getDb()
+    .select({
+      application_id: interviewSlots.applicationId,
+      starts_at: interviewSlots.startsAt,
+      ends_at: interviewSlots.endsAt,
+      chosen: interviewSlots.chosen,
+      chosen_at: interviewSlots.chosenAt,
+      created_at: interviewSlots.createdAt,
+    })
+    .from(interviewSlots)
+    .where(inArray(interviewSlots.applicationId, [...applicationIds]));
+  for (const row of rows) bySlot.set(row.application_id, [...(bySlot.get(row.application_id) ?? []), row]);
+  return bySlot;
+}
+
+/** Each applicant's applications to other roles, anywhere on the team, newest first. */
+async function readOtherApplications(
+  rows: readonly { id: number; user_id: string | null }[],
+): Promise<Map<number, OtherApplication[]>> {
+  const others = new Map<number, OtherApplication[]>();
+  const userIds = [...new Set(rows.flatMap((r) => (r.user_id === null ? [] : [r.user_id])))];
+  if (userIds.length === 0) return others;
+  const all = await getDb()
+    .select({
+      id: applications.id,
+      user_id: applications.userId,
+      status: applications.status,
+      applied_at: applications.appliedAt,
+      accepted_at: applications.acceptedAt,
+      nda_arrived_at: applications.ndaArrivedAt,
+      joined_at: applications.joinedAt,
+      title: applyPositions.title,
+      division_name: divisions.name,
+      dept_name: departments.name,
+    })
+    .from(applications)
+    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .where(and(inArray(applications.userId, userIds), eq(applyPositions.isDeleted, false)))
+    .orderBy(desc(applications.appliedAt));
+  const slots = await readSlots(all.filter((a) => a.status === "interview").map((a) => a.id));
+  for (const row of rows) {
+    others.set(
+      row.id,
+      all
+        .filter((a) => a.user_id === row.user_id && a.id !== row.id)
+        .map((a) => ({
+          title: a.title ?? "Untitled position",
+          department: a.dept_name,
+          division: a.division_name,
+          stage: stateOf(a, slots.get(a.id) ?? []).stage,
+        })),
+    );
+  }
+  return others;
+}
+
+function documentOf(
+  kind: ApplicationDocument["kind"],
+  file: { name: string | null; size: number | null; hash: string | null },
+  storedName: string | null,
+): ApplicationDocument[] {
+  const name = file.name ?? storedName;
+  if (name === null) return [];
+  return [
+    {
+      kind,
+      name,
+      size: file.size === null ? null : fileSize(file.size),
+      // The file route checks the reader's scope again (app/(legacy)/docs/applications/).
+      href: file.hash === null ? null : `/docs/applications/${file.hash}/${encodeURIComponent(name)}`,
+    },
+  ];
+}
+
+function answersOf(raw: unknown[] | null): ApplicationEntry["answers"] {
+  return (raw ?? []).flatMap((a) => {
+    if (typeof a !== "object" || a === null) return [];
+    const { question, answer } = a as { question?: unknown; answer?: unknown };
+    return typeof question === "string" && typeof answer === "string" ? [{ question, answer }] : [];
+  });
+}
+
+async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
+  if (!isLead(identity)) throw new DashboardRefused("applications");
+  const now = new Date();
+  const positions = await readPositionRows(identity, now);
+  const division = identity.kind === "division-lead" ? (identity.role?.divisionName ?? null) : null;
+  if (positions.length === 0) return { division, now: now.toISOString(), positions: [], applications: [] };
+
+  const db = getDb();
+  const cvFiles = alias(applicationFiles, "cv_files");
+  const letterFiles = alias(applicationFiles, "letter_files");
+  const rows = await db
+    .select({
+      id: applications.id,
+      user_id: applications.userId,
+      position_id: applications.applyPositionId,
+      applied_at: applications.appliedAt,
+      status: applications.status,
+      accepted_at: applications.acceptedAt,
+      nda_arrived_at: applications.ndaArrivedAt,
+      joined_at: applications.joinedAt,
+      answers: applications.customAnswers,
+      cv_name: applications.cvName,
+      letter_name: applications.mlName,
+      email: users.email,
+      first_name: users.firstName,
+      last_name: users.lastName,
+      phone: users.phone,
+      polito_id: users.politoId,
+      year: users.levelOfStudy,
+      degree: users.program,
+      gender: users.gender,
+      cv_file_name: cvFiles.originalFilename,
+      cv_file_size: cvFiles.fileSize,
+      cv_file_hash: cvFiles.fileHash,
+      letter_file_name: letterFiles.originalFilename,
+      letter_file_size: letterFiles.fileSize,
+      letter_file_hash: letterFiles.fileHash,
+    })
+    .from(applications)
+    .innerJoin(users, eq(applications.userId, users.id))
+    .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
+    .leftJoin(letterFiles, eq(applications.coverLetterFileId, letterFiles.id))
+    .where(inArray(applications.applyPositionId, positions.map((p) => p.id)))
+    .orderBy(desc(applications.appliedAt), desc(applications.id));
+
+  const [slots, others] = await Promise.all([
+    readSlots(rows.filter((r) => r.status === "interview").map((r) => r.id)),
+    readOtherApplications(rows),
+  ]);
+  const byId = new Map(positions.map((p) => [p.id, p]));
+  return {
+    division,
+    now: now.toISOString(),
+    positions: positions.map((p) => ({ ref: p.ref, title: p.title })),
+    applications: rows.flatMap((r): ApplicationEntry[] => {
+      const position = r.position_id === null ? undefined : byId.get(r.position_id);
+      if (!position) return [];
+      return [
+        {
+          id: r.id,
+          state: stateOf(r, slots.get(r.id) ?? []),
+          applicant: {
+            name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
+            email: r.email,
+            phone: r.phone,
+            politoId: r.polito_id,
+            gender: r.gender,
+          },
+          studies: { year: r.year, degree: r.degree },
+          position: { ref: position.ref, title: position.title, division: position.division },
+          applied: appliedLabels(new Date(r.applied_at), now),
+          documents: [
+            ...documentOf("cv", { name: r.cv_file_name, size: r.cv_file_size, hash: r.cv_file_hash }, r.cv_name),
+            ...documentOf(
+              "motivation-letter",
+              { name: r.letter_file_name, size: r.letter_file_size, hash: r.letter_file_hash },
+              r.letter_name,
+            ),
+          ],
+          answers: answersOf(r.answers),
+          otherApplications: others.get(r.id) ?? [],
+        },
+      ];
+    }),
+  };
+}
+
+/** The application as the move reads it, once the viewer is shown to reach it. */
+async function readApplicationFor(identity: Identity, applicationId: number) {
+  const [row] = await getDb()
+    .select({
+      id: applications.id,
+      position_id: applications.applyPositionId,
+      status: applications.status,
+      applied_at: applications.appliedAt,
+      accepted_at: applications.acceptedAt,
+      nda_arrived_at: applications.ndaArrivedAt,
+      joined_at: applications.joinedAt,
+    })
+    .from(applications)
+    .where(eq(applications.id, applicationId))
+    .limit(1);
+  if (!row || row.position_id === null || !(await reachablePositionIds(identity)).has(row.position_id)) {
+    throw new DashboardRefused(`application ${applicationId}`);
+  }
+  return row;
+}
+
+const statusFor: Readonly<Record<Exclude<ApplicationState["stage"], "withdrawn">, DbStatus>> = {
+  new: "received",
+  "in-review": "pending",
+  interview: "interview",
+  accepted: "accepted",
+  joined: "joined",
+  rejected: "rejected",
+};
+
+async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
+  const row = await readApplicationFor(identity, applicationId);
+  const before = stateOf(row, (await readSlots([row.id])).get(row.id) ?? []);
+  const now = new Date();
+  const result = applyMove(before, move, now);
+  if (!result.ok) return refused(result.reason);
+  const after = result.state;
+  // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
+  const unchanged = and(eq(applications.id, row.id), eq(applications.status, row.status));
+
+  switch (after.stage) {
+    case "withdrawn":
+      // Withdrawing is the applicant's (issue #169), never a lead move.
+      return refused("Only the applicant can withdraw an application.");
+
+    case "interview": {
+      const offered = after.offered;
+      await runAuditBatch((db) => [
+        db.delete(interviewSlots).where(eq(interviewSlots.applicationId, row.id)),
+        db.insert(interviewSlots).values(
+          offered.map((s) => ({
+            applicationId: row.id,
+            startsAt: s.start,
+            endsAt: new Date(Date.parse(s.start) + s.minutes * 60_000).toISOString(),
+          })),
+        ),
+        db.update(applications).set({ status: "interview" }).where(unchanged),
+      ]);
+      return written(null);
+    }
+
+    case "accepted":
+      await runAuditQuery((db) =>
+        db
+          .update(applications)
+          .set({
+            status: "accepted",
+            acceptedAt: after.acceptedAt,
+            ndaArrivedAt: after.ndaArrived ? (row.nda_arrived_at ?? now.toISOString()) : null,
+          })
+          .where(unchanged),
+      );
+      return written(null);
+
+    case "joined":
+      if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
+      await confirmJoin(identity, row.id, after.joinedAt);
+      return written(null);
+
+    case "new":
+    case "in-review":
+    case "rejected":
+      if (after.stage === before.stage) return written(null);
+      await runAuditQuery((db) => db.update(applications).set({ status: statusFor[after.stage] }).where(unchanged));
+      return written(null);
+  }
+}
+
+/**
+ * Confirm join (58h): the one write that adds a person to the team. In one
+ * statement, and only while the application is still accepted with the NDA
+ * arrived: a new `members` row for someone not on the team yet (the NDA date
+ * and the confirming lead on it), linked from their `users` row, then a
+ * Member role in the position's division, then the application marked joined.
+ * Their other applications are not touched.
+ */
+async function confirmJoin(identity: Identity, applicationId: number, joinedAt: string): Promise<void> {
+  await runAuditQuery((db) =>
+    db.execute(sql`
+      with app as (
+        select a.user_id, u.member as member_id, p.division_id, d.dept_id, a.nda_arrived_at
+        from ${applications} a
+        join ${users} u on u.id = a.user_id
+        join ${applyPositions} p on p.id = a.apply_position_id
+        join ${divisions} d on d.id = p.division_id
+        where a.id = ${applicationId} and a.status = 'accepted' and a.nda_arrived_at is not null
+      ),
+      new_member as (
+        insert into ${members} (nda_signed_at, nda_confirmed_by)
+        select app.nda_arrived_at, ${identity.memberId} from app where app.member_id is null
+        returning member_id
+      ),
+      linked as (
+        update ${users} set member = (select member_id from new_member)
+        where id = (select user_id from app) and exists (select 1 from new_member)
+        returning id
+      ),
+      the_member as (
+        select member_id from new_member
+        union all
+        select member_id from app where member_id is not null
+      ),
+      new_role as (
+        insert into ${roles} (member_id, dept_id, division_id, title)
+        select (select member_id from the_member limit 1), app.dept_id, app.division_id, 'Member' from app
+        returning id
+      )
+      update ${applications} set status = 'joined', joined_at = ${joinedAt}
+      where id = ${applicationId} and exists (select 1 from new_role)
+    `),
+  );
+}
+
+export function databaseRecruitmentPages(identity: Identity) {
+  return {
+    positions: () => positionsPage(identity),
+    applications: () => applicationsPage(identity),
+    setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
+    createPosition: (input: unknown) => createPosition(identity, input),
+    moveApplication: (id: number, move: LeadMove) => moveApplication(identity, id, move),
+  };
+}

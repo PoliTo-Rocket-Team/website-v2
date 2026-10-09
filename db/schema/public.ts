@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const positionTypeEnum = pgEnum("position_type", [
@@ -35,6 +36,10 @@ export const applicationStatusEnum = pgEnum("application_status", [
   "accepted",
   "received",
   "accepted_by_another_team",
+  // The lead's recruitment flow (issue #171): times offered for an interview,
+  // and a person who joined the team after the signed NDA arrived.
+  "interview",
+  "joined",
 ]);
 
 export const scopeTypeEnum = pgEnum("scope_type", [
@@ -237,6 +242,12 @@ export const applications = pgTable("applications", {
     .notNull(),
   status: applicationStatusEnum("status").default("received").notNull(),
   customAnswers: jsonb("custom_answers").array(),
+  // The lead's recruitment flow (issue #171). Accept sets `accepted_at`; the
+  // "The signed NDA arrived" tick sets `nda_arrived_at`; Confirm join sets
+  // `joined_at` once the person is on the team.
+  acceptedAt: timestamp("accepted_at", { withTimezone: true, mode: "string" }),
+  ndaArrivedAt: timestamp("nda_arrived_at", { withTimezone: true, mode: "string" }),
+  joinedAt: timestamp("joined_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   // One application per user per position (issue #120).
   userPositionUnique: unique("applications_user_position_unique").on(
@@ -265,6 +276,30 @@ export const applicationFiles = pgTable("application_files", {
 }, (table) => ({
   r2KeyIdx: index("application_files_r2_key_idx").on(table.pathname),
   fileHashIdx: index("application_files_file_hash_idx").on(table.fileHash),
+}));
+
+/**
+ * The interview times a lead offers on one application (issue #171). The
+ * applicant books one (issue #169): `chosen`, at `chosen_at`. At most one
+ * slot per application is chosen.
+ */
+export const interviewSlots = pgTable("interview_slots", {
+  id: serial("id").primaryKey(),
+  applicationId: integer("application_id")
+    .references(() => applications.id, { onDelete: "cascade" })
+    .notNull(),
+  startsAt: timestamp("starts_at", { withTimezone: true, mode: "string" }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true, mode: "string" }).notNull(),
+  chosen: boolean("chosen").default(false).notNull(),
+  chosenAt: timestamp("chosen_at", { withTimezone: true, mode: "string" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+}, (table) => ({
+  applicationIdx: index("interview_slots_application_idx").on(table.applicationId),
+  oneChosen: uniqueIndex("interview_slots_one_chosen")
+    .on(table.applicationId)
+    .where(sql`${table.chosen}`),
 }));
 
 export const scopes = pgTable(

@@ -71,6 +71,9 @@ catches type fallout.
   generates no longer repeat them. The journal's `0005` tag is `0005_recruitment_setting`.
   [get-applications.ts](../app/actions/get-applications.ts) carries a fallback query for when these
   columns are missing.
+- **`0008_lead_recruitment` ends by hand.** Its generated statements are kept as generated; the
+  `audit_row_changes` trigger on `interview_slots` (issue #171) is appended after them, so the
+  table gets its trigger in the migration that creates it.
 - **`0005` is written defensively** (`IF NOT EXISTS`, `DO $$ ... EXCEPTION WHEN duplicate_object`),
   unlike the generated files.
 - **No audit trigger on `application_files`.** It was created after `0002` and `0005` adds none.

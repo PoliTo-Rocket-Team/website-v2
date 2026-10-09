@@ -1,7 +1,12 @@
-// What the Positions and Applications pages show (boards 41, 41b and 41c,
-// issue #142). The dashboard data interface (./data.ts) answers these shapes
-// from the dummy arrays or the database; the components in
-// components/dashboard/ render them and fetch nothing.
+import type { ApplicationStage, ApplicationState } from "./application-flow";
+import type { DivisionChoice } from "./new-position";
+
+// What the Positions and Applications pages show (Dashboard v2 boards 57 and
+// 58, issue #171, after boards 41 to 41c of issue #142). The dashboard data
+// interface (./data.ts) answers these shapes from the dummy arrays or the
+// database; the components in components/dashboard/ render them and fetch
+// nothing. Where an application stands, and how it moves, is
+// ./application-flow.ts.
 
 /** A position as a filter or link names it: the dummy slug, or the database id as text. */
 export type PositionRef = string;
@@ -28,7 +33,7 @@ export type PositionRow = {
  * their division's roles and a notice of the switch's state (board 41c). The
  * switch itself is #121's, read through `DashboardData.recruitment()`.
  */
-export type PositionsPage =
+export type PositionsPage = (
   | {
       readonly scope: "team";
       readonly positions: readonly PositionRow[];
@@ -38,7 +43,16 @@ export type PositionsPage =
       /** The lead's division; null when their access names none. */
       readonly division: string | null;
       readonly positions: readonly PositionRow[];
-    };
+    }
+) & {
+  /** What the New position drawer offers (boards 57a, 57b). */
+  readonly newPosition: {
+    /** The divisions the viewer may post a role in. */
+    readonly divisions: readonly DivisionChoice[];
+    /** The id the next saved role is likely to get, for the code preview. */
+    readonly nextId: number;
+  };
+};
 
 export type PositionTab = "all" | "open" | "closed";
 
@@ -74,21 +88,6 @@ export function departmentsOf(positions: readonly PositionRow[]): string[] {
 
 // Applications ----------------------------------------------------------------
 
-/** Where an application stands with the team (board 41b's tabs). */
-export const APPLICATION_STAGES = ["new", "in-review", "accepted", "rejected"] as const;
-export type ApplicationStage = (typeof APPLICATION_STAGES)[number];
-
-export const STAGE_LABELS: Readonly<Record<ApplicationStage, string>> = {
-  new: "New",
-  "in-review": "In review",
-  accepted: "Accepted",
-  rejected: "Rejected",
-};
-
-export function isApplicationStage(value: unknown): value is ApplicationStage {
-  return typeof value === "string" && (APPLICATION_STAGES as readonly string[]).includes(value);
-}
-
 export type ApplicationDocument = {
   readonly kind: "cv" | "motivation-letter";
   readonly name: string;
@@ -98,51 +97,57 @@ export type ApplicationDocument = {
   readonly href: string | null;
 };
 
+/** One of the applicant's applications to another role, anywhere on the team (board 58's Other applications). */
+export type OtherApplication = {
+  readonly title: string;
+  readonly department: string;
+  readonly division: string;
+  readonly stage: ApplicationStage;
+};
+
 export type ApplicationEntry = {
   readonly id: number;
-  readonly stage: ApplicationStage;
+  /** Where it stands; ./application-flow.ts says what can happen next. */
+  readonly state: ApplicationState;
   readonly applicant: {
     readonly name: string;
     readonly email: string;
     readonly phone: string | null;
     readonly politoId: string | null;
+    /** As the application form asked it; it picks "she", "he" or "they" in the dialogs. */
+    readonly gender: string | null;
   };
   readonly studies: { readonly year: string | null; readonly degree: string | null };
-  readonly position: { readonly ref: PositionRef; readonly title: string };
+  readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };
   /** "Today" in the list, "today, 14:32" in the detail panel. */
   readonly applied: { readonly day: string; readonly at: string };
   readonly documents: readonly ApplicationDocument[];
   readonly answers: readonly { readonly question: string; readonly answer: string }[];
+  /** Newest first; the list's "+2 other" tag counts them. */
+  readonly otherApplications: readonly OtherApplication[];
 };
 
 export type ApplicationsPage = {
+  /** The lead's division, as the page's intro names it; null for the whole team. */
+  readonly division: string | null;
+  /** The moment the page is seen from (ISO): the interview picker greys out what is past. */
+  readonly now: string;
   /** The positions the viewer reaches, for the position filter. */
   readonly positions: readonly { readonly ref: PositionRef; readonly title: string }[];
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };
 
-export function stageCounts(applications: readonly ApplicationEntry[]): Record<ApplicationStage, number> {
-  const counts = { new: 0, "in-review": 0, accepted: 0, rejected: 0 };
-  for (const a of applications) counts[a.stage] += 1;
-  return counts;
+/** How many applications wait for a first look: the sidebar's count and the New tab's. */
+export function newCount(applications: readonly { readonly state: ApplicationState }[]): number {
+  return applications.filter((a) => a.state.stage === "new").length;
 }
 
-/**
- * The next step at the foot of the detail panel, beside Reject. A new
- * application moves to interview, one in review is accepted. A decided
- * application has no buttons; its stage menu still changes it.
- */
-export function nextStage(stage: ApplicationStage): { readonly label: string; readonly to: ApplicationStage } | null {
-  switch (stage) {
-    case "new":
-      return { label: "Move to interview", to: "in-review" };
-    case "in-review":
-      return { label: "Accept", to: "accepted" };
-    case "accepted":
-    case "rejected":
-      return null;
-  }
+/** "CV + letter" or "CV", as the Documents column reads (board 58b). */
+export function documentsLine(documents: readonly ApplicationDocument[]): string {
+  const cv = documents.some((d) => d.kind === "cv");
+  const letter = documents.some((d) => d.kind === "motivation-letter");
+  return [cv ? "CV" : null, letter ? "letter" : null].filter(Boolean).join(" + ");
 }
 
 // Ages ------------------------------------------------------------------------

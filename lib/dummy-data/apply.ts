@@ -107,11 +107,11 @@ export const positionText = {
 } as const satisfies Readonly<Record<(typeof positions)[number]["id"], PositionText>>;
 
 /** The short codes a position's code is built from (`AER-MSA-001`). */
-const departmentCode = { 1: "AER", 2: "STR", 3: "RCV", 4: "CAS", 5: "ELT", 6: "OPS" } as const satisfies Readonly<
+export const departmentCode = { 1: "AER", 2: "STR", 3: "RCV", 4: "CAS", 5: "ELT", 6: "OPS" } as const satisfies Readonly<
   Record<(typeof departments)[number]["id"], string>
 >;
 /** A division's code, and its name as the public pages print it (they add "Division" themselves). */
-const divisionLabel = {
+export const divisionLabel = {
   1: { code: "MSA", name: "Mission Analysis" },
   2: { code: "AOA", name: "Optimization and Analysis" },
   3: { code: "DAM", name: "Design & Manufacturing" },

@@ -49,6 +49,9 @@ const config = {
         success: { DEFAULT: "#2E9B4F", soft: "#2E9B4F26" },
         warning: { DEFAULT: "#F5A623", soft: "#F5A62326" },
         danger: { DEFAULT: "#CE2B4B", soft: "#CE2B4B26" },
+        // The "In review" stage pill on the Applications page (Dashboard v2
+        // board 58b, issue #171), measured off the board.
+        info: { DEFAULT: "#4DA3FF", soft: "#4DA3FF26" },
         // Existing shadcn/ui colors
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

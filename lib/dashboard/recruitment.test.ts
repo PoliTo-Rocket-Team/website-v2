@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ago, appliedLabels, filterPositions, nextStage, quietDays, type PositionRow } from "./recruitment";
+import { ago, appliedLabels, documentsLine, filterPositions, quietDays, type PositionRow } from "./recruitment";
 
 const row = (title: string, department: string, open: boolean): PositionRow => ({
   id: title.length,
@@ -25,11 +25,10 @@ test("the positions filter combines the tab, the department and the search", () 
   assert.deepEqual(titles(filterPositions(ROWS, { tab: "all", department: null, search: "  aero " })), ["Mission Analyst"]);
 });
 
-test("a new application moves to interview, one in review to accepted, a decided one has no next step", () => {
-  assert.equal(nextStage("new")?.to, "in-review");
-  assert.equal(nextStage("in-review")?.to, "accepted");
-  assert.equal(nextStage("accepted"), null);
-  assert.equal(nextStage("rejected"), null);
+test("the documents column names the CV and the letter the applicant sent", () => {
+  const doc = (kind: "cv" | "motivation-letter") => ({ kind, name: "x.pdf", size: null, href: null });
+  assert.equal(documentsLine([doc("cv"), doc("motivation-letter")]), "CV + letter");
+  assert.equal(documentsLine([doc("cv")]), "CV");
 });
 
 test("ages read as the boards word them", () => {

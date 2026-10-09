@@ -13,6 +13,8 @@ import {
   type TeamOverview,
 } from "@/lib/dashboard/overview";
 import { divisionIdOf } from "@/lib/dashboard/team";
+import { applyMove, type LeadMove } from "@/lib/dashboard/application-flow";
+import { checkNewPosition, newPositionCode, type DivisionChoice } from "@/lib/dashboard/new-position";
 import {
   ago,
   appliedLabels,
@@ -20,13 +22,14 @@ import {
   quietDays,
   quietNote,
   type ApplicationEntry,
-  type ApplicationStage,
   type ApplicationsPage,
+  type OtherApplication,
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
+import { departmentCode, divisionLabel } from "./apply";
 import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
 import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
@@ -73,11 +76,26 @@ type Team = {
   readonly applications: readonly DummyApplication[];
 };
 
+/** A role the test developer posted, as the arrays hold a position. */
+function postedPosition(p: DummyState["newPositions"][number]): DummyPosition {
+  return {
+    id: p.id,
+    title: p.title,
+    slug: String(p.id),
+    divisionId: p.divisionId,
+    open: p.open,
+    updatedAt: p.createdAt,
+    question: "",
+    requiresMotivationLetter: p.motivationLetter,
+  };
+}
+
 function teamOf({ isOpen }: Recruitment, state: DummyState): Team {
+  const positions: DummyPosition[] = [...basePositions, ...state.newPositions.map(postedPosition)];
   return {
     recruitmentOpen: isOpen,
-    positions: basePositions.map((p) => ({ ...p, open: state.positionOpen[p.id] ?? p.open })),
-    applications: baseApplications.map((a) => ({ ...a, stage: state.applicationStage[a.id] ?? a.stage })),
+    positions: positions.map((p) => ({ ...p, open: state.positionOpen[p.id] ?? p.open })),
+    applications: baseApplications.map((a) => ({ ...a, state: state.applications[a.id] ?? a.state })),
   };
 }
 
@@ -127,11 +145,11 @@ function applicationsTo(list: readonly DummyPosition[], team: Team): DummyApplic
 }
 
 function newApplications(list: readonly DummyPosition[], team: Team): number {
-  return applicationsTo(list, team).filter((a) => a.stage === "new").length;
+  return applicationsTo(list, team).filter((a) => a.state.stage === "new").length;
 }
 
 function sinceMonday(list: readonly DummyPosition[], team: Team): string {
-  const fresh = applicationsTo(list, team).filter((a) => a.stage === "new" && new Date(a.appliedAt) >= MONDAY);
+  const fresh = applicationsTo(list, team).filter((a) => a.state.stage === "new" && new Date(a.appliedAt) >= MONDAY);
   return `+${fresh.length} since Monday`;
 }
 
@@ -352,20 +370,41 @@ function positionRow(p: DummyPosition, team: Team): PositionRow {
     department: departmentOf(p.divisionId).name,
     open: p.open,
     applications: received.length,
-    newApplications: received.filter((a) => a.stage === "new").length,
+    newApplications: received.filter((a) => a.state.stage === "new").length,
     quiet: quietNote(quietDays(p.open, lastActivity(p, team), NOW)),
     updated: ago(new Date(p.updatedAt), NOW),
   };
 }
 
+/** The divisions a viewer may post a role in: every one for the operations lead, the lead's own for a division lead. */
+function postableDivisions(kind: ViewerKind): DivisionChoice[] {
+  const ids: number[] =
+    kind === "operations-lead" ? divisions.map((d) => d.id) : kind === "division-lead" ? [myDivisionId(kind)] : [];
+  return ids.map((id) => {
+    const division = divisionOf(id);
+    return {
+      id,
+      name: division.name,
+      department: departmentOf(id).name,
+      deptCode: departmentCode[division.departmentId],
+      divCode: divisionLabel[division.id].code,
+    };
+  });
+}
+
+function nextPositionId(team: Team): number {
+  return Math.max(...team.positions.map((p) => p.id)) + 1;
+}
+
 function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
   const rows = positionsFor(kind, team).map((p) => positionRow(p, team));
+  const newPosition = { divisions: postableDivisions(kind), nextId: nextPositionId(team) };
   if (kind === "operations-lead") {
-    return { scope: "team", positions: rows };
+    return { scope: "team", positions: rows, newPosition };
   }
   if (kind === "division-lead") {
     const division = divisionOf(myDivisionId(kind)).name;
-    return { scope: "division", division, positions: rows };
+    return { scope: "division", division, positions: rows, newPosition };
   }
   throw new DashboardRefused("positions");
 }
@@ -376,13 +415,35 @@ function cvName(name: string): string {
   return `${[words[words.length - 1], ...words.slice(0, -1)].join("_")}_CV.pdf`;
 }
 
-function applicationEntry(a: DummyApplication, position: DummyPosition): ApplicationEntry {
+/** The applicant's applications to other roles, anywhere on the team, newest first. */
+function otherApplications(a: DummyApplication, team: Team): OtherApplication[] {
+  return team.applications
+    .filter((o) => o.id !== a.id && o.applicant.email === a.applicant.email)
+    .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
+    .map((o) => {
+      const position = team.positions.find((p) => p.id === o.positionId)!;
+      return {
+        title: position.title,
+        department: departmentOf(position.divisionId).name,
+        division: divisionOf(position.divisionId).name,
+        stage: o.state.stage,
+      };
+    });
+}
+
+function applicationEntry(a: DummyApplication, position: DummyPosition, team: Team): ApplicationEntry {
   return {
     id: a.id,
-    stage: a.stage,
-    applicant: { name: a.applicant.name, email: a.applicant.email, phone: a.applicant.phone, politoId: a.applicant.politoId },
+    state: a.state,
+    applicant: {
+      name: a.applicant.name,
+      email: a.applicant.email,
+      phone: a.applicant.phone,
+      politoId: a.applicant.politoId,
+      gender: a.applicant.gender,
+    },
     studies: { year: a.applicant.year, degree: a.applicant.degree },
-    position: { ref: position.slug, title: position.title },
+    position: { ref: position.slug, title: position.title, division: divisionOf(position.divisionId).name },
     applied: appliedLabels(new Date(a.appliedAt), NOW),
     documents: [
       { kind: "cv", name: cvName(a.applicant.name), size: fileSize(a.cvBytes), href: null },
@@ -391,6 +452,7 @@ function applicationEntry(a: DummyApplication, position: DummyPosition): Applica
         : []),
     ],
     answers: [a.answer],
+    otherApplications: otherApplications(a, team),
   };
 }
 
@@ -399,10 +461,12 @@ function applicationsPage(kind: ViewerKind, team: Team): ApplicationsPage {
   const scoped = positionsFor(kind, team);
   const byId = new Map(scoped.map((p) => [p.id, p]));
   return {
+    division: kind === "division-lead" ? divisionOf(myDivisionId(kind)).name : null,
+    now: NOW.toISOString(),
     positions: scoped.map((p) => ({ ref: p.slug, title: p.title })),
     applications: applicationsTo(scoped, team)
       .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
-      .map((a) => applicationEntry(a, byId.get(a.positionId)!)),
+      .map((a) => applicationEntry(a, byId.get(a.positionId)!, team)),
   };
 }
 
@@ -451,12 +515,33 @@ export function dummyDashboardData(
       await change({ kind: "position", id, open, initial: base.open });
     },
 
-    async setApplicationStage(id, stage: ApplicationStage) {
+    async createPosition(input) {
+      const allowed = postableDivisions(kind);
+      const division = allowed.find((d) => d.id === (input as { divisionId?: unknown } | null)?.divisionId);
+      if (!division) throw new DashboardRefused("a position in that division");
+      const checked = checkNewPosition(input);
+      if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
+      const id = nextPositionId(team);
+      const { position } = checked;
+      await change({
+        kind: "new-position",
+        position: { id, title: position.title, divisionId: division.id, open: position.open, motivationLetter: position.motivationLetter, createdAt: NOW.toISOString() },
+      });
+      return written({ id, code: newPositionCode(division, id) });
+    },
+
+    async moveApplication(id, move: LeadMove) {
       const base = baseApplications.find((a) => a.id === id);
-      if (!base || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
+      const current = team.applications.find((a) => a.id === id);
+      if (!base || !current || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
         throw new DashboardRefused(`application ${id}`);
       }
-      await change({ kind: "application", id, stage, initial: base.stage });
+      // The dummy team is seen from DUMMY_NOW, so its moves happen then too.
+      const result = applyMove(current.state, move, NOW);
+      if (!result.ok) return refused(result.reason);
+      // Confirm join adds no one here: the dummy roster is the arrays in ./team.ts.
+      await change({ kind: "application", id, state: result.state, initial: base.state });
+      return written(null);
     },
 
     divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person)),
