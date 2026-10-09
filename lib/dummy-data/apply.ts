@@ -101,9 +101,15 @@ export const positionText = {
 const departmentCode = { 1: "OPS", 2: "AER", 3: "REC", 4: "ELE", 5: "STR" } as const satisfies Readonly<
   Record<(typeof departments)[number]["id"], string>
 >;
-const divisionCode = { 1: "OPS", 2: "SFT", 3: "MSA", 4: "RSY", 5: "AVS", 6: "MFG" } as const satisfies Readonly<
-  Record<(typeof divisions)[number]["id"], string>
->;
+/** A division's code, and its name as the public pages print it (they add "Division" themselves). */
+const divisionLabel = {
+  1: { code: "OPS", name: "Operations" },
+  2: { code: "SFT", name: "Safety" },
+  3: { code: "MSA", name: "Mission Analysis" },
+  4: { code: "RSY", name: "Recovery Systems" },
+  5: { code: "AVS", name: "Avionics Software" },
+  6: { code: "MFG", name: "Manufacturing" },
+} as const satisfies Readonly<Record<(typeof divisions)[number]["id"], { code: string; name: string }>>;
 
 function applyPosition(p: DummyPosition): ApplyPosition {
   const division = divisions.find((d) => d.id === p.divisionId)!;
@@ -121,8 +127,8 @@ function applyPosition(p: DummyPosition): ApplyPosition {
     created_at: text.createdAt,
     requires_motivation_letter: text.motivationLetter,
     is_deleted: false,
-    div_name: division.name,
-    div_code: divisionCode[division.id],
+    div_name: divisionLabel[division.id].name,
+    div_code: divisionLabel[division.id].code,
     dept_id: department.id,
     dept_name: department.name,
     dept_code: departmentCode[department.id],
