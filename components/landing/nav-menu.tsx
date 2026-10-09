@@ -127,7 +127,7 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
           <div className="mt-auto">
             <DialogClose asChild>
               <Link
-                href="/sign-in"
+                href="/login"
                 className="block rounded-full border border-white-10 py-3 text-center text-base font-medium transition-colors hover:border-border-strong"
               >
                 Sign in

@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
+import { callbackPath } from "@/lib/auth-callback";
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const sessionCookie = getSessionCookie(request);
-  const isAuthenticated = !!sessionCookie;
 
-  if (isAuthenticated && (pathname === "/login" || pathname === "/sign-up")) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  // Google is the only sign-in (issue #118). The old sign-up and sign-in
+  // pages send their visitors, and their `cb`, to /login.
+  if (pathname === "/sign-up" || pathname === "/sign-in") {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.search = search;
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const isAuthenticated = !!getSessionCookie(request);
+
+  if (isAuthenticated && pathname === "/login") {
+    const target = callbackPath(request.nextUrl.searchParams.get("cb"));
+    return NextResponse.redirect(new URL(target, request.url));
   }
 
   const isDashboard =
@@ -24,5 +34,11 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/sign-up", "/dashboard/:path*", "/apply/:slug"],
+  matcher: [
+    "/login",
+    "/sign-up",
+    "/sign-in",
+    "/dashboard/:path*",
+    "/apply/:slug",
+  ],
 };
