@@ -1,3 +1,5 @@
+import type { Recruitment } from "@/lib/apply/positions";
+import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "./access";
 import type { Overview } from "./overview";
 import type { DashboardViewer } from "./viewer";
@@ -13,4 +15,8 @@ export interface DashboardData {
   readonly viewer: DashboardViewer;
   navCounts(): Promise<NavCounts>;
   overview(): Promise<Overview>;
+  /** The site-wide recruitment switch (issue #121): its state, and whether this viewer may flip it. */
+  recruitment(): Promise<RecruitmentControl>;
+  /** Flips the switch when this viewer may, and refreshes /apply; otherwise writes nothing. */
+  setRecruitment(recruitment: Recruitment): Promise<SwitchRecruitmentResult>;
 }

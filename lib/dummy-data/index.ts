@@ -1,3 +1,5 @@
+import type { Recruitment } from "@/lib/apply/positions";
+import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "@/lib/dashboard/access";
 import type { DashboardData } from "@/lib/dashboard/data";
 import {
@@ -25,6 +27,7 @@ import {
   type DummyPerson,
   type DummyPosition,
 } from "./team";
+import type { DummyRecruitmentStore } from "./recruitment";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts, with no database, so it works on a
@@ -111,14 +114,14 @@ function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): Activi
   }));
 }
 
-function teamOverview(kind: "operations-lead" | "division-lead"): TeamOverview {
+function teamOverview(kind: "operations-lead" | "division-lead", { isOpen }: Recruitment): TeamOverview {
   const scoped = positionsFor(kind);
   const open = scoped.filter((p) => p.open);
   const recruitmentStat = {
     label: "Recruitment",
-    value: recruitment.open ? "Open" : "Closed",
-    detail: recruitment.open ? `Public on the site since ${recruitment.since}` : "Positions are hidden on the site",
-    live: recruitment.open,
+    value: isOpen ? "Open" : "Closed",
+    detail: isOpen ? `Public on the site since ${recruitment.since}` : "Positions are hidden on the site",
+    live: isOpen,
   };
 
   if (kind === "operations-lead") {
@@ -232,11 +235,11 @@ function applicantOverview(): PersonalOverview {
   };
 }
 
-function overviewFor(kind: ViewerKind): Overview {
+function overviewFor(kind: ViewerKind, current: Recruitment): Overview {
   switch (kind) {
     case "operations-lead":
     case "division-lead":
-      return teamOverview(kind);
+      return teamOverview(kind, current);
     case "member":
       return memberOverview();
     case "non-member":
@@ -249,11 +252,19 @@ function navCountsFor(kind: ViewerKind): NavCounts {
   return fresh > 0 ? { applications: fresh } : {};
 }
 
-/** The dashboard as the test developer sees it, looking as `kind`. */
-export function dummyDashboardData(kind: ViewerKind): DashboardData {
+/**
+ * The dashboard as the test developer sees it, looking as `kind`, with the
+ * recruitment switch read from and kept in `recruitment` (./recruitment.ts).
+ */
+export function dummyDashboardData(kind: ViewerKind, recruitment: DummyRecruitmentStore): DashboardData {
+  const canSwitch = canSwitchRecruitmentAs(kind);
   return {
     viewer: viewerFor(kind),
     navCounts: async () => navCountsFor(kind),
-    overview: async () => overviewFor(kind),
+    overview: async () => overviewFor(kind, recruitment.current),
+    recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),
+    // Nothing is cached in dummy mode: /apply reads the cookie on each request.
+    setRecruitment: (next) =>
+      switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
   };
 }

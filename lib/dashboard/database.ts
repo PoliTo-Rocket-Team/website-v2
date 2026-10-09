@@ -1,6 +1,9 @@
 import "server-only";
 
+import { updateTag } from "next/cache";
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
+import { getRecruitmentControl, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import { getScopeInfoForCurrentUser } from "@/app/actions/get-member-scopes";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applications,
@@ -13,7 +16,10 @@ import {
   scopes,
   users,
 } from "@/db/schema";
+import type { Recruitment } from "@/lib/apply/positions";
+import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import { getCurrentUserId } from "@/lib/current-user";
+import { runAuditQuery } from "@/lib/db-audit";
 import type { NavCounts } from "./access";
 import type { DashboardData } from "./data";
 import {
@@ -398,5 +404,30 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     viewer,
     navCounts: () => navCountsOf(identity),
     overview: () => overviewOf(identity),
+    recruitment: getRecruitmentControl,
+    setRecruitment: (next) =>
+      switchRecruitment(next, {
+        // Read on the server, from the caller's positions scope rows.
+        maySwitch: async () => canSwitchRecruitment(await getScopeInfoForCurrentUser("positions")),
+        save: saveRecruitment,
+        refresh: () => updateTag(PUBLIC_POSITIONS_CACHE_TAG),
+      }),
   };
+}
+
+/**
+ * Stores the switch through runAuditQuery, so the audit trigger on
+ * `recruitment_setting` logs who set it and the new value.
+ */
+async function saveRecruitment(recruitment: Recruitment): Promise<void> {
+  const updatedAt = new Date().toISOString();
+  await runAuditQuery((db) =>
+    db
+      .insert(recruitmentSetting)
+      .values({ id: true, isOpen: recruitment.isOpen, updatedAt })
+      .onConflictDoUpdate({
+        target: recruitmentSetting.id,
+        set: { isOpen: recruitment.isOpen, updatedAt },
+      }),
+  );
 }
