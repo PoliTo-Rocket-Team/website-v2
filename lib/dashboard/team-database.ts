@@ -4,7 +4,7 @@ import { asc, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { departments, divisions, roles, scopes, users } from "@/db/schema";
-import type { AlumnusRow, OrgChart, Placement, RosterEntry } from "./team";
+import { boardSeatOf, type AlumnusRow, type BoardSeat, type OrgChart, type Placement, type RosterEntry } from "./team";
 
 // The database side of the Team pages (issue #143). One cached snapshot of
 // every role, the open org chart and every scope (ADR 0003: full-directory
@@ -99,16 +99,28 @@ export async function readTeamSnapshot(): Promise<TeamSnapshot> {
   return queryTeamSnapshot();
 }
 
-const ROLE_RANK = { president: 0, head: 1, lead: 2, core: 3 } as const;
+const ROLE_RANK = { president: 0, head: 2, lead: 3, core: 4 } as const;
+
+/**
+ * A board seat (Project Manager, Chief Engineer) has no role type of its own:
+ * it is a role in no department or division whose title names the seat.
+ */
+function boardSeatOfRole(role: RoleRow): BoardSeat | null {
+  if (role.type === "president" || role.dept_id !== null || role.division_id !== null) return null;
+  return boardSeatOf(role.title);
+}
 
 function rank(role: RoleRow): number {
-  return role.type === null ? 4 : ROLE_RANK[role.type];
+  if (boardSeatOfRole(role) !== null) return 1;
+  return role.type === null ? 5 : ROLE_RANK[role.type];
 }
 
 /** Where an active role puts someone; a unit that is closed or missing counts as not placed. */
 function placementOf(role: RoleRow, org: OrgChart): Placement {
   const division = org.divisions.find((d) => d.id === role.division_id);
   if (role.type === "president") return { role: "team-leader" };
+  const seat = boardSeatOfRole(role);
+  if (seat !== null) return { role: "board", seat };
   if (role.type === "head") {
     const departmentId = role.dept_id ?? division?.departmentId ?? null;
     if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId };
