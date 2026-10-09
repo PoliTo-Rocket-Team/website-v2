@@ -12,7 +12,7 @@ import {
 } from "@/lib/dashboard/overview";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { refused, written } from "@/lib/dashboard/write";
-import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder } from "./division";
+import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
 import {
   dummyDeleteAccount,
   dummyMyAccount,
@@ -281,8 +281,7 @@ export function dummyDashboardData(kind: ViewerKind): DashboardData {
 
     divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person)),
     giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, input)),
-    removeAccess: async () =>
-      person !== null && dummyDivisionAccess(person) !== null ? written(null) : refused("Only a division lead removes access here."),
+    removeAccess: async (grantId) => (person === null ? refused(notOnTeam) : dummyRemoveAccess(person, grantId)),
 
     divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
     placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),

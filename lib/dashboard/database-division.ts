@@ -11,6 +11,7 @@ import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-stor
 import {
   ACCESS_TARGETS,
   checkGiveAccess,
+  checkRemoveAccess,
   type AccessGrant,
   type AccessLevel,
   type AccessPerson,
@@ -111,7 +112,7 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
   const roleOf = new Map(team.map((t) => [t.member_id, t.type]));
   const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string }): AccessPerson => {
     const type = roleOf.get(memberId);
-    return { id: memberId, name: nameOf(row), role: type === "lead" || type === "head" ? "Division lead" : "Member" };
+    return { id: memberId, name: nameOf(row), standing: type === "lead" || type === "head" ? "lead" : "member" };
   };
 
   const ids = rows.map((r) => String(r.id));
@@ -194,8 +195,9 @@ async function giveAccess(identity: DashboardIdentity, input: unknown): Promise<
 async function removeAccess(identity: DashboardIdentity, grantId: number): Promise<WriteResult<null>> {
   const access = await readDivisionAccess(identity);
   if (access === null) return refused("Only a division lead removes access here.");
-  if (!access.grants.some((g) => g.id === grantId)) return refused("That access is not in your division.");
-  await runAuditQuery((db) => db.delete(scopes).where(eq(scopes.id, grantId)));
+  const checked = checkRemoveAccess(access, grantId);
+  if (!checked.ok) return refused(checked.error);
+  await runAuditQuery((db) => db.delete(scopes).where(eq(scopes.id, checked.value.id)));
   return written(null);
 }
 

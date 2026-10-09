@@ -2,8 +2,10 @@ import { randomInt } from "node:crypto";
 import {
   ACCESS_TARGETS,
   checkGiveAccess,
+  checkRemoveAccess,
   type AccessGrant,
   type AccessLevel,
+  type AccessPerson,
   type AccessTarget,
   type DivisionAccess,
 } from "@/lib/dashboard/division-access";
@@ -95,8 +97,8 @@ function localId(): number {
   return randomInt(1_000_000, 2_000_000_000);
 }
 
-function accessPerson(p: DummyPerson) {
-  return { id: p.id, name: p.name, role: p.role === "division-lead" ? "Division lead" : "Member" };
+function accessPerson(p: DummyPerson): AccessPerson {
+  return { id: p.id, name: p.name, standing: p.role === "member" ? "member" : "lead" };
 }
 
 /** Board 43 for a lead; null for anyone who leads no division. */
@@ -141,6 +143,19 @@ export function dummyGiveAccess(lead: DummyPerson, input: unknown): WriteResult<
       givenOn,
     })),
   );
+}
+
+/**
+ * Checks a removal as the database side does; nothing is stored. A row given
+ * on the page lives only in the page's state, so there is no stored grant to
+ * check it against, and removing it is allowed.
+ */
+export function dummyRemoveAccess(lead: DummyPerson, grantId: number): WriteResult<null> {
+  const access = dummyDivisionAccess(lead);
+  if (access === null) return refused("Only a division lead removes access here.");
+  if (!accessGrants.some((g) => g.id === grantId)) return written(null);
+  const checked = checkRemoveAccess(access, grantId);
+  return checked.ok ? written(null) : refused(checked.error);
 }
 
 /** Board 44 for a lead; null for anyone who leads no division. */

@@ -7,10 +7,13 @@ import {
   ACCESS_TARGETS,
   ACCESS_TARGET_LABELS,
   canGive,
+  canRemove,
   editLabelFor,
   grantSummary,
   levelLabel,
+  PERSON_STANDING_LABELS,
   shortUnitName,
+  type HeldAccess,
   type AccessGrant,
   type AccessLevel,
   type AccessTarget,
@@ -98,7 +101,7 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
         </section>
       )}
 
-      {grants.length > 0 && <GrantsTable grants={grants} unit={unit} onRemove={remove} />}
+      {grants.length > 0 && <GrantsTable grants={grants} held={access.held} unit={unit} onRemove={remove} />}
 
       <GiveAccessDrawer
         key={open ? "open" : "closed"}
@@ -125,10 +128,12 @@ function givenLine(g: AccessGrant): string {
 
 function GrantsTable({
   grants,
+  held,
   unit,
   onRemove,
 }: {
   grants: readonly AccessGrant[];
+  held: readonly HeldAccess[];
   unit: string;
   onRemove: (grant: AccessGrant) => void;
 }) {
@@ -147,7 +152,7 @@ function GrantsTable({
               <Avatar name={g.person.name} size="sm" />
               <span className="min-w-0">
                 <span className="block truncate text-[14px] font-medium">{g.person.name}</span>
-                <span className="block text-[12px] text-prt-muted">{g.person.role}</span>
+                <span className="block text-[12px] text-prt-muted">{PERSON_STANDING_LABELS[g.person.standing]}</span>
               </span>
             </span>
             <span className="col-start-1 row-start-2 text-[13px] text-text-2 md:col-start-auto md:row-start-auto">
@@ -160,14 +165,16 @@ function GrantsTable({
               {g.givenBy && <span className="ml-2 text-[12px] text-prt-muted md:hidden">{givenLine(g)}</span>}
             </span>
             <span className="hidden text-[13px] text-prt-muted md:block">{givenLine(g)}</span>
-            <button
-              type="button"
-              onClick={() => onRemove(g)}
-              aria-label={`Remove ${g.person.name}'s ${ACCESS_TARGET_LABELS[g.target]} access`}
-              className="col-start-2 row-span-3 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent md:col-start-auto md:row-span-1 md:row-start-auto"
-            >
-              <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-            </button>
+            {canRemove(held, g) && (
+              <button
+                type="button"
+                onClick={() => onRemove(g)}
+                aria-label={`Remove ${g.person.name}'s ${ACCESS_TARGET_LABELS[g.target]} access`}
+                className="col-start-2 row-span-3 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent md:col-start-auto md:row-span-1 md:row-start-auto"
+              >
+                <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            )}
           </li>
         ))}
       </ul>

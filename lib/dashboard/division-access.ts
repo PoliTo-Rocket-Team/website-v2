@@ -47,11 +47,19 @@ export type HeldAccess = {
   readonly level: AccessLevel;
 };
 
+/** A lead or head of the division, or anyone else in it. */
+export const PERSON_STANDINGS = ["lead", "member"] as const;
+export type PersonStanding = (typeof PERSON_STANDINGS)[number];
+
+export const PERSON_STANDING_LABELS: Readonly<Record<PersonStanding, string>> = {
+  lead: "Division lead",
+  member: "Member",
+};
+
 export type AccessPerson = {
   readonly id: number;
   readonly name: string;
-  /** "Member" */
-  readonly role: string;
+  readonly standing: PersonStanding;
 };
 
 /** One row of the table: a person, what they were given, and by whom. */
@@ -103,14 +111,36 @@ export function canGive(held: readonly HeldAccess[], targets: readonly AccessTar
 }
 
 /**
+ * Whether the lead may take a grant away, or put a new level in its place:
+ * only on a target they hold, at the grant's level or above, and never on
+ * another lead's own access. A lead who can view Members cannot touch an edit
+ * grant on Members, so they cannot downgrade it either.
+ */
+export function canRemove(held: readonly HeldAccess[], grant: Pick<AccessGrant, "person" | "target" | "level">): boolean {
+  return grant.person.standing !== "lead" && canGive(held, [grant.target], grant.level);
+}
+
+type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
+
+/** Checks a Remove access request: the grant is in the lead's division, and theirs to remove. */
+export function checkRemoveAccess(access: Pick<DivisionAccess, "held" | "grants">, grantId: number): Checked<AccessGrant> {
+  const grant = access.grants.find((g) => g.id === grantId);
+  if (grant === undefined) return { ok: false, error: "That access is not in your division." };
+  if (!canRemove(access.held, grant)) return { ok: false, error: "You can only remove access you have." };
+  return { ok: true, value: grant };
+}
+
+/**
  * Checks a Give access request from the browser against what the lead holds
- * and who is in their division. Every rule runs on the server: the drawer's
- * own limits are a convenience, not the check.
+ * and who is in their division. A new level replaces the person's grant on
+ * each chosen target, so every grant it replaces must be one the lead may
+ * remove. Every rule runs on the server: the drawer's own limits are a
+ * convenience, not the check.
  */
 export function checkGiveAccess(
-  access: Pick<DivisionAccess, "held" | "people">,
+  access: Pick<DivisionAccess, "held" | "people" | "grants">,
   input: unknown,
-): { ok: true; value: GiveAccess } | { ok: false; error: string } {
+): Checked<GiveAccess> {
   const parsed = giveAccessSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
   const { personId, level } = parsed.data;
@@ -120,6 +150,10 @@ export function checkGiveAccess(
   }
   if (!canGive(access.held, targets, level)) {
     return { ok: false, error: "You can only give access you have." };
+  }
+  const replaced = access.grants.filter((g) => g.person.id === personId && targets.includes(g.target));
+  if (!replaced.every((g) => canRemove(access.held, g))) {
+    return { ok: false, error: "You can only change access you have." };
   }
   return { ok: true, value: { personId, targets, level } };
 }

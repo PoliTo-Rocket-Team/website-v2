@@ -63,14 +63,14 @@ viewer reaches the page, then hands the input to the dashboard data interface, w
 ([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts),
 [lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts)) checks the input and the
 viewer's own scope again before it writes through `runAuditQuery` or `runAuditBatch`. A test
-developer's write goes to the dummy side, which checks the same rules and stores nothing. Several writes that must land
-together go through `runAuditBatch` instead: one `db.batch` with the audit setup first. A batch
-cannot pass one insert's id to the next, so a later write finds an earlier row by a unique value
-(the application finds its file rows by their unique Blob pathname). Better Auth writes its own
-tables through its adapter and does not use `runAuditQuery`. The application submit's rules live
-in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and private file store passed in, so
-[submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes; the other mutations have no
-automated tests.
+developer's write goes to the dummy side, which checks the same rules and stores nothing. Several
+writes that must land together go through `runAuditBatch` instead: one `db.batch` with the audit
+setup first. A batch cannot pass one insert's id to the next, so a later write finds an earlier row
+by a unique value (the application finds its file rows by their unique Blob pathname). Better Auth
+writes its own tables through its adapter and does not use `runAuditQuery`. The application submit's
+rules live in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and private file
+store passed in, so [submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes; the other
+mutations have no automated tests.
 
 ## Why it is not obvious
 
