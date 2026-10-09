@@ -82,7 +82,9 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
       {access.held.length > 0 && (
         <section className="mt-6">
           <h2 className={EYEBROW}>Your access</h2>
-          <ul className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          {/* As many cards per row as fit at 200px, so a card's line stays whole
+              when the Give access drawer narrows the page. */}
+          <ul className="mt-2.5 grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2.5">
             {access.held.map((h) => {
               const Icon = TARGET_ICONS[h.target];
               return (
@@ -90,8 +92,8 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
                   <Icon aria-hidden className="h-4 w-4 shrink-0 text-accent" strokeWidth={1.75} />
                   <span className="min-w-0">
                     <span className="block text-[13px] font-semibold">{ACCESS_TARGET_LABELS[h.target]}</span>
-                    <span className="block truncate text-[12px] text-prt-muted">
-                      {unit} · {levelLabel(h.target, h.level)}
+                    <span className="block text-[12px] text-prt-muted">
+                      {unit} · <span className="whitespace-nowrap">{levelLabel(h.target, h.level)}</span>
                     </span>
                   </span>
                 </li>
@@ -119,7 +121,12 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
   );
 }
 
-const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 md:grid-cols-[150px_minmax(0,1.6fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_32px] md:px-[18px]";
+// From md the header and every row are subgrids of one set of columns on the
+// table, so Level and Given by keep their content on one line however narrow
+// the page gets (the Give access drawer takes 440px from xl) and the header
+// still lines up with the rows.
+const TABLE_COLUMNS = "md:grid md:grid-cols-[150px_minmax(0,1.6fr)_minmax(max-content,0.7fr)_minmax(max-content,0.9fr)_32px] md:gap-x-4";
+const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 md:col-span-full md:grid-cols-subgrid md:px-[18px]";
 
 /** "You · 2 Oct" */
 function givenLine(g: AccessGrant): string {
@@ -138,14 +145,14 @@ function GrantsTable({
   onRemove: (grant: AccessGrant) => void;
 }) {
   return (
-    <section aria-label="People you gave access" className={`${PANEL} mt-5 overflow-hidden`}>
+    <section aria-label="People you gave access" className={`${PANEL} ${TABLE_COLUMNS} mt-5 overflow-hidden`}>
       <div aria-hidden className={`${ROW} hidden h-9 border-b border-hairline md:grid`}>
         <span className={EYEBROW}>Person</span>
         <span className={EYEBROW}>Access</span>
-        <span className={EYEBROW}>Level</span>
-        <span className={EYEBROW}>Given by</span>
+        <span className={`${EYEBROW} whitespace-nowrap`}>Level</span>
+        <span className={`${EYEBROW} whitespace-nowrap`}>Given by</span>
       </div>
-      <ul className="divide-y divide-hairline">
+      <ul className="divide-y divide-hairline md:col-span-full md:grid md:grid-cols-subgrid">
         {grants.map((g) => (
           <li key={g.id} className={`${ROW} py-3`}>
             <span className="flex min-w-0 items-center gap-3">
@@ -159,12 +166,12 @@ function GrantsTable({
               {ACCESS_TARGET_LABELS[g.target]} · {unit}
             </span>
             <span className="col-start-1 row-start-3 md:col-start-auto md:row-start-auto">
-              <span className="inline-flex rounded-full bg-white-10 px-2.5 py-0.5 text-[12px] text-prt-text">
+              <span className="inline-flex whitespace-nowrap rounded-full bg-white-10 px-2.5 py-0.5 text-[12px] text-prt-text">
                 {levelLabel(g.target, g.level)}
               </span>
               {g.givenBy && <span className="ml-2 text-[12px] text-prt-muted md:hidden">{givenLine(g)}</span>}
             </span>
-            <span className="hidden text-[13px] text-prt-muted md:block">{givenLine(g)}</span>
+            <span className="hidden whitespace-nowrap text-[13px] text-prt-muted md:block">{givenLine(g)}</span>
             {canRemove(held, g) && (
               <button
                 type="button"
