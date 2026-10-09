@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: "Team tree · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 42 (folded on the viewer's path) and 42b (every department open).
+// Board 54c (the family tree on a pan and zoom canvas) and, on phones, 54c-m.
 export default function TeamTreePage() {
   return (
     <Suspense fallback={null}>

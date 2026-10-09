@@ -4,7 +4,7 @@
 // the Overview read the same people. Later dashboard pages add their arrays
 // beside these.
 
-import type { OrgDepartment, OrgDivision, Placement } from "@/lib/dashboard/team";
+import type { BoardSeat, OrgDepartment, OrgDivision, Placement } from "@/lib/dashboard/team";
 
 export type DummyDepartment = OrgDepartment;
 
@@ -54,6 +54,7 @@ export const divisions = [
 ] as const satisfies readonly DummyDivision[];
 
 const leader = { role: "team-leader" } as const satisfies Placement;
+const board = (seat: BoardSeat): Placement => ({ role: "board", seat });
 const head = (departmentId: number): Placement => ({ role: "head", departmentId });
 const lead = (divisionId: number): Placement => ({ role: "division-lead", divisionId });
 const member = (divisionId: number | null): Placement => ({ role: "member", divisionId });
@@ -193,6 +194,9 @@ export const people: readonly DummyPerson[] = ([
   [90, "Selin Aydın", member(14), M, 2025],
   [91, "Lena Fischer", member(14), M, 2026],
   [92, "Davide Galli", member(14), M, 2026],
+  // The board seats beside the team leader (board 54c).
+  [93, "Lorenzo Gallo", board("project-manager"), "Project Manager", 2021],
+  [94, "Federica Moretti", board("chief-engineer"), "Chief Engineer", 2021],
 ] as const satisfies readonly Row[]).map(person);
 
 /** People who were on the team (board 46c). `shownOnSite` is the switch on the Alumni page. */
