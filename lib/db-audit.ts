@@ -32,3 +32,21 @@ export async function runAuditQuery<TResult>(
 
   return result;
 }
+
+type AuditBatch = [BatchItem<"pg">, ...BatchItem<"pg">[]];
+
+/**
+ * Runs several writes as one transaction (the neon-http driver sends a
+ * `db.batch` as one), with the audit user set first, as runAuditQuery does
+ * for one write. The batch cannot read one write's result in the next, so a
+ * later write finds an earlier row by a unique value instead. A write with no
+ * signed-in user is refused here: it would log no one.
+ */
+export async function runAuditBatch(buildQueries: (db: AuditDb) => AuditBatch): Promise<void> {
+  const db = getDb();
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    throw new Error("runAuditBatch needs a signed-in user");
+  }
+  await db.batch([buildAuditSetupQuery(db, userId), ...buildQueries(db)]);
+}

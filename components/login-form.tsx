@@ -7,12 +7,12 @@ import { signIn } from "@/lib/auth-client";
 import { callbackPath } from "@/lib/auth-callback";
 import { Icons } from "@/components/ui/icons";
 
-// The only way to sign in (issue #118). Google returns the user to the `cb`
-// page that sent them here, or to the dashboard.
-export function GoogleSignInButton() {
+// The only way to sign in (issue #118). Google returns the user to the page
+// given, else to the `cb` page that sent them to /login, or to the dashboard.
+export function GoogleSignInButton({ returnTo }: { returnTo?: string }) {
   const searchParams = useSearchParams();
   const [pending, setPending] = useState(false);
-  const callbackURL = callbackPath(searchParams.get("cb"));
+  const callbackURL = callbackPath(returnTo ?? searchParams.get("cb"));
 
   const signInWithGoogle = async () => {
     setPending(true);

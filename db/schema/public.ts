@@ -87,6 +87,12 @@ export const users = pgTable("users", {
   linkedin: text("linkedin"),
   politoId: text("polito_id"),
   program: text("program"),
+  // From the application form (issue #120); politoId, program, levelOfStudy
+  // and origin above are reused for its other fields.
+  phone: text("phone"),
+  dateOfBirth: date("date_of_birth", { mode: "string" }),
+  gender: text("gender"),
+  referralSource: text("referral_source"),
   member: integer("member").references(() => members.memberId),
   createdAt: timestamp("created_at", {
     withTimezone: true,
@@ -232,6 +238,11 @@ export const applications = pgTable("applications", {
   status: applicationStatusEnum("status").default("received").notNull(),
   customAnswers: jsonb("custom_answers").array(),
 }, (table) => ({
+  // One application per user per position (issue #120).
+  userPositionUnique: unique("applications_user_position_unique").on(
+    table.userId,
+    table.applyPositionId,
+  ),
   cvFileIdIdx: index("applications_cv_file_id_idx").on(table.cvFileId),
   coverLetterFileIdIdx: index("applications_cover_letter_file_id_idx").on(
     table.coverLetterFileId,

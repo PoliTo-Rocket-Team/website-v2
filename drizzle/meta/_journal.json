@@ -50,6 +50,13 @@
       "when": 1791502126997,
       "tag": "0006_recruitment_setting_row",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791535652886,
+      "tag": "0007_application_form",
+      "breakpoints": true
     }
   ]
 }
