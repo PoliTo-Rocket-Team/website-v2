@@ -165,7 +165,7 @@ export function SignInPopover({ title, returnTo }: { title: string; returnTo: st
           <GoogleSignInButton returnTo={returnTo} />
         </Suspense>
       </div>
-      <p className="mt-9 text-[13px] leading-[1.5] text-prt-muted">{positionPage.signIn.terms}</p>
+      <p className="mt-9 text-[13px] leading-[1.5] text-prt-muted md:-mx-4 md:text-[12px]">{positionPage.signIn.terms}</p>
     </StatePopover>
   );
 }
