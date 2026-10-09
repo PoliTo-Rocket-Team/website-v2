@@ -56,9 +56,15 @@ client component as props.
 ## When this applies
 
 Any write to an app table in `public`. Call sites today: `handleDelete`, `handleEditPosition` and
-`handleAddPosition` in `server-actions.ts`, the only mutation module. Better Auth writes its own
-tables through its adapter and does not use `runAuditQuery`. There are no automated tests for
-mutations yet.
+`handleAddPosition` in `server-actions.ts`, and `sendApplication` in
+[app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). Several writes that must land
+together go through `runAuditBatch` instead: one `db.batch` with the audit setup first. A batch
+cannot pass one insert's id to the next, so a later write finds an earlier row by a unique value
+(the application finds its file rows by `r2_key`). Better Auth writes its own
+tables through its adapter and does not use `runAuditQuery`. The application submit's rules live
+in [lib/apply/submit.ts](../lib/apply/submit.ts), with its database and R2 passed in, so
+[submit.test.ts](../lib/apply/submit.test.ts) tests them with fakes; the other mutations have no
+automated tests.
 
 ## Why it is not obvious
 

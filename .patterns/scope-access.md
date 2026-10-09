@@ -13,7 +13,7 @@ session cookie; server code reads the user id from that cookie, then turns the m
    [lib/auth-client.ts](../lib/auth-client.ts); it never calls `/api/auth` by hand.
 
 2. **The edge gate only checks that a cookie exists.** [proxy.ts](../proxy.ts) sends a request for
-   `/dashboard/*` or `/apply/<slug>` to `/login?cb=<path>` when `getSessionCookie` finds nothing,
+   `/dashboard/*` to `/login?cb=<path>` when `getSessionCookie` finds nothing,
    sends a signed-in user on `/login` to the `cb` path (`callbackPath` in
    [lib/auth-callback.ts](../lib/auth-callback.ts), which falls back to `/dashboard` for any `cb`
    that resolves off-site), and sends `/sign-up` and `/sign-in` to `/login`. It does not validate

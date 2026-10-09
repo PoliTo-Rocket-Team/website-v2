@@ -49,6 +49,13 @@ export function positionHref(position: Pick<ApplyPosition, "id" | "title">): str
   return `/apply/${positionSlug(position)}`;
 }
 
+/** A position's code, as the list and its page show it: `OPS-SFT-001`. */
+export function positionCode(position: Pick<ApplyPosition, "id" | "dept_code" | "div_code">): string {
+  return [position.dept_code, position.div_code, String(position.id).padStart(3, "0")]
+    .filter((part) => part !== "")
+    .join("-");
+}
+
 /** One row of the positions list, real or placeholder. */
 export type Role = {
   key: string;
@@ -110,7 +117,7 @@ function openRole(p: ApplyPosition): Role {
     key: `position-${p.id}`,
     title: p.title ?? "",
     division: p.div_name,
-    code: [p.dept_code, p.div_code, String(p.id).padStart(3, "0")].filter((part) => part !== "").join("-"),
+    code: positionCode(p),
     description: p.description ?? "",
     required: p.required_skills ?? [],
     desirable: p.desirable_skills ?? [],

@@ -121,3 +121,45 @@ export const faqs: readonly Faq[] = [
     ],
   },
 ];
+
+/** The position page's copy (boards 35, 35b, 35c and 35d, with their phone boards). */
+export const positionPage = {
+  back: "All open positions",
+  requiredTitle: "Required skills",
+  desirableTitle: "Desirable skills",
+  eyebrow: "APPLY FOR THIS ROLE",
+  signIn: {
+    title: "Sign in to apply",
+    body: "Sign in with Google to open the form. Your application is linked to your account, so we know who sent each one.",
+  },
+  sent: {
+    title: "Application sent",
+    action: "See other open positions",
+  },
+  closed: {
+    title: "Not accepting applications right now",
+    body: "This position is closed for now. Most roles open at the start of a semester.",
+    action: "See all roles",
+  },
+  form: {
+    about: "About you",
+    studies: "Your studies",
+    questions: { title: "Questions for this role", intro: "This position asks a few extra questions. Write a few lines for each." },
+    documents: {
+      title: "Documents",
+      intro:
+        "PDF only, one file each. The motivation letter is one page at most and covers: why you chose your degree, any other teams you have been in, why you are applying for this position, and how you would describe yourself.",
+      introCvOnly: "PDF only, one file.",
+    },
+    more: { title: "A few more questions", intro: "For statistics only. Your answers here do not affect your application in any way." },
+    oneEach: "Applying for more than one position? Send one application for each.",
+    send: "Send application",
+    sending: "Sending",
+  },
+} as const;
+
+/** Board 35c's thanks line. */
+export function sentMessage(a: { firstName: string; title: string; division: string; email: string }): string {
+  const thanks = a.firstName === "" ? "Thanks." : `Thanks, ${a.firstName}.`;
+  return `${thanks} Your application for ${a.title} is in. The ${a.division} division lead will read it and contact you at ${a.email}.`;
+}

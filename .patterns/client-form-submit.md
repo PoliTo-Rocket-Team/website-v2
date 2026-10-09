@@ -16,7 +16,9 @@ client method or a server action passed in as a prop, and reports the result wit
 2. **Local state, then validate on submit.** Each form holds its values and a loading flag in
    `useState`. On submit it calls `e.preventDefault()`, sets loading, and validates. The email
    and password forms that used a `zod` schema with `safeParse` were removed with email sign-in
-   (issue #118); no client form uses one today.
+   (issue #118). The application form ([application-form.tsx](../components/apply/application-form.tsx))
+   validates with the `zod` schema in [lib/apply/application-form.ts](../lib/apply/application-form.ts),
+   and its server action parses the same FormData with the same schema.
 
 3. **Call the backend.** The one auth control, the Google button in
    [login-form.tsx](../components/login-form.tsx), calls `signIn.social` from

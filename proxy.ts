@@ -20,11 +20,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL(target, request.url));
   }
 
+  // A position page (/apply/<slug>) is open to everyone: signed out, it
+  // shows its own sign-in card in place of the form (issue #120).
   const isDashboard =
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
-  const isApplySlug = pathname.startsWith("/apply/") && pathname !== "/apply/";
 
-  if ((isDashboard || isApplySlug) && !isAuthenticated) {
+  if (isDashboard && !isAuthenticated) {
     const signInUrl = new URL("/login", request.url);
     signInUrl.searchParams.set("cb", pathname + search);
     return NextResponse.redirect(signInUrl);
@@ -39,6 +40,5 @@ export const config = {
     "/sign-up",
     "/sign-in",
     "/dashboard/:path*",
-    "/apply/:slug",
   ],
 };

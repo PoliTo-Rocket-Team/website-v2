@@ -268,3 +268,35 @@ export async function getPublicPositions(): Promise<PublicPositions> {
       .map((position) => toApplyPosition(position)),
   };
 }
+
+export type PositionWithRecruitment =
+  | { status: "found"; position: ApplyPosition; recruitment: Recruitment }
+  | { status: "missing" }
+  | { status: "database-not-configured" };
+
+/**
+ * One position and the recruitment switch, read fresh for the position page
+ * and the submit (issue #120), never from the cached snapshot: the submit
+ * must see a position closed a minute ago. Deleted positions are read too,
+ * so the page can say the position is not public rather than not found.
+ */
+export async function getPositionWithRecruitment(id: number): Promise<PositionWithRecruitment> {
+  if (!isDatabaseConfigured()) {
+    return { status: "database-not-configured" };
+  }
+
+  const [[row], recruitment] = await Promise.all([
+    getDb()
+      .select(basePositionSelection())
+      .from(applyPositions)
+      .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+      .innerJoin(departments, eq(divisions.deptId, departments.id))
+      .where(eq(applyPositions.id, id))
+      .limit(1),
+    queryRecruitment(),
+  ]);
+
+  return row === undefined
+    ? { status: "missing" }
+    : { status: "found", position: toApplyPosition(row), recruitment };
+}
