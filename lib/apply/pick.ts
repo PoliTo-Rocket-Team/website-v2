@@ -34,3 +34,23 @@ export function pickApplyData(request: ApplyRequest, sides: ApplySides): ApplyDa
     dummyRecruitmentOf(request.recruitmentCookie),
   );
 }
+
+/** What a request to /apply carries that can change its list: the `open` query value and the dummy recruitment cookie. */
+export type ApplyListRequest = Pick<ApplyRequest, "env" | "openSelector" | "recruitmentCookie">;
+
+/**
+ * Whether /apply has to be rendered for this request (issue #163). Only in
+ * dummy mode, and only when the request carries the `open` selector or the
+ * dummy recruitment cookie: those are the only request data that change the
+ * list. Every other visit gets the prerendered page, which reads the
+ * environment alone (plainApplyRequest).
+ */
+export function applyListIsPerRequest(request: ApplyListRequest): boolean {
+  if (!dummyDataOn(request.env)) return false;
+  return (request.openSelector ?? null) !== null || (request.recruitmentCookie ?? null) !== null;
+}
+
+/** The request the prerendered /apply stands for: this environment, and no viewer, selector or cookie. */
+export function plainApplyRequest(env: DummyModeEnv): ApplyRequest {
+  return { env, viewerCookie: null, openSelector: null, recruitmentCookie: null };
+}
