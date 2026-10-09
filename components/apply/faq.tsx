@@ -6,7 +6,8 @@ import { applyPage, faqs, RECRUITMENT_EMAIL } from "@/lib/apply/page";
 
 // Board 34's questions: the title and the contact line on the left, from lg;
 // the questions on the right, each over a hairline, with a plus that turns to
-// a minus when open. The first starts open, as the board draws it. Phones
+// a minus when open. Every answer starts closed, as every accordion on /apply
+// does (issue #157); the board draws one open only to show the open look. Phones
 // (34m) stack the two. It is the repo's Radix accordion, one answer open at a
 // time, opening and closing at once.
 export function Faq() {
@@ -25,7 +26,7 @@ export function Faq() {
             or on our socials.
           </p>
         </div>
-        <AccordionPrimitive.Root type="single" collapsible defaultValue={faqs[0]?.question} className="lg:pt-3">
+        <AccordionPrimitive.Root type="single" collapsible className="lg:pt-3">
           {faqs.map((faq) => (
             <AccordionPrimitive.Item key={faq.question} value={faq.question} className="border-b border-white-5">
               <AccordionPrimitive.Header asChild>

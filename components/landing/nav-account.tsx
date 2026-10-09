@@ -47,14 +47,17 @@ export function useNavViewer(): NavViewer | null {
   return viewer;
 }
 
-const PILL = "rounded-full border border-white-10 font-medium text-prt-text transition-colors duration-300 ease-out hover:border-border-strong";
+// Both ends of each place share one height, so swapping them moves nothing.
+const PILL = "items-center rounded-full border border-white-10 font-medium text-prt-text transition-colors duration-300 ease-out hover:border-border-strong";
+const BAR = `hidden h-11 text-[15px] md:inline-flex ${PILL}`;
+const FOOT = `flex h-[50px] justify-center text-base ${PILL}`;
 
 /** Right of the bar, from md: the ghost "Sign in" pill, or the viewer's pill of the same height. */
 export function NavAccount() {
   const viewer = useNavViewer();
   if (viewer === null) {
     return (
-      <Link href="/login" className={`hidden px-5 py-2.5 text-[15px] md:inline-block ${PILL}`}>
+      <Link href="/login" className={`px-5 ${BAR}`}>
         Sign in
       </Link>
     );
@@ -62,7 +65,7 @@ export function NavAccount() {
   return (
     <Link
       href="/dashboard"
-      className={`hidden items-center gap-2.5 py-[7px] pl-[7px] pr-4 text-[15px] md:inline-flex ${PILL}`}
+      className={`gap-2.5 pl-[7px] pr-4 ${BAR}`}
     >
       <Avatar name={viewer.name} size="sm" accent />
       <span className="max-w-[180px] truncate">{viewer.name}</span>
@@ -74,13 +77,13 @@ export function NavAccount() {
 export function NavMenuAccount({ viewer }: { viewer: NavViewer | null }) {
   if (viewer === null) {
     return (
-      <Link href="/login" className={`block py-3 text-center text-base ${PILL}`}>
+      <Link href="/login" className={FOOT}>
         Sign in
       </Link>
     );
   }
   return (
-    <Link href="/dashboard" className={`flex items-center justify-center gap-2.5 py-[10px] text-base ${PILL}`}>
+    <Link href="/dashboard" className={`gap-2.5 px-5 ${FOOT}`}>
       <Avatar name={viewer.name} size="sm" accent />
       <span className="min-w-0 truncate">{viewer.name}</span>
     </Link>
