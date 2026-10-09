@@ -69,10 +69,10 @@ function Header({ position }: { position: PositionView }) {
         {position.title}
       </h1>
       {lead !== undefined && (
-        <p className="mt-4 max-w-[760px] text-[17px] leading-[1.6] text-text-2 md:mt-6 md:text-[21px]">{lead}</p>
+        <p className="mt-4 text-[17px] leading-[1.6] text-text-2 md:mt-6 md:text-[21px]">{lead}</p>
       )}
       {body.length > 0 && (
-        <div className="mt-8 flex max-w-[760px] flex-col gap-4 text-[16px] leading-[1.7] text-text-2 md:mt-12 md:gap-5 md:text-[17px] md:leading-[1.85]">
+        <div className="mt-8 flex flex-col gap-4 text-[16px] leading-[1.7] text-text-2 md:mt-6 md:gap-5 md:text-[17px] md:leading-[1.85]">
           {body.map((p) => (
             <p key={p}>{p}</p>
           ))}
