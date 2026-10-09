@@ -57,6 +57,20 @@
       "when": 1791535652886,
       "tag": "0007_application_form",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791588091325,
+      "tag": "0008_dashboard_self_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791588092325,
+      "tag": "0009_dashboard_self_v2_audit",
+      "breakpoints": true
     }
   ]
 }

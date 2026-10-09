@@ -303,15 +303,3 @@ export const activity = [
   { actorId: 2, actor: "Marco Bianchi", text: "Marco Bianchi gave Luca Marino edit access to Positions", when: "3 days ago", divisionId: 1 },
   { actorId: 2, actor: "Marco Bianchi", text: "Marco Bianchi opened CFD Analyst", when: "4 days ago", divisionId: 1 },
 ] as const satisfies readonly DummyActivity[];
-
-export type DummyApplication = {
-  readonly positionId: number;
-  readonly sent: string;
-  readonly status: "received" | "in-review";
-};
-
-/** The non-member test developer's own applications (board 45b). */
-export const ownApplications = [
-  { positionId: 1, sent: "9 Oct 2026", status: "in-review" },
-  { positionId: 7, sent: "2 Oct 2026", status: "received" },
-] as const satisfies readonly DummyApplication[];

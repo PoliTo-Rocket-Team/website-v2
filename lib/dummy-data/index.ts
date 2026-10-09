@@ -7,6 +7,7 @@ import {
   type ActivityItem,
   type AttentionItem,
   type ChecklistItem,
+  type OwnApplication,
   type Overview,
   type PersonalOverview,
   type RosterPerson,
@@ -31,10 +32,17 @@ import { applyDummyChange, type DummyChange, type DummyState, type DummyStateSto
 import { refused, written } from "@/lib/dashboard/write";
 import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
+import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
+import { sentLabel } from "@/lib/dashboard/my-applications";
+import { NO_OWN_STORE, type OwnChanges, type OwnChangesStore } from "./own";
+import { ownApplicationsOf, isWithdrawn } from "./own-applications";
 import {
+  dummyChooseSlot,
   dummyDeleteAccount,
   dummyMyAccount,
+  dummyMyApplications,
   dummyMyProfile,
+  dummySaveDetails,
   dummySaveLinkedin,
   dummySetPhoto,
   dummyWithdraw,
@@ -45,7 +53,6 @@ import {
   departments,
   divisions,
   DUMMY_NOW,
-  ownApplications,
   people,
   personFor,
   positions as basePositions,
@@ -305,25 +312,37 @@ function memberOverview(): PersonalOverview {
   };
 }
 
-function applicantOverview(team: Team): PersonalOverview {
+/** How the Overview's short list words each of the applicant's own applications. */
+const overviewStatus = {
+  received: "received",
+  "in-review": "in-review",
+  interview: "in-review",
+  accepted: "accepted",
+  "not-selected": "declined",
+  joined: "accepted",
+} as const satisfies Readonly<Record<string, OwnApplication["status"]>>;
+
+function applicantOverview(team: Team, own: OwnChanges): PersonalOverview {
   return {
     shape: "personal",
     person: { name: applicant.name, line: `Applicant · ${applicant.email}`, since: null, edit: null },
     checklist: null,
     roster: null,
-    applications: ownApplications.map((a) => {
-      const position = team.positions.find((p) => p.id === a.positionId)!;
-      return {
-        title: position.title,
-        detail: `${departmentOf(position.divisionId).name} · sent ${a.sent}`,
-        status: a.status,
-      };
-    }),
+    applications: ownApplicationsOf("non-member")
+      .filter((a) => !isWithdrawn(a, own))
+      .map((a) => {
+        const position = team.positions.find((p) => p.id === a.positionId)!;
+        return {
+          title: position.title,
+          detail: `${departmentOf(position.divisionId).name} · sent ${sentLabel(a.sent)}`,
+          status: overviewStatus[a.status.kind],
+        };
+      }),
     hint: null,
   };
 }
 
-function overviewFor(kind: ViewerKind, team: Team): Overview {
+function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges): Overview {
   switch (kind) {
     case "operations-lead":
     case "division-lead":
@@ -331,7 +350,7 @@ function overviewFor(kind: ViewerKind, team: Team): Overview {
     case "member":
       return memberOverview();
     case "non-member":
-      return applicantOverview(team);
+      return applicantOverview(team, own);
   }
 }
 
@@ -412,31 +431,34 @@ function teamPersonFor(kind: ViewerKind): DummyPerson | null {
 }
 
 const notOnTeam = "This page is for team members.";
-const notApplicant = "This page is for applicants.";
 
 /**
  * The dashboard as the test developer sees it, looking as `kind`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
- * their Team page edits in `teamEdits` (./edits.ts). Other writes check what
- * was sent as the database side does, store nothing, and answer what the page
- * shows next.
+ * their Team page edits in `teamEdits` (./edits.ts), and the changes on their
+ * own pages in `own` (./own.ts). Other writes check what was sent as the
+ * database side does, store nothing, and answer what the page shows next.
  */
 export function dummyDashboardData(
   kind: ViewerKind,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
   teamEdits: TeamEditsStore = NO_TEAM_EDITS,
+  own: OwnChangesStore = NO_OWN_STORE,
 ): DashboardData {
   const team = teamOf(recruitment.current, changes.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(kind);
   const canSwitch = canSwitchRecruitmentAs(kind);
+  const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
+  const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
+  const myApplications = () => dummyMyApplications(kind, me, own.current);
 
   return {
     viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind, team),
-    overview: async () => overviewFor(kind, team),
+    overview: async () => overviewFor(kind, team, own.current),
     recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
@@ -466,14 +488,39 @@ export function dummyDashboardData(
     divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
     placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),
 
-    myProfile: async () => (person === null ? null : dummyMyProfile(person)),
+    myProfile: async () => (person === null ? null : dummyMyProfile(kind, person, own.current, leaveStateOf(person))),
     saveLinkedin: async (text) => (person === null ? refused(notOnTeam) : dummySaveLinkedin(text)),
     setPhoto: async (photo) => (person === null ? refused(notOnTeam) : dummySetPhoto(photo)),
-    requestLeave: async () => (person === null ? refused(notOnTeam) : written(null)),
+    async leaveTeam(reason) {
+      if (person === null) return refused(notOnTeam);
+      if (leaveStateOf(person) === "left") return refused("You already left the team.");
+      // The reason is checked as the database side checks it; a preview keeps none.
+      leaveReason(reason);
+      const year = new Date(DUMMY_NOW).getUTCFullYear();
+      await teamEdits.save({ ...teamEdits.current, movedToAlumni: { ...teamEdits.current.movedToAlumni, [person.id]: year } });
+      return written(null);
+    },
 
-    myAccount: async () => (person === null ? dummyMyAccount(applicant) : null),
-    withdrawApplication: async (id) => (person === null ? dummyWithdraw(applicant, id) : refused(notApplicant)),
-    deleteAccount: async (options) =>
-      person === null ? dummyDeleteAccount(options) : refused("Leave the team first. Once your lead confirms, you can delete your account."),
+    myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current) : null),
+    async saveDetails(input) {
+      const result = dummySaveDetails(input);
+      if (result.ok) await own.save({ ...own.current, details: { ...own.current.details, [kind]: result.value } });
+      return result;
+    },
+    deleteAccount: async (options) => dummyDeleteAccount(options),
+
+    myApplications: async () => myApplications(),
+    async withdrawApplication(id) {
+      const result = dummyWithdraw(myApplications(), own.current, id);
+      if (!result.ok) return result;
+      await own.save(result.value);
+      return written(null);
+    },
+    async chooseInterviewSlot(applicationId, slotId) {
+      const result = dummyChooseSlot(myApplications(), own.current, applicationId, slotId);
+      if (!result.ok) return result;
+      await own.save(result.value.changes);
+      return written(result.value.slot);
+    },
   };
 }
