@@ -212,9 +212,9 @@ function ClosedTag({ className }: { className: string }) {
   );
 }
 
-// An open row (board 34) puts the description on the left, filling the row,
-// and the two skill lists side by side on the right, about 620px together.
-// A closed row keeps the description over the skills. Phones stack both.
+// An open row (board 34) stacks: the description across the full row, then the
+// two skill lists side by side in equal columns, then the footer. A closed row
+// keeps the description over the skills. Phones stack both.
 function RoleDetails({ role }: { role: Role }) {
   const skills = (
     <>
@@ -225,9 +225,9 @@ function RoleDetails({ role }: { role: Role }) {
   return (
     <>
       {role.status === "open" ? (
-        <div className="md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,620px)] md:gap-14 md:pt-2">
+        <div className="md:pt-2">
           <p className="whitespace-pre-line text-[15px] leading-[1.6] text-text-2 md:text-[16px]">{role.description}</p>
-          <div className="mt-6 grid gap-5 md:mt-0 md:grid-cols-2 md:gap-6">{skills}</div>
+          <div className="mt-6 grid gap-5 md:mt-7 md:grid-cols-2 md:gap-6">{skills}</div>
         </div>
       ) : (
         <>
