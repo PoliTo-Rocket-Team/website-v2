@@ -71,7 +71,9 @@ Rules:
   noise in soft-light blend at 60%, with no threshold, so it reads as even film grain, not as
   specks, and keeps the sky's tone; matched by eye to board 21 at 100% and 200%), and the
   board 21 spec values for the liquid glass utilities, the navbar bar and the panel that
-  hangs from it included (`.page-sky-grain`, `.glass-*` in `app/globals.css`).
+  hangs from it included (`.page-sky-grain`, `.glass-*` in `app/globals.css`), and the
+  /login rocket flame's warm ramp `#FF7A2E`, `#FFD2A6`, `#FFE6CC` and white beside the accent
+  (board 36, `components/login/rocket-flame.tsx`, issue #159).
   A new exception needs the same kind of comment.
 
 ## Type
