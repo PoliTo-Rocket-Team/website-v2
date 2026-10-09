@@ -68,6 +68,16 @@ export const people = [
   { id: 12, name: "Kenji Watanabe", email: "k.watanabe@politorocketteam.it", divisionId: null, role: "member", title: "Member", since: "2026-10-01", hasPhoto: false, linkedin: null },
 ] as const satisfies readonly DummyPerson[];
 
+/** The applicant the non-member viewer signs in as; not on the team, so not in `people`. */
+export const applicant = { firstName: "Chiara", lastName: "Lombardi", name: "Chiara Lombardi", email: "chiara.lombardi@gmail.com" } as const;
+
+/** The team member each other viewer signs in as. */
+export const personFor = {
+  "operations-lead": people[0],
+  "division-lead": people[1],
+  member: people[4],
+} as const satisfies Readonly<Record<"operations-lead" | "division-lead" | "member", DummyPerson>>;
+
 export const positions = [
   { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 3, open: true, applications: 14, newApplications: 8, daysSinceLastApplication: 0, newSinceMonday: 3 },
   { id: 2, title: "Safety Officer", slug: "2-safety-officer", divisionId: 2, open: true, applications: 9, newApplications: 4, daysSinceLastApplication: 1, newSinceMonday: 2 },
