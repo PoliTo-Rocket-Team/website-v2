@@ -35,7 +35,7 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 - `pnpm deploy` - Deploy the app to Vercel
 - `pnpm db:generate` - Generate Drizzle migrations from the TypeScript schema
 - `pnpm db:migrate` - Apply Drizzle migrations in `drizzle/`
-- `pnpm db:seed` - Seed the database using [`db/seed.sql`](/Users/huey/Documents/projects/website-v2/db/seed.sql)
+- `pnpm db:seed` - Seed the database using [`db/seed.sql`](db/seed.sql)
 - `pnpm mailpit:start` - Start Mailpit for local email testing
 - `pnpm mailpit:stop` - Stop Mailpit
 - `pnpm mailpit:restart` - Restart Mailpit
@@ -43,11 +43,11 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 
 ## Database Workflow
 
-- Update the Drizzle schema files in [`db/schema`](/Users/huey/Documents/projects/website-v2/db/schema).
+- Update the Drizzle schema files in [`db/schema`](db/schema).
 - Generate SQL with `pnpm db:generate`.
-- Review the generated migration in [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle).
+- Review the generated migration in [`drizzle/`](drizzle).
 - Apply it with `pnpm db:migrate`.
-- Refresh fixture data in [`db/seed.sql`](/Users/huey/Documents/projects/website-v2/db/seed.sql) when needed.
+- Refresh fixture data in [`db/seed.sql`](db/seed.sql) when needed.
 
 ## Vercel Deployment
 
@@ -120,11 +120,15 @@ The testers' ids, emails and names live in `lib/dev-tester.ts` and
 `lib/dev-tester.ts`, and `lib/dev-tester.test.ts` proves it is off outside
 `next dev`.
 
+The gate is also off when `VERCEL_ENV` is set in your shell or env files, for
+example after `vercel env pull`. If the tester links answer 404 on
+`pnpm dev`, check that `VERCEL_ENV` is unset.
+
 ### Production
 
 - Keep production on a separate Neon branch or database.
 - Never point local `.env` at production.
-- Treat files in [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle) as append-only migrations.
+- Treat files in [`drizzle/`](drizzle) as append-only migrations.
 
 ### Branch strategy
 
@@ -143,10 +147,10 @@ Recommended environment split:
 
 This repository includes one workflow:
 
-- [db_migrate.yml](/Users/huey/Documents/projects/website-v2/.github/workflows/db_migrate.yml)
+- [db_migrate.yml](.github/workflows/db_migrate.yml)
   Runs `pnpm db:migrate` automatically on pushes to `dev` and `main`.
 
-The automation only applies committed migrations from [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle). It does not generate new migrations in CI, and it does not run migrations for feature branches.
+The automation only applies committed migrations from [`drizzle/`](drizzle). It does not generate new migrations in CI, and it does not run migrations for feature branches.
 
 ### Required GitHub configuration
 
@@ -162,9 +166,9 @@ The workflow uses the environment that matches the pushed branch name, so:
 
 ### Recommended migration flow
 
-1. Update the schema in [`db/schema`](/Users/huey/Documents/projects/website-v2/db/schema).
+1. Update the schema in [`db/schema`](db/schema).
 2. Generate a migration locally with `pnpm db:generate`.
-3. Review the SQL file in [`drizzle/`](/Users/huey/Documents/projects/website-v2/drizzle).
+3. Review the SQL file in [`drizzle/`](drizzle).
 4. Apply it locally with `pnpm db:migrate`.
 5. Commit both the schema changes and the migration file.
 6. Merge or push to `dev` to update the shared development database automatically.
