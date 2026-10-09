@@ -56,6 +56,36 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 3. Keep the default Next.js framework preset and use the repository root as the project root.
 4. Deploy from the Vercel dashboard or run `pnpm deploy` after authenticating the Vercel CLI.
 
+### Google sign-in on previews
+
+Google only accepts a fixed list of redirect URIs, and a preview's URL changes on every PR. So
+sign-in on a preview goes through `https://v2dev.politorocketteam.it` and comes back to the preview
+that started it (better-auth's OAuth proxy plugin). [`lib/auth-urls.ts`](lib/auth-urls.ts) picks the
+setup from Vercel's `VERCEL_ENV`:
+
+| Deployment | Auth URL | Proxy |
+|---|---|---|
+| Production | `https://v2.politorocketteam.it` | off |
+| `huey/landing-page` (v2dev) | `https://v2dev.politorocketteam.it` | on, as the fixed host |
+| Any other preview | the preview's own URL | on, through v2dev |
+| Local dev | `http://localhost:3000` (or `BETTER_AUTH_URL`) | off |
+
+On Vercel, `BETTER_AUTH_URL` is not read. Agents do not change Vercel settings. A person does
+these steps once:
+
+1. In the Vercel project, add the domain `v2dev.politorocketteam.it`, assign it to the
+   `huey/landing-page` branch, and add the DNS record Vercel asks for.
+2. Set the **same** `BETTER_AUTH_SECRET` for Preview and for the v2dev deployment (v2dev is a
+   Preview deployment of `huey/landing-page`, so one Preview value covers both). The proxy encrypts
+   the sign-in with it, so a different secret breaks the round-trip.
+3. Set `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` for Preview and the v2dev deployment.
+4. In Google Cloud, keep exactly these redirect URIs on the OAuth client:
+   `http://localhost:3000/api/auth/callback/google`,
+   `https://v2dev.politorocketteam.it/api/auth/callback/google` and
+   `https://v2.politorocketteam.it/api/auth/callback/google`.
+5. Keep Vercel's system environment variables exposed (the default), so `VERCEL_ENV`, `VERCEL_URL`,
+   `VERCEL_BRANCH_URL` and `VERCEL_GIT_COMMIT_REF` reach the server.
+
 ## Neon Branching Workflow
 
 ### Local development

@@ -53,19 +53,21 @@ async function authWithTesters() {
 const BASE = "http://localhost:3000/api/auth";
 
 test("with the gate off, getAuth keeps Google alone and the tester routes are 404", async () => {
-  for (const vars of [
-    { NODE_ENV: "production", VERCEL_ENV: undefined },
-    { NODE_ENV: "production", VERCEL_ENV: "preview" },
-    { NODE_ENV: "development", VERCEL_ENV: "preview" },
-    { NODE_ENV: "test", VERCEL_ENV: undefined },
-  ]) {
+  // A preview also runs the Google OAuth proxy (issue #130), never the tester.
+  const preview = { VERCEL_URL: "website-v2-abc123-info-42486522s-projects.vercel.app" };
+  for (const [vars, plugins] of [
+    [{ NODE_ENV: "production", VERCEL_ENV: undefined }, ["custom-session"]],
+    [{ NODE_ENV: "production", VERCEL_ENV: "preview", ...preview }, ["custom-session", "oauth-proxy"]],
+    [{ NODE_ENV: "development", VERCEL_ENV: "preview", ...preview }, ["custom-session", "oauth-proxy"]],
+    [{ NODE_ENV: "test", VERCEL_ENV: undefined }, ["custom-session"]],
+  ] as const) {
     setEnv({ ...TEST_ENV, ...vars });
     const auth = await authWithTesters();
     const label = JSON.stringify(vars);
 
     assert.deepEqual(Object.keys(auth.options.socialProviders ?? {}), ["google"], label);
     assert.equal("emailAndPassword" in auth.options, false, label);
-    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session"], label);
+    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), plugins, label);
 
     for (const path of ["/dev-tester", "/dev-tester/sign-in?tester=applicant"]) {
       const response = await auth.handler(new Request(BASE + path));
