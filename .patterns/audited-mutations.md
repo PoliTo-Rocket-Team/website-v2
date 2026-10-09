@@ -57,7 +57,13 @@ client component as props.
 
 Any write to an app table in `public`. Call sites today: `handleDelete`, `handleEditPosition` and
 `handleAddPosition` in `server-actions.ts`, and `sendApplication` in
-[app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). Several writes that must land
+[app/apply/[slug]/actions.ts](../app/apply/[slug]/actions.ts). The dashboard's writes
+([app/dashboard/actions.ts](../app/dashboard/actions.ts)) take one more step: each action checks the
+viewer reaches the page, then hands the input to the dashboard data interface, whose database side
+([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts),
+[lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts)) checks the input and the
+viewer's own scope again before it writes through `runAuditQuery` or `runAuditBatch`. A test
+developer's write goes to the dummy side, which checks the same rules and stores nothing. Several writes that must land
 together go through `runAuditBatch` instead: one `db.batch` with the audit setup first. A batch
 cannot pass one insert's id to the next, so a later write finds an earlier row by a unique value
 (the application finds its file rows by their unique Blob pathname). Better Auth writes its own
