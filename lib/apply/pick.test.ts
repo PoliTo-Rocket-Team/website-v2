@@ -36,9 +36,9 @@ function sides(database: ApplyData, sent = new SentApplications()) {
   const dummyCalls: unknown[][] = [];
   const s: ApplySides = {
     database: () => database,
-    dummy: (viewer, selector) => {
+    dummy: (viewer, selector, recruitment) => {
       dummyCalls.push([viewer, selector]);
-      return dummyApplyData(viewer, selector, sent);
+      return dummyApplyData(viewer, selector, recruitment, sent);
     },
   };
   return { sides: s, dummyCalls };

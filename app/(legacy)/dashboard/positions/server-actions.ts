@@ -10,6 +10,8 @@ import {
 import { ApplyPosition } from "@/app/actions/types";
 import { getDb } from "@/db/client";
 import { applyPositions, departments, divisions } from "@/db/schema";
+import type { SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
+import { openDashboard } from "@/lib/dashboard/open";
 import { runAuditQuery } from "@/lib/db-audit";
 
 type PositionMutation = Partial<{
@@ -159,4 +161,23 @@ export async function handleAddPosition(
   invalidatePositionCaches();
 
   return applyPosition;
+}
+
+/**
+ * The site-wide recruitment switch (issue #121), through the dashboard data
+ * interface: the database for a signed-in member, the dummy cookie for a test
+ * developer. Either side checks the caller here, on the server, and refuses
+ * anyone but an org-wide positions editor or an admin (the operations lead,
+ * in dummy mode). The database side logs the change and drops /apply's cache.
+ */
+export async function handleSetRecruitment(
+  isOpen: boolean,
+): Promise<SwitchRecruitmentResult> {
+  if (typeof isOpen !== "boolean") {
+    throw new Error("Recruitment must be set on or off");
+  }
+
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return { status: "refused" };
+  return opening.data.setRecruitment({ isOpen });
 }
