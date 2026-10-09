@@ -7,9 +7,19 @@ import {
   PUBLIC_POSITIONS_CACHE_TAG,
   type PositionSnapshotRow,
 } from "@/app/actions/get-apply-positions";
+import { getScopeInfoForCurrentUser } from "@/app/actions/get-member-scopes";
 import { ApplyPosition } from "@/app/actions/types";
 import { getDb } from "@/db/client";
-import { applyPositions, departments, divisions } from "@/db/schema";
+import {
+  applyPositions,
+  departments,
+  divisions,
+  recruitmentSetting,
+} from "@/db/schema";
+import {
+  switchRecruitment,
+  type SwitchRecruitmentResult,
+} from "@/lib/apply/recruitment-switch";
 import { runAuditQuery } from "@/lib/db-audit";
 
 type PositionMutation = Partial<{
@@ -159,4 +169,38 @@ export async function handleAddPosition(
   invalidatePositionCaches();
 
   return applyPosition;
+}
+
+/**
+ * The site-wide recruitment switch (issue #121). The scope is checked here, on
+ * the server: only an org-wide positions editor or an admin may change it.
+ * The write goes through runAuditQuery, so the audit trigger logs who set it
+ * and the new value; the public cache is dropped so /apply follows at once.
+ */
+export async function handleSetRecruitment(
+  isOpen: boolean,
+): Promise<SwitchRecruitmentResult> {
+  if (typeof isOpen !== "boolean") {
+    throw new Error("Recruitment must be set on or off");
+  }
+
+  return switchRecruitment(
+    { isOpen },
+    {
+      scope: () => getScopeInfoForCurrentUser("positions"),
+      save: async (recruitment) => {
+        const updatedAt = new Date().toISOString();
+        await runAuditQuery((db) =>
+          db
+            .insert(recruitmentSetting)
+            .values({ id: true, isOpen: recruitment.isOpen, updatedAt })
+            .onConflictDoUpdate({
+              target: recruitmentSetting.id,
+              set: { isOpen: recruitment.isOpen, updatedAt },
+            }),
+        );
+      },
+      refresh: () => updateTag(PUBLIC_POSITIONS_CACHE_TAG),
+    },
+  );
 }

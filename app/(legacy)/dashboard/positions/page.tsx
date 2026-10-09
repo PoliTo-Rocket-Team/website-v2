@@ -1,12 +1,25 @@
 import { Suspense } from "react";
-import { getPositionsPageData } from "@/app/actions/get-apply-positions";
+import {
+  getPositionsPageData,
+  getRecruitmentControl,
+} from "@/app/actions/get-apply-positions";
 import { ApplyPositionsList } from "@/components/apply-positions-list";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { RecruitmentSwitch } from "@/components/recruitment-switch";
 import {
   handleDelete,
   handleEditPosition,
   handleAddPosition,
+  handleSetRecruitment,
 } from "./server-actions";
+
+async function RecruitmentContent() {
+  const control = await getRecruitmentControl();
+
+  return (
+    <RecruitmentSwitch {...control} onSetRecruitment={handleSetRecruitment} />
+  );
+}
 
 async function PositionsContent() {
   const { positions, editableDivisions } = await getPositionsPageData();
@@ -48,6 +61,9 @@ export default function Positions() {
           applicants. Active positions are displayed to potential candidates on
           the application page.
         </p>
+        <Suspense fallback={null}>
+          <RecruitmentContent />
+        </Suspense>
       </div>
       <Suspense fallback={<PositionsFallback />}>
         <PositionsContent />
