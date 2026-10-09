@@ -13,6 +13,16 @@ import {
   type TeamOverview,
 } from "@/lib/dashboard/overview";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
+import { refused, written } from "@/lib/dashboard/write";
+import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
+import {
+  dummyDeleteAccount,
+  dummyMyAccount,
+  dummyMyProfile,
+  dummySaveLinkedin,
+  dummySetPhoto,
+  dummyWithdraw,
+} from "./self";
 import {
   activity,
   applicant,
@@ -252,11 +262,22 @@ function navCountsFor(kind: ViewerKind): NavCounts {
   return fresh > 0 ? { applications: fresh } : {};
 }
 
+/** The person the viewer is on the team; null for the applicant. */
+function teamPersonFor(kind: ViewerKind): DummyPerson | null {
+  return kind === "non-member" ? null : personFor[kind];
+}
+
+const notOnTeam = "This page is for team members.";
+const notApplicant = "This page is for applicants.";
+
 /**
  * The dashboard as the test developer sees it, looking as `kind`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts).
+ * Other writes check what was sent as the database side does, store nothing,
+ * and answer what the page shows next.
  */
 export function dummyDashboardData(kind: ViewerKind, recruitment: DummyRecruitmentStore): DashboardData {
+  const person = teamPersonFor(kind);
   const canSwitch = canSwitchRecruitmentAs(kind);
   return {
     viewer: viewerFor(kind),
@@ -266,5 +287,22 @@ export function dummyDashboardData(kind: ViewerKind, recruitment: DummyRecruitme
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
+
+    divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person)),
+    giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, input)),
+    removeAccess: async (grantId) => (person === null ? refused(notOnTeam) : dummyRemoveAccess(person, grantId)),
+
+    divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
+    placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),
+
+    myProfile: async () => (person === null ? null : dummyMyProfile(person)),
+    saveLinkedin: async (text) => (person === null ? refused(notOnTeam) : dummySaveLinkedin(text)),
+    setPhoto: async (photo) => (person === null ? refused(notOnTeam) : dummySetPhoto(photo)),
+    requestLeave: async () => (person === null ? refused(notOnTeam) : written(null)),
+
+    myAccount: async () => (person === null ? dummyMyAccount(applicant) : null),
+    withdrawApplication: async (id) => (person === null ? dummyWithdraw(applicant, id) : refused(notApplicant)),
+    deleteAccount: async (options) =>
+      person === null ? dummyDeleteAccount(options) : refused("Leave the team first. Once your lead confirms, you can delete your account."),
   };
 }
