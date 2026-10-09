@@ -18,7 +18,8 @@ import { PANEL } from "./panel";
 // interface returns. Folded (42): the team leader, the departments, and the
 // branch that is open, the viewer's own path first, highlighted in accent.
 // Expanding another department opens every department (42b); "Collapse all"
-// folds back. Wide trees scroll sideways inside their panel on phones.
+// folds back. Below xl, where six departments no longer fit side by side,
+// the folded tree is a stacked list instead.
 
 type Open = { readonly departmentId: number | null; readonly divisionId: number | null };
 
@@ -110,10 +111,10 @@ export function TeamTreeView({ tree }: { tree: TeamTree }) {
           <ExpandedTree tree={tree} found={found} />
         ) : (
           <>
-            <div className="md:hidden">
+            <div className="xl:hidden">
               <FoldedList tree={tree} open={open} found={found} onOpen={setOpen} onExpandAll={() => setExpanded(true)} />
             </div>
-            <div className="hidden md:block">
+            <div className="hidden xl:block">
               <FoldedTree tree={tree} open={open} found={found} onOpen={setOpen} onExpandAll={() => setExpanded(true)} />
             </div>
           </>
@@ -123,7 +124,10 @@ export function TeamTreeView({ tree }: { tree: TeamTree }) {
   );
 }
 
-// Folded (board 42): cards at fixed sizes on one canvas, joined by lines.
+// Folded (board 42): cards laid out at their board sizes on one canvas, joined
+// by lines. The canvas never grows past those sizes, and in a narrower panel
+// it narrows as a whole: every left edge and width is a share of the canvas,
+// so all six departments stay in view with the leader centred over them.
 
 const GAP = 12;
 const LEADER = { w: 200, h: 110 };
@@ -229,20 +233,29 @@ function FoldedTree({ tree, open, found, onOpen, onExpandAll }: FoldedProps) {
     }
   }
 
-  const at = (box: Box): CSSProperties => ({ left: box.x, top: box.y, width: box.w, minHeight: box.h });
+  const share = (x: number) => `${(x / width) * 100}%`;
+  const at = (box: Box): CSSProperties => ({ left: share(box.x), top: box.y, width: share(box.w), minHeight: box.h });
 
   return (
-    <div className="relative mx-auto" style={{ width, height }}>
-      <svg aria-hidden className="absolute inset-0" width={width} height={height}>
+    <div className="relative mx-auto w-full" style={{ maxWidth: width, height }}>
+      {/* Stretched sideways only, with strokes kept at 1px. */}
+      <svg
+        aria-hidden
+        className="absolute inset-0"
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+      >
         {lines
           .filter((l) => !l.accent)
           .map((l, i) => (
-            <line key={`h${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} className="stroke-border-strong" strokeWidth={1} />
+            <line key={`h${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} className="stroke-border-strong" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           ))}
         {lines
           .filter((l) => l.accent)
           .map((l, i) => (
-            <line key={`a${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} className="stroke-accent" strokeWidth={1} />
+            <line key={`a${i}`} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} className="stroke-accent" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           ))}
       </svg>
 
