@@ -123,7 +123,6 @@ export function TeamTreeView({ tree }: { tree: TeamTree }) {
   );
 }
 
-// ---------------------------------------------------------------------------
 // Folded (board 42): cards at fixed sizes on one canvas, joined by lines.
 
 const GAP = 12;
@@ -451,7 +450,6 @@ function PersonCard({ person, lead, found }: { person: TreePerson; lead: boolean
   );
 }
 
-// ---------------------------------------------------------------------------
 // Expanded (board 42b): one column per department, each division listed.
 
 /** The centre of column `i` of six, 12px apart, as a CSS length. */

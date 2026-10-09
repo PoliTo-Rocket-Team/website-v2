@@ -41,7 +41,7 @@ function entriesOf<T>(value: unknown, read: (v: unknown) => T | null): Record<nu
 function readMemberEdit(value: unknown): MemberEdit | null {
   if (!isRecord(value)) return null;
   const { role, pageTitle } = value;
-  if (role !== "division-lead" && role !== "member") return null;
+  if (role !== null && role !== "division-lead" && role !== "member") return null;
   if (pageTitle !== null && typeof pageTitle !== "string") return null;
   return { role, pageTitle: cleanTitle(pageTitle) };
 }

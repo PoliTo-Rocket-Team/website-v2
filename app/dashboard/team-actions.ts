@@ -38,11 +38,11 @@ export async function setShownOnSite(alumnusId: number, shown: boolean): Promise
 
 export async function saveMember(
   personId: number,
-  role: EditableRole,
+  role: EditableRole | null,
   pageTitle: string | null,
 ): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || (role !== "division-lead" && role !== "member")) return REFUSED;
+  if (!writes || !isId(personId) || (role !== null && role !== "division-lead" && role !== "member")) return REFUSED;
   if (pageTitle !== null && typeof pageTitle !== "string") return REFUSED;
   return done(await writes.saveMember(personId, { role, pageTitle }));
 }

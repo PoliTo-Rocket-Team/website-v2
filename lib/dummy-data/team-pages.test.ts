@@ -25,6 +25,17 @@ test("a division lead lists and changes only their own division, never themselve
   assert.equal(saved.length, 1);
 });
 
+test("the team leader and a head keep their place when the operations lead saves their title", async () => {
+  const ops = pages("operations-lead");
+  const writes = ops.view.teamWrites!;
+  assert.equal(await writes.saveMember(14, { role: null, pageTitle: "Team Leader 2026" }), true);
+  assert.equal(await writes.saveMember(15, { role: "member", pageTitle: null }), false); // a head's role is not the drawer's
+  const after = pages("operations-lead", parseEdits(serializeEdits(ops.saved[0]))).view;
+  const leader = (await after.members()).rows.find((r) => r.id === 14);
+  assert.equal(leader?.role, "team-leader");
+  assert.equal(leader?.pageTitle, "Team Leader 2026");
+});
+
 test("moving someone to alumni takes them off the tree and onto the Alumni page", async () => {
   const lead = pages("division-lead");
   assert.equal(await lead.view.teamWrites!.moveToAlumni(5), true);

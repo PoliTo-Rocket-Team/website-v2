@@ -58,13 +58,16 @@ export function isLead(role: TeamRole): boolean {
 /** The roles a drawer can set: a lead or member of the person's own division. */
 export type EditableRole = "division-lead" | "member";
 
-/** What the member drawer saves (board 46b). */
+/**
+ * What the member drawer saves (board 46b). `role` is null for a person whose
+ * role the drawer does not set (the team leader, a head, someone in no
+ * division): their placement stays and only the title changes.
+ */
 export type MemberEdit = {
-  readonly role: EditableRole;
+  readonly role: EditableRole | null;
   readonly pageTitle: string | null;
 };
 
-// ---------------------------------------------------------------------------
 // Members (boards 46 and 46b)
 
 export type MemberRow = {
@@ -190,7 +193,6 @@ export function memberRowsFor(rows: readonly MemberRow[], filter: Omit<MemberFil
   );
 }
 
-// ---------------------------------------------------------------------------
 // Alumni (board 46c)
 
 export type AlumnusRow = {
@@ -252,7 +254,6 @@ export function alumniRowsFor(rows: readonly AlumnusRow[], filter: Omit<AlumniFi
   );
 }
 
-// ---------------------------------------------------------------------------
 // Paging (boards 46 and 46c)
 
 export const PAGE_SIZE = 9;
@@ -277,7 +278,6 @@ export function pagerItems(current: number, last: number): (number | null)[] {
   return pages.flatMap((p, i) => (i > 0 && p - pages[i - 1] > 1 ? [null, p] : [p]));
 }
 
-// ---------------------------------------------------------------------------
 // Team tree (boards 42 and 42b)
 
 export type TreePerson = {

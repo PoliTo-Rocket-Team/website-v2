@@ -78,7 +78,7 @@ function DrawerBody({
 
   const save = () =>
     startTransition(async () => {
-      const result = await saveMember(row.id, role ?? "member", title.trim() === "" ? null : title);
+      const result = await saveMember(row.id, role, title.trim() === "" ? null : title);
       if (!result.ok) {
         toast.error(result.error);
         return;

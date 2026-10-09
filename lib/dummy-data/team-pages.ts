@@ -31,7 +31,7 @@ const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
 };
 
 function placementWith(placement: Placement, edit: MemberEdit | undefined): Placement {
-  if (!edit) return placement;
+  if (!edit || edit.role === null) return placement;
   if (placement.role === "division-lead" || placement.role === "member") {
     if (placement.divisionId === null) return placement;
     return { role: edit.role, divisionId: placement.divisionId };
@@ -90,9 +90,10 @@ function writesFor(kind: ViewerKind, edits: TeamEdits, save: (next: TeamEdits) =
     async saveMember(personId, edit) {
       const entry = find(personId);
       if (!entry || !mayEdit(kind, entry)) return false;
-      const placed = divisionIdOf(entry.placement) !== null;
-      if (!placed && edit.role !== "member") return false;
-      if (entry.placement.role !== "division-lead" && entry.placement.role !== "member") return false;
+      if (edit.role !== null) {
+        const ownRole = entry.placement.role === "division-lead" || entry.placement.role === "member";
+        if (!ownRole || divisionIdOf(entry.placement) === null) return false;
+      }
       const next: MemberEdit = { role: edit.role, pageTitle: cleanTitle(edit.pageTitle) };
       await save({ ...edits, members: { ...edits.members, [personId]: next } });
       return true;
