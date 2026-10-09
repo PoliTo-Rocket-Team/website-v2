@@ -35,9 +35,9 @@ function form(overrides: { cv?: Uint8Array; letter?: Uint8Array } = {}): FormDat
   return fd;
 }
 
-/** An in-memory R2 and database, enforcing one application per user and position as the unique constraint does. */
+/** An in-memory file store and database, enforcing one application per user and position as the unique constraint does. */
 function fakes(options: { position?: SubmitPosition; recruitmentOpen?: boolean; signedIn?: boolean; saveFails?: boolean } = {}) {
-  const r2 = new Map<string, Uint8Array>();
+  const files = new Map<string, Uint8Array>();
   const saved: NewApplication[] = [];
   let n = 0;
   const deps: SubmitDeps = {
@@ -47,8 +47,8 @@ function fakes(options: { position?: SubmitPosition; recruitmentOpen?: boolean; 
         ? { position: options.position ?? openPosition, recruitment: { isOpen: options.recruitmentOpen ?? true } }
         : null,
     hasApplied: async (userId, positionId) => saved.some((a) => a.userId === userId && a.positionId === positionId),
-    putPdf: async (key, bytes) => void r2.set(key, bytes),
-    deletePdf: async (key) => void r2.delete(key),
+    putPdf: async (key, bytes) => void files.set(key, bytes),
+    deletePdf: async (key) => void files.delete(key),
     save: async (application) => {
       if (options.saveFails) throw new Error("batch failed");
       if (saved.some((a) => a.userId === application.userId && a.positionId === application.positionId)) {
@@ -59,12 +59,12 @@ function fakes(options: { position?: SubmitPosition; recruitmentOpen?: boolean; 
     },
     newFileName: () => `file-${++n}`,
   };
-  return { deps, r2, saved };
+  return { deps, files, saved };
 }
 
 describe("submitApplication", () => {
-  test("stores the CV and the letter in R2, and one application with its file rows", async () => {
-    const { deps, r2, saved } = fakes();
+  test("stores the CV and the letter in the private store under applications/, and one application with its file rows", async () => {
+    const { deps, files, saved } = fakes();
     assert.deepEqual(await submitApplication(7, form(), deps), { ok: true });
 
     assert.equal(saved.length, 1);
@@ -74,28 +74,28 @@ describe("submitApplication", () => {
     assert.deepEqual(application.answers, [{ question: "Why safety?", answer: "I ran the lab's waste log." }]);
     assert.equal(application.cv.filename, "ROSSI_CV.pdf");
     assert.ok(application.motivationLetter);
-    assert.deepEqual([...r2.keys()].sort(), [application.cv.key, application.motivationLetter.key].sort());
+    assert.deepEqual([...files.keys()].sort(), [application.cv.key, application.motivationLetter.key].sort());
     assert.ok(application.cv.key.startsWith("applications/"));
   });
 
   test("refuses a second application for the same position, and keeps no new file", async () => {
-    const { deps, r2, saved } = fakes();
+    const { deps, files, saved } = fakes();
     await submitApplication(7, form(), deps);
-    const filesBefore = r2.size;
+    const filesBefore = files.size;
 
     assert.deepEqual(await submitApplication(7, form(), deps), { ok: false, reason: "already-applied" });
     assert.equal(saved.length, 1);
-    assert.equal(r2.size, filesBefore);
+    assert.equal(files.size, filesBefore);
   });
 
   test("refuses a second application that races past the first check, and deletes its files", async () => {
-    const { deps, r2, saved } = fakes();
+    const { deps, files, saved } = fakes();
     deps.hasApplied = async () => false;
     await submitApplication(7, form(), deps);
 
     assert.deepEqual(await submitApplication(7, form(), deps), { ok: false, reason: "already-applied" });
     assert.equal(saved.length, 1);
-    assert.equal(r2.size, 2);
+    assert.equal(files.size, 2);
   });
 
   test("refuses a position that is not public: closed, deleted, recruitment off, or missing", async () => {
@@ -104,34 +104,34 @@ describe("submitApplication", () => {
       fakes({ position: { ...openPosition, is_deleted: true } }),
       fakes({ recruitmentOpen: false }),
     ];
-    for (const { deps, r2, saved } of cases) {
+    for (const { deps, files, saved } of cases) {
       assert.deepEqual(await submitApplication(7, form(), deps), { ok: false, reason: "not-public" });
       assert.equal(saved.length, 0);
-      assert.equal(r2.size, 0);
+      assert.equal(files.size, 0);
     }
     assert.deepEqual(await submitApplication(99, form(), fakes().deps), { ok: false, reason: "not-public" });
   });
 
   test("refuses a file whose bytes are not a PDF, whatever its name and type say", async () => {
     for (const fd of [form({ cv: NOT_PDF }), form({ letter: NOT_PDF })]) {
-      const { deps, r2, saved } = fakes();
+      const { deps, files, saved } = fakes();
       const result = await submitApplication(7, fd, deps);
       assert.equal(result.ok, false);
       assert.ok(!result.ok && result.reason === "invalid");
       assert.equal(saved.length, 0);
-      assert.equal(r2.size, 0);
+      assert.equal(files.size, 0);
     }
   });
 
-  test("refuses a PDF over the size limit as invalid, and writes nothing to R2", async () => {
+  test("refuses a PDF over the size limit as invalid, and stores no file", async () => {
     const big = new Uint8Array(MAX_PDF_BYTES + 1);
     big.set(PDF);
     for (const fd of [form({ cv: big }), form({ letter: big })]) {
-      const { deps, r2, saved } = fakes();
+      const { deps, files, saved } = fakes();
       const result = await submitApplication(7, fd, deps);
       assert.ok(!result.ok && result.reason === "invalid");
       assert.equal(saved.length, 0);
-      assert.equal(r2.size, 0);
+      assert.equal(files.size, 0);
     }
   });
 
@@ -151,8 +151,8 @@ describe("submitApplication", () => {
   });
 
   test("deletes the uploaded files when the database write fails", async () => {
-    const { deps, r2 } = fakes({ saveFails: true });
+    const { deps, files } = fakes({ saveFails: true });
     assert.deepEqual(await submitApplication(7, form(), deps), { ok: false, reason: "failed" });
-    assert.equal(r2.size, 0);
+    assert.equal(files.size, 0);
   });
 });
