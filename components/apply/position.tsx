@@ -120,7 +120,7 @@ function PopoverTitle({ children }: { children: ReactNode }) {
 }
 
 function PopoverBody({ children }: { children: ReactNode }) {
-  return <DialogDescription className="mt-3 text-[16px] leading-[1.5] text-text-2">{children}</DialogDescription>;
+  return <DialogDescription className="mt-3 text-[15px] leading-[1.6] text-text-2">{children}</DialogDescription>;
 }
 
 function PopoverIcon({ tone, children }: { tone: "accent" | "neutral"; children: ReactNode }) {
@@ -155,7 +155,7 @@ export function SignInPopover({ title, returnTo }: { title: string; returnTo: st
         height={220}
         className="mx-auto mb-10 h-8 w-auto max-md:hidden"
       />
-      <p className="font-mono text-[11px] tracking-[0.3em] text-accent">{positionPage.eyebrow}</p>
+      <p className="font-mono text-[11px] tracking-[0.1em] text-accent">{positionPage.eyebrow}</p>
       <div className="mt-3">
         <PopoverTitle>{positionPage.signIn.title}</PopoverTitle>
       </div>

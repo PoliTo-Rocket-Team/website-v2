@@ -13,13 +13,19 @@ import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 // repo's Radix dialog, so the title labels it, focus stays in it and the page
 // behind is hidden from assistive tech. It is centred with margins, not a
 // transform, so the open animation's transform cannot move it; that animation
-// runs only under `motion-safe:` (issue #80).
+// runs only under `motion-safe:` (issue #80). On open, focus goes to the
+// popover itself rather than its first button, so a screen reader starts at
+// the title and no focus ring shows before the visitor moves.
 export function StatePopover({ children }: { children: ReactNode }) {
   return (
     <Dialog open>
       <DialogPortal>
         <DialogOverlay className="bg-ground/60 backdrop-blur-[6px]" />
         <DialogPrimitive.Content
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement | null)?.focus();
+          }}
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
