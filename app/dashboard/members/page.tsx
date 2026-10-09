@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   title: "Members · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 46 (operations lead: the whole team) and 46b (division lead: their
-// division, with the member drawer). It replaces the legacy members page.
+// Boards 46 (operations lead: the whole team) and 59 (division lead: their
+// division, the people joining it, and the member panel). It replaces the legacy members page.
 export default function MembersPage() {
   return (
     <Suspense fallback={null}>

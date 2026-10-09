@@ -1,55 +1,59 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import Link from "next/link";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ChevronDown, Pencil, X } from "lucide-react";
+import { useId, useState, useTransition } from "react";
+import { ArrowUpRight, ChevronDown, GraduationCap, Info, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { saveMember, moveToAlumni } from "@/app/dashboard/team-actions";
-import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
-import type { EditableRole, MemberDirectory, MemberRow } from "@/lib/dashboard/team";
+import { DialogClose } from "@/components/ui/dialog";
+import { moveToAlumni, promote, saveMember } from "@/app/dashboard/team-actions";
+import {
+  canPromote,
+  checkDeparture,
+  LEAVE_REASONS,
+  LEAVE_REASON_LABELS,
+  yearsLabel,
+  type EditableRole,
+  type MemberDirectory,
+  type MemberRow,
+  type PromoteMode,
+} from "@/lib/dashboard/team";
+import { shortUnitName } from "@/lib/dashboard/division-access";
 import { Avatar } from "./avatar";
+import { ConfirmDialog } from "./confirm-dialog";
+import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
+import { inputClass } from "./field";
+import { GHOST_PILL } from "./page-header";
 
-// The member drawer (board 46b): who the person is, their role, their title
-// on the public Team page, their access, and moving them to Alumni. It is
-// the repo's Radix dialog built on the primitive (manifest, Components): it
-// slides in only under motion-safe and closes at once. Where the data
-// source stores no Team page writes, it shows the same facts with nothing to
-// change.
+// The member panel (board 59b): who the person is, the role the Team page
+// shows under their name, Promote, and moving them to Alumni. Access is not
+// here: the Access page is the only place it is given or removed. The
+// operations lead's panel also sets whether the person leads their division
+// (board 46b). Where the data source stores no Team page writes, or the row
+// is the viewer's own, it shows the same facts with nothing to change.
 
 const ROLE_OPTIONS: readonly { value: EditableRole; label: string }[] = [
   { value: "member", label: "Member" },
   { value: "division-lead", label: "Division lead" },
 ];
 
-const FIELD =
-  "flex h-12 w-full items-center rounded-xl border border-hairline bg-transparent px-4 text-[15px] text-prt-text transition-colors duration-300 ease-out";
-
 const LABEL = "mb-2 block text-[14px] font-medium text-prt-text";
 
 export function MemberDrawer({
   row,
-  scope,
+  directory,
   editable,
   onClose,
 }: {
   row: MemberRow | null;
-  scope: MemberDirectory["scope"];
+  directory: MemberDirectory;
   editable: boolean;
   onClose: () => void;
 }) {
-  return (
-    <Dialog open={row !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogPortal>
-        <DialogOverlay className="bg-transparent" />
-        <DialogPrimitive.Content
-          aria-describedby={undefined}
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[400px] flex-col border-l border-hairline bg-ground text-prt-text focus:outline-none motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-right"
-        >
-          {row && <DrawerBody key={row.id} row={row} scope={scope} editable={editable && !row.self} onClose={onClose} />}
-        </DialogPrimitive.Content>
-      </DialogPortal>
-    </Dialog>
+  // The panel keeps showing the last person while it closes.
+  const [shown, setShown] = useState<MemberRow | null>(row);
+  if (row !== null && row !== shown) setShown(row);
+  const person = row ?? shown;
+  return person === null ? null : (
+    <MemberPanel key={person.id} open={row !== null} row={person} directory={directory} editable={editable && !person.self} onClose={onClose} />
   );
 }
 
@@ -58,27 +62,32 @@ function editableRoleOf(row: MemberRow): EditableRole | null {
   return row.role === "division-lead" ? "division-lead" : null;
 }
 
-function DrawerBody({
+function MemberPanel({
+  open,
   row,
-  scope,
+  directory,
   editable,
   onClose,
 }: {
+  open: boolean;
   row: MemberRow;
-  scope: MemberDirectory["scope"];
+  directory: MemberDirectory;
   editable: boolean;
   onClose: () => void;
 }) {
   const startRole = editableRoleOf(row);
   const [role, setRole] = useState<EditableRole | null>(startRole);
   const [title, setTitle] = useState(row.pageTitle ?? "");
+  const [asking, setAsking] = useState<"promote" | "alumni" | null>(null);
   const [pending, startTransition] = useTransition();
+  const titleId = useId();
   const firstName = row.name.split(" ")[0];
   const facts = [row.program, row.study, `joined ${row.joined}`].filter(Boolean).join(" · ");
+  const division = directory.scope === "division";
 
   const save = () =>
     startTransition(async () => {
-      const result = await saveMember(row.id, role, title.trim() === "" ? null : title);
+      const result = await saveMember(row.id, division ? null : role, title.trim() === "" ? null : title);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -87,78 +96,47 @@ function DrawerBody({
       onClose();
     });
 
-  const move = () =>
-    startTransition(async () => {
-      const result = await moveToAlumni(row.id);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(`${row.name} moved to Alumni`);
-      onClose();
-    });
-
   return (
-    <>
-      <header className="flex h-[68px] shrink-0 items-center justify-between border-b border-hairline px-6">
-        <DialogTitle className="text-[20px] font-bold">Member</DialogTitle>
-        <DialogClose
-          aria-label="Close"
-          className="-mr-2 flex h-9 w-9 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-        >
-          <X aria-hidden className="h-5 w-5" strokeWidth={1.75} />
-        </DialogClose>
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-6 py-7">
+    <SidePanel
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title="Member"
+      footer={
+        editable ? (
+          <>
+            <DialogClose className={PANEL_GHOST_BUTTON}>Cancel</DialogClose>
+            <button type="button" onClick={save} disabled={pending} className={PANEL_PRIMARY_BUTTON}>
+              Save
+            </button>
+          </>
+        ) : (
+          <DialogClose className={`${PANEL_GHOST_BUTTON} col-span-2`}>Close</DialogClose>
+        )
+      }
+    >
+      <PanelBody className="flex flex-col">
         <div className="flex items-center gap-4">
           <Avatar name={row.name} size="xl" accent={row.role !== "member"} />
           <div className="min-w-0">
             <p className="truncate text-[18px] font-semibold">{row.name}</p>
-            <p className="truncate text-[14px] text-prt-muted">{row.email}</p>
-            <p className="text-[13px] text-prt-muted">{facts}</p>
+            <p className="truncate text-[13px] text-prt-muted">{row.email}</p>
+            <p className="text-[12px] text-prt-muted">{facts}</p>
           </div>
         </div>
 
         <div className="mt-7">
-          <span className={LABEL}>
+          <label htmlFor={titleId} className={LABEL}>
             Role
-            {scope === "division" && <span className="ml-1.5 font-normal text-prt-muted">in your division</span>}
-          </span>
-          {editable && startRole !== null ? (
-            <label className="relative block">
-              <span className="sr-only">Role</span>
-              <select
-                value={role ?? "member"}
-                onChange={(event) => setRole(event.target.value as EditableRole)}
-                className={`${FIELD} cursor-pointer appearance-none pr-10 hover:border-border-strong focus:border-border-strong focus:outline-none`}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value} className="bg-panel">
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown aria-hidden className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-            </label>
-          ) : (
-            <p className={`${FIELD} text-text-2`}>{row.roleLabel}</p>
-          )}
-        </div>
-
-        <div className="mt-6">
-          <label htmlFor="member-title" className={LABEL}>
-            Title on the Team page
-            <span className="ml-1.5 font-normal text-prt-muted">optional</span>
+            <span className="ml-1.5 font-normal text-prt-muted">shown on the Team page</span>
           </label>
           <div className="relative">
             <input
-              id="member-title"
+              id={titleId}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               readOnly={!editable}
               maxLength={80}
-              className={`${FIELD} pr-11 placeholder:text-dim hover:border-border-strong focus:border-border-strong focus:outline-none read-only:hover:border-hairline`}
+              className={`${inputClass()} pr-11 read-only:focus:border-white-10 read-only:focus:bg-white-5`}
             />
             {editable && (
               <Pencil aria-hidden className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
@@ -166,54 +144,264 @@ function DrawerBody({
           </div>
         </div>
 
-        <div className="mt-6">
-          <span className={LABEL}>Access</span>
-          <div className={`${FIELD} justify-between gap-4`}>
-            <span className="truncate">{row.access.length > 0 ? row.access.join(", ") : "Own pages only"}</span>
-            {scope === "division" && (
-              <Link
-                href="/dashboard/access"
-                className="shrink-0 text-[14px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover"
+        {!division && editable && startRole !== null && (
+          <div className="mt-6">
+            <label className="relative block">
+              <span className={LABEL}>Leads their division</span>
+              <select
+                value={role ?? "member"}
+                onChange={(event) => setRole(event.target.value as EditableRole)}
+                className={`${inputClass()} cursor-pointer appearance-none pr-10`}
               >
-                Manage
-              </Link>
-            )}
+                {ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value} className="bg-panel">
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden className="pointer-events-none absolute bottom-3.5 right-4 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
+            </label>
           </div>
-        </div>
+        )}
+
+        {division && editable && canPromote(row) && (
+          <div className="mt-5 flex items-center justify-between gap-4 rounded-xl border border-hairline px-4 py-3.5">
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold">Promote</p>
+              <p className="text-[12px] text-prt-muted">Make {firstName} a division lead</p>
+            </div>
+            <button type="button" onClick={() => setAsking("promote")} className={GHOST_PILL}>
+              <ArrowUpRight aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              Promote
+            </button>
+          </div>
+        )}
 
         {editable && (
-          <section className="mt-10 rounded-xl border border-danger/40 bg-danger/[0.06] p-5">
-            <h2 className="text-[15px] font-semibold">Leaving the team</h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-prt-muted">
-              Moves {firstName} to Alumni with the years on the team. The account stays; team access ends.
+          <section className="mt-10 rounded-xl border border-danger/40 bg-danger/[0.06] p-4 md:mt-auto">
+            <h2 className="text-[14px] font-semibold">Leaving the team</h2>
+            <p className="mt-2 text-[12px] leading-relaxed text-prt-muted">
+              Moves {firstName} to Alumni with the years on the team. The account stays; dashboard access ends.
             </p>
             <button
               type="button"
-              onClick={move}
-              disabled={pending}
-              className="mt-4 inline-flex h-10 items-center rounded-full border border-danger/60 px-5 text-[14px] font-medium text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger disabled:opacity-50"
+              onClick={() => setAsking("alumni")}
+              className="mt-4 inline-flex h-9 items-center rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               Move to alumni
             </button>
           </section>
         )}
-      </div>
+      </PanelBody>
 
-      <footer className="flex shrink-0 gap-3 border-t border-hairline px-6 py-5">
-        <DialogClose className="inline-flex h-11 flex-1 items-center justify-center rounded-full border border-white-10 text-[15px] font-medium transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
-          {editable ? "Cancel" : "Close"}
-        </DialogClose>
-        {editable && (
-          <button
-            type="button"
-            onClick={save}
-            disabled={pending}
-            className="inline-flex h-11 flex-1 items-center justify-center rounded-full bg-prt-text text-[15px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
-          >
-            Save
-          </button>
-        )}
-      </footer>
-    </>
+      {directory.scope === "division" && (
+        <PromoteDialog
+          open={asking === "promote"}
+          onOpenChange={(next) => setAsking(next ? "promote" : null)}
+          row={row}
+          unit={shortUnitName(directory.division)}
+          head={directory.head}
+          onDone={onClose}
+        />
+      )}
+      <AlumniDialog
+        open={asking === "alumni"}
+        onOpenChange={(next) => setAsking(next ? "alumni" : null)}
+        row={row}
+        unit={row.division === null ? null : shortUnitName(row.division)}
+        onDone={onClose}
+      />
+    </SidePanel>
+  );
+}
+
+const PROMOTE_OPTIONS: readonly { mode: PromoteMode; title: string; detail: (first: string, unit: string) => string }[] = [
+  { mode: "together", title: "Lead together with you", detail: (_, unit) => `${unit} has two leads` },
+  { mode: "hand-over", title: "Hand over the division", detail: (first) => `${first} leads; you become a member` },
+];
+
+/** Board 59e. The site sends no email: the lead tells the department head themselves. */
+function PromoteDialog({
+  open,
+  onOpenChange,
+  row,
+  unit,
+  head,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  row: MemberRow;
+  unit: string;
+  head: { name: string; department: string } | null;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<PromoteMode>("together");
+  const [pending, startTransition] = useTransition();
+  const firstName = row.name.split(" ")[0];
+
+  const confirm = () =>
+    startTransition(async () => {
+      const result = await promote(row.id, mode);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${row.name} is now a division lead`);
+      onOpenChange(false);
+      onDone();
+    });
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={ArrowUpRight}
+      title={`Promote ${row.name} to division lead?`}
+      confirmLabel={`Promote ${firstName}`}
+      pending={pending}
+      onConfirm={confirm}
+      body={
+        <>
+          <div role="radiogroup" aria-label="How they lead" className="flex flex-col gap-2.5">
+            {PROMOTE_OPTIONS.map((option) => {
+              const on = option.mode === mode;
+              return (
+                <label
+                  key={option.mode}
+                  className={`flex cursor-pointer items-center gap-3.5 rounded-xl border px-4 py-3 transition-colors duration-300 ease-out has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
+                    on ? "border-accent bg-accent/[0.08]" : "border-white-10 hover:border-border-strong"
+                  }`}
+                >
+                  <input type="radio" name="promote-mode" checked={on} onChange={() => setMode(option.mode)} className="sr-only" />
+                  <span
+                    aria-hidden
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${on ? "border-accent" : "border-border-strong"}`}
+                  >
+                    {on && <span className="h-2 w-2 rounded-full bg-accent" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[14px] font-semibold text-prt-text">{option.title}</span>
+                    <span className="block text-[12px] text-prt-muted">{option.detail(firstName, unit)}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-4 flex items-start gap-2 text-[13px] text-text-2">
+            <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+            {head
+              ? `Email ${head.name}, head of ${head.department}, to tell them.`
+              : "Email your department head to tell them."}
+          </p>
+        </>
+      }
+    >
+      {firstName} gets the lead view for {unit}: positions, applications, members, access and orders.
+    </ConfirmDialog>
+  );
+}
+
+/** Board 59d: the years on the team and an optional reason. Access ends; the account stays. */
+function AlumniDialog({
+  open,
+  onOpenChange,
+  row,
+  unit,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  row: MemberRow;
+  unit: string | null;
+  onDone: () => void;
+}) {
+  const thisYear = new Date().getFullYear();
+  const [years, setYears] = useState(yearsLabel(Math.min(row.joined, thisYear), thisYear));
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
+  const yearsId = useId();
+  const reasonId = useId();
+  const firstName = row.name.split(" ")[0];
+
+  const confirm = () => {
+    const checked = checkDeparture({ years, reason }, thisYear);
+    if (!checked.ok) return setError(checked.error);
+    setError(undefined);
+    startTransition(async () => {
+      const result = await moveToAlumni(row.id, years, reason === "" ? null : reason);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${row.name} moved to Alumni`);
+      onOpenChange(false);
+      onDone();
+    });
+  };
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={GraduationCap}
+      tone="danger"
+      title={`Move ${row.name} to alumni?`}
+      confirmLabel="Move to alumni"
+      cancelLabel={`Keep ${firstName} on the team`}
+      danger
+      pending={pending}
+      onConfirm={confirm}
+      body={
+        <div className="grid grid-cols-2 gap-3">
+          <div className="min-w-0">
+            <label htmlFor={yearsId} className="mb-2 block text-[13px] text-prt-text">
+              On the team
+            </label>
+            <input
+              id={yearsId}
+              value={years}
+              onChange={(e) => {
+                setYears(e.target.value);
+                setError(undefined);
+              }}
+              aria-invalid={error !== undefined}
+              aria-describedby={error ? `${yearsId}-error` : undefined}
+              className={inputClass(error)}
+            />
+          </div>
+          <div className="relative min-w-0">
+            <label htmlFor={reasonId} className="mb-2 block text-[13px] text-prt-text">
+              Reason <span className="ml-1 text-prt-muted">optional</span>
+            </label>
+            <select
+              id={reasonId}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className={`${inputClass()} cursor-pointer appearance-none pr-10`}
+            >
+              <option value="" className="bg-panel">
+                No reason
+              </option>
+              {LEAVE_REASONS.map((r) => (
+                <option key={r} value={r} className="bg-panel">
+                  {LEAVE_REASON_LABELS[r]}
+                </option>
+              ))}
+            </select>
+            <ChevronDown aria-hidden className="pointer-events-none absolute bottom-3.5 right-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
+          </div>
+          {error && (
+            <p id={`${yearsId}-error`} className="col-span-2 -mt-1 text-[12px] text-danger">
+              {error}
+            </p>
+          )}
+        </div>
+      }
+    >
+      {firstName} leaves {unit ?? "the team"} and shows on the Alumni page with the years on the team. Their dashboard
+      access ends. Their account stays.
+    </ConfirmDialog>
   );
 }

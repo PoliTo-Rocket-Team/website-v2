@@ -1,24 +1,53 @@
 import { z } from "zod";
 
-// The division lead's Orders page (board 44, issue #145): the division's
-// purchase requests, the three figures over them, and the New order rules.
-// Money is whole euro cents everywhere, so totals never pick up float error.
+// The division lead's Orders page (Dashboard v2 boards 61 to 61d, issue
+// #172): the division's purchase requests to the team leader, what state each
+// is in, and what the lead may still do with it. Money is whole euro cents
+// everywhere, so totals never pick up float error.
 
-/** Waiting for the team leader, placed, arrived; or turned down. */
-export const ORDER_STATUSES = ["waiting", "ordered", "delivered", "declined"] as const;
+/** The states a request shows: waiting for the team leader, or their answer. */
+export const ORDER_STATUSES = ["waiting", "approved", "changes-requested", "rejected"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
   waiting: "Waiting",
-  ordered: "Ordered",
-  delivered: "Delivered",
-  declined: "Declined",
+  approved: "Approved",
+  "changes-requested": "Changes requested",
+  rejected: "Rejected",
 };
+
+/**
+ * A cancelled request is stored, so the record keeps it, but it is no longer
+ * a request: it leaves the page. Only the data sources see this state.
+ */
+export type StoredOrderStatus = OrderStatus | "cancelled";
 
 /** Euro cents. */
 export type Cents = number;
 
-export type Order = {
+/** What the team leader wrote when they sent a request back (board 61d). */
+export type ChangeRequest = {
+  readonly reason: string;
+  /** The team leader who sent it back: "Alessandro Greco". */
+  readonly by: string;
+  /** ISO date. */
+  readonly on: string;
+};
+
+/** Where a request stands. Only a request sent back carries the team leader's reason. */
+export type OrderState =
+  | { readonly status: "waiting" | "approved" | "rejected" }
+  | { readonly status: "changes-requested"; readonly changes: ChangeRequest };
+
+export type OrderQuote = {
+  readonly name: string;
+  /** Bytes, when the source knows them. */
+  readonly size: number | null;
+  /** Where the file opens; null where there is no route to it. */
+  readonly href: string | null;
+};
+
+export type Order = OrderState & {
   readonly id: number;
   readonly item: string;
   /** Why it is needed: "For the launch rail". */
@@ -29,17 +58,13 @@ export type Order = {
   readonly quantity: number;
   /** Shipping on top of the items, when the order carries one. */
   readonly shipping: Cents | null;
-  readonly status: OrderStatus;
   /** ISO date the request was sent. */
   readonly requestedOn: string;
-  /** The attached quote's file name, when one was sent. */
-  readonly quote: string | null;
+  readonly quote: OrderQuote | null;
 };
 
 export type DivisionOrders = {
   readonly division: { readonly id: number; readonly name: string };
-  /** The year "This year" counts. */
-  readonly year: number;
   readonly orders: readonly Order[];
 };
 
@@ -61,51 +86,56 @@ export function orderBreakdown(order: Pick<Order, "unitPrice" | "quantity" | "sh
   return order.shipping === null ? items : `${items} + ${formatEuro(order.shipping)}`;
 }
 
-export type OrderFigures = {
-  readonly waiting: { readonly count: number; readonly total: Cents };
-  readonly ordered: { readonly count: number; readonly total: Cents };
-  /** What the division spent in `year`: orders placed or delivered that year. */
-  readonly yearSpend: Cents;
+/**
+ * What the lead may still do with a request (boards 61c and 61d). A request
+ * the team leader has not answered can be cancelled or edited; one sent back
+ * can be cancelled, or edited and sent again, which puts it back to waiting.
+ * An approved or rejected request is the team leader's answer: nothing is left
+ * to do with it.
+ */
+export type OrderActions = {
+  readonly cancel: boolean;
+  readonly edit: "edit" | "edit-and-resend" | null;
 };
 
-function sum(orders: readonly Order[]): Cents {
-  return orders.reduce((total, o) => total + orderTotal(o), 0);
+export function orderActions(status: OrderStatus): OrderActions {
+  switch (status) {
+    case "waiting":
+      return { cancel: true, edit: "edit" };
+    case "changes-requested":
+      return { cancel: true, edit: "edit-and-resend" };
+    case "approved":
+    case "rejected":
+      return { cancel: false, edit: null };
+  }
 }
 
-export function orderFigures(orders: readonly Order[], year: number): OrderFigures {
-  const waiting = orders.filter((o) => o.status === "waiting");
-  const ordered = orders.filter((o) => o.status === "ordered");
-  const spent = orders.filter(
-    (o) => (o.status === "ordered" || o.status === "delivered") && Number(o.requestedOn.slice(0, 4)) === year,
-  );
-  return {
-    waiting: { count: waiting.length, total: sum(waiting) },
-    ordered: { count: ordered.length, total: sum(ordered) },
-    yearSpend: sum(spent),
-  };
+/** The state an edited request is in afterwards: an edit always goes back to the team leader. */
+export function stateAfterEdit(status: OrderStatus): OrderState | null {
+  return orderActions(status).edit === null ? null : { status: "waiting" };
 }
 
-/** Waiting first, then ordered, delivered and declined; newest first within each. */
+/** Newest request first, whatever its state (board 61). */
 export function sortOrders(orders: readonly Order[]): Order[] {
-  return [...orders].sort(
-    (a, b) =>
-      ORDER_STATUSES.indexOf(a.status) - ORDER_STATUSES.indexOf(b.status) ||
-      b.requestedOn.localeCompare(a.requestedOn) ||
-      b.id - a.id,
-  );
+  return [...orders].sort((a, b) => b.requestedOn.localeCompare(a.requestedOn) || b.id - a.id);
 }
 
-/** The filter tabs: All, then each status the board shows, and Declined only when there is one. */
-export function orderTabs(orders: readonly Order[]): { status: OrderStatus | "all"; label: string; count: number }[] {
-  const shown = ORDER_STATUSES.filter((s) => s !== "declined" || orders.some((o) => o.status === s));
+export type OrderTab = OrderStatus | "all";
+
+/** The filter tabs (board 61): All, then every status, each with its count, empty ones included. */
+export function orderTabs(orders: readonly Order[]): { status: OrderTab; label: string; count: number }[] {
   return [
     { status: "all", label: "All", count: orders.length },
-    ...shown.map((status) => ({
+    ...ORDER_STATUSES.map((status) => ({
       status,
       label: ORDER_STATUS_LABELS[status],
       count: orders.filter((o) => o.status === status).length,
     })),
   ];
+}
+
+export function inOrderTab(order: Pick<Order, "status">, tab: OrderTab): boolean {
+  return tab === "all" || order.status === tab;
 }
 
 /**
@@ -185,4 +215,21 @@ export function checkQuote(file: { type: string; size: number; name: string }): 
   if (!pdf) return "The quote must be a PDF.";
   if (file.size > MAX_QUOTE_BYTES) return "The quote must be 10 MB or less.";
   return null;
+}
+
+/** A request's fields as the New order form shows them, for Edit order. */
+export function orderFormFields(order: Pick<Order, "item" | "link" | "unitPrice" | "quantity" | "reason">): {
+  item: string;
+  link: string;
+  price: string;
+  quantity: string;
+  reason: string;
+} {
+  return {
+    item: order.item,
+    link: order.link ?? "",
+    price: (order.unitPrice / 100).toFixed(2),
+    quantity: String(order.quantity),
+    reason: order.reason ?? "",
+  };
 }

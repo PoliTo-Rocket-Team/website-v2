@@ -44,9 +44,23 @@ export async function removeAccess(grantId: number): Promise<WriteResult<null>> 
   return write("division-access", (data) => data.removeAccess(grantId));
 }
 
+const ORDER_FIELDS = ["item", "link", "price", "quantity", "reason"] as const;
+
 export async function placeOrder(form: FormData): Promise<WriteResult<Order>> {
-  const fields = textFields(form, ["item", "link", "price", "quantity", "reason"]);
+  const fields = textFields(form, ORDER_FIELDS);
   return write("orders", async (data) => data.placeOrder(fields, await uploadOf(form, "quote")));
+}
+
+/** Edit order, or Edit and send again (boards 61c and 61d). */
+export async function editOrder(orderId: number, form: FormData): Promise<WriteResult<Order>> {
+  if (!Number.isSafeInteger(orderId)) return refused("Unknown request.");
+  const fields = textFields(form, ORDER_FIELDS);
+  return write("orders", async (data) => data.editOrder(orderId, fields, await uploadOf(form, "quote")));
+}
+
+export async function cancelOrder(orderId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(orderId)) return refused("Unknown request.");
+  return write("orders", (data) => data.cancelOrder(orderId));
 }
 
 export async function saveLinkedin(text: string): Promise<WriteResult<string | null>> {

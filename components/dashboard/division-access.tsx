@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
-import { BriefcaseBusiness, Check, ChevronDown, Inbox, Info, Trash2, UserPlus, Users, type LucideIcon } from "lucide-react";
+import { useId, useState, useTransition, type FormEvent } from "react";
+import { BriefcaseBusiness, Check, ChevronDown, Inbox, Info, Plus, Trash2, UserMinus, UserPlus, Users, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   ACCESS_TARGETS,
@@ -22,6 +22,7 @@ import {
 } from "@/lib/dashboard/division-access";
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
+import { ConfirmDialog } from "./confirm-dialog";
 import { Drawer, DrawerPage } from "./drawer";
 import { Field, GroupLabel } from "./field";
 import { PANEL } from "./panel";
@@ -38,23 +39,28 @@ type Actions = {
   removeAccess: (grantId: number) => Promise<WriteResult<null>>;
 };
 
-// Board 43: what the lead holds, the access they shared, and the Give access
-// drawer. Props in, nothing fetched; the table lives in this page's state, so
-// a grant given or removed shows at once.
+// Boards 60, 60b and 60m: what the lead holds, the access they shared, and
+// the Give access panel. This is the only dashboard page that gives or
+// removes access. Props in, nothing fetched; the table lives in this page's
+// state, so a grant given or removed shows at once. Removing asks first.
 export function DivisionAccessView({ access, ...actions }: { access: DivisionAccess } & Actions) {
   const [grants, setGrants] = useState(access.grants);
   const [open, setOpen] = useState(false);
+  const [removing, setRemoving] = useState<AccessGrant | null>(null);
+  const [pending, startTransition] = useTransition();
   const unit = shortUnitName(access.division.name);
 
-  const remove = async (grant: AccessGrant) => {
-    const result = await actions.removeAccess(grant.id);
-    if (!result.ok) {
-      toast.error("Could not remove access", { description: result.error });
-      return;
-    }
-    setGrants((all) => all.filter((g) => g.id !== grant.id));
-    toast.success(`Removed ${grant.person.name}'s ${ACCESS_TARGET_LABELS[grant.target]} access`);
-  };
+  const remove = (grant: AccessGrant) =>
+    startTransition(async () => {
+      const result = await actions.removeAccess(grant.id);
+      if (!result.ok) {
+        toast.error("Could not remove access", { description: result.error });
+        return;
+      }
+      setGrants((all) => all.filter((g) => g.id !== grant.id));
+      setRemoving(null);
+      toast.success(`Removed ${grant.person.name}'s ${ACCESS_TARGET_LABELS[grant.target]} access`);
+    });
 
   const added = (fresh: readonly AccessGrant[]) => {
     // A new level for a target the person already had replaces the old row.
@@ -69,11 +75,14 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
       <PageHeader
         title="Access"
         intro="Share what you can do with people in your division. You can only give access you have."
+        introOnPhone={false}
         action={
           access.held.length > 0 && access.people.length > 0 ? (
             <button type="button" onClick={() => setOpen(true)} className={PRIMARY_PILL}>
-              <UserPlus aria-hidden className="h-4 w-4" strokeWidth={2} />
-              Give access
+              <UserPlus aria-hidden className="hidden h-4 w-4 md:block" strokeWidth={2} />
+              <Plus aria-hidden className="h-4 w-4 md:hidden" strokeWidth={2} />
+              <span className="md:hidden">Give</span>
+              <span className="hidden md:inline">Give access</span>
             </button>
           ) : undefined
         }
@@ -82,9 +91,17 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
       {access.held.length > 0 && (
         <section className="mt-6">
           <h2 className={EYEBROW}>Your access</h2>
+          <ul className="mt-2.5 grid grid-cols-3 gap-2 md:hidden">
+            {access.held.map((h) => (
+              <li key={h.target} className={`${PANEL} min-w-0 rounded-[10px] px-3 py-2.5`}>
+                <span className="block truncate text-[13px] font-semibold">{ACCESS_TARGET_LABELS[h.target]}</span>
+                <span className="block truncate text-[12px] text-prt-muted">{shortLevel(h.target, h.level)}</span>
+              </li>
+            ))}
+          </ul>
           {/* As many cards per row as fit at 200px, so a card's line stays whole
-              when the Give access drawer narrows the page. */}
-          <ul className="mt-2.5 grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2.5">
+              when the Give access panel narrows the page. */}
+          <ul className="mt-2.5 hidden grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2.5 md:grid">
             {access.held.map((h) => {
               const Icon = TARGET_ICONS[h.target];
               return (
@@ -103,7 +120,62 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
         </section>
       )}
 
-      {grants.length > 0 && <GrantsTable grants={grants} held={access.held} unit={unit} onRemove={remove} />}
+      {grants.length > 0 && (
+        <>
+          <section aria-label="People with access" className="mt-6 md:hidden">
+            <h2 className={EYEBROW}>People with access</h2>
+            <ul className="mt-2.5 flex flex-col gap-2.5">
+              {grants.map((g) => {
+                const removable = canRemove(access.held, g);
+                const inner = (
+                  <>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[16px] font-semibold">{g.person.name}</span>
+                      <span className="block truncate text-[13px] text-prt-muted">
+                        {ACCESS_TARGET_LABELS[g.target]} · {unit}
+                      </span>
+                    </span>
+                    <LevelPill grant={g} />
+                  </>
+                );
+                const card = `${PANEL} flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left`;
+                return (
+                  <li key={g.id}>
+                    {removable ? (
+                      <button
+                        type="button"
+                        onClick={() => setRemoving(g)}
+                        aria-label={`${g.person.name}, ${ACCESS_TARGET_LABELS[g.target]} ${levelLabel(g.target, g.level)}. Remove access`}
+                        className={`${card} transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent`}
+                      >
+                        {inner}
+                      </button>
+                    ) : (
+                      <div className={card}>{inner}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+          <GrantsTable grants={grants} held={access.held} unit={unit} onRemove={setRemoving} />
+        </>
+      )}
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(next) => !next && setRemoving(null)}
+        icon={UserMinus}
+        tone="danger"
+        title={removing ? `Remove ${removing.person.name}'s access?` : "Remove access?"}
+        confirmLabel="Remove access"
+        danger
+        pending={pending}
+        onConfirm={() => removing && remove(removing)}
+      >
+        {removing &&
+          `${removing.person.name.split(" ")[0]} can no longer ${levelVerb(removing)} ${ACCESS_TARGET_LABELS[removing.target]} for ${unit}.`}
+      </ConfirmDialog>
 
       <GiveAccessDrawer
         key={open ? "open" : "closed"}
@@ -121,12 +193,31 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
   );
 }
 
+/** "Edit", "Decide", "View": a held level on a phone card (board 60m). */
+function shortLevel(target: AccessTarget, level: AccessLevel): string {
+  return levelLabel(target, level).replace(/^Can /, "").replace(/^./, (c) => c.toUpperCase());
+}
+
+/** "view", "decide on", "edit": what a removal takes away. */
+function levelVerb(grant: AccessGrant): string {
+  const label = levelLabel(grant.target, grant.level).replace(/^Can /, "");
+  return label === "decide" ? "decide on" : label;
+}
+
+function LevelPill({ grant }: { grant: AccessGrant }) {
+  return (
+    <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-white-10 px-2.5 py-0.5 text-[12px] text-prt-text">
+      {levelLabel(grant.target, grant.level)}
+    </span>
+  );
+}
+
 // From md the header and every row are subgrids of one set of columns on the
 // table, so Level and Given by keep their content on one line however narrow
-// the page gets (the Give access drawer takes 440px from xl) and the header
-// still lines up with the rows.
-const TABLE_COLUMNS = "md:grid md:grid-cols-[150px_minmax(0,1.6fr)_minmax(max-content,0.7fr)_minmax(max-content,0.9fr)_32px] md:gap-x-4";
-const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 md:col-span-full md:grid-cols-subgrid md:px-[18px]";
+// the page gets (the Give access panel takes 440px from xl) and the header
+// still lines up with the rows. Below md the page shows cards instead.
+const TABLE_COLUMNS = "grid grid-cols-[minmax(150px,1.5fr)_minmax(0,1.6fr)_minmax(max-content,0.7fr)_minmax(max-content,0.9fr)_32px] gap-x-4";
+const ROW = "col-span-full grid grid-cols-subgrid items-center px-[18px]";
 
 /** "You · 2 Oct" */
 function givenLine(g: AccessGrant): string {
@@ -145,14 +236,14 @@ function GrantsTable({
   onRemove: (grant: AccessGrant) => void;
 }) {
   return (
-    <section aria-label="People you gave access" className={`${PANEL} ${TABLE_COLUMNS} mt-5 overflow-hidden`}>
-      <div aria-hidden className={`${ROW} hidden h-9 border-b border-hairline md:grid`}>
+    <section aria-label="People you gave access" className={`${PANEL} ${TABLE_COLUMNS} mt-5 hidden overflow-hidden md:grid`}>
+      <div aria-hidden className={`${ROW} h-9 border-b border-hairline`}>
         <span className={EYEBROW}>Person</span>
         <span className={EYEBROW}>Access</span>
         <span className={`${EYEBROW} whitespace-nowrap`}>Level</span>
         <span className={`${EYEBROW} whitespace-nowrap`}>Given by</span>
       </div>
-      <ul className="divide-y divide-hairline md:col-span-full md:grid md:grid-cols-subgrid">
+      <ul className="col-span-full grid grid-cols-subgrid divide-y divide-hairline">
         {grants.map((g) => (
           <li key={g.id} className={`${ROW} py-3`}>
             <span className="flex min-w-0 items-center gap-3">
@@ -162,25 +253,24 @@ function GrantsTable({
                 <span className="block text-[12px] text-prt-muted">{PERSON_STANDING_LABELS[g.person.standing]}</span>
               </span>
             </span>
-            <span className="col-start-1 row-start-2 text-[13px] text-text-2 md:col-start-auto md:row-start-auto">
+            <span className="text-[13px] text-text-2">
               {ACCESS_TARGET_LABELS[g.target]} · {unit}
             </span>
-            <span className="col-start-1 row-start-3 md:col-start-auto md:row-start-auto">
-              <span className="inline-flex whitespace-nowrap rounded-full bg-white-10 px-2.5 py-0.5 text-[12px] text-prt-text">
-                {levelLabel(g.target, g.level)}
-              </span>
-              {g.givenBy && <span className="ml-2 text-[12px] text-prt-muted md:hidden">{givenLine(g)}</span>}
+            <span>
+              <LevelPill grant={g} />
             </span>
-            <span className="hidden whitespace-nowrap text-[13px] text-prt-muted md:block">{givenLine(g)}</span>
-            {canRemove(held, g) && (
+            <span className="whitespace-nowrap text-[13px] text-prt-muted">{givenLine(g)}</span>
+            {canRemove(held, g) ? (
               <button
                 type="button"
                 onClick={() => onRemove(g)}
                 aria-label={`Remove ${g.person.name}'s ${ACCESS_TARGET_LABELS[g.target]} access`}
-                className="col-start-2 row-span-3 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent md:col-start-auto md:row-span-1 md:row-start-auto"
+                className="flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
               >
                 <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
               </button>
+            ) : (
+              <span />
             )}
           </li>
         ))}

@@ -6,17 +6,18 @@ import { Check, ChevronDown, Search } from "lucide-react";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { pagerItems, type TeamRole } from "@/lib/dashboard/team";
 
-// The parts the Members and Alumni pages share (boards 46, 46b, 46c): the
-// page header, the tab strip with counts, the department filter, search,
-// the role pill and the pager. Props in, nothing fetched.
+// The parts the Members and Alumni pages share (boards 46, 46c, 59): the
+// page header, the tab strip with counts (a row of chips on a phone, board
+// 59m), the department filter, search, the role pill and the pager. Props
+// in, nothing fetched.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 export function PageHeader({ title, detail }: { title: string; detail: string }) {
   return (
     <header>
-      <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em] md:text-[36px]">{title}</h1>
-      <p className="mt-1 text-[14px] text-prt-muted md:text-[15px]">{detail}</p>
+      <h1 className="text-[24px] font-bold leading-tight tracking-[-0.01em] md:text-[28px]">{title}</h1>
+      <p className="mt-1 text-[14px] text-prt-muted">{detail}</p>
     </header>
   );
 }
@@ -45,7 +46,11 @@ export function Tabs<K extends string>({
   onChange: (key: K) => void;
 }) {
   return (
-    <div role="tablist" aria-label={label} className="flex h-10 items-center gap-0.5 rounded-xl border border-hairline p-1">
+    <div
+      role="tablist"
+      aria-label={label}
+      className="flex max-w-full items-center gap-1.5 overflow-x-auto md:h-10 md:gap-0.5 md:rounded-xl md:border md:border-hairline md:p-1"
+    >
       {items.map((item) => {
         const current = item.key === value;
         return (
@@ -55,8 +60,8 @@ export function Tabs<K extends string>({
             role="tab"
             aria-selected={current}
             onClick={() => onChange(item.key)}
-            className={`flex h-full items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[14px] transition-colors duration-300 ease-out ${FOCUS} ${
-              current ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"
+            className={`flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out md:h-full md:rounded-lg md:border-0 md:text-[14px] ${FOCUS} ${
+              current ? "border-white-10 bg-white-10 font-semibold text-prt-text" : "border-hairline text-text-2 hover:text-prt-text"
             }`}
           >
             {item.label}
@@ -141,12 +146,12 @@ export function SearchField({
   );
 }
 
-/** Leads on the accent tint, members on white-10 (board 46). */
+/** Leads on the accent tint, members on white-10 (boards 46 and 59). */
 export function RolePill({ role, label }: { role: TeamRole; label: string }) {
   const lead = role !== "member";
   return (
     <span
-      className={`inline-block h-6 max-w-full truncate whitespace-nowrap rounded-md px-2 text-[13px] font-medium leading-6 ${
+      className={`inline-block h-6 max-w-full truncate whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium leading-6 ${
         lead ? "bg-accent-soft text-accent" : "bg-white-10 text-text-2"
       }`}
     >

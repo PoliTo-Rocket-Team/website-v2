@@ -1,9 +1,9 @@
 import "server-only";
 
-import { asc, isNull } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { departments, divisions, roles, scopes, users } from "@/db/schema";
+import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
 import type { AlumnusRow, OrgChart, Placement, RosterEntry } from "./team";
 
 // The database side of the Team pages (issue #143). One cached snapshot of
@@ -32,6 +32,9 @@ type PersonRow = {
   email: string;
   program: string | null;
   level_of_study: string | null;
+  /** The years on the team their lead gave when moving them to alumni (issue #172). */
+  team_from: number | null;
+  team_to: number | null;
 };
 
 type ScopeRow = { member_id: number | null; target: string; access_level: string };
@@ -75,8 +78,11 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
         email: users.email,
         program: users.program,
         level_of_study: users.levelOfStudy,
+        team_from: members.teamFrom,
+        team_to: members.teamTo,
       })
-      .from(users),
+      .from(users)
+      .leftJoin(members, eq(members.memberId, users.member)),
     db
       .select({ member_id: scopes.memberId, target: scopes.target, access_level: scopes.accessLevel })
       .from(scopes),
@@ -174,7 +180,8 @@ export function alumniOf(snapshot: TeamSnapshot): AlumnusRow[] {
   const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
   const { org } = snapshot;
   return [...rolesByMember(snapshot)].flatMap(([memberId, memberRoles]): AlumnusRow[] => {
-    const named = nameOf(people.get(memberId));
+    const person = people.get(memberId);
+    const named = nameOf(person);
     if (!named || memberRoles.length === 0 || memberRoles.some((r) => r.leaved_at === null)) return [];
     const last = [...memberRoles].sort((a, b) => (b.leaved_at ?? "").localeCompare(a.leaved_at ?? ""))[0];
     const division = org.divisions.find((d) => d.id === last.division_id);
@@ -187,8 +194,9 @@ export function alumniOf(snapshot: TeamSnapshot): AlumnusRow[] {
         lastRole: last.title,
         unit: division?.name ?? department,
         department,
-        from: Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
-        to: Math.max(...memberRoles.map((r) => yearOf(r.leaved_at!))),
+        // The years the lead gave on Move to alumni, else the roles' own dates.
+        from: person?.team_from ?? Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
+        to: person?.team_to ?? Math.max(...memberRoles.map((r) => yearOf(r.leaved_at!))),
         shownOnSite: null,
       },
     ];

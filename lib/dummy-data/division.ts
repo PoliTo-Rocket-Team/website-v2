@@ -9,13 +9,25 @@ import {
   type AccessTarget,
   type DivisionAccess,
 } from "@/lib/dashboard/division-access";
-import { checkNewOrder, checkQuote, type DivisionOrders, type Order, type OrderStatus } from "@/lib/dashboard/orders";
-import { divisionIdOf } from "@/lib/dashboard/team";
+import {
+  checkNewOrder,
+  checkQuote,
+  orderActions,
+  stateAfterEdit,
+  type DivisionOrders,
+  type NewOrder,
+  type Order,
+  type OrderQuote,
+  type OrderState,
+} from "@/lib/dashboard/orders";
+import { divisionIdOf, type RosterEntry } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { divisions, people, type DummyPerson } from "./team";
 
 // The division lead's Access and Orders pages for the test developer (boards
-// 43 and 44, issue #145). The lead is Marco Bianchi, Mission Analysis.
+// 60 to 61d, issues #145 and #172). The lead is Marco Bianchi, Mission
+// Analysis. The people come from the roster as the test developer left it
+// (./team-pages.ts), so someone moved to alumni has no access here any more.
 
 export type DummyHeldAccess = {
   readonly personId: number;
@@ -46,7 +58,7 @@ export const accessGrants = [
   { id: 3, personId: 3, divisionId: 1, target: "members", level: "view", givenById: 2, givenOn: "2026-10-02" },
 ] as const satisfies readonly DummyGrant[];
 
-export type DummyOrder = {
+export type DummyOrder = OrderState & {
   readonly id: number;
   readonly divisionId: number;
   readonly requesterId: number;
@@ -57,29 +69,28 @@ export type DummyOrder = {
   readonly unitPrice: number;
   readonly quantity: number;
   readonly shipping: number | null;
-  readonly status: OrderStatus;
   readonly requestedOn: string;
+  readonly quote: OrderQuote | null;
 };
 
-/** The year the dummy orders' "This year" counts. */
-export const ordersYear = 2026;
+const sentBack: OrderState = {
+  status: "changes-requested",
+  changes: {
+    reason: "Amazon is over our limit for this item. Add a quote from a second shop, then send it again.",
+    by: "Alessandro Greco",
+    on: "2026-10-05",
+  },
+};
 
-export const orders = [
-  { id: 1, divisionId: 1, requesterId: 2, item: "Steel wire", reason: "For the launch rail", link: "https://amzn.eu/d/076iqsM1", unitPrice: 5955, quantity: 2, shipping: null, status: "waiting", requestedOn: "2026-10-08" },
-  { id: 2, divisionId: 1, requesterId: 2, item: "CO2 cartridges", reason: "Ejection tests at Roccaraso", link: null, unitPrice: 12480, quantity: 1, shipping: null, status: "waiting", requestedOn: "2026-10-07" },
-  { id: 3, divisionId: 1, requesterId: 3, item: "Mini 3-ring system", reason: "Recovery bay mock-up", link: null, unitPrice: 15000, quantity: 1, shipping: 1330, status: "waiting", requestedOn: "2026-10-06" },
-  { id: 4, divisionId: 1, requesterId: 2, item: "Loctite", reason: "Launch rail screws", link: null, unitPrice: 1180, quantity: 3, shipping: null, status: "ordered", requestedOn: "2026-10-01" },
-  { id: 5, divisionId: 1, requesterId: 4, item: "M4 heated inserts", reason: "Roccaraso launch", link: null, unitPrice: 2300, quantity: 3, shipping: null, status: "ordered", requestedOn: "2026-09-29" },
-  { id: 6, divisionId: 1, requesterId: 3, item: "Concave mirror", reason: "Optical test bench", link: null, unitPrice: 4824, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-09-22" },
-  { id: 7, divisionId: 1, requesterId: 4, item: "Carbon fibre tube, 100 mm", reason: "Airframe test section", link: null, unitPrice: 42000, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-09-10" },
-  { id: 8, divisionId: 1, requesterId: 2, item: "StratoLogger CF altimeter", reason: "Dual-deploy backup", link: null, unitPrice: 6490, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-07-15" },
-  { id: 9, divisionId: 1, requesterId: 3, item: "Parachute, 1.2 m", reason: "Main recovery chute", link: null, unitPrice: 18900, quantity: 1, shipping: 1500, status: "delivered", requestedOn: "2026-06-30" },
-  { id: 10, divisionId: 1, requesterId: 4, item: "Raspberry Pi 5", reason: "Ground station", link: null, unitPrice: 8990, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-05-12" },
-  { id: 11, divisionId: 1, requesterId: 2, item: "Load cell, 500 kg", reason: "Static fire stand", link: null, unitPrice: 31450, quantity: 1, shipping: null, status: "delivered", requestedOn: "2026-04-03" },
-  { id: 12, divisionId: 1, requesterId: 3, item: "Shock cord, 6 m", reason: "Recovery harness", link: null, unitPrice: 2275, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-03-18" },
-  { id: 13, divisionId: 1, requesterId: 4, item: "GPS module", reason: "Telemetry board", link: null, unitPrice: 4890, quantity: 2, shipping: null, status: "delivered", requestedOn: "2026-02-20" },
-  { id: 14, divisionId: 1, requesterId: 2, item: "Aluminium plate 6061, 5 mm", reason: "Fin can", link: null, unitPrice: 33000, quantity: 2, shipping: 2671, status: "delivered", requestedOn: "2026-01-27" },
-] as const satisfies readonly DummyOrder[];
+/** Board 61's requests. */
+export const orders: readonly DummyOrder[] = [
+  { id: 1, divisionId: 1, requesterId: 2, item: "Steel wire", reason: "For the launch rail", link: "https://uk.rs-online.com/web/p/steel-wire/1234567", unitPrice: 5955, quantity: 2, shipping: null, status: "waiting", requestedOn: "2026-10-08", quote: { name: "quote_RS_2026-10-02.pdf", size: 188_416, href: null } },
+  { id: 2, divisionId: 1, requesterId: 2, item: "CO2 cartridges", reason: "Ejection tests at Roccaraso", link: "https://www.amazon.it/dp/B07CO2XXXX", unitPrice: 12480, quantity: 1, shipping: null, ...sentBack, requestedOn: "2026-10-07", quote: { name: "quote_amazon_2026-10-03.pdf", size: 188_416, href: null } },
+  { id: 3, divisionId: 1, requesterId: 3, item: "Mini 3-ring system", reason: "Recovery bay mock-up", link: null, unitPrice: 15000, quantity: 1, shipping: 1330, status: "waiting", requestedOn: "2026-10-06", quote: null },
+  { id: 4, divisionId: 1, requesterId: 2, item: "Loctite", reason: "Launch rail screws", link: null, unitPrice: 1180, quantity: 3, shipping: null, status: "approved", requestedOn: "2026-10-01", quote: null },
+  { id: 5, divisionId: 1, requesterId: 4, item: "M4 heated inserts", reason: "Roccaraso launch", link: null, unitPrice: 2300, quantity: 3, shipping: null, status: "approved", requestedOn: "2026-09-29", quote: null },
+  { id: 6, divisionId: 1, requesterId: 3, item: "Concave mirror", reason: "Optical test bench", link: null, unitPrice: 4824, quantity: 1, shipping: null, status: "rejected", requestedOn: "2026-09-22", quote: null },
+];
 
 function personOf(id: number): DummyPerson {
   return people.find((p) => p.id === id)!;
@@ -98,37 +109,50 @@ function localId(): number {
   return randomInt(1_000_000, 2_000_000_000);
 }
 
-function accessPerson(p: DummyPerson): AccessPerson {
-  return { id: p.id, name: p.name, standing: p.placement.role === "member" ? "member" : "lead" };
+function accessPerson(entry: RosterEntry): AccessPerson {
+  return { id: entry.id, name: entry.name, standing: entry.placement.role === "member" ? "member" : "lead" };
 }
 
-/** Board 43 for a lead; null for anyone who leads no division. */
-export function dummyDivisionAccess(lead: DummyPerson): DivisionAccess | null {
+/**
+ * Boards 60 and 60b for a lead; null for anyone who leads no division. Only
+ * people on `roster` hold access: a grant to someone moved to alumni is gone.
+ */
+export function dummyDivisionAccess(lead: DummyPerson, roster: readonly RosterEntry[]): DivisionAccess | null {
   if (lead.placement.role !== "division-lead") return null;
   const divisionId = lead.placement.divisionId;
-  const grants = accessGrants
-    .filter((g) => g.divisionId === divisionId)
-    .map((g): AccessGrant => ({
-      id: g.id,
-      person: accessPerson(personOf(g.personId)),
-      target: g.target,
-      level: g.level,
-      givenBy: g.givenById === lead.id ? "You" : personOf(g.givenById).name,
-      givenOn: g.givenOn,
-    }));
+  const inDivision = roster.filter((e) => divisionIdOf(e.placement) === divisionId);
+  const onTeam = new Map(inDivision.map((e) => [e.id, e]));
+  const grants = accessGrants.flatMap((g): AccessGrant[] => {
+    const person = onTeam.get(g.personId);
+    if (g.divisionId !== divisionId || person === undefined) return [];
+    return [
+      {
+        id: g.id,
+        person: accessPerson(person),
+        target: g.target,
+        level: g.level,
+        givenBy: g.givenById === lead.id ? "You" : personOf(g.givenById).name,
+        givenOn: g.givenOn,
+      },
+    ];
+  });
   return {
     division: { id: divisionId, name: divisionOf(divisionId).name },
     held: ACCESS_TARGETS.flatMap((target) =>
       heldAccess.filter((h) => h.personId === lead.id && h.target === target).map((h) => ({ target, level: h.level })),
     ),
     grants,
-    people: people.filter((p) => divisionIdOf(p.placement) === divisionId && p.id !== lead.id).map(accessPerson),
+    people: inDivision.filter((e) => e.id !== lead.id).map(accessPerson),
   };
 }
 
 /** Checks the request as the database side does and answers the new rows; nothing is stored. */
-export function dummyGiveAccess(lead: DummyPerson, input: unknown): WriteResult<readonly AccessGrant[]> {
-  const access = dummyDivisionAccess(lead);
+export function dummyGiveAccess(
+  lead: DummyPerson,
+  roster: readonly RosterEntry[],
+  input: unknown,
+): WriteResult<readonly AccessGrant[]> {
+  const access = dummyDivisionAccess(lead, roster);
   if (access === null) return refused("Only a division lead gives access here.");
   const checked = checkGiveAccess(access, input);
   if (!checked.ok) return refused(checked.error);
@@ -151,37 +175,63 @@ export function dummyGiveAccess(lead: DummyPerson, input: unknown): WriteResult<
  * on the page lives only in the page's state, so there is no stored grant to
  * check it against, and removing it is allowed.
  */
-export function dummyRemoveAccess(lead: DummyPerson, grantId: number): WriteResult<null> {
-  const access = dummyDivisionAccess(lead);
+export function dummyRemoveAccess(lead: DummyPerson, roster: readonly RosterEntry[], grantId: number): WriteResult<null> {
+  const access = dummyDivisionAccess(lead, roster);
   if (access === null) return refused("Only a division lead removes access here.");
   if (!accessGrants.some((g) => g.id === grantId)) return written(null);
   const checked = checkRemoveAccess(access, grantId);
   return checked.ok ? written(null) : refused(checked.error);
 }
 
-/** Board 44 for a lead; null for anyone who leads no division. */
+function stateOf(o: OrderState): OrderState {
+  return o.status === "changes-requested" ? { status: o.status, changes: o.changes } : { status: o.status };
+}
+
+function orderOf(o: DummyOrder): Order {
+  return {
+    ...stateOf(o),
+    id: o.id,
+    item: o.item,
+    reason: o.reason,
+    link: o.link,
+    requestedBy: personOf(o.requesterId).name,
+    unitPrice: o.unitPrice,
+    quantity: o.quantity,
+    shipping: o.shipping,
+    requestedOn: o.requestedOn,
+    quote: o.quote,
+  };
+}
+
+/** Boards 61 to 61d for a lead; null for anyone who leads no division. */
 export function dummyDivisionOrders(lead: DummyPerson): DivisionOrders | null {
   if (lead.placement.role !== "division-lead") return null;
   const divisionId = lead.placement.divisionId;
   return {
     division: { id: divisionId, name: divisionOf(divisionId).name },
-    year: ordersYear,
-    orders: orders
-      .filter((o) => o.divisionId === divisionId)
-      .map((o): Order => ({
-        id: o.id,
-        item: o.item,
-        reason: o.reason,
-        link: o.link,
-        requestedBy: personOf(o.requesterId).name,
-        unitPrice: o.unitPrice,
-        quantity: o.quantity,
-        shipping: o.shipping,
-        status: o.status,
-        requestedOn: o.requestedOn,
-        quote: null,
-      })),
+    orders: orders.filter((o) => o.divisionId === divisionId).map(orderOf),
   };
+}
+
+/** The New order or Edit order fields, checked as the database side checks them. */
+function checkedOrder(fields: Record<string, string>, quote: Upload | null): { ok: true; value: NewOrder } | { ok: false; error: string } {
+  const checked = checkNewOrder({
+    item: fields.item ?? "",
+    link: fields.link ?? "",
+    price: fields.price ?? "",
+    quantity: fields.quantity ?? "",
+    reason: fields.reason ?? "",
+  });
+  if (!checked.ok) return { ok: false, error: Object.values(checked.errors)[0] ?? "Check the form." };
+  if (quote !== null) {
+    const error = checkQuote({ type: quote.contentType, size: quote.bytes.byteLength, name: quote.name });
+    if (error !== null) return { ok: false, error };
+  }
+  return checked;
+}
+
+function quoteOf(upload: Upload): OrderQuote {
+  return { name: upload.name, size: upload.bytes.byteLength, href: null };
 }
 
 export function dummyPlaceOrder(
@@ -190,18 +240,8 @@ export function dummyPlaceOrder(
   quote: Upload | null,
 ): WriteResult<Order> {
   if (dummyDivisionOrders(lead) === null) return refused("Only a division lead sends orders here.");
-  const checked = checkNewOrder({
-    item: fields.item ?? "",
-    link: fields.link ?? "",
-    price: fields.price ?? "",
-    quantity: fields.quantity ?? "",
-    reason: fields.reason ?? "",
-  });
-  if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  if (quote !== null) {
-    const error = checkQuote({ type: quote.contentType, size: quote.bytes.byteLength, name: quote.name });
-    if (error !== null) return refused(error);
-  }
+  const checked = checkedOrder(fields, quote);
+  if (!checked.ok) return refused(checked.error);
   return written({
     id: localId(),
     ...checked.value,
@@ -209,6 +249,49 @@ export function dummyPlaceOrder(
     shipping: null,
     status: "waiting",
     requestedOn: today(),
-    quote: quote?.name ?? null,
+    quote: quote === null ? null : quoteOf(quote),
   });
+}
+
+/**
+ * Checks an edit as the database side does and answers the request as it now
+ * reads; nothing is stored. A request sent on the page lives only in the
+ * page's state, so it is answered as sent now.
+ */
+export function dummyEditOrder(
+  lead: DummyPerson,
+  orderId: number,
+  fields: Record<string, string>,
+  quote: Upload | null,
+): WriteResult<Order> {
+  const page = dummyDivisionOrders(lead);
+  if (page === null) return refused("Only a division lead edits orders here.");
+  const checked = checkedOrder(fields, quote);
+  if (!checked.ok) return refused(checked.error);
+  const stored = page.orders.find((o) => o.id === orderId);
+  if (stored === undefined) {
+    if (orders.some((o) => o.id === orderId)) return refused("That request is not in your division.");
+    return written({ id: orderId, ...checked.value, requestedBy: lead.name, shipping: null, status: "waiting", requestedOn: today(), quote: quote === null ? null : quoteOf(quote) });
+  }
+  const next = stateAfterEdit(stored.status);
+  if (next === null) return refused("The team leader has answered this request.");
+  return written({
+    ...next,
+    ...checked.value,
+    id: stored.id,
+    requestedBy: stored.requestedBy,
+    shipping: stored.shipping,
+    requestedOn: stored.requestedOn,
+    quote: quote === null ? stored.quote : quoteOf(quote),
+  });
+}
+
+export function dummyCancelOrder(lead: DummyPerson, orderId: number): WriteResult<null> {
+  const page = dummyDivisionOrders(lead);
+  if (page === null) return refused("Only a division lead cancels orders here.");
+  const stored = page.orders.find((o) => o.id === orderId);
+  if (stored === undefined) {
+    return orders.some((o) => o.id === orderId) ? refused("That request is not in your division.") : written(null);
+  }
+  return orderActions(stored.status).cancel ? written(null) : refused("The team leader has answered this request.");
 }

@@ -6,7 +6,7 @@ import type { DivisionOrders, Order } from "./orders";
 import type { Overview } from "./overview";
 import type { ApplicationStage, ApplicationsPage, PositionsPage } from "./recruitment";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
-import type { AlumniDirectory, MemberDirectory, MemberEdit, TeamTree } from "./team";
+import type { AlumniDirectory, Departure, MemberDirectory, MemberEdit, PromoteMode, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
@@ -30,7 +30,10 @@ export interface DashboardData {
   readonly viewer: DashboardViewer;
   navCounts(): Promise<NavCounts>;
   overview(): Promise<Overview>;
-  /** The Members page (#143): the whole team, or the lead's own division. */
+  /**
+   * The Members page: the whole team (#143), or the lead's own division with
+   * the people joining it (board 59, #172).
+   */
   members(): Promise<MemberDirectory>;
   /** The Alumni page (#143). */
   alumni(): Promise<AlumniDirectory>;
@@ -52,16 +55,24 @@ export interface DashboardData {
   setPositionOpen(positionId: number, open: boolean): Promise<void>;
   setApplicationStage(applicationId: number, stage: ApplicationStage): Promise<void>;
 
-  /** Board 43: the division lead's Access page. */
+  /** Boards 60 and 60b: the division lead's Access page, the only place access is given or removed. */
   divisionAccess(): Promise<DivisionAccess | null>;
   /** One grant per chosen target; answers the grants as the table shows them. */
   giveAccess(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
   removeAccess(grantId: number): Promise<WriteResult<null>>;
 
-  /** Board 44: the division lead's Orders page. */
+  /** Boards 61 to 61d: the division lead's Orders page. */
   divisionOrders(): Promise<DivisionOrders | null>;
   /** The New order fields as typed, and the quote when one was attached. */
   placeOrder(fields: Record<string, string>, quote: Upload | null): Promise<WriteResult<Order>>;
+  /**
+   * Edit order, or Edit and send again (boards 61c and 61d): the request with
+   * the fields as typed, back to waiting. A quote replaces the one on file;
+   * none keeps it. Refused once the team leader has approved or rejected it.
+   */
+  editOrder(orderId: number, fields: Record<string, string>, quote: Upload | null): Promise<WriteResult<Order>>;
+  /** Cancel request: the request leaves the page. Refused once the team leader has approved or rejected it. */
+  cancelOrder(orderId: number): Promise<WriteResult<null>>;
 
   /** Board 45: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;
@@ -83,8 +94,14 @@ export interface DashboardData {
  */
 export interface TeamWrites {
   setShownOnSite(alumnusId: number, shown: boolean): Promise<boolean>;
+  /** The member panel's Save: the Team page title, and the role where the panel sets one. */
   saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
-  moveToAlumni(personId: number): Promise<boolean>;
+  /** Board 59e: a member of the lead's division becomes its lead, beside the lead or in their place. */
+  promote(personId: number, mode: PromoteMode): Promise<boolean>;
+  /** Board 59d: the person's roles end and their access goes; their account stays. */
+  moveToAlumni(personId: number, departure: Departure): Promise<boolean>;
+  /** Board 59: the accepted applicant joins the division the position belongs to. */
+  confirmJoin(applicationId: number): Promise<boolean>;
 }
 
 /** A read or write the viewer does not reach. */
