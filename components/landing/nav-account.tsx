@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, type ComponentProps } from "react";
 import { Avatar } from "@/components/dashboard/avatar";
 import { parseNavViewer, type NavViewer } from "@/lib/nav-viewer-shape";
 
@@ -73,17 +73,24 @@ export function NavAccount() {
   );
 }
 
-/** The sidebar foot (board 24b): the full-width "Sign in", or the viewer's pill in its place. */
-export function NavMenuAccount({ viewer }: { viewer: NavViewer | null }) {
+/**
+ * The sidebar foot (board 24b): the full-width "Sign in", or the viewer's pill in its place.
+ * The menu wraps it in `DialogClose asChild`, which hands down the close
+ * `onClick` and a `ref`; they go onto the link, so a click closes the menu.
+ */
+export function NavMenuAccount({
+  viewer,
+  ...link
+}: { viewer: NavViewer | null } & Omit<ComponentProps<typeof Link>, "href" | "className" | "children">) {
   if (viewer === null) {
     return (
-      <Link href="/login" className={FOOT}>
+      <Link {...link} href="/login" className={FOOT}>
         Sign in
       </Link>
     );
   }
   return (
-    <Link href="/dashboard" className={`gap-2.5 px-5 ${FOOT}`}>
+    <Link {...link} href="/dashboard" className={`gap-2.5 px-5 ${FOOT}`}>
       <Avatar name={viewer.name} size="sm" accent />
       <span className="min-w-0 truncate">{viewer.name}</span>
     </Link>
