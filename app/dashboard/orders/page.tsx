@@ -10,8 +10,9 @@ export const metadata: Metadata = {
   title: "Orders · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 61 to 61d: the division lead's Orders page. Only a division lead reaches it
-// (lib/dashboard/access.ts); anyone else gets the dashboard's not found.
+// Boards 61 to 61d: the division's Orders page. Only a division lead reaches it
+// (lib/dashboard/access.ts), and only with Orders access in the division
+// (issue #213); anyone else gets the dashboard's not found.
 export default function OrdersPage() {
   return (
     <Suspense fallback={null}>

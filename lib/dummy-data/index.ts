@@ -45,9 +45,9 @@ import {
   dummyDivisionAccess,
   dummyDivisionOrders,
   dummyEditOrder,
-  dummyGiveAccess,
   dummyPlaceOrder,
-  dummyRemoveAccess,
+  dummyRemoveAllAccess,
+  dummySaveAccess,
 } from "./division";
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
@@ -657,9 +657,9 @@ export function dummyDashboardData(
     moveApplication,
 
     divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person, teamRoster)),
-    giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, teamRoster, input)),
-    removeAccess: async (grantId) =>
-      person === null ? refused(notOnTeam) : dummyRemoveAccess(person, teamRoster, grantId),
+    saveAccess: async (input) => (person === null ? refused(notOnTeam) : dummySaveAccess(person, teamRoster, input)),
+    removeAllAccess: async (personId) =>
+      person === null ? refused(notOnTeam) : dummyRemoveAllAccess(person, teamRoster, personId),
 
     divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
     placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),

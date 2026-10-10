@@ -1,30 +1,49 @@
 "use client";
 
 import { useId, useState, useTransition, type FormEvent } from "react";
-import { BriefcaseBusiness, Check, ChevronDown, Inbox, Info, Plus, Trash2, UserMinus, UserPlus, Users, type LucideIcon } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Inbox,
+  Info,
+  Lock,
+  Plus,
+  ShoppingCart,
+  UserMinus,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
-  ACCESS_TARGETS,
+  ACCESS_LEVEL_LABELS,
+  ACCESS_LEVEL_SHORT_LABELS,
+  ACCESS_LEVELS,
+  ACCESS_LEVELS_EXPLAINED,
   ACCESS_TARGET_LABELS,
-  canGive,
-  canRemove,
-  editLabelFor,
-  grantSummary,
-  levelLabel,
+  ACCESS_TARGETS,
+  accessByPerson,
+  areaLevelsOf,
+  areaRule,
+  canChangePerson,
+  heldLevel,
   PERSON_STANDING_LABELS,
-  shortUnitName,
-  type HeldAccess,
   type AccessGrant,
   type AccessLevel,
+  type AccessPerson,
   type AccessTarget,
+  type AreaLevels,
   type DivisionAccess,
-  type GiveAccess,
+  type PersonAccess,
+  type SaveAccess,
 } from "@/lib/dashboard/division-access";
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
-import { Drawer, DrawerPage } from "./drawer";
-import { Field, GroupLabel } from "./field";
+import { Drawer, DrawerPage, PANEL_DANGER_BUTTON } from "./drawer";
+import { Field, GroupLabel, LOCKED_INPUT } from "./field";
 import { PANEL } from "./panel";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 
@@ -32,53 +51,50 @@ const TARGET_ICONS: Readonly<Record<AccessTarget, LucideIcon>> = {
   positions: BriefcaseBusiness,
   applications: Inbox,
   members: Users,
+  orders: ShoppingCart,
 };
+
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
 type Actions = {
-  giveAccess: (input: GiveAccess) => Promise<WriteResult<readonly AccessGrant[]>>;
-  removeAccess: (grantId: number) => Promise<WriteResult<null>>;
+  saveAccess: (input: SaveAccess) => Promise<WriteResult<readonly AccessGrant[]>>;
+  removeAllAccess: (personId: number) => Promise<WriteResult<null>>;
 };
 
-// Boards 60, 60b and 60m: what the lead holds, the access they shared, and
-// the Give access panel. This is the only dashboard page that gives or
-// removes access. Props in, nothing fetched; the table lives in this page's
-// state, so a grant given or removed shows at once. Removing asks first.
+type Open = { readonly kind: "none" } | { readonly kind: "give" } | { readonly kind: "edit"; readonly personId: number };
+const CLOSED: Open = { kind: "none" };
+
+// Boards 60, 60b, 60c and 60m (issue #213): what the lead holds, one row per
+// person they shared it with, and the Give access and Edit access drawers.
+// This is the only dashboard page that gives, changes or removes access.
+// Props in, nothing fetched; the grants live in this page's state, so a save
+// shows at once. Remove all access asks first.
 export function DivisionAccessView({ access, ...actions }: { access: DivisionAccess } & Actions) {
   const [grants, setGrants] = useState(access.grants);
-  const [open, setOpen] = useState(false);
-  const [removing, setRemoving] = useState<AccessGrant | null>(null);
-  const [pending, startTransition] = useTransition();
-  const unit = shortUnitName(access.division.name);
+  const [open, setOpen] = useState<Open>(CLOSED);
+  const rows = accessByPerson(grants);
+  const editing = open.kind === "edit" ? (access.people.find((p) => p.id === open.personId) ?? null) : null;
+  const openRow = (row: PersonAccess) => setOpen({ kind: "edit", personId: row.person.id });
+  const changeable = (row: PersonAccess) => canChangePerson(access.held, row.person, areaLevelsOf(grants, row.person.id));
 
-  const remove = (grant: AccessGrant) =>
-    startTransition(async () => {
-      const result = await actions.removeAccess(grant.id);
-      if (!result.ok) {
-        toast.error("Could not remove access", { description: result.error });
-        return;
-      }
-      setGrants((all) => all.filter((g) => g.id !== grant.id));
-      setRemoving(null);
-      toast.success(`Removed ${grant.person.name}'s ${ACCESS_TARGET_LABELS[grant.target]} access`);
+  // The person's grants after a save take their place in the table: their row
+  // stays where it was, and a new row goes on top.
+  const replacePerson = (personId: number, fresh: readonly AccessGrant[]) =>
+    setGrants((all) => {
+      const at = all.findIndex((g) => g.person.id === personId);
+      const rest = all.filter((g) => g.person.id !== personId);
+      return at === -1 ? [...fresh, ...rest] : [...rest.slice(0, at), ...fresh, ...rest.slice(at)];
     });
 
-  const added = (fresh: readonly AccessGrant[]) => {
-    // A new level for a target the person already had replaces the old row.
-    setGrants((all) => [
-      ...fresh,
-      ...all.filter((g) => !fresh.some((f) => f.person.id === g.person.id && f.target === g.target)),
-    ]);
-  };
-
   return (
-    <DrawerPage drawerOpen={open}>
+    <DrawerPage drawerOpen={open.kind !== "none"}>
       <PageHeader
         title="Access"
         intro="Share what you can do with people in your division. You can only give access you have."
         phone="bar"
         action={
           access.held.length > 0 && access.people.length > 0 ? (
-            <button type="button" onClick={() => setOpen(true)} className={PRIMARY_PILL}>
+            <button type="button" onClick={() => setOpen({ kind: "give" })} className={PRIMARY_PILL}>
               <UserPlus aria-hidden className="hidden h-4 w-4 md:block" strokeWidth={2} />
               <Plus aria-hidden className="h-4 w-4 md:hidden" strokeWidth={2} />
               <span className="md:hidden">Give</span>
@@ -88,245 +104,263 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
         }
       />
 
-      {access.held.length > 0 && (
-        <section className="mt-6 max-md:mt-0">
-          <h2 className={EYEBROW}>Your access</h2>
-          <ul className="mt-2.5 grid grid-cols-3 gap-2 md:hidden">
-            {access.held.map((h) => (
-              <li key={h.target} className={`${PANEL} min-w-0 rounded-[10px] px-3 py-2.5`}>
-                <span className="block truncate text-[13px] font-semibold">{ACCESS_TARGET_LABELS[h.target]}</span>
-                <span className="block truncate text-[12px] text-prt-muted">{shortLevel(h.target, h.level)}</span>
-              </li>
-            ))}
-          </ul>
-          {/* As many cards per row as fit at 200px, so a card's line stays whole
-              when the Give access panel narrows the page. */}
-          <ul className="mt-2.5 hidden grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2.5 md:grid">
-            {access.held.map((h) => {
-              const Icon = TARGET_ICONS[h.target];
-              return (
-                <li key={h.target} className={`${PANEL} flex items-center gap-3 rounded-[10px] px-4 py-2.5`}>
-                  <Icon aria-hidden className="h-4 w-4 shrink-0 text-accent" strokeWidth={1.75} />
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-semibold">{ACCESS_TARGET_LABELS[h.target]}</span>
-                    <span className="block text-[12px] text-prt-muted">
-                      {unit} · <span className="whitespace-nowrap">{levelLabel(h.target, h.level)}</span>
-                    </span>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+      {access.held.length > 0 && <YourAccess access={access} />}
 
-      {grants.length > 0 && (
+      {rows.length > 0 && (
         <>
           <section aria-label="People with access" className="mt-6 md:hidden">
             <h2 className={EYEBROW}>People with access</h2>
             <ul className="mt-2.5 flex flex-col gap-2.5">
-              {grants.map((g) => {
-                const removable = canRemove(access.held, g);
-                const inner = (
-                  <>
-                    <span className="min-w-0">
-                      <span className="block truncate text-[16px] font-semibold">{g.person.name}</span>
-                      <span className="block truncate text-[13px] text-prt-muted">
-                        {ACCESS_TARGET_LABELS[g.target]} · {unit}
-                      </span>
-                    </span>
-                    <LevelPill grant={g} />
-                  </>
-                );
-                const card = `${PANEL} flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left`;
-                return (
-                  <li key={g.id}>
-                    {removable ? (
-                      <button
-                        type="button"
-                        onClick={() => setRemoving(g)}
-                        aria-label={`${g.person.name}, ${ACCESS_TARGET_LABELS[g.target]} ${levelLabel(g.target, g.level)}. Remove access`}
-                        className={`${card} transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent`}
-                      >
-                        {inner}
-                      </button>
-                    ) : (
-                      <div className={card}>{inner}</div>
-                    )}
-                  </li>
-                );
-              })}
+              {rows.map((row) => (
+                <li key={row.person.id}>
+                  <PersonCard row={row} onOpen={changeable(row) ? () => openRow(row) : null} />
+                </li>
+              ))}
             </ul>
           </section>
-          <GrantsTable grants={grants} held={access.held} unit={unit} onRemove={setRemoving} />
+          <AccessTable rows={rows} changeable={changeable} onOpen={openRow} />
         </>
       )}
 
-      <ConfirmDialog
-        open={removing !== null}
-        onOpenChange={(next) => !next && setRemoving(null)}
-        icon={<UserMinus className="h-5 w-5" strokeWidth={1.75} />}
-        title={removing ? `Remove ${removing.person.name}'s access?` : "Remove access?"}
-        description={
-          removing &&
-          `${removing.person.name.split(" ")[0]} can no longer ${levelVerb(removing)} ${ACCESS_TARGET_LABELS[removing.target]} for ${unit}.`
-        }
-        cancelLabel="Cancel"
-        confirmLabel="Remove access"
-        danger
-        pending={pending}
-        onConfirm={() => removing && remove(removing)}
-      />
-
-      <GiveAccessDrawer
-        key={open ? "open" : "closed"}
-        open={open}
-        onOpenChange={setOpen}
+      <AccessDrawer
+        key={open.kind === "edit" ? `edit-${open.personId}` : open.kind}
+        open={open.kind === "give" || editing !== null}
+        onClose={() => setOpen(CLOSED)}
         access={access}
         grants={grants}
-        giveAccess={actions.giveAccess}
-        onGiven={(fresh) => {
-          added(fresh);
-          setOpen(false);
+        editing={editing}
+        actions={actions}
+        onSaved={(personId, fresh) => {
+          replacePerson(personId, fresh);
+          setOpen(CLOSED);
         }}
       />
     </DrawerPage>
   );
 }
 
-/** "Edit", "Decide", "View": a held level on a phone card (board 60m). */
-function shortLevel(target: AccessTarget, level: AccessLevel): string {
-  return levelLabel(target, level).replace(/^Can /, "").replace(/^./, (c) => c.toUpperCase());
-}
-
-/** "view", "decide on", "edit": what a removal takes away. */
-function levelVerb(grant: AccessGrant): string {
-  const label = levelLabel(grant.target, grant.level).replace(/^Can /, "");
-  return label === "decide" ? "decide on" : label;
-}
-
-function LevelPill({ grant }: { grant: AccessGrant }) {
+/** "Your access · Mission Analysis Division" and a chip per area (board 60); cards on a phone (60m). */
+function YourAccess({ access }: { access: DivisionAccess }) {
   return (
-    <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-white-10 px-2.5 py-0.5 text-[12px] text-prt-text">
-      {levelLabel(grant.target, grant.level)}
+    <section aria-label="Your access" className="mt-6 max-md:mt-0">
+      <h2 className={`${EYEBROW} md:hidden`}>Your access</h2>
+      {/* One line of cards, each as wide as its name needs, so "Applications" stays whole at 390. */}
+      <ul className="mt-2.5 flex gap-2 md:hidden">
+        {access.held.map((h) => (
+          <li key={h.target} className={`${PANEL} min-w-0 flex-auto rounded-[10px] px-2 py-2`}>
+            <span className="block truncate text-[12px] font-semibold">{ACCESS_TARGET_LABELS[h.target]}</span>
+            <span className="block truncate text-[11px] text-prt-muted">{ACCESS_LEVEL_SHORT_LABELS[h.level]}</span>
+          </li>
+        ))}
+      </ul>
+      <div className={`${PANEL} hidden px-4 py-3 md:block`}>
+        <h2 className="flex items-baseline gap-2">
+          <span className={EYEBROW}>Your access</span>
+          <span className="text-[13px] text-prt-text">· {access.division.name}</span>
+        </h2>
+        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+          {access.held.map((h) => (
+            <li key={h.target}>
+              <AreaChip target={h.target} level={h.level} iconTone="text-accent" />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+/** An area and its level: "Positions Can edit", the level orange at Can edit (boards 60 and 60m). */
+function AreaChip({ target, level, iconTone = "text-text-2" }: { target: AccessTarget; level: AccessLevel; iconTone?: string }) {
+  const Icon = TARGET_ICONS[target];
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white-5 px-2 py-0.5 text-[12px]">
+      <Icon aria-hidden className={`h-3.5 w-3.5 shrink-0 ${iconTone}`} strokeWidth={1.75} />
+      <span className="text-prt-text">{ACCESS_TARGET_LABELS[target]}</span>
+      <span className={level === "edit" ? "text-accent" : "text-prt-muted"}>{ACCESS_LEVEL_LABELS[level]}</span>
     </span>
   );
 }
 
-// From md the header and every row are subgrids of one set of columns on the
-// table, so Level and Given by keep their content on one line however narrow
-// the page gets (the Give access panel takes 440px from xl) and the header
-// still lines up with the rows. Below md the page shows cards instead.
-const TABLE_COLUMNS = "grid grid-cols-[minmax(150px,1.5fr)_minmax(0,1.6fr)_minmax(max-content,0.7fr)_minmax(max-content,0.9fr)_32px] gap-x-4";
-const ROW = "col-span-full grid grid-cols-subgrid items-center px-[18px]";
-
 /** "You · 2 Oct" */
-function givenLine(g: AccessGrant): string {
-  return [g.givenBy, g.givenOn && shortDate(g.givenOn)].filter(Boolean).join(" · ");
+function givenLine(row: Pick<PersonAccess, "givenBy" | "givenOn">): string {
+  return [row.givenBy, row.givenOn && shortDate(row.givenOn)].filter(Boolean).join(" · ");
 }
 
-function GrantsTable({
-  grants,
-  held,
-  unit,
-  onRemove,
+/** The words a screen reader hears for a row: "Sara Conti, Applications Can view, Positions Can edit". */
+function rowLabel(row: PersonAccess): string {
+  return [row.person.name, ...row.grants.map((g) => `${ACCESS_TARGET_LABELS[g.target]} ${ACCESS_LEVEL_LABELS[g.level]}`)].join(", ");
+}
+
+/** A person's card on a phone (board 60m): name, who gave it, the chips; a tap opens Edit access. */
+function PersonCard({ row, onOpen }: { row: PersonAccess; onOpen: (() => void) | null }) {
+  const inner = (
+    <>
+      <span className="flex items-center gap-3">
+        <Avatar name={row.person.name} size="md" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] font-semibold">{row.person.name}</span>
+          <span className="block truncate text-[13px] text-prt-muted">{givenLine(row) || PERSON_STANDING_LABELS[row.person.standing]}</span>
+        </span>
+        {onOpen && <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />}
+      </span>
+      <span className="mt-2.5 flex flex-wrap gap-1.5">
+        {row.grants.map((g) => (
+          <AreaChip key={g.id} target={g.target} level={g.level} />
+        ))}
+      </span>
+    </>
+  );
+  const card = `${PANEL} block w-full px-4 py-3 text-left`;
+  return onOpen ? (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${rowLabel(row)}. Edit access`}
+      className={`${card} transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
+    >
+      {inner}
+    </button>
+  ) : (
+    <div className={card}>{inner}</div>
+  );
+}
+
+// From md the header and every row are subgrids of one set of columns on the
+// table, so Given by keeps its content on one line however narrow the page
+// gets (the drawer takes 440px from xl) and the header still lines up with
+// the rows. Below md the page shows cards instead.
+const TABLE_COLUMNS = "grid grid-cols-[minmax(170px,1fr)_minmax(0,2.4fr)_minmax(max-content,0.75fr)_16px] gap-x-4";
+const ROW = "col-span-full grid grid-cols-subgrid items-center px-6";
+
+function AccessTable({
+  rows,
+  changeable,
+  onOpen,
 }: {
-  grants: readonly AccessGrant[];
-  held: readonly HeldAccess[];
-  unit: string;
-  onRemove: (grant: AccessGrant) => void;
+  rows: readonly PersonAccess[];
+  changeable: (row: PersonAccess) => boolean;
+  onOpen: (row: PersonAccess) => void;
 }) {
   return (
     <section aria-label="People you gave access" className={`${PANEL} ${TABLE_COLUMNS} mt-5 hidden overflow-hidden md:grid`}>
       <div aria-hidden className={`${ROW} h-9 border-b border-hairline`}>
         <span className={EYEBROW}>Person</span>
         <span className={EYEBROW}>Access</span>
-        <span className={`${EYEBROW} whitespace-nowrap`}>Level</span>
         <span className={`${EYEBROW} whitespace-nowrap`}>Given by</span>
       </div>
       <ul className="col-span-full grid grid-cols-subgrid divide-y divide-hairline">
-        {grants.map((g) => (
-          <li key={g.id} className={`${ROW} py-3`}>
-            <span className="flex min-w-0 items-center gap-3">
-              <Avatar name={g.person.name} size="sm" />
-              <span className="min-w-0">
-                <span className="block truncate text-[14px] font-medium">{g.person.name}</span>
-                <span className="block text-[12px] text-prt-muted">{PERSON_STANDING_LABELS[g.person.standing]}</span>
+        {rows.map((row) => {
+          const cells = (
+            <>
+              <span className="flex min-w-0 items-center gap-3">
+                <Avatar name={row.person.name} size="md" />
+                <span className="min-w-0">
+                  <span className="block truncate text-[14px] font-medium">{row.person.name}</span>
+                  <span className="block text-[12px] text-prt-muted">{PERSON_STANDING_LABELS[row.person.standing]}</span>
+                </span>
               </span>
-            </span>
-            <span className="text-[13px] text-text-2">
-              {ACCESS_TARGET_LABELS[g.target]} · {unit}
-            </span>
-            <span>
-              <LevelPill grant={g} />
-            </span>
-            <span className="whitespace-nowrap text-[13px] text-prt-muted">{givenLine(g)}</span>
-            {canRemove(held, g) ? (
-              <button
-                type="button"
-                onClick={() => onRemove(g)}
-                aria-label={`Remove ${g.person.name}'s ${ACCESS_TARGET_LABELS[g.target]} access`}
-                className="flex h-8 w-8 items-center justify-center justify-self-end rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-              >
-                <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-              </button>
-            ) : (
-              <span />
-            )}
-          </li>
-        ))}
+              <span className="flex flex-col items-start gap-1">
+                {row.grants.map((g) => (
+                  <AreaChip key={g.id} target={g.target} level={g.level} />
+                ))}
+              </span>
+              <span className="whitespace-nowrap text-[13px] text-prt-muted">{givenLine(row)}</span>
+            </>
+          );
+          return (
+            <li key={row.person.id} className="col-span-full grid grid-cols-subgrid">
+              {changeable(row) ? (
+                <button
+                  type="button"
+                  onClick={() => onOpen(row)}
+                  aria-label={`${rowLabel(row)}. Edit access`}
+                  className={`${ROW} py-3 text-left transition-colors duration-300 ease-out hover:bg-white-5 ${FOCUS} focus-visible:-outline-offset-2`}
+                >
+                  {cells}
+                  <ChevronRight aria-hidden className="h-4 w-4 text-prt-muted" strokeWidth={1.75} />
+                </button>
+              ) : (
+                <div className={`${ROW} py-3`}>
+                  {cells}
+                  <span />
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
 }
 
-function GiveAccessDrawer({
+/**
+ * Give access (board 60b) or Edit access (60c): one person, a tick per area,
+ * and a level per ticked area, up to the lead's own. Save makes the person's
+ * areas exactly what is ticked. On Edit the person is locked, and Remove all
+ * access, after a confirm, takes every area away.
+ */
+function AccessDrawer({
   open,
-  onOpenChange,
+  onClose,
   access,
   grants,
-  giveAccess,
-  onGiven,
+  editing,
+  actions,
+  onSaved,
 }: {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   access: DivisionAccess;
   grants: readonly AccessGrant[];
-  giveAccess: Actions["giveAccess"];
-  onGiven: (grants: readonly AccessGrant[]) => void;
+  editing: AccessPerson | null;
+  actions: Actions;
+  onSaved: (personId: number, grants: readonly AccessGrant[]) => void;
 }) {
-  // Open on the first person who has no access yet, and the first thing the lead holds.
+  // Give access opens on the first person who has no access yet.
   const firstFree = access.people.find((p) => !grants.some((g) => g.person.id === p.id)) ?? access.people[0];
-  const [personId, setPersonId] = useState<number | undefined>(firstFree?.id);
-  const [targets, setTargets] = useState<AccessTarget[]>(access.held.slice(0, 1).map((h) => h.target));
-  const [level, setLevel] = useState<AccessLevel>("view");
+  const [personId, setPersonId] = useState<number | undefined>(editing?.id ?? firstFree?.id);
+  const [areas, setAreas] = useState<AreaLevels>(() => (personId === undefined ? {} : areaLevelsOf(grants, personId)));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
-  const accessLabel = useId();
-  const levelLabelId = useId();
+  const [confirming, setConfirming] = useState(false);
+  const [removing, startRemoving] = useTransition();
+  const areasLabel = useId();
 
   const person = access.people.find((p) => p.id === personId);
-  const editAllowed = targets.length > 0 && canGive(access.held, targets, "edit");
-  const chosenLevel: AccessLevel = editAllowed ? level : "view";
-  const summary = person ? grantSummary(person.name, targets, chosenLevel, access.division.name) : null;
+  const current = personId === undefined ? {} : areaLevelsOf(grants, personId);
+  // The areas the lead holds, and any other the person holds, which shows locked.
+  const shown = ACCESS_TARGETS.filter((t) => heldLevel(access.held, t) !== null || current[t] !== undefined);
 
-  const toggle = (target: AccessTarget) =>
-    setTargets((all) => (all.includes(target) ? all.filter((t) => t !== target) : ACCESS_TARGETS.filter((t) => t === target || all.includes(t))));
+  const choosePerson = (id: number) => {
+    setPersonId(id);
+    setAreas(areaLevelsOf(grants, id));
+    setError(undefined);
+  };
+  const setArea = (target: AccessTarget, level: AccessLevel | null) =>
+    setAreas((all) => {
+      const next = { ...all };
+      if (level === null) delete next[target];
+      else next[target] = level;
+      return next;
+    });
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (personId === undefined) return setError("Choose a person.");
-    if (targets.length === 0) return setError("Choose at least one kind of access.");
+    if (Object.keys(areas).length === 0) {
+      return setError(editing ? "Choose at least one area, or remove all access." : "Choose at least one area.");
+    }
     setError(undefined);
     setSubmitting(true);
     try {
-      const result = await giveAccess({ personId, targets, level: chosenLevel });
+      const result = await actions.saveAccess({ personId, areas });
       if (!result.ok) {
         setError(result.error);
         return;
       }
-      onGiven(result.value);
-      toast.success(`Gave ${person?.name ?? "them"} access`);
+      onSaved(personId, result.value);
+      toast.success(editing ? `Saved ${person?.name ?? "their"}'s access` : `Gave ${person?.name ?? "them"} access`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Please try again.");
     } finally {
@@ -334,107 +368,196 @@ function GiveAccessDrawer({
     }
   };
 
+  const removeAll = () =>
+    startRemoving(async () => {
+      if (editing === null) return;
+      const result = await actions.removeAllAccess(editing.id);
+      if (!result.ok) {
+        toast.error("Could not remove access", { description: result.error });
+        return;
+      }
+      setConfirming(false);
+      onSaved(editing.id, []);
+      toast.success(`Removed ${editing.name}'s access`);
+    });
+
+  const removable = editing !== null && ACCESS_TARGETS.every((t) => current[t] === undefined || areaRule(access.held, editing, t, current[t]).changeable);
+
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} title="Give access" submitLabel="Give access" submitting={submitting} onSubmit={submit}>
-      <Field label="Person" hint="from your division">
-        {(id) => (
-          <div className="relative">
-            {person && (
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-                <Avatar name={person.name} size="sm" />
-              </span>
+    <>
+      <Drawer
+        open={open}
+        onOpenChange={(next) => !next && onClose()}
+        title={editing ? "Edit access" : "Give access"}
+        submitLabel={editing ? "Save" : "Give access"}
+        submitting={submitting}
+        onSubmit={submit}
+        secondary={
+          editing && removable ? (
+            <button type="button" onClick={() => setConfirming(true)} className={PANEL_DANGER_BUTTON}>
+              Remove all access
+            </button>
+          ) : undefined
+        }
+      >
+        {editing ? (
+          <Field label="Person" hint="can't be changed">
+            {(id) => (
+              <div id={id} className={`${LOCKED_INPUT} gap-3 bg-white-5 pl-3 text-prt-text`}>
+                <Avatar name={editing.name} size="sm" />
+                <span className="truncate text-[15px]">{editing.name}</span>
+                <Lock aria-label="Locked" className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+              </div>
             )}
-            <select
-              id={id}
-              value={personId ?? ""}
-              onChange={(e) => setPersonId(Number(e.target.value))}
-              className="h-12 w-full cursor-pointer appearance-none rounded-[10px] border border-white-10 bg-white-5 pl-12 pr-10 text-[15px] text-prt-text transition-colors duration-300 ease-out focus:border-accent focus:outline-none"
-            >
-              {access.people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-2" />
-          </div>
-        )}
-      </Field>
-
-      <div className="mt-6" role="group" aria-labelledby={accessLabel}>
-        <GroupLabel id={accessLabel} label="Access" hint="only what you have" />
-        <ul className="flex flex-col gap-2">
-          {access.held.map((h) => {
-            const Icon = TARGET_ICONS[h.target];
-            const on = targets.includes(h.target);
-            return (
-              <li key={h.target}>
-                <label
-                  className={`flex cursor-pointer items-center gap-3 rounded-[10px] border px-3.5 py-2.5 transition-colors duration-300 ease-out has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
-                    on ? "border-accent bg-accent/[0.08]" : "border-white-10 hover:border-border-strong"
-                  }`}
+          </Field>
+        ) : (
+          <Field label="Person" hint="from your division">
+            {(id) => (
+              <div className="relative">
+                {person && (
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+                    <Avatar name={person.name} size="sm" />
+                  </span>
+                )}
+                <select
+                  id={id}
+                  value={personId ?? ""}
+                  onChange={(e) => choosePerson(Number(e.target.value))}
+                  className="h-11 w-full cursor-pointer appearance-none rounded-[10px] border border-white-10 bg-white-5 pl-12 pr-10 text-[15px] text-prt-text transition-colors duration-300 ease-out focus:border-accent focus:outline-none"
                 >
-                  <input type="checkbox" checked={on} onChange={() => toggle(h.target)} className="sr-only" />
-                  <span
-                    aria-hidden
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border ${
-                      on ? "border-accent bg-accent text-accent-on-accent" : "border-border-strong"
-                    }`}
-                  >
-                    {on && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
-                  </span>
-                  <Icon aria-hidden className={`h-4 w-4 shrink-0 ${on ? "text-accent" : "text-text-2"}`} strokeWidth={1.75} />
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-medium">{ACCESS_TARGET_LABELS[h.target]}</span>
-                    <span className="block text-[12px] text-prt-muted">{access.division.name}</span>
-                  </span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+                  {access.people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-2" />
+              </div>
+            )}
+          </Field>
+        )}
 
-      <div className="mt-6" role="radiogroup" aria-labelledby={levelLabelId}>
-        <GroupLabel id={levelLabelId} label="Level" />
-        <div className="grid h-10 grid-cols-2 gap-1 rounded-[10px] border border-white-10 p-1">
-          {(["view", "edit"] as const).map((l) => {
-            const disabled = l === "edit" && !editAllowed;
+        <div className="mt-6" role="group" aria-labelledby={areasLabel}>
+          <GroupLabel id={areasLabel} label="Access" hint="per area, up to your own level" />
+          <ul className="flex flex-col gap-2">
+            {shown.map((target) => (
+              <li key={target}>
+                <AreaOption
+                  target={target}
+                  divisionName={access.division.name}
+                  level={areas[target] ?? null}
+                  rule={person ? areaRule(access.held, person, target, current[target] ?? null) : { changeable: false }}
+                  onChange={(level) => setArea(target, level)}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="mt-6 flex items-start gap-3 rounded-[10px] border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
+          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+          {ACCESS_LEVELS_EXPLAINED}
+        </p>
+
+        {error && (
+          <p role="alert" className="mt-4 text-[13px] text-danger">
+            {error}
+          </p>
+        )}
+      </Drawer>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={(next) => !next && setConfirming(false)}
+        icon={<UserMinus className="h-5 w-5" strokeWidth={1.75} />}
+        title={editing ? `Remove ${editing.name}'s access?` : "Remove access?"}
+        description={editing && `${editing.name.split(" ")[0]} can no longer see or change any area of ${access.division.name}.`}
+        cancelLabel="Cancel"
+        confirmLabel="Remove all access"
+        danger
+        pending={removing}
+        onConfirm={removeAll}
+      />
+    </>
+  );
+}
+
+/** One area in a drawer: a tick, and when ticked, Can view or Can edit beneath it (boards 60b and 60c). */
+function AreaOption({
+  target,
+  divisionName,
+  level,
+  rule,
+  onChange,
+}: {
+  target: AccessTarget;
+  divisionName: string;
+  level: AccessLevel | null;
+  rule: ReturnType<typeof areaRule>;
+  onChange: (level: AccessLevel | null) => void;
+}) {
+  const Icon = TARGET_ICONS[target];
+  const on = level !== null;
+  const locked = !rule.changeable;
+  const levelGroup = useId();
+  return (
+    <div
+      className={`rounded-[10px] border px-3 py-2.5 transition-colors duration-300 ease-out ${
+        on ? "border-accent/60 bg-accent/[0.06]" : "border-white-10"
+      } ${locked ? "opacity-50" : on ? "" : "hover:border-border-strong"}`}
+    >
+      <label className={`flex items-center gap-3 ${locked ? "cursor-not-allowed" : "cursor-pointer"} has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-4 has-[:focus-visible]:outline-accent`}>
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={locked}
+          onChange={() => onChange(on ? null : "view")}
+          className="sr-only"
+        />
+        <span
+          aria-hidden
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border ${
+            on ? "border-accent bg-accent text-accent-on-accent" : "border-border-strong"
+          }`}
+        >
+          {on && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+        </span>
+        <Icon aria-hidden className={`h-[18px] w-[18px] shrink-0 ${on ? "text-accent" : "text-text-2"}`} strokeWidth={1.75} />
+        <span className="min-w-0">
+          <span className="block text-[14px] font-medium">{ACCESS_TARGET_LABELS[target]}</span>
+          <span className="block truncate text-[12px] text-prt-muted">{divisionName}</span>
+        </span>
+      </label>
+      {on && (
+        <div
+          role="radiogroup"
+          aria-label={`${ACCESS_TARGET_LABELS[target]} level`}
+          className="mt-2.5 grid h-9 grid-cols-2 gap-1 rounded-[8px] border border-white-10 p-1"
+        >
+          {ACCESS_LEVELS.map((l) => {
+            const disabled = locked || (l === "edit" && rule.changeable && rule.highest !== "edit");
             return (
               <label
                 key={l}
-                className={`flex items-center justify-center rounded-[7px] text-[14px] transition-colors duration-300 ease-out has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
-                  chosenLevel === l ? "bg-white-10 font-semibold text-prt-text" : "text-text-2"
+                className={`flex items-center justify-center rounded-[6px] text-[13px] transition-colors duration-300 ease-out has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
+                  level === l ? "bg-white-10 font-semibold text-prt-text" : "text-text-2"
                 } ${disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:text-prt-text"}`}
               >
                 <input
                   type="radio"
-                  name="level"
+                  name={levelGroup}
                   value={l}
-                  checked={chosenLevel === l}
+                  checked={level === l}
                   disabled={disabled}
-                  onChange={() => setLevel(l)}
+                  onChange={() => onChange(l)}
                   className="sr-only"
                 />
-                {l === "view" ? "Can view" : editLabelFor(targets)}
+                {ACCESS_LEVEL_LABELS[l]}
               </label>
             );
           })}
         </div>
-      </div>
-
-      {summary && (
-        <p className="mt-6 flex items-start gap-2.5 rounded-[10px] border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
-          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-          {summary}
-        </p>
       )}
-
-      {error && (
-        <p role="alert" className="mt-4 text-[13px] text-danger">
-          {error}
-        </p>
-      )}
-    </Drawer>
+    </div>
   );
 }

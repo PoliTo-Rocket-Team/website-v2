@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AccessLevel } from "./division-access";
 
 // The division lead's Orders page (Dashboard v2 boards 61 to 61d, issue
 // #172): the division's purchase requests to the team leader, what state each
@@ -65,6 +66,8 @@ export type Order = OrderState & {
 
 export type DivisionOrders = {
   readonly division: { readonly id: number; readonly name: string };
+  /** The viewer's level on Orders (issue #213): Can view reads the requests; Can edit also sends, edits and cancels them. */
+  readonly level: AccessLevel;
   readonly orders: readonly Order[];
 };
 
@@ -105,7 +108,11 @@ export type OrderActions = {
   readonly edit: "edit" | "edit-and-resend" | null;
 };
 
-export function orderActions(status: OrderStatus): OrderActions {
+const NO_ACTIONS: OrderActions = { cancel: false, edit: null };
+
+/** What `level` on Orders may do with a request; Can view only reads it. */
+export function orderActions(status: OrderStatus, level: AccessLevel): OrderActions {
+  if (level === "view") return NO_ACTIONS;
   switch (status) {
     case "waiting":
       return { cancel: true, edit: "edit" };
@@ -113,13 +120,13 @@ export function orderActions(status: OrderStatus): OrderActions {
       return { cancel: false, edit: "edit-and-resend" };
     case "approved":
     case "rejected":
-      return { cancel: false, edit: null };
+      return NO_ACTIONS;
   }
 }
 
 /** The state an edited request is in afterwards: an edit always goes back to the team leader. */
 export function stateAfterEdit(status: OrderStatus): OrderState | null {
-  return orderActions(status).edit === null ? null : { status: "waiting" };
+  return orderActions(status, "edit").edit === null ? null : { status: "waiting" };
 }
 
 /** Newest request first, whatever its state (board 61). */

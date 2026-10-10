@@ -4,13 +4,13 @@ import { notFound, redirect } from "next/navigation";
 import { DivisionAccessView } from "@/components/dashboard/division-access";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
-import { giveAccess, removeAccess } from "../actions";
+import { removeAllAccess, saveAccess } from "../actions";
 
 export const metadata: Metadata = {
   title: "Access · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 60 and 60b: the division lead's Access page. Only a division lead reaches it
+// Boards 60 to 60m: the division lead's Access page. Only a division lead reaches it
 // (lib/dashboard/access.ts); anyone else gets the dashboard's not found.
 export default function AccessPage() {
   return (
@@ -28,5 +28,5 @@ async function LiveAccess() {
   if (!canReach(data.viewer.kind, "division-access")) notFound();
   const access = await data.divisionAccess();
   if (access === null) notFound();
-  return <DivisionAccessView access={access} giveAccess={giveAccess} removeAccess={removeAccess} />;
+  return <DivisionAccessView access={access} saveAccess={saveAccess} removeAllAccess={removeAllAccess} />;
 }

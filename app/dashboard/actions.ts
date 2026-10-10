@@ -42,13 +42,14 @@ function textFields(form: FormData, names: readonly string[]): Record<string, st
   return Object.fromEntries(names.map((name) => [name, String(form.get(name) ?? "")]));
 }
 
-export async function giveAccess(input: unknown): Promise<WriteResult<readonly AccessGrant[]>> {
-  return write("division-access", (data) => data.giveAccess(input));
+/** Give access or Edit access (boards 60b and 60c). */
+export async function saveAccess(input: unknown): Promise<WriteResult<readonly AccessGrant[]>> {
+  return write("division-access", (data) => data.saveAccess(input));
 }
 
-export async function removeAccess(grantId: number): Promise<WriteResult<null>> {
-  if (!Number.isSafeInteger(grantId)) return refused("Unknown access.");
-  return write("division-access", (data) => data.removeAccess(grantId));
+export async function removeAllAccess(personId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(personId)) return refused("Unknown person.");
+  return write("division-access", (data) => data.removeAllAccess(personId));
 }
 
 const ORDER_FIELDS = ["item", "link", "price", "quantity", "reason"] as const;
