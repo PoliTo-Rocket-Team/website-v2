@@ -12,7 +12,7 @@ tags: [accounts, privacy, data-retention]
 
 ## Context
 
-Huey ruled on this in chat in October 2026. The ruling is quoted on the issue that records it, as his approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The Privacy Policy is issue #122.
+Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The Privacy Policy is issue #122.
 
 ## Decision
 

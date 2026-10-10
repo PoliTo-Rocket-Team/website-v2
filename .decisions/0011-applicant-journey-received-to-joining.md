@@ -12,7 +12,7 @@ tags: [recruitment, applications, dashboard]
 
 ## Context
 
-Huey ruled on this in chat in October 2026. The ruling is quoted on the issue that records it, as his approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The applicant's side was built in issue #169 and the lead's side in issue #171.
+Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The applicant's side was built in issue #169 and the lead's side in issue #171.
 
 Who may take each step, and what each viewer sees, is in the dashboard rules doc, [docs/dashboard-rules.md](../docs/dashboard-rules.md) (issue #180), and is not copied here. The site never sends the emails named below; the person acting sends them ([0008](./0008-google-only-sign-in-no-email.md)).
 

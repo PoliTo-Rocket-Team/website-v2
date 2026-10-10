@@ -12,7 +12,7 @@ tags: [previews, dummy-data, test-developer, dashboard]
 
 ## Context
 
-Huey ruled on this in chat in October 2026. The ruling is quoted on the issue that records it, as his approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The work was built in issues #129 (local seeded testers), #141 (the dashboard data interface) and #150 (dummy mode on previews).
+Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The work was built in issues #129 (local seeded testers), #141 (the dashboard data interface) and #150 (dummy mode on previews).
 
 Which viewer kind reaches which dashboard page is in the dashboard rules doc, [docs/dashboard-rules.md](../docs/dashboard-rules.md) (issue #180), and is not copied here. How the code is shaped is in [.patterns/dashboard-data-interface.md](../.patterns/dashboard-data-interface.md).
 

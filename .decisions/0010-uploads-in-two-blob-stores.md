@@ -12,7 +12,7 @@ tags: [storage, uploads, vercel-blob, recruitment]
 
 ## Context
 
-Huey ruled on this in chat in October 2026. The ruling is quoted on the issue that records it, as his approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The stores were built in issues #127 and #133.
+Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The stores were built in issues #127 and #133.
 
 Who may open which file in the dashboard is in the dashboard rules doc, [docs/dashboard-rules.md](../docs/dashboard-rules.md) (issue #180), and is not copied here.
 

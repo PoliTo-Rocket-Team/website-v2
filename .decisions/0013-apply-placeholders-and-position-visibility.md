@@ -12,7 +12,7 @@ tags: [apply, recruitment, positions]
 
 ## Context
 
-Huey ruled on the /apply page in chat in October 2026. The ruling is quoted on the issue that records it, as his approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The page was built in issue #119 (boards 34, 34b, 34c); the recruitment switch in issue #121.
+Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. The page was built in issue #119 (boards 34, 34b, 34c); the recruitment switch in issue #121.
 
 Who may open a position and who may flip the switch is a dashboard access rule. Those tables are in the dashboard rules doc, [docs/dashboard-rules.md](../docs/dashboard-rules.md) (issue #180), and are not copied here.
 

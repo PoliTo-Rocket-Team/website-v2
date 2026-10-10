@@ -12,7 +12,7 @@ tags: [auth, sign-in, email]
 
 ## Context
 
-Huey ruled on this in chat in October 2026. The ruling is quoted on the issue that records it, as his approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. Issue #118 removed email and password sign-in.
+Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Rocket-Team/website-v2/issues/181#issuecomment-6095711336. The rule texts are in the original report of issue #181. Issue #118 removed email and password sign-in.
 
 [0002](./0002-vercel-hobby-host-agnostic.md) says email sending goes through a swappable provider. This record amends that part: the site sends no email, so there is nothing for that constraint to govern while this record stands. The rest of 0002 still holds.
 
