@@ -5,6 +5,7 @@
 // writes the cookie.
 
 import { LEAVE_REASONS, type Departure, type MemberEdit } from "@/lib/dashboard/team";
+import type { DummyNotice } from "./notices";
 
 export type TeamEdits = {
   /** Alumni whose "On the site" switch was flipped, by id. */
@@ -15,9 +16,11 @@ export type TeamEdits = {
   readonly movedToAlumni: Readonly<Record<number, Departure>>;
   /** Dashboard notices dismissed under "Needs your attention" (./notices.ts), by id. */
   readonly dismissedNotices: readonly number[];
+  /** Dashboard notices the test developer's writes added (./notices.ts), oldest first. */
+  readonly notices: readonly DummyNotice[];
 };
 
-export const NO_EDITS: TeamEdits = { shownOnSite: {}, members: {}, movedToAlumni: {}, dismissedNotices: [] };
+export const NO_EDITS: TeamEdits = { shownOnSite: {}, members: {}, movedToAlumni: {}, dismissedNotices: [], notices: [] };
 
 /** Where the dummy dashboard reads and keeps these edits. */
 export type TeamEditsStore = {
@@ -45,6 +48,18 @@ function entriesOf<T>(value: unknown, read: (v: unknown) => T | null): Record<nu
     if (Number.isInteger(id) && id > 0 && parsed !== null) out[id] = parsed;
   }
   return out;
+}
+
+/** A cookie holds about 4 KB; a notice row is the largest entry, so fewer are kept. */
+const MAX_NOTICES = 8;
+
+function readNotice(value: unknown): DummyNotice | null {
+  if (!isRecord(value)) return null;
+  const { id, recipientId, kind, subject, createdAt, data } = value;
+  if (!Number.isInteger(id) || !Number.isInteger(recipientId)) return null;
+  if (typeof kind !== "string" || typeof subject !== "string" || typeof createdAt !== "string") return null;
+  // What `data` holds is checked when the notice is read (lib/dashboard/notices.ts).
+  return { id: id as number, recipientId: recipientId as number, kind, subject, createdAt, data };
 }
 
 function readMemberEdit(value: unknown): MemberEdit | null {
@@ -85,6 +100,9 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     movedToAlumni: entriesOf(raw.movedToAlumni, readDeparture),
     dismissedNotices: Array.isArray(raw.dismissedNotices)
       ? raw.dismissedNotices.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)
+      : [],
+    notices: Array.isArray(raw.notices)
+      ? raw.notices.flatMap((n) => readNotice(n) ?? []).slice(-MAX_NOTICES)
       : [],
   };
 }

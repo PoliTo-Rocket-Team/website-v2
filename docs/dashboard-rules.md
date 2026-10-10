@@ -100,7 +100,9 @@ An admin column comes later. **Planned**, no issue yet.
   - **Gap:** the title saved on the panel never reaches the public Team page. Tracked in #189.
 - Promote is confirmed. The lead picks "lead together" or "hand over the division". The department
   head is told.
-  - **Gap:** nothing tells the department head. Tracked in #188.
+  - Each head of the division's department gets a notice under "Needs your attention" on their
+    Overview, naming who now leads the division and how (#188). The lead who promoted is not told.
+    No email is sent.
 - Move to alumni is confirmed, with the years and an optional reason. Access ends; the account
   stays. It touches only what the person moving them manages: a division lead ends the roles and
   the division access in their own division, and the person leaves the team only when no role is

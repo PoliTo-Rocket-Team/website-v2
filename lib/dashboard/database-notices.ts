@@ -1,18 +1,27 @@
 import "server-only";
 
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { dashboardNotices, divisions, roles, scopes, users } from "@/db/schema";
 import { runAuditQuery } from "@/lib/db-audit";
 import type { DashboardIdentity } from "./database";
-import { attentionOf, memberLeftNotices, noticeOf, type AddressedNotice, type DivisionLead } from "./notices";
+import {
+  attentionOf,
+  memberLeftNotices,
+  noticeOf,
+  promotedNotices,
+  type AddressedNotice,
+  type DepartmentHeadRole,
+  type DivisionLead,
+} from "./notices";
 import type { AttentionItem } from "./overview";
+import type { PromoteMode } from "./team";
 import { refused, written, type WriteResult } from "./write";
 
 // Dashboard notices on the database (issue #201): the viewer's undismissed
-// ones as attention rows, Dismiss, and who a member leaving tells. What a
-// notice says and who is told is ./notices.ts's; this module only reads and
-// writes the rows.
+// ones as attention rows, Dismiss, and who a member leaving or a promotion
+// (#188) tells. What a notice says and who is told is ./notices.ts's; this
+// module only reads and writes the rows.
 
 /** The viewer's undismissed notices, newest first, as "Needs your attention" rows. */
 export async function readNoticeAttention(identity: DashboardIdentity, now: Date): Promise<AttentionItem[]> {
@@ -88,4 +97,49 @@ export async function memberLeftNoticesFor(memberId: number, reason: string | nu
     l.memberId === null || l.divisionId === null ? [] : [{ memberId: l.memberId, divisionId: l.divisionId }],
   );
   return memberLeftNotices(memberId, left, leads, reason);
+}
+
+/**
+ * The notices a promotion now writes (#188): the division's name and
+ * department, the promoting lead's name, and the active head roles of that
+ * department, whose department is the role's own or its division's (as the
+ * roster places a head). ./notices.ts decides who of them is told.
+ */
+export async function promotedNoticesFor(
+  personId: number,
+  divisionId: number,
+  mode: PromoteMode,
+  leadId: number,
+): Promise<AddressedNotice[]> {
+  const db = getDb();
+  const [[division], [lead]] = await Promise.all([
+    db.select({ name: divisions.name, dept_id: divisions.deptId }).from(divisions).where(eq(divisions.id, divisionId)).limit(1),
+    db
+      .select({ first_name: users.firstName, last_name: users.lastName, email: users.email })
+      .from(users)
+      .where(eq(users.member, leadId))
+      .limit(1),
+  ]);
+  if (!division || division.dept_id === null || !lead) return [];
+  const departmentId = division.dept_id;
+  const headRoles = await db
+    .select({ memberId: roles.memberId, dept_id: roles.deptId, division_dept_id: divisions.deptId })
+    .from(roles)
+    .leftJoin(divisions, eq(roles.divisionId, divisions.id))
+    .where(
+      and(
+        eq(roles.type, "head"),
+        isNull(roles.leavedAt),
+        or(eq(roles.deptId, departmentId), and(isNull(roles.deptId), eq(divisions.deptId, departmentId))),
+      ),
+    );
+  const heads = headRoles.flatMap((r): DepartmentHeadRole[] => {
+    const headsDepartment = r.dept_id ?? r.division_dept_id;
+    return r.memberId === null || headsDepartment === null ? [] : [{ memberId: r.memberId, departmentId: headsDepartment }];
+  });
+  const leadName = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || lead.email;
+  return promotedNotices(
+    { personId, division: { name: division.name, departmentId }, mode, lead: { id: leadId, name: leadName } },
+    heads,
+  );
 }

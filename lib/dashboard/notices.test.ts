@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attentionOf, memberLeftNotices, noticeOf } from "./notices";
+import { attentionOf, memberLeftNotices, noticeOf, promotedNotices, type Promotion } from "./notices";
 
 const missionAnalysis = { id: 1, name: "Mission Analysis Division" };
 const hardware = { id: 9, name: "Hardware Division" };
@@ -49,6 +49,65 @@ test("a stored notice reads as an attention row with Dismiss; an unknown kind or
     detail: 'Mission Analysis Division · 8 Oct · "Internship abroad."',
     action: { label: "Dismiss", dismissNotice: 3 },
   });
-  assert.equal(noticeOf({ ...row, kind: "promoted" }), null);
+  assert.equal(noticeOf({ ...row, kind: "member-joined" }), null);
   assert.equal(noticeOf({ ...row, data: { divisions: "Mission Analysis" } }), null);
+});
+
+// A promotion (#188): Marco (2) promotes Sara (7) in Mission Analysis, a division of Aerodynamics (1).
+const promotion: Promotion = {
+  personId: 7,
+  division: { name: "Mission Analysis Division", departmentId: 1 },
+  mode: "together",
+  lead: { id: 2, name: "Marco Bianchi" },
+};
+
+test("a promotion tells the head of the division's department once, and no other head", () => {
+  const heads = [
+    { memberId: 15, departmentId: 1 },
+    { memberId: 15, departmentId: 1 }, // a second head role in the same department
+    { memberId: 16, departmentId: 2 },
+  ];
+  assert.deepEqual(promotedNotices(promotion, heads), [
+    { recipientId: 15, notice: { kind: "promoted", data: { division: "Mission Analysis Division", mode: "together", lead: "Marco Bianchi" } } },
+  ]);
+});
+
+test("a promotion in a department with no head writes no notice", () => {
+  assert.deepEqual(promotedNotices(promotion, [{ memberId: 16, departmentId: 2 }]), []);
+  assert.deepEqual(promotedNotices(promotion, []), []);
+});
+
+test("the lead who promotes is never told, even when they also head the department", () => {
+  const heads = [
+    { memberId: 2, departmentId: 1 },
+    { memberId: 15, departmentId: 1 },
+  ];
+  assert.deepEqual(
+    promotedNotices({ ...promotion, mode: "hand-over" }, heads).map((n) => n.recipientId),
+    [15],
+  );
+  assert.deepEqual(promotedNotices(promotion, [{ memberId: 2, departmentId: 1 }]), []);
+});
+
+test("a promoted notice reads as an attention row naming the person, the division and the mode", () => {
+  const row = {
+    id: 4,
+    kind: "promoted",
+    subject: "Sara Conti",
+    createdAt: "2026-10-08T16:20:00Z",
+    data: { division: "Mission Analysis Division", mode: "together", lead: "Marco Bianchi" },
+  };
+  const now = new Date("2026-10-09T12:00:00Z");
+  const together = noticeOf(row);
+  assert.ok(together);
+  assert.deepEqual(attentionOf(together, now), {
+    kind: "notice",
+    title: "Sara Conti now leads Mission Analysis Division",
+    detail: "together with Marco Bianchi · 8 Oct",
+    action: { label: "Dismiss", dismissNotice: 4 },
+  });
+  const handOver = noticeOf({ ...row, data: { ...row.data, mode: "hand-over" } });
+  assert.ok(handOver);
+  assert.equal(attentionOf(handOver, now).detail, "Marco Bianchi handed over · 8 Oct");
+  assert.equal(noticeOf({ ...row, data: { ...row.data, mode: "alone" } }), null);
 });
