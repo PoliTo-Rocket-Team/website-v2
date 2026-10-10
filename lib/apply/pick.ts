@@ -1,4 +1,5 @@
 import { dummyDataOn, type DummyModeEnv } from "@/lib/dummy-data/mode";
+import { NO_OWN_CHANGES, parseOwnChanges, type OwnChanges } from "@/lib/dummy-data/own";
 import { dummyRecruitmentOf } from "@/lib/dummy-data/recruitment";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
 import { testDeveloperViewer } from "@/lib/test-developer";
@@ -14,11 +15,13 @@ export type ApplyRequest = {
   readonly openSelector: string | null | undefined;
   /** The dummy recruitment cookie: the switch as a test developer left it (lib/dummy-data/recruitment.ts). */
   readonly recruitmentCookie?: string | null | undefined;
+  /** The test developer's own changes (lib/dummy-data/own.ts): their saved details and withdrawn applications. */
+  readonly ownCookie?: string | null | undefined;
 };
 
 export type ApplySides = {
   database(): ApplyData;
-  dummy(viewer: ViewerKind | null, openSelector: string | null, recruitment: Recruitment): ApplyData;
+  dummy(viewer: ViewerKind | null, openSelector: string | null, recruitment: Recruitment, own: OwnChanges): ApplyData;
 };
 
 /**
@@ -32,6 +35,7 @@ export function pickApplyData(request: ApplyRequest, sides: ApplySides): ApplyDa
     testDeveloperViewer(request.viewerCookie, request.env),
     request.openSelector ?? null,
     dummyRecruitmentOf(request.recruitmentCookie),
+    request.ownCookie == null ? NO_OWN_CHANGES : parseOwnChanges(request.ownCookie),
   );
 }
 
@@ -52,5 +56,5 @@ export function applyListIsPerRequest(request: ApplyListRequest): boolean {
 
 /** The request the prerendered /apply stands for: this environment, and no viewer, selector or cookie. */
 export function plainApplyRequest(env: DummyModeEnv): ApplyRequest {
-  return { env, viewerCookie: null, openSelector: null, recruitmentCookie: null };
+  return { env, viewerCookie: null, openSelector: null, recruitmentCookie: null, ownCookie: null };
 }

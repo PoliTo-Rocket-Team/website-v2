@@ -1,4 +1,4 @@
-import { romeTime, type ApplicationStage, type ApplicationState, type InterviewSlot } from "@/lib/dashboard/application-flow";
+import { romeTime, slotAt, type ApplicationStage, type ApplicationState, type SlotTime } from "@/lib/dashboard/application-flow";
 import { DUMMY_NOW, positions } from "./team";
 
 // The applications the test developer's team has received (boards 58 to 58i,
@@ -32,10 +32,8 @@ export type DummyApplication = {
 type Featured = Omit<DummyApplication, "id" | "cvBytes" | "letterBytes"> &
   Partial<Pick<DummyApplication, "cvBytes" | "letterBytes">>;
 
-const slot = (day: number, hour: number, minute: number): InterviewSlot => ({
-  start: romeTime(2026, 10, day, hour, minute).toISOString(),
-  minutes: 30,
-});
+const slot = (day: number, hour: number, minute: number): SlotTime =>
+  slotAt(romeTime(2026, 10, day, hour, minute).toISOString(), 30);
 
 /** Times Marco offered in the week after DUMMY_NOW (board 58c's picks). */
 const OFFERED = [slot(13, 18, 0), slot(13, 18, 30), slot(15, 17, 30), slot(16, 18, 0)] as const;

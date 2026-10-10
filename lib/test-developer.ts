@@ -42,6 +42,9 @@ export const TEST_DEVELOPER_STATE_COOKIE = "prt_test_developer_state";
 /** What a test developer changed on the Team pages (lib/dummy-data/edits.ts); cleared on sign out. */
 export const TEST_DEVELOPER_EDITS_COOKIE = "prt_test_developer_edits";
 
+/** What a test developer changed on their own pages (lib/dummy-data/own.ts); cleared on sign out. */
+export const TEST_DEVELOPER_OWN_COOKIE = "prt_test_developer_own";
+
 /** The viewer a test developer cookie names, or null when the gate is off or the value is not a viewer. */
 export function testDeveloperViewer(
   cookieValue: string | null | undefined,
@@ -99,5 +102,6 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url),
     cookieHeader("", 0, url, TEST_DEVELOPER_STATE_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_EDITS_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_OWN_COOKIE),
   );
 }

@@ -6,10 +6,10 @@ import { applyDummyChange, EMPTY_DUMMY_STATE, MAX_NEW_POSITIONS, parseDummyState
 const interview: ApplicationState = {
   stage: "interview",
   offered: [
-    { start: "2026-10-15T15:30:00.000Z", minutes: 30 },
-    { start: "2026-10-16T16:00:00.000Z", minutes: 30 },
+    { start: "2026-10-15T15:30:00.000Z", end: "2026-10-15T16:00:00.000Z" },
+    { start: "2026-10-16T16:00:00.000Z", end: "2026-10-16T16:30:00.000Z" },
   ],
-  booked: { slot: { start: "2026-10-15T15:30:00.000Z", minutes: 30 }, at: "2026-10-11T09:00:00.000Z" },
+  booked: { slot: { start: "2026-10-15T15:30:00.000Z", end: "2026-10-15T16:00:00.000Z" }, at: "2026-10-11T09:00:00.000Z" },
 };
 
 test("a test developer's changes survive the cookie round trip", () => {

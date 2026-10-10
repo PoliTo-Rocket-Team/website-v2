@@ -30,7 +30,7 @@ import {
   tabCounts,
   type ApplicationState,
   type ApplicationTab,
-  type InterviewSlot,
+  type SlotTime,
   type LeadMove,
   type LeadStep,
   type Pronouns,
@@ -605,7 +605,7 @@ function StageCard({
 const CARD_BUTTON = `inline-flex h-9 items-center justify-center gap-2 rounded-full border border-white-10 text-[13px] font-semibold transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`;
 
 /** Add to calendar: the booked time as an .ics file, made in the browser. The site sends no invite. */
-function downloadIcs(a: ApplicationEntry, slot: InterviewSlot) {
+function downloadIcs(a: ApplicationEntry, slot: SlotTime) {
   const ics = interviewIcs({ applicationId: a.id, applicant: a.applicant.name, position: a.position.title, slot }, new Date());
   const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
   const link = document.createElement("a");

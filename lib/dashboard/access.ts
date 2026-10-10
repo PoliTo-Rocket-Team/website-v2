@@ -84,7 +84,8 @@ export const DASHBOARD_PAGES = [
     key: "my-applications",
     label: "My applications",
     href: "/dashboard/my-applications",
-    reach: { "non-member": "main" },
+    // Board 53: a member follows their own applications too.
+    reach: { member: "main", "non-member": "main" },
   },
   {
     key: "my-account",

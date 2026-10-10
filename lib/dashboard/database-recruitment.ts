@@ -17,7 +17,7 @@ import {
   users,
 } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import { applyMove, type ApplicationState, type InterviewSlot, type LeadMove, type OfferedSlots } from "./application-flow";
+import { applyMove, type ApplicationState, type LeadMove, type OfferedSlots, type SlotTime } from "./application-flow";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
 import { checkNewPosition, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
@@ -80,7 +80,7 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
   const tallies = await db
     .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
     .from(applications)
-    .where(inArray(applications.applyPositionId, scoped.map((r) => r.id)))
+    .where(and(inArray(applications.applyPositionId, scoped.map((r) => r.id)), isNull(applications.withdrawnAt)))
     .groupBy(applications.applyPositionId, applications.status);
 
   return scoped.map((r) => {
@@ -196,11 +196,8 @@ type StateRow = {
   joined_at: string | null;
 };
 
-function slotOf(row: SlotRow): InterviewSlot {
-  return {
-    start: new Date(row.starts_at).toISOString(),
-    minutes: Math.round((Date.parse(row.ends_at) - Date.parse(row.starts_at)) / 60_000),
-  };
+function slotOf(row: SlotRow): SlotTime {
+  return { start: new Date(row.starts_at).toISOString(), end: new Date(row.ends_at).toISOString() };
 }
 
 /**
@@ -277,7 +274,8 @@ async function readOtherApplications(
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(inArray(applications.userId, userIds), eq(applyPositions.isDeleted, false)))
+    // A withdrawn application leaves every lead's view at once (issue #169).
+    .where(and(inArray(applications.userId, userIds), eq(applyPositions.isDeleted, false), isNull(applications.withdrawnAt)))
     .orderBy(desc(applications.appliedAt));
   const slots = await readSlots(all.filter((a) => a.status === "interview").map((a) => a.id));
   for (const row of rows) {
@@ -364,7 +362,8 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     .innerJoin(users, eq(applications.userId, users.id))
     .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
     .leftJoin(letterFiles, eq(applications.coverLetterFileId, letterFiles.id))
-    .where(inArray(applications.applyPositionId, positions.map((p) => p.id)))
+    // A withdrawn application leaves the lead's list at once (issue #169).
+    .where(and(inArray(applications.applyPositionId, positions.map((p) => p.id)), isNull(applications.withdrawnAt)))
     .orderBy(desc(applications.appliedAt), desc(applications.id));
 
   const [slots, others] = await Promise.all([
@@ -422,7 +421,7 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
       joined_at: applications.joinedAt,
     })
     .from(applications)
-    .where(eq(applications.id, applicationId))
+    .where(and(eq(applications.id, applicationId), isNull(applications.withdrawnAt)))
     .limit(1);
   if (!row || row.position_id === null || !(await reachablePositionIds(identity)).has(row.position_id)) {
     throw new DashboardRefused(`application ${applicationId}`);
@@ -449,7 +448,7 @@ async function moveApplication(identity: Identity, applicationId: number, move: 
   if (!result.changed) return written(null);
   const after = result.state;
   // Every write is guarded on the status it was read in, so two leads acting at once do not both land.
-  const unchanged = and(eq(applications.id, row.id), eq(applications.status, row.status));
+  const unchanged = and(eq(applications.id, row.id), eq(applications.status, row.status), isNull(applications.withdrawnAt));
 
   switch (after.stage) {
     case "withdrawn":
@@ -464,7 +463,7 @@ async function moveApplication(identity: Identity, applicationId: number, move: 
           offered.map((s) => ({
             applicationId: row.id,
             startsAt: s.start,
-            endsAt: new Date(Date.parse(s.start) + s.minutes * 60_000).toISOString(),
+            endsAt: s.end,
           })),
         ),
         db.update(applications).set({ status: "interview" }).where(unchanged),
@@ -515,7 +514,7 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
         join ${users} u on u.id = a.user_id
         join ${applyPositions} p on p.id = a.apply_position_id
         join ${divisions} d on d.id = p.division_id
-        where a.id = ${applicationId} and a.status = 'accepted' and a.nda_arrived_at is not null
+        where a.id = ${applicationId} and a.status = 'accepted' and a.nda_arrived_at is not null and a.withdrawn_at is null
       ),
       new_member as (
         insert into ${members} (nda_signed_at, nda_confirmed_by)

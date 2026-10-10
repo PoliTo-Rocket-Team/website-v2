@@ -17,8 +17,10 @@ import {
   pickerWeek,
   PICKER_WEEKS,
   pronounsOf,
+  slotAt,
+  slotLength,
   type InterviewLength,
-  type InterviewSlot,
+  type SlotTime,
 } from "@/lib/dashboard/application-flow";
 import { OVERLAY, SHEET, SheetHandle } from "./decision-dialog";
 
@@ -53,9 +55,9 @@ export function InterviewDialog({
   /** The moment the page is seen from: the picker greys out what is past. */
   now: string;
   /** The times already offered, for Change times. */
-  offered: readonly InterviewSlot[];
+  offered: readonly SlotTime[];
   pending: boolean;
-  onSubmit: (slots: InterviewSlot[]) => void;
+  onSubmit: (slots: SlotTime[]) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,13 +83,13 @@ function Picker({
   mode: "offer" | "change";
   applicant: InterviewFor;
   now: string;
-  offered: readonly InterviewSlot[];
+  offered: readonly SlotTime[];
   pending: boolean;
-  onSubmit: (slots: InterviewSlot[]) => void;
+  onSubmit: (slots: SlotTime[]) => void;
 }) {
   const first = firstNameOf(applicant.name);
   const they = pronounsOf(applicant.gender);
-  const initialLength = offered[0]?.minutes;
+  const initialLength = offered[0] === undefined ? undefined : slotLength(offered[0]);
   const [length, setLength] = useState<InterviewLength>(isInterviewLength(initialLength) ? initialLength : 30);
   // Change times starts from the times still to come.
   const [picked, setPicked] = useState<ReadonlySet<string>>(
@@ -250,7 +252,7 @@ function Picker({
         <button
           type="button"
           disabled={!ready}
-          onClick={() => onSubmit([...picked].sort().map((start) => ({ start, minutes: length })))}
+          onClick={() => onSubmit([...picked].sort().map((start) => slotAt(start, length)))}
           className={`inline-flex h-11 items-center justify-center rounded-full bg-prt-text text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`}
         >
           {mode === "offer" ? "Move to interview" : "Save times"}

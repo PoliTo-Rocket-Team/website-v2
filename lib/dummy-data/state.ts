@@ -1,7 +1,8 @@
 import {
   isInterviewLength,
+  slotAt,
+  slotLength,
   type ApplicationState,
-  type InterviewSlot,
   type OfferedSlots,
 } from "@/lib/dashboard/application-flow";
 
@@ -72,7 +73,7 @@ function encodeState(state: ApplicationState): WireState {
     case "interview":
       return [
         "i",
-        state.offered[0].minutes,
+        slotLength(state.offered[0]),
         state.offered.map((s) => toMinutes(s.start)),
         state.booked ? toMinutes(state.booked.slot.start) : null,
         state.booked ? toMinutes(state.booked.at) : null,
@@ -99,7 +100,7 @@ function decodeState(wire: unknown): ApplicationState | null {
   if (wire[0] === "i" && wire.length === 5) {
     const [, minutes, starts, booked, at] = wire;
     if (!isInterviewLength(minutes) || !Array.isArray(starts) || starts.length === 0 || !starts.every(isMinutes)) return null;
-    const offered = starts.map((m: number): InterviewSlot => ({ start: fromMinutes(m), minutes })) as unknown as OfferedSlots;
+    const offered = starts.map((m: number) => slotAt(fromMinutes(m), minutes)) as unknown as OfferedSlots;
     if (booked === null) return { stage: "interview", offered, booked: null };
     const slot = offered.find((s) => toMinutes(s.start) === booked);
     if (!slot || !isMinutes(at)) return null;

@@ -2,18 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { Applicant } from "@/app/actions/get-applicant";
 import type { ApplyPosition } from "@/db/types";
 import type { ApplyData } from "@/lib/apply/data";
-import { formDefaults } from "@/lib/apply/application-form";
 import { isPublic, type Recruitment } from "@/lib/apply/positions";
+import { applyFormDefaults } from "@/lib/dashboard/details";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
-import {
-  applicant as nonMember,
-  departments,
-  divisions,
-  ownApplications,
-  personFor,
-  positions,
-  type DummyPosition,
-} from "./team";
+import { NO_OWN_CHANGES, type OwnChanges } from "./own";
+import { dummyDetails, isWithdrawn, ownApplicationsOf } from "./own-applications";
+import { applicant as nonMember, departments, divisions, personFor, positions, type DummyPosition } from "./team";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
 
 // The dummy side of the apply data interface (issue #150): the positions of
@@ -128,7 +122,8 @@ export const divisionLabel = {
   14: { code: "SPN", name: "Sponsorship" },
 } as const satisfies Readonly<Record<(typeof divisions)[number]["id"], { code: string; name: string }>>;
 
-function applyPosition(p: DummyPosition): ApplyPosition {
+/** A dummy position as the apply pages read one. */
+export function dummyApplyPosition(p: DummyPosition): ApplyPosition {
   const division = divisions.find((d) => d.id === p.divisionId)!;
   const department = departments.find((d) => d.id === division.departmentId)!;
   const text: PositionText = positionText[p.id as keyof typeof positionText];
@@ -162,29 +157,15 @@ export function dummyOpenLimit(selector: string | null): number | null {
   return Number(selector);
 }
 
-function splitName(name: string): { firstName: string; lastName: string } {
-  const [firstName, ...rest] = name.split(" ");
-  return { firstName, lastName: rest.join(" ") };
-}
-
-/** The applicant each test developer viewer signs in as. */
-function applicantFor(viewer: ViewerKind): Applicant {
-  const person = viewer === "non-member" ? nonMember : { ...splitName(personFor[viewer].name), email: personFor[viewer].email };
+/**
+ * The applicant each test developer viewer signs in as. The form starts from
+ * their "Your details" as saved on My account or My profile (issue #169).
+ */
+function applicantFor(viewer: ViewerKind, own: OwnChanges): Applicant {
   return {
     id: `test-developer:${viewer}`,
-    email: person.email,
-    defaults: formDefaults({
-      firstName: person.firstName,
-      lastName: person.lastName,
-      politoId: null,
-      phone: null,
-      dateOfBirth: null,
-      studyProgramme: null,
-      degreeProgramme: null,
-      gender: null,
-      origin: null,
-      referral: null,
-    }),
+    email: viewer === "non-member" ? nonMember.email : personFor[viewer].email,
+    defaults: applyFormDefaults(dummyDetails(viewer, own)),
   };
 }
 
@@ -210,20 +191,25 @@ const sentInThisServer = new SentApplications();
 
 /**
  * The apply pages as a test developer sees them: signed in as `viewer` (null
- * is signed out), with `/apply` limited by its `open` selector, and the
- * recruitment switch as this browser left it (./recruitment.ts).
+ * is signed out), with `/apply` limited by its `open` selector, the
+ * recruitment switch as this browser left it (./recruitment.ts), and their
+ * own changes (./own.ts): saved details and withdrawn applications.
  */
 export function dummyApplyData(
   viewer: ViewerKind | null,
   openSelector: string | null,
   recruitment: Recruitment = DEFAULT_DUMMY_RECRUITMENT,
   sent: SentApplications = sentInThisServer,
+  own: OwnChanges = NO_OWN_CHANGES,
 ): ApplyData {
-  const all = positions.map(applyPosition);
+  const all = positions.map(dummyApplyPosition);
   const limit = dummyOpenLimit(openSelector);
-  const alreadySent = (userId: string, positionId: number) =>
-    sent.has(userId, positionId) ||
-    (userId === applicantFor("non-member").id && ownApplications.some((a) => a.positionId === positionId));
+  // A withdrawn application does not count: the person can apply again.
+  const liveOwn = (userId: string, positionId: number) =>
+    viewer !== null &&
+    userId === applicantFor(viewer, own).id &&
+    ownApplicationsOf(viewer).some((a) => a.positionId === positionId && !isWithdrawn(a, own));
+  const alreadySent = (userId: string, positionId: number) => sent.has(userId, positionId) || liveOwn(userId, positionId);
 
   return {
     publicPositions: async () => {
@@ -234,7 +220,7 @@ export function dummyApplyData(
       const position = all.find((p) => p.id === id);
       return position === undefined ? null : { position, recruitment };
     },
-    applicant: async () => (viewer === null ? null : applicantFor(viewer)),
+    applicant: async () => (viewer === null ? null : applicantFor(viewer, own)),
     hasApplied: async (userId, positionId) => alreadySent(userId, positionId),
     store: {
       putPdf: async () => {},

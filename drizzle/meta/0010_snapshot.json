@@ -1,6 +1,6 @@
 {
-  "id": "4815972f-d8de-4d3b-b79b-b4b52693dd4b",
-  "prevId": "5b3f70c4-39c4-4028-9741-23241335a95c",
+  "id": "c39ad582-25f0-46de-ad0c-765645d47398",
+  "prevId": "4815972f-d8de-4d3b-b79b-b4b52693dd4b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -188,6 +188,24 @@
         },
         "withdrawn_at": {
           "name": "withdrawn_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nda_arrived_at": {
+          "name": "nda_arrived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -622,6 +640,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "chosen_at": {
+          "name": "chosen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -1801,7 +1825,9 @@
         "rejected",
         "accepted",
         "received",
-        "accepted_by_another_team"
+        "accepted_by_another_team",
+        "interview",
+        "joined"
       ]
     },
     "public.status": {

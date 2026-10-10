@@ -8,6 +8,8 @@
 // Rejected and Withdrawn end it. Accept only marks the application; only
 // Confirm join, once the NDA arrived, makes the person a team member.
 
+import type { InterviewSlot } from "./my-applications";
+
 /** How long an interview runs, as the lead picks it (board 58c). */
 export const INTERVIEW_LENGTHS = [30, 45, 60] as const;
 export type InterviewLength = (typeof INTERVIEW_LENGTHS)[number];
@@ -17,16 +19,31 @@ export function isInterviewLength(value: unknown): value is InterviewLength {
 }
 
 /**
- * One time the lead can meet: its start as an ISO timestamp, and its length
- * in minutes. A new offer takes one of INTERVIEW_LENGTHS (`checkOffer`).
+ * One time the lead can meet, as the applicant's side reads it
+ * (`InterviewSlot`, ./my-applications.ts, issue #169) less its stored id: a
+ * time the lead is offering has none until it is saved. Start and end are ISO
+ * timestamps; a new offer runs one of INTERVIEW_LENGTHS (`checkOffer`).
  */
-export type InterviewSlot = { readonly start: string; readonly minutes: number };
+export type SlotTime = Pick<InterviewSlot, "start" | "end">;
 
 /** The slot the applicant picked, and when they picked it. */
-export type BookedSlot = { readonly slot: InterviewSlot; readonly at: string };
+export type BookedSlot = { readonly slot: SlotTime; readonly at: string };
 
 /** At least one slot: an interview with no time to offer is not a state. */
-export type OfferedSlots = readonly [InterviewSlot, ...InterviewSlot[]];
+export type OfferedSlots = readonly [SlotTime, ...SlotTime[]];
+
+const MINUTE = 60_000;
+
+/** The slot that starts at `start` and runs `minutes`. */
+export function slotAt(start: string, minutes: number): SlotTime {
+  const at = Date.parse(start);
+  return { start: new Date(at).toISOString(), end: new Date(at + minutes * MINUTE).toISOString() };
+}
+
+/** How long a slot runs, in minutes. */
+export function slotLength(slot: SlotTime): number {
+  return Math.round((Date.parse(slot.end) - Date.parse(slot.start)) / MINUTE);
+}
 
 export type ApplicationState =
   | { readonly stage: "new" }
@@ -70,7 +87,7 @@ export type LeadMove =
   /** The lead opened it in the panel. */
   | { readonly kind: "open" }
   /** Move to interview (58c), or Change times on one already there (58d). */
-  | { readonly kind: "offer-interview"; readonly slots: readonly InterviewSlot[] }
+  | { readonly kind: "offer-interview"; readonly slots: readonly SlotTime[] }
   | { readonly kind: "accept" }
   /** Reject; on an accepted application this is "Withdraw acceptance". */
   | { readonly kind: "reject" }
@@ -110,8 +127,8 @@ function illegal(reason: string): Next {
   return { ok: false, reason };
 }
 
-function sameSlot(a: InterviewSlot, b: InterviewSlot): boolean {
-  return Date.parse(a.start) === Date.parse(b.start) && a.minutes === b.minutes;
+function sameSlot(a: SlotTime, b: SlotTime): boolean {
+  return Date.parse(a.start) === Date.parse(b.start) && Date.parse(a.end) === Date.parse(b.end);
 }
 
 /** Whether two states say the same thing: same stage, same times, same booking, same dates. */
@@ -133,18 +150,18 @@ export function sameState(a: ApplicationState, b: ApplicationState): boolean {
 }
 
 /** The offered slots, checked: some, not too many, one length, each in the future, none twice. */
-export function checkOffer(slots: readonly InterviewSlot[], now: Date): { ok: true; offered: OfferedSlots } | { ok: false; reason: string } {
+export function checkOffer(slots: readonly SlotTime[], now: Date): { ok: true; offered: OfferedSlots } | { ok: false; reason: string } {
   if (slots.length === 0) return { ok: false, reason: "Pick at least one time." };
   if (slots.length > MAX_OFFERED_SLOTS) return { ok: false, reason: `Pick at most ${MAX_OFFERED_SLOTS} times.` };
   const starts = new Set<number>();
   for (const slot of slots) {
     const at = Date.parse(slot.start);
-    if (!Number.isFinite(at) || !isInterviewLength(slot.minutes)) return { ok: false, reason: "That time is not valid." };
+    if (!Number.isFinite(at) || !isInterviewLength(slotLength(slot))) return { ok: false, reason: "That time is not valid." };
     if (at <= now.getTime()) return { ok: false, reason: "Pick times that are still to come." };
     if (starts.has(at)) return { ok: false, reason: "A time is picked twice." };
     starts.add(at);
   }
-  if (new Set(slots.map((s) => s.minutes)).size !== 1) return { ok: false, reason: "Every time has the same length." };
+  if (new Set(slots.map(slotLength)).size !== 1) return { ok: false, reason: "Every time has the same length." };
   const offered = [...slots].sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   return { ok: true, offered: offered as unknown as OfferedSlots };
 }
@@ -221,12 +238,15 @@ export function parseLeadMove(value: unknown): LeadMove | null {
       return typeof v.arrived === "boolean" ? { kind: "set-nda", arrived: v.arrived } : null;
     case "offer-interview": {
       if (!Array.isArray(v.slots) || v.slots.length > MAX_OFFERED_SLOTS) return null;
-      const slots: InterviewSlot[] = [];
+      const slots: SlotTime[] = [];
       for (const raw of v.slots) {
         if (typeof raw !== "object" || raw === null) return null;
-        const { start, minutes } = raw as Record<string, unknown>;
-        if (typeof start !== "string" || !Number.isFinite(Date.parse(start)) || !isInterviewLength(minutes)) return null;
-        slots.push({ start: new Date(start).toISOString(), minutes });
+        const { start, end } = raw as Record<string, unknown>;
+        if (typeof start !== "string" || typeof end !== "string") return null;
+        if (!Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end))) return null;
+        const slot = { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+        if (!isInterviewLength(slotLength(slot))) return null;
+        slots.push(slot);
       }
       return { kind: "offer-interview", slots };
     }
@@ -396,7 +416,6 @@ export function tabCounts(stages: readonly ApplicationStage[]): Record<Applicati
 // Times, in Turin ----------------------------------------------------------------
 
 const TIME_ZONE = "Europe/Rome";
-const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 
 const partsFormat = new Intl.DateTimeFormat("en-GB", {
@@ -444,30 +463,30 @@ function hhmm(p: { hour: number; minute: number }): string {
   return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 }
 
-function slotEnd(slot: InterviewSlot): Date {
-  return new Date(Date.parse(slot.start) + slot.minutes * MINUTE);
+function slotEnd(slot: SlotTime): Date {
+  return new Date(slot.end);
 }
 
 /** "Thu 15" */
-export function slotDay(slot: InterviewSlot): string {
+export function slotDay(slot: SlotTime): string {
   const p = romeParts(new Date(slot.start));
   return `${p.weekday} ${p.day}`;
 }
 
 /** "Thu 15, 17:30", as the stage pill reads. */
-export function slotDayTime(slot: InterviewSlot): string {
+export function slotDayTime(slot: SlotTime): string {
   const p = romeParts(new Date(slot.start));
   return `${p.weekday} ${p.day}, ${hhmm(p)}`;
 }
 
 /** "Thu 15 Oct, 17:30 – 18:00", as the panel's interview card reads (58d). */
-export function slotRange(slot: InterviewSlot): string {
+export function slotRange(slot: SlotTime): string {
   const p = romeParts(new Date(slot.start));
   return `${p.weekday} ${p.day} ${MONTHS[p.month - 1]}, ${hhmm(p)} – ${hhmm(romeParts(slotEnd(slot)))}`;
 }
 
 /** The date badge on the interview card: "15" over "OCT". */
-export function slotBadge(slot: InterviewSlot): { readonly day: string; readonly month: string } {
+export function slotBadge(slot: SlotTime): { readonly day: string; readonly month: string } {
   const p = romeParts(new Date(slot.start));
   return { day: String(p.day), month: MONTHS[p.month - 1].toUpperCase() };
 }
@@ -551,7 +570,7 @@ function icsText(text: string): string {
  * The site sends no invite: the file is a download, nothing more.
  */
 export function interviewIcs(
-  { applicationId, applicant, position, slot }: { applicationId: number; applicant: string; position: string; slot: InterviewSlot },
+  { applicationId, applicant, position, slot }: { applicationId: number; applicant: string; position: string; slot: SlotTime },
   now: Date,
 ): string {
   return [

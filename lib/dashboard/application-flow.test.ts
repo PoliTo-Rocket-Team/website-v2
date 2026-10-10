@@ -8,16 +8,17 @@ import {
   pickerWeek,
   romeTime,
   stagePill,
+  slotAt,
   studiesLine,
   type ApplicationMove,
   type ApplicationState,
-  type InterviewSlot,
+  type SlotTime,
 } from "./application-flow";
 
 // Where an application stands and how it moves (boards 58 to 58i, issue #171).
 
 const now = new Date("2026-10-09T16:00:00+02:00");
-const slot = (iso: string): InterviewSlot => ({ start: new Date(iso).toISOString(), minutes: 30 });
+const slot = (iso: string): SlotTime => slotAt(iso, 30);
 const thu = slot("2026-10-15T17:30:00+02:00");
 const fri = slot("2026-10-16T18:00:00+02:00");
 
@@ -88,7 +89,7 @@ test("an interview offer needs times still to come, one length, none twice", () 
   assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [] }, now).ok, false);
   assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [slot("2026-10-08T17:00:00+02:00")] }, now).ok, false);
   assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [thu, thu] }, now).ok, false);
-  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [thu, { ...fri, minutes: 60 }] }, now).ok, false);
+  assert.equal(applyMove(STATES.new, { kind: "offer-interview", slots: [thu, slotAt(fri.start, 60)] }, now).ok, false);
   assert.deepEqual(after(STATES.new, { kind: "offer-interview", slots: [fri, thu] }), { stage: "interview", offered: [thu, fri], booked: null });
 });
 
@@ -147,11 +148,11 @@ test("the stage pill reads the booked time, or no time yet", () => {
 test("a move from the browser is read only in a shape the flow knows", () => {
   assert.deepEqual(parseLeadMove({ kind: "open" }), { kind: "open" });
   assert.deepEqual(parseLeadMove({ kind: "set-nda", arrived: true }), { kind: "set-nda", arrived: true });
-  assert.deepEqual(parseLeadMove({ kind: "offer-interview", slots: [{ start: thu.start, minutes: 30 }] }), {
+  assert.deepEqual(parseLeadMove({ kind: "offer-interview", slots: [{ start: thu.start, end: thu.end }] }), {
     kind: "offer-interview",
     slots: [thu],
   });
-  assert.equal(parseLeadMove({ kind: "offer-interview", slots: [{ start: thu.start, minutes: 25 }] }), null);
+  assert.equal(parseLeadMove({ kind: "offer-interview", slots: [{ start: thu.start, end: slotAt(thu.start, 25).end }] }), null);
   assert.equal(parseLeadMove({ kind: "withdraw" }), null);
   assert.equal(parseLeadMove({ kind: "book", start: thu.start }), null);
   assert.equal(parseLeadMove("accept"), null);

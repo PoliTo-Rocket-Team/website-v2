@@ -186,6 +186,7 @@ async function readPositions(identity: Identity): Promise<ScopedPosition[]> {
     .where(
       and(
         eq(applications.status, "received"),
+        isNull(applications.withdrawnAt),
         inArray(
           applications.applyPositionId,
           scoped.map((r) => r.id),
@@ -368,7 +369,7 @@ async function applicantOverview(identity: Identity): Promise<PersonalOverview> 
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
     .leftJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .leftJoin(departments, eq(divisions.deptId, departments.id))
-    .where(eq(applications.userId, identity.userId))
+    .where(and(eq(applications.userId, identity.userId), isNull(applications.withdrawnAt)))
     .orderBy(desc(applications.appliedAt));
 
   return {
