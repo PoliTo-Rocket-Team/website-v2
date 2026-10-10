@@ -50,6 +50,7 @@ import {
   dummySaveAccess,
 } from "./division";
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
+import { dummyNoticeAttention, isDummyNoticeOpen } from "./notices";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { sentLabel } from "@/lib/dashboard/my-applications";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChanges, type OwnChangesStore } from "./own";
@@ -241,7 +242,7 @@ function oldestNew(position: DummyPosition, team: Team): Date {
   return new Date(Math.min(...times));
 }
 
-function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
+function attentionFor(kind: ViewerKind, team: Team, dismissed: readonly number[]): AttentionItem[] {
   const scoped = positionsFor(kind, team);
   const fresh = scoped.flatMap((p): AttentionItem[] => {
     const n = newApplications([p], team);
@@ -291,7 +292,8 @@ function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
             .map((p) => p.name),
         )
       : null;
-  return [...fresh, ...quiet, ...unassigned, ...(noPhoto ? [noPhoto] : [])];
+  const notices = kind === "operations-lead" || kind === "division-lead" ? dummyNoticeAttention(personFor[kind], dismissed, NOW) : [];
+  return [...fresh, ...quiet, ...unassigned, ...(noPhoto ? [noPhoto] : []), ...notices];
 }
 
 function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): ActivityItem[] {
@@ -307,7 +309,7 @@ function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): Activi
 }
 
 /** Board 40: the operations lead's figures, attention and activity across the team. */
-function teamOverview(team: Team): TeamOverview {
+function teamOverview(team: Team, dismissed: readonly number[]): TeamOverview {
   const kind = "operations-lead";
   const scoped = positionsFor(kind, team);
   const open = scoped.filter((p) => p.open);
@@ -329,7 +331,7 @@ function teamOverview(team: Team): TeamOverview {
       },
       { label: "Team members", value: String(roster.members), detail: `${roster.season} roster` },
     ],
-    attention: attentionFor(kind, team),
+    attention: attentionFor(kind, team, dismissed),
     activity: activityFor(kind),
   };
 }
@@ -356,7 +358,7 @@ function interviewsFor(divisionId: number, team: Team): UpcomingInterview[] {
 }
 
 /** Board 56: the division lead's figures, attention, interviews and activity, all scoped to their division. */
-function divisionOverview(team: Team): DivisionOverview {
+function divisionOverview(team: Team, dismissed: readonly number[]): DivisionOverview {
   const kind = "division-lead";
   const scoped = positionsFor(kind, team);
   const open = scoped.filter((p) => p.open);
@@ -385,7 +387,7 @@ function divisionOverview(team: Team): DivisionOverview {
         detail: `${members.length === 1 ? "person" : "people"} in ${divisionShortName(division.name)}`,
       },
     ],
-    attention: attentionFor(kind, team),
+    attention: attentionFor(kind, team, dismissed),
     interviews: interviewsFor(division.id, team),
     activity: activityFor(kind),
   };
@@ -485,12 +487,12 @@ function applicantOverview(team: Team, own: OwnChanges, start: OwnApplicationsSt
   };
 }
 
-function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges, start: OwnApplicationsStart): Overview {
+function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges, start: OwnApplicationsStart, dismissed: readonly number[]): Overview {
   switch (kind) {
     case "operations-lead":
-      return teamOverview(team);
+      return teamOverview(team, dismissed);
     case "division-lead":
-      return divisionOverview(team);
+      return divisionOverview(team, dismissed);
     case "member":
       return memberOverview();
     case "non-member":
@@ -629,6 +631,33 @@ function teamPersonFor(kind: ViewerKind): DummyPerson | null {
 const notOnTeam = "This page is for team members.";
 
 /**
+ * The dashboard of a team member the test developer signed in as after they
+ * left or were moved to alumni: like the database side (issue #201), a member
+ * with no active role gets the applicant's pages, as themselves, with no
+ * applications sent. Their details stay the ones they had on the team.
+ */
+function leftTeamDashboard(
+  kind: Exclude<ViewerKind, "non-member">,
+  self: DummyPerson,
+  recruitment: DummyRecruitmentStore,
+  changes: DummyStateStore,
+  teamEdits: TeamEditsStore,
+  own: OwnChangesStore,
+): DashboardData {
+  const applicantPages = dummyDashboardData("non-member", recruitment, changes, teamEdits, own, "none");
+  return {
+    ...applicantPages,
+    viewer: { ...applicantPages.viewer, name: self.name },
+    myAccount: async () => ({ ...dummyMyAccount(self, own.current, "none"), details: dummyDetails(kind, own.current) }),
+    async saveDetails(input) {
+      const result = dummySaveDetails(input, "applicant", dummyDetails(kind, own.current));
+      if (result.ok) await own.save({ ...own.current, details: { ...own.current.details, [kind]: result.value } });
+      return result;
+    },
+  };
+}
+
+/**
  * The dashboard as the test developer sees it, looking as `kind`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
@@ -645,6 +674,9 @@ export function dummyDashboardData(
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
 ): DashboardData {
+  if (kind !== "non-member" && teamEdits.current.movedToAlumni[personFor[kind].id] !== undefined) {
+    return leftTeamDashboard(kind, personFor[kind], recruitment, changes, teamEdits, own);
+  }
   const team = teamOf(recruitment.current, changes.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(kind);
@@ -677,7 +709,15 @@ export function dummyDashboardData(
     viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind, team),
     hasOwnApplications: async () => ownApplicationsOf(kind, ownStart).length > 0,
-    overview: async () => overviewFor(kind, team, own.current, ownStart),
+    overview: async () => overviewFor(kind, team, own.current, ownStart, teamEdits.current.dismissedNotices),
+    async dismissNotice(noticeId) {
+      const dismissed = teamEdits.current.dismissedNotices;
+      if (person === null || !isDummyNoticeOpen(person, dismissed, noticeId)) {
+        return refused("This notice is not yours, or it was already dismissed.");
+      }
+      await teamEdits.save({ ...teamEdits.current, dismissedNotices: [...dismissed, noticeId] });
+      return written(null);
+    },
     recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>

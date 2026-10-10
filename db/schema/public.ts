@@ -343,6 +343,31 @@ export const teamLeaves = pgTable("team_leaves", {
   memberIdx: index("team_leaves_member_idx").on(table.memberId),
 }));
 
+/**
+ * A notice on one member's dashboard (issue #201), shown under "Needs your
+ * attention" until they dismiss it. `kind` names what happened and `data`
+ * holds what the notice says about it; lib/dashboard/notices.ts owns both,
+ * so a new kind needs no new column.
+ */
+export const dashboardNotices = pgTable("dashboard_notices", {
+  id: serial("id").primaryKey(),
+  recipientId: integer("recipient_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  kind: text("kind").notNull(),
+  /** The member the notice is about. */
+  subjectId: integer("subject_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  data: jsonb("data").default(sql`'{}'::jsonb`).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  dismissedAt: timestamp("dismissed_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  recipientIdx: index("dashboard_notices_recipient_idx").on(table.recipientId),
+}));
+
 export const scopes = pgTable(
   "scopes",
   {

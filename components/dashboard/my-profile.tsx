@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
@@ -377,7 +378,7 @@ function Locked({ label, hint, value, icon }: { label: string; hint: string; val
   );
 }
 
-const LEAVE_TEXT = "Your division lead and the recruitment manager get a message, and you move to Alumni. You keep your account.";
+const LEAVE_TEXT = "Your division lead sees a notice on their dashboard, and you move to Alumni. You keep your account.";
 const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your account.";
 
 /**
@@ -468,6 +469,7 @@ function LeaveDialog({
   leaveTeam: Actions["leaveTeam"];
   onLeft: () => void;
 }) {
+  const router = useRouter();
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const reasonId = useId();
@@ -482,6 +484,8 @@ function LeaveDialog({
       }
       onLeft();
       toast.success("You left the team");
+      // Off the team, the dashboard opens as an applicant's (issue #201).
+      router.replace("/dashboard");
     } finally {
       setPending(false);
     }
@@ -496,7 +500,7 @@ function LeaveDialog({
       }}
       icon={<LogOut className="h-[18px] w-[18px]" strokeWidth={1.75} />}
       title="Leave the team?"
-      description="Your division lead and the recruitment manager get a message. You move to Alumni with your years on the team."
+      description="Your division lead sees a notice on their dashboard. You move to Alumni with your years on the team."
       cancelLabel="Stay"
       confirmLabel="Leave the team"
       danger

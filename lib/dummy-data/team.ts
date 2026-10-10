@@ -212,6 +212,8 @@ export type DummyAlumnus = {
 };
 
 export const alumni = [
+  // Left Mission Analysis from My profile this week: the division lead's "member left" notice (./notices.ts).
+  { id: 1019, name: "Valentina Sala", lastRole: "Member", unit: "Mission Analysis", department: "Aerodynamics", from: 2024, to: 2026, shownOnSite: true },
   { id: 1001, name: "Davide Costa", lastRole: "Member", unit: "Hardware", department: "Electronics", from: 2023, to: 2026, shownOnSite: true },
   { id: 1002, name: "Federico Marino", lastRole: "Head of Propulsion", unit: "Propulsion", department: "Propulsion", from: 2021, to: 2025, shownOnSite: true },
   { id: 1003, name: "Alessia Romano", lastRole: "Team Leader", unit: "Board", department: "Board", from: 2020, to: 2025, shownOnSite: true },

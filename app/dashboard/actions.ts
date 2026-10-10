@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { DashboardData } from "@/lib/dashboard/data";
 import type { YourDetails } from "@/lib/dashboard/details";
@@ -40,6 +41,14 @@ async function uploadOf(form: FormData, field: string): Promise<Upload | null> {
 
 function textFields(form: FormData, names: readonly string[]): Record<string, string> {
   return Object.fromEntries(names.map((name) => [name, String(form.get(name) ?? "")]));
+}
+
+/** Dismiss on a notice under "Needs your attention" (issue #201); the Overview reads again without it. */
+export async function dismissNotice(noticeId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(noticeId)) return refused("Unknown notice.");
+  const result = await write("overview", (data) => data.dismissNotice(noticeId));
+  if (result.ok) revalidatePath("/dashboard");
+  return result;
 }
 
 /** Give access or Edit access (boards 60b and 60c). */
@@ -86,7 +95,10 @@ export async function removePhoto(): Promise<WriteResult<null>> {
 }
 
 export async function leaveTeam(reason: string): Promise<WriteResult<null>> {
-  return write("my-profile", (data) => data.leaveTeam(String(reason ?? "")));
+  const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? "")));
+  // Off the team, the sidebar and every page change to the applicant's (issue #201).
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
 }
 
 export async function withdrawApplication(applicationId: number): Promise<WriteResult<null>> {
