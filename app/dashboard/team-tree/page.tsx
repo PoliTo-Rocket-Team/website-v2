@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { TeamTreeView } from "@/components/dashboard/team-tree";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 // Board 54c (the family tree on a pan and zoom canvas) and, on phones, 54c-m.
 export default function TeamTreePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardPageFallback />}>
       <LiveTeamTree />
     </Suspense>
   );

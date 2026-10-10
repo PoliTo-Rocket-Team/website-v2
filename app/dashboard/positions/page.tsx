@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { PositionsView } from "@/components/dashboard/positions";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 // (issue #142). Members and applicants do not reach it.
 export default function PositionsPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardPageFallback />}>
       <LivePositions />
     </Suspense>
   );

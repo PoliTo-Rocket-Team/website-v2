@@ -22,7 +22,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Sidebar item or page | Non-member | Member | Division lead | Department head | Operations lead |
 |---|---|---|---|---|---|
 | My applications | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application |
-| Overview | No | Yes | Yes | Yes | Yes |
+| Overview | Yes, only with at least one application | Yes | Yes | Yes | Yes |
 | Team tree | No | Yes | Yes | Yes | Yes |
 | Positions | No | No | Own divisions | All divisions in the department, with a division selector | All, plus the site-wide recruitment switch |
 | Applications | No | No | Own divisions | All divisions in the department, with a division selector | All |
@@ -39,8 +39,11 @@ An admin column comes later. **Planned**, no issue yet.
   "See open positions" button (#179).
   - **Gap:** today they get an empty sidebar and a "not found" page. Tracked in #179.
 - **Gap:** the operations lead does not reach Access or Orders. Tracked in #200.
-- **Overview** is for members, division leads, department heads and the operations lead. A
-  non-member gets no Overview.
+- **Overview** is for members, division leads, department heads and the operations lead, and for
+  a non-member with at least one application, withdrawn ones included (boards 50e and 50e-m,
+  #211). A non-member whose only applications are withdrawn stays on the Overview: the "Your
+  applications" panel shows one line, "No open applications.", with its "Open My applications"
+  link, and the withdrawn applications stay under Past on My applications (Owner decision, #227).
 - **Team tree** is for members and up.
 - **Positions** and **Applications**: a division lead sees their own divisions. A department head
   sees all divisions in their department and picks one with a division selector. The operations
@@ -160,6 +163,7 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
   developer" switch, with four people: non-member, member, division lead and operations lead.
-  Production never does.
+  Production never does. The sign-in link takes `applications=none` (no applications yet) or
+  `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and
   tables become stacked cards.

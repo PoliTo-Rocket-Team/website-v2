@@ -29,7 +29,7 @@ import { divisionIdOf } from "@/lib/dashboard/team";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
-import { dummyDetails, isOpenOwn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
+import { dummyDetails, isOpenOwn, isWithdrawn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
 import type { OwnApplicationsStart, OwnChanges } from "./own";
 import { departments, divisions, people, positions, type DummyPerson } from "./team";
 
@@ -141,6 +141,7 @@ function activeStage(application: DummyOwnApplication, changes: OwnChanges): Act
     }
     case "not-selected":
     case "joined":
+    case "withdrawn":
       return null;
   }
 }
@@ -193,7 +194,7 @@ export function dummyMyApplications(
   const active: ActiveApplication[] = [];
   const past: PastApplication[] = [];
   for (const application of own) {
-    const withdrawn = changes.withdrawn.includes(application.id);
+    const withdrawn = isWithdrawn(application, changes);
     const stage = withdrawn ? null : activeStage(application, changes);
     if (stage === null) past.push(pastOf(application, withdrawn));
     else active.push(activeOf(application, stage));

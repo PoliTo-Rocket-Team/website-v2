@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import type { DashboardLanding } from "@/lib/dashboard/access";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
   checkPhoto,
@@ -28,7 +29,7 @@ type Actions = {
   uploadPhoto: (form: FormData) => Promise<WriteResult<null>>;
   removePhoto: () => Promise<WriteResult<null>>;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
-  leaveTeam: (reason: string) => Promise<WriteResult<null>>;
+  leaveTeam: (reason: string) => Promise<WriteResult<DashboardLanding>>;
   deleteAccount: (withdrawOpenApplications: boolean) => Promise<WriteResult<null>>;
 };
 
@@ -441,10 +442,8 @@ function LeaveOrDelete({
         open={asking === "leave"}
         onOpenChange={(open) => setAsking(open ? "leave" : null)}
         leaveTeam={leaveTeam}
-        onLeft={() => {
-          setLeave("left");
-          setAsking(null);
-        }}
+        // The dialog stays open, pending, until the applicant's page replaces this one (issue #227).
+        onLeft={() => setLeave("left")}
       />
       <DeleteAccountDialog
         open={asking === "delete"}
@@ -471,12 +470,16 @@ function LeaveDialog({
 }) {
   const router = useRouter();
   const [reason, setReason] = useState("");
-  const [pending, setPending] = useState(false);
+  const [leaving, startLeaving] = useTransition();
   const reasonId = useId();
 
-  const confirm = async () => {
-    setPending(true);
-    try {
+  // The dialog stays open and pending from the confirm until the applicant's
+  // page replaces this one: the write, then the move, run as one transition
+  // (issue #227). Off the team, the dashboard opens as an applicant's (issue
+  // #201), on the page the write names, so no redirect runs on the way; the
+  // page loads over the dashboard's loading fallback, never an empty main area.
+  const confirm = () =>
+    startLeaving(async () => {
       const result = await leaveTeam(reason);
       if (!result.ok) {
         toast.error("Could not leave the team", { description: result.error });
@@ -484,12 +487,8 @@ function LeaveDialog({
       }
       onLeft();
       toast.success("You left the team");
-      // Off the team, the dashboard opens as an applicant's (issue #201).
-      router.replace("/dashboard");
-    } finally {
-      setPending(false);
-    }
-  };
+      router.replace(result.value);
+    });
 
   return (
     <ConfirmDialog
@@ -504,7 +503,7 @@ function LeaveDialog({
       cancelLabel="Stay"
       confirmLabel="Leave the team"
       danger
-      pending={pending}
+      pending={leaving}
       onConfirm={confirm}
     >
       <ul className="mt-5 flex flex-col gap-2.5 rounded-xl border border-hairline bg-white-5 px-4 py-3.5 text-[13px] text-text-2">

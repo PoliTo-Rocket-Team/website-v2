@@ -1,5 +1,5 @@
 import type { AttentionItem } from "./overview";
-import { isPromoteMode, type PromoteMode } from "./team";
+import { isPromoteMode, type DepartmentHead, type PromoteMode } from "./team";
 import { shortDate } from "./write";
 
 // Notices on a member's dashboard (issue #201): something that happened to
@@ -177,22 +177,64 @@ export type Promotion = {
   readonly lead: { readonly id: number; readonly name: string };
 };
 
+/** The two people in a promotion: who is promoted, and the lead who promotes (null before anyone does). */
+export type PromotionParties = { readonly personId: number; readonly leadId: number | null };
+
 /**
- * The notices a promotion writes (issue #188): one per head of the
- * division's department, each told once however many head roles they hold.
- * Neither the lead who promoted nor the person promoted is told about it,
- * and a department with no head tells nobody. This is the one place that
- * decides who is told about a promotion.
+ * Who a promotion never tells, whatever head roles they hold: the lead who
+ * promoted and the person promoted. Part of the rule below, and the list the
+ * database's insert leaves out (./database-notices.ts).
  */
+export function untoldOfPromotion(parties: PromotionParties): readonly number[] {
+  return parties.leadId === null ? [parties.personId] : [parties.leadId, parties.personId];
+}
+
+/**
+ * Who a promotion tells (issue #188), stated once here: each head of the
+ * division's department, once however many head roles they hold, never the
+ * lead who promoted and never the person promoted. A department with no head
+ * tells nobody. `heads` are that department's heads. Promote's dialog names
+ * these people before the write (components/dashboard/member-drawer.tsx), the
+ * dummy data writes their notices with promotedNotices, and the database
+ * selects them inside the insert itself (promotedNoticesInsert in
+ * ./database-notices.ts: its heads, `DISTINCT` and untoldOfPromotion).
+ */
+export function headsToldOfPromotion<H extends { readonly memberId: number }>(
+  heads: readonly H[],
+  parties: PromotionParties,
+): H[] {
+  const untold = untoldOfPromotion(parties);
+  const told = new Map<number, H>();
+  for (const head of heads) if (!untold.includes(head.memberId) && !told.has(head.memberId)) told.set(head.memberId, head);
+  return [...told.values()];
+}
+
+/**
+ * The line under Promote's choices (board 59e): who the promotion tells, named
+ * only when headsToldOfPromotion tells them. Null when the department's only
+ * heads are the viewer or the person promoted (issue #227): nobody is told,
+ * and the line would name the viewer. `heads` are the department's heads.
+ */
+export function promotionNoticeLine(heads: readonly DepartmentHead[], parties: PromotionParties): string | null {
+  if (heads.length === 0) return "Your department has no head on the roster, so no one else is told.";
+  const told = headsToldOfPromotion(heads, parties);
+  if (told.length === 0) return null;
+  const names = told.map((h) => h.name);
+  const department = told[0].department;
+  if (names.length === 1) return `${names[0]}, head of ${department}, is told on their dashboard.`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}, heads of ${department}, are told on their dashboards.`;
+}
+
+/** The notice each head a promotion tells reads. */
+export function promotedNotice(promotion: Promotion): NewNotice {
+  const { division, mode, lead } = promotion;
+  return { kind: "promoted", data: { division: division.name, mode, lead: lead.name } };
+}
+
+/** The notices a promotion writes: one per head headsToldOfPromotion names, among `heads` of any department. */
 export function promotedNotices(promotion: Promotion, heads: readonly DepartmentHeadRole[]): AddressedNotice[] {
-  const { personId, division, mode, lead } = promotion;
-  const recipients = new Set(
-    heads
-      .filter((h) => h.departmentId === division.departmentId && h.memberId !== lead.id && h.memberId !== personId)
-      .map((h) => h.memberId),
-  );
-  return [...recipients].map((recipientId) => ({
-    recipientId,
-    notice: { kind: "promoted", data: { division: division.name, mode, lead: lead.name } },
-  }));
+  const { personId, division, lead } = promotion;
+  const departmentHeads = heads.filter((h) => h.departmentId === division.departmentId);
+  const notice = promotedNotice(promotion);
+  return headsToldOfPromotion(departmentHeads, { personId, leadId: lead.id }).map((h) => ({ recipientId: h.memberId, notice }));
 }

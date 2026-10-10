@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { AlumniView } from "@/components/dashboard/alumni";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 // Board 46c: everyone who was on the team, for the operations lead.
 export default function AlumniPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardPageFallback />}>
       <LiveAlumni />
     </Suspense>
   );

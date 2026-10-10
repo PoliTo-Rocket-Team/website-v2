@@ -1,6 +1,6 @@
 import { positionCode, type Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
-import type { NavCounts } from "@/lib/dashboard/access";
+import { landingAfterLeaving, type NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { formatEuro, waitingOrders } from "@/lib/dashboard/orders";
 import {
@@ -773,7 +773,8 @@ export function dummyDashboardData(
       // listed reason, since the leaver's own words are free text.
       const departure: Departure = { from: Math.min(Number(person.since.slice(0, 4)), year), to: year, reason: null };
       await teamEdits.save({ ...teamEdits.current, movedToAlumni: { ...teamEdits.current.movedToAlumni, [person.id]: departure } });
-      return written(null);
+      // Off the team they have no applications sent (leftTeamDashboard).
+      return written(landingAfterLeaving(false));
     },
 
     myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current, ownStart) : null),

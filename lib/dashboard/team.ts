@@ -120,8 +120,9 @@ export type Joining = {
   readonly ndaArrived: boolean;
 };
 
-/** The head of the division's department: who the lead tells about a promotion (board 59e). */
+/** A head of the division's department: who a promotion tells (board 59e, ./notices.ts). */
 export type DepartmentHead = {
+  readonly memberId: number;
   readonly name: string;
   /** "Aerodynamics" */
   readonly department: string;
@@ -139,11 +140,14 @@ export type MemberDirectory =
       readonly division: string;
       readonly rows: readonly MemberRow[];
       readonly joining: readonly Joining[];
-      readonly head: DepartmentHead | null;
+      /** The department's heads, the viewer among them when they head it. */
+      readonly heads: readonly DepartmentHead[];
+      /** The viewer's member id: the lead who would promote. */
+      readonly viewerId: number | null;
     };
 
 /** A division lead with nothing to list: no division, nobody joining, no head. */
-export const NO_DIVISION: MemberDirectory = { scope: "division", division: "", rows: [], joining: [], head: null };
+export const NO_DIVISION: MemberDirectory = { scope: "division", division: "", rows: [], joining: [], heads: [], viewerId: null };
 
 function roleLabelOf(placement: Placement, org: OrgChart): string {
   switch (placement.role) {
@@ -208,14 +212,12 @@ export function divisionDirectory(
     .map((entry) => memberRowOf(entry, org, selfId))
     .sort(byRoleThenName);
   const department = org.departments.find((d) => d.id === division?.departmentId);
-  const head = roster.find((e) => e.placement.role === "head" && e.placement.departmentId === department?.id);
-  return {
-    scope: "division",
-    division: division?.name ?? "",
-    rows,
-    joining,
-    head: head && department ? { name: head.name, department: department.name } : null,
-  };
+  const heads = department
+    ? roster
+        .filter((e) => e.placement.role === "head" && e.placement.departmentId === department.id)
+        .map((e) => ({ memberId: e.id, name: e.name, department: department.name }))
+    : [];
+  return { scope: "division", division: division?.name ?? "", rows, joining, heads, viewerId: selfId };
 }
 
 // Promote and Move to alumni (boards 59e and 59d)

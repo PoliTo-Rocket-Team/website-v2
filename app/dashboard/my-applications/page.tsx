@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { MyApplicationsView, NoApplicationsView } from "@/components/dashboard/my-applications";
 import { canReach } from "@/lib/dashboard/access";
 import { hasNotApplied } from "@/lib/dashboard/my-applications";
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 // applied yet gets the empty page with the way to /apply (issue #179).
 export default function MyApplicationsPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardPageFallback />}>
       <LiveApplications />
     </Suspense>
   );
