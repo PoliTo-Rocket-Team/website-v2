@@ -42,17 +42,18 @@ export const DASHBOARD_PAGES = [
     key: "overview",
     label: "Overview",
     href: "/dashboard",
-    // The v2 boards give a non-member no Overview item; /dashboard still
-    // answers them with their own overview.
-    reach: { "operations-lead": "main", "division-lead": "main", member: "main", "non-member": "unlisted" },
+    reach: { "operations-lead": "main", "division-lead": "main", member: "main", "non-member": "main" },
+    // A non-member who has not applied lands on My applications instead
+    // (issue #179), so their sidebar lists Overview only once they have
+    // applied (board 50e, issue #211).
+    shownWhen: { "non-member": "has-own-applications" },
   },
   {
     key: "my-applications",
     label: "My applications",
     href: "/dashboard/my-applications",
     reach: { "operations-lead": "main", "division-lead": "main", member: "main", "non-member": "main" },
-    // A non-member always sees it, as their only item, applied or not
-    // (issue #179); the team only once they have applied (issue #183).
+    // A non-member always sees it, applied or not (issue #179); the team only once they have applied (issue #183).
     shownWhen: {
       "operations-lead": "has-own-applications",
       "division-lead": "has-own-applications",

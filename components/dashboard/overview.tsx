@@ -1,5 +1,15 @@
 import Link from "next/link";
-import { Check, FileText, Hourglass, Inbox, Info, Pencil, Timer, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Pencil, Timer, UserPlus, type LucideIcon } from "lucide-react";
+import { RocketArrow } from "@/components/landing/rocket-arrow";
+import {
+  APPLICANT_PILL_LABELS,
+  OPEN_ROLES_SHOWN,
+  type ApplicantOverview,
+  type ApplicantPill,
+  type NextStep,
+  type OpenPositions,
+} from "@/lib/dashboard/applicant-overview";
+import { sentLabel } from "@/lib/dashboard/my-applications";
 import {
   checklistCount,
   interviewOrder,
@@ -7,11 +17,9 @@ import {
   interviewSummary,
   rosterSize,
   type ActivityItem,
-  type ApplicationStatus,
   type AttentionItem,
   type AttentionKind,
   type Checklist,
-  type OwnApplication,
   type Overview,
   type PersonalOverview,
   type Roster,
@@ -22,7 +30,7 @@ import { Avatar } from "./avatar";
 import { PANEL, Panel, RowAction } from "./panel";
 
 // The Overview page: board 40 for the operations lead, 56 for a division
-// lead, 52 for a member. Props in, nothing fetched: the page hands over what
+// lead, 52 for a member, 50e for a non-member who has applied. Props in, nothing fetched: the page hands over what
 // the dashboard data interface answered.
 export function OverviewView({ overview }: { overview: Overview }) {
   switch (overview.shape) {
@@ -48,6 +56,8 @@ export function OverviewView({ overview }: { overview: Overview }) {
       );
     case "personal":
       return <PersonalView overview={overview} />;
+    case "applicant":
+      return <ApplicantView overview={overview} />;
   }
 }
 
@@ -225,24 +235,17 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
 }
 
 // Boards 40m and 52: who the viewer is, then their own panels (their page on
-// the site and their division, or their applications), then the access hint.
+// the site and their division), then the access hint.
 // Board 52m: the person sits on the page with no frame and no edit button
 // (My profile is in the user menu), each panel's count moves beside its title,
 // and the hint is left out.
 function PersonalView({ overview }: { overview: PersonalOverview }) {
-  const { person, checklist, roster, applications, hint } = overview;
-  const main = checklist ? <ChecklistPanel checklist={checklist} /> : applications ? <ApplicationsPanel applications={applications} /> : null;
+  const { person, checklist, roster, hint } = overview;
+  const main = checklist ? <ChecklistPanel checklist={checklist} /> : null;
   return (
     <>
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-center md:rounded-xl md:border md:border-hairline md:bg-panel/60 md:px-6 md:py-6">
-        <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-5">
-          <Avatar name={person.name} size="person" />
-          <div className="min-w-0">
-            <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] md:text-[24px]">{person.name}</h1>
-            <p className="mt-1 text-[14px] text-text-2">{person.line}</p>
-            {person.since && <p className="mt-0.5 text-[12px] text-prt-muted">{person.since}</p>}
-          </div>
-        </div>
+      <section className={PERSON_FRAME}>
+        <PersonLines name={person.name} line={person.line} since={person.since} />
         {person.edit && (
           <Link
             href={person.edit.href}
@@ -323,30 +326,147 @@ function RosterPanel({ roster }: { roster: Roster }) {
   );
 }
 
-const STATUS: Readonly<Record<ApplicationStatus, { label: string; className: string }>> = {
-  received: { label: "Received", className: "bg-white-10 text-text-2" },
-  "in-review": { label: "In review", className: "bg-accent-soft text-accent" },
-  accepted: { label: "Accepted", className: "bg-success-soft text-success" },
-  declined: { label: "Declined", className: "bg-white-5 text-prt-muted" },
+/** The person at the top of their own Overview: framed from md, on the page on phones (boards 52m, 50e-m). */
+const PERSON_FRAME =
+  "flex flex-col gap-4 sm:flex-row sm:items-center md:rounded-xl md:border md:border-hairline md:bg-panel/60 md:px-6 md:py-6";
+
+function PersonLines({ name, line, since }: { name: string; line: string; since: string | null }) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-5">
+      <Avatar name={name} size="person" />
+      <div className="min-w-0">
+        <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] md:text-[24px]">{name}</h1>
+        <p className="mt-1 break-words text-[14px] text-text-2">{line}</p>
+        {since && <p className="mt-0.5 text-[12px] text-prt-muted">{since}</p>}
+      </div>
+    </div>
+  );
+}
+
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+const ROW_LINK = `flex items-center gap-4 px-4 py-3.5 transition-colors duration-300 ease-out hover:bg-white-5 md:px-5 ${FOCUS} focus-visible:-outline-offset-2`;
+const ARROW = "opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100";
+
+// Board 50e: the applicant, then what waits on them and their applications
+// beside the open positions. Board 50e-m: the person on the page, the panels
+// stacked, the Next step button full width under its text, "Open My
+// applications" at the foot of its panel, and one open role fewer.
+function ApplicantView({ overview }: { overview: ApplicantOverview }) {
+  const { person, nextStep, applications, openPositions } = overview;
+  return (
+    <>
+      <section className={PERSON_FRAME}>
+        <PersonLines name={person.name} line={person.line} since={null} />
+      </section>
+      <div className={GRID}>
+        <div className="flex min-w-0 flex-col gap-4">
+          {nextStep && <NextStepCard step={nextStep} />}
+          <ApplicantApplications applications={applications} />
+        </div>
+        <OpenPositionsPanel positions={openPositions} />
+      </div>
+    </>
+  );
+}
+
+function NextStepCard({ step }: { step: NextStep }) {
+  return (
+    <section
+      aria-label="Next step"
+      className="flex flex-col gap-4 rounded-xl border border-accent bg-accent/[0.06] p-4 md:flex-row md:items-center md:px-5 md:py-5"
+    >
+      <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent md:flex">
+        <CalendarClock aria-hidden className="h-5 w-5" strokeWidth={1.75} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Next step</p>
+        <h2 className="mt-1.5 text-[16px] font-semibold leading-snug md:mt-1">{step.title}</h2>
+        <p className="mt-1.5 text-[14px] text-text-2 md:mt-0.5 md:text-[13px]">{step.detail}</p>
+      </div>
+      <Link
+        href={step.action.href}
+        className={`inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-accent px-5 text-[14px] font-semibold text-accent-on-accent transition-colors duration-300 ease-out hover:bg-accent-hover md:h-10 ${FOCUS}`}
+      >
+        {step.action.label}
+      </Link>
+    </section>
+  );
+}
+
+const PILL_TONES: Readonly<Record<ApplicantPill, string>> = {
+  received: "bg-white-10 text-text-2",
+  "in-review": "bg-white-10 text-text-2",
+  interview: "bg-accent-soft text-accent",
+  accepted: "bg-success-soft text-success",
+  "not-selected": "bg-white-5 text-prt-muted",
 };
 
-function ApplicationsPanel({ applications }: { applications: readonly OwnApplication[] }) {
+function ApplicantApplications({ applications }: { applications: ApplicantOverview["applications"] }) {
+  const all = { label: "Open My applications", href: "/dashboard/my-applications" };
   return (
-    <Panel title="Your applications" meta={<Link href="/apply" className="transition-colors duration-300 ease-out hover:text-accent">See open positions</Link>}>
-      {applications.map((a) => (
-        <li key={a.title} className="flex items-center gap-4 px-5 py-3.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-hairline bg-white-5 text-text-2">
-            <FileText aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-medium">{a.title}</span>
-            <span className="block text-[13px] text-prt-muted">{a.detail}</span>
-          </span>
-          <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[12px] ${STATUS[a.status].className}`}>
-            {STATUS[a.status].label}
-          </span>
+    <Panel
+      title="Your applications"
+      detail={applications.summary}
+      meta={
+        <Link href={all.href} className={`group hidden items-center gap-1.5 text-text-2 transition-colors duration-300 ease-out hover:text-accent md:inline-flex ${FOCUS}`}>
+          {all.label}
+          <RocketArrow className={ARROW} />
+        </Link>
+      }
+    >
+      {applications.rows.map((row) => (
+        <li key={row.id}>
+          <Link href={row.href} className={ROW_LINK}>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-medium md:text-[14px]">{row.title}</span>
+              <span className="block truncate text-[13px] text-prt-muted">
+                {row.unit}
+                <span className="hidden md:inline"> · sent {sentLabel(row.sent)}</span>
+              </span>
+            </span>
+            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[12px] ${PILL_TONES[row.pill]}`}>
+              {APPLICANT_PILL_LABELS[row.pill]}
+            </span>
+            <ChevronRight aria-hidden className="hidden h-4 w-4 shrink-0 text-prt-muted md:block" strokeWidth={1.75} />
+          </Link>
         </li>
       ))}
+      <li className="md:hidden">
+        <FootLink {...all} />
+      </li>
     </Panel>
+  );
+}
+
+function OpenPositionsPanel({ positions }: { positions: OpenPositions }) {
+  return (
+    <Panel title="Open positions" detail={positions.summary}>
+      {positions.roles.map((role, index) => (
+        <li key={role.key} className={index === OPEN_ROLES_SHOWN - 1 ? "max-md:hidden" : ""}>
+          <Link href={role.href} className={ROW_LINK}>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-medium md:text-[14px]">{role.title}</span>
+              <span className="block truncate text-[13px] text-prt-muted">{role.unit}</span>
+            </span>
+            <ArrowUpRight aria-hidden className="h-4 w-4 shrink-0 text-text-2" strokeWidth={1.75} />
+          </Link>
+        </li>
+      ))}
+      <li>
+        <FootLink label="See all open positions" href="/apply" />
+      </li>
+    </Panel>
+  );
+}
+
+function FootLink({ label, href }: { label: string; href: string }) {
+  return (
+    <Link
+      href={href}
+      className={`group flex items-center gap-1.5 px-4 py-3.5 text-[14px] text-accent transition-colors duration-300 ease-out hover:text-accent-hover md:px-5 md:text-[13px] ${FOCUS} focus-visible:-outline-offset-2`}
+    >
+      {label}
+      <RocketArrow className={ARROW} />
+    </Link>
   );
 }

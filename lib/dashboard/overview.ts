@@ -1,9 +1,13 @@
 // What the Overview page shows. The operations lead sees the team shape
 // (board 40: figures, what needs attention, recent activity); a division lead
 // sees the division shape (board 56: the same, scoped to their division, plus
-// upcoming interviews); a member or an applicant sees the personal shape
-// (board 52: who they are and what is theirs). The components in
+// upcoming interviews); a member sees the personal shape (board 52: who they
+// are and what is theirs). A non-member who has applied sees the applicant
+// shape (board 50e, ./applicant-overview.ts), which the page builds from My
+// applications and the open positions. The components in
 // components/dashboard/ render these and fetch nothing.
+
+import type { ApplicantOverview } from "./applicant-overview";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -96,25 +100,19 @@ export type Roster = {
   readonly people: readonly RosterPerson[];
 };
 
-export type ApplicationStatus = "received" | "in-review" | "accepted" | "declined";
-
-export type OwnApplication = {
-  readonly title: string;
-  readonly detail: string;
-  readonly status: ApplicationStatus;
-};
-
 export type PersonalOverview = {
   readonly shape: "personal";
   readonly person: PersonHeader;
   readonly checklist: Checklist | null;
   readonly roster: Roster | null;
-  readonly applications: readonly OwnApplication[] | null;
   /** The one-line strip under the panels (board 40m). */
   readonly hint: string | null;
 };
 
-export type Overview = TeamOverview | DivisionOverview | PersonalOverview;
+/** What the dashboard data interface answers: the team's own Overviews. */
+export type TeamSideOverview = TeamOverview | DivisionOverview | PersonalOverview;
+
+export type Overview = TeamSideOverview | ApplicantOverview;
 
 /** "2 of 4 done", the count phones show beside the checklist title (board 52m). */
 export function checklistCount(items: readonly ChecklistItem[]): string {

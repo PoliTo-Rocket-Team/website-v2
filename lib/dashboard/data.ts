@@ -3,7 +3,7 @@ import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/re
 import type { NavCounts } from "./access";
 import type { AccessGrant, DivisionAccess } from "./division-access";
 import type { DivisionOrders, Order } from "./orders";
-import type { Overview } from "./overview";
+import type { TeamSideOverview } from "./overview";
 import type { LeadMove } from "./application-flow";
 import type { CreatedPosition } from "./new-position";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
@@ -35,7 +35,13 @@ export interface DashboardData {
   navCounts(): Promise<NavCounts>;
   /** Whether the viewer has sent at least one application: the sidebar lists My applications only then. */
   hasOwnApplications(): Promise<boolean>;
-  overview(): Promise<Overview>;
+  /**
+   * The team's own Overview (boards 40, 52, 56). A non-member's Overview
+   * (board 50e) is built by the page from `myApplications()` and the open
+   * positions (./applicant-overview.ts), so this rejects them with
+   * DashboardRefused.
+   */
+  overview(): Promise<TeamSideOverview>;
   /**
    * The Members page: the whole team (#143), or the lead's own division with
    * the people joining it (board 59, #172).
