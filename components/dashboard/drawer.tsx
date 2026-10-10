@@ -2,14 +2,16 @@
 
 import type { FormEvent, ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 
 // The panel that slides in from the right over a dashboard page (boards 43
 // and 44): a title, a scrolling form, and Cancel beside the main button at
 // the foot. Built on the Radix dialog primitive like the shell's menu: it
 // slides in only under motion-safe and closes at once (issues #79, #80).
-// From xl the page moves left of it (DrawerPage), as the boards show.
+// From xl the page moves left of it (DrawerPage), as the boards show. On
+// phones it is a full page with a back arrow and the buttons pinned at the
+// foot (Dashboard v2 phone rule, issue #169).
 export function Drawer({
   open,
   onOpenChange,
@@ -38,13 +40,19 @@ export function Drawer({
           className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-hairline bg-ground text-prt-text focus:outline-none sm:w-[440px] motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-right"
         >
           <header className="flex shrink-0 items-start justify-between gap-4 border-b border-hairline px-5 py-5 sm:px-7">
-            <div className="min-w-0">
+            <DialogClose
+              aria-label="Back"
+              className="-ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-prt-text transition-colors duration-300 ease-out hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:hidden"
+            >
+              <ArrowLeft aria-hidden className="h-5 w-5" strokeWidth={1.75} />
+            </DialogClose>
+            <div className="min-w-0 flex-1">
               <DialogTitle className="text-[20px] font-semibold leading-tight">{title}</DialogTitle>
               {detail && <p className="mt-0.5 text-[13px] text-prt-muted">{detail}</p>}
             </div>
             <DialogClose
               aria-label="Close"
-              className="-mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+              className="-mr-2 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:flex"
             >
               <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
             </DialogClose>

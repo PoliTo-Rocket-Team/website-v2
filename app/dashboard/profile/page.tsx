@@ -4,13 +4,13 @@ import { notFound, redirect } from "next/navigation";
 import { MyProfileView } from "@/components/dashboard/my-profile";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
-import { removePhoto, requestLeave, saveLinkedin, uploadPhoto } from "../actions";
+import { deleteAccount, leaveTeam, removePhoto, saveDetails, saveLinkedin, uploadPhoto } from "../actions";
 
 export const metadata: Metadata = {
   title: "My profile · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 45: a team member's own profile. Team members reach it
+// Board 55 (issue #169): a team member's own profile. Team members reach it
 // (lib/dashboard/access.ts); an applicant has My account instead.
 export default function ProfilePage() {
   return (
@@ -35,7 +35,9 @@ async function LiveProfile() {
       saveLinkedin={saveLinkedin}
       uploadPhoto={uploadPhoto}
       removePhoto={removePhoto}
-      requestLeave={requestLeave}
+      saveDetails={saveDetails}
+      leaveTeam={leaveTeam}
+      deleteAccount={deleteAccount}
     />
   );
 }
