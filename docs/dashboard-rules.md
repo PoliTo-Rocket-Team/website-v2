@@ -78,8 +78,6 @@ An admin column comes later. **Planned**, no issue yet.
 - Accept and Reject are always confirmed.
 - Accept only marks the application Accepted. It does not add the person to the team, and it does
   not touch their other applications: other leads decide those.
-  - **Gap:** My applications shows an accepted application as joined when the person is already a
-    member. Tracked in #187.
 
 ### After accept
 
