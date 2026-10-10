@@ -26,7 +26,8 @@ import { TopBarAction } from "./top-bar-slot";
 // division lead, issue #171; board 41 for the operations lead, issue #142).
 // Props in, nothing fetched: the page hands over what the dashboard data
 // interface answered, and the switches and the New position drawer write
-// through its server actions. The site-wide switch is #121's, read and
+// through its server actions. A row or card opens the same drawer on that
+// role to edit it (issue #207); its open switch only opens or closes it. The site-wide switch is #121's, read and
 // written through the same interface; this page only draws it as board 41.
 
 /** Flip a switch at once; a refusal flips it back and says why. */
@@ -42,18 +43,27 @@ function useOptimisticSwitch(value: boolean, write: (next: boolean) => Promise<W
   return [shown, flip, pending] as const;
 }
 
+/** What the drawer shows: nothing, New position, or one saved role to edit. */
+type PositionDrawer = { readonly kind: "closed" } | { readonly kind: "new" } | { readonly kind: "edit"; readonly id: number };
+
+const CLOSED: PositionDrawer = { kind: "closed" };
+
 export function PositionsView({ page, recruitment }: { page: PositionsPage; recruitment: RecruitmentControl }) {
   const [tab, setTab] = useState<PositionTab>("all");
   const [department, setDepartment] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [drawer, setDrawer] = useState<PositionDrawer>(CLOSED);
+  const editing = drawer.kind === "edit" ? (page.positions.find((p) => p.id === drawer.id) ?? null) : null;
+  const drawerOpen = drawer.kind === "new" || editing !== null;
+  const create = () => setDrawer({ kind: "new" });
+  const edit = (row: PositionRow) => setDrawer({ kind: "edit", id: row.id });
   const team = page.scope === "team";
   const counts = positionTabCounts(page.positions);
   const rows = filterPositions(page.positions, { tab, department, search });
   const canCreate = page.newPosition.divisions.length > 0;
 
   return (
-    <DrawerPage drawerOpen={creating}>
+    <DrawerPage drawerOpen={drawerOpen}>
       {/* On phones the shell's top bar carries the title and "+ New" (board 57m). */}
       <header className="flex items-start justify-between gap-4 max-md:sr-only">
         <div className="min-w-0">
@@ -65,7 +75,7 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
           </p>
         </div>
         {canCreate && (
-          <button type="button" onClick={() => setCreating(true)} className={`${PRIMARY_PILL} h-10 shrink-0 px-5 max-md:hidden`}>
+          <button type="button" onClick={create} className={`${PRIMARY_PILL} h-10 shrink-0 px-5 max-md:hidden`}>
             <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
             New position
           </button>
@@ -73,7 +83,7 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
       </header>
       {canCreate && (
         <TopBarAction>
-          <button type="button" onClick={() => setCreating(true)} className={PRIMARY_PILL}>
+          <button type="button" onClick={create} className={PRIMARY_PILL}>
             <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
             New
           </button>
@@ -123,19 +133,26 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
         </div>
         <ul className="divide-y divide-hairline">
           {rows.map((row) => (
-            <PositionItem key={row.id} row={row} team={team} />
+            <PositionItem key={row.id} row={row} team={team} chosen={editing?.id === row.id} onEdit={edit} />
           ))}
         </ul>
         {rows.length === 0 && <p className="px-5 py-6 text-[13px] text-prt-muted">No positions match.</p>}
       </div>
       <ul className="mt-3 flex flex-col gap-2.5 lg:hidden">
         {rows.map((row) => (
-          <PositionCard key={row.id} row={row} team={team} />
+          <PositionCard key={row.id} row={row} team={team} chosen={editing?.id === row.id} onEdit={edit} />
         ))}
         {rows.length === 0 && <li className="px-1 py-4 text-[13px] text-prt-muted">No positions match.</li>}
       </ul>
 
-      <NewPositionDrawer open={creating} onOpenChange={setCreating} divisions={page.newPosition.divisions} nextId={page.newPosition.nextId} />
+      <NewPositionDrawer
+        key={editing ? `edit-${editing.id}` : "new"}
+        open={drawerOpen}
+        onOpenChange={(open) => !open && setDrawer(CLOSED)}
+        divisions={page.newPosition.divisions}
+        nextId={page.newPosition.nextId}
+        editing={editing}
+      />
     </DrawerPage>
   );
 }
@@ -147,13 +164,34 @@ function applicationsLine(row: PositionRow): string {
   return `${row.applications} ${row.applications === 1 ? "application" : "applications"}`;
 }
 
+// A row or card is one target: the title is a button whose ::after covers
+// the whole row, as a /projects card's name covers its card, so a click
+// anywhere on it, or Enter or Space on the title, opens Edit position. The
+// open switch sits above that cover, so it only flips the role.
+const ROW_TARGET =
+  "text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-accent";
+
+type RowProps = { row: PositionRow; team: boolean; chosen: boolean; onEdit: (row: PositionRow) => void };
+
+function EditTarget({ row, onEdit, className }: { row: PositionRow; onEdit: (row: PositionRow) => void; className: string }) {
+  return (
+    <button type="button" onClick={() => onEdit(row)} aria-label={`Edit ${row.title}`} className={`${ROW_TARGET} ${className}`}>
+      {row.title}
+    </button>
+  );
+}
+
 /** One role as a card (board 57m): name, division, counts, and its switch top right. */
-function PositionCard({ row, team }: { row: PositionRow; team: boolean }) {
+function PositionCard({ row, team, chosen, onEdit }: RowProps) {
   const [open, flip] = useOptimisticSwitch(row.open, (next) => setPositionOpen(row.id, next));
   return (
-    <li className={`${PANEL} flex items-start gap-4 px-4 py-3.5`}>
+    <li
+      className={`${PANEL} relative flex items-start gap-4 px-4 py-3.5 transition-colors duration-300 ease-out hover:border-border-strong ${
+        chosen ? "border-accent/40" : ""
+      }`}
+    >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[16px] font-semibold leading-snug">{row.title}</p>
+        <EditTarget row={row} onEdit={onEdit} className="block w-full truncate text-[16px] font-semibold leading-snug" />
         <p className="truncate text-[13px] leading-snug text-prt-muted">{team ? `${row.department} · ${row.division}` : row.division}</p>
         <p className="mt-2 text-[13px] text-text-2">
           {applicationsLine(row)}
@@ -161,17 +199,23 @@ function PositionCard({ row, team }: { row: PositionRow; team: boolean }) {
           {row.quiet && <span className="text-prt-muted"> · {row.quiet}</span>}
         </p>
       </div>
-      <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} />
+      <span className="relative z-10 flex">
+        <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} />
+      </span>
     </li>
   );
 }
 
-function PositionItem({ row, team }: { row: PositionRow; team: boolean }) {
+function PositionItem({ row, team, chosen, onEdit }: RowProps) {
   const [open, flip] = useOptimisticSwitch(row.open, (next) => setPositionOpen(row.id, next));
   return (
-    <li className={`grid items-center gap-4 px-5 py-2.5 ${team ? COLUMNS_TEAM : COLUMNS_DIVISION}`}>
+    <li
+      className={`relative grid items-center gap-4 px-5 py-2.5 transition-colors duration-300 ease-out ${team ? COLUMNS_TEAM : COLUMNS_DIVISION} ${
+        chosen ? "bg-accent/[0.06]" : "hover:bg-white-5"
+      }`}
+    >
       <div className="min-w-0">
-        <p className="truncate text-[14px] font-medium leading-snug">{row.title}</p>
+        <EditTarget row={row} onEdit={onEdit} className="block w-full truncate text-[14px] font-medium leading-snug" />
         <p className="truncate text-[13px] leading-snug text-prt-muted">{row.division}</p>
       </div>
       {team && <p className="truncate text-[13px] text-text-2">{row.department}</p>}
@@ -181,7 +225,7 @@ function PositionItem({ row, team }: { row: PositionRow; team: boolean }) {
         {row.quiet && <p className="text-[12px] leading-snug text-prt-muted">{row.quiet}</p>}
       </div>
       <p className="text-[13px] text-prt-muted">{row.updated}</p>
-      <div className="flex items-center gap-2.5">
+      <div className="relative z-10 flex items-center gap-2.5">
         <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} />
         <span className={`w-12 text-[13px] ${open ? "text-prt-text" : "text-prt-muted"}`}>{open ? "Open" : "Closed"}</span>
       </div>

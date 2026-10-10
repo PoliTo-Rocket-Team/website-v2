@@ -72,9 +72,12 @@ const COLUMNS_NARROW = "grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.5fr
 export function ApplicationsView({
   page,
   initialPosition,
+  lead,
 }: {
   page: ApplicationsPage;
   initialPosition: PositionRef | null;
+  /** The viewer's name: the interview email is signed with it. */
+  lead: string;
 }) {
   const [states, setState] = useOptimistic(
     Object.fromEntries(page.applications.map((a) => [a.id, a.state])) as Record<number, ApplicationState>,
@@ -226,6 +229,7 @@ export function ApplicationsView({
       <DetailPanel
         application={chosen}
         now={page.now}
+        lead={lead}
         pending={pending}
         onClose={() => setChosenId(null)}
         onMove={move}
@@ -249,12 +253,14 @@ type Move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =
 function DetailPanel({
   application,
   now,
+  lead,
   pending,
   onClose,
   onMove,
 }: {
   application: ApplicationEntry | null;
   now: string;
+  lead: string;
   pending: boolean;
   onClose: () => void;
   onMove: Move;
@@ -267,7 +273,7 @@ function DetailPanel({
           onInteractOutside={(event) => event.preventDefault()}
           className={`fixed inset-0 z-40 flex flex-col bg-ground text-prt-text focus:outline-none md:left-auto ${PANEL_WIDTH} md:border-l md:border-hairline motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:duration-200`}
         >
-          {application && <Detail key={application.id} application={application} now={now} pending={pending} onMove={onMove} />}
+          {application && <Detail key={application.id} application={application} now={now} lead={lead} pending={pending} onMove={onMove} />}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
@@ -289,11 +295,13 @@ function verb(they: Pronouns, singular: string, plural: string): string {
 function Detail({
   application: a,
   now,
+  lead,
   pending,
   onMove,
 }: {
   application: ApplicationEntry;
   now: string;
+  lead: string;
   pending: boolean;
   onMove: Move;
 }) {
@@ -407,7 +415,8 @@ function Detail({
         open={asking === "offer-interview"}
         onOpenChange={(open) => !open && close()}
         mode={a.state.stage === "interview" ? "change" : "offer"}
-        applicant={{ name: a.applicant.name, email: a.applicant.email, gender: a.applicant.gender, position: a.position.title }}
+        applicant={{ name: a.applicant.name, email: a.applicant.email, position: a.position.title }}
+        lead={lead}
         now={now}
         offered={a.state.stage === "interview" ? a.state.offered : []}
         pending={pending}

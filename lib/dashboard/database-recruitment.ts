@@ -29,7 +29,8 @@ import {
 } from "./application-flow";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
-import { checkNewPosition, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
+import { positionCode } from "@/lib/apply/positions";
+import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
   appliedLabels,
@@ -71,10 +72,17 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
       title: applyPositions.title,
       status: applyPositions.status,
       created_at: applyPositions.createdAt,
+      description: applyPositions.description,
+      required: applyPositions.requiredSkills,
+      desirable: applyPositions.desirableSkills,
+      questions: applyPositions.customQuestions,
+      motivation_letter: applyPositions.requiresMotivationLetter,
       division_id: divisions.id,
       division_name: divisions.name,
+      div_code: divisions.code,
       dept_id: departments.id,
       dept_name: departments.name,
+      dept_code: departments.code,
     })
     .from(applyPositions)
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
@@ -109,6 +117,15 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
       quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
       // The table has no edit time; a role's creation is the last change it records.
       updated: ago(created, now),
+      code: positionCode({ id: r.id, dept_code: r.dept_code ?? "", div_code: r.div_code ?? "" }),
+      content: {
+        title: r.title ?? "",
+        description: r.description ?? "",
+        required: r.required ?? [],
+        desirable: r.desirable ?? [],
+        questions: r.questions ?? [],
+        motivationLetter: r.motivation_letter,
+      },
     };
   });
 }
@@ -192,6 +209,29 @@ async function createPosition(identity: Identity, input: unknown): Promise<Write
   updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
   return written({ id: row.id, code: newPositionCode(division, row.id) });
+}
+
+async function editPosition(identity: Identity, positionId: number, input: unknown): Promise<WriteResult<null>> {
+  if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
+  const checked = checkPositionContent(input);
+  if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
+  const { position } = checked;
+  await runAuditQuery((db) =>
+    db
+      .update(applyPositions)
+      .set({
+        title: position.title,
+        description: position.description,
+        requiredSkills: [...position.required],
+        desirableSkills: [...position.desirable],
+        customQuestions: [...position.questions],
+        requiresMotivationLetter: position.motivationLetter,
+      })
+      .where(eq(applyPositions.id, positionId)),
+  );
+  updateTag(POSITIONS_CACHE_TAG);
+  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  return written(null);
 }
 
 // Applications ----------------------------------------------------------------
@@ -589,6 +629,7 @@ export function databaseRecruitmentPages(identity: Identity) {
     applications: () => applicationsPage(identity),
     setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
     createPosition: (input: unknown) => createPosition(identity, input),
+    editPosition: (id: number, input: unknown) => editPosition(identity, id, input),
     moveApplication: (id: number, move: LeadMove) => moveApplication(identity, id, move),
   };
 }

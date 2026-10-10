@@ -1,5 +1,5 @@
 import type { ApplicationStage, ApplicationState } from "./application-flow";
-import type { DivisionChoice } from "./new-position";
+import type { DivisionChoice, PositionContent } from "./new-position";
 
 // What the Positions and Applications pages show (Dashboard v2 boards 57 and
 // 58, issue #171, after boards 41 to 41c of issue #142). The dashboard data
@@ -25,6 +25,10 @@ export type PositionRow = {
   readonly quiet: string | null;
   /** "2 days ago" */
   readonly updated: string;
+  /** "AER-MSA-001": the code the role was saved under, made from its division. */
+  readonly code: string;
+  /** What the role says as saved: Edit position (issue #207) opens on it. */
+  readonly content: PositionContent;
 };
 
 /**

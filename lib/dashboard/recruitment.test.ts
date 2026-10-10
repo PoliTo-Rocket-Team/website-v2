@@ -13,6 +13,8 @@ const row = (title: string, department: string, open: boolean): PositionRow => (
   newApplications: 0,
   quiet: null,
   updated: "",
+  code: "",
+  content: { title, description: "", required: [], desirable: [], questions: [], motivationLetter: false },
 });
 
 const ROWS = [row("Mission Analyst", "Aerodynamics", true), row("Graphic Designer", "Operations", false), row("Safety Officer", "Operations", true)];
