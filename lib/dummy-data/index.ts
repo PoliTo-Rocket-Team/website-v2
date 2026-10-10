@@ -595,11 +595,28 @@ export function dummyDashboardData(
   const person = teamPersonFor(kind);
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
-  const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications, teamEdits.current));
+  const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(kind, me, own.current);
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [kind]: details } });
+
+  // One move for both pages: the Applications panel and the Members page's
+  // Confirm join (board 59) run it, so the application is the one record of
+  // who joined, and the roster reads it (./team-pages.ts).
+  async function moveApplication(id: number, move: LeadMove) {
+    const base = baseApplications.find((a) => a.id === id);
+    const current = team.applications.find((a) => a.id === id);
+    if (!base || !current || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
+      throw new DashboardRefused(`application ${id}`);
+    }
+    // The dummy team is seen from DUMMY_NOW, so its moves happen then too.
+    const result = applyMove(current.state, move, NOW);
+    if (!result.ok) return refused(result.reason);
+    if (!result.changed) return written(null);
+    await change({ kind: "application", id, state: result.state, initial: base.state });
+    return written(null);
+  }
 
   return {
     viewer: dummyViewer(kind),
@@ -610,7 +627,7 @@ export function dummyDashboardData(
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
-    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications),
+    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications, moveApplication),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team),
 
@@ -635,20 +652,7 @@ export function dummyDashboardData(
       return written({ id, code: newPositionCode(division, id) });
     },
 
-    async moveApplication(id, move: LeadMove) {
-      const base = baseApplications.find((a) => a.id === id);
-      const current = team.applications.find((a) => a.id === id);
-      if (!base || !current || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
-        throw new DashboardRefused(`application ${id}`);
-      }
-      // The dummy team is seen from DUMMY_NOW, so its moves happen then too.
-      const result = applyMove(current.state, move, NOW);
-      if (!result.ok) return refused(result.reason);
-      if (!result.changed) return written(null);
-      // Confirm join adds no one here: the dummy roster is the arrays in ./team.ts.
-      await change({ kind: "application", id, state: result.state, initial: base.state });
-      return written(null);
-    },
+    moveApplication,
 
     divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person, teamRoster)),
     giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, teamRoster, input)),

@@ -169,3 +169,59 @@ test("a division lead's overview is scoped to their division and lists their int
     ["booked", "booked", "waiting"],
   );
 });
+
+/** The lead's dummy dashboard over the given applications state, keeping what a write saves. */
+function leadOver(state: DummyState) {
+  let saved = state;
+  const recruitment: DummyRecruitmentStore = { current: dummyRecruitmentOf(undefined), save: async () => {} };
+  const data = dummyDashboardData("division-lead", recruitment, { current: state, save: async (next) => void (saved = next) });
+  return { data, saved: () => saved };
+}
+
+test("Confirm join is one rule on both pages: it waits for the NDA tick, the application ends Joined, and they join once", async () => {
+  const start = leadOver(EMPTY_DUMMY_STATE);
+  const directory = await start.data.members();
+  assert.equal(directory.scope, "division");
+  if (directory.scope !== "division") return;
+  const [joining] = directory.joining;
+  assert.equal(joining.position, "Mission Analyst");
+  assert.equal(joining.ndaArrived, false);
+
+  // Members page (board 59): refused until the NDA is ticked, and nothing is saved.
+  assert.equal(await start.data.teamWrites!.confirmJoin(joining.applicationId), false);
+  assert.deepEqual(start.saved(), EMPTY_DUMMY_STATE);
+
+  // The tick on Applications (58g) readies the Members page's Confirm join.
+  assert.ok((await start.data.moveApplication(joining.applicationId, { kind: "set-nda", arrived: true })).ok);
+  const ticked = leadOver(start.saved());
+  const waiting = await ticked.data.members();
+  if (waiting.scope !== "division") return;
+  assert.equal(waiting.joining.find((j) => j.applicationId === joining.applicationId)?.ndaArrived, true);
+  assert.equal(await ticked.data.teamWrites!.confirmJoin(joining.applicationId), true);
+
+  // The application reads Joined, the person is on the division once, and no second join lands from either page.
+  const joined = leadOver(ticked.saved());
+  const entry = (await joined.data.applications()).applications.find((a) => a.id === joining.applicationId);
+  assert.equal(entry?.state.stage, "joined");
+  const after = await joined.data.members();
+  if (after.scope !== "division") return;
+  assert.deepEqual(after.joining, []);
+  assert.equal(after.rows.filter((r) => r.name === joining.name).length, 1);
+  assert.equal(after.rows.find((r) => r.name === joining.name)?.pageTitle, "Mission Analyst");
+  assert.equal(await joined.data.teamWrites!.confirmJoin(joining.applicationId), false);
+  assert.equal((await joined.data.moveApplication(joining.applicationId, { kind: "confirm-join" })).ok, false);
+});
+
+test("Confirm join on Applications puts the person on the Members page too", async () => {
+  const start = leadOver(EMPTY_DUMMY_STATE);
+  const directory = await start.data.members();
+  if (directory.scope !== "division") return;
+  const [joining] = directory.joining;
+  await start.data.moveApplication(joining.applicationId, { kind: "set-nda", arrived: true });
+  const ticked = leadOver(start.saved());
+  assert.ok((await ticked.data.moveApplication(joining.applicationId, { kind: "confirm-join" })).ok);
+  const after = await leadOver(ticked.saved()).data.members();
+  if (after.scope !== "division") return;
+  assert.deepEqual(after.joining, []);
+  assert.equal(after.rows.filter((r) => r.name === joining.name).length, 1);
+});

@@ -224,6 +224,33 @@ function nextState(state: ApplicationState, move: ApplicationMove, now: Date): N
   }
 }
 
+// Joining the team ---------------------------------------------------------------
+
+/**
+ * Where the applicant stands with the team when Confirm join runs: not on it
+ * yet, on it before and left (a member row with no active role), or on it now.
+ */
+export type Membership = "applicant" | "alumnus" | "member";
+
+/**
+ * What Confirm join adds to the team: a member row and their role for a new
+ * person, a role for someone coming back, nothing for someone already on the
+ * team, who never gets a second role. Every data source and both pages that
+ * offer Confirm join (Applications 58g, Members 59) ask this one rule.
+ */
+export type JoinChange = "new-member" | "new-role" | "nothing";
+
+export function joinChange(membership: Membership): JoinChange {
+  switch (membership) {
+    case "applicant":
+      return "new-member";
+    case "alumnus":
+      return "new-role";
+    case "member":
+      return "nothing";
+  }
+}
+
 /** A lead's move as the browser sent it, checked for shape; null when it is not one. */
 export function parseLeadMove(value: unknown): LeadMove | null {
   if (typeof value !== "object" || value === null) return null;

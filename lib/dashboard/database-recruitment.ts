@@ -17,7 +17,16 @@ import {
   users,
 } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import { applyMove, type ApplicationState, type LeadMove, type OfferedSlots, type SlotTime } from "./application-flow";
+import {
+  applyMove,
+  joinChange,
+  type ApplicationState,
+  type JoinChange,
+  type LeadMove,
+  type Membership,
+  type OfferedSlots,
+  type SlotTime,
+} from "./application-flow";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
 import { checkNewPosition, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
@@ -34,6 +43,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "./recruitment";
+import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 import { refused, written, type WriteResult } from "./write";
 
 // The Positions and Applications pages read from and written to the database
@@ -438,7 +448,7 @@ const statusFor: Readonly<Record<Exclude<ApplicationState["stage"], "withdrawn">
   rejected: "rejected",
 };
 
-async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
+export async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
   const row = await readApplicationFor(identity, applicationId);
   const before = stateOf(row, (await readSlots([row.id])).get(row.id) ?? []);
   const now = new Date();
@@ -484,10 +494,13 @@ async function moveApplication(identity: Identity, applicationId: number, move: 
       );
       return written(null);
 
-    case "joined":
+    case "joined": {
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
-      await confirmJoin(identity, row.id, after.joinedAt);
+      const change = joinChange(await membershipOf(row.id));
+      if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused("This application changed. Reload the page.");
+      updateTag(TEAM_ROSTER_CACHE_TAG);
       return written(null);
+    }
 
     case "new":
     case "in-review":
@@ -497,19 +510,41 @@ async function moveApplication(identity: Identity, applicationId: number, move: 
   }
 }
 
+/** Where the applicant stands with the team: no member row, a member row with no active role, or an active role. */
+async function membershipOf(applicationId: number): Promise<Membership> {
+  const [row] = await getDb()
+    .select({
+      member_id: users.member,
+      active_roles: sql<number>`(select count(*) from ${roles} r where r.member_id = ${users.member} and r.leaved_at is null)`.mapWith(Number),
+    })
+    .from(applications)
+    .innerJoin(users, eq(users.id, applications.userId))
+    .where(eq(applications.id, applicationId))
+    .limit(1);
+  if (!row || row.member_id === null) return "applicant";
+  return row.active_roles > 0 ? "member" : "alumnus";
+}
+
 /**
- * Confirm join (58h): the one write that adds a person to the team. In one
- * statement, and only while the application is still accepted with the NDA
- * arrived: a new `members` row for someone not on the team yet (the NDA date
- * and the confirming lead on it), linked from their `users` row, then a
- * Member role in the position's division, then the application marked joined.
- * Their other applications are not touched.
+ * Confirm join (58h, and the Members page's banner, 59): the one write that
+ * adds a person to the team, doing what `joinChange` (./application-flow.ts)
+ * decided. In one statement, and only while the application is still
+ * accepted with the NDA arrived: a new `members` row (the NDA date, the name
+ * and the confirming lead on it) linked from their `users` row, a member role
+ * titled with the position in its division unless they already hold an
+ * active role, then the application marked joined. The guards are repeated
+ * in the statement so a person who joined meanwhile still gets no second
+ * role. Their other applications are not touched. True when the application
+ * was marked joined.
  */
-async function confirmJoin(identity: Identity, applicationId: number, joinedAt: string): Promise<void> {
-  await runAuditQuery((db) =>
+async function confirmJoin(identity: Identity, applicationId: number, joinedAt: string, change: JoinChange): Promise<boolean> {
+  const addMember = change === "new-member";
+  const addRole = change !== "nothing";
+  const result = await runAuditQuery((db) =>
     db.execute(sql`
       with app as (
-        select a.user_id, u.member as member_id, p.division_id, d.dept_id, a.nda_arrived_at
+        select a.user_id, u.member as member_id, p.division_id, d.dept_id, p.title, a.nda_arrived_at,
+          coalesce(nullif(trim(concat_ws(' ', u.first_name, u.last_name)), ''), u.email) as name
         from ${applications} a
         join ${users} u on u.id = a.user_id
         join ${applyPositions} p on p.id = a.apply_position_id
@@ -517,8 +552,8 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
         where a.id = ${applicationId} and a.status = 'accepted' and a.nda_arrived_at is not null and a.withdrawn_at is null
       ),
       new_member as (
-        insert into ${members} (nda_signed_at, nda_confirmed_by)
-        select app.nda_arrived_at, ${identity.memberId} from app where app.member_id is null
+        insert into ${members} (nda_signed_at, nda_name, nda_confirmed_by)
+        select app.nda_arrived_at, app.name, ${identity.memberId} from app where ${addMember}::boolean and app.member_id is null
         returning member_id
       ),
       linked as (
@@ -532,14 +567,20 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
         select member_id from app where member_id is not null
       ),
       new_role as (
-        insert into ${roles} (member_id, dept_id, division_id, title)
-        select (select member_id from the_member limit 1), app.dept_id, app.division_id, 'Member' from app
+        insert into ${roles} (member_id, dept_id, division_id, title, type)
+        select (select member_id from the_member limit 1), app.dept_id, app.division_id, coalesce(app.title, 'Member'), 'core'
+        from app
+        where ${addRole}::boolean
+          and exists (select 1 from the_member)
+          and not exists (select 1 from ${roles} r where r.member_id = app.member_id and r.leaved_at is null)
         returning id
       )
       update ${applications} set status = 'joined', joined_at = ${joinedAt}
-      where id = ${applicationId} and exists (select 1 from new_role)
+      where id = ${applicationId} and exists (select 1 from the_member)
+      returning id
     `),
   );
+  return result.rows.length > 0;
 }
 
 export function databaseRecruitmentPages(identity: Identity) {

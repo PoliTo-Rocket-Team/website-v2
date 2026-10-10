@@ -4,6 +4,7 @@ import {
   applyMove,
   footerSteps,
   interviewIcs,
+  joinChange,
   parseLeadMove,
   pickerWeek,
   romeTime,
@@ -181,4 +182,10 @@ test("the studies column shortens the degree and the year", () => {
   assert.equal(studiesLine("Aerospace Engineering", "Year 1 Master's"), "Aerospace Eng. · MSc 1");
   assert.equal(studiesLine("Physics", "Year 3 Bachelor's"), "Physics · BSc 3");
   assert.equal(studiesLine(null, null), null);
+});
+
+test("Confirm join gives a new person a member row and a role, a returning one a role, and someone on the team nothing", () => {
+  assert.equal(joinChange("applicant"), "new-member");
+  assert.equal(joinChange("alumnus"), "new-role");
+  assert.equal(joinChange("member"), "nothing");
 });

@@ -188,7 +188,11 @@ function cardLine(row: MemberRow): string {
   return row.pageTitle ?? "Member";
 }
 
-/** "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once the signed NDA is in. */
+/**
+ * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once "The signed
+ * NDA arrived" is ticked on the application (58g). It is the Applications
+ * page's own Confirm join, so the button waits for that tick here too.
+ */
 function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
   const [asking, setAsking] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -214,7 +218,7 @@ function JoiningBanner({ joining, division, editable }: { joining: Joining; divi
         <span className="min-w-0">
           <span className="block text-[15px] font-semibold">{joining.name} is joining</span>
           <span className="block text-[13px] text-prt-muted">
-            Accepted for {joining.position} · waiting for the signed NDA
+            Accepted for {joining.position} · {joining.ndaArrived ? "signed NDA arrived" : "waiting for the signed NDA"}
           </span>
         </span>
       </span>
@@ -222,7 +226,8 @@ function JoiningBanner({ joining, division, editable }: { joining: Joining; divi
         <button
           type="button"
           onClick={() => setAsking(true)}
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:h-8 md:px-3.5 md:text-[13px]"
+          disabled={!joining.ndaArrived}
+          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]"
         >
           Confirm join
         </button>
