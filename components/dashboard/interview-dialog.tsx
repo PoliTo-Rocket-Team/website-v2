@@ -16,12 +16,12 @@ import {
   pickedCount,
   pickerWeek,
   PICKER_WEEKS,
-  pronounsOf,
   slotAt,
   slotLength,
   type InterviewLength,
   type SlotTime,
 } from "@/lib/dashboard/application-flow";
+import { interviewEmailHref } from "@/lib/dashboard/interview-email";
 import { SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
 
 // Move to interview (board 58c) and Change times (58d): the lead picks the
@@ -34,7 +34,6 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 export type InterviewFor = {
   readonly name: string;
   readonly email: string;
-  readonly gender: string | null;
   readonly position: string;
 };
 
@@ -43,6 +42,7 @@ export function InterviewDialog({
   onOpenChange,
   mode,
   applicant,
+  lead,
   now,
   offered,
   pending,
@@ -52,6 +52,8 @@ export function InterviewDialog({
   onOpenChange: (open: boolean) => void;
   mode: "offer" | "change";
   applicant: InterviewFor;
+  /** The lead's name: the email Open email starts signs with it. */
+  lead: string;
   /** The moment the page is seen from: the picker greys out what is past. */
   now: string;
   /** The times already offered, for Change times. */
@@ -65,7 +67,7 @@ export function InterviewDialog({
         <DialogOverlay className={SHEET_OVERLAY} />
         <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[560px] sm:px-8 sm:pb-7 sm:pt-7`}>
           {/* Mounted only while open, so each opening starts from what is saved. */}
-          {open && <Picker mode={mode} applicant={applicant} now={now} offered={offered} pending={pending} onSubmit={onSubmit} />}
+          {open && <Picker mode={mode} applicant={applicant} lead={lead} now={now} offered={offered} pending={pending} onSubmit={onSubmit} />}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
@@ -75,6 +77,7 @@ export function InterviewDialog({
 function Picker({
   mode,
   applicant,
+  lead,
   now,
   offered,
   pending,
@@ -82,13 +85,13 @@ function Picker({
 }: {
   mode: "offer" | "change";
   applicant: InterviewFor;
+  lead: string;
   now: string;
   offered: readonly SlotTime[];
   pending: boolean;
   onSubmit: (slots: SlotTime[]) => void;
 }) {
   const first = firstNameOf(applicant.name);
-  const they = pronounsOf(applicant.gender);
   const initialLength = offered[0] === undefined ? undefined : slotLength(offered[0]);
   const [length, setLength] = useState<InterviewLength>(isInterviewLength(initialLength) ? initialLength : 30);
   // Change times starts from the times still to come.
@@ -118,7 +121,14 @@ function Picker({
     }
   };
 
-  const subject = encodeURIComponent(`Interview for ${applicant.position}`);
+  // Mounted only while open, so this runs in the browser: the link names the site the lead is on.
+  const emailHref = interviewEmailHref({
+    to: applicant.email,
+    applicant: applicant.name,
+    position: applicant.position,
+    lead,
+    site: window.location.origin,
+  });
 
   return (
     <>
@@ -206,7 +216,7 @@ function Picker({
         </h3>
         <p className="mt-2.5 text-[13px] leading-relaxed text-text-2">
           {mode === "offer"
-            ? `The site does not send emails. ${first} only learns about the interview from you. Tell ${they.object} to open My applications and pick a time.`
+            ? `The site does not send emails. ${first} only learns about the interview from you. Ask them to open My applications on the PRT Dashboard and pick a time.`
             : `The site does not send emails. Tell ${first} the times changed and to pick a new one in My applications.`}
         </p>
         <div className="mt-3.5 flex flex-col gap-2 sm:flex-row">
@@ -223,7 +233,9 @@ function Picker({
               Copy
             </button>
             <a
-              href={`mailto:${applicant.email}?subject=${subject}`}
+              href={emailHref}
+              target="_blank"
+              rel="noopener"
               className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white-10 px-3 text-[13px] font-medium transition-colors duration-300 ease-out hover:border-border-strong sm:flex-none ${FOCUS}`}
             >
               <ExternalLink aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />

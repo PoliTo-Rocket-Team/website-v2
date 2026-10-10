@@ -38,6 +38,7 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
   const current = Math.min(page, last);
   const rows = pageOf(inTab, current);
   const showSwitch = directory.rows.some((row) => row.shownOnSite !== null);
+  const showing = `Showing ${rows.length} of ${inTab.length}`;
 
   const narrow = (apply: () => void) => {
     apply();
@@ -76,7 +77,17 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
         />
       </Controls>
 
-      <section className={`${PANEL} mt-6 overflow-hidden`}>
+      <ul aria-label="Alumni" className="mt-4 flex flex-col gap-2.5 md:hidden">
+        {rows.map((row) => (
+          <AlumnusCard key={row.id} row={row} editable={editable} showSwitch={showSwitch} />
+        ))}
+      </ul>
+      <div className="mt-4 flex min-h-7 items-center justify-between gap-4 text-[13px] text-prt-muted md:hidden">
+        <span>{showing}</span>
+        <Pager page={current} last={last} onPage={setPage} />
+      </div>
+
+      <section className={`${PANEL} mt-6 hidden overflow-hidden md:block`}>
         <table className="w-full table-fixed border-collapse">
           <thead className="border-b border-hairline">
             <tr>
@@ -103,7 +114,7 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
           </tbody>
         </table>
         <footer className="flex min-h-[52px] items-center justify-between gap-4 border-t border-hairline px-5 py-3 text-[13px] text-prt-muted">
-          <span>{`Showing ${rows.length} of ${inTab.length}`}</span>
+          <span>{showing}</span>
           <Pager page={current} last={last} onPage={setPage} />
         </footer>
       </section>
@@ -115,18 +126,32 @@ function years(row: AlumnusRow): string {
   return `${row.from} – ${row.to}`;
 }
 
+// A phone card (the Members phone cards, board 46): avatar, name, and the last
+// role with the years. Alumni open no panel, so the card is not a button.
+function AlumnusCard({ row, editable, showSwitch }: { row: AlumnusRow; editable: boolean; showSwitch: boolean }) {
+  return (
+    <li className={`${PANEL} flex items-center gap-3.5 px-4 py-3.5`}>
+      <Avatar name={row.name} size="ml" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[16px] font-semibold">{row.name}</span>
+        <span className="block truncate text-[13px] text-prt-muted">
+          {row.lastRole} · {years(row)}
+        </span>
+      </span>
+      {showSwitch && row.shownOnSite !== null && (
+        <SiteSwitch id={row.id} name={row.name} shown={row.shownOnSite} editable={editable} />
+      )}
+    </li>
+  );
+}
+
 function AlumnusTableRow({ row, editable, showSwitch }: { row: AlumnusRow; editable: boolean; showSwitch: boolean }) {
   return (
     <tr>
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
           <Avatar name={row.name} />
-          <span className="min-w-0">
-            <span className="block truncate text-[15px] text-prt-text">{row.name}</span>
-            <span className="block truncate text-[13px] text-prt-muted md:hidden">
-              {row.lastRole} · {years(row)}
-            </span>
-          </span>
+          <span className="block min-w-0 truncate text-[15px] text-prt-text">{row.name}</span>
         </span>
       </td>
       <td className="hidden px-5 py-2.5 md:table-cell">

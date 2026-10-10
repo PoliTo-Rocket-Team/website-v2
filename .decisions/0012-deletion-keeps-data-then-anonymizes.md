@@ -34,10 +34,9 @@ Decided 2026-10-10 by the project owner. Approval: https://github.com/PoliTo-Roc
 
 ## Gaps
 
-- Nothing anonymizes a deleted account's data after the year, and the delete copy does not name the one-year hold: #191.
 - There is no Privacy Policy page yet: #122.
 
-Followed today: `deleteAccount` in [lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts) closes the sign-in and keeps the `users` row; the dialog asks the person to type DELETE ([.patterns/confirm-decisive-actions.md](../.patterns/confirm-decisive-actions.md)).
+Followed today: `deleteAccount` in [lib/dashboard/database-self.ts](../lib/dashboard/database-self.ts) closes the sign-in, keeps the `users` row and records `deleted_at`; a daily job ([lib/dashboard/anonymize.ts](../lib/dashboard/anonymize.ts)) anonymizes the account once a year has passed; the dialog asks the person to type DELETE ([.patterns/confirm-decisive-actions.md](../.patterns/confirm-decisive-actions.md)).
 
 ## Records
 

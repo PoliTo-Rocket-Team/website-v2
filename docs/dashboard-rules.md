@@ -91,7 +91,6 @@ An admin column comes later. **Planned**, no issue yet.
 - Leads see an applicant's other applications and their progress.
 - Withdraw is confirmed. The lead stops seeing the application at once. Its files are deleted 30
   days later; the page does not say so. The person can apply again while the role is open.
-  - **Gap:** nothing deletes the files after 30 days. Tracked in #178.
 - Documents: a CV always, and a motivation letter when the position asks for one. Each file is a
   PDF of at most 2 MB.
 
@@ -110,7 +109,6 @@ An admin column comes later. **Planned**, no issue yet.
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
-  - **Gap:** nothing anonymizes the data after the year. Tracked in #191.
 - Access is given only on the Access page. You can give only what you have, and only inside your
   scope.
 
@@ -127,4 +125,3 @@ An admin column comes later. **Planned**, no issue yet.
   Production never does.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and
   tables become stacked cards.
-  - **Gap:** the dashboard Alumni page stays a table on phones. Tracked in #193.

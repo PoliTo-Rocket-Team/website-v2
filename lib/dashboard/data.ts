@@ -72,6 +72,13 @@ export interface DashboardData {
    */
   createPosition(input: unknown): Promise<WriteResult<CreatedPosition>>;
   /**
+   * Edit position (issue #207): the role's text, lists and motivation letter
+   * setting, checked as New position checks them (`checkPositionContent`,
+   * ./new-position.ts). Its division and open state stay as they are. A
+   * position the viewer does not reach rejects with DashboardRefused.
+   */
+  editPosition(positionId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
    * One step on an application (boards 58 to 58i). Which steps are legal is
    * ./application-flow.ts's; an illegal one answers why and writes nothing.
    * Only Confirm join adds the person to the team.
