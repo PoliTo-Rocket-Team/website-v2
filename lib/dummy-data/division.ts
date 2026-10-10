@@ -1,8 +1,9 @@
 import { randomInt } from "node:crypto";
 import {
   ACCESS_TARGETS,
-  checkGiveAccess,
-  checkRemoveAccess,
+  checkRemoveAllAccess,
+  checkSaveAccess,
+  heldLevel,
   type AccessGrant,
   type AccessLevel,
   type AccessPerson,
@@ -35,11 +36,12 @@ export type DummyHeldAccess = {
   readonly level: AccessLevel;
 };
 
-/** What each lead holds in their own division ("Your access" on board 43). */
+/** What each lead holds in their own division ("Your access" on board 60). */
 export const heldAccess = [
   { personId: 2, target: "positions", level: "edit" },
   { personId: 2, target: "applications", level: "edit" },
   { personId: 2, target: "members", level: "edit" },
+  { personId: 2, target: "orders", level: "edit" },
 ] as const satisfies readonly DummyHeldAccess[];
 
 export type DummyGrant = {
@@ -52,10 +54,13 @@ export type DummyGrant = {
   readonly givenOn: string;
 };
 
+/** Board 60's table: Sara Conti, Luca Marino and Sofia Neri, each area in the order given. */
 export const accessGrants = [
-  { id: 1, personId: 3, divisionId: 1, target: "applications", level: "view", givenById: 2, givenOn: "2026-10-02" },
-  { id: 2, personId: 4, divisionId: 1, target: "positions", level: "edit", givenById: 2, givenOn: "2026-09-28" },
-  { id: 3, personId: 3, divisionId: 1, target: "members", level: "view", givenById: 2, givenOn: "2026-10-02" },
+  { id: 1, personId: 7, divisionId: 1, target: "applications", level: "view", givenById: 2, givenOn: "2026-10-02" },
+  { id: 2, personId: 7, divisionId: 1, target: "positions", level: "edit", givenById: 2, givenOn: "2026-10-02" },
+  { id: 3, personId: 4, divisionId: 1, target: "positions", level: "view", givenById: 2, givenOn: "2026-09-28" },
+  { id: 4, personId: 4, divisionId: 1, target: "applications", level: "edit", givenById: 2, givenOn: "2026-09-28" },
+  { id: 5, personId: 3, divisionId: 1, target: "members", level: "view", givenById: 2, givenOn: "2026-10-02" },
 ] as const satisfies readonly DummyGrant[];
 
 export type DummyOrder = OrderState & {
@@ -146,40 +151,39 @@ export function dummyDivisionAccess(lead: DummyPerson, roster: readonly RosterEn
   };
 }
 
-/** Checks the request as the database side does and answers the new rows; nothing is stored. */
-export function dummyGiveAccess(
+/**
+ * Checks a Give access or Edit access Save as the database side does and
+ * answers the person's grants as they would read; nothing is stored. An area
+ * left as it was keeps its grant; a new or changed one is given by "You"
+ * today. A grant given on the page lives only in the page's state, so the
+ * check runs against the stored grants alone.
+ */
+export function dummySaveAccess(
   lead: DummyPerson,
   roster: readonly RosterEntry[],
   input: unknown,
 ): WriteResult<readonly AccessGrant[]> {
   const access = dummyDivisionAccess(lead, roster);
   if (access === null) return refused("Only a division lead gives access here.");
-  const checked = checkGiveAccess(access, input);
+  const checked = checkSaveAccess(access, input);
   if (!checked.ok) return refused(checked.error);
-  const person = access.people.find((p) => p.id === checked.value.personId)!;
+  const { personId, changes } = checked.value;
+  const person = access.people.find((p) => p.id === personId)!;
+  const kept = access.grants.filter((g) => g.person.id === personId && !changes.some((c) => c.target === g.target));
   const givenOn = today();
-  return written(
-    checked.value.targets.map((target) => ({
-      id: localId(),
-      person,
-      target,
-      level: checked.value.level,
-      givenBy: "You",
-      givenOn,
-    })),
-  );
+  // Ids rise in area order, as one database insert's do, so the chips read in that order.
+  const first = localId();
+  const given = changes
+    .flatMap((c) => (c.kind === "remove" ? [] : [c]))
+    .map((c, i): AccessGrant => ({ id: first + i, person, target: c.target, level: c.to, givenBy: "You", givenOn }));
+  return written([...kept, ...given]);
 }
 
-/**
- * Checks a removal as the database side does; nothing is stored. A row given
- * on the page lives only in the page's state, so there is no stored grant to
- * check it against, and removing it is allowed.
- */
-export function dummyRemoveAccess(lead: DummyPerson, roster: readonly RosterEntry[], grantId: number): WriteResult<null> {
+/** Checks Remove all access as the database side does; nothing is stored. */
+export function dummyRemoveAllAccess(lead: DummyPerson, roster: readonly RosterEntry[], personId: number): WriteResult<null> {
   const access = dummyDivisionAccess(lead, roster);
   if (access === null) return refused("Only a division lead removes access here.");
-  if (!accessGrants.some((g) => g.id === grantId)) return written(null);
-  const checked = checkRemoveAccess(access, grantId);
+  const checked = checkRemoveAllAccess(access, personId);
   return checked.ok ? written(null) : refused(checked.error);
 }
 
@@ -203,14 +207,27 @@ function orderOf(o: DummyOrder): Order {
   };
 }
 
-/** Boards 61 to 61d for a lead; null for anyone who leads no division. */
+/** Boards 61 to 61d for someone who holds Orders in their division; null for anyone else. */
 export function dummyDivisionOrders(lead: DummyPerson): DivisionOrders | null {
   if (lead.placement.role !== "division-lead") return null;
   const divisionId = lead.placement.divisionId;
+  const level = heldLevel(
+    heldAccess.filter((h) => h.personId === lead.id),
+    "orders",
+  );
+  if (level === null) return null;
   return {
     division: { id: divisionId, name: divisionOf(divisionId).name },
+    level,
     orders: orders.filter((o) => o.divisionId === divisionId).map(orderOf),
   };
+}
+
+/** The Orders page when the person may request and change orders there; a reason when not. */
+function orderingPage(lead: DummyPerson): DivisionOrders | string {
+  const page = dummyDivisionOrders(lead);
+  if (page === null) return "You do not have access to Orders.";
+  return page.level === "edit" ? page : "You can view orders but not request or change them.";
 }
 
 /** The New order or Edit order fields, checked as the database side checks them. */
@@ -239,7 +256,8 @@ export function dummyPlaceOrder(
   fields: Record<string, string>,
   quote: Upload | null,
 ): WriteResult<Order> {
-  if (dummyDivisionOrders(lead) === null) return refused("Only a division lead sends orders here.");
+  const page = orderingPage(lead);
+  if (typeof page === "string") return refused(page);
   const checked = checkedOrder(fields, quote);
   if (!checked.ok) return refused(checked.error);
   return written({
@@ -264,8 +282,8 @@ export function dummyEditOrder(
   fields: Record<string, string>,
   quote: Upload | null,
 ): WriteResult<Order> {
-  const page = dummyDivisionOrders(lead);
-  if (page === null) return refused("Only a division lead edits orders here.");
+  const page = orderingPage(lead);
+  if (typeof page === "string") return refused(page);
   const checked = checkedOrder(fields, quote);
   if (!checked.ok) return refused(checked.error);
   const stored = page.orders.find((o) => o.id === orderId);
@@ -287,11 +305,11 @@ export function dummyEditOrder(
 }
 
 export function dummyCancelOrder(lead: DummyPerson, orderId: number): WriteResult<null> {
-  const page = dummyDivisionOrders(lead);
-  if (page === null) return refused("Only a division lead cancels orders here.");
+  const page = orderingPage(lead);
+  if (typeof page === "string") return refused(page);
   const stored = page.orders.find((o) => o.id === orderId);
   if (stored === undefined) {
     return orders.some((o) => o.id === orderId) ? refused("That request is not in your division.") : written(null);
   }
-  return orderActions(stored.status).cancel ? written(null) : refused("The team leader has answered this request.");
+  return orderActions(stored.status, page.level).cancel ? written(null) : refused("The team leader has answered this request.");
 }

@@ -1,34 +1,44 @@
 import { z } from "zod";
 
-// The division lead's Access page (board 43, issue #145): what the lead may
-// do in their division, who they shared it with, and the Give access rules.
-// A lead shares only what they hold, and never more than they hold it: a
-// lead who can view Members cannot give anyone edit on Members.
+// The division lead's Access page (boards 60, 60b, 60c and 60m; issues #145
+// and #213): what the lead may do in their division, who they shared it with,
+// and the Give access and Edit access rules. Each person holds each area at
+// one level or not at all. A lead shares only what they hold, and never more
+// than they hold it: a lead who can view Members cannot give anyone edit on
+// Members.
 
-/** What a grant opens: the `scopes.target` values a division lead shares. */
-export const ACCESS_TARGETS = ["positions", "applications", "members"] as const;
+/** The areas a grant opens: the `scopes.target` values a division lead shares. */
+export const ACCESS_TARGETS = ["positions", "applications", "members", "orders"] as const;
 export type AccessTarget = (typeof ACCESS_TARGETS)[number];
 
 export const ACCESS_TARGET_LABELS: Readonly<Record<AccessTarget, string>> = {
   positions: "Positions",
   applications: "Applications",
   members: "Members",
+  orders: "Orders",
 };
 
-/** `scopes.access_level`. */
+/** `scopes.access_level`: the two levels, on every area alike. */
 export const ACCESS_LEVELS = ["view", "edit"] as const;
 export type AccessLevel = (typeof ACCESS_LEVELS)[number];
 
-/** Edit on Applications is deciding on them: changing their status. */
-export function levelLabel(target: AccessTarget | null, level: AccessLevel): string {
-  if (level === "view") return "Can view";
-  return target === "applications" ? "Can decide" : "Can edit";
-}
+export const ACCESS_LEVEL_LABELS: Readonly<Record<AccessLevel, string>> = {
+  view: "Can view",
+  edit: "Can edit",
+};
 
-/** The edit label for a set of targets: "Can decide" when the set is Applications alone. */
-export function editLabelFor(targets: readonly AccessTarget[]): string {
-  return targets.length > 0 && targets.every((t) => t === "applications") ? "Can decide" : "Can edit";
-}
+/** The level on a phone card under "Your access" (board 60m): "View", "Edit". */
+export const ACCESS_LEVEL_SHORT_LABELS: Readonly<Record<AccessLevel, string>> = {
+  view: "View",
+  edit: "Edit",
+};
+
+/** What Can view and Can edit open, as the drawers say it (boards 60b and 60c). */
+export const ACCESS_LEVELS_EXPLAINED =
+  "Can view lets them see an area. Can edit also lets them change it: edit positions, move and decide applications, update members, or request orders.";
+
+/** The level held on each area; an area left out is not held. */
+export type AreaLevels = Readonly<Partial<Record<AccessTarget, AccessLevel>>>;
 
 export type AccessDivision = {
   readonly id: number;
@@ -41,7 +51,7 @@ export function shortUnitName(name: string): string {
   return name.replace(/\s+Division$/, "");
 }
 
-/** One thing the lead holds in their division (a card under "Your access"). */
+/** One area the lead holds in their division (a chip under "Your access"). */
 export type HeldAccess = {
   readonly target: AccessTarget;
   readonly level: AccessLevel;
@@ -62,7 +72,7 @@ export type AccessPerson = {
   readonly standing: PersonStanding;
 };
 
-/** One row of the table: a person, what they were given, and by whom. */
+/** One stored grant: one person, one area, one level, and who gave it. */
 export type AccessGrant = {
   readonly id: number;
   readonly person: AccessPerson;
@@ -82,107 +92,156 @@ export type DivisionAccess = {
   readonly people: readonly AccessPerson[];
 };
 
-/** What the Give access drawer sends. */
-export type GiveAccess = {
-  readonly personId: number;
-  readonly targets: readonly AccessTarget[];
-  readonly level: AccessLevel;
+/** One row of the table (board 60): a person, their areas in the order given, and the latest giver. */
+export type PersonAccess = {
+  readonly person: AccessPerson;
+  readonly grants: readonly AccessGrant[];
+  readonly givenBy: string | null;
+  readonly givenOn: string | null;
 };
 
-const giveAccessSchema = z.object({
-  personId: z.number().int().positive(),
-  targets: z.array(z.enum(ACCESS_TARGETS)).min(1, "Choose at least one kind of access."),
-  level: z.enum(ACCESS_LEVELS),
-});
+/** The grants grouped one row per person, people in the order they first appear. */
+export function accessByPerson(grants: readonly AccessGrant[]): PersonAccess[] {
+  const order: number[] = [];
+  const byPerson = new Map<number, AccessGrant[]>();
+  for (const grant of grants) {
+    const mine = byPerson.get(grant.person.id);
+    if (mine === undefined) {
+      order.push(grant.person.id);
+      byPerson.set(grant.person.id, [grant]);
+    } else {
+      mine.push(grant);
+    }
+  }
+  return order.map((id) => {
+    const mine = [...byPerson.get(id)!].sort((a, b) => a.id - b.id);
+    const latest = mine[mine.length - 1];
+    return { person: latest.person, grants: mine, givenBy: latest.givenBy, givenOn: latest.givenOn };
+  });
+}
 
-/** The highest level the lead may give on a target: what they hold, or nothing. */
-function heldLevel(held: readonly HeldAccess[], target: AccessTarget): AccessLevel | null {
+/** What a person holds now, area by area. */
+export function areaLevelsOf(grants: readonly AccessGrant[], personId: number): AreaLevels {
+  const levels: Partial<Record<AccessTarget, AccessLevel>> = {};
+  for (const g of grants) {
+    if (g.person.id === personId) levels[g.target] = levels[g.target] === "edit" ? "edit" : g.level;
+  }
+  return levels;
+}
+
+/** The highest level the lead holds on an area, or null. */
+export function heldLevel(held: readonly HeldAccess[], target: AccessTarget): AccessLevel | null {
   const levels = held.filter((h) => h.target === target).map((h) => h.level);
   if (levels.includes("edit")) return "edit";
   return levels.includes("view") ? "view" : null;
 }
 
-/** Whether the lead may give `level` on every one of `targets`. */
-export function canGive(held: readonly HeldAccess[], targets: readonly AccessTarget[], level: AccessLevel): boolean {
-  return targets.every((target) => {
-    const have = heldLevel(held, target);
-    return have !== null && (level === "view" || have === "edit");
+/** Whether the lead holds `target` at `level` or above. */
+function reaches(held: readonly HeldAccess[], target: AccessTarget, level: AccessLevel): boolean {
+  const have = heldLevel(held, target);
+  return have !== null && (level === "view" || have === "edit");
+}
+
+/**
+ * What the lead may do with one area of one person's access in a drawer:
+ * nothing when the person is a lead, the lead does not hold the area, or the
+ * person holds it above the lead; else tick or untick it, up to `highest`.
+ */
+export type AreaRule = { readonly changeable: false } | { readonly changeable: true; readonly highest: AccessLevel };
+
+export function areaRule(held: readonly HeldAccess[], person: AccessPerson, target: AccessTarget, current: AccessLevel | null): AreaRule {
+  const highest = heldLevel(held, target);
+  if (person.standing === "lead" || highest === null) return { changeable: false };
+  if (current !== null && !reaches(held, target, current)) return { changeable: false };
+  return { changeable: true, highest };
+}
+
+/** Whether the lead may change anything of this person's access. */
+export function canChangePerson(held: readonly HeldAccess[], person: AccessPerson, current: AreaLevels): boolean {
+  return ACCESS_TARGETS.some((t) => areaRule(held, person, t, current[t] ?? null).changeable);
+}
+
+/** One change to one area of a person's access. */
+export type AccessChange =
+  | { readonly kind: "add"; readonly target: AccessTarget; readonly to: AccessLevel }
+  | { readonly kind: "change"; readonly target: AccessTarget; readonly from: AccessLevel; readonly to: AccessLevel }
+  | { readonly kind: "remove"; readonly target: AccessTarget; readonly from: AccessLevel };
+
+/** The changes that take a person from `current` to `next`, area by area. */
+export function accessChanges(current: AreaLevels, next: AreaLevels): AccessChange[] {
+  return ACCESS_TARGETS.flatMap((target): AccessChange[] => {
+    const from = current[target];
+    const to = next[target];
+    if (from === to) return [];
+    if (from === undefined) return to === undefined ? [] : [{ kind: "add", target, to }];
+    if (to === undefined) return [{ kind: "remove", target, from }];
+    return [{ kind: "change", target, from, to }];
   });
 }
 
-/**
- * Whether the lead may take a grant away, or put a new level in its place:
- * only on a target they hold, at the grant's level or above, and never on
- * another lead's own access. A lead who can view Members cannot touch an edit
- * grant on Members, so they cannot downgrade it either.
- */
-export function canRemove(held: readonly HeldAccess[], grant: Pick<AccessGrant, "person" | "target" | "level">): boolean {
-  return grant.person.standing !== "lead" && canGive(held, [grant.target], grant.level);
+/** The lead's delegation limit on one change: the area is theirs to touch, at both ends. */
+function allowed(held: readonly HeldAccess[], person: AccessPerson, change: AccessChange): boolean {
+  if (person.standing === "lead") return false;
+  const from = change.kind === "add" ? null : change.from;
+  const to = change.kind === "remove" ? null : change.to;
+  return (from === null || reaches(held, change.target, from)) && (to === null || reaches(held, change.target, to));
 }
+
+/** What the Give access and Edit access drawers send: the person's areas as they should be. */
+export type SaveAccess = {
+  readonly personId: number;
+  readonly areas: AreaLevels;
+};
+
+/** A checked write: the person and the changes to make, each within the lead's limit. */
+export type AccessWrite = {
+  readonly personId: number;
+  readonly changes: readonly AccessChange[];
+};
+
+const level = z.enum(ACCESS_LEVELS).optional();
+const saveAccessSchema = z.object({
+  personId: z.number().int().positive(),
+  areas: z.strictObject({ positions: level, applications: level, members: level, orders: level }),
+});
 
 type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
 
-/** Checks a Remove access request: the grant is in the lead's division, and theirs to remove. */
-export function checkRemoveAccess(access: Pick<DivisionAccess, "held" | "grants">, grantId: number): Checked<AccessGrant> {
-  const grant = access.grants.find((g) => g.id === grantId);
-  if (grant === undefined) return { ok: false, error: "That access is not in your division." };
-  if (!canRemove(access.held, grant)) return { ok: false, error: "You can only remove access you have." };
-  return { ok: true, value: grant };
+function checkChanges(
+  access: Pick<DivisionAccess, "held" | "people" | "grants">,
+  personId: number,
+  next: AreaLevels,
+): Checked<AccessWrite> {
+  const person = access.people.find((p) => p.id === personId);
+  if (person === undefined) return { ok: false, error: "You can give access only to people in your division." };
+  const changes = accessChanges(areaLevelsOf(access.grants, personId), next);
+  if (!changes.every((c) => allowed(access.held, person, c))) {
+    return { ok: false, error: "You can only give or change access you have, up to your own level." };
+  }
+  return { ok: true, value: { personId, changes } };
 }
 
 /**
- * Checks a Give access request from the browser against what the lead holds
- * and who is in their division. A new level replaces the person's grant on
- * each chosen target, so every grant it replaces must be one the lead may
- * remove. Every rule runs on the server: the drawer's own limits are a
- * convenience, not the check.
+ * Checks a Give access or Edit access Save from the browser against what the
+ * lead holds and who is in their division. The person's areas become exactly
+ * `areas`; every add, level change and removal that takes must be within the
+ * lead's own level. Every rule runs on the server: the drawer's own limits
+ * are a convenience, not the check.
  */
-export function checkGiveAccess(
-  access: Pick<DivisionAccess, "held" | "people" | "grants">,
-  input: unknown,
-): Checked<GiveAccess> {
-  const parsed = giveAccessSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
-  const { personId, level } = parsed.data;
-  const targets = ACCESS_TARGETS.filter((t) => parsed.data.targets.includes(t));
-  if (!access.people.some((p) => p.id === personId)) {
-    return { ok: false, error: "You can give access only to people in your division." };
+export function checkSaveAccess(access: Pick<DivisionAccess, "held" | "people" | "grants">, input: unknown): Checked<AccessWrite> {
+  const parsed = saveAccessSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Check the form." };
+  const areas: Partial<Record<AccessTarget, AccessLevel>> = {};
+  for (const target of ACCESS_TARGETS) {
+    const chosen = parsed.data.areas[target];
+    if (chosen !== undefined) areas[target] = chosen;
   }
-  if (!canGive(access.held, targets, level)) {
-    return { ok: false, error: "You can only give access you have." };
-  }
-  const replaced = access.grants.filter((g) => g.person.id === personId && targets.includes(g.target));
-  if (!replaced.every((g) => canRemove(access.held, g))) {
-    return { ok: false, error: "You can only change access you have." };
-  }
-  return { ok: true, value: { personId, targets, level } };
+  if (Object.keys(areas).length === 0) return { ok: false, error: "Choose at least one area." };
+  return checkChanges(access, parsed.data.personId, areas);
 }
 
-const WHAT_VIEW: Readonly<Record<AccessTarget, (unit: string) => string>> = {
-  applications: (unit) => `read applications for ${unit} roles, but not change their status`,
-  positions: (unit) => `see ${unit} positions, but not change them`,
-  members: (unit) => `see the ${unit} member list, but not change it`,
-};
-
-const WHAT_EDIT: Readonly<Record<AccessTarget, (unit: string) => string>> = {
-  applications: (unit) => `read applications for ${unit} roles and change their status`,
-  positions: (unit) => `open, edit and close ${unit} positions`,
-  members: (unit) => `edit the ${unit} member list`,
-};
-
-function joinClauses(clauses: readonly string[]): string {
-  if (clauses.length <= 1) return clauses.join("");
-  return `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
-}
-
-/** The line under the drawer's level switch: what the person will be able to do. */
-export function grantSummary(
-  personName: string,
-  targets: readonly AccessTarget[],
-  level: AccessLevel,
-  unitName: string,
-): string | null {
-  if (targets.length === 0) return null;
-  const what = level === "view" ? WHAT_VIEW : WHAT_EDIT;
-  return `${personName} will be able to ${joinClauses(targets.map((t) => what[t](unitName)))}.`;
+/** Checks Remove all access: every area the person holds goes, each within the lead's limit. */
+export function checkRemoveAllAccess(access: Pick<DivisionAccess, "held" | "people" | "grants">, personId: unknown): Checked<AccessWrite> {
+  if (typeof personId !== "number" || !Number.isSafeInteger(personId)) return { ok: false, error: "Unknown person." };
+  return checkChanges(access, personId, {});
 }

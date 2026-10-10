@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useTransition, type DragEvent, type FormEvent } from "react";
 import { ExternalLink, FileText, Link2, MessageSquareText, Plus, Upload, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import type { AccessLevel } from "@/lib/dashboard/division-access";
 import {
   checkNewOrder,
   checkQuote,
@@ -68,11 +69,13 @@ export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; wri
         intro="Ask the team leader to place big orders the team card can't cover."
         phone="bar"
         action={
-          <button type="button" onClick={() => setOpen({ kind: "new" })} className={PRIMARY_PILL}>
-            <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
-            <span className="md:hidden">New</span>
-            <span className="hidden md:inline">New order</span>
-          </button>
+          data.level === "edit" ? (
+            <button type="button" onClick={() => setOpen({ kind: "new" })} className={PRIMARY_PILL}>
+              <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
+              <span className="md:hidden">New</span>
+              <span className="hidden md:inline">New order</span>
+            </button>
+          ) : undefined
         }
       />
 
@@ -165,6 +168,7 @@ export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; wri
 
       <OrderPanel
         order={open.kind === "order" ? selected : null}
+        level={data.level}
         onClose={() => setOpen(CLOSED)}
         onEdit={(order) => setOpen({ kind: "edit", id: order.id })}
         cancelOrder={writes.cancelOrder}
@@ -228,12 +232,14 @@ const SPEC_LABEL = "whitespace-nowrap font-mono text-[10px] uppercase tracking-[
  */
 function OrderPanel({
   order,
+  level,
   onClose,
   onEdit,
   cancelOrder,
   onCancelled,
 }: {
   order: Order | null;
+  level: AccessLevel;
   onClose: () => void;
   onEdit: (order: Order) => void;
   cancelOrder: OrderWrites["cancelOrder"];
@@ -246,7 +252,7 @@ function OrderPanel({
   const [pending, startTransition] = useTransition();
   const current = order ?? shown;
   if (current === null) return null;
-  const actions = orderActions(current.status);
+  const actions = orderActions(current.status, level);
   const total = orderTotal(current);
 
   const cancel = () =>
@@ -403,7 +409,7 @@ function OrderFormDrawer({
   const unitPrice = parseEuros(fields.price);
   const quantity = /^\d+$/.test(fields.quantity.trim()) ? Number(fields.quantity) : null;
   const total = unitPrice !== null && quantity !== null ? unitPrice * quantity : null;
-  const resend = editing !== null && orderActions(editing.status).edit === "edit-and-resend";
+  const resend = editing !== null && orderActions(editing.status, "edit").edit === "edit-and-resend";
   const failed = editing === null ? "Could not send the request" : "Could not save the request";
 
   const set = (name: keyof typeof EMPTY) => (e: { target: { value: string } }) => {

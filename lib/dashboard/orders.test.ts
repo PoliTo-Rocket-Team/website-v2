@@ -40,10 +40,16 @@ test("the tabs count every status, empty ones included, and All counts them all"
 });
 
 test("only a waiting request can be cancelled; one sent back can only be edited and sent again", () => {
-  assert.deepEqual(orderActions("waiting"), { cancel: true, edit: "edit" });
-  assert.deepEqual(orderActions("changes-requested"), { cancel: false, edit: "edit-and-resend" });
-  assert.deepEqual(orderActions("approved"), { cancel: false, edit: null });
-  assert.deepEqual(orderActions("rejected"), { cancel: false, edit: null });
+  assert.deepEqual(orderActions("waiting", "edit"), { cancel: true, edit: "edit" });
+  assert.deepEqual(orderActions("changes-requested", "edit"), { cancel: false, edit: "edit-and-resend" });
+  assert.deepEqual(orderActions("approved", "edit"), { cancel: false, edit: null });
+  assert.deepEqual(orderActions("rejected", "edit"), { cancel: false, edit: null });
+});
+
+test("Can view on Orders reads the requests and can do nothing with them", () => {
+  for (const status of ["waiting", "changes-requested", "approved", "rejected"] as const) {
+    assert.deepEqual(orderActions(status, "view"), { cancel: false, edit: null });
+  }
 });
 
 test("an edit sends the request back to the team leader, and an answered one cannot be edited", () => {
