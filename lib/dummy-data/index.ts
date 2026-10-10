@@ -13,11 +13,10 @@ import {
   type AttentionItem,
   type ChecklistItem,
   type DivisionOverview,
-  type OwnApplication,
-  type Overview,
   type PersonalOverview,
   type RosterPerson,
   type TeamOverview,
+  type TeamSideOverview,
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { divisionIdOf, type Departure } from "@/lib/dashboard/team";
@@ -52,9 +51,8 @@ import {
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
-import { sentLabel } from "@/lib/dashboard/my-applications";
-import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChanges, type OwnChangesStore } from "./own";
-import { dummyDetails, ownApplicationsOf, isWithdrawn } from "./own-applications";
+import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
+import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
   dummyChooseSlot,
@@ -452,42 +450,11 @@ function memberOverview(): PersonalOverview {
       size,
       people: rosterPreview(me),
     },
-    applications: null,
     hint: "Need to work on recruitment or site content? Ask your division lead or the admin team for access.",
   };
 }
 
-/** How the Overview's short list words each of the applicant's own applications. */
-const overviewStatus = {
-  received: "received",
-  "in-review": "in-review",
-  interview: "in-review",
-  accepted: "accepted",
-  "not-selected": "declined",
-  joined: "accepted",
-} as const satisfies Readonly<Record<string, OwnApplication["status"]>>;
-
-function applicantOverview(team: Team, own: OwnChanges, start: OwnApplicationsStart): PersonalOverview {
-  return {
-    shape: "personal",
-    person: { name: applicant.name, line: `Applicant · ${applicant.email}`, since: null, edit: null },
-    checklist: null,
-    roster: null,
-    applications: ownApplicationsOf("non-member", start)
-      .filter((a) => !isWithdrawn(a, own))
-      .map((a) => {
-        const position = team.positions.find((p) => p.id === a.positionId)!;
-        return {
-          title: position.title,
-          detail: `${departmentOf(position.divisionId).name} · sent ${sentLabel(a.sent)}`,
-          status: overviewStatus[a.status.kind],
-        };
-      }),
-    hint: null,
-  };
-}
-
-function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges, start: OwnApplicationsStart, notices: DummyNotices): Overview {
+function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamSideOverview {
   switch (kind) {
     case "operations-lead":
       return teamOverview(team, notices);
@@ -496,7 +463,7 @@ function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges, start: OwnAp
     case "member":
       return memberOverview();
     case "non-member":
-      return applicantOverview(team, own, start);
+      throw new DashboardRefused("a non-member's Overview is built from My applications");
   }
 }
 
@@ -709,7 +676,7 @@ export function dummyDashboardData(
     viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind, team),
     hasOwnApplications: async () => ownApplicationsOf(kind, ownStart).length > 0,
-    overview: async () => overviewFor(kind, team, own.current, ownStart, dummyNoticesOf(teamEdits.current)),
+    overview: async () => overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {

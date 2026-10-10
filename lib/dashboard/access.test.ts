@@ -11,8 +11,8 @@ function shape(kind: ViewerKind, facts: SidebarFacts) {
 const withApplications: SidebarFacts = { counts: {}, hasOwnApplications: true };
 const withoutApplications: SidebarFacts = { counts: {}, hasOwnApplications: false };
 
-test("a non-member's sidebar is My applications alone (board 51b)", () => {
-  assert.deepEqual(shape("non-member", withApplications), [[null, ["My applications"]]]);
+test("a non-member who has applied sees Overview and My applications (board 50e)", () => {
+  assert.deepEqual(shape("non-member", withApplications), [[null, ["Overview", "My applications"]]]);
 });
 
 test("a member's sidebar is Overview, My applications, Team tree (board 52)", () => {
@@ -27,7 +27,7 @@ test("a division lead's sidebar is Overview, Team tree, then Recruitment and My 
   ]);
 });
 
-test("a member sees My applications only once they have applied; a non-member always does (issue #179)", () => {
+test("a member sees My applications only once they have applied; a non-member always does, alone until they apply (issue #179)", () => {
   assert.deepEqual(shape("member", withoutApplications), [[null, ["Overview", "Team tree"]]]);
   assert.deepEqual(sidebarFor("non-member", withoutApplications), [
     {

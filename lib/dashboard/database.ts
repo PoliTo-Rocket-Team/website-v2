@@ -22,7 +22,7 @@ import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment
 import { getCurrentUserId } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
 import { canReach, type NavCounts } from "./access";
-import type { DashboardData } from "./data";
+import { DashboardRefused, type DashboardData } from "./data";
 import {
   alumniDirectory,
   buildTeamTree,
@@ -39,13 +39,12 @@ import {
   divisionShortName,
   noPhotoItem,
   oldestLine,
-  type ApplicationStatus,
   type AttentionItem,
   type ChecklistItem,
   type DivisionOverview,
-  type Overview,
   type PersonalOverview,
   type TeamOverview,
+  type TeamSideOverview,
   type UpcomingInterview,
 } from "./overview";
 import { databaseDivisionPages } from "./database-division";
@@ -419,7 +418,6 @@ async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
 }
 
 const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-const dayMonthYear = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 async function memberOverview(identity: Identity): Promise<PersonalOverview> {
   const role = identity.role;
@@ -489,52 +487,11 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
       items,
     },
     roster,
-    applications: null,
     hint: "Need to work on recruitment or site content? Ask your division lead or the admin team for access.",
   };
 }
 
-const statusOf: Readonly<Record<(typeof applications.$inferSelect)["status"], ApplicationStatus>> = {
-  received: "received",
-  pending: "in-review",
-  interview: "in-review",
-  accepted: "accepted",
-  joined: "accepted",
-  rejected: "declined",
-  accepted_by_another_team: "declined",
-};
-
-async function applicantOverview(identity: Identity): Promise<PersonalOverview> {
-  const db = getDb();
-  const rows = await db
-    .select({
-      title: applyPositions.title,
-      dept_name: departments.name,
-      applied_at: applications.appliedAt,
-      status: applications.status,
-    })
-    .from(applications)
-    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .leftJoin(divisions, eq(applyPositions.divisionId, divisions.id))
-    .leftJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(eq(applications.userId, identity.userId), isNull(applications.withdrawnAt)))
-    .orderBy(desc(applications.appliedAt));
-
-  return {
-    shape: "personal",
-    person: { name: identity.name, line: `Applicant · ${identity.email}`, since: null, edit: null },
-    checklist: null,
-    roster: null,
-    applications: rows.map((r) => ({
-      title: r.title ?? "Untitled position",
-      detail: [r.dept_name, `sent ${dayMonthYear.format(new Date(r.applied_at))}`].filter(Boolean).join(" · "),
-      status: statusOf[r.status],
-    })),
-    hint: null,
-  };
-}
-
-function overviewOf(identity: Identity): Promise<Overview> {
+function overviewOf(identity: Identity): Promise<TeamSideOverview> {
   switch (identity.kind) {
     case "operations-lead":
       return teamOverview(identity);
@@ -543,7 +500,7 @@ function overviewOf(identity: Identity): Promise<Overview> {
     case "member":
       return memberOverview(identity);
     case "non-member":
-      return applicantOverview(identity);
+      return Promise.reject(new DashboardRefused("a non-member's Overview is built from My applications"));
   }
 }
 
