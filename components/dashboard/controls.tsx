@@ -40,20 +40,33 @@ export function Toggle({
   );
 }
 
-/** "All 18 · Open 6 · Closed 12": one choice, each with its count. */
+/**
+ * "All 18 · Open 6 · Closed 12": one choice, each with its count. With
+ * `phone="chips"` the choices are separate pills below md, as the Dashboard v2
+ * phone boards draw them (57m, 58m).
+ */
 export function Segmented<T extends string>({
   label,
   options,
   value,
   onChange,
+  phone = "segmented",
 }: {
   label: string;
   options: readonly { readonly value: T; readonly label: string; readonly count: number }[];
   value: T;
   onChange: (value: T) => void;
+  phone?: "segmented" | "chips";
 }) {
+  const chips = phone === "chips";
   return (
-    <div role="group" aria-label={label} className="flex max-w-full overflow-x-auto rounded-lg border border-hairline bg-panel/60 p-0.5">
+    <div
+      role="group"
+      aria-label={label}
+      className={`flex max-w-full overflow-x-auto ${
+        chips ? "gap-2 md:gap-0 md:rounded-lg md:border md:border-hairline md:bg-panel/60 md:p-0.5" : "rounded-lg border border-hairline bg-panel/60 p-0.5"
+      }`}
+    >
       {options.map((option) => {
         const current = option.value === value;
         return (
@@ -62,9 +75,9 @@ export function Segmented<T extends string>({
             type="button"
             aria-pressed={current}
             onClick={() => onChange(option.value)}
-            className={`flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] md:px-3 transition-colors duration-300 ease-out ${FOCUS} ${
-              current ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"
-            }`}
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-[13px] md:h-7 md:rounded-md md:border-0 md:px-3 transition-colors duration-300 ease-out ${FOCUS} ${
+              chips ? "h-8 rounded-full border border-hairline px-3" : "h-7 rounded-md"
+            } ${current ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"}`}
           >
             {option.label}
             <span className="font-mono text-[11px] font-normal text-dim">{option.count}</span>

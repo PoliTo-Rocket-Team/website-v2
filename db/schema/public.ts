@@ -40,6 +40,10 @@ export const applicationStatusEnum = pgEnum("application_status", [
   "accepted",
   "received",
   "accepted_by_another_team",
+  // The lead's recruitment flow (issue #171): times offered for an interview,
+  // and a person who joined the team after the signed NDA arrived.
+  "interview",
+  "joined",
 ]);
 
 export const scopeTypeEnum = pgEnum("scope_type", [
@@ -260,6 +264,12 @@ export const applications = pgTable("applications", {
     withTimezone: true,
     mode: "string",
   }),
+  // The lead's recruitment flow (issue #171). Accept sets `accepted_at`; the
+  // "The signed NDA arrived" tick sets `nda_arrived_at`; Confirm join sets
+  // `joined_at` once the person is on the team.
+  acceptedAt: timestamp("accepted_at", { withTimezone: true, mode: "string" }),
+  ndaArrivedAt: timestamp("nda_arrived_at", { withTimezone: true, mode: "string" }),
+  joinedAt: timestamp("joined_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   // One live application per user per position (issue #120); a withdrawn one
   // does not count, so the person can apply again (issue #169).
@@ -292,7 +302,8 @@ export const applicationFiles = pgTable("application_files", {
 
 /**
  * The interview times a division lead offers on one application (issue #169;
- * the lead's side is issue #171). The applicant picks one: `chosen`.
+ * the lead's side is issue #171). The applicant picks one: `chosen`, at
+ * `chosen_at`. At most one slot per application is chosen.
  */
 export const interviewSlots = pgTable("interview_slots", {
   id: serial("id").primaryKey(),
@@ -302,6 +313,7 @@ export const interviewSlots = pgTable("interview_slots", {
   startsAt: timestamp("starts_at", { withTimezone: true, mode: "string" }).notNull(),
   endsAt: timestamp("ends_at", { withTimezone: true, mode: "string" }).notNull(),
   chosen: boolean("chosen").default(false).notNull(),
+  chosenAt: timestamp("chosen_at", { withTimezone: true, mode: "string" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow()
     .notNull(),

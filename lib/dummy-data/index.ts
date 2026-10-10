@@ -7,6 +7,7 @@ import {
   checklistProgress,
   divisionShortName,
   noPhotoItem,
+  interviewOrder,
   oldestLine,
   type ActivityItem,
   type AttentionItem,
@@ -20,6 +21,8 @@ import {
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { divisionIdOf, type Departure } from "@/lib/dashboard/team";
+import { applyMove, type LeadMove } from "@/lib/dashboard/application-flow";
+import { checkNewPosition, newPositionCode, type DivisionChoice } from "@/lib/dashboard/new-position";
 import {
   ago,
   appliedLabels,
@@ -27,13 +30,14 @@ import {
   quietDays,
   quietNote,
   type ApplicationEntry,
-  type ApplicationStage,
   type ApplicationsPage,
+  type OtherApplication,
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
+import { departmentCode, divisionLabel } from "./apply";
 import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
 import {
@@ -45,7 +49,6 @@ import {
   dummyPlaceOrder,
   dummyRemoveAccess,
 } from "./division";
-import { interviews } from "./interviews";
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { sentLabel } from "@/lib/dashboard/my-applications";
@@ -96,11 +99,26 @@ type Team = {
   readonly applications: readonly DummyApplication[];
 };
 
+/** A role the test developer posted, as the arrays hold a position. */
+function postedPosition(p: DummyState["newPositions"][number]): DummyPosition {
+  return {
+    id: p.id,
+    title: p.title,
+    slug: String(p.id),
+    divisionId: p.divisionId,
+    open: p.open,
+    updatedAt: p.createdAt,
+    question: "",
+    requiresMotivationLetter: p.motivationLetter,
+  };
+}
+
 function teamOf({ isOpen }: Recruitment, state: DummyState): Team {
+  const positions: DummyPosition[] = [...basePositions, ...state.newPositions.map(postedPosition)];
   return {
     recruitmentOpen: isOpen,
-    positions: basePositions.map((p) => ({ ...p, open: state.positionOpen[p.id] ?? p.open })),
-    applications: baseApplications.map((a) => ({ ...a, stage: state.applicationStage[a.id] ?? a.stage })),
+    positions: positions.map((p) => ({ ...p, open: state.positionOpen[p.id] ?? p.open })),
+    applications: baseApplications.map((a) => ({ ...a, state: state.applications[a.id] ?? a.state })),
   };
 }
 
@@ -150,11 +168,11 @@ function applicationsTo(list: readonly DummyPosition[], team: Team): DummyApplic
 }
 
 function newApplications(list: readonly DummyPosition[], team: Team): number {
-  return applicationsTo(list, team).filter((a) => a.stage === "new").length;
+  return applicationsTo(list, team).filter((a) => a.state.stage === "new").length;
 }
 
 function sinceMonday(list: readonly DummyPosition[], team: Team): string {
-  const fresh = applicationsTo(list, team).filter((a) => a.stage === "new" && new Date(a.appliedAt) >= MONDAY);
+  const fresh = applicationsTo(list, team).filter((a) => a.state.stage === "new" && new Date(a.appliedAt) >= MONDAY);
   return `+${fresh.length} since Monday`;
 }
 
@@ -171,7 +189,7 @@ function plural(n: number, one: string, many: string): string {
 /** When the oldest new application to `position` came in. */
 function oldestNew(position: DummyPosition, team: Team): Date {
   const times = applicationsTo([position], team)
-    .filter((a) => a.stage === "new")
+    .filter((a) => a.state.stage === "new")
     .map((a) => new Date(a.appliedAt).getTime());
   return new Date(Math.min(...times));
 }
@@ -269,23 +287,25 @@ function teamOverview(team: Team): TeamOverview {
   };
 }
 
-/** The lead's division's interviews, read off its applications in review. */
+/**
+ * The lead's division's interviews: its applications at Interview, each booked
+ * at the time the applicant picked or still waiting for a pick, so the
+ * Overview names the people the Applications page shows at that stage.
+ * Booked ones come first, soonest first.
+ */
 function interviewsFor(divisionId: number, team: Team): UpcomingInterview[] {
-  return interviews.flatMap((interview): UpcomingInterview[] => {
-    const position = team.positions.find((p) => p.id === interview.positionId);
-    if (!position || position.divisionId !== divisionId) return [];
-    const inReview = applicationsTo([position], team)
-      .filter((a) => a.stage === "in-review")
-      .sort((x, y) => new Date(x.appliedAt).getTime() - new Date(y.appliedAt).getTime());
-    const application = inReview[interview.nth];
-    if (!application) return [];
-    const who = { applicant: application.applicant.name, position: position.title };
+  const positions = new Map(team.positions.filter((p) => p.divisionId === divisionId).map((p) => [p.id, p]));
+  const all = applicationsTo([...positions.values()], team).flatMap((a): UpcomingInterview[] => {
+    if (a.state.stage !== "interview") return [];
+    const who = { applicant: a.applicant.name, position: positions.get(a.positionId)!.title };
+    const booked = a.state.booked;
     return [
-      interview.slot === null
+      booked === null
         ? { ...who, state: "waiting" }
-        : { ...who, state: "booked", start: new Date(interview.slot.start), end: new Date(interview.slot.end) },
+        : { ...who, state: "booked", start: new Date(booked.slot.start), end: new Date(booked.slot.end) },
     ];
   });
+  return interviewOrder(all);
 }
 
 /** Board 56: the division lead's figures, attention, interviews and activity, all scoped to their division. */
@@ -448,20 +468,41 @@ function positionRow(p: DummyPosition, team: Team): PositionRow {
     department: departmentOf(p.divisionId).name,
     open: p.open,
     applications: received.length,
-    newApplications: received.filter((a) => a.stage === "new").length,
+    newApplications: received.filter((a) => a.state.stage === "new").length,
     quiet: quietNote(quietDays(p.open, lastActivity(p, team), NOW)),
     updated: ago(new Date(p.updatedAt), NOW),
   };
 }
 
+/** The divisions a viewer may post a role in: every one for the operations lead, the lead's own for a division lead. */
+function postableDivisions(kind: ViewerKind): DivisionChoice[] {
+  const ids: number[] =
+    kind === "operations-lead" ? divisions.map((d) => d.id) : kind === "division-lead" ? [myDivisionId(kind)] : [];
+  return ids.map((id) => {
+    const division = divisionOf(id);
+    return {
+      id,
+      name: division.name,
+      department: departmentOf(id).name,
+      deptCode: departmentCode[division.departmentId],
+      divCode: divisionLabel[division.id].code,
+    };
+  });
+}
+
+function nextPositionId(team: Team): number {
+  return Math.max(...team.positions.map((p) => p.id)) + 1;
+}
+
 function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
   const rows = positionsFor(kind, team).map((p) => positionRow(p, team));
+  const newPosition = { divisions: postableDivisions(kind), nextId: nextPositionId(team) };
   if (kind === "operations-lead") {
-    return { scope: "team", positions: rows };
+    return { scope: "team", positions: rows, newPosition };
   }
   if (kind === "division-lead") {
     const division = divisionOf(myDivisionId(kind)).name;
-    return { scope: "division", division, positions: rows };
+    return { scope: "division", division, positions: rows, newPosition };
   }
   throw new DashboardRefused("positions");
 }
@@ -472,13 +513,35 @@ function cvName(name: string): string {
   return `${[words[words.length - 1], ...words.slice(0, -1)].join("_")}_CV.pdf`;
 }
 
-function applicationEntry(a: DummyApplication, position: DummyPosition): ApplicationEntry {
+/** The applicant's applications to other roles, anywhere on the team, newest first. */
+function otherApplications(a: DummyApplication, team: Team): OtherApplication[] {
+  return team.applications
+    .filter((o) => o.id !== a.id && o.applicant.email === a.applicant.email)
+    .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
+    .map((o) => {
+      const position = team.positions.find((p) => p.id === o.positionId)!;
+      return {
+        title: position.title,
+        department: departmentOf(position.divisionId).name,
+        division: divisionOf(position.divisionId).name,
+        stage: o.state.stage,
+      };
+    });
+}
+
+function applicationEntry(a: DummyApplication, position: DummyPosition, team: Team): ApplicationEntry {
   return {
     id: a.id,
-    stage: a.stage,
-    applicant: { name: a.applicant.name, email: a.applicant.email, phone: a.applicant.phone, politoId: a.applicant.politoId },
+    state: a.state,
+    applicant: {
+      name: a.applicant.name,
+      email: a.applicant.email,
+      phone: a.applicant.phone,
+      politoId: a.applicant.politoId,
+      gender: a.applicant.gender,
+    },
     studies: { year: a.applicant.year, degree: a.applicant.degree },
-    position: { ref: position.slug, title: position.title },
+    position: { ref: position.slug, title: position.title, division: divisionOf(position.divisionId).name },
     applied: appliedLabels(new Date(a.appliedAt), NOW),
     documents: [
       { kind: "cv", name: cvName(a.applicant.name), size: fileSize(a.cvBytes), href: null },
@@ -487,6 +550,7 @@ function applicationEntry(a: DummyApplication, position: DummyPosition): Applica
         : []),
     ],
     answers: [a.answer],
+    otherApplications: otherApplications(a, team),
   };
 }
 
@@ -495,10 +559,12 @@ function applicationsPage(kind: ViewerKind, team: Team): ApplicationsPage {
   const scoped = positionsFor(kind, team);
   const byId = new Map(scoped.map((p) => [p.id, p]));
   return {
+    division: kind === "division-lead" ? divisionOf(myDivisionId(kind)).name : null,
+    now: NOW.toISOString(),
     positions: scoped.map((p) => ({ ref: p.slug, title: p.title })),
     applications: applicationsTo(scoped, team)
       .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
-      .map((a) => applicationEntry(a, byId.get(a.positionId)!)),
+      .map((a) => applicationEntry(a, byId.get(a.positionId)!, team)),
   };
 }
 
@@ -529,11 +595,28 @@ export function dummyDashboardData(
   const person = teamPersonFor(kind);
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
-  const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications, teamEdits.current));
+  const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(kind, me, own.current);
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [kind]: details } });
+
+  // One move for both pages: the Applications panel and the Members page's
+  // Confirm join (board 59) run it, so the application is the one record of
+  // who joined, and the roster reads it (./team-pages.ts).
+  async function moveApplication(id: number, move: LeadMove) {
+    const base = baseApplications.find((a) => a.id === id);
+    const current = team.applications.find((a) => a.id === id);
+    if (!base || !current || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
+      throw new DashboardRefused(`application ${id}`);
+    }
+    // The dummy team is seen from DUMMY_NOW, so its moves happen then too.
+    const result = applyMove(current.state, move, NOW);
+    if (!result.ok) return refused(result.reason);
+    if (!result.changed) return written(null);
+    await change({ kind: "application", id, state: result.state, initial: base.state });
+    return written(null);
+  }
 
   return {
     viewer: dummyViewer(kind),
@@ -544,7 +627,7 @@ export function dummyDashboardData(
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
-    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications),
+    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications, moveApplication),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team),
 
@@ -554,13 +637,22 @@ export function dummyDashboardData(
       await change({ kind: "position", id, open, initial: base.open });
     },
 
-    async setApplicationStage(id, stage: ApplicationStage) {
-      const base = baseApplications.find((a) => a.id === id);
-      if (!base || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
-        throw new DashboardRefused(`application ${id}`);
-      }
-      await change({ kind: "application", id, stage, initial: base.stage });
+    async createPosition(input) {
+      const allowed = postableDivisions(kind);
+      const division = allowed.find((d) => d.id === (input as { divisionId?: unknown } | null)?.divisionId);
+      if (!division) throw new DashboardRefused("a position in that division");
+      const checked = checkNewPosition(input);
+      if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
+      const id = nextPositionId(team);
+      const { position } = checked;
+      await change({
+        kind: "new-position",
+        position: { id, title: position.title, divisionId: division.id, open: position.open, motivationLetter: position.motivationLetter, createdAt: NOW.toISOString() },
+      });
+      return written({ id, code: newPositionCode(division, id) });
     },
+
+    moveApplication,
 
     divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person, teamRoster)),
     giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, teamRoster, input)),

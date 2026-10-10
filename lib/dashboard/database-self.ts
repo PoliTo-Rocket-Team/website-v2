@@ -60,8 +60,11 @@ import { refused, written, type Upload, type WriteResult } from "./write";
 // 55, issue #169, on #145's v1). Writes follow .patterns/audited-mutations.md;
 // each one touches only the signed-in person's own rows.
 
-/** The applications a person can still withdraw: received or in review (an interview is in review). */
-const OPEN_STATUSES = ["received", "pending"] as const;
+/**
+ * The applications a person can still withdraw: received, in review, or at
+ * interview (the lead's "Move to interview", issue #171, marks `interview`).
+ */
+const OPEN_STATUSES = ["received", "pending", "interview"] as const;
 
 const detailColumns = {
   firstName: users.firstName,
@@ -309,6 +312,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
         applied_at: applications.appliedAt,
         status: applications.status,
         withdrawn_at: applications.withdrawnAt,
+        joined_at: applications.joinedAt,
         answers: applications.customAnswers,
         cv_name: applications.cvName,
         letter_name: applications.mlName,
@@ -329,7 +333,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
   ]);
   if (rows.length === 0) return { firstName: me?.first_name ?? identity.name, email: identity.email, active: [], past: [] };
 
-  const interviewing = rows.filter((r) => r.status === "pending" && r.withdrawn_at === null);
+  const interviewing = rows.filter((r) => (r.status === "pending" || r.status === "interview") && r.withdrawn_at === null);
   const [slotRows, leads] = await Promise.all([
     interviewing.length === 0
       ? Promise.resolve([])
@@ -361,6 +365,10 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
       case "accepted_by_another_team":
         over({ kind: "not-selected" });
         continue;
+      case "joined":
+        // Confirm join (issue #171) put them on the team on `joined_at`.
+        over({ kind: "joined", since: (r.joined_at ?? identity.role?.startedAt ?? r.applied_at).slice(0, 10) });
+        continue;
       case "accepted":
         if (identity.memberId !== null) {
           over({ kind: "joined", since: identity.role?.startedAt ?? r.applied_at });
@@ -371,7 +379,8 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
       case "received":
         stage = { kind: "received" };
         break;
-      case "pending": {
+      case "pending":
+      case "interview": {
         const slots: InterviewSlot[] = slotRows
           .filter((s) => s.application_id === r.id)
           .map((s) => ({ id: s.id, start: s.start, end: s.end }));
@@ -432,10 +441,10 @@ async function chooseInterviewSlot(identity: DashboardIdentity, applicationId: n
   const pick = pickableSlot(mine?.active.find((a) => a.id === applicationId), slotId);
   if (!pick.ok) return refused(pick.error);
   await runAuditBatch((db) => [
-    db.update(interviewSlots).set({ chosen: false }).where(eq(interviewSlots.applicationId, applicationId)),
+    db.update(interviewSlots).set({ chosen: false, chosenAt: null }).where(eq(interviewSlots.applicationId, applicationId)),
     db
       .update(interviewSlots)
-      .set({ chosen: true })
+      .set({ chosen: true, chosenAt: sql`now()` })
       .where(and(eq(interviewSlots.id, slotId), eq(interviewSlots.applicationId, applicationId))),
   ]);
   return written(pick.slot);

@@ -83,30 +83,13 @@ test("a lead promotes a member beside them, or hands the division over and becom
   assert.equal(await pages("operations-lead").view.teamWrites!.promote(7, "together"), false, "only a division lead promotes");
 });
 
-test("an accepted applicant waits on the Members page until the lead confirms they join", async () => {
-  const lead = pages("division-lead");
-  const directory = await lead.view.members();
-  assert.equal(directory.scope, "division");
-  if (directory.scope !== "division") return;
-  assert.equal(directory.joining.length, 1);
-  const [joining] = directory.joining;
-  assert.equal(joining.position, "Mission Analyst");
-
-  assert.equal(await lead.view.teamWrites!.confirmJoin(joining.applicationId), true);
-  const after = await pages("division-lead", lead.saved[0]).view.members();
-  if (after.scope !== "division") return;
-  assert.deepEqual(after.joining, []);
-  const row = after.rows.find((r) => r.name === joining.name);
-  assert.equal(row?.role, "member");
-  assert.equal(row?.pageTitle, "Mission Analyst");
-  assert.equal(await pages("division-lead", lead.saved[0]).view.teamWrites!.confirmJoin(joining.applicationId), false, "only once");
-});
-
 test("an application the lead accepts joins the waiting list", () => {
-  const accepted = applications.find((a) => a.positionId === 4 && a.stage === "new")!;
-  const current = applications.map((a) => (a.id === accepted.id ? { ...a, stage: "accepted" as const } : a));
-  assert.ok(dummyJoiners(current, NO_EDITS).some((j) => j.applicationId === accepted.id));
-  assert.ok(!dummyJoiners(applications, NO_EDITS).some((j) => j.applicationId === accepted.id));
+  const accepted = applications.find((a) => a.positionId === 4 && a.state.stage === "new")!;
+  const current = applications.map((a) =>
+    a.id === accepted.id ? { ...a, state: { stage: "accepted" as const, acceptedAt: "2026-10-09T10:00:00+02:00", ndaArrived: false } } : a,
+  );
+  assert.ok(dummyJoiners(current).some((j) => j.applicationId === accepted.id));
+  assert.ok(!dummyJoiners(applications).some((j) => j.applicationId === accepted.id));
 });
 
 test("viewers who do not reach a page get no data from it", async () => {

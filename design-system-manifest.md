@@ -47,7 +47,7 @@ and code that cannot take a class (the `<html>` paint in `app/layout.tsx`, the h
 | Brand accent (signal orange) | `accent` / `-hover` / `-pressed` | `#FF5E00` / `#FF7526` / `#E05200` |
 | Accent tint, text on accent | `accent-soft`, `accent-on-accent` | `#FF5E0024`, `#0A0A0A` |
 | Overlays | `white-5`, `white-10` | 5% and 10% white |
-| Status | `success`, `warning`, `danger` (+ `-soft`) | `#2E9B4F`, `#F5A623`, `#CE2B4B` |
+| Status | `success`, `warning`, `danger`, `info` (+ `-soft`) | `#2E9B4F`, `#F5A623`, `#CE2B4B`, `#4DA3FF` |
 
 Rules:
 
@@ -59,6 +59,12 @@ Rules:
   (`latest.tsx`, HANDOFF board 05). Project status pills sit on a texture, so they follow
   board 21 instead: flown = `ground/70` with `prt-text`, In design = `prt-text` with `ground`
   (`projects.tsx`).
+- Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
+  `stage-pill.tsx`): New and "Interview · no time yet" = `white-10` with `prt-text`, In review =
+  `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
+  `white-5` with `prt-muted`. `info` marks In review and nothing else: on the stage pill and tag, and
+  on the panel's stage menu trigger and its dot (`toneSurface`, `toneDot`). It is not a second
+  accent.
 - The legacy palettes `rocket`, `space`, `mission`, `cosmos` and the shadcn role variables in
   `app/globals.css` serve `app/(legacy)/` and `components/ui/` only. Do not use them on a
   redesigned surface. Note the shadcn `accent` name is taken by the PRT orange

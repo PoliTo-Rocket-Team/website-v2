@@ -13,11 +13,9 @@ export type TeamEdits = {
   readonly members: Readonly<Record<number, MemberEdit>>;
   /** People moved to alumni, with their years on the team and why they left. */
   readonly movedToAlumni: Readonly<Record<number, Departure>>;
-  /** Accepted applications whose applicant the lead confirmed onto the team, with the year they joined. */
-  readonly joined: Readonly<Record<number, number>>;
 };
 
-export const NO_EDITS: TeamEdits = { shownOnSite: {}, members: {}, movedToAlumni: {}, joined: {} };
+export const NO_EDITS: TeamEdits = { shownOnSite: {}, members: {}, movedToAlumni: {} };
 
 /** Where the dummy dashboard reads and keeps these edits. */
 export type TeamEditsStore = {
@@ -63,10 +61,6 @@ function readDeparture(value: unknown): Departure | null {
   return { from: from as number, to: to as number, reason: reason as Departure["reason"] };
 }
 
-function readYear(value: unknown): number | null {
-  return Number.isInteger(value) ? (value as number) : null;
-}
-
 /** A title as typed, trimmed and capped; empty is none. */
 export function cleanTitle(title: string | null): string | null {
   const trimmed = title?.trim().slice(0, MAX_TITLE) ?? "";
@@ -87,7 +81,6 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     shownOnSite: entriesOf(raw.shownOnSite, (v) => (typeof v === "boolean" ? v : null)),
     members: entriesOf(raw.members, readMemberEdit),
     movedToAlumni: entriesOf(raw.movedToAlumni, readDeparture),
-    joined: entriesOf(raw.joined, readYear),
   };
 }
 

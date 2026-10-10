@@ -1,5 +1,6 @@
 import { canReach } from "@/lib/dashboard/access";
-import type { DashboardData, TeamWrites } from "@/lib/dashboard/data";
+import { joinChange, type LeadMove } from "@/lib/dashboard/application-flow";
+import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/dashboard/data";
 import {
   alumniDirectory,
   buildTeamTree,
@@ -16,6 +17,7 @@ import {
   type RosterEntry,
 } from "@/lib/dashboard/team";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
+import type { WriteResult } from "@/lib/dashboard/write";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, type TeamEdits } from "./edits";
 import { alumni, departments, divisions, people, positions, roster, type DummyPerson } from "./team";
@@ -58,39 +60,46 @@ function entryOf(person: DummyPerson, edit: MemberEdit | undefined): RosterEntry
 }
 
 /**
- * Someone accepted for a position and not on the team yet (board 59). The
- * dummy team has one waiting from the start, for Mission Analyst; an
- * application the test developer accepts on the Applications page joins them.
+ * Someone accepted for a position (board 59), waiting for Confirm join or
+ * joined. The application's own state is the one record of it: the dummy
+ * team has one waiting from the start, for Mission Analyst; an application
+ * the test developer accepts on the Applications page waits too, and Confirm
+ * join on either page moves the application to Joined.
  */
 export type DummyJoiner = Joining & {
   readonly email: string;
   readonly divisionId: number;
   readonly program: string;
   readonly study: string;
+  /** The year Confirm join ran; null while they wait. */
+  readonly joinedIn: number | null;
 };
 
 /** The accepted Mission Analyst applicant who is waiting for their NDA when the dummy team starts. */
-const WAITING_FROM_THE_START = baseApplications.find((a) => a.positionId === 1 && a.stage === "accepted")!.id;
+const WAITING_FROM_THE_START = baseApplications.find((a) => a.positionId === 1 && a.state.stage === "accepted")!.id;
 
 /** Roster ids for people who joined from an application, clear of the people and alumni ids. */
 const JOINER_ID_BASE = 100_000;
 
-/** The accepted applicants not yet confirmed onto the team, from the applications as the test developer left them. */
-export function dummyJoiners(current: readonly DummyApplication[], edits: TeamEdits): DummyJoiner[] {
+/** The accepted applicants waiting to join, and those who joined, from the applications as the test developer left them. */
+export function dummyJoiners(current: readonly DummyApplication[]): DummyJoiner[] {
   return current.flatMap((a): DummyJoiner[] => {
     const base = baseApplications.find((b) => b.id === a.id);
-    const waiting = a.stage === "accepted" && (a.id === WAITING_FROM_THE_START || base?.stage !== "accepted");
+    const waiting = a.state.stage === "accepted" && (a.id === WAITING_FROM_THE_START || base?.state.stage !== "accepted");
+    const joined = a.state.stage === "joined";
     const position = positions.find((p) => p.id === a.positionId);
-    if (!waiting || !position) return [];
+    if ((!waiting && !joined) || !position) return [];
     return [
       {
         applicationId: a.id,
         name: a.applicant.name,
         position: position.title,
+        ndaArrived: a.state.stage === "accepted" ? a.state.ndaArrived : true,
         email: a.applicant.email,
         divisionId: position.divisionId,
         program: a.applicant.degree,
         study: a.applicant.year,
+        joinedIn: a.state.stage === "joined" ? new Date(a.state.joinedAt).getUTCFullYear() : null,
       },
     ];
   });
@@ -112,16 +121,17 @@ function joinedEntry(joiner: DummyJoiner, year: number): RosterEntry {
 
 /**
  * This year's roster after the test developer's edits: moved people left
- * out, saved drawers and promotions applied, confirmed joiners added.
+ * out, saved drawers and promotions applied, joined applicants added as
+ * `joinChange` says (someone already on the team gets no second place).
  */
 export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] = []): RosterEntry[] {
+  const onTeam = people.map((p) => entryOf(p, edits.members[p.id]));
   const joined = joiners.flatMap((j) => {
-    const year = edits.joined[j.applicationId];
-    return year === undefined ? [] : [joinedEntry(j, year)];
+    if (j.joinedIn === null) return [];
+    const membership = onTeam.some((e) => e.email === j.email) ? "member" : "applicant";
+    return joinChange(membership) === "nothing" ? [] : [joinedEntry(j, j.joinedIn)];
   });
-  return [...people.map((p) => entryOf(p, edits.members[p.id])), ...joined].filter(
-    (e) => edits.movedToAlumni[e.id] === undefined,
-  );
+  return [...onTeam, ...joined].filter((e) => edits.movedToAlumni[e.id] === undefined);
 }
 
 /** The alumni, those the test developer moved included, with their switches as flipped. */
@@ -150,11 +160,18 @@ function myDivision(kind: ViewerKind): number | null {
   return mine ? divisionIdOf(mine.placement) : null;
 }
 
+/** The Applications page's move, as the dummy dashboard runs it: Confirm join on the Members page is that move. */
+export type DummyMove = (applicationId: number, move: LeadMove) => Promise<WriteResult<null>>;
+
+/** Without the Applications page's store nothing moves. */
+const NO_MOVE: DummyMove = async () => ({ ok: false, error: "Nothing to move." });
+
 function writesFor(
   kind: ViewerKind,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   joiners: readonly DummyJoiner[],
+  move: DummyMove,
 ): TeamWrites {
   const team = editedRoster(edits, joiners);
   const find = (id: number) => team.find((e) => e.id === id);
@@ -195,43 +212,49 @@ function writesFor(
     },
     async confirmJoin(applicationId) {
       const joiner = joiners.find((j) => j.applicationId === applicationId);
-      if (!joiner || joiner.divisionId !== myDivision(kind) || edits.joined[applicationId] !== undefined) return false;
-      await save({ ...edits, joined: { ...edits.joined, [applicationId]: thisYear } });
-      return true;
+      if (!joiner || joiner.divisionId !== myDivision(kind) || joiner.joinedIn !== null) return false;
+      try {
+        return (await move(applicationId, { kind: "confirm-join" })).ok;
+      } catch (error) {
+        if (error instanceof DashboardRefused) return false;
+        throw error;
+      }
     },
   };
 }
 
 /**
- * The Team pages as `kind` sees them, with `edits` laid over the arrays and
- * `current` the applications as the test developer left them.
+ * The Team pages as `kind` sees them, with `edits` laid over the arrays,
+ * `current` the applications as the test developer left them and `move` the
+ * Applications page's move, which Confirm join runs.
  */
 export function dummyTeamPages(
   kind: ViewerKind,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   current: readonly DummyApplication[] = baseApplications,
+  move: DummyMove = NO_MOVE,
 ): Pick<DashboardData, "members" | "alumni" | "teamTree" | "teamWrites"> {
   const self = SELF_ID[kind];
-  const joiners = dummyJoiners(current, edits);
+  const joiners = dummyJoiners(current);
   return {
     members: async () => {
       const team = editedRoster(edits, joiners);
       if (kind === "operations-lead") return teamDirectory(team, org, self);
       const division = myDivision(kind);
       if (division === null) return NO_DIVISION;
-      const joining = joiners.filter((j) => j.divisionId === division && edits.joined[j.applicationId] === undefined);
+      const joining = joiners.filter((j) => j.divisionId === division && j.joinedIn === null);
       return divisionDirectory(
         team,
         org,
         division,
         self,
-        joining.map(({ applicationId, name, position }) => ({ applicationId, name, position })),
+        joining.map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived })),
       );
     },
     alumni: async () => alumniDirectory(canReach(kind, "alumni") ? editedAlumni(edits) : []),
     teamTree: async () =>
       buildTeamTree(canReach(kind, "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
-    teamWrites: writesFor(kind, edits, save, joiners),
+    teamWrites: writesFor(kind, edits, save, joiners, move),
   };
 }

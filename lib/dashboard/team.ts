@@ -116,6 +116,8 @@ export type Joining = {
   readonly name: string;
   /** The position they were accepted for: "Mission Analyst". */
   readonly position: string;
+  /** "The signed NDA arrived" is ticked on the application: Confirm join waits for it. */
+  readonly ndaArrived: boolean;
 };
 
 /** The head of the division's department: who the lead tells about a promotion (board 59e). */

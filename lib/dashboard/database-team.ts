@@ -5,14 +5,16 @@ import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { applications, applyPositions, members, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import type { TeamWrites } from "./data";
+import { DashboardRefused, type TeamWrites } from "./data";
+import { moveApplication } from "./database-recruitment";
 import type { DashboardIdentity } from "./database";
 import type { Departure, EditableRole, Joining, MemberEdit, PromoteMode } from "./team";
 import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
 // to 59e, issue #172): who is joining the lead's division, and the member
-// panel's Save, Promote, Move to alumni and Confirm join. Every write checks
+// panel's Save, Promote, Move to alumni and Confirm join (the Applications
+// page's own move, ./database-recruitment.ts). Every write checks
 // on the server that the person is the viewer's to change, runs through the
 // audit helpers (.patterns/audited-mutations.md), and drops the cached
 // roster so the Team pages read the change.
@@ -29,7 +31,8 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 
 /**
  * Accepted applicants to the division's positions who are not members yet
- * (board 59). The application stays accepted; Confirm join makes them a member.
+ * (board 59). The application stays accepted; Confirm join, once the signed
+ * NDA arrived, makes them a member.
  */
 export async function readJoining(divisionId: number): Promise<Joining[]> {
   const rows = await getDb()
@@ -39,6 +42,7 @@ export async function readJoining(divisionId: number): Promise<Joining[]> {
       last_name: users.lastName,
       email: users.email,
       position: applyPositions.title,
+      nda_arrived_at: applications.ndaArrivedAt,
     })
     .from(applications)
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
@@ -52,7 +56,12 @@ export async function readJoining(divisionId: number): Promise<Joining[]> {
       ),
     )
     .orderBy(applications.appliedAt);
-  return rows.map((r) => ({ applicationId: r.application_id, name: nameOf(r), position: r.position ?? "a position" }));
+  return rows.map((r) => ({
+    applicationId: r.application_id,
+    name: nameOf(r),
+    position: r.position ?? "a position",
+    ndaArrived: r.nda_arrived_at !== null,
+  }));
 }
 
 type ActiveRole = { id: number; division_id: number | null; type: "president" | "head" | "lead" | "core" | null };
@@ -136,53 +145,27 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
 }
 
 /**
- * The accepted applicant becomes a member of the position's division: a
- * member row with the lead as the one who confirmed the NDA, linked to their
- * account, and a member role titled with the position. One statement, so
- * nothing is written unless the account is still not a member.
+ * Confirm join from the Members page's banner (board 59) is the Applications
+ * page's Confirm join (58h): the same move, through the same rule, so it waits
+ * for the NDA tick, marks the application joined and never gives someone
+ * already on the team a second role. Only for the lead's own division.
  */
 async function confirmJoin(identity: DashboardIdentity, applicationId: number): Promise<boolean> {
   const division = leadDivisionId(identity);
   if (division === null || identity.memberId === null) return false;
   const [row] = await getDb()
-    .select({ user_id: applications.userId, title: applyPositions.title, first_name: users.firstName, last_name: users.lastName, email: users.email })
+    .select({ id: applications.id })
     .from(applications)
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .innerJoin(users, eq(users.id, applications.userId))
-    .where(
-      and(
-        eq(applications.id, applicationId),
-        eq(applications.status, "accepted"),
-        eq(applyPositions.divisionId, division),
-        isNull(users.member),
-      ),
-    )
+    .where(and(eq(applications.id, applicationId), eq(applyPositions.divisionId, division)))
     .limit(1);
-  if (!row || row.user_id === null) return false;
-  const name = nameOf(row);
-  const confirmedBy = identity.memberId;
-  const result = await runAuditQuery((db) =>
-    db.execute(sql`
-      with joiner as (
-        insert into ${members} (nda_name, nda_confirmed_by)
-        select ${name}, ${confirmedBy}
-        where exists (select 1 from ${users} where id = ${row.user_id} and member is null)
-        returning member_id
-      ),
-      linked as (
-        update ${users} set member = (select member_id from joiner)
-        where id = ${row.user_id} and exists (select 1 from joiner)
-        returning member
-      ),
-      placed as (
-        insert into ${roles} (member_id, division_id, title, type)
-        select member_id, ${division}, ${row.title ?? ""}, 'core' from joiner
-        returning id
-      )
-      select member_id from joiner
-    `),
-  );
-  return result.rows.length > 0 && done();
+  if (!row) return false;
+  try {
+    return (await moveApplication(identity, applicationId, { kind: "confirm-join" })).ok;
+  } catch (error) {
+    if (error instanceof DashboardRefused) return false;
+    throw error;
+  }
 }
 
 /** The Members page's writes on the database. */
