@@ -322,8 +322,9 @@ async function readMembersWithoutPhoto(divisionIds: number[]): Promise<string[]>
 
 /**
  * Board 56: the division lead's figures, attention, interviews and activity,
- * scoped to their division. The database holds no interview times and no
- * activity feed yet, so both read empty here.
+ * scoped to their division. Interview times (`interview_slots`, #169) are
+ * not read here yet, and the database holds no activity feed, so both read
+ * empty here.
  */
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
