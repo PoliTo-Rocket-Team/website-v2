@@ -78,7 +78,7 @@ test("a move that leaves the state as it was reports no change, so a data source
 test("each move is legal only from the stages the flow allows", () => {
   assert.deepEqual(legalFrom({ kind: "offer-interview", slots: [thu] }), ["new", "in-review", "interview"]);
   assert.deepEqual(legalFrom({ kind: "book", start: thu.start }), ["interview"]);
-  assert.deepEqual(legalFrom({ kind: "accept" }), ["in-review", "interview"]);
+  assert.deepEqual(legalFrom({ kind: "accept" }), ["interview"]);
   assert.deepEqual(legalFrom({ kind: "reject" }), ["new", "in-review", "interview", "accepted"]);
   assert.deepEqual(legalFrom({ kind: "set-nda", arrived: true }), ["accepted"]);
   assert.deepEqual(legalFrom({ kind: "withdraw" }), ["new", "in-review", "interview", "accepted"]);
@@ -106,6 +106,13 @@ test("Accept only marks the application accepted: no one joins the team", () => 
   assert.ok(result.ok);
   assert.equal(result.joinsTeam, false);
   assert.deepEqual(result.state, { stage: "accepted", acceptedAt: now.toISOString(), ndaArrived: false });
+});
+
+test("Accept never skips the interview: from In review it is refused and the state stays as it was", () => {
+  const before = { stage: "in-review" } as const;
+  const result = applyMove(before, { kind: "accept" }, now);
+  assert.deepEqual(result, { ok: false, reason: "Only an application at interview can be accepted." });
+  assert.deepEqual(before, { stage: "in-review" });
 });
 
 test("after Accept the outlined button reads Withdraw acceptance, and it rejects", () => {

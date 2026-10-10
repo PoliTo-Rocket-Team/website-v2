@@ -196,9 +196,8 @@ function nextState(state: ApplicationState, move: ApplicationMove, now: Date): N
     }
 
     case "accept":
-      if (state.stage !== "in-review" && state.stage !== "interview") {
-        return illegal(`An application that is ${STAGE_LABELS[state.stage].toLowerCase()} cannot be accepted.`);
-      }
+      // Every application goes Received, In review, Interview, then Decision: Accept never skips the interview.
+      if (state.stage !== "interview") return illegal("Only an application at interview can be accepted.");
       return moved({ stage: "accepted", acceptedAt: at, ndaArrived: false });
 
     case "reject":
