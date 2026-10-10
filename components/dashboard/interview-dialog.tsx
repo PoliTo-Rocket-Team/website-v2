@@ -137,7 +137,7 @@ function Picker({
 
       <div className="mt-6 flex items-center justify-between gap-3">
         <p className="text-[14px]">
-          <span className="font-semibold">1</span> <span className="font-medium">Pick the times you can meet</span>{" "}
+          <span className="font-semibold">1.</span> <span className="font-medium">Pick the times you can meet</span>{" "}
           <span className="text-prt-muted">
             {first} picks one
           </span>
@@ -202,7 +202,7 @@ function Picker({
       <section className="mt-5 rounded-xl border border-accent/40 bg-accent/[0.06] px-4 py-4">
         <h3 className="flex items-center gap-2.5 text-[14px] font-semibold">
           <Mail aria-hidden className="h-4 w-4 text-accent" strokeWidth={1.75} />
-          <span>2</span> Email {first} yourself
+          <span>2.</span> Email {first} yourself
         </h3>
         <p className="mt-2.5 text-[13px] leading-relaxed text-text-2">
           {mode === "offer"
