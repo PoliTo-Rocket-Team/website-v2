@@ -45,4 +45,4 @@ Followed today: `lib/auth.ts` configures only `socialProviders.google`, and no c
 
 ## Records
 
-no vocabulary impact. The "Better Auth user" row in [.glossary/TERMS.md](../.glossary/TERMS.md) is corrected to Google-only sign-in.
+No new term. The "Better Auth user" row in [.glossary/TERMS.md](../.glossary/TERMS.md) is corrected to Google-only sign-in.
