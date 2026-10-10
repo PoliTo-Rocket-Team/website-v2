@@ -1,4 +1,4 @@
-import type { Recruitment } from "@/lib/apply/positions";
+import { positionCode, type Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
@@ -22,7 +22,7 @@ import {
 } from "@/lib/dashboard/overview";
 import { divisionIdOf, type Departure } from "@/lib/dashboard/team";
 import { applyMove, type LeadMove } from "@/lib/dashboard/application-flow";
-import { checkNewPosition, newPositionCode, type DivisionChoice } from "@/lib/dashboard/new-position";
+import { checkNewPosition, checkPositionContent, newPositionCode, type DivisionChoice, type PositionContent } from "@/lib/dashboard/new-position";
 import {
   ago,
   appliedLabels,
@@ -37,8 +37,8 @@ import {
 } from "@/lib/dashboard/recruitment";
 import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
-import { departmentCode, divisionLabel } from "./apply";
-import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
+import { departmentCode, divisionLabel, positionText } from "./apply";
+import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
 import {
   dummyCancelOrder,
@@ -98,7 +98,41 @@ type Team = {
   readonly recruitmentOpen: boolean;
   readonly positions: readonly DummyPosition[];
   readonly applications: readonly DummyApplication[];
+  /** What each role says, as the arrays wrote it or the test developer rewrote it. */
+  readonly content: ReadonlyMap<number, PositionContent>;
 };
+
+/**
+ * What a role in the arrays says before any edit: the public pages' text
+ * (./apply.ts) and the role's own question and letter setting. A role the
+ * test developer posted says what they wrote, kept in the state cookie.
+ */
+function baseContent(p: DummyPosition): PositionContent | null {
+  const text = positionText[p.id as keyof typeof positionText];
+  if (!text) return null;
+  return {
+    title: p.title,
+    description: text.description,
+    required: [...text.required],
+    desirable: [...text.desirable],
+    questions: p.question ? [p.question] : [],
+    motivationLetter: p.requiresMotivationLetter,
+  };
+}
+
+/** A posted role whose text the cookie no longer holds still has its title and letter setting. */
+function contentOf(p: DummyPosition, team: Team): PositionContent {
+  return (
+    team.content.get(p.id) ?? {
+      title: p.title,
+      description: "",
+      required: [],
+      desirable: [],
+      questions: [],
+      motivationLetter: p.requiresMotivationLetter,
+    }
+  );
+}
 
 /** A role the test developer posted, as the arrays hold a position. */
 function postedPosition(p: DummyState["newPositions"][number]): DummyPosition {
@@ -116,10 +150,23 @@ function postedPosition(p: DummyState["newPositions"][number]): DummyPosition {
 
 function teamOf({ isOpen }: Recruitment, state: DummyState): Team {
   const positions: DummyPosition[] = [...basePositions, ...state.newPositions.map(postedPosition)];
+  const edits = new Map(state.positionEdits.map((e) => [e.id, e.content]));
+  const content = new Map<number, PositionContent>();
+  for (const p of positions) {
+    const said = edits.get(p.id) ?? baseContent(p);
+    if (said) content.set(p.id, said);
+  }
   return {
     recruitmentOpen: isOpen,
-    positions: positions.map((p) => ({ ...p, open: state.positionOpen[p.id] ?? p.open })),
+    positions: positions.map((p) => {
+      const edit = edits.get(p.id);
+      const edited = edit
+        ? { title: edit.title, requiresMotivationLetter: edit.motivationLetter, question: edit.questions[0] ?? "", updatedAt: DUMMY_NOW }
+        : {};
+      return { ...p, ...edited, open: state.positionOpen[p.id] ?? p.open };
+    }),
     applications: baseApplications.map((a) => ({ ...a, state: state.applications[a.id] ?? a.state })),
+    content,
   };
 }
 
@@ -473,6 +520,12 @@ function positionRow(p: DummyPosition, team: Team): PositionRow {
     newApplications: received.filter((a) => a.state.stage === "new").length,
     quiet: quietNote(quietDays(p.open, lastActivity(p, team), NOW)),
     updated: ago(new Date(p.updatedAt), NOW),
+    code: positionCode({
+      id: p.id,
+      dept_code: departmentCode[divisionOf(p.divisionId).departmentId],
+      div_code: divisionLabel[p.divisionId as keyof typeof divisionLabel].code,
+    }),
+    content: contentOf(p, team),
   };
 }
 
@@ -687,11 +740,38 @@ export function dummyDashboardData(
       if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
       const id = nextPositionId(team);
       const { position } = checked;
-      await change({
-        kind: "new-position",
-        position: { id, title: position.title, divisionId: division.id, open: position.open, motivationLetter: position.motivationLetter, createdAt: NOW.toISOString() },
-      });
+      const posted = { id, title: position.title, divisionId: division.id, open: position.open, motivationLetter: position.motivationLetter, createdAt: NOW.toISOString() };
+      const content: PositionContent = {
+        title: position.title,
+        description: position.description,
+        required: position.required,
+        desirable: position.desirable,
+        questions: position.questions,
+        motivationLetter: position.motivationLetter,
+      };
+      const next = applyDummyChange(changes.current, { kind: "new-position", position: posted, content });
+      // Text too long for the cookie: the role is still posted, with its title and letter setting.
+      await changes.save(fitsDummyCookie(next) ? next : { ...next, positionEdits: next.positionEdits.filter((e) => e.id !== id) });
       return written({ id, code: newPositionCode(division, id) });
+    },
+
+    async editPosition(id, input) {
+      const position = positionsFor(kind, team).find((p) => p.id === id);
+      if (!position) throw new DashboardRefused(`position ${id}`);
+      const checked = checkPositionContent(input);
+      if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
+      const base = basePositions.find((p) => p.id === id);
+      const next = applyDummyChange(changes.current, {
+        kind: "position-edit",
+        id,
+        content: checked.position,
+        initial: base ? baseContent(base) : null,
+      });
+      if (!fitsDummyCookie(next)) {
+        return refused("A preview keeps this text in a browser cookie, and it is too long for it. Shorten the description or the lists.");
+      }
+      await changes.save(next);
+      return written(null);
     },
 
     moveApplication,

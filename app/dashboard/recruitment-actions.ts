@@ -54,6 +54,12 @@ export async function createPosition(input: unknown): Promise<WriteResult<Create
   return answer((data) => data.createPosition(input));
 }
 
+/** Edit position (issue #207): the drawer's fields for a saved role, checked by the data interface. */
+export async function editPosition(positionId: number, input: unknown): Promise<WriteResult<null>> {
+  if (!isId(positionId)) return refused("That change is not valid.");
+  return answer((data) => data.editPosition(positionId, input));
+}
+
 /** The site-wide switch is #121's: its own write answers a refusal rather than throwing one. */
 export async function setRecruitment(open: boolean): Promise<WriteResult<null>> {
   if (typeof open !== "boolean") return refused("That change is not valid.");

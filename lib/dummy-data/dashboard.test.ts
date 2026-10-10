@@ -120,6 +120,33 @@ test("a new position is made in the lead's division, coded from it, closed unles
   assert.equal(listed?.open, false);
 });
 
+test("Edit position opens on the role's saved text, and a save shows on the next read (issue #207)", async () => {
+  const lead = session("division-lead");
+  const before = (await lead.data.positions()).positions.find((p) => p.title === "Mission Analyst")!;
+  assert.equal(before.code, "AER-MSA-001");
+  assert.ok(before.content.description.length > 0);
+  assert.ok(before.content.required.length > 0);
+
+  const edit = { ...before.content, title: "Mission Analyst Lead", required: ["MATLAB"], motivationLetter: false };
+  assert.deepEqual(await lead.data.editPosition(before.id, edit), { ok: true, value: null });
+  const after = (await session("division-lead", lead.saved()).data.positions()).positions.find((p) => p.id === before.id)!;
+  assert.equal(after.title, "Mission Analyst Lead");
+  assert.deepEqual(after.content, { ...edit, required: ["MATLAB"] });
+  assert.equal(after.open, before.open);
+
+  const refusedEdit = await lead.data.editPosition(before.id, { ...edit, description: " " });
+  assert.equal(refusedEdit.ok, false);
+});
+
+test("a lead cannot edit a role outside their division", async () => {
+  const elsewhere = (await session("operations-lead").data.positions()).positions.find(
+    (p) => p.division !== "Mission Analysis Division",
+  )!;
+  const lead = session("division-lead");
+  await assert.rejects(lead.data.editPosition(elsewhere.id, elsewhere.content), DashboardRefused);
+  assert.deepEqual(lead.saved(), EMPTY_DUMMY_STATE);
+});
+
 test("a new position in a division the lead does not lead is refused", async () => {
   const lead = session("division-lead");
   await assert.rejects(
