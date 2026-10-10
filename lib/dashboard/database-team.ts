@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { applications, applyPositions, members, roles, scopes, users } from "@/db/schema";
+import { applications, applyPositions, members, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import type { TeamWrites } from "./data";
 import type { DashboardIdentity } from "./database";
@@ -119,17 +119,18 @@ async function promote(identity: DashboardIdentity, personId: number, mode: Prom
   return done();
 }
 
-/** Their roles end today and every access grant goes; the account and the member row stay. */
+/**
+ * Their roles end today and every access grant goes; the account and the
+ * member row stay. Why they left goes to team_leaves, like a self-leave.
+ */
 async function moveToAlumni(identity: DashboardIdentity, personId: number, departure: Departure): Promise<boolean> {
   if ((await rolesTheViewerChanges(identity, personId)) === null) return false;
   const today = new Date().toISOString().slice(0, 10);
   await runAuditBatch((db) => [
     db.update(roles).set({ leavedAt: today }).where(and(eq(roles.memberId, personId), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, personId)),
-    db
-      .update(members)
-      .set({ teamFrom: departure.from, teamTo: departure.to, leaveReason: departure.reason })
-      .where(eq(members.memberId, personId)),
+    db.update(members).set({ teamFrom: departure.from, teamTo: departure.to }).where(eq(members.memberId, personId)),
+    db.insert(teamLeaves).values({ memberId: personId, reason: departure.reason }),
   ]);
   return done();
 }

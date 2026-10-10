@@ -831,12 +831,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
-        },
-        "leave_reason": {
-          "name": "leave_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},

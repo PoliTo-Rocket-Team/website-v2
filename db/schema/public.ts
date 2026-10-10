@@ -24,7 +24,7 @@ export const positionTypeEnum = pgEnum("position_type", [
   "core",
 ]);
 
-// Dashboard v2 orders (issue #172, drizzle/0008): the team leader can send a
+// Dashboard v2 orders (issue #172, drizzle/0010): the team leader can send a
 // request back for changes, and the lead can cancel one.
 export const orderStatusEnum = pgEnum("status", [
   "pending",
@@ -81,10 +81,9 @@ export const members = pgTable("members", {
   ndaConfirmedBy: integer("nda_confirmed_by"),
   picture: text("picture"),
   // Set when the person is moved to alumni (issue #172): the years they were
-  // on the team as their lead gave them, and why they left, when given.
+  // on the team as their lead gave them. Why they left goes to team_leaves.
   teamFrom: integer("team_from"),
   teamTo: integer("team_to"),
-  leaveReason: text("leave_reason"),
 });
 
 export const users = pgTable("users", {
