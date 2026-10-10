@@ -1,62 +1,95 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Image from "next/image";
-import Link from "next/link";
+import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Menu } from "lucide-react";
-import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import type { NavSection } from "@/lib/dashboard/access";
+import { Menu, X } from "lucide-react";
+import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { pageTitleFor, type MenuPage, type NavSection } from "@/lib/dashboard/access";
 import type { DashboardViewer } from "@/lib/dashboard/viewer";
+import { Avatar } from "./avatar";
 import { Sidebar } from "./sidebar";
+import { TopBarSlot } from "./top-bar-slot";
+import { UserSheet } from "./user-card";
 
-// The dashboard frame (boards 40 to 46): a 248px sidebar fixed on the left
-// and the page to its right, 40px in. Below md the sidebar becomes a drawer
-// from the left under a 56px bar with the mark and a menu button. The drawer
-// is the repo's Radix dialog, built on the primitive as nav-menu.tsx is: it
-// slides in only under motion-safe and closes at once (issues #79, #80).
+const ICON_BUTTON =
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white-10";
+
+// The dashboard frame (boards 51b, 52, 56): a 248px sidebar fixed on the left
+// and the page to its right, 40px in. Below md (boards 50m-b, 52m, 56m) a 56px
+// top bar holds a menu button, the page's title, the page's main action where
+// it puts one there (boards 60m, 61m) and the viewer's avatar. The
+// menu button opens the sidebar as a 300px sheet from the left; the avatar
+// opens the user menu as a bottom sheet. Both are the repo's Radix dialog,
+// built on the primitive as nav-menu.tsx is: they slide in only under
+// motion-safe and close at once (issues #79, #80).
 export function DashboardShell({
   viewer,
   sections,
+  menuPage,
   children,
 }: {
   viewer: DashboardViewer;
   sections: readonly NavSection[];
+  menuPage: MenuPage | null;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
+  const pathname = usePathname();
+  const title = pageTitleFor(pathname ?? "/dashboard") ?? "Dashboard";
   return (
     <div className="min-h-svh bg-ground text-prt-text">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-hairline bg-panel/50 md:block">
-        <Sidebar viewer={viewer} sections={sections} />
+        <Sidebar viewer={viewer} sections={sections} menuPage={menuPage} userMenu="dropdown" />
       </aside>
 
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-hairline bg-ground/90 px-5 backdrop-blur md:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2.5 text-[15px] font-semibold">
-          <Image src="/brand/prt-mark-white.svg" alt="" width={444} height={220} className="h-7 w-auto" />
-          Dashboard
-        </Link>
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-1.5 border-b border-hairline bg-ground/90 pl-2 pr-4 backdrop-blur md:hidden">
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger
-            aria-label="Open menu"
-            className="-mr-2 flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white-10"
-          >
-            <Menu aria-hidden className="h-5 w-5" strokeWidth={2} />
+          <DialogTrigger aria-label="Open menu" className={ICON_BUTTON}>
+            <Menu aria-hidden className="h-[22px] w-[22px]" strokeWidth={2} />
           </DialogTrigger>
           <DialogPortal>
             <DialogOverlay className="bg-ground/55 backdrop-blur-[3px]" />
             <DialogPrimitive.Content
               aria-describedby={undefined}
-              className="fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] border-r border-hairline bg-ground focus:outline-none motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-left"
+              className="fixed inset-y-0 left-0 z-50 w-[300px] max-w-[85vw] border-r border-hairline bg-ground focus:outline-none motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-left"
             >
               <DialogTitle className="sr-only">Dashboard menu</DialogTitle>
-              <Sidebar viewer={viewer} sections={sections} onNavigate={() => setOpen(false)} />
+              <Sidebar
+                viewer={viewer}
+                sections={sections}
+                menuPage={menuPage}
+                userMenu="sheet"
+                onNavigate={() => setOpen(false)}
+                close={
+                  <DialogClose aria-label="Close menu" className={`${ICON_BUTTON} -mr-1.5 text-prt-muted hover:text-prt-text`}>
+                    <X aria-hidden className="h-5 w-5" strokeWidth={1.75} />
+                  </DialogClose>
+                }
+              />
             </DialogPrimitive.Content>
           </DialogPortal>
         </Dialog>
+
+        <p className="min-w-0 flex-1 truncate text-[17px] font-semibold">{title}</p>
+
+        <div ref={setActionSlot} className="mr-1.5 flex shrink-0 items-center empty:hidden" />
+
+        <UserSheet viewer={viewer} menuPage={menuPage}>
+          <button
+            type="button"
+            aria-label={`${viewer.name}, ${viewer.role}. Open account menu`}
+            className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <Avatar name={viewer.name} accent />
+          </button>
+        </UserSheet>
       </header>
 
-      <main className="px-5 pb-12 pt-6 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">{children}</main>
+      <main className="px-4 pb-12 pt-4 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">
+        <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
+      </main>
     </div>
   );
 }

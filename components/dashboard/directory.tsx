@@ -6,21 +6,11 @@ import { Check, ChevronDown, Search } from "lucide-react";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { pagerItems, type TeamRole } from "@/lib/dashboard/team";
 
-// The parts the Members and Alumni pages share (boards 46, 46c, 59): the
-// page header, the tab strip with counts (a row of chips on a phone, board
-// 59m), the department filter, search, the role pill and the pager. Props
-// in, nothing fetched.
+// The parts the Members and Alumni pages share (boards 46, 46c, 59): the tab
+// strip with counts (a row of chips on a phone, board 59m), the department
+// filter, search, the role pill and the pager. Props in, nothing fetched.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-
-export function PageHeader({ title, detail }: { title: string; detail: string }) {
-  return (
-    <header>
-      <h1 className="text-[24px] font-bold leading-tight tracking-[-0.01em] md:text-[28px]">{title}</h1>
-      <p className="mt-1 text-[14px] text-prt-muted">{detail}</p>
-    </header>
-  );
-}
 
 /** The controls row: filters on the left, search on the right; stacked on phones. */
 export function Controls({ children, search }: { children: ReactNode; search: ReactNode }) {

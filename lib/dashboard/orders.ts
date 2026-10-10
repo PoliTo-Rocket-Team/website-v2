@@ -72,6 +72,12 @@ export function orderTotal(order: Pick<Order, "unitPrice" | "quantity" | "shippi
   return order.unitPrice * order.quantity + (order.shipping ?? 0);
 }
 
+/** The requests still waiting for the team leader, and what they add up to (the lead Overview, board 56). */
+export function waitingOrders(orders: readonly Order[]): { count: number; total: Cents } {
+  const waiting = orders.filter((o) => o.status === "waiting");
+  return { count: waiting.length, total: waiting.reduce((sum, o) => sum + orderTotal(o), 0) };
+}
+
 const euro = new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" });
 
 /** "€2,140.85" */

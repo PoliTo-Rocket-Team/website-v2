@@ -66,7 +66,7 @@ export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; wri
       <PageHeader
         title="Orders"
         intro="Ask the team leader to place big orders the team card can't cover."
-        introOnPhone={false}
+        phone="bar"
         action={
           <button type="button" onClick={() => setOpen({ kind: "new" })} className={PRIMARY_PILL}>
             <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
@@ -79,7 +79,7 @@ export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; wri
       <div
         role="tablist"
         aria-label="Show orders"
-        className="mt-5 flex max-w-full gap-1.5 overflow-x-auto md:inline-flex md:gap-1 md:rounded-[10px] md:border md:border-hairline md:p-1"
+        className="mt-5 flex max-w-full max-md:mt-0 gap-1.5 overflow-x-auto md:inline-flex md:gap-1 md:rounded-[10px] md:border md:border-hairline md:p-1"
       >
         {tabs.map((t) => (
           <button

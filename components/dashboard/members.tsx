@@ -18,9 +18,10 @@ import {
 } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
-import { Controls, DepartmentFilter, PageHeader, Pager, RolePill, SearchField, TH, Tabs } from "./directory";
+import { Controls, DepartmentFilter, Pager, RolePill, SearchField, TH, Tabs } from "./directory";
 import { DrawerPage } from "./drawer";
 import { MemberDrawer } from "./member-drawer";
+import { PageHeader } from "./page-header";
 import { PANEL } from "./panel";
 
 // The Members page. The operations lead sees the whole team with the
@@ -56,15 +57,16 @@ export function MembersView({ directory, editable }: { directory: MemberDirector
     <DrawerPage drawerOpen={open !== null}>
       <PageHeader
         title="Members"
-        detail={
+        intro={
           team
             ? "Everyone on the team this year. Changes show on the public Team page."
             : `${directory.division} · ${people(directory.rows.length)}`
         }
+        phone={team ? "full" : "bar"}
       />
 
       {directory.scope === "division" && directory.joining.length > 0 && (
-        <ul className="mt-6 flex flex-col gap-2.5">
+        <ul className="mt-6 flex flex-col gap-2.5 max-md:mt-0">
           {directory.joining.map((joining) => (
             <JoiningBanner key={joining.applicationId} joining={joining} division={directory.division} editable={editable} />
           ))}

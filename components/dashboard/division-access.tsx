@@ -75,7 +75,7 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
       <PageHeader
         title="Access"
         intro="Share what you can do with people in your division. You can only give access you have."
-        introOnPhone={false}
+        phone="bar"
         action={
           access.held.length > 0 && access.people.length > 0 ? (
             <button type="button" onClick={() => setOpen(true)} className={PRIMARY_PILL}>
@@ -89,7 +89,7 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
       />
 
       {access.held.length > 0 && (
-        <section className="mt-6">
+        <section className="mt-6 max-md:mt-0">
           <h2 className={EYEBROW}>Your access</h2>
           <ul className="mt-2.5 grid grid-cols-3 gap-2 md:hidden">
             {access.held.map((h) => (
