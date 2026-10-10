@@ -119,7 +119,6 @@ An admin column comes later. **Planned**, no issue yet.
 - The statuses are Waiting, Approved, Changes requested and Rejected.
 - On Changes requested, the team leader's reason shows, with "Edit and send again".
 - A lead can cancel a request while it is waiting.
-  - **Gap:** the code also allows cancel on Changes requested. Tracked in #192.
 
 ## 5. Data and testing
 
