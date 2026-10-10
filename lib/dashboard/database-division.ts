@@ -432,6 +432,9 @@ async function placeOrder(
   }
 }
 
+/** A guarded order write that changed no row: the request moved on since the page read it. */
+const ORDER_CHANGED = "This request changed. Reload the page.";
+
 /** The request as stored, when it is one of the lead's division's and still on the page. */
 async function divisionOrder(identity: DashboardIdentity, orderId: number): Promise<{ divisionId: number; order: Order } | string> {
   const division = await orderingDivision(identity);
@@ -454,9 +457,10 @@ async function editOrder(
 
   const order = checked.value;
   const pathname = await storeQuote(quote);
+  let changed: { id: number }[];
   try {
     // Back to waiting for the team leader, with their earlier answer cleared.
-    await runAuditQuery((db) =>
+    changed = await runAuditQuery((db) =>
       db
         .update(orders)
         .set({
@@ -471,11 +475,17 @@ async function editOrder(
           reviewedAt: null,
           ...(pathname === null ? {} : { quoteName: pathname }),
         })
-        .where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "changes_requested"]))),
+        .where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "changes_requested"])))
+        .returning({ id: orders.id }),
     );
   } catch (error) {
     if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
     throw error;
+  }
+  // The team leader answered between the read and the write: nothing saved, so the new quote points nowhere.
+  if (changed.length === 0) {
+    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    return refused(ORDER_CHANGED);
   }
   const [edited] = (await readOrderRows(found.divisionId, orderId)).flatMap(orderOf);
   return edited === undefined ? refused("The team leader has answered this request.") : written(edited);
@@ -485,13 +495,14 @@ async function cancelOrder(identity: DashboardIdentity, orderId: number): Promis
   const found = await divisionOrder(identity, orderId);
   if (typeof found === "string") return refused(found);
   if (!orderActions(found.order.status, "edit").cancel) return refused("The team leader has answered this request.");
-  await runAuditQuery((db) =>
+  const changed = await runAuditQuery((db) =>
     db
       .update(orders)
       .set({ status: "cancelled" })
-      .where(and(eq(orders.id, orderId), eq(orders.status, "pending"))),
+      .where(and(eq(orders.id, orderId), eq(orders.status, "pending")))
+      .returning({ id: orders.id }),
   );
-  return written(null);
+  return changed.length === 0 ? refused(ORDER_CHANGED) : written(null);
 }
 
 /** The Access and Orders methods of the database side of the data interface. */

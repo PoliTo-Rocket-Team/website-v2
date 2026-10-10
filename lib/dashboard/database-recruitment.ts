@@ -24,11 +24,13 @@ import {
   type JoinChange,
   type LeadMove,
   type Membership,
+  type OfferedSlots,
 } from "./application-flow";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
+import { positionCode } from "@/lib/apply/positions";
 import { interviewStateOf, type SlotRow } from "./interview-slots";
-import { checkNewPosition, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
+import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
   appliedLabels,
@@ -70,10 +72,17 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
       title: applyPositions.title,
       status: applyPositions.status,
       created_at: applyPositions.createdAt,
+      description: applyPositions.description,
+      required: applyPositions.requiredSkills,
+      desirable: applyPositions.desirableSkills,
+      questions: applyPositions.customQuestions,
+      motivation_letter: applyPositions.requiresMotivationLetter,
       division_id: divisions.id,
       division_name: divisions.name,
+      div_code: divisions.code,
       dept_id: departments.id,
       dept_name: departments.name,
+      dept_code: departments.code,
     })
     .from(applyPositions)
     .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
@@ -108,6 +117,15 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
       quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
       // The table has no edit time; a role's creation is the last change it records.
       updated: ago(created, now),
+      code: positionCode({ id: r.id, dept_code: r.dept_code ?? "", div_code: r.div_code ?? "" }),
+      content: {
+        title: r.title ?? "",
+        description: r.description ?? "",
+        required: r.required ?? [],
+        desirable: r.desirable ?? [],
+        questions: r.questions ?? [],
+        motivationLetter: r.motivation_letter,
+      },
     };
   });
 }
@@ -191,6 +209,29 @@ async function createPosition(identity: Identity, input: unknown): Promise<Write
   updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
   return written({ id: row.id, code: newPositionCode(division, row.id) });
+}
+
+async function editPosition(identity: Identity, positionId: number, input: unknown): Promise<WriteResult<null>> {
+  if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
+  const checked = checkPositionContent(input);
+  if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
+  const { position } = checked;
+  await runAuditQuery((db) =>
+    db
+      .update(applyPositions)
+      .set({
+        title: position.title,
+        description: position.description,
+        requiredSkills: [...position.required],
+        desirableSkills: [...position.desirable],
+        customQuestions: [...position.questions],
+        requiresMotivationLetter: position.motivationLetter,
+      })
+      .where(eq(applyPositions.id, positionId)),
+  );
+  updateTag(POSITIONS_CACHE_TAG);
+  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  return written(null);
 }
 
 // Applications ----------------------------------------------------------------
@@ -450,24 +491,11 @@ export async function moveApplication(identity: Identity, applicationId: number,
       // Withdrawing is the applicant's (issue #169), never a lead move.
       return refused("Only the applicant can withdraw an application.");
 
-    case "interview": {
-      const offered = after.offered;
-      await runAuditBatch((db) => [
-        db.delete(interviewSlots).where(eq(interviewSlots.applicationId, row.id)),
-        db.insert(interviewSlots).values(
-          offered.map((s) => ({
-            applicationId: row.id,
-            startsAt: s.start,
-            endsAt: s.end,
-          })),
-        ),
-        db.update(applications).set({ status: "interview" }).where(unchanged),
-      ]);
-      return written(null);
-    }
+    case "interview":
+      return (await offerSlots(row.id, row.status, after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
 
-    case "accepted":
-      await runAuditQuery((db) =>
+    case "accepted": {
+      const changed = await runAuditQuery((db) =>
         db
           .update(applications)
           .set({
@@ -475,24 +503,65 @@ export async function moveApplication(identity: Identity, applicationId: number,
             acceptedAt: after.acceptedAt,
             ndaArrivedAt: after.ndaArrived ? (row.nda_arrived_at ?? now.toISOString()) : null,
           })
-          .where(unchanged),
+          .where(unchanged)
+          .returning({ id: applications.id }),
       );
-      return written(null);
+      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+    }
 
     case "joined": {
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
       const change = joinChange(await membershipOf(row.id));
-      if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused("This application changed. Reload the page.");
+      if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused(APPLICATION_CHANGED);
       updateTag(TEAM_ROSTER_CACHE_TAG);
       return written(null);
     }
 
     case "new":
     case "in-review":
-    case "rejected":
-      await runAuditQuery((db) => db.update(applications).set({ status: statusFor[after.stage] }).where(unchanged));
-      return written(null);
+    case "rejected": {
+      const changed = await runAuditQuery((db) =>
+        db.update(applications).set({ status: statusFor[after.stage] }).where(unchanged).returning({ id: applications.id }),
+      );
+      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+    }
   }
+}
+
+/** A guarded application write that changed no row: another lead or the applicant moved it first. */
+const APPLICATION_CHANGED = "This application changed. Reload the page.";
+
+/**
+ * Move to interview (58c) and Change times (58d): the application moves to
+ * Interview and its offered times replace the old ones, in one statement and
+ * only while it is still in the status it was read in and not withdrawn. The
+ * slots are cleared and written only for the row the status update matched,
+ * so a move another lead beat changes no slot. True when the move landed.
+ */
+async function offerSlots(applicationId: number, readStatus: DbStatus, offered: OfferedSlots): Promise<boolean> {
+  const times = sql.join(
+    offered.map((s) => sql`(${s.start}::timestamptz, ${s.end}::timestamptz)`),
+    sql`, `,
+  );
+  const [result] = await runAuditBatch((db) => [
+    db.execute(sql`
+      with moved as (
+        update ${applications} set status = 'interview'
+        where id = ${applicationId} and status = ${readStatus} and withdrawn_at is null
+        returning id
+      ),
+      cleared as (
+        delete from ${interviewSlots} where application_id in (select id from moved)
+      ),
+      added as (
+        insert into ${interviewSlots} (application_id, starts_at, ends_at)
+        select moved.id, offered.starts_at, offered.ends_at
+        from moved cross join (values ${times}) as offered (starts_at, ends_at)
+      )
+      select id from moved
+    `),
+  ]);
+  return result.rows.length > 0;
 }
 
 /** Where the applicant stands with the team: no member row, a member row with no active role, or an active role. */
@@ -574,6 +643,7 @@ export function databaseRecruitmentPages(identity: Identity) {
     applications: () => applicationsPage(identity),
     setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
     createPosition: (input: unknown) => createPosition(identity, input),
+    editPosition: (id: number, input: unknown) => editPosition(identity, id, input),
     moveApplication: (id: number, move: LeadMove) => moveApplication(identity, id, move),
   };
 }

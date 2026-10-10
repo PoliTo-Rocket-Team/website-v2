@@ -85,6 +85,13 @@
       "when": 1791594591071,
       "tag": "0011_lead_recruitment",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791624787184,
+      "tag": "0012_anonymize_deleted_accounts",
+      "breakpoints": true
     }
   ]
 }

@@ -31,5 +31,5 @@ async function LiveApplications({ searchParams }: { searchParams: Promise<{ posi
   const [page, { position }] = await Promise.all([data.applications(), searchParams]);
   const asked = typeof position === "string" ? position : null;
   const initialPosition = page.positions.some((p) => p.ref === asked) ? asked : null;
-  return <ApplicationsView page={page} initialPosition={initialPosition} />;
+  return <ApplicationsView page={page} initialPosition={initialPosition} lead={data.viewer.name} />;
 }

@@ -19,7 +19,8 @@ export const PANEL_DANGER_BUTTON = `inline-flex h-11 items-center justify-center
 // The right-side panel of a dashboard page (Dashboard v2 boards 59b, 60b,
 // 61b, 61c): a title, a scrolling body, and the actions pinned at its foot.
 // From md it slides in from the right over the page, and from xl the page
-// moves left of it (DrawerPage), as the boards show. On a phone it is a full
+// moves left of it (DrawerPage), as the boards show. The page behind is dimmed
+// at every width (issue #203). On a phone it is a full
 // page with a back arrow and the same pinned footer (phone rule, issues #169
 // and #172).
 // Built on the repo's Radix dialog primitive: it slides in only under
@@ -43,7 +44,7 @@ export function SidePanel({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay className="bg-ground/50 xl:bg-transparent" />
+        <DialogOverlay className="bg-ground/50" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           className="fixed inset-0 z-50 flex flex-col bg-ground text-prt-text focus:outline-none md:inset-y-0 md:left-auto md:right-0 md:w-[440px] md:border-l md:border-hairline motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-right"
