@@ -189,7 +189,8 @@ test("a member's Your details save keeps the LinkedIn they just changed and the 
 test("a member who leaves shows in Alumni and comes back as an applicant, still signed in (issue #201)", async () => {
   const { open } = browser();
   const me = (await open("member").myProfile())!;
-  assert.deepEqual(await open("member").leaveTeam("Graduating this term."), { ok: true, value: null });
+  // The write names the page their dashboard now opens on, the one /dashboard would redirect to (issue #227).
+  assert.deepEqual(await open("member").leaveTeam("Graduating this term."), { ok: true, value: "/dashboard/my-applications" });
 
   const { rows } = await open("operations-lead").alumni();
   assert.ok(rows.some((r) => r.name === me.name));

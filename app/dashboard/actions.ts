@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
+import { canReach, type DashboardLanding, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { DashboardData } from "@/lib/dashboard/data";
 import type { YourDetails } from "@/lib/dashboard/details";
 import type { AccessGrant } from "@/lib/dashboard/division-access";
@@ -94,7 +94,7 @@ export async function removePhoto(): Promise<WriteResult<null>> {
   return write("my-profile", (data) => data.setPhoto(null));
 }
 
-export async function leaveTeam(reason: string): Promise<WriteResult<null>> {
+export async function leaveTeam(reason: string): Promise<WriteResult<DashboardLanding>> {
   const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? "")));
   // Off the team, the sidebar and every page change to the applicant's (issue #201).
   if (result.ok) revalidatePath("/dashboard", "layout");

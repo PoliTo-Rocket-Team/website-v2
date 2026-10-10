@@ -1,6 +1,6 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
-import type { NavCounts } from "./access";
+import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, DivisionAccess } from "./division-access";
 import type { DivisionOrders, Order } from "./orders";
 import type { TeamSideOverview } from "./overview";
@@ -121,9 +121,10 @@ export interface DashboardData {
   setPhoto(photo: Upload | null): Promise<WriteResult<null>>;
   /**
    * Board 55b: the member leaves the team at once, with the reason they gave
-   * (may be empty). They show in Alumni and keep their sign-in.
+   * (may be empty). They show in Alumni and keep their sign-in. Answers the
+   * page that now opens their dashboard (landingAfterLeaving, ./access.ts).
    */
-  leaveTeam(reason: string): Promise<WriteResult<null>>;
+  leaveTeam(reason: string): Promise<WriteResult<DashboardLanding>>;
 
   /** Board 51: an applicant's own account. */
   myAccount(): Promise<MyAccount | null>;

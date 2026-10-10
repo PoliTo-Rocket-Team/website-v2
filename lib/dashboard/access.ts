@@ -185,6 +185,18 @@ export function dashboardLandingFor(kind: ViewerKind, hasOwnApplications: boolea
   return kind === "non-member" && !hasOwnApplications ? "/dashboard/my-applications" : null;
 }
 
+/** The page that opens the dashboard for a viewer: their Overview, or the page /dashboard sends them to. */
+export type DashboardLanding = "/dashboard" | "/dashboard/my-applications";
+
+/**
+ * Where someone who just left the team opens the dashboard: as a non-member
+ * (issue #201), straight to the page /dashboard would send them to, so the
+ * move skips the redirect, which shows an empty page while it runs (issue #227).
+ */
+export function landingAfterLeaving(hasOwnApplications: boolean): DashboardLanding {
+  return dashboardLandingFor("non-member", hasOwnApplications) ?? "/dashboard";
+}
+
 /** The page the user menu opens for this viewer: My account for a non-member, My profile for the team. */
 export function userMenuPageFor(kind: ViewerKind): MenuPage | null {
   const page = DASHBOARD_PAGES.find((row) => placeOf(row, kind) === "user-menu");

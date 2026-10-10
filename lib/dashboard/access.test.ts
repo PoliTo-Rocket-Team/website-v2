@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canReach, dashboardLandingFor, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
+import { canReach, dashboardLandingFor, landingAfterLeaving, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
 import type { ViewerKind } from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
@@ -59,6 +59,11 @@ test("/dashboard sends only a non-member who has not applied to My applications"
   for (const kind of ["member", "division-lead", "operations-lead"] as const) {
     assert.equal(dashboardLandingFor(kind, false), null, kind);
   }
+});
+
+test("someone who leaves the team goes straight to where /dashboard would send them as a non-member", () => {
+  assert.equal(landingAfterLeaving(false), "/dashboard/my-applications");
+  assert.equal(landingAfterLeaving(true), "/dashboard");
 });
 
 test("My profile and My account are in the user menu, never the sidebar", () => {

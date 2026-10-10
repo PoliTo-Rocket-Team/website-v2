@@ -21,7 +21,7 @@ import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import { getCurrentUserId } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
-import { canReach, type NavCounts } from "./access";
+import { canReach, landingAfterLeaving, type NavCounts } from "./access";
 import { DashboardRefused, type DashboardData } from "./data";
 import {
   alumniDirectory,
@@ -54,6 +54,7 @@ import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
 import { viewerKindOf, type DashboardViewer, type ViewerKind } from "./viewer";
+import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
 // answers as lib/dummy-data/, read from the database. Reads follow
@@ -549,6 +550,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     role: identity.kind === "non-member" ? "Applicant" : identity.role?.title ?? "Member",
     session: "account",
   };
+  const self = databaseSelfPages(identity);
   return {
     viewer,
     navCounts: () => navCountsOf(identity),
@@ -574,7 +576,12 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
       }),
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),
-    ...databaseSelfPages(identity),
+    ...self,
+    // Their applications stay theirs, so they say where the dashboard opens next (#227).
+    async leaveTeam(reason) {
+      const left = await self.leaveTeam(reason);
+      return left.ok ? written(landingAfterLeaving(await hasOwnApplications(identity))) : left;
+    },
   };
 }
 
