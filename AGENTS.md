@@ -4,14 +4,14 @@ The team's public site and its members' dashboard: one Next.js app (App Router, 
 repo root. Pages live in `app/`, shared components in `components/` (shadcn/ui primitives on Radix
 in `components/ui/`), server helpers in `lib/`, and the Drizzle schema in `db/schema/` with its
 generated migrations in `drizzle/`. Data is Neon Postgres, auth is Better Auth, styling is
-Tailwind 3. Local email goes through Mailpit (`mailpit/`).
+Tailwind 3.
 
 ## Working rules
 
 - Use `pnpm`, and `pnpm exec` / `pnpm dlx` in place of `npx`. The scripts are in
   [package.json](package.json); [README.md](README.md) explains setup.
-- Run locally: copy `.env.example` to `.env`, then `pnpm db:migrate`, `pnpm db:seed`,
-  `pnpm mailpit:start` (needs Docker) and `pnpm dev`. Mailpit's inbox is at http://localhost:8025.
+- Run locally: copy `.env.example` to `.env`, then `pnpm db:migrate`, `pnpm db:seed` and
+  `pnpm dev`.
 - Change the schema in `db/schema/`, then `pnpm db:generate`, read the new SQL in `drizzle/`, and
   `pnpm db:migrate`. Keep generated migrations as generated.
 - The check every change passes is `pnpm exec tsc --noEmit`, the same one CI runs
@@ -85,5 +85,4 @@ Keep each fact in the document that owns it, and link to it from elsewhere.
 | `.decisions/` | Decisions, their rationale and history |
 | [.glossary/](.glossary/TERMS.md) | Canonical terms: domain nouns in `TERMS.md`, architecture terms in `LANGUAGE.md` |
 | [.patterns/](.patterns/index.md) | How the code is shaped today, and when to read each pattern |
-| [mailpit/EMAIL_SETUP.md](mailpit/EMAIL_SETUP.md) | Local email testing |
 | [docs/dashboard-rules.md](docs/dashboard-rules.md) | Dashboard rules: who sees each page and the conditions behind each action |

@@ -1,6 +1,6 @@
 {
-  "id": "63e01305-09d1-4a88-b025-f70b06317566",
-  "prevId": "51251bd1-3f96-47b9-9627-527c75007cdb",
+  "id": "ba500138-ea54-476c-991b-5fee5d0cc552",
+  "prevId": "63e01305-09d1-4a88-b025-f70b06317566",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -458,6 +458,106 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.dashboard_notices": {
+      "name": "dashboard_notices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "recipient_id": {
+          "name": "recipient_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "dismissed_at": {
+          "name": "dismissed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "dashboard_notices_recipient_idx": {
+          "name": "dashboard_notices_recipient_idx",
+          "columns": [
+            {
+              "expression": "recipient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "dashboard_notices_recipient_id_members_member_id_fk": {
+          "name": "dashboard_notices_recipient_id_members_member_id_fk",
+          "tableFrom": "dashboard_notices",
+          "tableTo": "members",
+          "columnsFrom": [
+            "recipient_id"
+          ],
+          "columnsTo": [
+            "member_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "dashboard_notices_subject_id_members_member_id_fk": {
+          "name": "dashboard_notices_subject_id_members_member_id_fk",
+          "tableFrom": "dashboard_notices",
+          "tableTo": "members",
+          "columnsFrom": [
+            "subject_id"
+          ],
+          "columnsTo": [
+            "member_id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

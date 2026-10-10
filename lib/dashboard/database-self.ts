@@ -38,8 +38,10 @@ import {
 } from "./details";
 import {
   canWithdraw,
+  OPEN_STATUSES,
   pickableSlot,
   placeOf,
+  withdrawnOnDelete,
   type ActiveApplication,
   type ApplicationAnswer,
   type ApplicationFile,
@@ -64,12 +66,6 @@ import { refused, written, type Upload, type WriteResult } from "./write";
 // The viewer's own pages read from and written to the database (boards 50 to
 // 55, issue #169, on #145's v1). Writes follow .patterns/audited-mutations.md;
 // each one touches only the signed-in person's own rows.
-
-/**
- * The applications a person can still withdraw: received, in review, or at
- * interview (the lead's "Move to interview", issue #171, marks `interview`).
- */
-const OPEN_STATUSES = ["received", "pending", "interview"] as const;
 
 const detailColumns = {
   firstName: users.firstName,
@@ -128,7 +124,7 @@ async function saveLinkedin(identity: DashboardIdentity, text: string): Promise<
 }
 
 /** The photo's pathname in the public store, when the stored URL points there. */
-function storedPhotoPathname(url: string | null) {
+export function storedPhotoPathname(url: string | null) {
   if (url === null) return null;
   try {
     return parsePublicPathname(new URL(url).pathname.slice(1));
@@ -228,42 +224,62 @@ async function saveDetails(identity: DashboardIdentity, input: unknown): Promise
 
 /**
  * Closes the account: the Better Auth user goes, and with it their sessions
- * and linked Google account. A member leaves the team with it. The `users`
- * row and the applications stay with the team, unless the person ticked the
- * box: then their open applications are withdrawn and every file they
- * uploaded is deleted.
+ * and linked Google account, and `users.deleted_at` records when. A member
+ * leaves the team with it. The `users` row and the applications stay with the
+ * team for at least a year, until the daily job anonymizes them
+ * (./anonymize.ts), unless the person ticked the box: then their open
+ * applications are withdrawn and those applications' files are deleted.
  */
 async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount): Promise<WriteResult<null>> {
   if (typeof options.withdrawOpenApplications !== "boolean") return refused("Check the form.");
   const { userId, memberId } = identity;
   const withdraw = options.withdrawOpenApplications && identity.kind === "non-member";
-  const files = withdraw
-    ? await getDb()
-        .select({ id: applicationFiles.id, pathname: applicationFiles.pathname })
-        .from(applicationFiles)
-        .where(eq(applicationFiles.userId, userId))
-    : [];
+  const { applicationIds, fileIds } = withdraw
+    ? withdrawnOnDelete(
+        await getDb()
+          .select({
+            id: applications.id,
+            status: applications.status,
+            withdrawnAt: applications.withdrawnAt,
+            cvFileId: applications.cvFileId,
+            coverLetterFileId: applications.coverLetterFileId,
+          })
+          .from(applications)
+          .where(eq(applications.userId, userId)),
+      )
+    : { applicationIds: [], fileIds: [] };
+  const files =
+    fileIds.length === 0
+      ? []
+      : await getDb()
+          .select({ pathname: applicationFiles.pathname })
+          .from(applicationFiles)
+          .where(and(inArray(applicationFiles.id, [...fileIds]), eq(applicationFiles.userId, userId)));
 
   await runAuditBatch((db) => [
     db.delete(betterAuthUsers).where(eq(betterAuthUsers.id, userId)),
+    db.update(users).set({ deletedAt: sql`now()` }).where(eq(users.id, userId)),
     ...(memberId === null
       ? []
       : [db.update(roles).set({ leavedAt: today() }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)))]),
-    ...(withdraw
-      ? [
+    ...(applicationIds.length === 0
+      ? []
+      : [
           db
             .update(applications)
             .set({ withdrawnAt: sql`now()` })
             .where(
               and(
+                inArray(applications.id, [...applicationIds]),
                 eq(applications.userId, userId),
                 inArray(applications.status, [...OPEN_STATUSES]),
                 isNull(applications.withdrawnAt),
               ),
             ),
-          db.delete(applicationFiles).where(eq(applicationFiles.userId, userId)),
-        ]
-      : []),
+        ]),
+    ...(fileIds.length === 0
+      ? []
+      : [db.delete(applicationFiles).where(and(inArray(applicationFiles.id, [...fileIds]), eq(applicationFiles.userId, userId)))]),
   ]);
   if (memberId !== null) updateTag(TEAM_ROSTER_CACHE_TAG);
 
@@ -413,7 +429,7 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
   const application = mine?.active.find((a) => a.id === applicationId);
   if (!application) return refused("That application is not yours, or it is already over.");
   if (!canWithdraw(application.stage)) return refused("An accepted application cannot be withdrawn.");
-  await runAuditQuery((db) =>
+  const changed = await runAuditQuery((db) =>
     db
       .update(applications)
       .set({ withdrawnAt: sql`now()` })
@@ -424,9 +440,11 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
           inArray(applications.status, [...OPEN_STATUSES]),
           isNull(applications.withdrawnAt),
         ),
-      ),
+      )
+      .returning({ id: applications.id }),
   );
-  return written(null);
+  // A lead accepted or closed it between the read and the write.
+  return changed.length === 0 ? refused("This application changed. Reload the page.") : written(null);
 }
 
 /** Board 50c: the picked time becomes the one chosen slot of the application. */
@@ -434,14 +452,21 @@ async function chooseInterviewSlot(identity: DashboardIdentity, applicationId: n
   const mine = await readMyApplications(identity);
   const pick = pickableSlot(mine?.active.find((a) => a.id === applicationId), slotId);
   if (!pick.ok) return refused(pick.error);
-  await runAuditBatch((db) => [
-    db.update(interviewSlots).set({ chosen: false, chosenAt: null }).where(eq(interviewSlots.applicationId, applicationId)),
+  // The earlier choice is cleared only while the picked slot still exists: when the lead changed the times
+  // in between, the picked slot is gone, nothing changes and the applicant is told to reload.
+  const pickedStillOffered = sql`exists (select 1 from ${interviewSlots} picked where picked.id = ${slotId} and picked.application_id = ${applicationId})`;
+  const [, chosen] = await runAuditBatch((db) => [
+    db
+      .update(interviewSlots)
+      .set({ chosen: false, chosenAt: null })
+      .where(and(eq(interviewSlots.applicationId, applicationId), pickedStillOffered)),
     db
       .update(interviewSlots)
       .set({ chosen: true, chosenAt: sql`now()` })
-      .where(and(eq(interviewSlots.id, slotId), eq(interviewSlots.applicationId, applicationId))),
+      .where(and(eq(interviewSlots.id, slotId), eq(interviewSlots.applicationId, applicationId)))
+      .returning({ id: interviewSlots.id }),
   ]);
-  return written(pick.slot);
+  return chosen.length === 0 ? refused("The interview times changed. Reload the page.") : written(pick.slot);
 }
 
 /** The viewer's own pages: the database side of the data interface. */

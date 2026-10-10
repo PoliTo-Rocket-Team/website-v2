@@ -122,6 +122,11 @@ export const users = pgTable("users", {
   access: text("access")
     .array()
     .default(sql`'{}'::text[]`),
+  // Delete account (issue #191): when the person closed their account, and
+  // when the identifying fields were cleared, a year or more later
+  // (lib/dashboard/anonymize.ts).
+  deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "string" }),
+  anonymizedAt: timestamp("anonymized_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   memberIdx: index("users_member_idx").on(table.member),
 }));

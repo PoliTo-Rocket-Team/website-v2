@@ -5,7 +5,14 @@ import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { YourDetails } from "@/lib/dashboard/details";
-import { checkPhoto, MAX_LEAVE_REASON, normalizeLinkedin, type LeaveState, type MyProfile } from "@/lib/dashboard/self";
+import {
+  checkPhoto,
+  DELETE_MEMBER_ACCOUNT_COPY,
+  MAX_LEAVE_REASON,
+  normalizeLinkedin,
+  type LeaveState,
+  type MyProfile,
+} from "@/lib/dashboard/self";
 import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog } from "./account-parts";
@@ -373,8 +380,6 @@ function Locked({ label, hint, value, icon }: { label: string; hint: string; val
 
 const LEAVE_TEXT = "Your division lead sees a notice on their dashboard, and you move to Alumni. You keep your account.";
 const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your account.";
-const MEMBER_DELETE_TEXT =
-  "Closes your account, so you can't sign in with it again. You leave the team first. Your data is anonymized and kept only for statistics.";
 
 /**
  * Board 55's "Leave or delete": one card from md, two on phones (55m). Leave
@@ -414,7 +419,7 @@ function LeaveOrDelete({
           <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
             {leaveButton}
           </DangerRow>
-          <DangerRow title="Delete account" text={MEMBER_DELETE_TEXT}>
+          <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
             {deleteButton}
           </DangerRow>
         </div>
@@ -426,7 +431,7 @@ function LeaveOrDelete({
           </DangerRow>
         </section>
         <DangerBox>
-          <DangerRow title="Delete account" text={MEMBER_DELETE_TEXT}>
+          <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
             {deleteButton}
           </DangerRow>
         </DangerBox>

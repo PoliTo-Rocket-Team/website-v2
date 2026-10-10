@@ -62,10 +62,11 @@ function entryOf(person: DummyPerson, edit: MemberEdit | undefined): RosterEntry
 
 /**
  * Someone accepted for a position (board 59), waiting for Confirm join or
- * joined. The application's own state is the one record of it: the dummy
- * team has one waiting from the start, for Mission Analyst; an application
- * the test developer accepts on the Applications page waits too, and Confirm
- * join on either page moves the application to Joined.
+ * joined. The application's own state is the one record of it: as
+ * `readJoining` (lib/dashboard/database-team.ts) does, every accepted
+ * application waits, whether it started accepted or the test developer
+ * accepted it on the Applications page, and Confirm join on either page
+ * moves the application to Joined.
  */
 export type DummyJoiner = Joining & {
   readonly email: string;
@@ -76,17 +77,13 @@ export type DummyJoiner = Joining & {
   readonly joinedIn: number | null;
 };
 
-/** The accepted Mission Analyst applicant who is waiting for their NDA when the dummy team starts. */
-const WAITING_FROM_THE_START = baseApplications.find((a) => a.positionId === 1 && a.state.stage === "accepted")!.id;
-
 /** Roster ids for people who joined from an application, clear of the people and alumni ids. */
 const JOINER_ID_BASE = 100_000;
 
 /** The accepted applicants waiting to join, and those who joined, from the applications as the test developer left them. */
 export function dummyJoiners(current: readonly DummyApplication[]): DummyJoiner[] {
   return current.flatMap((a): DummyJoiner[] => {
-    const base = baseApplications.find((b) => b.id === a.id);
-    const waiting = a.state.stage === "accepted" && (a.id === WAITING_FROM_THE_START || base?.state.stage !== "accepted");
+    const waiting = a.state.stage === "accepted";
     const joined = a.state.stage === "joined";
     const position = positions.find((p) => p.id === a.positionId);
     if ((!waiting && !joined) || !position) return [];

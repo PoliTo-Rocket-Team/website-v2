@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { dummyDivisionAccess } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
-import { personFor } from "./team";
+import { divisions, personFor, positions } from "./team";
 import { dummyJoiners, dummyTeamPages, editedRoster } from "./team-pages";
 import { applications } from "./applications";
 
@@ -111,6 +111,17 @@ test("an application the lead accepts joins the waiting list", () => {
   );
   assert.ok(dummyJoiners(current).some((j) => j.applicationId === accepted.id));
   assert.ok(!dummyJoiners(applications).some((j) => j.applicationId === accepted.id));
+});
+
+test("the division lead's joining banners match the accepted applications to the division's positions", async () => {
+  const directory = await pages("division-lead").view.members();
+  assert.ok(directory.scope === "division");
+  const division = divisions.find((d) => d.name === directory.division)!;
+  const accepted = applications.filter(
+    (a) => a.state.stage === "accepted" && positions.find((p) => p.id === a.positionId)?.divisionId === division.id,
+  );
+  assert.ok(accepted.length > 1);
+  assert.deepEqual(directory.joining.map((j) => j.applicationId).sort(), accepted.map((a) => a.id).sort());
 });
 
 test("viewers who do not reach a page get no data from it", async () => {

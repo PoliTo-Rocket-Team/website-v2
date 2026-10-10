@@ -89,15 +89,22 @@
     {
       "idx": 12,
       "version": "7",
-      "when": 1791624960990,
-      "tag": "0012_dashboard_notices",
+      "when": 1791624787184,
+      "tag": "0012_anonymize_deleted_accounts",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "7",
+      "when": 1791624960990,
+      "tag": "0013_dashboard_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
       "when": 1791624961990,
-      "tag": "0013_dashboard_notices_audit",
+      "tag": "0014_dashboard_notices_audit",
       "breakpoints": true
     }
   ]
