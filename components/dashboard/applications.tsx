@@ -562,7 +562,7 @@ function StageCard({
         <div className="rounded-xl border border-success/40 bg-success/5 px-4 py-4">
           <p className="flex items-center gap-2.5 text-[15px] font-semibold">
             <Signature aria-hidden className="h-4 w-4 text-success" strokeWidth={1.75} />
-            {state.ndaArrived ? "The signed NDA arrived" : "Waiting for the signed NDA"}
+            {state.ndaArrived ? "Ready to confirm the join" : "Waiting for the signed NDA"}
           </p>
           <p className="mt-2 text-[12px] leading-relaxed text-text-2">
             Accepted on {dayMonth(state.acceptedAt)}. The team leader sends the welcome email with the NDA. When {first} sends it back signed,

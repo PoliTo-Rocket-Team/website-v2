@@ -413,7 +413,7 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
   const application = mine?.active.find((a) => a.id === applicationId);
   if (!application) return refused("That application is not yours, or it is already over.");
   if (!canWithdraw(application.stage)) return refused("An accepted application cannot be withdrawn.");
-  await runAuditQuery((db) =>
+  const changed = await runAuditQuery((db) =>
     db
       .update(applications)
       .set({ withdrawnAt: sql`now()` })
@@ -424,9 +424,11 @@ async function withdrawApplication(identity: DashboardIdentity, applicationId: n
           inArray(applications.status, [...OPEN_STATUSES]),
           isNull(applications.withdrawnAt),
         ),
-      ),
+      )
+      .returning({ id: applications.id }),
   );
-  return written(null);
+  // A lead accepted or closed it between the read and the write.
+  return changed.length === 0 ? refused("This application changed. Reload the page.") : written(null);
 }
 
 /** Board 50c: the picked time becomes the one chosen slot of the application. */
@@ -434,14 +436,21 @@ async function chooseInterviewSlot(identity: DashboardIdentity, applicationId: n
   const mine = await readMyApplications(identity);
   const pick = pickableSlot(mine?.active.find((a) => a.id === applicationId), slotId);
   if (!pick.ok) return refused(pick.error);
-  await runAuditBatch((db) => [
-    db.update(interviewSlots).set({ chosen: false, chosenAt: null }).where(eq(interviewSlots.applicationId, applicationId)),
+  // The earlier choice is cleared only while the picked slot still exists: when the lead changed the times
+  // in between, the picked slot is gone, nothing changes and the applicant is told to reload.
+  const pickedStillOffered = sql`exists (select 1 from ${interviewSlots} picked where picked.id = ${slotId} and picked.application_id = ${applicationId})`;
+  const [, chosen] = await runAuditBatch((db) => [
+    db
+      .update(interviewSlots)
+      .set({ chosen: false, chosenAt: null })
+      .where(and(eq(interviewSlots.applicationId, applicationId), pickedStillOffered)),
     db
       .update(interviewSlots)
       .set({ chosen: true, chosenAt: sql`now()` })
-      .where(and(eq(interviewSlots.id, slotId), eq(interviewSlots.applicationId, applicationId))),
+      .where(and(eq(interviewSlots.id, slotId), eq(interviewSlots.applicationId, applicationId)))
+      .returning({ id: interviewSlots.id }),
   ]);
-  return written(pick.slot);
+  return chosen.length === 0 ? refused("The interview times changed. Reload the page.") : written(pick.slot);
 }
 
 /** The viewer's own pages: the database side of the data interface. */
