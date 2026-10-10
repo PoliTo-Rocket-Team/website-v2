@@ -2,12 +2,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyMove,
+  checkOffer,
   footerSteps,
   interviewIcs,
   joinChange,
   parseLeadMove,
+  pickedCount,
+  pickerFirstMonth,
+  pickerFirstWeekOf,
+  pickerMonth,
   pickerWeek,
   romeTime,
+  timesOnDay,
   stagePill,
   slotAt,
   studiesLine,
@@ -15,6 +21,7 @@ import {
   type ApplicationState,
   type SlotTime,
 } from "./application-flow";
+import { placeOf, type Interview } from "./my-applications";
 
 // Where an application stands and how it moves (boards 58 to 58i, issue #171).
 
@@ -178,6 +185,76 @@ test("the picker starts on the week after a Friday, in Turin time, with past tim
   assert.equal(romeTime(2026, 10, 26, 17, 0).toISOString(), "2026-10-26T16:00:00.000Z");
 });
 
+test("the picker has no last week: week 10 is a whole week of times to come", () => {
+  const week = pickerWeek(now, 10);
+  assert.equal(week.title, "21 – 25 December");
+  assert.deepEqual(week.month, { year: 2026, month: 12 });
+  assert.deepEqual(week.days.map((d) => d.label), ["Mon 21", "Tue 22", "Wed 23", "Thu 24", "Fri 25"]);
+  // Winter time in Turin: 17:00 is 16:00 UTC.
+  assert.equal(week.days[0].starts[0].start, "2026-12-21T16:00:00.000Z");
+  assert.ok(week.days.every((d) => d.starts.every((s) => !s.past)));
+});
+
+test("the header names the month holding most of a week's days, and the selector lands on that month's first week", () => {
+  assert.deepEqual(pickerWeek(now, 0).month, { year: 2026, month: 10 });
+  // 26 – 30 October; 2 November is the first week November names, as 1 November is a Sunday.
+  assert.deepEqual(pickerWeek(now, 2).month, { year: 2026, month: 10 });
+  assert.equal(pickerFirstWeekOf(now, { year: 2026, month: 11 }), 3);
+  assert.equal(pickerWeek(now, 3).title, "2 – 6 November");
+  // 1 December is a Tuesday: the week of 30 November belongs to December.
+  assert.equal(pickerFirstWeekOf(now, { year: 2026, month: 12 }), 7);
+  assert.equal(pickerWeek(now, 7).title, "30 Nov – 4 Dec");
+  // The first month, and any before it, starts on the first week.
+  assert.deepEqual(pickerFirstMonth(now), { year: 2026, month: 10 });
+  assert.equal(pickerFirstWeekOf(now, { year: 2026, month: 10 }), 0);
+  assert.equal(pickerFirstWeekOf(now, { year: 2026, month: 9 }), 0);
+});
+
+test("the month grid runs Monday to Sunday, marks today and past days, and counts picked times per Turin day", () => {
+  const picked = [
+    thu.start,
+    slot("2026-10-15T18:00:00+02:00").start,
+    fri.start,
+    // 17:00 on 26 October, after the clock change.
+    "2026-10-26T16:00:00.000Z",
+  ];
+  const month = pickerMonth(now, { year: 2026, month: 10 }, picked);
+  assert.equal(month.title, "October 2026");
+  // 1 October 2026 is a Thursday: the grid opens on Monday 28 September and closes on Sunday 1 November.
+  assert.equal(month.days.length, 35);
+  const day = (date: string) => {
+    const found = month.days.find((d) => d.date === date);
+    assert.ok(found, date);
+    return found;
+  };
+  assert.deepEqual(day("2026-09-28"), { date: "2026-09-28", day: 28, label: "Mon 28 Sep", inMonth: false, today: false, count: 0, past: true });
+  assert.equal(month.days[month.days.length - 1].date, "2026-11-01");
+  assert.equal(day("2026-11-01").inMonth, false);
+  assert.equal(day("2026-10-08").past, true);
+  // Today, a Friday, is not past; the picker starts from tomorrow, so it opens the first week.
+  assert.deepEqual(day("2026-10-09"), { date: "2026-10-09", day: 9, label: "Fri 9 Oct", inMonth: true, today: true, count: 0, past: false, week: 0 });
+  assert.deepEqual(day("2026-10-11"), { date: "2026-10-11", day: 11, label: "Sun 11 Oct", inMonth: true, today: false, count: 0, past: false, week: 0 });
+  assert.deepEqual(day("2026-10-15"), { date: "2026-10-15", day: 15, label: "Thu 15 Oct", inMonth: true, today: false, count: 2, past: false, week: 0 });
+  assert.equal(day("2026-10-16").count, 1);
+  assert.deepEqual(day("2026-10-26"), { date: "2026-10-26", day: 26, label: "Mon 26 Oct", inMonth: true, today: false, count: 1, past: false, week: 2 });
+  assert.equal(month.days.filter((d) => d.today).length, 1);
+});
+
+test("a time late in the UTC day counts on its Turin day", () => {
+  const month = pickerMonth(now, { year: 2026, month: 10 }, ["2026-10-20T23:30:00.000Z"]);
+  assert.equal(month.days.find((d) => d.date === "2026-10-21")?.count, 1);
+  assert.equal(month.days.find((d) => d.date === "2026-10-20")?.count, 0);
+});
+
+test("the count line gives the times and the days they fall on", () => {
+  assert.equal(pickedCount([]), "0 times picked across 0 days");
+  assert.equal(pickedCount([thu.start]), "1 time picked across 1 day");
+  assert.equal(pickedCount([thu.start, slot("2026-10-15T18:00:00+02:00").start]), "2 times picked across 1 day");
+  assert.equal(pickedCount([thu.start, fri.start, "2026-12-21T16:00:00.000Z"]), "3 times picked across 3 days");
+  assert.equal(timesOnDay(1), "1 time");
+  assert.equal(timesOnDay(2), "2 times");
+});
+
 test("Add to calendar gives the booked hour as an iCalendar event", () => {
   const ics = interviewIcs({ applicationId: 7, applicant: "Giulia Rossi", position: "Mission Analyst", slot: thu }, now);
   assert.match(ics, /DTSTART:20261015T153000Z\r\n/);
@@ -195,4 +272,23 @@ test("Confirm join gives a new person a member row and a role, a returning one a
   assert.equal(joinChange("applicant"), "new-member");
   assert.equal(joinChange("alumnus"), "new-role");
   assert.equal(joinChange("member"), "nothing");
+});
+
+test("a time offered more than 4 weeks ahead passes the offer and reaches the applicant's picker (#212, #222)", () => {
+  // Ten weeks after `now`: past the old 4-week picker limit that #212 removed.
+  const farAhead = slot("2026-12-17T17:30:00+01:00");
+  assert.ok(Date.parse(farAhead.start) - now.getTime() > 4 * 7 * 24 * 60 * 60 * 1000);
+
+  const offer = checkOffer([farAhead], now);
+  assert.ok(offer.ok, offer.ok ? "" : offer.reason);
+  assert.deepEqual(after(STATES["in-review"], { kind: "offer-interview", slots: [farAhead] }), {
+    stage: "interview",
+    offered: [farAhead],
+    booked: null,
+  });
+
+  // The applicant's side (board 50c): the stored offer comes back as their interview stage.
+  const interview: Interview = { lead: "Marco Bianchi", slots: [{ id: 1, start: farAhead.start, end: farAhead.end }], chosen: null };
+  const place = placeOf({ status: "interview", appliedAt: "2026-10-01T09:00:00.000Z", withdrawnAt: null, joinedAt: null }, interview, null);
+  assert.deepEqual(place, { kind: "active", stage: { kind: "interview", interview } });
 });

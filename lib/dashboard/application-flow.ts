@@ -534,41 +534,164 @@ export const PICKER_TIMES = [
   [19, 0],
 ] as const;
 
-/** How many weeks ahead the picker reaches. */
-export const PICKER_WEEKS = 4;
+/** A calendar month: `month` is 1 for January. */
+export type PickerMonthRef = { readonly year: number; readonly month: number };
 
 export type PickerDay = { readonly label: string; readonly starts: readonly { readonly start: string; readonly past: boolean }[] };
-export type PickerWeek = { readonly title: string; readonly days: readonly PickerDay[] };
+export type PickerWeek = {
+  readonly title: string;
+  /** The month the header names for this week: the one holding most of its weekdays, so its Wednesday's. */
+  readonly month: PickerMonthRef;
+  readonly days: readonly PickerDay[];
+};
 
-/** The Monday, in Turin, of the first week the picker shows: the week of tomorrow, or the next one from a Saturday. */
-function firstMonday(now: Date): { year: number; month: number; day: number } {
-  const tomorrow = romeParts(new Date(now.getTime() + DAY));
-  const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(tomorrow.weekday);
-  const shift = weekday >= 5 ? 7 - weekday : -weekday;
-  const monday = new Date(Date.UTC(tomorrow.year, tomorrow.month - 1, tomorrow.day + shift));
-  return { year: monday.getUTCFullYear(), month: monday.getUTCMonth() + 1, day: monday.getUTCDate() };
+type CalendarDate = { readonly year: number; readonly month: number; readonly day: number };
+
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+/** A calendar date `days` after `date`; calendar dates carry no zone, so UTC arithmetic is exact. */
+function addDays(date: CalendarDate, days: number): CalendarDate {
+  const at = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return { year: at.getUTCFullYear(), month: at.getUTCMonth() + 1, day: at.getUTCDate() };
 }
 
-/** Week `index` (0 is the first) of the picker: "12 – 16 October" and Monday to Friday's times. */
+function dayNumber(date: CalendarDate): number {
+  return Date.UTC(date.year, date.month - 1, date.day) / DAY;
+}
+
+/** 0 for Monday to 6 for Sunday. */
+function weekdayOf(date: CalendarDate): number {
+  return (new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay() + 6) % 7;
+}
+
+function dateKey(date: CalendarDate): string {
+  return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
+}
+
+/** The Turin calendar date of an instant: "2026-10-15". */
+function romeDateKey(iso: string): string {
+  const p = romeParts(new Date(iso));
+  return dateKey(p);
+}
+
+/** The Monday, in Turin, of the first week the picker shows: the week of tomorrow, or the next one from a Saturday. */
+function firstMonday(now: Date): CalendarDate {
+  const tomorrow = romeParts(new Date(now.getTime() + DAY));
+  const weekday = WEEKDAYS.indexOf(tomorrow.weekday as (typeof WEEKDAYS)[number]);
+  const shift = weekday >= 5 ? 7 - weekday : -weekday;
+  return addDays(tomorrow, shift);
+}
+
+/** Week `index` (0 is the first; there is no last) of the picker: "12 – 16 October" and Monday to Friday's times. */
 export function pickerWeek(now: Date, index: number): PickerWeek {
-  const monday = firstMonday(now);
+  const monday = addDays(firstMonday(now), index * 7);
   const days = Array.from({ length: 5 }, (_, i) => {
-    const date = new Date(Date.UTC(monday.year, monday.month - 1, monday.day + index * 7 + i));
-    const [y, m, d] = [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()];
+    const date = addDays(monday, i);
     const starts = PICKER_TIMES.map(([h, min]) => {
-      const at = romeTime(y, m, d, h, min);
+      const at = romeTime(date.year, date.month, date.day, h, min);
       return { start: at.toISOString(), past: at.getTime() <= now.getTime() };
     });
-    const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri"][i];
-    return { label: `${weekday} ${d}`, starts, month: m, d };
+    return { label: `${WEEKDAYS[i]} ${date.day}`, starts, date };
   });
-  const first = days[0];
-  const last = days[days.length - 1];
+  const first = days[0].date;
+  const last = days[days.length - 1].date;
   const title =
     first.month === last.month
-      ? `${first.d} – ${last.d} ${MONTHS_LONG[last.month - 1]}`
-      : `${first.d} ${MONTHS[first.month - 1]} – ${last.d} ${MONTHS[last.month - 1]}`;
-  return { title, days: days.map(({ label, starts }) => ({ label, starts })) };
+      ? `${first.day} – ${last.day} ${MONTHS_LONG[last.month - 1]}`
+      : `${first.day} ${MONTHS[first.month - 1]} – ${last.day} ${MONTHS[last.month - 1]}`;
+  const wednesday = days[2].date;
+  return {
+    title,
+    month: { year: wednesday.year, month: wednesday.month },
+    days: days.map(({ label, starts }) => ({ label, starts })),
+  };
+}
+
+/**
+ * The picker week holding `date`, Saturday and Sunday included. A day before
+ * the first week (today, from Friday to Sunday) gives the first week: the picker
+ * starts from tomorrow.
+ */
+function weekHolding(now: Date, date: CalendarDate): number {
+  const monday = addDays(date, -weekdayOf(date));
+  return Math.max(0, Math.round((dayNumber(monday) - dayNumber(firstMonday(now))) / 7));
+}
+
+/** "October 2026" */
+export function monthTitle(month: PickerMonthRef): string {
+  return `${MONTHS_LONG[month.month - 1]} ${month.year}`;
+}
+
+/** The month `count` months after `month` (before it when negative). */
+export function addMonths(month: PickerMonthRef, count: number): PickerMonthRef {
+  const index = month.year * 12 + (month.month - 1) + count;
+  return { year: Math.floor(index / 12), month: (index % 12) + 1 };
+}
+
+/** How many months `to` is after `from`. */
+export function monthsBetween(from: PickerMonthRef, to: PickerMonthRef): number {
+  return to.year * 12 + to.month - (from.year * 12 + from.month);
+}
+
+/** The first month the picker shows: the month its first week belongs to. Earlier months hold nothing to pick. */
+export function pickerFirstMonth(now: Date): PickerMonthRef {
+  return pickerWeek(now, 0).month;
+}
+
+/** The first picker week the header names as `month`: where the selector and the Week switch land. Week 0 for a month at or before the first. */
+export function pickerFirstWeekOf(now: Date, month: PickerMonthRef): number {
+  const holding = weekHolding(now, { year: month.year, month: month.month, day: 1 });
+  // The week holding the 1st belongs to the month before when the 1st falls on a Thursday or later.
+  return monthsBetween(pickerWeek(now, holding).month, month) > 0 ? holding + 1 : holding;
+}
+
+/** A day of the month grid (58j). A past day opens nothing; any other opens the picker week holding it. */
+export type PickerMonthDay = {
+  /** "2026-10-14", the Turin calendar date. */
+  readonly date: string;
+  readonly day: number;
+  /** "Thu 15 Oct", for a screen reader. */
+  readonly label: string;
+  /** False for the days of the months either side that fill the first and last rows. */
+  readonly inMonth: boolean;
+  readonly today: boolean;
+  /** How many picked starts fall on this day. */
+  readonly count: number;
+} & ({ readonly past: true } | { readonly past: false; readonly week: number });
+
+export type PickerMonth = { readonly title: string; readonly days: readonly PickerMonthDay[] };
+
+/**
+ * The month grid (58j): Monday to Sunday rows from the week holding the 1st to
+ * the week holding the last day, in Turin dates. A day before today is past
+ * and cannot be opened; any other opens the picker week holding it.
+ */
+export function pickerMonth(now: Date, month: PickerMonthRef, picked: Iterable<string>): PickerMonth {
+  const counts = new Map<string, number>();
+  for (const start of picked) {
+    const key = romeDateKey(start);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const today = dateKey(romeParts(now));
+  const first: CalendarDate = { year: month.year, month: month.month, day: 1 };
+  const last = addDays({ ...addMonths(month, 1), day: 1 }, -1);
+  const start = addDays(first, -weekdayOf(first));
+  const length = dayNumber(addDays(last, 6 - weekdayOf(last))) - dayNumber(start) + 1;
+  const days = Array.from({ length }, (_, i): PickerMonthDay => {
+    const date = addDays(start, i);
+    const key = dateKey(date);
+    const week = weekHolding(now, date);
+    const base = {
+      date: key,
+      day: date.day,
+      label: `${WEEKDAYS[weekdayOf(date)]} ${date.day} ${MONTHS[date.month - 1]}`,
+      inMonth: date.month === month.month && date.year === month.year,
+      today: key === today,
+      count: counts.get(key) ?? 0,
+    };
+    return key < today ? { ...base, past: true } : { ...base, past: false, week };
+  });
+  return { title: monthTitle(month), days };
 }
 
 /** "17:30" for a picker start. */
@@ -576,9 +699,16 @@ export function clockOf(iso: string): string {
   return hhmm(romeParts(new Date(iso)));
 }
 
-/** "4 times picked" */
-export function pickedCount(n: number): string {
-  return `${n} ${n === 1 ? "time" : "times"} picked`;
+/** "9 times picked across 5 days": how many starts are picked, on how many Turin days. */
+export function pickedCount(starts: Iterable<string>): string {
+  const all = [...starts];
+  const days = new Set(all.map(romeDateKey)).size;
+  return `${all.length} ${all.length === 1 ? "time" : "times"} picked across ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** "1 time", "2 times": a day's count in the month grid. */
+export function timesOnDay(count: number): string {
+  return `${count} ${count === 1 ? "time" : "times"}`;
 }
 
 // Add to calendar (58d) ----------------------------------------------------------

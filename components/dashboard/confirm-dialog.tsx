@@ -10,8 +10,15 @@ import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@
  * It fades in, or slides up on phones, under motion-safe only, and closes at
  * once, like every dialog on a redesigned page (issues #79, #80).
  */
-export const SHEET_CONTENT =
-  "fixed inset-x-0 bottom-0 z-50 max-h-[92svh] overflow-y-auto rounded-t-2xl border-t border-hairline bg-panel px-5 pb-6 pt-3 text-prt-text shadow-[0_-16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-sm:motion-safe:data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-8 sm:shadow-[0_16px_40px_rgba(0,0,0,0.6)]";
+export const SHEET_FRAME =
+  "fixed inset-x-0 bottom-0 z-50 max-h-[92svh] rounded-t-2xl border-t border-hairline bg-panel px-5 pb-6 pt-3 text-prt-text shadow-[0_-16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-sm:motion-safe:data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-8 sm:shadow-[0_16px_40px_rgba(0,0,0,0.6)]";
+
+/**
+ * The popup as most dialogs use it: the frame scrolls whole when it is taller
+ * than the screen. A dialog that pins its own footer (the interview dialog,
+ * issue #222) builds on SHEET_FRAME and scrolls only its body instead.
+ */
+export const SHEET_CONTENT = `${SHEET_FRAME} overflow-y-auto`;
 
 /** The dimmed, blurred page behind a popup. */
 export const SHEET_OVERLAY = "bg-ground/70 backdrop-blur-[3px]";
