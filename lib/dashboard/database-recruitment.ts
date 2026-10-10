@@ -24,11 +24,10 @@ import {
   type JoinChange,
   type LeadMove,
   type Membership,
-  type OfferedSlots,
-  type SlotTime,
 } from "./application-flow";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
+import { interviewStateOf, type SlotRow } from "./interview-slots";
 import { checkNewPosition, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
@@ -196,8 +195,6 @@ async function createPosition(identity: Identity, input: unknown): Promise<Write
 
 // Applications ----------------------------------------------------------------
 
-type SlotRow = { application_id: number; starts_at: string; ends_at: string; chosen: boolean; chosen_at: string | null; created_at: string };
-
 type StateRow = {
   status: DbStatus;
   applied_at: string;
@@ -206,14 +203,10 @@ type StateRow = {
   joined_at: string | null;
 };
 
-function slotOf(row: SlotRow): SlotTime {
-  return { start: new Date(row.starts_at).toISOString(), end: new Date(row.ends_at).toISOString() };
-}
-
 /**
  * Where a stored application stands. "Accepted by another team" reads as
- * Rejected: this team did not take them. An interview row with no times left
- * reads as In review, the step before times are offered.
+ * Rejected: this team did not take them. An interview row reads as
+ * ./interview-slots.ts says.
  */
 function stateOf(row: StateRow, slots: readonly SlotRow[]): ApplicationState {
   switch (row.status) {
@@ -221,17 +214,8 @@ function stateOf(row: StateRow, slots: readonly SlotRow[]): ApplicationState {
       return { stage: "new" };
     case "pending":
       return { stage: "in-review" };
-    case "interview": {
-      if (slots.length === 0) return { stage: "in-review" };
-      const sorted = [...slots].sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
-      const offered = sorted.map(slotOf) as unknown as OfferedSlots;
-      const chosen = sorted.find((s) => s.chosen);
-      return {
-        stage: "interview",
-        offered,
-        booked: chosen ? { slot: slotOf(chosen), at: new Date(chosen.chosen_at ?? chosen.created_at).toISOString() } : null,
-      };
-    }
+    case "interview":
+      return interviewStateOf(slots);
     case "accepted":
       return { stage: "accepted", acceptedAt: row.accepted_at ?? row.applied_at, ndaArrived: row.nda_arrived_at !== null };
     case "joined":
@@ -242,7 +226,8 @@ function stateOf(row: StateRow, slots: readonly SlotRow[]): ApplicationState {
   }
 }
 
-async function readSlots(applicationIds: readonly number[]): Promise<Map<number, SlotRow[]>> {
+/** The stored interview times of the given applications, by application. */
+export async function readSlots(applicationIds: readonly number[]): Promise<Map<number, SlotRow[]>> {
   const bySlot = new Map<number, SlotRow[]>();
   if (applicationIds.length === 0) return bySlot;
   const rows = await getDb()

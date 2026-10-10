@@ -93,6 +93,28 @@ test("the applicant picks one offered interview time, and it is kept", async () 
   assert.equal((await open("non-member").chooseInterviewSlot(card.id, offered[0].id)).ok, false);
 });
 
+for (const [kind, who] of [["division-lead", "a division lead"], ["operations-lead", "the operations lead"]] as const) {
+  test(`${who} who applied sees their own application, picks a time and withdraws it (issue #183)`, async () => {
+    const { open } = browser();
+    const card = (await open(kind).myApplications())!.active.find((a) => a.stage.kind === "interview")!;
+    assert.equal(await open(kind).hasOwnApplications(), true);
+    const offered = card.stage.kind === "interview" ? card.stage.interview.slots : [];
+    const pick = offered[0];
+    assert.deepEqual(await open(kind).chooseInterviewSlot(card.id, pick.id), { ok: true, value: pick });
+
+    assert.deepEqual(await open(kind).withdrawApplication(card.id), { ok: true, value: null });
+    const after = (await open(kind).myApplications())!;
+    assert.deepEqual(after.past.find((p) => p.id === card.id)?.outcome, { kind: "withdrawn" });
+  });
+
+  test(`${who} cannot act on someone else's application`, async () => {
+    const { open } = browser();
+    const others = (await open("non-member").myApplications())!.active.find((a) => a.stage.kind === "interview")!;
+    assert.equal((await open(kind).withdrawApplication(others.id)).ok, false);
+    assert.equal((await open(kind).chooseInterviewSlot(others.id, 1)).ok, false);
+  });
+}
+
 test("saved details prefill the matching fields of the apply form", async () => {
   const { open, own } = browser();
   const saved = await open("non-member").saveDetails({

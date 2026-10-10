@@ -46,12 +46,14 @@ import {
   type Overview,
   type PersonalOverview,
   type TeamOverview,
+  type UpcomingInterview,
 } from "./overview";
 import { databaseDivisionPages } from "./database-division";
-import { databaseRecruitmentPages } from "./database-recruitment";
+import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { databaseTeamWrites, leadDivisionId, readJoining } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
+import { upcomingInterviews } from "./interview-slots";
 import { viewerKindOf, type DashboardViewer, type ViewerKind } from "./viewer";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -309,10 +311,52 @@ async function readMembersWithoutPhoto(divisionIds: number[]): Promise<string[]>
 }
 
 /**
+ * The upcoming interviews on the given positions: each live application at
+ * status `interview` with times offered, booked or waiting for the
+ * applicant, read the way the applications page reads them
+ * (./interview-slots.ts).
+ */
+async function readInterviews(positions: readonly ScopedPosition[]): Promise<UpcomingInterview[]> {
+  if (positions.length === 0) return [];
+  const titles = new Map(positions.map((p) => [p.id, p.title]));
+  const rows = await getDb()
+    .select({
+      id: applications.id,
+      position_id: applications.applyPositionId,
+      email: users.email,
+      first_name: users.firstName,
+      last_name: users.lastName,
+    })
+    .from(applications)
+    .innerJoin(users, eq(applications.userId, users.id))
+    .where(
+      and(
+        eq(applications.status, "interview"),
+        isNull(applications.withdrawnAt),
+        inArray(applications.applyPositionId, [...titles.keys()]),
+      ),
+    );
+  const slots = await readSlots(rows.map((r) => r.id));
+  return upcomingInterviews(
+    rows.flatMap((r) => {
+      const position = r.position_id === null ? undefined : titles.get(r.position_id);
+      if (position === undefined) return [];
+      return [
+        {
+          applicant: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
+          position,
+          slots: slots.get(r.id) ?? [],
+        },
+      ];
+    }),
+  );
+}
+
+/**
  * Board 56: the division lead's figures, attention, interviews and activity,
- * scoped to their division. Interview times (`interview_slots`, #169) are
- * not read here yet, and the database holds no activity feed, so both read
- * empty here.
+ * scoped to their division. Interviews are those on the positions the lead
+ * reaches, with their booked or offered times. The database holds no
+ * activity feed, so that reads empty here.
  */
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
@@ -323,6 +367,7 @@ async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
     readMembersWithoutPhoto(identity.divisionIds),
     readNoticeAttention(identity, now),
   ]);
+  const interviews = await readInterviews(positions);
   const open = positions.filter((p) => p.open);
   const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
   const waiting = divisionOrders ? waitingOrders(divisionOrders.orders) : { count: 0, total: 0 };
@@ -368,7 +413,7 @@ async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
       },
     ],
     attention,
-    interviews: [],
+    interviews,
     activity: [],
   };
 }

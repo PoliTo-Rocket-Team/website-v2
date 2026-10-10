@@ -443,7 +443,7 @@ async function cancelOrder(identity: DashboardIdentity, orderId: number): Promis
     db
       .update(orders)
       .set({ status: "cancelled" })
-      .where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "changes_requested"]))),
+      .where(and(eq(orders.id, orderId), eq(orders.status, "pending"))),
   );
   return written(null);
 }

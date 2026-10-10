@@ -25,6 +25,7 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { parsePrivatePathname, parsePublicPathname, publicPathname } from "@/lib/storage/pathname";
 import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
+import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
@@ -38,10 +39,11 @@ import {
 import {
   canWithdraw,
   pickableSlot,
+  placeOf,
   type ActiveApplication,
-  type ActiveStage,
   type ApplicationAnswer,
   type ApplicationFile,
+  type Interview,
   type InterviewSlot,
   type MyApplications,
   type PastApplication,
@@ -310,7 +312,7 @@ async function leadsOf(divisionIds: readonly number[]): Promise<Map<number, stri
 }
 
 async function readMyApplications(identity: DashboardIdentity): Promise<MyApplications | null> {
-  if (identity.kind !== "non-member" && identity.kind !== "member") return null;
+  if (!canReach(identity.kind, "my-applications")) return null;
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
   const letterFiles = alias(applicationFiles, "letter_files");
@@ -370,55 +372,31 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
       division: divisionLabel(r.div_name),
       sent: r.applied_at,
     };
-    const over = (outcome: PastApplication["outcome"]) => past.push({ ...place, outcome });
-    if (r.withdrawn_at !== null) {
-      over({ kind: "withdrawn" });
+    const slots: InterviewSlot[] = slotRows
+      .filter((s) => s.application_id === r.id)
+      .map((s) => ({ id: s.id, start: s.start, end: s.end }));
+    const chosenId = slotRows.find((s) => s.application_id === r.id && s.chosen)?.id;
+    const interview: Interview | null =
+      slots.length === 0
+        ? null
+        : {
+            lead: (r.division_id === null ? undefined : leads.get(r.division_id)) ?? "Your lead",
+            slots,
+            chosen: slots.find((s) => s.id === chosenId) ?? null,
+          };
+    const where = placeOf(
+      { status: r.status, appliedAt: r.applied_at, withdrawnAt: r.withdrawn_at, joinedAt: r.joined_at },
+      interview,
+      identity.role?.startedAt ?? null,
+    );
+    if (where.kind === "past") {
+      past.push({ ...place, outcome: where.outcome });
       continue;
-    }
-    let stage: ActiveStage;
-    switch (r.status) {
-      case "rejected":
-      case "accepted_by_another_team":
-        over({ kind: "not-selected" });
-        continue;
-      case "joined":
-        // Confirm join (issue #171) put them on the team on `joined_at`.
-        over({ kind: "joined", since: (r.joined_at ?? identity.role?.startedAt ?? r.applied_at).slice(0, 10) });
-        continue;
-      case "accepted":
-        if (identity.memberId !== null) {
-          over({ kind: "joined", since: identity.role?.startedAt ?? r.applied_at });
-          continue;
-        }
-        stage = { kind: "accepted" };
-        break;
-      case "received":
-        stage = { kind: "received" };
-        break;
-      case "pending":
-      case "interview": {
-        const slots: InterviewSlot[] = slotRows
-          .filter((s) => s.application_id === r.id)
-          .map((s) => ({ id: s.id, start: s.start, end: s.end }));
-        const chosenId = slotRows.find((s) => s.application_id === r.id && s.chosen)?.id;
-        stage =
-          slots.length === 0
-            ? { kind: "in-review" }
-            : {
-                kind: "interview",
-                interview: {
-                  lead: (r.division_id === null ? undefined : leads.get(r.division_id)) ?? "Your lead",
-                  slots,
-                  chosen: slots.find((s) => s.id === chosenId) ?? null,
-                },
-              };
-        break;
-      }
     }
     active.push({
       ...place,
       code: positionCode({ id: r.position_id, dept_code: r.dept_code ?? "", div_code: r.div_code ?? "" }),
-      stage,
+      stage: where.stage,
       files: [
         ...fileOf({ name: r.cv_file_name, size: r.cv_file_size }, r.cv_name),
         ...fileOf({ name: r.letter_file_name, size: r.letter_file_size }, r.letter_name),

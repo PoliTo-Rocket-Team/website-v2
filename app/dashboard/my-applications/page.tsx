@@ -11,9 +11,9 @@ export const metadata: Metadata = {
   title: "My applications · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 50 and 53 (issue #169): the viewer's own applications. Applicants
-// and members reach it (lib/dashboard/access.ts). Someone who has not applied
-// yet gets the empty page with the way to /apply (issue #179).
+// Boards 50 and 53 (issue #169): the viewer's own applications. Every viewer
+// kind reaches it (lib/dashboard/access.ts, issue #183). Someone who has not
+// applied yet gets the empty page with the way to /apply (issue #179).
 export default function MyApplicationsPage() {
   return (
     <Suspense fallback={null}>

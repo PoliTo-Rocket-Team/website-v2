@@ -1,4 +1,5 @@
 import { positionCode } from "@/lib/apply/positions";
+import { canReach } from "@/lib/dashboard/access";
 import {
   applyDetailsChange,
   firstDetailError,
@@ -178,8 +179,8 @@ function pastOf(application: DummyOwnApplication, withdrawn: boolean): PastAppli
 
 /**
  * Boards 50 and 53 for a test developer looking as `kind`: empty lists for
- * someone who has not applied yet (issue #179); null for the leads, who do
- * not apply.
+ * someone who has not applied yet (issue #179); null for a viewer the access
+ * table keeps off My applications.
  */
 export function dummyMyApplications(
   kind: ViewerKind,
@@ -187,7 +188,7 @@ export function dummyMyApplications(
   changes: OwnChanges,
   start: OwnApplicationsStart,
 ): MyApplications | null {
-  if (kind !== "non-member" && kind !== "member") return null;
+  if (!canReach(kind, "my-applications")) return null;
   const own = ownApplicationsOf(kind, start);
   const active: ActiveApplication[] = [];
   const past: PastApplication[] = [];

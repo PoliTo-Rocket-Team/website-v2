@@ -118,8 +118,13 @@ test("viewers who do not reach a page get no data from it", async () => {
   assert.deepEqual((await member.members()).rows, []);
   assert.deepEqual((await member.alumni()).rows, []);
   assert.equal(await member.teamWrites!.setShownOnSite(1006, true), false);
+  const applicant = pages("non-member").view;
+  assert.equal((await applicant.teamTree()).departments.length, 0);
+});
+
+test("the operations lead gets the whole Team tree (issue #183)", async () => {
   const ops = pages("operations-lead").view;
-  assert.equal((await ops.teamTree()).departments.length, 0);
+  assert.ok((await ops.teamTree()).departments.length > 0);
 });
 
 test("a malformed edits cookie reads as no edits", () => {
