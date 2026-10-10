@@ -134,8 +134,10 @@ function AlumnusCard({ row, editable, showSwitch }: { row: AlumnusRow; editable:
       <Avatar name={row.name} size="ml" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[16px] font-semibold">{row.name}</span>
-        <span className="block truncate text-[13px] text-prt-muted">
-          {row.lastRole} · {years(row)}
+        {/* Only the role may be cut; the years always show whole (issue #222). */}
+        <span className="flex min-w-0 text-[13px] text-prt-muted">
+          <span className="min-w-0 truncate">{row.lastRole}</span>
+          <span className="shrink-0 whitespace-nowrap">&nbsp;· {years(row)}</span>
         </span>
       </span>
       {showSwitch && row.shownOnSite !== null && (

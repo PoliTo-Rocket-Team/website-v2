@@ -29,7 +29,7 @@ import {
   type SlotTime,
 } from "@/lib/dashboard/application-flow";
 import { interviewEmailHref } from "@/lib/dashboard/interview-email";
-import { SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
+import { SHEET_FRAME, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
 
 // Move to interview (boards 58c, 58j) and Change times (58d): the lead picks
 // the times they can meet, in a week or a month view with no last week, and how long, then tells the applicant by email
@@ -72,7 +72,8 @@ export function InterviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
         <DialogOverlay className={SHEET_OVERLAY} />
-        <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[560px] sm:px-8 sm:pb-7 sm:pt-7`}>
+        {/* The frame does not scroll: the title and the buttons stay put and the body between them scrolls (issue #222). */}
+        <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_FRAME} flex flex-col sm:w-[560px] sm:px-8 sm:pb-7 sm:pt-7`}>
           {/* Mounted only while open, so each opening starts from what is saved. */}
           {open && <Picker mode={mode} applicant={applicant} lead={lead} now={now} offered={offered} pending={pending} onSubmit={onSubmit} />}
         </DialogPrimitive.Content>
@@ -138,7 +139,7 @@ function Picker({
   return (
     <>
       <SheetGrabber />
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex shrink-0 items-start justify-between gap-4">
         <div className="min-w-0">
           <DialogTitle className="text-[20px] font-bold leading-snug">{mode === "offer" ? "Move to interview" : "Change interview times"}</DialogTitle>
           <p className="mt-0.5 text-[13px] text-prt-muted">
@@ -150,68 +151,71 @@ function Picker({
         </DialogClose>
       </div>
 
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <p className="text-[14px]">
-          <span className="font-semibold">1.</span> <span className="font-medium">Pick the times you can meet</span>{" "}
-          <span className="text-prt-muted">
-            {first} picks one
-          </span>
-        </p>
-        <LengthMenu value={length} onChange={setLength} />
+      {/* The scrolling body. The side inset keeps focus rings at its edges unclipped. */}
+      <div className="-mx-1 mt-6 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[14px]">
+            <span className="font-semibold">1.</span> <span className="font-medium">Pick the times you can meet</span>{" "}
+            <span className="text-prt-muted">
+              {first} picks one
+            </span>
+          </p>
+          <LengthMenu value={length} onChange={setLength} />
+        </div>
+
+        <Calendar now={now} picked={picked} onToggle={toggle} />
+        <p className="mt-2.5 text-[12px] text-prt-muted">{pickedCount(picked)}</p>
+
+        <section className="mt-5 rounded-xl border border-accent/40 bg-accent/[0.06] px-4 py-4">
+          <h3 className="flex items-center gap-2.5 text-[14px] font-semibold">
+            <Mail aria-hidden className="h-4 w-4 text-accent" strokeWidth={1.75} />
+            <span>2.</span> Email {first} yourself
+          </h3>
+          <p className="mt-2.5 text-[13px] leading-relaxed text-text-2">
+            {mode === "offer"
+              ? `The site does not send emails. ${first} only learns about the interview from you. Ask them to open My applications on the PRT Dashboard and pick a time.`
+              : `The site does not send emails. Tell ${first} the times changed and to pick a new one in My applications.`}
+          </p>
+          <div className="mt-3.5 flex flex-col gap-2 sm:flex-row">
+            <p className="flex h-9 min-w-0 items-center truncate rounded-lg border border-white-10 bg-white-5 px-3 text-[13px] text-prt-text sm:flex-1">
+              {applicant.email}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={copy}
+                className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white-10 px-3 text-[13px] font-medium transition-colors duration-300 ease-out hover:border-border-strong sm:flex-none ${FOCUS}`}
+              >
+                <Copy aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Copy
+              </button>
+              <a
+                href={emailHref}
+                target="_blank"
+                rel="noopener"
+                className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white-10 px-3 text-[13px] font-medium transition-colors duration-300 ease-out hover:border-border-strong sm:flex-none ${FOCUS}`}
+              >
+                <ExternalLink aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Open email
+              </a>
+            </div>
+          </div>
+          <label htmlFor={boxId} className="mt-3.5 flex cursor-pointer items-center gap-2.5 text-[14px] font-medium">
+            <input id={boxId} type="checkbox" checked={emailed} onChange={(e) => setEmailed(e.target.checked)} className="peer sr-only" />
+            <span
+              aria-hidden
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition-colors duration-300 ease-out peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
+                emailed ? "border-accent bg-accent text-accent-on-accent" : "border-border-strong"
+              }`}
+            >
+              {emailed && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+            </span>
+            I&apos;ve emailed {first}
+          </label>
+        </section>
       </div>
 
-      <Calendar now={now} picked={picked} onToggle={toggle} />
-      <p className="mt-2.5 text-[12px] text-prt-muted">{pickedCount(picked)}</p>
-
-      <section className="mt-5 rounded-xl border border-accent/40 bg-accent/[0.06] px-4 py-4">
-        <h3 className="flex items-center gap-2.5 text-[14px] font-semibold">
-          <Mail aria-hidden className="h-4 w-4 text-accent" strokeWidth={1.75} />
-          <span>2.</span> Email {first} yourself
-        </h3>
-        <p className="mt-2.5 text-[13px] leading-relaxed text-text-2">
-          {mode === "offer"
-            ? `The site does not send emails. ${first} only learns about the interview from you. Ask them to open My applications on the PRT Dashboard and pick a time.`
-            : `The site does not send emails. Tell ${first} the times changed and to pick a new one in My applications.`}
-        </p>
-        <div className="mt-3.5 flex flex-col gap-2 sm:flex-row">
-          <p className="flex h-9 min-w-0 items-center truncate rounded-lg border border-white-10 bg-white-5 px-3 text-[13px] text-prt-text sm:flex-1">
-            {applicant.email}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={copy}
-              className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white-10 px-3 text-[13px] font-medium transition-colors duration-300 ease-out hover:border-border-strong sm:flex-none ${FOCUS}`}
-            >
-              <Copy aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Copy
-            </button>
-            <a
-              href={emailHref}
-              target="_blank"
-              rel="noopener"
-              className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white-10 px-3 text-[13px] font-medium transition-colors duration-300 ease-out hover:border-border-strong sm:flex-none ${FOCUS}`}
-            >
-              <ExternalLink aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Open email
-            </a>
-          </div>
-        </div>
-        <label htmlFor={boxId} className="mt-3.5 flex cursor-pointer items-center gap-2.5 text-[14px] font-medium">
-          <input id={boxId} type="checkbox" checked={emailed} onChange={(e) => setEmailed(e.target.checked)} className="peer sr-only" />
-          <span
-            aria-hidden
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition-colors duration-300 ease-out peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
-              emailed ? "border-accent bg-accent text-accent-on-accent" : "border-border-strong"
-            }`}
-          >
-            {emailed && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
-          </span>
-          I&apos;ve emailed {first}
-        </label>
-      </section>
-
-      <div className="mt-6 grid grid-cols-2 gap-2.5">
+      <div className="mt-6 grid shrink-0 grid-cols-2 gap-2.5">
         <DialogClose className={`inline-flex h-11 items-center justify-center rounded-full border border-white-10 text-[14px] font-semibold transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}>
           Cancel
         </DialogClose>
@@ -231,7 +235,9 @@ function Picker({
 /** What the calendar shows: one picker week, or one month. The picked set lives above it, so a switch never drops a time. */
 type CalendarView = { readonly kind: "week"; readonly week: number } | { readonly kind: "month"; readonly month: PickerMonthRef };
 
-const ARROW = `flex h-8 w-8 items-center justify-center rounded-lg border border-hairline text-text-2 transition-colors duration-300 ease-out hover:border-border-strong hover:text-prt-text disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-hairline ${FOCUS}`;
+// Boards 58c and 58j size the calendar's header row from md: arrows 26px,
+// the Week / Month switch 25px with 21px segments, the month menu 24px.
+const ARROW = `flex h-8 w-8 items-center justify-center rounded-lg border md:h-[26px] md:w-[26px] md:rounded-[7px] border-hairline text-text-2 transition-colors duration-300 ease-out hover:border-border-strong hover:text-prt-text disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-hairline ${FOCUS}`;
 
 function Calendar({ now, picked, onToggle }: { now: string; picked: ReadonlySet<string>; onToggle: (start: string) => void }) {
   const at = new Date(now);
@@ -256,7 +262,7 @@ function Calendar({ now, picked, onToggle }: { now: string; picked: ReadonlySet<
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <MonthMenu first={first} value={month} onChange={jump} />
         <div className="flex items-center gap-2">
-          <div role="group" aria-label="Calendar view" className="flex h-8 items-center rounded-lg border border-hairline p-0.5">
+          <div role="group" aria-label="Calendar view" className="flex h-8 items-center rounded-lg border border-hairline p-0.5 md:h-[25px] md:p-px">
             {(
               [
                 ["week", "Week"],
@@ -268,7 +274,7 @@ function Calendar({ now, picked, onToggle }: { now: string; picked: ReadonlySet<
                 type="button"
                 aria-pressed={view.kind === kind}
                 onClick={() => switchTo(kind)}
-                className={`h-full rounded-md px-3 text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
+                className={`h-full rounded-md px-3 text-[13px] transition-colors md:px-2.5 md:text-[12px] duration-300 ease-out ${FOCUS} ${
                   view.kind === kind ? "bg-white-10 font-semibold text-prt-text" : "text-prt-muted hover:text-prt-text"
                 }`}
               >
@@ -331,7 +337,8 @@ function MonthGrid({ now, month, picked, onOpen }: { now: Date; month: PickerMon
   const grid = pickerMonth(now, month, picked);
   return (
     <>
-      <div className="grid grid-cols-7 gap-1.5">
+      {/* Board 58j: 40px day cells, 6px apart across and 8px down. */}
+      <div className="grid grid-cols-7 gap-1.5 md:gap-y-2">
         {WEEKDAY_HEADS.map((head) => (
           <p key={head} aria-hidden className="text-center text-[11px] font-semibold text-prt-text md:text-[12px]">
             {head}
@@ -347,15 +354,15 @@ function MonthGrid({ now, month, picked, onOpen }: { now: Date; month: PickerMon
               aria-current={day.today ? "date" : undefined}
               aria-label={`${day.label}${marked ? `, ${timesOnDay(day.count)} picked` : ""}`}
               onClick={() => !day.past && onOpen(day.week)}
-              className={`flex h-11 min-w-0 flex-col items-start justify-start rounded-lg border px-1.5 pt-1 text-left transition-colors duration-300 ease-out disabled:cursor-not-allowed disabled:opacity-40 md:h-[42px] md:px-2 ${FOCUS} ${
+              className={`flex h-11 min-w-0 flex-col items-start justify-start rounded-lg border px-1.5 pt-1 text-left transition-colors duration-300 ease-out disabled:cursor-not-allowed disabled:opacity-40 md:h-10 md:px-[7px] md:pt-[5px] ${FOCUS} ${
                 marked ? "border-accent bg-accent-soft" : day.today ? "border-accent" : "border-hairline hover:border-border-strong disabled:hover:border-hairline"
               }`}
             >
-              <span className={`text-[12px] leading-tight md:text-[13px] ${marked ? "font-semibold text-prt-text" : day.inMonth && !day.past ? "text-prt-text" : "text-prt-muted"}`}>
+              <span className={`text-[12px] leading-tight ${marked ? "font-semibold text-prt-text" : day.inMonth && !day.past ? "text-prt-text" : "text-prt-muted"}`}>
                 {day.day}
               </span>
               {marked && (
-                <span className="mt-0.5 max-w-full truncate text-[10px] font-medium leading-tight text-accent md:text-[11px]">
+                <span className="mt-0.5 max-w-full truncate text-[10px] font-semibold leading-tight text-accent">
                   <span className="sm:hidden">{day.count}</span>
                   <span className="hidden sm:inline">{timesOnDay(day.count)}</span>
                 </span>
@@ -377,7 +384,7 @@ function MonthMenu({ first, value, onChange }: { first: PickerMonthRef; value: P
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`Month: ${monthTitle(value)}`}
-        className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-hairline px-3 text-[14px] font-semibold text-prt-text transition-colors duration-300 ease-out hover:border-border-strong data-[state=open]:border-border-strong ${FOCUS}`}
+        className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-hairline px-3 text-[14px] font-semibold text-prt-text md:h-6 md:px-2.5 md:text-[13px] transition-colors duration-300 ease-out hover:border-border-strong data-[state=open]:border-border-strong ${FOCUS}`}
       >
         {monthTitle(value)}
         <ChevronDown aria-hidden className="h-3.5 w-3.5 text-prt-muted" strokeWidth={2} />

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyMove,
+  checkOffer,
   footerSteps,
   interviewIcs,
   joinChange,
@@ -20,6 +21,7 @@ import {
   type ApplicationState,
   type SlotTime,
 } from "./application-flow";
+import { placeOf, type Interview } from "./my-applications";
 
 // Where an application stands and how it moves (boards 58 to 58i, issue #171).
 
@@ -270,4 +272,23 @@ test("Confirm join gives a new person a member row and a role, a returning one a
   assert.equal(joinChange("applicant"), "new-member");
   assert.equal(joinChange("alumnus"), "new-role");
   assert.equal(joinChange("member"), "nothing");
+});
+
+test("a time offered more than 4 weeks ahead passes the offer and reaches the applicant's picker (#212, #222)", () => {
+  // Ten weeks after `now`: past the old 4-week picker limit that #212 removed.
+  const farAhead = slot("2026-12-17T17:30:00+01:00");
+  assert.ok(Date.parse(farAhead.start) - now.getTime() > 4 * 7 * 24 * 60 * 60 * 1000);
+
+  const offer = checkOffer([farAhead], now);
+  assert.ok(offer.ok, offer.ok ? "" : offer.reason);
+  assert.deepEqual(after(STATES["in-review"], { kind: "offer-interview", slots: [farAhead] }), {
+    stage: "interview",
+    offered: [farAhead],
+    booked: null,
+  });
+
+  // The applicant's side (board 50c): the stored offer comes back as their interview stage.
+  const interview: Interview = { lead: "Marco Bianchi", slots: [{ id: 1, start: farAhead.start, end: farAhead.end }], chosen: null };
+  const place = placeOf({ status: "interview", appliedAt: "2026-10-01T09:00:00.000Z", withdrawnAt: null, joinedAt: null }, interview, null);
+  assert.deepEqual(place, { kind: "active", stage: { kind: "interview", interview } });
 });
