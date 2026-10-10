@@ -3,10 +3,11 @@ import "server-only";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { applications, applyPositions, members, roles, scopes, teamLeaves, users } from "@/db/schema";
+import { applications, applyPositions, dashboardNotices, members, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { alumniMove, type MoveReach } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
+import { promotedNoticesFor } from "./database-notices";
 import { moveApplication } from "./database-recruitment";
 import type { DashboardIdentity } from "./database";
 import type { Departure, EditableRole, Joining, MemberEdit, PromoteMode } from "./team";
@@ -114,17 +115,30 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
   return done();
 }
 
+/**
+ * Promote (board 59e): the role change and a notice to each head of the
+ * division's department (#188), in one batch. No email is sent.
+ */
 async function promote(identity: DashboardIdentity, personId: number, mode: PromoteMode): Promise<boolean> {
   const division = leadDivisionId(identity);
-  if (identity.kind !== "division-lead" || division === null || identity.memberId === null) return false;
+  const leadId = identity.memberId;
+  if (identity.kind !== "division-lead" || division === null || leadId === null) return false;
   const active = await rolesTheViewerChanges(identity, personId);
   const theirs = active?.find((r) => r.division_id === division && r.type === "core");
   if (!theirs) return false;
-  const mine = (await activeRoles(identity.memberId)).find((r) => r.division_id === division && r.type === "lead");
+  const mine = (await activeRoles(leadId)).find((r) => r.division_id === division && r.type === "lead");
   if (mode === "hand-over" && !mine) return false;
+  const notices = await promotedNoticesFor(personId, division, mode, leadId);
   await runAuditBatch((db) => [
     db.update(roles).set({ type: "lead" }).where(eq(roles.id, theirs.id)),
     ...(mode === "hand-over" && mine ? [db.update(roles).set({ type: "core" }).where(eq(roles.id, mine.id))] : []),
+    ...(notices.length > 0
+      ? [
+          db.insert(dashboardNotices).values(
+            notices.map(({ recipientId, notice }) => ({ recipientId, subjectId: personId, kind: notice.kind, data: notice.data })),
+          ),
+        ]
+      : []),
   ]);
   return done();
 }

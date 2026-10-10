@@ -2,6 +2,7 @@ import { canReach } from "@/lib/dashboard/access";
 import { alumniMove, type MoveReach } from "@/lib/dashboard/alumni-move";
 import { joinChange, type LeadMove } from "@/lib/dashboard/application-flow";
 import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/dashboard/data";
+import { promotedNotices, type DepartmentHeadRole } from "@/lib/dashboard/notices";
 import {
   alumniDirectory,
   buildTeamTree,
@@ -21,7 +22,8 @@ import type { ViewerKind } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, type TeamEdits } from "./edits";
-import { alumni, departments, divisions, people, positions, roster, type DummyPerson } from "./team";
+import { withDummyNotices } from "./notices";
+import { alumni, departments, divisions, DUMMY_NOW, people, positions, roster, type DummyPerson } from "./team";
 
 // The test developer's Team pages (issues #143 and #172): the roster and
 // alumni in ./team.ts with the test developer's own edits (./edits.ts) laid
@@ -202,9 +204,19 @@ function writesFor(
       const entry = find(personId);
       const self = find(SELF_ID[kind] ?? -1);
       if (kind !== "division-lead" || !entry || !self || !mayEdit(kind, entry) || entry.placement.role !== "member") return false;
+      const division = divisions.find((d) => d.id === divisionIdOf(entry.placement));
+      if (!division) return false;
       const members = { ...edits.members, [personId]: { role: "division-lead" as const, pageTitle: entry.pageTitle } };
       if (mode === "hand-over") members[self.id] = { role: "member", pageTitle: self.pageTitle };
-      await save({ ...edits, members });
+      // As the database does: the heads of the division's department are told (#188).
+      const heads = team.flatMap((e): DepartmentHeadRole[] =>
+        e.placement.role === "head" ? [{ memberId: e.id, departmentId: e.placement.departmentId }] : [],
+      );
+      const told = promotedNotices(
+        { personId, division: { name: division.name, departmentId: division.departmentId }, mode, lead: { id: self.id, name: self.name } },
+        heads,
+      );
+      await save({ ...edits, members, notices: withDummyNotices(edits.notices, told, entry.name, DUMMY_NOW) });
       return true;
     },
     async moveToAlumni(personId, departure) {

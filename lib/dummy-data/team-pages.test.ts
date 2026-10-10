@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { dummyDivisionAccess } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
-import { divisions, personFor, positions } from "./team";
+import { dummyNoticeAttention, dummyNoticesOf } from "./notices";
+import { divisions, people, personFor, positions } from "./team";
 import { dummyJoiners, dummyTeamPages, editedRoster } from "./team-pages";
 import { applications } from "./applications";
 
@@ -102,6 +103,28 @@ test("a lead promotes a member beside them, or hands the division over and becom
 
   assert.equal(await pages("division-lead").view.teamWrites!.promote(74, "together"), false, "another division");
   assert.equal(await pages("operations-lead").view.teamWrites!.promote(7, "together"), false, "only a division lead promotes");
+});
+
+test("a promotion tells the dummy head of the division's department, until they dismiss it (#188)", async () => {
+  const head = people.find((p) => p.name === "Chiara Rinaldi")!; // head of Aerodynamics, Mission Analysis's department
+  const lead = personFor["division-lead"];
+  const now = new Date("2026-10-10T12:00:00Z");
+  const promoted = pages("division-lead");
+  assert.equal(await promoted.view.teamWrites!.promote(7, "hand-over"), true);
+  const edits = parseEdits(serializeEdits(promoted.saved[0]));
+
+  const [notice, ...rest] = dummyNoticeAttention(head, dummyNoticesOf(edits), now);
+  assert.deepEqual(rest, []);
+  assert.equal(notice.title, "Sara Conti now leads Mission Analysis Division");
+  assert.ok(notice.detail.startsWith("Marco Bianchi handed over"));
+  assert.ok(
+    dummyNoticeAttention(lead, dummyNoticesOf(edits), now).every((a) => !a.title.includes("now leads")),
+    "the lead who promoted is not told",
+  );
+
+  const id = "dismissNotice" in notice.action ? notice.action.dismissNotice : -1;
+  const dismissed = { ...edits, dismissedNotices: [...edits.dismissedNotices, id] };
+  assert.deepEqual(dummyNoticeAttention(head, dummyNoticesOf(dismissed), now), []);
 });
 
 test("an application the lead accepts joins the waiting list", () => {
