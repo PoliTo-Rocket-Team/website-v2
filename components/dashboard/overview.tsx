@@ -379,7 +379,7 @@ function NextStepCard({ step }: { step: NextStep }) {
         <CalendarClock aria-hidden className="h-5 w-5" strokeWidth={1.75} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Next step</p>
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-accent">Next step</p>
         <h2 className="mt-1.5 text-[16px] font-semibold leading-snug md:mt-1">{step.title}</h2>
         <p className="mt-1.5 text-[14px] text-text-2 md:mt-0.5 md:text-[13px]">{step.detail}</p>
       </div>
