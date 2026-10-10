@@ -119,8 +119,10 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
         </div>
       </div>
 
-      {/* From lg a table (board 57); below it stacked cards (board 57m). */}
-      <div className={`${PANEL} mt-4 hidden overflow-hidden lg:block`}>
+      {/* From lg a table (board 57); below it stacked cards (board 57m). From xl
+          an open drawer moves the page left of it, which leaves the table too
+          narrow for its header labels until 2xl, so the cards stand in there (issue #222). */}
+      <div className={`${PANEL} mt-4 hidden overflow-hidden lg:block ${drawerOpen ? "xl:hidden 2xl:block" : ""}`}>
         <div
           aria-hidden="true"
           className={`grid h-10 items-center gap-4 border-b border-hairline bg-white-5 px-5 font-mono text-[10px] uppercase tracking-[0.2em] text-dim ${team ? COLUMNS_TEAM : COLUMNS_DIVISION}`}
@@ -138,7 +140,7 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
         </ul>
         {rows.length === 0 && <p className="px-5 py-6 text-[13px] text-prt-muted">No positions match.</p>}
       </div>
-      <ul className="mt-3 flex flex-col gap-2.5 lg:hidden">
+      <ul className={`mt-3 flex flex-col gap-2.5 lg:hidden ${drawerOpen ? "xl:flex 2xl:hidden" : ""}`}>
         {rows.map((row) => (
           <PositionCard key={row.id} row={row} team={team} chosen={editing?.id === row.id} onEdit={edit} />
         ))}
@@ -157,8 +159,10 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
   );
 }
 
-const COLUMNS_TEAM = "grid-cols-[minmax(0,1.7fr)_minmax(0,0.8fr)_minmax(0,0.75fr)_minmax(0,0.6fr)_112px]";
-const COLUMNS_DIVISION = "grid-cols-[minmax(0,2.6fr)_minmax(0,0.75fr)_minmax(0,0.6fr)_112px]";
+// Each column is at least as wide as its header label (10px mono, 0.2em
+// tracking: 8px a letter), so the labels never run together (issue #222).
+const COLUMNS_TEAM = "grid-cols-[minmax(0,1.7fr)_minmax(80px,0.8fr)_minmax(96px,0.75fr)_minmax(56px,0.6fr)_112px]";
+const COLUMNS_DIVISION = "grid-cols-[minmax(0,2.6fr)_minmax(96px,0.75fr)_minmax(56px,0.6fr)_112px]";
 
 function applicationsLine(row: PositionRow): string {
   return `${row.applications} ${row.applications === 1 ? "application" : "applications"}`;
