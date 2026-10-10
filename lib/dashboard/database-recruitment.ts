@@ -24,6 +24,7 @@ import {
   type JoinChange,
   type LeadMove,
   type Membership,
+  type OfferedSlots,
 } from "./application-flow";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
@@ -450,24 +451,11 @@ export async function moveApplication(identity: Identity, applicationId: number,
       // Withdrawing is the applicant's (issue #169), never a lead move.
       return refused("Only the applicant can withdraw an application.");
 
-    case "interview": {
-      const offered = after.offered;
-      await runAuditBatch((db) => [
-        db.delete(interviewSlots).where(eq(interviewSlots.applicationId, row.id)),
-        db.insert(interviewSlots).values(
-          offered.map((s) => ({
-            applicationId: row.id,
-            startsAt: s.start,
-            endsAt: s.end,
-          })),
-        ),
-        db.update(applications).set({ status: "interview" }).where(unchanged),
-      ]);
-      return written(null);
-    }
+    case "interview":
+      return (await offerSlots(row.id, row.status, after.offered)) ? written(null) : refused(APPLICATION_CHANGED);
 
-    case "accepted":
-      await runAuditQuery((db) =>
+    case "accepted": {
+      const changed = await runAuditQuery((db) =>
         db
           .update(applications)
           .set({
@@ -475,24 +463,65 @@ export async function moveApplication(identity: Identity, applicationId: number,
             acceptedAt: after.acceptedAt,
             ndaArrivedAt: after.ndaArrived ? (row.nda_arrived_at ?? now.toISOString()) : null,
           })
-          .where(unchanged),
+          .where(unchanged)
+          .returning({ id: applications.id }),
       );
-      return written(null);
+      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+    }
 
     case "joined": {
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
       const change = joinChange(await membershipOf(row.id));
-      if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused("This application changed. Reload the page.");
+      if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused(APPLICATION_CHANGED);
       updateTag(TEAM_ROSTER_CACHE_TAG);
       return written(null);
     }
 
     case "new":
     case "in-review":
-    case "rejected":
-      await runAuditQuery((db) => db.update(applications).set({ status: statusFor[after.stage] }).where(unchanged));
-      return written(null);
+    case "rejected": {
+      const changed = await runAuditQuery((db) =>
+        db.update(applications).set({ status: statusFor[after.stage] }).where(unchanged).returning({ id: applications.id }),
+      );
+      return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
+    }
   }
+}
+
+/** A guarded application write that changed no row: another lead or the applicant moved it first. */
+const APPLICATION_CHANGED = "This application changed. Reload the page.";
+
+/**
+ * Move to interview (58c) and Change times (58d): the application moves to
+ * Interview and its offered times replace the old ones, in one statement and
+ * only while it is still in the status it was read in and not withdrawn. The
+ * slots are cleared and written only for the row the status update matched,
+ * so a move another lead beat changes no slot. True when the move landed.
+ */
+async function offerSlots(applicationId: number, readStatus: DbStatus, offered: OfferedSlots): Promise<boolean> {
+  const times = sql.join(
+    offered.map((s) => sql`(${s.start}::timestamptz, ${s.end}::timestamptz)`),
+    sql`, `,
+  );
+  const [result] = await runAuditBatch((db) => [
+    db.execute(sql`
+      with moved as (
+        update ${applications} set status = 'interview'
+        where id = ${applicationId} and status = ${readStatus} and withdrawn_at is null
+        returning id
+      ),
+      cleared as (
+        delete from ${interviewSlots} where application_id in (select id from moved)
+      ),
+      added as (
+        insert into ${interviewSlots} (application_id, starts_at, ends_at)
+        select moved.id, offered.starts_at, offered.ends_at
+        from moved cross join (values ${times}) as offered (starts_at, ends_at)
+      )
+      select id from moved
+    `),
+  ]);
+  return result.rows.length > 0;
 }
 
 /** Where the applicant stands with the team: no member row, a member row with no active role, or an active role. */

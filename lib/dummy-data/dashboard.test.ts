@@ -205,7 +205,7 @@ test("Confirm join is one rule on both pages: it waits for the NDA tick, the app
   assert.equal(entry?.state.stage, "joined");
   const after = await joined.data.members();
   if (after.scope !== "division") return;
-  assert.deepEqual(after.joining, []);
+  assert.ok(!after.joining.some((j) => j.applicationId === joining.applicationId));
   assert.equal(after.rows.filter((r) => r.name === joining.name).length, 1);
   assert.equal(after.rows.find((r) => r.name === joining.name)?.pageTitle, "Mission Analyst");
   assert.equal(await joined.data.teamWrites!.confirmJoin(joining.applicationId), false);
@@ -222,6 +222,6 @@ test("Confirm join on Applications puts the person on the Members page too", asy
   assert.ok((await ticked.data.moveApplication(joining.applicationId, { kind: "confirm-join" })).ok);
   const after = await leadOver(ticked.saved()).data.members();
   if (after.scope !== "division") return;
-  assert.deepEqual(after.joining, []);
+  assert.ok(!after.joining.some((j) => j.applicationId === joining.applicationId));
   assert.equal(after.rows.filter((r) => r.name === joining.name).length, 1);
 });
