@@ -56,10 +56,6 @@ function StatusPill({ pill }: { pill: Pill }) {
   );
 }
 
-// Boards 50, 50b, 50c, 50d and 53 (50m to 50d-m on phones): the viewer's own
-// applications, each followed from sent to decision, and the ones that are
-// over under Past. Props in, nothing fetched; a withdrawal or a picked time
-// lives in this page's state once the write answers.
 /**
  * My applications for someone who has not applied yet (issue #179): the
  * page header, one line, and the way to the open positions. Nothing else.
@@ -76,6 +72,10 @@ export function NoApplicationsView() {
   );
 }
 
+// Boards 50, 50b, 50c, 50d and 53 (50m to 50d-m on phones): the viewer's own
+// applications, each followed from sent to decision, and the ones that are
+// over under Past. Props in, nothing fetched; a withdrawal or a picked time
+// lives in this page's state once the write answers.
 export function MyApplicationsView({ applications, ...actions }: { applications: MyApplications } & Actions) {
   const [active, setActive] = useState(applications.active);
   const [past, setPast] = useState(applications.past);
