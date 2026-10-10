@@ -43,10 +43,6 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 - `pnpm db:generate` - Generate Drizzle migrations from the TypeScript schema
 - `pnpm db:migrate` - Apply Drizzle migrations in `drizzle/`
 - `pnpm db:seed` - Seed the database using [`db/seed.sql`](db/seed.sql)
-- `pnpm mailpit:start` - Start Mailpit for local email testing
-- `pnpm mailpit:stop` - Stop Mailpit
-- `pnpm mailpit:restart` - Restart Mailpit
-- `pnpm mailpit:logs` - Tail Mailpit logs
 
 ## Database Workflow
 
