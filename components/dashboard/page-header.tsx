@@ -2,13 +2,14 @@ import type { ReactNode } from "react";
 
 // The title block over a dashboard page (boards 43 to 45b): the page name,
 // one line under it, and the page's main action on the right. On phones the
-// action drops under the title.
+// shell's top bar shows the page name (boards 50m, 55m), so the heading is
+// kept for screen readers only and the action drops under the line.
 export function PageHeader({ title, intro, action }: { title: string; intro: string; action?: ReactNode }) {
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
-        <h1 className="text-[24px] font-bold leading-tight tracking-[-0.01em] md:text-[28px]">{title}</h1>
-        <p className="mt-1 text-[14px] text-prt-muted">{intro}</p>
+        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.01em] max-md:sr-only">{title}</h1>
+        <p className="text-[14px] text-prt-muted md:mt-1">{intro}</p>
       </div>
       {action && <div className="shrink-0 sm:pt-1">{action}</div>}
     </header>
