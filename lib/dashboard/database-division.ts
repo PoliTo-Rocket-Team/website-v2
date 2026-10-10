@@ -6,7 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 import { divisions, logs, orders, roles, scopes, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import { privatePathname } from "@/lib/storage/pathname";
+import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import {
   ACCESS_TARGETS,
@@ -19,12 +19,24 @@ import {
   type DivisionAccess,
   type HeldAccess,
 } from "./division-access";
-import { checkNewOrder, checkQuote, parseEuros, type DivisionOrders, type Order, type OrderStatus } from "./orders";
+import {
+  checkNewOrder,
+  checkQuote,
+  orderActions,
+  parseEuros,
+  stateAfterEdit,
+  type DivisionOrders,
+  type NewOrder,
+  type Order,
+  type OrderState,
+  type StoredOrderStatus,
+} from "./orders";
 import type { DashboardIdentity } from "./database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The division lead's Access and Orders pages read from and written to the
-// database (boards 43 and 44, issue #145). A lead's division is the one their
+// database (boards 43 and 44, issue #145; Dashboard v2 boards 60 to 61d,
+// issue #172). A lead's division is the one their
 // lead role sits in, else the first division their scopes cover. Reads follow
 // .patterns/drizzle-reads.md; writes follow .patterns/audited-mutations.md
 // and check the lead's access on the server before they run.
@@ -201,15 +213,19 @@ async function removeAccess(identity: DashboardIdentity, grantId: number): Promi
   return written(null);
 }
 
-const statusOf: Readonly<Record<(typeof orders.$inferSelect)["status"], OrderStatus>> = {
+type DbOrderStatus = (typeof orders.$inferSelect)["status"];
+
+const statusOf: Readonly<Record<DbOrderStatus, StoredOrderStatus>> = {
   pending: "waiting",
-  accepted: "ordered",
-  rejected: "declined",
+  accepted: "approved",
+  rejected: "rejected",
+  changes_requested: "changes-requested",
+  cancelled: "cancelled",
 };
 
 type OrderRow = {
   id: number;
-  status: (typeof orders.$inferSelect)["status"];
+  status: DbOrderStatus;
   name: string | null;
   reason: string | null;
   description: string | null;
@@ -217,28 +233,49 @@ type OrderRow = {
   price: string | null;
   created_at: string;
   quote_name: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  reviewer_first_name: string | null;
+  reviewer_last_name: string | null;
+  reviewer_email: string | null;
 };
 
-// `orders.description` holds the shop link; `orders.price` the price of one,
-// without IVA; `orders.quote_name` the quote's pathname in the private store.
-function orderOf(r: OrderRow): Order {
-  return {
-    id: r.id,
-    item: r.name ?? "Unnamed item",
-    reason: r.reason,
-    link: r.description,
-    requestedBy: r.email === null ? "" : nameOf({ first_name: r.first_name, last_name: r.last_name, email: r.email }),
-    unitPrice: r.price === null ? 0 : (parseEuros(r.price) ?? 0),
-    quantity: r.quantity ?? 1,
-    shipping: null,
-    status: statusOf[r.status],
-    requestedOn: r.created_at.slice(0, 10),
-    quote: r.quote_name?.split("/").pop() ?? null,
-  };
+/** A stored request's state on the page; null for a cancelled one, which the page does not list. */
+function stateOf(r: OrderRow): OrderState | null {
+  const status = statusOf[r.status];
+  if (status === "cancelled") return null;
+  if (status !== "changes-requested") return { status };
+  const by = r.reviewer_email === null ? "The team leader" : nameOf({ first_name: r.reviewer_first_name, last_name: r.reviewer_last_name, email: r.reviewer_email });
+  return { status, changes: { reason: r.review_note ?? "", by, on: (r.reviewed_at ?? r.created_at).slice(0, 10) } };
 }
+
+// `orders.description` holds the shop link; `orders.price` the price of one,
+// without IVA; `orders.quote_name` the quote's pathname in the private store,
+// which no route serves yet, so the quote shows by name only.
+function orderOf(r: OrderRow): Order[] {
+  const state = stateOf(r);
+  if (state === null) return [];
+  return [
+    {
+      ...state,
+      id: r.id,
+      item: r.name ?? "Unnamed item",
+      reason: r.reason,
+      link: r.description,
+      requestedBy: r.email === null ? "" : nameOf({ first_name: r.first_name, last_name: r.last_name, email: r.email }),
+      unitPrice: r.price === null ? 0 : (parseEuros(r.price) ?? 0),
+      quantity: r.quantity ?? 1,
+      shipping: null,
+      requestedOn: r.created_at.slice(0, 10),
+      quote: r.quote_name === null ? null : { name: r.quote_name.split("/").pop() ?? r.quote_name, size: null, href: null },
+    },
+  ];
+}
+
+const reviewer = alias(users, "reviewer");
 
 function orderColumns() {
   return {
@@ -251,25 +288,66 @@ function orderColumns() {
     price: orders.price,
     created_at: orders.createdAt,
     quote_name: orders.quoteName,
+    review_note: orders.reviewNote,
+    reviewed_at: orders.reviewedAt,
     first_name: users.firstName,
     last_name: users.lastName,
     email: users.email,
+    reviewer_first_name: reviewer.firstName,
+    reviewer_last_name: reviewer.lastName,
+    reviewer_email: reviewer.email,
   };
+}
+
+/** Everyone who has held a role in the division, so a person who left keeps their orders there. */
+function requestersOf(divisionId: number) {
+  return getDb().selectDistinct({ id: roles.memberId }).from(roles).where(eq(roles.divisionId, divisionId));
+}
+
+async function readOrderRows(divisionId: number, orderId?: number): Promise<OrderRow[]> {
+  return getDb()
+    .select(orderColumns())
+    .from(orders)
+    .leftJoin(users, eq(users.member, orders.requester))
+    .leftJoin(reviewer, eq(reviewer.member, orders.reviewedBy))
+    .where(
+      and(
+        inArray(orders.requester, requestersOf(divisionId)),
+        orderId === undefined ? undefined : eq(orders.id, orderId),
+      ),
+    )
+    .orderBy(desc(orders.createdAt));
 }
 
 async function readDivisionOrders(identity: DashboardIdentity): Promise<DivisionOrders | null> {
   const division = await leadDivision(identity);
   if (division === null) return null;
-  const db = getDb();
-  // Everyone who has held a role in the division, so a person who left keeps their orders here.
-  const requesters = db.selectDistinct({ id: roles.memberId }).from(roles).where(eq(roles.divisionId, division.id));
-  const rows = await db
-    .select(orderColumns())
-    .from(orders)
-    .leftJoin(users, eq(users.member, orders.requester))
-    .where(inArray(orders.requester, requesters))
-    .orderBy(desc(orders.createdAt));
-  return { division, year: new Date().getUTCFullYear(), orders: rows.map(orderOf) };
+  return { division, orders: (await readOrderRows(division.id)).flatMap(orderOf) };
+}
+
+/** The New order or Edit order fields and quote, checked again on the server. */
+function checkedOrder(fields: Record<string, string>, quote: Upload | null): { ok: true; value: NewOrder } | { ok: false; error: string } {
+  const checked = checkNewOrder({
+    item: fields.item ?? "",
+    link: fields.link ?? "",
+    price: fields.price ?? "",
+    quantity: fields.quantity ?? "",
+    reason: fields.reason ?? "",
+  });
+  if (!checked.ok) return { ok: false, error: Object.values(checked.errors)[0] ?? "Check the form." };
+  if (quote !== null) {
+    const error = checkQuote({ type: quote.contentType, size: quote.bytes.byteLength, name: quote.name });
+    if (error !== null) return { ok: false, error };
+  }
+  return checked;
+}
+
+/** Stores a quote in the private store; null when none was sent. */
+async function storeQuote(quote: Upload | null): Promise<PrivatePathname | null> {
+  if (quote === null) return null;
+  const pathname = privatePathname("order", `${randomUUID()}.pdf`);
+  await uploadPrivateFile(pathname, quote.bytes, "application/pdf");
+  return pathname;
 }
 
 async function placeOrder(
@@ -279,22 +357,11 @@ async function placeOrder(
 ): Promise<WriteResult<Order>> {
   const division = await leadDivision(identity);
   if (division === null || identity.memberId === null) return refused("Only a division lead sends orders here.");
-  const checked = checkNewOrder({
-    item: fields.item ?? "",
-    link: fields.link ?? "",
-    price: fields.price ?? "",
-    quantity: fields.quantity ?? "",
-    reason: fields.reason ?? "",
-  });
-  if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  if (quote !== null) {
-    const error = checkQuote({ type: quote.contentType, size: quote.bytes.byteLength, name: quote.name });
-    if (error !== null) return refused(error);
-  }
+  const checked = checkedOrder(fields, quote);
+  if (!checked.ok) return refused(checked.error);
 
   const order = checked.value;
-  const pathname = quote === null ? null : privatePathname("order", `${randomUUID()}.pdf`);
-  if (pathname !== null && quote !== null) await uploadPrivateFile(pathname, quote.bytes, "application/pdf");
+  const pathname = await storeQuote(quote);
   const requester = identity.memberId;
   try {
     const [row] = await runAuditQuery((db) =>
@@ -309,21 +376,76 @@ async function placeOrder(
           price: (order.unitPrice / 100).toFixed(2),
           quoteName: pathname,
         })
-        .returning({ id: orders.id, created_at: orders.createdAt, status: orders.status }),
+        .returning({ id: orders.id }),
     );
-    return written({
-      id: row.id,
-      ...order,
-      requestedBy: identity.name,
-      shipping: null,
-      status: statusOf[row.status],
-      requestedOn: row.created_at.slice(0, 10),
-      quote: quote?.name ?? null,
-    });
+    const [placed] = (await readOrderRows(division.id, row.id)).flatMap(orderOf);
+    return written(placed);
   } catch (error) {
     if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
     throw error;
   }
+}
+
+/** The request as stored, when it is one of the lead's division's and still on the page. */
+async function divisionOrder(identity: DashboardIdentity, orderId: number): Promise<{ divisionId: number; order: Order } | string> {
+  const division = await leadDivision(identity);
+  if (division === null) return "Only a division lead changes orders here.";
+  const [order] = (await readOrderRows(division.id, orderId)).flatMap(orderOf);
+  return order === undefined ? "That request is not in your division." : { divisionId: division.id, order };
+}
+
+async function editOrder(
+  identity: DashboardIdentity,
+  orderId: number,
+  fields: Record<string, string>,
+  quote: Upload | null,
+): Promise<WriteResult<Order>> {
+  const found = await divisionOrder(identity, orderId);
+  if (typeof found === "string") return refused(found);
+  if (stateAfterEdit(found.order.status) === null) return refused("The team leader has answered this request.");
+  const checked = checkedOrder(fields, quote);
+  if (!checked.ok) return refused(checked.error);
+
+  const order = checked.value;
+  const pathname = await storeQuote(quote);
+  try {
+    // Back to waiting for the team leader, with their earlier answer cleared.
+    await runAuditQuery((db) =>
+      db
+        .update(orders)
+        .set({
+          name: order.item,
+          description: order.link,
+          reason: order.reason,
+          quantity: order.quantity,
+          price: (order.unitPrice / 100).toFixed(2),
+          status: "pending",
+          reviewNote: null,
+          reviewedBy: null,
+          reviewedAt: null,
+          ...(pathname === null ? {} : { quoteName: pathname }),
+        })
+        .where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "changes_requested"]))),
+    );
+  } catch (error) {
+    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    throw error;
+  }
+  const [edited] = (await readOrderRows(found.divisionId, orderId)).flatMap(orderOf);
+  return edited === undefined ? refused("The team leader has answered this request.") : written(edited);
+}
+
+async function cancelOrder(identity: DashboardIdentity, orderId: number): Promise<WriteResult<null>> {
+  const found = await divisionOrder(identity, orderId);
+  if (typeof found === "string") return refused(found);
+  if (!orderActions(found.order.status).cancel) return refused("The team leader has answered this request.");
+  await runAuditQuery((db) =>
+    db
+      .update(orders)
+      .set({ status: "cancelled" })
+      .where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "changes_requested"]))),
+  );
+  return written(null);
 }
 
 /** The Access and Orders methods of the database side of the data interface. */
@@ -334,5 +456,8 @@ export function databaseDivisionPages(identity: DashboardIdentity) {
     removeAccess: (grantId: number) => removeAccess(identity, grantId),
     divisionOrders: () => readDivisionOrders(identity),
     placeOrder: (fields: Record<string, string>, quote: Upload | null) => placeOrder(identity, fields, quote),
+    editOrder: (orderId: number, fields: Record<string, string>, quote: Upload | null) =>
+      editOrder(identity, orderId, fields, quote),
+    cancelOrder: (orderId: number) => cancelOrder(identity, orderId),
   };
 }

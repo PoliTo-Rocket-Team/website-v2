@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   title: "Access · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 43: the division lead's Access page. Only a division lead reaches it
+// Boards 60 and 60b: the division lead's Access page. Only a division lead reaches it
 // (lib/dashboard/access.ts); anyone else gets the dashboard's not found.
 export default function AccessPage() {
   return (

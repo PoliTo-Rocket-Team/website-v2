@@ -33,7 +33,16 @@ export function sheetConfirm(danger: boolean): string {
 // The "are you sure" step before a destructive or decisive action (boards
 // 50b, 50c, 51c, 55b and 55c): an icon in a tinted ring, the question, what
 // happens, anything the action needs (a reason, the word DELETE), and the way
-// out beside the action.
+// out beside the action. The ring follows `danger` unless `tone` says
+// otherwise: Confirm join is green (board 59, issue #172).
+export type ConfirmTone = "accent" | "danger" | "success";
+
+const RING_TONES: Readonly<Record<ConfirmTone, string>> = {
+  accent: "border-accent/40 bg-accent-soft text-accent",
+  danger: "border-danger/40 bg-danger-soft text-danger",
+  success: "border-success/40 bg-success-soft text-success",
+};
+
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -44,6 +53,7 @@ export function ConfirmDialog({
   cancelLabel,
   confirmLabel,
   danger = false,
+  tone = danger ? "danger" : "accent",
   pending = false,
   confirmDisabled = false,
   onConfirm,
@@ -57,6 +67,7 @@ export function ConfirmDialog({
   cancelLabel: string;
   confirmLabel: string;
   danger?: boolean;
+  tone?: ConfirmTone;
   pending?: boolean;
   confirmDisabled?: boolean;
   onConfirm: () => void;
@@ -69,9 +80,7 @@ export function ConfirmDialog({
           <SheetGrabber />
           <span
             aria-hidden
-            className={`flex h-11 w-11 items-center justify-center rounded-full border ${
-              danger ? "border-danger/40 bg-danger-soft text-danger" : "border-accent/40 bg-accent-soft text-accent"
-            }`}
+            className={`flex h-11 w-11 items-center justify-center rounded-full border ${RING_TONES[tone]}`}
           >
             {icon}
           </span>

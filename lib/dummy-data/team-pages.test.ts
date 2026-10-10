@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { dummyDivisionAccess } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
-import { dummyTeamPages } from "./team-pages";
+import { personFor } from "./team";
+import { dummyJoiners, dummyTeamPages, editedRoster } from "./team-pages";
+import { applications } from "./applications";
 
 /** The pages as `kind` sees them, keeping every saved edit in memory as the cookie would. */
 function pages(kind: Parameters<typeof dummyTeamPages>[0], start: TeamEdits = NO_EDITS) {
@@ -21,7 +24,7 @@ test("a division lead lists and changes only their own division, never themselve
   const writes = view.teamWrites!;
   assert.equal(await writes.saveMember(7, { role: "member", pageTitle: "Mission Analyst" }), true);
   assert.equal(await writes.saveMember(2, { role: "member", pageTitle: null }), false); // themselves
-  assert.equal(await writes.moveToAlumni(74), false); // another division
+  assert.equal(await writes.moveToAlumni(74, { from: 2024, to: 2026, reason: null }), false); // another division
   assert.equal(saved.length, 1);
 });
 
@@ -38,7 +41,7 @@ test("the team leader and a head keep their place when the operations lead saves
 
 test("moving someone to alumni takes them off the tree and onto the Alumni page", async () => {
   const lead = pages("division-lead");
-  assert.equal(await lead.view.teamWrites!.moveToAlumni(5), true);
+  assert.equal(await lead.view.teamWrites!.moveToAlumni(5, { from: 2025, to: 2026, reason: "graduated" }), true);
   const edits = parseEdits(serializeEdits(lead.saved[0]));
 
   const member = pages("member", edits).view;
@@ -48,7 +51,62 @@ test("moving someone to alumni takes them off the tree and onto the Alumni page"
 
   const ops = pages("operations-lead", edits).view;
   const alumni = await ops.alumni();
-  assert.ok(alumni.rows.some((a) => a.name === "Elif Kaya" && a.shownOnSite === true));
+  assert.ok(alumni.rows.some((a) => a.name === "Elif Kaya" && a.from === 2025 && a.to === 2026 && a.shownOnSite === true));
+});
+
+test("moving someone to alumni ends their access and keeps them on record", async () => {
+  const lead = pages("division-lead");
+  const before = dummyDivisionAccess(personFor["division-lead"], editedRoster(NO_EDITS))!;
+  assert.ok(before.grants.some((g) => g.person.name === "Luca Marino"));
+
+  assert.equal(await lead.view.teamWrites!.moveToAlumni(4, { from: 2024, to: 2026, reason: null }), true);
+  const edits = lead.saved[0];
+  const after = dummyDivisionAccess(personFor["division-lead"], editedRoster(edits))!;
+  assert.ok(!after.grants.some((g) => g.person.name === "Luca Marino"), "their access ends");
+  assert.ok(!after.people.some((p) => p.name === "Luca Marino"), "no access can be given to them");
+  const alumni = await pages("operations-lead", edits).view.alumni();
+  assert.ok(alumni.rows.some((a) => a.name === "Luca Marino"), "they stay on record, on the Alumni page");
+});
+
+test("a lead promotes a member beside them, or hands the division over and becomes a member", async () => {
+  const together = pages("division-lead");
+  assert.equal(await together.view.teamWrites!.promote(7, "together"), true);
+  const both = await pages("division-lead", together.saved[0]).view.members();
+  assert.deepEqual(both.rows.filter((r) => r.role === "division-lead").map((r) => r.name).sort(), ["Marco Bianchi", "Sara Conti"]);
+
+  const handOver = pages("division-lead");
+  assert.equal(await handOver.view.teamWrites!.promote(7, "hand-over"), true);
+  const after = await pages("division-lead", handOver.saved[0]).view.members();
+  assert.deepEqual(after.rows.filter((r) => r.role === "division-lead").map((r) => r.name), ["Sara Conti"]);
+
+  assert.equal(await pages("division-lead").view.teamWrites!.promote(74, "together"), false, "another division");
+  assert.equal(await pages("operations-lead").view.teamWrites!.promote(7, "together"), false, "only a division lead promotes");
+});
+
+test("an accepted applicant waits on the Members page until the lead confirms they join", async () => {
+  const lead = pages("division-lead");
+  const directory = await lead.view.members();
+  assert.equal(directory.scope, "division");
+  if (directory.scope !== "division") return;
+  assert.equal(directory.joining.length, 1);
+  const [joining] = directory.joining;
+  assert.equal(joining.position, "Mission Analyst");
+
+  assert.equal(await lead.view.teamWrites!.confirmJoin(joining.applicationId), true);
+  const after = await pages("division-lead", lead.saved[0]).view.members();
+  if (after.scope !== "division") return;
+  assert.deepEqual(after.joining, []);
+  const row = after.rows.find((r) => r.name === joining.name);
+  assert.equal(row?.role, "member");
+  assert.equal(row?.pageTitle, "Mission Analyst");
+  assert.equal(await pages("division-lead", lead.saved[0]).view.teamWrites!.confirmJoin(joining.applicationId), false, "only once");
+});
+
+test("an application the lead accepts joins the waiting list", () => {
+  const accepted = applications.find((a) => a.positionId === 4 && a.stage === "new")!;
+  const current = applications.map((a) => (a.id === accepted.id ? { ...a, stage: "accepted" as const } : a));
+  assert.ok(dummyJoiners(current, NO_EDITS).some((j) => j.applicationId === accepted.id));
+  assert.ok(!dummyJoiners(applications, NO_EDITS).some((j) => j.applicationId === accepted.id));
 });
 
 test("viewers who do not reach a page get no data from it", async () => {

@@ -6,19 +6,23 @@ import {
   divisionDirectory,
   divisionIdOf,
   memberRowOf,
+  NO_DIVISION,
   teamDirectory,
   type AlumnusRow,
+  type Joining,
   type MemberEdit,
   type OrgChart,
   type Placement,
   type RosterEntry,
 } from "@/lib/dashboard/team";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
+import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, type TeamEdits } from "./edits";
-import { alumni, departments, divisions, people, roster, type DummyPerson } from "./team";
+import { alumni, departments, divisions, people, positions, roster, type DummyPerson } from "./team";
 
-// The test developer's Team pages (issue #143): the roster and alumni in
-// ./team.ts with the test developer's own edits (./edits.ts) laid over them.
+// The test developer's Team pages (issues #143 and #172): the roster and
+// alumni in ./team.ts with the test developer's own edits (./edits.ts) laid
+// over them, and the people accepted for a position joining it.
 
 const org: OrgChart = { departments, divisions };
 
@@ -53,20 +57,81 @@ function entryOf(person: DummyPerson, edit: MemberEdit | undefined): RosterEntry
   };
 }
 
-/** This year's roster after the test developer's edits: moved people left out, saved drawers applied. */
-export function editedRoster(edits: TeamEdits): RosterEntry[] {
-  return people.filter((p) => edits.movedToAlumni[p.id] === undefined).map((p) => entryOf(p, edits.members[p.id]));
+/**
+ * Someone accepted for a position and not on the team yet (board 59). The
+ * dummy team has one waiting from the start, for Mission Analyst; an
+ * application the test developer accepts on the Applications page joins them.
+ */
+export type DummyJoiner = Joining & {
+  readonly email: string;
+  readonly divisionId: number;
+  readonly program: string;
+  readonly study: string;
+};
+
+/** The accepted Mission Analyst applicant who is waiting for their NDA when the dummy team starts. */
+const WAITING_FROM_THE_START = baseApplications.find((a) => a.positionId === 1 && a.stage === "accepted")!.id;
+
+/** Roster ids for people who joined from an application, clear of the people and alumni ids. */
+const JOINER_ID_BASE = 100_000;
+
+/** The accepted applicants not yet confirmed onto the team, from the applications as the test developer left them. */
+export function dummyJoiners(current: readonly DummyApplication[], edits: TeamEdits): DummyJoiner[] {
+  return current.flatMap((a): DummyJoiner[] => {
+    const base = baseApplications.find((b) => b.id === a.id);
+    const waiting = a.stage === "accepted" && (a.id === WAITING_FROM_THE_START || base?.stage !== "accepted");
+    const position = positions.find((p) => p.id === a.positionId);
+    if (!waiting || !position) return [];
+    return [
+      {
+        applicationId: a.id,
+        name: a.applicant.name,
+        position: position.title,
+        email: a.applicant.email,
+        divisionId: position.divisionId,
+        program: a.applicant.degree,
+        study: a.applicant.year,
+      },
+    ];
+  });
+}
+
+function joinedEntry(joiner: DummyJoiner, year: number): RosterEntry {
+  return {
+    id: JOINER_ID_BASE + joiner.applicationId,
+    name: joiner.name,
+    email: joiner.email,
+    placement: { role: "member", divisionId: joiner.divisionId },
+    pageTitle: joiner.position,
+    joined: year,
+    program: joiner.program,
+    study: joiner.study,
+    access: [],
+  };
+}
+
+/**
+ * This year's roster after the test developer's edits: moved people left
+ * out, saved drawers and promotions applied, confirmed joiners added.
+ */
+export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] = []): RosterEntry[] {
+  const joined = joiners.flatMap((j) => {
+    const year = edits.joined[j.applicationId];
+    return year === undefined ? [] : [joinedEntry(j, year)];
+  });
+  return [...people.map((p) => entryOf(p, edits.members[p.id])), ...joined].filter(
+    (e) => edits.movedToAlumni[e.id] === undefined,
+  );
 }
 
 /** The alumni, those the test developer moved included, with their switches as flipped. */
 export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
   const moved = people.flatMap((p): AlumnusRow[] => {
-    const leftIn = edits.movedToAlumni[p.id];
-    if (leftIn === undefined) return [];
-    const entry = entryOf(p, edits.members[p.id]);
-    const row = memberRowOf(entry, org);
+    const departure = edits.movedToAlumni[p.id];
+    if (departure === undefined) return [];
+    const row = memberRowOf(entryOf(p, edits.members[p.id]), org);
     const unit = row.department ?? "Board";
-    return [{ id: p.id, name: p.name, lastRole: row.roleLabel, unit, department: unit, from: entry.joined, to: leftIn, shownOnSite: true }];
+    return [{ id: p.id, name: p.name, lastRole: row.roleLabel, unit, department: unit, from: departure.from, to: departure.to, shownOnSite: true }];
   });
   return [...alumni, ...moved].map((a) => ({ ...a, shownOnSite: edits.shownOnSite[a.id] ?? a.shownOnSite }));
 }
@@ -75,12 +140,25 @@ export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
 function mayEdit(kind: ViewerKind, entry: RosterEntry): boolean {
   if (!canReach(kind, "members") || entry.id === SELF_ID[kind]) return false;
   if (kind === "operations-lead") return true;
-  const mine = people.find((p) => p.id === SELF_ID[kind]);
-  return mine !== undefined && divisionIdOf(entry.placement) === divisionIdOf(mine.placement);
+  return kind === "division-lead" && divisionIdOf(entry.placement) === myDivision(kind);
 }
 
-function writesFor(kind: ViewerKind, edits: TeamEdits, save: (next: TeamEdits) => Promise<void>): TeamWrites {
-  const find = (id: number) => editedRoster(edits).find((e) => e.id === id);
+/** The division a division lead leads; null for every other viewer. */
+function myDivision(kind: ViewerKind): number | null {
+  if (kind !== "division-lead") return null;
+  const mine = people.find((p) => p.id === SELF_ID[kind]);
+  return mine ? divisionIdOf(mine.placement) : null;
+}
+
+function writesFor(
+  kind: ViewerKind,
+  edits: TeamEdits,
+  save: (next: TeamEdits) => Promise<void>,
+  joiners: readonly DummyJoiner[],
+): TeamWrites {
+  const team = editedRoster(edits, joiners);
+  const find = (id: number) => team.find((e) => e.id === id);
+  const thisYear = new Date().getUTCFullYear();
   return {
     async setShownOnSite(alumnusId, shown) {
       if (!canReach(kind, "alumni") || !editedAlumni(edits).some((a) => a.id === alumnusId)) return false;
@@ -98,33 +176,62 @@ function writesFor(kind: ViewerKind, edits: TeamEdits, save: (next: TeamEdits) =
       await save({ ...edits, members: { ...edits.members, [personId]: next } });
       return true;
     },
-    async moveToAlumni(personId) {
+    async promote(personId, mode) {
       const entry = find(personId);
-      if (!entry || !mayEdit(kind, entry)) return false;
-      await save({ ...edits, movedToAlumni: { ...edits.movedToAlumni, [personId]: new Date().getUTCFullYear() } });
+      const self = find(SELF_ID[kind] ?? -1);
+      if (kind !== "division-lead" || !entry || !self || !mayEdit(kind, entry) || entry.placement.role !== "member") return false;
+      const members = { ...edits.members, [personId]: { role: "division-lead" as const, pageTitle: entry.pageTitle } };
+      if (mode === "hand-over") members[self.id] = { role: "member", pageTitle: self.pageTitle };
+      await save({ ...edits, members });
+      return true;
+    },
+    async moveToAlumni(personId, departure) {
+      const entry = find(personId);
+      // Only people on the dummy roster have an Alumni row to move to.
+      if (!entry || !mayEdit(kind, entry) || !people.some((p) => p.id === personId)) return false;
+      if (departure.from > departure.to || departure.to > thisYear) return false;
+      await save({ ...edits, movedToAlumni: { ...edits.movedToAlumni, [personId]: departure } });
+      return true;
+    },
+    async confirmJoin(applicationId) {
+      const joiner = joiners.find((j) => j.applicationId === applicationId);
+      if (!joiner || joiner.divisionId !== myDivision(kind) || edits.joined[applicationId] !== undefined) return false;
+      await save({ ...edits, joined: { ...edits.joined, [applicationId]: thisYear } });
       return true;
     },
   };
 }
 
+/**
+ * The Team pages as `kind` sees them, with `edits` laid over the arrays and
+ * `current` the applications as the test developer left them.
+ */
 export function dummyTeamPages(
   kind: ViewerKind,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
+  current: readonly DummyApplication[] = baseApplications,
 ): Pick<DashboardData, "members" | "alumni" | "teamTree" | "teamWrites"> {
   const self = SELF_ID[kind];
+  const joiners = dummyJoiners(current, edits);
   return {
     members: async () => {
-      const team = editedRoster(edits);
+      const team = editedRoster(edits, joiners);
       if (kind === "operations-lead") return teamDirectory(team, org, self);
-      const me = team.find((e) => e.id === self);
-      const division = me ? divisionIdOf(me.placement) : null;
-      if (kind !== "division-lead" || division === null) return { scope: "division", division: "", rows: [] };
-      return divisionDirectory(team, org, division, self);
+      const division = myDivision(kind);
+      if (division === null) return NO_DIVISION;
+      const joining = joiners.filter((j) => j.divisionId === division && edits.joined[j.applicationId] === undefined);
+      return divisionDirectory(
+        team,
+        org,
+        division,
+        self,
+        joining.map(({ applicationId, name, position }) => ({ applicationId, name, position })),
+      );
     },
     alumni: async () => alumniDirectory(canReach(kind, "alumni") ? editedAlumni(edits) : []),
     teamTree: async () =>
-      buildTeamTree(canReach(kind, "team-tree") ? editedRoster(edits) : [], org, roster.season, self),
-    teamWrites: writesFor(kind, edits, save),
+      buildTeamTree(canReach(kind, "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
+    teamWrites: writesFor(kind, edits, save, joiners),
   };
 }

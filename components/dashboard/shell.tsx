@@ -9,6 +9,7 @@ import { pageTitleFor, type MenuPage, type NavSection } from "@/lib/dashboard/ac
 import type { DashboardViewer } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
 import { Sidebar } from "./sidebar";
+import { TopBarSlot } from "./top-bar-slot";
 import { UserSheet } from "./user-card";
 
 const ICON_BUTTON =
@@ -16,7 +17,8 @@ const ICON_BUTTON =
 
 // The dashboard frame (boards 51b, 52, 56): a 248px sidebar fixed on the left
 // and the page to its right, 40px in. Below md (boards 50m-b, 52m, 56m) a 56px
-// top bar holds a menu button, the page's title and the viewer's avatar. The
+// top bar holds a menu button, the page's title, the page's main action where
+// it puts one there (boards 60m, 61m) and the viewer's avatar. The
 // menu button opens the sidebar as a 300px sheet from the left; the avatar
 // opens the user menu as a bottom sheet. Both are the repo's Radix dialog,
 // built on the primitive as nav-menu.tsx is: they slide in only under
@@ -33,6 +35,7 @@ export function DashboardShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
   const pathname = usePathname();
   const title = pageTitleFor(pathname ?? "/dashboard") ?? "Dashboard";
   return (
@@ -71,6 +74,8 @@ export function DashboardShell({
 
         <p className="min-w-0 flex-1 truncate text-[17px] font-semibold">{title}</p>
 
+        <div ref={setActionSlot} className="mr-1.5 flex shrink-0 items-center empty:hidden" />
+
         <UserSheet viewer={viewer} menuPage={menuPage}>
           <button
             type="button"
@@ -82,7 +87,9 @@ export function DashboardShell({
         </UserSheet>
       </header>
 
-      <main className="px-4 pb-12 pt-4 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">{children}</main>
+      <main className="px-4 pb-12 pt-4 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">
+        <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
+      </main>
     </div>
   );
 }

@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkNewOrder, orderBreakdown, orderFigures, parseEuros, sortOrders, type Order } from "./orders";
+import {
+  checkNewOrder,
+  inOrderTab,
+  orderActions,
+  orderBreakdown,
+  orderFormFields,
+  orderTabs,
+  parseEuros,
+  sortOrders,
+  stateAfterEdit,
+  type Order,
+  type OrderState,
+} from "./orders";
 
 test("euros as typed become whole cents, and anything else is refused", () => {
   assert.equal(parseEuros("59.55"), 5955);
@@ -11,26 +23,43 @@ test("euros as typed become whole cents, and anything else is refused", () => {
   for (const bad of ["", "abc", "1.234", "-3", "5.5.5"]) assert.equal(parseEuros(bad), null, bad);
 });
 
-function order(status: Order["status"], unitPrice: number, quantity: number, shipping: number | null, requestedOn: string): Order {
-  return { id: 0, item: "x", reason: null, link: null, requestedBy: "x", unitPrice, quantity, shipping, status, requestedOn, quote: null };
+function order(state: OrderState, requestedOn = "2026-10-01"): Order {
+  return { ...state, id: 0, item: "x", reason: null, link: null, requestedBy: "x", unitPrice: 100, quantity: 1, shipping: null, requestedOn, quote: null };
 }
 
-test("the figures count waiting and ordered totals, and only this year's placed spend", () => {
-  const figures = orderFigures(
-    [
-      order("waiting", 5955, 2, null, "2026-10-08"),
-      order("waiting", 15000, 1, 1330, "2026-10-06"),
-      order("ordered", 1180, 3, null, "2026-10-01"),
-      order("delivered", 4824, 1, null, "2026-09-22"),
-      order("delivered", 9999, 1, null, "2025-12-30"),
-      order("declined", 50000, 1, null, "2026-05-01"),
-    ],
-    2026,
+const sentBack: OrderState = { status: "changes-requested", changes: { reason: "Add a second quote.", by: "Alessandro Greco", on: "2026-10-05" } };
+
+test("the tabs count every status, empty ones included, and All counts them all", () => {
+  const orders = [order({ status: "waiting" }), order({ status: "waiting" }), order({ status: "approved" }), order(sentBack)];
+  assert.deepEqual(
+    orderTabs(orders).map((t) => `${t.label} ${t.count}`),
+    ["All 4", "Waiting 2", "Approved 1", "Changes requested 1", "Rejected 0"],
   );
-  assert.deepEqual(figures, {
-    waiting: { count: 2, total: 11910 + 16330 },
-    ordered: { count: 1, total: 3540 },
-    yearSpend: 3540 + 4824,
+  assert.equal(orders.filter((o) => inOrderTab(o, "changes-requested")).length, 1);
+  assert.equal(orders.filter((o) => inOrderTab(o, "all")).length, 4);
+});
+
+test("only a request the team leader has not settled can be cancelled or edited", () => {
+  assert.deepEqual(orderActions("waiting"), { cancel: true, edit: "edit" });
+  assert.deepEqual(orderActions("changes-requested"), { cancel: true, edit: "edit-and-resend" });
+  assert.deepEqual(orderActions("approved"), { cancel: false, edit: null });
+  assert.deepEqual(orderActions("rejected"), { cancel: false, edit: null });
+});
+
+test("an edit sends the request back to the team leader, and an answered one cannot be edited", () => {
+  assert.deepEqual(stateAfterEdit("changes-requested"), { status: "waiting" });
+  assert.deepEqual(stateAfterEdit("waiting"), { status: "waiting" });
+  assert.equal(stateAfterEdit("approved"), null);
+  assert.equal(stateAfterEdit("rejected"), null);
+});
+
+test("Edit order opens on the request as it was sent", () => {
+  assert.deepEqual(orderFormFields({ item: "Steel wire", link: null, unitPrice: 5955, quantity: 2, reason: "For the launch rail" }), {
+    item: "Steel wire",
+    link: "",
+    price: "59.55",
+    quantity: "2",
+    reason: "For the launch rail",
   });
 });
 
@@ -40,16 +69,17 @@ test("the breakdown shows quantity and shipping only when there are some", () =>
   assert.equal(orderBreakdown({ unitPrice: 12480, quantity: 1, shipping: null }), "€124.80");
 });
 
-test("orders sort waiting first, newest first within a status", () => {
+test("orders sort newest first, whatever their state", () => {
   const sorted = sortOrders([
-    order("delivered", 1, 1, null, "2026-10-09"),
-    order("waiting", 1, 1, null, "2026-10-01"),
-    order("waiting", 1, 1, null, "2026-10-05"),
-    order("ordered", 1, 1, null, "2026-10-08"),
+    order({ status: "rejected" }, "2026-10-09"),
+    order({ status: "approved" }, "2026-10-08"),
+    order({ status: "waiting" }, "2026-10-01"),
+    order(sentBack, "2026-10-02"),
+    order({ status: "waiting" }, "2026-10-05"),
   ]);
   assert.deepEqual(
     sorted.map((o) => `${o.status} ${o.requestedOn}`),
-    ["waiting 2026-10-05", "waiting 2026-10-01", "ordered 2026-10-08", "delivered 2026-10-09"],
+    ["rejected 2026-10-09", "approved 2026-10-08", "waiting 2026-10-05", "changes-requested 2026-10-02", "waiting 2026-10-01"],
   );
 });
 

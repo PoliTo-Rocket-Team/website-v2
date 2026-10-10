@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildTeamTree,
+  canPromote,
+  checkDeparture,
+  divisionDirectory,
   inMemberTab,
   memberRowsFor,
   pagerItems,
@@ -65,4 +68,27 @@ test("the pager keeps the first pages, the current one and the last", () => {
 test("a team year starts in October", () => {
   assert.equal(seasonAt(new Date("2026-10-09T00:00:00Z")), "2026–27");
   assert.equal(seasonAt(new Date("2026-09-30T00:00:00Z")), "2025–26");
+});
+
+test("a division's page names its department head, who the lead tells about a promotion", () => {
+  const directory = divisionDirectory(roster, org, 10, 3);
+  assert.equal(directory.scope, "division");
+  if (directory.scope === "division") assert.deepEqual(directory.head, { name: "Chiara Rinaldi", department: "Aerodynamics" });
+});
+
+test("only a member of a division can be promoted, never a lead or the viewer", () => {
+  const rows = divisionDirectory(roster, org, 10, 3).rows;
+  assert.deepEqual(rows.filter(canPromote).map((r) => r.name), ["Elif Kaya"]);
+});
+
+test("the years on the team are read as typed, in order and not after this year; the reason is optional", () => {
+  assert.deepEqual(checkDeparture({ years: "2024 – 2026", reason: "graduated" }, 2026), {
+    ok: true,
+    value: { from: 2024, to: 2026, reason: "graduated" },
+  });
+  assert.deepEqual(checkDeparture({ years: "2025", reason: "" }, 2026), { ok: true, value: { from: 2025, to: 2025, reason: null } });
+  assert.equal(checkDeparture({ years: "2026 - 2024", reason: null }, 2026).ok, false);
+  assert.equal(checkDeparture({ years: "2024 – 2027", reason: null }, 2026).ok, false);
+  assert.equal(checkDeparture({ years: "last year", reason: null }, 2026).ok, false);
+  assert.equal(checkDeparture({ years: "2024 – 2026", reason: "fired" }, 2026).ok, false);
 });

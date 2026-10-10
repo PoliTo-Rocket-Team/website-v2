@@ -89,7 +89,7 @@ test("a division lead's overview is scoped to their division and lists their int
     overview.stats.map((s) => s.label),
     ["New applications", "Open positions", "Orders", "My division"],
   );
-  assert.equal(overview.stats[2].value, "3 waiting");
+  assert.equal(overview.stats[2].value, "2 waiting");
   assert.deepEqual(
     overview.interviews.map((i) => i.state),
     ["booked", "booked", "waiting"],

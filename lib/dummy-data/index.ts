@@ -2,7 +2,7 @@ import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
-import { formatEuro, orderFigures } from "@/lib/dashboard/orders";
+import { formatEuro, waitingOrders } from "@/lib/dashboard/orders";
 import {
   checklistProgress,
   divisionShortName,
@@ -19,7 +19,7 @@ import {
   type TeamOverview,
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
-import { divisionIdOf } from "@/lib/dashboard/team";
+import { divisionIdOf, type Departure } from "@/lib/dashboard/team";
 import {
   ago,
   appliedLabels,
@@ -36,7 +36,15 @@ import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { applyDummyChange, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
-import { dummyDivisionAccess, dummyDivisionOrders, dummyGiveAccess, dummyPlaceOrder, dummyRemoveAccess } from "./division";
+import {
+  dummyCancelOrder,
+  dummyDivisionAccess,
+  dummyDivisionOrders,
+  dummyEditOrder,
+  dummyGiveAccess,
+  dummyPlaceOrder,
+  dummyRemoveAccess,
+} from "./division";
 import { interviews } from "./interviews";
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
@@ -70,7 +78,7 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyTeamPages } from "./team-pages";
+import { dummyJoiners, dummyTeamPages, editedRoster } from "./team-pages";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -288,7 +296,7 @@ function divisionOverview(team: Team): DivisionOverview {
   const division = divisionOf(myDivisionId(kind));
   const members = people.filter((p) => divisionIdOfPerson(p) === division.id);
   const orders = dummyDivisionOrders(personFor[kind])!;
-  const waiting = orderFigures(orders.orders, orders.year).waiting;
+  const waiting = waitingOrders(orders.orders);
   return {
     shape: "division",
     stats: [
@@ -520,6 +528,8 @@ export function dummyDashboardData(
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(kind);
   const canSwitch = canSwitchRecruitmentAs(kind);
+  // The team as the test developer left it: who was moved to alumni, who joined.
+  const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications, teamEdits.current));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(kind, me, own.current);
@@ -534,7 +544,7 @@ export function dummyDashboardData(
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
-    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save),
+    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team),
 
@@ -552,12 +562,16 @@ export function dummyDashboardData(
       await change({ kind: "application", id, stage, initial: base.stage });
     },
 
-    divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person)),
-    giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, input)),
-    removeAccess: async (grantId) => (person === null ? refused(notOnTeam) : dummyRemoveAccess(person, grantId)),
+    divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person, teamRoster)),
+    giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, teamRoster, input)),
+    removeAccess: async (grantId) =>
+      person === null ? refused(notOnTeam) : dummyRemoveAccess(person, teamRoster, grantId),
 
     divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
     placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),
+    editOrder: async (id, fields, quote) =>
+      person === null ? refused(notOnTeam) : dummyEditOrder(person, id, fields, quote),
+    cancelOrder: async (id) => (person === null ? refused(notOnTeam) : dummyCancelOrder(person, id)),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(kind, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {
@@ -574,7 +588,10 @@ export function dummyDashboardData(
       // The reason is checked as the database side checks it; a preview keeps none.
       leaveReason(reason);
       const year = new Date(DUMMY_NOW).getUTCFullYear();
-      await teamEdits.save({ ...teamEdits.current, movedToAlumni: { ...teamEdits.current.movedToAlumni, [person.id]: year } });
+      // A departure as Move to alumni records it: the years on the team, and no
+      // listed reason, since the leaver's own words are free text.
+      const departure: Departure = { from: Math.min(Number(person.since.slice(0, 4)), year), to: year, reason: null };
+      await teamEdits.save({ ...teamEdits.current, movedToAlumni: { ...teamEdits.current.movedToAlumni, [person.id]: departure } });
       return written(null);
     },
 
