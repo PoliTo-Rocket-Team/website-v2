@@ -5,15 +5,18 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, Lock, MessageSquare, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { createPosition } from "@/app/dashboard/recruitment-actions";
+import { createPosition, editPosition } from "@/app/dashboard/recruitment-actions";
 import {
   checkNewPosition,
+  checkPositionContent,
   divisionField,
   NEW_POSITION_LIMITS,
   newPositionCode,
   type DivisionChoice,
   type NewPositionErrors,
+  type PositionContent,
 } from "@/lib/dashboard/new-position";
+import type { PositionRow } from "@/lib/dashboard/recruitment";
 import { Toggle } from "./controls";
 import { Drawer } from "./drawer";
 import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
@@ -22,6 +25,9 @@ import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 // has one and a choice when they have several; the code it makes; the role's
 // text and lists; the documents to ask for; and "Open now", off by default.
 // It saves through the dashboard data interface (createPosition).
+// Edit position (issue #207) is the same drawer opened on a saved role: its
+// division locked, its fields as saved, no "Open now" (the row's switch opens
+// and closes it), and Save changes writes through editPosition.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -49,6 +55,22 @@ type Form = {
   open: boolean;
 };
 
+/** A saved list, with one empty row to type in when it has none. */
+const rowsOf = (items: readonly string[]) => (items.length > 0 ? [...items] : [""]);
+
+function savedForm(content: PositionContent): Form {
+  return {
+    divisionId: null,
+    title: content.title,
+    description: content.description,
+    required: rowsOf(content.required),
+    desirable: rowsOf(content.desirable),
+    questions: rowsOf(content.questions),
+    motivationLetter: content.motivationLetter,
+    open: false,
+  };
+}
+
 function emptyForm(divisions: readonly DivisionChoice[]): Form {
   return {
     divisionId: divisions.length === 1 ? divisions[0].id : null,
@@ -67,13 +89,16 @@ export function NewPositionDrawer({
   onOpenChange,
   divisions,
   nextId,
+  editing = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   divisions: readonly DivisionChoice[];
   nextId: number;
+  /** The saved role to edit; null for New position. The caller keys the drawer by it, so each opening starts from what is saved. */
+  editing?: PositionRow | null;
 }) {
-  const [form, setForm] = useState<Form>(() => emptyForm(divisions));
+  const [form, setForm] = useState<Form>(() => (editing ? savedForm(editing.content) : emptyForm(divisions)));
   const [errors, setErrors] = useState<NewPositionErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const field = divisionField(divisions);
@@ -84,13 +109,14 @@ export function NewPositionDrawer({
   const close = (next: boolean) => {
     onOpenChange(next);
     if (!next) {
-      setForm(emptyForm(divisions));
+      setForm(editing ? savedForm(editing.content) : emptyForm(divisions));
       setErrors({});
     }
   };
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (editing) return save(editing);
     const checked = checkNewPosition(form);
     if (!checked.ok) {
       setErrors(checked.errors);
@@ -111,20 +137,58 @@ export function NewPositionDrawer({
     }
   };
 
-  if (field === null) return null;
+  const save = async (position: PositionRow) => {
+    const checked = checkPositionContent(form);
+    if (!checked.ok) {
+      setErrors(checked.errors);
+      return;
+    }
+    setErrors({});
+    setSubmitting(true);
+    try {
+      const result = await editPosition(position.id, checked.position);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Saved ${checked.position.title}`);
+      onOpenChange(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (field === null && editing === null) return null;
 
   return (
     <Drawer
       open={open}
       onOpenChange={close}
-      title="New position"
-      detail={chosen ? `Code ${newPositionCode(chosen, nextId)} · made from the division` : "Pick a division to get the position code"}
-      submitLabel="Create position"
+      title={editing ? "Edit position" : "New position"}
+      detail={
+        editing
+          ? `Code ${editing.code}`
+          : chosen
+            ? `Code ${newPositionCode(chosen, nextId)} · made from the division`
+            : "Pick a division to get the position code"
+      }
+      submitLabel={editing ? "Save changes" : "Create position"}
       submitting={submitting}
       onSubmit={submit}
     >
       <div className="flex flex-col gap-6">
-        {field.kind === "locked" ? (
+        {editing ? (
+          <Field label="Division" hint="a role keeps its division">
+            {(id) => (
+              <div id={id} className={LOCKED_INPUT}>
+                <span className="min-w-0 flex-1 truncate text-prt-text">
+                  {editing.department} · {editing.division}
+                </span>
+                <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+              </div>
+            )}
+          </Field>
+        ) : field === null ? null : field.kind === "locked" ? (
           <Field label="Division" hint="the only one you lead">
             {(id) => (
               <div id={id} className={LOCKED_INPUT}>
@@ -218,13 +282,15 @@ export function NewPositionDrawer({
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-[14px]">Open now</p>
-            <p className="text-[12px] text-prt-muted">Shows on the site while recruitment is on</p>
+        {!editing && (
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[14px]">Open now</p>
+              <p className="text-[12px] text-prt-muted">Shows on the site while recruitment is on</p>
+            </div>
+            <Toggle checked={form.open} onCheckedChange={(on) => set("open", on)} label="Open now" />
           </div>
-          <Toggle checked={form.open} onCheckedChange={(on) => set("open", on)} label="Open now" />
-        </div>
+        )}
       </div>
     </Drawer>
   );

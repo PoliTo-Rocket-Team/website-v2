@@ -5,13 +5,14 @@ import {
   type ApplicationState,
   type OfferedSlots,
 } from "@/lib/dashboard/application-flow";
+import { checkPositionContent, type PositionContent } from "@/lib/dashboard/new-position";
 
 // What a test developer has changed on the dummy team (issues #142, #171):
-// positions opened or closed, roles they posted, and where they moved each
-// application. It lives only in a cookie, never in the database, and is
-// cleared on sign out. Everything else stays as ./team.ts and
-// ./applications.ts wrote it. The recruitment switch is not here: it is
-// #121's, in ./recruitment.ts.
+// positions opened or closed, roles they posted, what they wrote in a role
+// (#207), and where they moved each application. It lives only in a cookie,
+// never in the database, and is cleared on sign out. Everything else stays
+// as ./team.ts and ./applications.ts wrote it. The recruitment switch is not
+// here: it is #121's, in ./recruitment.ts.
 
 /** A role the test developer posted with New position: what the Positions table shows of it. */
 export type DummyNewPosition = {
@@ -23,13 +24,21 @@ export type DummyNewPosition = {
   readonly createdAt: string;
 };
 
+/** What the test developer wrote in one role, with New position or Edit position (issue #207). */
+export type DummyPositionEdit = {
+  readonly id: number;
+  readonly content: PositionContent;
+};
+
 export type DummyState = {
   readonly positionOpen: Readonly<Record<number, boolean>>;
   readonly applications: Readonly<Record<number, ApplicationState>>;
   readonly newPositions: readonly DummyNewPosition[];
+  /** Oldest first: when the cookie runs out of room, the oldest edit goes. */
+  readonly positionEdits: readonly DummyPositionEdit[];
 };
 
-export const EMPTY_DUMMY_STATE: DummyState = { positionOpen: {}, applications: {}, newPositions: [] };
+export const EMPTY_DUMMY_STATE: DummyState = { positionOpen: {}, applications: {}, newPositions: [], positionEdits: [] };
 
 /** Where the dummy dashboard reads and keeps these changes. */
 export type DummyStateStore = {
@@ -54,7 +63,16 @@ type WireState =
 
 type WirePosition = readonly [number, string, number, 0 | 1, 0 | 1, number];
 
-type Wire = { p?: Record<string, boolean>; a?: Record<string, WireState>; n?: WirePosition[] };
+/** id, title, description, required, desirable, questions, motivation letter. */
+type WireEdit = readonly [number, string, string, readonly string[], readonly string[], readonly string[], 0 | 1];
+
+type Wire = { p?: Record<string, boolean>; a?: Record<string, WireState>; n?: WirePosition[]; e?: WireEdit[] };
+
+/**
+ * The room the cookie value may take once the browser has it URL-encoded,
+ * kept under the 4 KB a browser stores per cookie with its name and flags.
+ */
+export const DUMMY_STATE_COOKIE_BYTES = 3800;
 
 const toMinutes = (iso: string) => Math.round(Date.parse(iso) / 60_000);
 const fromMinutes = (m: number) => new Date(m * 60_000).toISOString();
@@ -122,6 +140,18 @@ function decodePosition(wire: unknown): DummyNewPosition | null {
   return { id, title: title.slice(0, MAX_TITLE), divisionId, open: open === 1, motivationLetter: letter === 1, createdAt: fromMinutes(created) };
 }
 
+function decodeEdit(wire: unknown): DummyPositionEdit | null {
+  if (!Array.isArray(wire) || wire.length !== 7) return null;
+  const [id, title, description, required, desirable, questions, letter] = wire;
+  if (!Number.isSafeInteger(id) || id <= 0 || (letter !== 0 && letter !== 1)) return null;
+  const checked = checkPositionContent({ title, description, required, desirable, questions, motivationLetter: letter === 1 });
+  return checked.ok ? { id, content: checked.position } : null;
+}
+
+function encodeEdit({ id, content: c }: DummyPositionEdit): WireEdit {
+  return [id, c.title, c.description, c.required, c.desirable, c.questions, c.motivationLetter ? 1 : 0];
+}
+
 function entries<T>(record: unknown, read: (value: unknown) => T | null): Record<number, T> {
   if (typeof record !== "object" || record === null || Array.isArray(record)) return {};
   const out: Record<number, T> = {};
@@ -143,11 +173,12 @@ export function parseDummyState(cookieValue: string | null | undefined): DummySt
     return EMPTY_DUMMY_STATE;
   }
   if (typeof wire !== "object" || wire === null) return EMPTY_DUMMY_STATE;
-  const { p, a, n } = wire as Wire;
+  const { p, a, n, e } = wire as Wire;
   return {
     positionOpen: entries(p, (v) => (typeof v === "boolean" ? v : null)),
     applications: entries(a, decodeState),
     newPositions: (Array.isArray(n) ? n : []).flatMap((w) => decodePosition(w) ?? []).slice(-MAX_NEW_POSITIONS),
+    positionEdits: (Array.isArray(e) ? e : []).flatMap((w) => decodeEdit(w) ?? []),
   };
 }
 
@@ -159,8 +190,30 @@ export function serializeDummyState(state: DummyState): string {
   if (state.newPositions.length > 0) {
     wire.n = state.newPositions.map((p) => [p.id, p.title.slice(0, MAX_TITLE), p.divisionId, p.open ? 1 : 0, p.motivationLetter ? 1 : 0, toMinutes(p.createdAt)]);
   }
+  if (state.positionEdits.length > 0) wire.e = state.positionEdits.map(encodeEdit);
   return JSON.stringify(wire);
 }
+
+/** Whether the state fits the cookie once URL-encoded. */
+export function fitsDummyCookie(state: DummyState): boolean {
+  return encodeURIComponent(serializeDummyState(state)).length <= DUMMY_STATE_COOKIE_BYTES;
+}
+
+/** The newest edit always stays; older ones go, oldest first, until the state fits. */
+function trimEdits(state: DummyState): DummyState {
+  let next = state;
+  while (!fitsDummyCookie(next) && next.positionEdits.length > 1) {
+    next = { ...next, positionEdits: next.positionEdits.slice(1) };
+  }
+  return next;
+}
+
+function withEdit(edits: readonly DummyPositionEdit[], id: number, content: PositionContent | null): DummyPositionEdit[] {
+  const others = edits.filter((e) => e.id !== id);
+  return content === null ? others : [...others, { id, content }];
+}
+
+const sameContent = (x: PositionContent, y: PositionContent) => JSON.stringify(x) === JSON.stringify(y);
 
 /**
  * One change on top of the state. A value equal to the one the arrays start
@@ -169,7 +222,8 @@ export function serializeDummyState(state: DummyState): string {
 export type DummyChange =
   | { readonly kind: "position"; readonly id: number; readonly open: boolean; readonly initial: boolean }
   | { readonly kind: "application"; readonly id: number; readonly state: ApplicationState; readonly initial: ApplicationState }
-  | { readonly kind: "new-position"; readonly position: DummyNewPosition };
+  | { readonly kind: "new-position"; readonly position: DummyNewPosition; readonly content: PositionContent }
+  | { readonly kind: "position-edit"; readonly id: number; readonly content: PositionContent; readonly initial: PositionContent | null };
 
 function without<T>(record: Readonly<Record<number, T>>, id: number): Record<number, T> {
   const { [id]: _dropped, ...rest } = record;
@@ -196,6 +250,14 @@ export function applyDummyChange(state: DummyState, change: DummyChange): DummyS
           : { ...state.applications, [change.id]: change.state },
       };
     case "new-position":
-      return { ...state, newPositions: [...state.newPositions, change.position].slice(-MAX_NEW_POSITIONS) };
+      return trimEdits({
+        ...state,
+        newPositions: [...state.newPositions, change.position].slice(-MAX_NEW_POSITIONS),
+        positionEdits: withEdit(state.positionEdits, change.position.id, change.content),
+      });
+    case "position-edit": {
+      const back = change.initial !== null && sameContent(change.content, change.initial);
+      return trimEdits({ ...state, positionEdits: withEdit(state.positionEdits, change.id, back ? null : change.content) });
+    }
   }
 }
