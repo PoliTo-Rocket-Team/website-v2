@@ -80,3 +80,18 @@ test("only the operations lead flips recruitment, and a lead changes only their 
   assert.deepEqual(division.saved(), EMPTY_DUMMY_STATE);
   assert.equal(division.savedRecruitment(), undefined);
 });
+
+test("a division lead's overview is scoped to their division and lists their interviews (board 56)", async () => {
+  const overview = await session("division-lead").data.overview();
+  assert.equal(overview.shape, "division");
+  if (overview.shape !== "division") return;
+  assert.deepEqual(
+    overview.stats.map((s) => s.label),
+    ["New applications", "Open positions", "Orders", "My division"],
+  );
+  assert.equal(overview.stats[2].value, "3 waiting");
+  assert.deepEqual(
+    overview.interviews.map((i) => i.state),
+    ["booked", "booked", "waiting"],
+  );
+});
