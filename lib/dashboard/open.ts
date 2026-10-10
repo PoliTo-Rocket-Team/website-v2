@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { getSessionCookie } from "better-auth/cookies";
 import { dummyDashboardData } from "@/lib/dummy-data";
 import { parseEdits, serializeEdits, type TeamEditsStore } from "@/lib/dummy-data/edits";
+import { parseOwnChanges, serializeOwnChanges, type OwnChangesStore } from "@/lib/dummy-data/own";
 import {
   DUMMY_RECRUITMENT_COOKIE,
   dummyRecruitmentCookieValue,
@@ -16,6 +17,7 @@ import {
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_COOKIE_MAX_AGE_S,
   TEST_DEVELOPER_EDITS_COOKIE,
+  TEST_DEVELOPER_OWN_COOKIE,
   TEST_DEVELOPER_STATE_COOKIE,
   testDeveloperViewer,
 } from "@/lib/test-developer";
@@ -35,7 +37,7 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
   const viewer = testDeveloperViewer(jar.get(TEST_DEVELOPER_COOKIE)?.value);
   if (viewer !== null) {
     return dashboardOpening(
-      dummyDashboardData(viewer, dummyRecruitmentIn(jar), dummyStateIn(jar), dummyTeamEditsIn(jar)),
+      dummyDashboardData(viewer, dummyRecruitmentIn(jar), dummyStateIn(jar), dummyTeamEditsIn(jar), dummyOwnIn(jar)),
       true,
     );
   }
@@ -83,5 +85,13 @@ function dummyTeamEditsIn(jar: Jar): TeamEditsStore {
   return {
     current: parseEdits(jar.get(TEST_DEVELOPER_EDITS_COOKIE)?.value),
     save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_EDITS_COOKIE, serializeEdits(next)),
+  };
+}
+
+/** Changes on the viewer's own pages (issue #169, lib/dummy-data/own.ts); /apply reads them too. */
+function dummyOwnIn(jar: Jar): OwnChangesStore {
+  return {
+    current: parseOwnChanges(jar.get(TEST_DEVELOPER_OWN_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_OWN_COOKIE, serializeOwnChanges(next)),
   };
 }

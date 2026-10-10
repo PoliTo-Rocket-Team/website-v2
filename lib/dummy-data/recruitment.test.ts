@@ -47,7 +47,7 @@ test("on a preview, /apply and every position page follow the cookie; in product
   const read = (cookie: string, env = preview) =>
     pickApplyData(
       { env, viewerCookie: null, openSelector: null, recruitmentCookie: cookie },
-      { database: () => "database" as never, dummy: dummyApplyData },
+      { database: () => "database" as never, dummy: (v, o, r, own) => dummyApplyData(v, o, r, undefined, own) },
     );
 
   const closed = read("closed");

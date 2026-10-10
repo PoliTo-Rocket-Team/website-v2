@@ -1,7 +1,9 @@
-import type { ApplicationStatus } from "./overview";
+import type { YourDetails } from "./details";
 
-// The viewer's own pages (issue #145, folded from #146): My profile for a
-// team member (board 45) and My account for an applicant (board 45b).
+// The viewer's own pages (issue #145, folded from #146; Dashboard v2 in issue
+// #169): My profile for a team member (board 55) and My account for an
+// applicant (board 51). Their applications are My applications
+// (./my-applications.ts).
 
 /** How the viewer signs in; Google is the only way (issue #118). */
 export type SignIn = {
@@ -9,8 +11,8 @@ export type SignIn = {
   readonly email: string;
 };
 
-/** Where the person stands on leaving: nothing asked yet, or asked and waiting for the lead. */
-export type LeaveState = "on-team" | "leave-requested";
+/** On the team, or left it from My profile and now on the Alumni list (board 55b). */
+export type LeaveState = "on-team" | "left";
 
 export type MyProfile = {
   readonly name: string;
@@ -23,39 +25,40 @@ export type MyProfile = {
   readonly photoUrl: string | null;
   readonly signIn: SignIn;
   readonly leave: LeaveState;
-};
-
-/** One of the applicant's own applications, as My account lists it. */
-export type AccountApplication = {
-  readonly id: number;
-  readonly title: string;
-  /** "Aerodynamics · sent 9 Oct 2026" */
-  readonly detail: string;
-  readonly status: ApplicationStatus;
+  readonly details: YourDetails;
 };
 
 export type MyAccount = {
   readonly name: string;
-  readonly applications: readonly AccountApplication[];
   readonly signIn: SignIn;
+  readonly details: YourDetails;
+  /** Applications still in progress: what "Also withdraw my open applications" would withdraw. */
+  readonly openApplications: number;
 };
 
-/** Still being looked at, so it can be withdrawn. */
-export function isOpenApplication(status: ApplicationStatus): boolean {
-  return status === "received" || status === "in-review";
-}
-
-/** What Delete account does beyond removing the sign-in: only what the person ticked. */
+/** What Delete account does beyond closing the account: only what the person ticked. */
 export type DeleteAccount = {
   readonly withdrawOpenApplications: boolean;
 };
 
-/**
- * A team member deletes their account only after leaving: their name and
- * photo are on the site until their lead confirms they left.
- */
-export function canDeleteAccount(leave: LeaveState | null): boolean {
-  return leave === null;
+/** The Delete account copy (boards 51, 51c and 55c). */
+export const DELETE_ACCOUNT_COPY =
+  "Closes your account, so you can't sign in with it again. Your data is anonymized and kept only for statistics.";
+
+/** The word the person types to confirm Delete account. */
+export const DELETE_WORD = "DELETE";
+
+export function deleteConfirmed(typed: string): boolean {
+  return typed.trim() === DELETE_WORD;
+}
+
+/** The longest reason for leaving the page keeps. */
+export const MAX_LEAVE_REASON = 1000;
+
+/** The optional reason for leaving as typed: trimmed, capped, null when empty. */
+export function leaveReason(text: unknown): string | null {
+  const trimmed = typeof text === "string" ? text.trim().slice(0, MAX_LEAVE_REASON) : "";
+  return trimmed === "" ? null : trimmed;
 }
 
 /** A photo is a JPEG or PNG of at most 2 MB (board 45). */
