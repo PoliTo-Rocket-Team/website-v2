@@ -157,4 +157,3 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
   Production never does.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and
   tables become stacked cards.
-  - **Gap:** the dashboard Alumni page stays a table on phones. Tracked in #193.
