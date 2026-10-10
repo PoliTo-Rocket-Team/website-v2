@@ -20,6 +20,7 @@ import { DrawerPage } from "./drawer";
 import { NewPositionDrawer } from "./new-position-drawer";
 import { PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
+import { TopBarAction } from "./shell";
 
 // The Positions page (Dashboard v2 board 57 and phone board 57m for a
 // division lead, issue #171; board 41 for the operations lead, issue #142).
@@ -53,9 +54,10 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
 
   return (
     <DrawerPage drawerOpen={creating}>
-      <header className="flex items-start justify-between gap-4">
+      {/* On phones the shell's top bar carries the title and "+ New" (board 57m). */}
+      <header className="flex items-start justify-between gap-4 max-md:sr-only">
         <div className="min-w-0">
-          <h1 className="text-[24px] font-bold leading-tight tracking-[-0.01em] md:text-[28px]">Positions</h1>
+          <h1 className="text-[28px] font-bold leading-tight tracking-[-0.01em]">Positions</h1>
           <p className="mt-1 hidden text-[14px] text-prt-muted md:block">
             {team
               ? "Open or close roles. Open roles show on the site while recruitment is on."
@@ -63,13 +65,20 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
           </p>
         </div>
         {canCreate && (
-          <button type="button" onClick={() => setCreating(true)} className={`${PRIMARY_PILL} shrink-0 md:h-10 md:px-5`}>
+          <button type="button" onClick={() => setCreating(true)} className={`${PRIMARY_PILL} h-10 shrink-0 px-5 max-md:hidden`}>
             <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
-            <span className="md:hidden">New</span>
-            <span className="hidden md:inline">New position</span>
+            New position
           </button>
         )}
       </header>
+      {canCreate && (
+        <TopBarAction>
+          <button type="button" onClick={() => setCreating(true)} className={PRIMARY_PILL}>
+            <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
+            New
+          </button>
+        </TopBarAction>
+      )}
 
       {page.scope === "team" ? (
         <RecruitmentSwitch open={recruitment.recruitment.isOpen} canSwitch={recruitment.canSwitch} />
@@ -185,7 +194,7 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
   const [open, flip] = useOptimisticSwitch(saved, setRecruitment);
   return (
     <section
-      className={`mt-6 flex items-center gap-4 rounded-xl border px-4 py-4 transition-colors duration-300 ease-out md:px-5 ${
+      className={`flex items-center gap-4 rounded-xl border px-4 py-4 transition-colors md:mt-6 duration-300 ease-out md:px-5 ${
         open ? "border-success/30 bg-success/5" : "border-hairline bg-panel/60"
       }`}
     >
@@ -217,7 +226,7 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
 function RecruitmentNotice({ open }: { open: boolean }) {
   return (
     <p
-      className={`mt-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-[13px] md:mt-6 md:items-center md:border-hairline md:bg-panel/60 md:px-5 ${
+      className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-[13px] md:mt-6 md:items-center md:border-hairline md:bg-panel/60 md:px-5 ${
         open ? "border-success/30 bg-success/5" : "border-hairline bg-panel/60"
       }`}
     >

@@ -2,16 +2,23 @@ import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import type { NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
+import { formatEuro, orderFigures } from "@/lib/dashboard/orders";
 import {
   checklistProgress,
+  divisionShortName,
+  noPhotoItem,
+  interviewOrder,
+  oldestLine,
   type ActivityItem,
   type AttentionItem,
   type ChecklistItem,
+  type DivisionOverview,
   type OwnApplication,
   type Overview,
   type PersonalOverview,
   type RosterPerson,
   type TeamOverview,
+  type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { divisionIdOf } from "@/lib/dashboard/team";
 import { applyMove, type LeadMove } from "@/lib/dashboard/application-flow";
@@ -171,6 +178,14 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** When the oldest new application to `position` came in. */
+function oldestNew(position: DummyPosition, team: Team): Date {
+  const times = applicationsTo([position], team)
+    .filter((a) => a.state.stage === "new")
+    .map((a) => new Date(a.appliedAt).getTime());
+  return new Date(Math.min(...times));
+}
+
 function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
   const scoped = positionsFor(kind, team);
   const fresh = scoped.flatMap((p): AttentionItem[] => {
@@ -180,7 +195,11 @@ function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
       {
         kind: "applications",
         title: `${plural(n, "new application", "new applications")} for ${p.title}`,
-        detail: `${departmentOf(p.divisionId).name} · ${divisionOf(p.divisionId).name}`,
+        // The operations lead sees where the role sits; a division lead, how long it has waited (board 56).
+        detail:
+          kind === "division-lead"
+            ? oldestLine(oldestNew(p, team), NOW)
+            : `${departmentOf(p.divisionId).name} · ${divisionOf(p.divisionId).name}`,
         action: { label: "Review", href: `/dashboard/applications?position=${p.slug}` },
       },
     ];
@@ -209,7 +228,15 @@ function attentionFor(kind: ViewerKind, team: Team): AttentionItem[] {
             action: { label: "Assign", href: "/dashboard/members" },
           },
         ];
-  return [...fresh, ...quiet, ...unassigned];
+  const noPhoto =
+    kind === "division-lead"
+      ? noPhotoItem(
+          people
+            .filter((p) => divisionIdOfPerson(p) === myDivisionId(kind) && p.placement.role === "member" && !p.hasPhoto)
+            .map((p) => p.name),
+        )
+      : null;
+  return [...fresh, ...quiet, ...unassigned, ...(noPhoto ? [noPhoto] : [])];
 }
 
 function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): ActivityItem[] {
@@ -224,46 +251,87 @@ function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): Activi
   }));
 }
 
-function teamOverview(kind: "operations-lead" | "division-lead", team: Team): TeamOverview {
+/** Board 40: the operations lead's figures, attention and activity across the team. */
+function teamOverview(team: Team): TeamOverview {
+  const kind = "operations-lead";
   const scoped = positionsFor(kind, team);
   const open = scoped.filter((p) => p.open);
-  const recruitmentStat = {
-    label: "Recruitment",
-    value: team.recruitmentOpen ? "Open" : "Closed",
-    detail: team.recruitmentOpen
-      ? recruitment.open
-        ? `Public on the site since ${recruitment.since}`
-        : "Public on the site"
-      : "Positions are hidden on the site",
-    live: team.recruitmentOpen,
-  };
-
-  if (kind === "operations-lead") {
-    const openDepartments = new Set(open.map((p) => departmentOf(p.divisionId).id));
-    return {
-      shape: "team",
-      stats: [
-        { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
-        { label: "Open positions", value: String(open.length), detail: `In ${openDepartments.size} departments` },
-        recruitmentStat,
-        { label: "Team members", value: String(roster.members), detail: `${roster.season} roster` },
-      ],
-      attention: attentionFor(kind, team),
-      activity: activityFor(kind),
-    };
-  }
-
-  const division = divisionOf(myDivisionId(kind));
-  const members = people.filter((p) => divisionIdOfPerson(p) === division.id);
+  const openDepartments = new Set(open.map((p) => departmentOf(p.divisionId).id));
   return {
     shape: "team",
     stats: [
       { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
-      { label: "Open positions", value: String(open.length), detail: division.name },
-      recruitmentStat,
-      { label: "Division members", value: String(members.length), detail: `${roster.season} roster` },
+      { label: "Open positions", value: String(open.length), detail: `In ${openDepartments.size} departments` },
+      {
+        label: "Recruitment",
+        value: team.recruitmentOpen ? "Open" : "Closed",
+        detail: team.recruitmentOpen
+          ? recruitment.open
+            ? `Public on the site since ${recruitment.since}`
+            : "Public on the site"
+          : "Positions are hidden on the site",
+        live: team.recruitmentOpen,
+      },
+      { label: "Team members", value: String(roster.members), detail: `${roster.season} roster` },
     ],
     attention: attentionFor(kind, team),
+    activity: activityFor(kind),
+  };
+}
+
+/**
+ * The lead's division's interviews: its applications at Interview, each booked
+ * at the time the applicant picked or still waiting for a pick, so the
+ * Overview names the people the Applications page shows at that stage.
+ * Booked ones come first, soonest first.
+ */
+function interviewsFor(divisionId: number, team: Team): UpcomingInterview[] {
+  const positions = new Map(team.positions.filter((p) => p.divisionId === divisionId).map((p) => [p.id, p]));
+  const all = applicationsTo([...positions.values()], team).flatMap((a): UpcomingInterview[] => {
+    if (a.state.stage !== "interview") return [];
+    const who = { applicant: a.applicant.name, position: positions.get(a.positionId)!.title };
+    const booked = a.state.booked;
+    return [
+      booked === null
+        ? { ...who, state: "waiting" }
+        : { ...who, state: "booked", start: new Date(booked.slot.start), end: new Date(booked.slot.end) },
+    ];
+  });
+  return interviewOrder(all);
+}
+
+/** Board 56: the division lead's figures, attention, interviews and activity, all scoped to their division. */
+function divisionOverview(team: Team): DivisionOverview {
+  const kind = "division-lead";
+  const scoped = positionsFor(kind, team);
+  const open = scoped.filter((p) => p.open);
+  const division = divisionOf(myDivisionId(kind));
+  const members = people.filter((p) => divisionIdOfPerson(p) === division.id);
+  const orders = dummyDivisionOrders(personFor[kind])!;
+  const waiting = orderFigures(orders.orders, orders.year).waiting;
+  return {
+    shape: "division",
+    stats: [
+      { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
+      {
+        label: "Open positions",
+        value: String(open.length),
+        detail: open.length === 0 ? "None open" : open.map((p) => p.title).join(", "),
+      },
+      {
+        label: "Orders",
+        value: `${waiting.count} waiting`,
+        detail: `${formatEuro(waiting.total)} to be placed`,
+        live: waiting.count > 0,
+      },
+      {
+        label: "My division",
+        value: String(members.length),
+        detail: `${members.length === 1 ? "person" : "people"} in ${divisionShortName(division.name)}`,
+      },
+    ],
+    attention: attentionFor(kind, team),
+    interviews: interviewsFor(division.id, team),
     activity: activityFor(kind),
   };
 }
@@ -281,7 +349,7 @@ function rosterPreview(me: DummyPerson): RosterPerson[] {
   const others = division.filter((p) => p.placement.role !== "division-lead" && p.id !== me.id).slice(0, 2);
   return [...lead, ...others, me].map((p) => ({
     name: p.name,
-    role: p.id === me.id ? "You" : p.placement.role === "division-lead" ? "Division lead" : "Member",
+    role: p.placement.role === "division-lead" ? "Division lead" : "Member",
     lead: p.placement.role === "division-lead",
     self: p.id === me.id,
   }));
@@ -324,6 +392,7 @@ function memberOverview(): PersonalOverview {
     roster: {
       title: division.name,
       detail: `${department.name} · ${size} people`,
+      size,
       people: rosterPreview(me),
     },
     applications: null,
@@ -364,8 +433,9 @@ function applicantOverview(team: Team, own: OwnChanges): PersonalOverview {
 function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges): Overview {
   switch (kind) {
     case "operations-lead":
+      return teamOverview(team);
     case "division-lead":
-      return teamOverview(kind, team);
+      return divisionOverview(team);
     case "member":
       return memberOverview();
     case "non-member":
@@ -524,6 +594,7 @@ export function dummyDashboardData(
   return {
     viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind, team),
+    hasOwnApplications: async () => ownApplicationsOf(kind).length > 0,
     overview: async () => overviewFor(kind, team, own.current),
     recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.

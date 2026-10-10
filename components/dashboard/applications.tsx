@@ -47,6 +47,7 @@ import { FilterMenu, Segmented } from "./controls";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
 import { InterviewDialog } from "./interview-dialog";
 import { PANEL } from "./panel";
+import { ICON_BUTTON, PhoneTopBar } from "./shell";
 import { StagePill, StageTag, toneDot, toneSurface } from "./stage-pill";
 
 // The Applications page (Dashboard v2 boards 58b, 58 to 58i, and phone boards
@@ -107,14 +108,15 @@ export function ApplicationsView({
 
   return (
     <div className={chosen ? ROOM_FOR_PANEL : ""}>
-      <header>
-        <h1 className="text-[24px] font-bold leading-tight tracking-[-0.01em] md:text-[28px]">Applications</h1>
+      {/* On phones the shell's top bar carries the title (board 58m). */}
+      <header className="max-md:sr-only">
+        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.01em]">Applications</h1>
         <p className="mt-1 hidden text-[14px] text-prt-muted md:block">
           {page.division ? `Applications for ${page.division} roles.` : "Applications for the positions you lead."}
         </p>
       </header>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 md:mt-6">
+      <div className="flex flex-wrap items-center gap-3 md:mt-6">
         <Segmented
           label="Show applications"
           value={tab}
@@ -318,15 +320,15 @@ function Detail({
     <>
       {/* One title for both layouts; the visible names below are its two looks. */}
       <DialogTitle className="sr-only">{a.applicant.name}</DialogTitle>
-      {/* Phone (58d-m): a back arrow and the name. */}
-      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-hairline px-3 md:hidden">
-        <DialogClose aria-label="Back to applications" className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors duration-300 ease-out hover:bg-white-5 ${FOCUS}`}>
-          <ArrowLeft aria-hidden className="h-5 w-5" strokeWidth={2} />
-        </DialogClose>
-        <p aria-hidden="true" className="truncate text-[18px] font-semibold">
-          {a.applicant.name}
-        </p>
-      </div>
+      {/* Phone (58d-m): the shell's top bar, a back arrow in place of the menu. */}
+      <PhoneTopBar
+        title={<span aria-hidden="true">{a.applicant.name}</span>}
+        leading={
+          <DialogClose aria-label="Back to applications" className={ICON_BUTTON}>
+            <ArrowLeft aria-hidden className="h-[22px] w-[22px]" strokeWidth={2} />
+          </DialogClose>
+        }
+      />
 
       <div className="hidden border-b border-hairline px-7 pb-5 pt-7 md:block">
         <div className="flex items-start gap-4">

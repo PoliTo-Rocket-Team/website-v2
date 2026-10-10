@@ -13,6 +13,9 @@ import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@
 export const SHEET_CONTENT =
   "fixed inset-x-0 bottom-0 z-50 max-h-[92svh] overflow-y-auto rounded-t-2xl border-t border-hairline bg-panel px-5 pb-6 pt-3 text-prt-text shadow-[0_-16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 max-sm:motion-safe:data-[state=open]:slide-in-from-bottom sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-8 sm:shadow-[0_16px_40px_rgba(0,0,0,0.6)]";
 
+/** The dimmed, blurred page behind a popup. */
+export const SHEET_OVERLAY = "bg-ground/70 backdrop-blur-[3px]";
+
 /** The grab bar on top of a phone sheet. */
 export function SheetGrabber() {
   return <span aria-hidden className="mx-auto mb-5 block h-1 w-9 rounded-full bg-white-10 sm:hidden" />;
@@ -64,7 +67,7 @@ export function ConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay className="bg-ground/70 backdrop-blur-[3px]" />
+        <DialogOverlay className={SHEET_OVERLAY} />
         <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[440px]`}>
           <SheetGrabber />
           <span

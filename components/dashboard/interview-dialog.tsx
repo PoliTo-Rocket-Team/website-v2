@@ -22,7 +22,7 @@ import {
   type InterviewLength,
   type SlotTime,
 } from "@/lib/dashboard/application-flow";
-import { OVERLAY, SHEET, SheetHandle } from "./decision-dialog";
+import { SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
 
 // Move to interview (board 58c) and Change times (58d): the lead picks the
 // times they can meet and how long, then tells the applicant by email
@@ -62,8 +62,8 @@ export function InterviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay className={OVERLAY} />
-        <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET} px-5 pb-6 pt-5 md:w-[560px] md:px-8 md:pb-7 md:pt-7`}>
+        <DialogOverlay className={SHEET_OVERLAY} />
+        <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[560px] sm:px-8 sm:pb-7 sm:pt-7`}>
           {/* Mounted only while open, so each opening starts from what is saved. */}
           {open && <Picker mode={mode} applicant={applicant} now={now} offered={offered} pending={pending} onSubmit={onSubmit} />}
         </DialogPrimitive.Content>
@@ -122,7 +122,7 @@ function Picker({
 
   return (
     <>
-      <SheetHandle />
+      <SheetGrabber />
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <DialogTitle className="text-[20px] font-bold leading-snug">{mode === "offer" ? "Move to interview" : "Change interview times"}</DialogTitle>
@@ -210,7 +210,7 @@ function Picker({
             : `The site does not send emails. Tell ${first} the times changed and to pick a new one in My applications.`}
         </p>
         <div className="mt-3.5 flex flex-col gap-2 sm:flex-row">
-          <p className="flex h-9 min-w-0 flex-1 items-center truncate rounded-lg border border-white-10 bg-white-5 px-3 text-[13px] text-prt-text">
+          <p className="flex h-9 min-w-0 items-center truncate rounded-lg border border-white-10 bg-white-5 px-3 text-[13px] text-prt-text sm:flex-1">
             {applicant.email}
           </p>
           <div className="flex gap-2">

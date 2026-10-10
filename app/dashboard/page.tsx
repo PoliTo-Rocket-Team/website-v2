@@ -9,8 +9,9 @@ export const metadata: Metadata = {
   title: "Overview · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 40 (a lead) and 40m (a member). Every viewer reaches it
-// (lib/dashboard/access.ts); what it shows is the viewer's own overview.
+// Board 40 (the operations lead), 56 (a division lead) and 52 (a member).
+// Every viewer reaches it (lib/dashboard/access.ts), a non-member by its
+// address alone; what it shows is the viewer's own overview.
 export default function OverviewPage() {
   return (
     <Suspense fallback={null}>
