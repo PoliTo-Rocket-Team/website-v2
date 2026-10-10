@@ -47,9 +47,8 @@ Who may take each step, and what each viewer sees, is in the dashboard rules doc
 - The application flow lets Accept run from In review, skipping the interview: #198.
 - On real data, My applications shows a member's accepted application as joined before Confirm join: #187.
 - The dashboard has no recruitment manager, so only leads can confirm join: #194.
-- Nothing deletes a withdrawn application's files after 30 days: #178 (item 1).
 
-Followed today: the stages and legal moves are in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) (first open moves New to In review; Confirm join needs the NDA); the joining sentence is `NEXT_STEPS_TEXT` in [lib/dashboard/my-applications.ts](../lib/dashboard/my-applications.ts); lead reads filter out withdrawn applications in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts).
+Followed today: a daily scheduled job deletes the files of applications withdrawn 30 or more days ago (rule 8, #178): the rule is in [lib/dashboard/withdrawn-files.ts](../lib/dashboard/withdrawn-files.ts), the database and file-store side in [lib/dashboard/database-withdrawn-files.ts](../lib/dashboard/database-withdrawn-files.ts), and [app/api/cron/delete-withdrawn-files/route.ts](../app/api/cron/delete-withdrawn-files/route.ts) runs it; the stages and legal moves are in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) (first open moves New to In review; Confirm join needs the NDA); the joining sentence is `NEXT_STEPS_TEXT` in [lib/dashboard/my-applications.ts](../lib/dashboard/my-applications.ts); lead reads filter out withdrawn applications in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts).
 
 ## Records
 

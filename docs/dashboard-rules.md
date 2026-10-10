@@ -91,7 +91,6 @@ An admin column comes later. **Planned**, no issue yet.
 - Leads see an applicant's other applications and their progress.
 - Withdraw is confirmed. The lead stops seeing the application at once. Its files are deleted 30
   days later; the page does not say so. The person can apply again while the role is open.
-  - **Gap:** nothing deletes the files after 30 days. Tracked in #178.
 - Documents: a CV always, and a motivation letter when the position asks for one. Each file is a
   PDF of at most 2 MB.
 
