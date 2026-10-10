@@ -71,7 +71,6 @@ An admin column comes later. **Planned**, no issue yet.
 - The applicant picks one slot on My applications.
 - The booked time shows on Overview, in the applications list and in the panel, with Add to
   calendar.
-  - **Gap:** the booked time does not show on Overview on real data. Tracked in #186.
 
 ### Accept and reject
 
