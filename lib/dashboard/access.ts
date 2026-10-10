@@ -32,7 +32,8 @@ type PageRow = {
   readonly label: string;
   readonly href: `/dashboard${string}`;
   readonly reach: Readonly<Partial<Record<ViewerKind, NavPlace>>>;
-  readonly shownWhen?: NavCondition;
+  /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
+  readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
 };
 
 /** Rows in sidebar order within each group. */
@@ -50,7 +51,9 @@ export const DASHBOARD_PAGES = [
     label: "My applications",
     href: "/dashboard/my-applications",
     reach: { member: "main", "non-member": "main" },
-    shownWhen: "has-own-applications",
+    // A non-member always sees it, as their only item, applied or not
+    // (issue #179); a member only once they have applied.
+    shownWhen: { member: "has-own-applications" },
   },
   {
     key: "team-tree",
@@ -116,7 +119,7 @@ export type NavCounts = Readonly<Partial<Record<DashboardPageKey, number>>>;
 /** What the sidebar needs to know about the viewer, read through the dashboard data interface. */
 export type SidebarFacts = {
   readonly counts: NavCounts;
-  /** The viewer has sent at least one application (My applications shows). */
+  /** The viewer has sent at least one application (a member's My applications shows). */
   readonly hasOwnApplications: boolean;
 };
 
@@ -145,8 +148,8 @@ function placeOf(page: PageRow, kind: ViewerKind): NavPlace | undefined {
   return page.reach[kind];
 }
 
-function shownFor(page: PageRow, facts: SidebarFacts): boolean {
-  switch (page.shownWhen) {
+function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean {
+  switch (page.shownWhen?.[kind]) {
     case undefined:
       return true;
     case "has-own-applications":
@@ -161,11 +164,20 @@ export function canReach(kind: ViewerKind, key: DashboardPageKey): boolean {
 /** The viewer's sidebar: their groups in order, each with the pages listed there for them. */
 export function sidebarFor(kind: ViewerKind, facts: SidebarFacts): NavSection[] {
   return NAV_GROUPS.flatMap((group) => {
-    const items = DASHBOARD_PAGES.filter((page) => placeOf(page, kind) === group && shownFor(page, facts)).map(
+    const items = DASHBOARD_PAGES.filter((page) => placeOf(page, kind) === group && shownFor(page, kind, facts)).map(
       (page): NavItem => ({ key: page.key, label: page.label, href: page.href, count: facts.counts[page.key] || null }),
     );
     return items.length === 0 ? [] : [{ group, label: NAV_GROUP_LABELS[group], items }];
   });
+}
+
+/**
+ * Where /dashboard sends the viewer, or null when it shows them their
+ * Overview: a non-member who has not applied yet lands on My applications,
+ * its empty page (issue #179).
+ */
+export function dashboardLandingFor(kind: ViewerKind, hasOwnApplications: boolean): "/dashboard/my-applications" | null {
+  return kind === "non-member" && !hasOwnApplications ? "/dashboard/my-applications" : null;
 }
 
 /** The page the user menu opens for this viewer: My account for a non-member, My profile for the team. */

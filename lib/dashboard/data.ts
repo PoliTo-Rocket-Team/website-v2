@@ -112,7 +112,10 @@ export interface DashboardData {
   /** Boards 51c and 55c: closes the account; the rest only as ticked. The page signs out after. */
   deleteAccount(options: DeleteAccount): Promise<WriteResult<null>>;
 
-  /** Boards 50 and 53: the viewer's own applications; null when they have none to follow. */
+  /**
+   * Boards 50 and 53: the viewer's own applications, empty lists when they
+   * have not applied yet (issue #179); null for a viewer who does not apply.
+   */
   myApplications(): Promise<MyApplications | null>;
   /** Board 50b: the lead stops seeing it at once, and it moves to Past as Withdrawn. */
   withdrawApplication(applicationId: number): Promise<WriteResult<null>>;

@@ -27,6 +27,7 @@ import {
   type Step,
 } from "@/lib/dashboard/my-applications";
 import type { WriteResult } from "@/lib/dashboard/write";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "./confirm-dialog";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
@@ -52,6 +53,22 @@ function StatusPill({ pill }: { pill: Pill }) {
       {pill.check && <Check aria-hidden className="h-3 w-3" strokeWidth={2.25} />}
       {pill.label}
     </span>
+  );
+}
+
+/**
+ * My applications for someone who has not applied yet (issue #179): the
+ * page header, one line, and the way to the open positions. Nothing else.
+ */
+export function NoApplicationsView() {
+  return (
+    <>
+      <PageHeader title="My applications" intro="You have not applied to a position yet." />
+      <Link href="/apply" className={cn(PRIMARY_PILL, "group mt-6 h-12 w-full px-6 text-[15px] sm:w-auto")}>
+        See open positions
+        <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
+      </Link>
+    </>
   );
 }
 
