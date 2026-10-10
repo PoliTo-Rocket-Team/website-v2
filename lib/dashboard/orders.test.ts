@@ -39,9 +39,9 @@ test("the tabs count every status, empty ones included, and All counts them all"
   assert.equal(orders.filter((o) => inOrderTab(o, "all")).length, 4);
 });
 
-test("only a request the team leader has not settled can be cancelled or edited", () => {
+test("only a waiting request can be cancelled; one sent back can only be edited and sent again", () => {
   assert.deepEqual(orderActions("waiting"), { cancel: true, edit: "edit" });
-  assert.deepEqual(orderActions("changes-requested"), { cancel: true, edit: "edit-and-resend" });
+  assert.deepEqual(orderActions("changes-requested"), { cancel: false, edit: "edit-and-resend" });
   assert.deepEqual(orderActions("approved"), { cancel: false, edit: null });
   assert.deepEqual(orderActions("rejected"), { cancel: false, edit: null });
 });
