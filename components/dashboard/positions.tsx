@@ -20,7 +20,7 @@ import { DrawerPage } from "./drawer";
 import { NewPositionDrawer } from "./new-position-drawer";
 import { PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
-import { TopBarAction } from "./shell";
+import { TopBarAction } from "./top-bar-slot";
 
 // The Positions page (Dashboard v2 board 57 and phone board 57m for a
 // division lead, issue #171; board 41 for the operations lead, issue #142).

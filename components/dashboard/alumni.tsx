@@ -14,7 +14,8 @@ import {
   type AlumnusRow,
 } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
-import { Controls, DepartmentFilter, PageHeader, Pager, SearchField, TH, Tabs } from "./directory";
+import { Controls, DepartmentFilter, Pager, SearchField, TH, Tabs } from "./directory";
+import { PageHeader } from "./page-header";
 import { PANEL } from "./panel";
 
 // The Alumni page (board 46c): everyone who was on the team, the years they
@@ -55,7 +56,7 @@ export function AlumniView({ directory, editable }: { directory: AlumniDirectory
 
   return (
     <div>
-      <PageHeader title="Alumni" detail="People who were on the team. The public Team page lists them by year." />
+      <PageHeader title="Alumni" intro="People who were on the team. The public Team page lists them by year." />
 
       <Controls
         search={

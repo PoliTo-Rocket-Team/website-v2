@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
@@ -10,6 +9,7 @@ import { pageTitleFor, type MenuPage, type NavSection } from "@/lib/dashboard/ac
 import type { DashboardViewer } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
 import { Sidebar } from "./sidebar";
+import { TopBarSlot } from "./top-bar-slot";
 import { UserSheet } from "./user-card";
 
 /** A round icon button in the phone top bar: the menu, or a full page's back arrow. */
@@ -18,7 +18,8 @@ export const ICON_BUTTON =
 
 // The dashboard frame (boards 51b, 52, 56): a 248px sidebar fixed on the left
 // and the page to its right, 40px in. Below md (boards 50m-b, 52m, 56m) a 56px
-// top bar holds a menu button, the page's title and the viewer's avatar. The
+// top bar holds a menu button, the page's title, the page's main action where
+// it puts one there (boards 60m, 61m) and the viewer's avatar. The
 // menu button opens the sidebar as a 300px sheet from the left; the avatar
 // opens the user menu as a bottom sheet. Both are the repo's Radix dialog,
 // built on the primitive as nav-menu.tsx is: they slide in only under
@@ -36,7 +37,7 @@ export function DashboardShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
   const pathname = usePathname();
   const title = pageTitleFor(pathname ?? "/dashboard") ?? "Dashboard";
   return (
@@ -109,12 +110,4 @@ export function PhoneTopBar({ leading, title, children }: { leading: ReactNode; 
       {children}
     </header>
   );
-}
-
-const TopBarSlot = createContext<HTMLElement | null>(null);
-
-/** A page's main action, shown in the phone top bar beside the avatar (board 57m). */
-export function TopBarAction({ children }: { children: ReactNode }) {
-  const slot = useContext(TopBarSlot);
-  return slot ? createPortal(children, slot) : null;
 }

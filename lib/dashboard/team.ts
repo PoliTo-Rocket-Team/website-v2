@@ -107,12 +107,41 @@ export type MemberRow = {
 };
 
 /**
+ * Someone accepted for one of the division's positions who is not on the
+ * team yet (board 59): the lead confirms they join once the signed NDA is in.
+ */
+export type Joining = {
+  /** The accepted application: what Confirm join acts on. */
+  readonly applicationId: number;
+  readonly name: string;
+  /** The position they were accepted for: "Mission Analyst". */
+  readonly position: string;
+};
+
+/** The head of the division's department: who the lead tells about a promotion (board 59e). */
+export type DepartmentHead = {
+  readonly name: string;
+  /** "Aerodynamics" */
+  readonly department: string;
+};
+
+/**
  * Who a viewer's Members page lists: the whole team for the operations lead
- * (board 46), one division for a division lead (board 46b).
+ * (board 46), one division for a division lead (boards 59 and 59b), with the
+ * people joining it and its department head.
  */
 export type MemberDirectory =
   | { readonly scope: "team"; readonly rows: readonly MemberRow[]; readonly departments: readonly string[] }
-  | { readonly scope: "division"; readonly division: string; readonly rows: readonly MemberRow[] };
+  | {
+      readonly scope: "division";
+      readonly division: string;
+      readonly rows: readonly MemberRow[];
+      readonly joining: readonly Joining[];
+      readonly head: DepartmentHead | null;
+    };
+
+/** A division lead with nothing to list: no division, nobody joining, no head. */
+export const NO_DIVISION: MemberDirectory = { scope: "division", division: "", rows: [], joining: [], head: null };
 
 function roleLabelOf(placement: Placement, org: OrgChart): string {
   switch (placement.role) {
@@ -169,13 +198,100 @@ export function divisionDirectory(
   org: OrgChart,
   divisionId: number,
   selfId: number | null = null,
+  joining: readonly Joining[] = [],
 ): MemberDirectory {
   const division = org.divisions.find((d) => d.id === divisionId);
   const rows = roster
     .filter((entry) => divisionIdOf(entry.placement) === divisionId)
     .map((entry) => memberRowOf(entry, org, selfId))
     .sort(byRoleThenName);
-  return { scope: "division", division: division?.name ?? "", rows };
+  const department = org.departments.find((d) => d.id === division?.departmentId);
+  const head = roster.find((e) => e.placement.role === "head" && e.placement.departmentId === department?.id);
+  return {
+    scope: "division",
+    division: division?.name ?? "",
+    rows,
+    joining,
+    head: head && department ? { name: head.name, department: department.name } : null,
+  };
+}
+
+// Promote and Move to alumni (boards 59e and 59d)
+
+/**
+ * Promote (board 59e): the person leads the division beside the lead, or
+ * takes it over and the lead becomes a member of it.
+ */
+export const PROMOTE_MODES = ["together", "hand-over"] as const;
+export type PromoteMode = (typeof PROMOTE_MODES)[number];
+
+export function isPromoteMode(value: unknown): value is PromoteMode {
+  return typeof value === "string" && (PROMOTE_MODES as readonly string[]).includes(value);
+}
+
+/** Who may be promoted: a member of a division, never a lead or someone not yet placed. */
+export function canPromote(row: Pick<MemberRow, "role" | "division" | "self">): boolean {
+  return row.role === "member" && row.division !== null && !row.self;
+}
+
+/** Why someone left, as the Move to alumni confirm offers it (board 59d). Optional. */
+export const LEAVE_REASONS = ["graduated", "studying-abroad", "no-time", "other"] as const;
+export type LeaveReason = (typeof LEAVE_REASONS)[number];
+
+export const LEAVE_REASON_LABELS: Readonly<Record<LeaveReason, string>> = {
+  graduated: "Graduated",
+  "studying-abroad": "Studying abroad",
+  "no-time": "No time left",
+  other: "Other",
+};
+
+/**
+ * Moving someone to alumni (board 59d): the years they were on the team, and
+ * why they left when the lead says. Their roles end and their access goes;
+ * their account stays, so they can still sign in and apply again.
+ */
+export type Departure = {
+  readonly from: number;
+  readonly to: number;
+  readonly reason: LeaveReason | null;
+};
+
+/** The earliest year a Move to alumni accepts. */
+export const FIRST_SEASON = 2010;
+
+/** "2024 – 2026" for the years field. */
+export function yearsLabel(from: number, to: number): string {
+  return from === to ? String(from) : `${from} – ${to}`;
+}
+
+/** The years field as the lead typed it: "2024 – 2026", "2024-2026", or one year. */
+export function parseYears(text: string): { from: number; to: number } | null {
+  const match = /^\s*(\d{4})\s*(?:[-–—]\s*(\d{4}))?\s*$/.exec(text);
+  if (!match) return null;
+  const from = Number(match[1]);
+  return { from, to: match[2] === undefined ? from : Number(match[2]) };
+}
+
+/**
+ * Checks a Move to alumni request: years in order, none after this year and
+ * none before the team's first season; a reason from the list or none. Runs
+ * in the browser and again on the server.
+ */
+export function checkDeparture(
+  input: { years: string; reason: string | null },
+  thisYear: number,
+): { ok: true; value: Departure } | { ok: false; error: string } {
+  const years = parseYears(input.years);
+  if (years === null) return { ok: false, error: "Write the years like 2024 – 2026." };
+  if (years.from > years.to) return { ok: false, error: "The first year comes before the last." };
+  if (years.from < FIRST_SEASON || years.to > thisYear) {
+    return { ok: false, error: `Use years from ${FIRST_SEASON} to ${thisYear}.` };
+  }
+  const reason = input.reason === null || input.reason === "" ? null : input.reason;
+  if (reason !== null && !(LEAVE_REASONS as readonly string[]).includes(reason)) {
+    return { ok: false, error: "Choose a reason from the list." };
+  }
+  return { ok: true, value: { from: years.from, to: years.to, reason: reason as LeaveReason | null } };
 }
 
 export const MEMBER_TABS = ["all", "leads", "members"] as const;

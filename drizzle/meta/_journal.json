@@ -75,8 +75,15 @@
     {
       "idx": 10,
       "version": "7",
-      "when": 1791591412149,
-      "tag": "0010_lead_recruitment",
+      "when": 1791590820632,
+      "tag": "0010_dashboard_v2_lead_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791594591071,
+      "tag": "0011_lead_recruitment",
       "breakpoints": true
     }
   ]
