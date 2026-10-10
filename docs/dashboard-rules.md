@@ -38,8 +38,7 @@ An admin column comes later. **Planned**, no issue yet.
 - A non-member with no application lands on the My applications empty state, with a
   "See open positions" button (#179).
   - **Gap:** today they get an empty sidebar and a "not found" page. Tracked in #179.
-- **Gap:** the operations lead does not reach My applications, Team tree, Access or Orders, and a
-  division lead does not reach My applications. Tracked in #183.
+- **Gap:** the operations lead does not reach Access or Orders. Tracked in #200.
 - **Overview** is for members, division leads, department heads and the operations lead. A
   non-member gets no Overview.
 - **Team tree** is for members and up.
@@ -71,7 +70,6 @@ An admin column comes later. **Planned**, no issue yet.
 - The applicant picks one slot on My applications.
 - The booked time shows on Overview, in the applications list and in the panel, with Add to
   calendar.
-  - **Gap:** the booked time does not show on Overview on real data. Tracked in #186.
 
 ### Accept and reject
 
@@ -121,7 +119,6 @@ An admin column comes later. **Planned**, no issue yet.
 - The statuses are Waiting, Approved, Changes requested and Rejected.
 - On Changes requested, the team leader's reason shows, with "Edit and send again".
 - A lead can cancel a request while it is waiting.
-  - **Gap:** the code also allows cancel on Changes requested. Tracked in #192.
 
 ## 5. Data and testing
 

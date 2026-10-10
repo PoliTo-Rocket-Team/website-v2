@@ -50,16 +50,20 @@ export const DASHBOARD_PAGES = [
     key: "my-applications",
     label: "My applications",
     href: "/dashboard/my-applications",
-    reach: { member: "main", "non-member": "main" },
+    reach: { "operations-lead": "main", "division-lead": "main", member: "main", "non-member": "main" },
     // A non-member always sees it, as their only item, applied or not
-    // (issue #179); a member only once they have applied.
-    shownWhen: { member: "has-own-applications" },
+    // (issue #179); the team only once they have applied (issue #183).
+    shownWhen: {
+      "operations-lead": "has-own-applications",
+      "division-lead": "has-own-applications",
+      member: "has-own-applications",
+    },
   },
   {
     key: "team-tree",
     label: "Team tree",
     href: "/dashboard/team-tree",
-    reach: { "division-lead": "main", member: "main" },
+    reach: { "operations-lead": "main", "division-lead": "main", member: "main" },
   },
   {
     key: "positions",
@@ -119,7 +123,7 @@ export type NavCounts = Readonly<Partial<Record<DashboardPageKey, number>>>;
 /** What the sidebar needs to know about the viewer, read through the dashboard data interface. */
 export type SidebarFacts = {
   readonly counts: NavCounts;
-  /** The viewer has sent at least one application (a member's My applications shows). */
+  /** The viewer has sent at least one application (My applications shows for the team). */
   readonly hasOwnApplications: boolean;
 };
 

@@ -95,7 +95,8 @@ export function orderBreakdown(order: Pick<Order, "unitPrice" | "quantity" | "sh
 /**
  * What the lead may still do with a request (boards 61c and 61d). A request
  * the team leader has not answered can be cancelled or edited; one sent back
- * can be cancelled, or edited and sent again, which puts it back to waiting.
+ * can only be edited and sent again, which puts it back to waiting. A lead
+ * cancels a request only while it is waiting (docs/dashboard-rules.md).
  * An approved or rejected request is the team leader's answer: nothing is left
  * to do with it.
  */
@@ -109,7 +110,7 @@ export function orderActions(status: OrderStatus): OrderActions {
     case "waiting":
       return { cancel: true, edit: "edit" };
     case "changes-requested":
-      return { cancel: true, edit: "edit-and-resend" };
+      return { cancel: false, edit: "edit-and-resend" };
     case "approved":
     case "rejected":
       return { cancel: false, edit: null };
