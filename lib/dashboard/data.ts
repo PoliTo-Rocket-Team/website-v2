@@ -88,7 +88,7 @@ export interface DashboardData {
    * none keeps it. Refused once the team leader has approved or rejected it.
    */
   editOrder(orderId: number, fields: Record<string, string>, quote: Upload | null): Promise<WriteResult<Order>>;
-  /** Cancel request: the request leaves the page. Refused once the team leader has approved or rejected it. */
+  /** Cancel request: the request leaves the page. Allowed only while the request is waiting: refused on Changes requested, Approved and Rejected. */
   cancelOrder(orderId: number): Promise<WriteResult<null>>;
 
   /** Board 55: a team member's own profile. */

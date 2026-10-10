@@ -46,11 +46,11 @@ export type DeleteAccount = {
  * then anonymized (issue #191, ./anonymize.ts).
  */
 export const DELETE_ACCOUNT_COPY =
-  "Closes your account, so you can't sign in with it again. Your data is kept for one year, then anonymized and kept only for statistics.";
+  "Closes your account, so you can't sign in with it again. Your data is kept at least one year, then anonymized and kept only for statistics.";
 
 /** The same copy on My profile's Leave or delete card (board 55), for someone on the team. */
 export const DELETE_MEMBER_ACCOUNT_COPY =
-  "Closes your account, so you can't sign in with it again. You leave the team first. Your data is kept for one year, then anonymized and kept only for statistics.";
+  "Closes your account, so you can't sign in with it again. You leave the team first. Your data is kept at least one year, then anonymized and kept only for statistics.";
 
 /** The word the person types to confirm Delete account. */
 export const DELETE_WORD = "DELETE";

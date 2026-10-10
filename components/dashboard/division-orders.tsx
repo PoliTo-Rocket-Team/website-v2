@@ -268,13 +268,19 @@ function OrderPanel({
       title={current.item}
       detail={[current.reason, formatEuro(total)].filter(Boolean).join(" · ")}
       footer={
-        actions.cancel ? (
+        actions.cancel || actions.edit ? (
           <>
-            <button type="button" onClick={() => setAsking(true)} className={PANEL_DANGER_BUTTON}>
-              Cancel request
-            </button>
+            {actions.cancel && (
+              <button type="button" onClick={() => setAsking(true)} className={PANEL_DANGER_BUTTON}>
+                Cancel request
+              </button>
+            )}
             {actions.edit && (
-              <button type="button" onClick={() => onEdit(current)} className={PANEL_PRIMARY_BUTTON}>
+              <button
+                type="button"
+                onClick={() => onEdit(current)}
+                className={`${PANEL_PRIMARY_BUTTON} ${actions.cancel ? "" : "col-span-2"}`}
+              >
                 {actions.edit === "edit-and-resend" ? "Edit and send again" : "Edit order"}
               </button>
             )}

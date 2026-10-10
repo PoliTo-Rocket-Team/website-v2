@@ -83,6 +83,48 @@ export function hasNotApplied(mine: MyApplications): boolean {
 /** The text of the "Next steps" box on an accepted application (board 50d, Huey's latest ruling). */
 export const NEXT_STEPS_TEXT = "The team will contact you about joining. Watch your inbox.";
 
+/** One application as stored: its status, and the times that end it. ISO timestamps. */
+export type StoredApplication = {
+  readonly status: "received" | "pending" | "interview" | "accepted" | "rejected" | "accepted_by_another_team" | "joined";
+  readonly appliedAt: string;
+  readonly withdrawnAt: string | null;
+  readonly joinedAt: string | null;
+};
+
+/** Where one application lists on My applications: still in progress, or over. */
+export type ApplicationPlace =
+  | { readonly kind: "active"; readonly stage: ActiveStage }
+  | { readonly kind: "past"; readonly outcome: PastOutcome };
+
+/**
+ * Where a stored application lists. Accept is not join (docs/dashboard-rules.md):
+ * an accepted application stays active at `accepted` whether or not the viewer
+ * is already a member, and only a confirmed join (status `joined`) is over as
+ * `joined`. `interview` is the times its lead offered, or null when none are;
+ * `roleSince` is when the viewer's current role started, the date a join stored
+ * without `joinedAt` falls back to.
+ */
+export function placeOf(application: StoredApplication, interview: Interview | null, roleSince: string | null): ApplicationPlace {
+  if (application.withdrawnAt !== null) return { kind: "past", outcome: { kind: "withdrawn" } };
+  switch (application.status) {
+    case "rejected":
+    case "accepted_by_another_team":
+      return { kind: "past", outcome: { kind: "not-selected" } };
+    case "joined":
+      return {
+        kind: "past",
+        outcome: { kind: "joined", since: (application.joinedAt ?? roleSince ?? application.appliedAt).slice(0, 10) },
+      };
+    case "accepted":
+      return { kind: "active", stage: { kind: "accepted" } };
+    case "received":
+      return { kind: "active", stage: { kind: "received" } };
+    case "pending":
+    case "interview":
+      return { kind: "active", stage: interview === null ? { kind: "in-review" } : { kind: "interview", interview } };
+  }
+}
+
 /** An application can be withdrawn until it is accepted (board 50d hides Withdraw). */
 export function canWithdraw(stage: ActiveStage): boolean {
   return stage.kind !== "accepted";

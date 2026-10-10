@@ -1,7 +1,7 @@
 ---
 id: 0002
 title: "Deploy on Vercel Hobby; keep the app host-agnostic so Netlify or self-hosting stays a config change"
-status: accepted
+status: amended-in-part by [0008](0008-google-only-sign-in-no-email.md)
 date: 2026-08-24
 ---
 

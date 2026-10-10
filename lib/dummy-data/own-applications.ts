@@ -7,8 +7,9 @@ import { applicant, personFor } from "./team";
 // The test developer's own applications and details (boards 50 to 55,
 // issue #169). The applicant has one application at each step, so a review
 // sees the received, in review, interview and accepted cards together; the
-// member has one in review and the one they joined with (board 53). What a
-// test developer changes on top (./own.ts) is laid over these.
+// member has one in review and the one they joined with (board 53); each lead
+// has one at its interview, to another division (issue #183). What a test
+// developer changes on top (./own.ts) is laid over these.
 
 /** Where a dummy application stands before any change. */
 export type DummyOwnStatus =
@@ -21,7 +22,7 @@ export type DummyOwnStatus =
 
 export type DummyOwnApplication = {
   readonly id: number;
-  readonly viewer: "non-member" | "member";
+  readonly viewer: ViewerKind;
   readonly positionId: number;
   readonly sent: string;
   readonly status: DummyOwnStatus;
@@ -105,9 +106,27 @@ export const ownApplications = [
     files: [CV, LETTER],
     answer: "Only in the workshop course, where we followed the machine shop checklist.",
   },
+  {
+    id: 301,
+    viewer: "division-lead",
+    positionId: 5,
+    sent: "2026-10-08T19:10:00+02:00",
+    status: { kind: "interview", slots: offered },
+    files: [CV],
+    answer: "STM32 boards for our flight computer, in C with FreeRTOS.",
+  },
+  {
+    id: 401,
+    viewer: "operations-lead",
+    positionId: 3,
+    sent: "2026-10-07T08:50:00+02:00",
+    status: { kind: "interview", slots: offered },
+    files: [CV, LETTER],
+    answer: "Yes, I packed the drogue for our last two launches.",
+  },
 ] as const satisfies readonly DummyOwnApplication[];
 
-/** A test developer's applications as `viewer`, from `start`; the leads have none. */
+/** A test developer's applications as `viewer`, from `start`. */
 export function ownApplicationsOf(viewer: ViewerKind, start: OwnApplicationsStart): readonly DummyOwnApplication[] {
   return start === "none" ? [] : ownApplications.filter((a) => a.viewer === viewer);
 }
