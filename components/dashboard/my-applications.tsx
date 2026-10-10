@@ -27,6 +27,7 @@ import {
   type Step,
 } from "@/lib/dashboard/my-applications";
 import type { WriteResult } from "@/lib/dashboard/write";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "./confirm-dialog";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
@@ -59,6 +60,22 @@ function StatusPill({ pill }: { pill: Pill }) {
 // applications, each followed from sent to decision, and the ones that are
 // over under Past. Props in, nothing fetched; a withdrawal or a picked time
 // lives in this page's state once the write answers.
+/**
+ * My applications for someone who has not applied yet (issue #179): the
+ * page header, one line, and the way to the open positions. Nothing else.
+ */
+export function NoApplicationsView() {
+  return (
+    <>
+      <PageHeader title="My applications" intro="You have not applied to a position yet." />
+      <Link href="/apply" className={cn(PRIMARY_PILL, "group mt-6 h-12 w-full px-6 text-[15px] sm:w-auto")}>
+        See open positions
+        <RocketArrow className="opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100" />
+      </Link>
+    </>
+  );
+}
+
 export function MyApplicationsView({ applications, ...actions }: { applications: MyApplications } & Actions) {
   const [active, setActive] = useState(applications.active);
   const [past, setPast] = useState(applications.past);

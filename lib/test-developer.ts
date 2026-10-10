@@ -1,5 +1,6 @@
 import { callbackPath } from "@/lib/auth-callback";
 import { isViewerKind, type ViewerKind } from "@/lib/dashboard/viewer";
+import type { OwnApplicationsStart } from "@/lib/dummy-data/own";
 
 // Test developer sign-in (issue #141). On previews and under `next dev`, a
 // person or an agent can sign in as a test developer: no Google, no account
@@ -45,6 +46,12 @@ export const TEST_DEVELOPER_EDITS_COOKIE = "prt_test_developer_edits";
 /** What a test developer changed on their own pages (lib/dummy-data/own.ts); cleared on sign out. */
 export const TEST_DEVELOPER_OWN_COOKIE = "prt_test_developer_own";
 
+/**
+ * Which own applications the test developer starts with (lib/dummy-data/own.ts):
+ * "none" after a sign-in with `applications=none`, absent otherwise.
+ */
+export const TEST_DEVELOPER_APPLICATIONS_COOKIE = "prt_test_developer_applications";
+
 /** The viewer a test developer cookie names, or null when the gate is off or the value is not a viewer. */
 export function testDeveloperViewer(
   cookieValue: string | null | undefined,
@@ -54,9 +61,18 @@ export function testDeveloperViewer(
   return isViewerKind(cookieValue) ? cookieValue : null;
 }
 
-/** The sign-in link for one viewer, back to `cb` (a site path) after. */
-export function testDeveloperSignInHref(viewer: ViewerKind, cb?: string | null): string {
+/**
+ * The sign-in link for one viewer, back to `cb` (a site path) after. With
+ * `applications` "none" the viewer starts with no own applications (issue
+ * #179); View as never passes it, so switching viewer brings the sample set back.
+ */
+export function testDeveloperSignInHref(
+  viewer: ViewerKind,
+  cb?: string | null,
+  applications: OwnApplicationsStart = "sample",
+): string {
   const query = new URLSearchParams({ viewer });
+  if (applications === "none") query.set("applications", "none");
   if (cb) query.set("cb", callbackPath(cb));
   return `/api/test-developer/sign-in?${query}`;
 }
@@ -79,15 +95,24 @@ function redirect(to: string, url: URL, ...cookies: string[]): Response {
 }
 
 /**
- * GET /api/test-developer/sign-in?viewer=<kind>[&cb=<path>]: sets the cookie
- * and goes to `cb`, else the dashboard. 404 when the gate is off, 400 for a
- * viewer that is not one of the four.
+ * GET /api/test-developer/sign-in?viewer=<kind>[&applications=none][&cb=<path>]:
+ * sets the cookie and goes to `cb`, else the dashboard. `applications=none`
+ * starts the viewer with no own applications; without it the sample set is
+ * back. 404 when the gate is off, 400 for a viewer that is not one of the four.
  */
 export function testDeveloperSignIn(url: URL, env: GateEnv = processGateEnv()): Response {
   if (!testDeveloperOn(env)) return notFound();
   const viewer = url.searchParams.get("viewer");
   if (!isViewerKind(viewer)) return new Response("Unknown viewer", { status: 400 });
-  return redirect(callbackPath(url.searchParams.get("cb")), url, cookieHeader(viewer, TEST_DEVELOPER_COOKIE_MAX_AGE_S, url));
+  const noApplications = url.searchParams.get("applications") === "none";
+  return redirect(
+    callbackPath(url.searchParams.get("cb")),
+    url,
+    cookieHeader(viewer, TEST_DEVELOPER_COOKIE_MAX_AGE_S, url),
+    noApplications
+      ? cookieHeader("none", TEST_DEVELOPER_COOKIE_MAX_AGE_S, url, TEST_DEVELOPER_APPLICATIONS_COOKIE)
+      : cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
+  );
 }
 
 /**
@@ -103,5 +128,6 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url, TEST_DEVELOPER_STATE_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_EDITS_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_OWN_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
   );
 }

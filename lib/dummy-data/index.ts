@@ -52,7 +52,7 @@ import {
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { sentLabel } from "@/lib/dashboard/my-applications";
-import { NO_OWN_STORE, type OwnChanges, type OwnChangesStore } from "./own";
+import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChanges, type OwnChangesStore } from "./own";
 import { dummyDetails, ownApplicationsOf, isWithdrawn } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
@@ -418,13 +418,13 @@ const overviewStatus = {
   joined: "accepted",
 } as const satisfies Readonly<Record<string, OwnApplication["status"]>>;
 
-function applicantOverview(team: Team, own: OwnChanges): PersonalOverview {
+function applicantOverview(team: Team, own: OwnChanges, start: OwnApplicationsStart): PersonalOverview {
   return {
     shape: "personal",
     person: { name: applicant.name, line: `Applicant · ${applicant.email}`, since: null, edit: null },
     checklist: null,
     roster: null,
-    applications: ownApplicationsOf("non-member")
+    applications: ownApplicationsOf("non-member", start)
       .filter((a) => !isWithdrawn(a, own))
       .map((a) => {
         const position = team.positions.find((p) => p.id === a.positionId)!;
@@ -438,7 +438,7 @@ function applicantOverview(team: Team, own: OwnChanges): PersonalOverview {
   };
 }
 
-function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges): Overview {
+function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges, start: OwnApplicationsStart): Overview {
   switch (kind) {
     case "operations-lead":
       return teamOverview(team);
@@ -447,7 +447,7 @@ function overviewFor(kind: ViewerKind, team: Team, own: OwnChanges): Overview {
     case "member":
       return memberOverview();
     case "non-member":
-      return applicantOverview(team, own);
+      return applicantOverview(team, own, start);
   }
 }
 
@@ -580,8 +580,9 @@ const notOnTeam = "This page is for team members.";
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
  * their Team page edits in `teamEdits` (./edits.ts), and the changes on their
- * own pages in `own` (./own.ts). Other writes check what was sent as the
- * database side does, store nothing, and answer what the page shows next.
+ * own pages in `own` (./own.ts), starting from the own applications
+ * `ownStart` names. Other writes check what was sent as the database side
+ * does, store nothing, and answer what the page shows next.
  */
 export function dummyDashboardData(
   kind: ViewerKind,
@@ -589,6 +590,7 @@ export function dummyDashboardData(
   changes: DummyStateStore,
   teamEdits: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
+  ownStart: OwnApplicationsStart = "sample",
 ): DashboardData {
   const team = teamOf(recruitment.current, changes.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
@@ -598,7 +600,7 @@ export function dummyDashboardData(
   const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
-  const myApplications = () => dummyMyApplications(kind, me, own.current);
+  const myApplications = () => dummyMyApplications(kind, me, own.current, ownStart);
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [kind]: details } });
 
   // One move for both pages: the Applications panel and the Members page's
@@ -621,8 +623,8 @@ export function dummyDashboardData(
   return {
     viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind, team),
-    hasOwnApplications: async () => ownApplicationsOf(kind).length > 0,
-    overview: async () => overviewFor(kind, team, own.current),
+    hasOwnApplications: async () => ownApplicationsOf(kind, ownStart).length > 0,
+    overview: async () => overviewFor(kind, team, own.current, ownStart),
     recruitment: async () => ({ recruitment: recruitment.current, canSwitch }),
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
@@ -687,7 +689,7 @@ export function dummyDashboardData(
       return written(null);
     },
 
-    myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current) : null),
+    myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current, ownStart) : null),
     async saveDetails(input) {
       const result = dummySaveDetails(input, person === null ? "applicant" : "member", dummyDetails(kind, own.current));
       if (result.ok) await saveOwnDetails(result.value);

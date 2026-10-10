@@ -75,6 +75,11 @@ export type MyApplications = {
   readonly past: readonly PastApplication[];
 };
 
+/** Nothing sent yet: no application in progress and none over (issue #179). */
+export function hasNotApplied(mine: MyApplications): boolean {
+  return mine.active.length === 0 && mine.past.length === 0;
+}
+
 /** The text of the "Next steps" box on an accepted application (board 50d, Huey's latest ruling). */
 export const NEXT_STEPS_TEXT = "The team will contact you about joining. Watch your inbox.";
 

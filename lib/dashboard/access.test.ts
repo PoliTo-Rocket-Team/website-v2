@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
+import { dashboardLandingFor, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
 import type { ViewerKind } from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
@@ -27,9 +27,23 @@ test("a division lead's sidebar is Overview, Team tree, then Recruitment and My 
   ]);
 });
 
-test("My applications shows only to a viewer who has sent an application", () => {
+test("a member sees My applications only once they have applied; a non-member always does (issue #179)", () => {
   assert.deepEqual(shape("member", withoutApplications), [[null, ["Overview", "Team tree"]]]);
-  assert.deepEqual(shape("non-member", withoutApplications), []);
+  assert.deepEqual(sidebarFor("non-member", withoutApplications), [
+    {
+      group: "main",
+      label: null,
+      items: [{ key: "my-applications", label: "My applications", href: "/dashboard/my-applications", count: null }],
+    },
+  ]);
+});
+
+test("/dashboard sends only a non-member who has not applied to My applications", () => {
+  assert.equal(dashboardLandingFor("non-member", false), "/dashboard/my-applications");
+  assert.equal(dashboardLandingFor("non-member", true), null);
+  for (const kind of ["member", "division-lead", "operations-lead"] as const) {
+    assert.equal(dashboardLandingFor(kind, false), null, kind);
+  }
 });
 
 test("My profile and My account are in the user menu, never the sidebar", () => {

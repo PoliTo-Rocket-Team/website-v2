@@ -65,3 +65,16 @@ export function parseOwnChanges(cookie: string | null | undefined): OwnChanges {
 export function serializeOwnChanges(changes: OwnChanges): string {
   return JSON.stringify(changes);
 }
+
+/**
+ * Which own applications a test developer starts with (issue #179): the
+ * sample set in ./own-applications.ts, or none, as someone who signed in and
+ * has not applied yet. Chosen at sign-in (`applications=none`), kept in its
+ * own cookie and cleared on sign out.
+ */
+export type OwnApplicationsStart = "sample" | "none";
+
+/** The start a cookie names; anything but "none" is the sample set. */
+export function ownApplicationsStartOf(cookie: string | null | undefined): OwnApplicationsStart {
+  return cookie === "none" ? "none" : "sample";
+}

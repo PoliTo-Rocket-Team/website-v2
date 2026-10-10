@@ -29,7 +29,7 @@ import type { ViewerKind } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
 import { dummyDetails, isOpenOwn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
-import type { OwnChanges } from "./own";
+import type { OwnApplicationsStart, OwnChanges } from "./own";
 import { departments, divisions, people, positions, type DummyPerson } from "./team";
 
 // The viewer's own pages for the test developer (boards 50 to 55, issue
@@ -92,12 +92,12 @@ export function dummySaveDetails(input: unknown, editor: DetailsEditor, current:
   return parsed.ok ? written(applyDetailsChange(current, parsed.value)) : refused(firstDetailError(parsed.errors));
 }
 
-export function dummyMyAccount(applicant: { name: string; email: string }, changes: OwnChanges): MyAccount {
+export function dummyMyAccount(applicant: { name: string; email: string }, changes: OwnChanges, start: OwnApplicationsStart): MyAccount {
   return {
     name: applicant.name,
     signIn: { provider: "google", email: applicant.email },
     details: dummyDetails("non-member", changes),
-    openApplications: ownApplicationsOf("non-member").filter((a) => isOpenOwn(a, changes)).length,
+    openApplications: ownApplicationsOf("non-member", start).filter((a) => isOpenOwn(a, changes)).length,
   };
 }
 
@@ -176,10 +176,19 @@ function pastOf(application: DummyOwnApplication, withdrawn: boolean): PastAppli
   };
 }
 
-/** Boards 50 and 53 for a test developer looking as `kind`; null for the leads, who have no own applications. */
-export function dummyMyApplications(kind: ViewerKind, me: { firstName: string; email: string }, changes: OwnChanges): MyApplications | null {
-  const own = ownApplicationsOf(kind);
-  if (own.length === 0) return null;
+/**
+ * Boards 50 and 53 for a test developer looking as `kind`: empty lists for
+ * someone who has not applied yet (issue #179); null for the leads, who do
+ * not apply.
+ */
+export function dummyMyApplications(
+  kind: ViewerKind,
+  me: { firstName: string; email: string },
+  changes: OwnChanges,
+  start: OwnApplicationsStart,
+): MyApplications | null {
+  if (kind !== "non-member" && kind !== "member") return null;
+  const own = ownApplicationsOf(kind, start);
   const active: ActiveApplication[] = [];
   const past: PastApplication[] = [];
   for (const application of own) {

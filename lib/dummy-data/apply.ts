@@ -5,7 +5,7 @@ import type { ApplyData } from "@/lib/apply/data";
 import { isPublic, type Recruitment } from "@/lib/apply/positions";
 import { applyFormDefaults } from "@/lib/dashboard/details";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
-import { NO_OWN_CHANGES, type OwnChanges } from "./own";
+import { NO_OWN_CHANGES, type OwnApplicationsStart, type OwnChanges } from "./own";
 import { dummyDetails, isWithdrawn, ownApplicationsOf } from "./own-applications";
 import { applicant as nonMember, departments, divisions, personFor, positions, type DummyPosition } from "./team";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
@@ -193,7 +193,8 @@ const sentInThisServer = new SentApplications();
  * The apply pages as a test developer sees them: signed in as `viewer` (null
  * is signed out), with `/apply` limited by its `open` selector, the
  * recruitment switch as this browser left it (./recruitment.ts), and their
- * own changes (./own.ts): saved details and withdrawn applications.
+ * own changes (./own.ts): saved details and withdrawn applications, over
+ * the own applications `ownStart` names.
  */
 export function dummyApplyData(
   viewer: ViewerKind | null,
@@ -201,6 +202,7 @@ export function dummyApplyData(
   recruitment: Recruitment = DEFAULT_DUMMY_RECRUITMENT,
   sent: SentApplications = sentInThisServer,
   own: OwnChanges = NO_OWN_CHANGES,
+  ownStart: OwnApplicationsStart = "sample",
 ): ApplyData {
   const all = positions.map(dummyApplyPosition);
   const limit = dummyOpenLimit(openSelector);
@@ -208,7 +210,7 @@ export function dummyApplyData(
   const liveOwn = (userId: string, positionId: number) =>
     viewer !== null &&
     userId === applicantFor(viewer, own).id &&
-    ownApplicationsOf(viewer).some((a) => a.positionId === positionId && !isWithdrawn(a, own));
+    ownApplicationsOf(viewer, ownStart).some((a) => a.positionId === positionId && !isWithdrawn(a, own));
   const alreadySent = (userId: string, positionId: number) => sent.has(userId, positionId) || liveOwn(userId, positionId);
 
   return {

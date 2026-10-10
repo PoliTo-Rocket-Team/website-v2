@@ -4,7 +4,14 @@ import type { ViewerKind } from "@/lib/dashboard/viewer";
 import { dummyApplyData, SentApplications } from "./apply";
 import { NO_EDITS, type TeamEdits } from "./edits";
 import { dummyDashboardData } from "./index";
-import { NO_OWN_CHANGES, parseOwnChanges, serializeOwnChanges, type OwnChanges } from "./own";
+import {
+  NO_OWN_CHANGES,
+  ownApplicationsStartOf,
+  parseOwnChanges,
+  serializeOwnChanges,
+  type OwnApplicationsStart,
+  type OwnChanges,
+} from "./own";
 import { DEFAULT_DUMMY_RECRUITMENT, dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
 
@@ -13,7 +20,7 @@ import { EMPTY_DUMMY_STATE } from "./state";
 // the next request reads it back from there.
 
 /** One browser: the cookies a write saves are what the next request reads. */
-function browser() {
+function browser(start: OwnApplicationsStart = "sample") {
   let own: OwnChanges = NO_OWN_CHANGES;
   let edits: TeamEdits = NO_EDITS;
   const open = (kind: ViewerKind) =>
@@ -24,6 +31,7 @@ function browser() {
       { current: edits, save: async (next) => void (edits = next) },
       // Through the cookie's own text, as the real request does.
       { current: parseOwnChanges(serializeOwnChanges(own)), save: async (next) => void (own = next) },
+      start,
     );
   return { open, own: () => own };
 }
@@ -45,6 +53,22 @@ test("withdrawing an application moves it to Past as Withdrawn, and the person c
     (r) => r?.position.title === target.title,
   )!.position.id;
   assert.equal(await apply.hasApplied(me.id, withdrawnPosition), false);
+});
+
+test("a non-member signed in with applications=none has an empty My applications and can apply anywhere (issue #179)", async () => {
+  const { open, own } = browser(ownApplicationsStartOf("none"));
+  const data = open("non-member");
+  const mine = await data.myApplications();
+  assert.deepEqual([mine?.active, mine?.past], [[], []]);
+  assert.equal(await data.hasOwnApplications(), false);
+  assert.equal((await data.myAccount())?.openApplications, 0);
+
+  // Position 1 is the sample set's interview; with none sent, it is open to them.
+  const apply = dummyApplyData("non-member", null, DEFAULT_DUMMY_RECRUITMENT, new SentApplications(), own(), "none");
+  assert.equal(await apply.hasApplied((await apply.applicant())!.id, 1), false);
+  // The sample set still has it.
+  const sample = dummyApplyData("non-member", null, DEFAULT_DUMMY_RECRUITMENT, new SentApplications(), own());
+  assert.equal(await sample.hasApplied((await sample.applicant())!.id, 1), true);
 });
 
 test("an accepted application cannot be withdrawn", async () => {
