@@ -1,7 +1,7 @@
 import { NO_DETAILS, type YourDetails } from "@/lib/dashboard/details";
 import type { InterviewSlot } from "@/lib/dashboard/my-applications";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
-import type { OwnChanges } from "./own";
+import type { OwnApplicationsStart, OwnChanges } from "./own";
 import { applicant, personFor } from "./team";
 
 // The test developer's own applications and details (boards 50 to 55,
@@ -107,9 +107,9 @@ export const ownApplications = [
   },
 ] as const satisfies readonly DummyOwnApplication[];
 
-/** A test developer's applications as `viewer`; the leads have none. */
-export function ownApplicationsOf(viewer: ViewerKind): readonly DummyOwnApplication[] {
-  return ownApplications.filter((a) => a.viewer === viewer);
+/** A test developer's applications as `viewer`, from `start`; the leads have none. */
+export function ownApplicationsOf(viewer: ViewerKind, start: OwnApplicationsStart): readonly DummyOwnApplication[] {
+  return start === "none" ? [] : ownApplications.filter((a) => a.viewer === viewer);
 }
 
 /** Withdrawn by the test developer. A withdrawn application does not stop them applying again. */
