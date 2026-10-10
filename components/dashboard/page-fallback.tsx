@@ -3,7 +3,8 @@ import { Loader2 } from "lucide-react";
 /**
  * What a dashboard page shows while it loads, in place of an empty main area
  * (issue #227): a quiet spinner where the page will be. Every page wraps its
- * live part in a Suspense with this fallback. The spinner turns only under
+ * live part in a Suspense with this fallback, and app/dashboard/loading.tsx
+ * shows it while a page's data is on its way. The spinner turns only under
  * motion-safe; under reduced motion it stands still.
  */
 export function DashboardPageFallback() {
