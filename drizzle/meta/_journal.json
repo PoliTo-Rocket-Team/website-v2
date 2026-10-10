@@ -85,6 +85,20 @@
       "when": 1791594591071,
       "tag": "0011_lead_recruitment",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791624960990,
+      "tag": "0012_dashboard_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791624961990,
+      "tag": "0013_dashboard_notices_audit",
+      "breakpoints": true
     }
   ]
 }

@@ -51,6 +51,7 @@ import { databaseDivisionPages } from "./database-division";
 import { databaseRecruitmentPages } from "./database-recruitment";
 import { databaseTeamWrites, leadDivisionId, readJoining } from "./database-team";
 import { databaseSelfPages } from "./database-self";
+import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { viewerKindOf, type DashboardViewer, type ViewerKind } from "./viewer";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -138,17 +139,15 @@ async function readIdentity(userId: string): Promise<Identity | null> {
       .limit(1),
   ]);
 
+  const kind = viewerKindOf({ scopes: scopeRows.map((s) => s.scope), activeRole: role ?? null });
+  // Someone with no active role left the team: scope rows that outlived it reach nothing.
+  if (kind === "non-member") return { ...base, role: null, divisionIds: [], departmentIds: [], kind };
+
   const divisionIds = scopeRows.flatMap((s) => (s.scope === "division" && s.division_id !== null ? [s.division_id] : []));
   if (role?.divisionId != null && (role.type === "lead" || role.type === "head")) divisionIds.push(role.divisionId);
   const departmentIds = scopeRows.flatMap((s) => (s.scope === "department" && s.dept_id !== null ? [s.dept_id] : []));
 
-  return {
-    ...base,
-    role: role ?? null,
-    divisionIds,
-    departmentIds,
-    kind: viewerKindOf({ scopes: scopeRows.map((s) => s.scope), roleType: role?.type ?? null }),
-  };
+  return { ...base, role: role ?? null, divisionIds, departmentIds, kind };
 }
 
 type ScopedPosition = {
@@ -245,23 +244,27 @@ function plural(n: number, one: string, many: string): string {
 
 /** Board 40: the operations lead's figures and attention across the team. */
 async function teamOverview(identity: Identity): Promise<TeamOverview> {
-  const [positions, recruitmentOpen, memberCount] = await Promise.all([
+  const [positions, recruitmentOpen, memberCount, notices] = await Promise.all([
     readPositions(identity),
     readRecruitmentOpen(),
     readActiveMemberCount(null),
+    readNoticeAttention(identity, new Date()),
   ]);
   const open = positions.filter((p) => p.open);
   const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
   const openDepartments = new Set(open.map((p) => p.departmentName)).size;
 
-  const attention = positions
-    .filter((p) => p.newApplications > 0)
-    .map((p): AttentionItem => ({
-      kind: "applications",
-      title: `${plural(p.newApplications, "new application", "new applications")} for ${p.title}`,
-      detail: `${p.departmentName} · ${p.divisionName}`,
-      action: { label: "Review", href: `/dashboard/applications?position=${p.id}` },
-    }));
+  const attention = [
+    ...positions
+      .filter((p) => p.newApplications > 0)
+      .map((p): AttentionItem => ({
+        kind: "applications",
+        title: `${plural(p.newApplications, "new application", "new applications")} for ${p.title}`,
+        detail: `${p.departmentName} · ${p.divisionName}`,
+        action: { label: "Review", href: `/dashboard/applications?position=${p.id}` },
+      })),
+    ...notices,
+  ];
 
   return {
     shape: "team",
@@ -313,11 +316,12 @@ async function readMembersWithoutPhoto(divisionIds: number[]): Promise<string[]>
  */
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
-  const [positions, memberCount, divisionOrders, withoutPhoto] = await Promise.all([
+  const [positions, memberCount, divisionOrders, withoutPhoto, notices] = await Promise.all([
     readPositions(identity),
     readActiveMemberCount(identity.divisionIds),
     databaseDivisionPages(identity).divisionOrders(),
     readMembersWithoutPhoto(identity.divisionIds),
+    readNoticeAttention(identity, now),
   ]);
   const open = positions.filter((p) => p.open);
   const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
@@ -339,6 +343,7 @@ async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
         : [],
     ),
     ...(noPhoto ? [noPhoto] : []),
+    ...notices,
   ];
 
   return {
@@ -556,6 +561,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
       return buildTeamTree(roster, snapshot.org, seasonAt(new Date()), identity.memberId);
     },
     teamWrites: databaseTeamWrites(identity),
+    dismissNotice: (noticeId) => dismissNotice(identity, noticeId),
     recruitment: getRecruitmentControl,
     setRecruitment: (next) =>
       switchRecruitment(next, {

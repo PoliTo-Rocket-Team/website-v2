@@ -68,6 +68,27 @@ test("moving someone to alumni ends their access and keeps them on record", asyn
   assert.ok(alumni.rows.some((a) => a.name === "Luca Marino"), "they stay on record, on the Alumni page");
 });
 
+test("Move to alumni by a division lead reaches only their own division (issue #201)", async () => {
+  const lead = pages("division-lead");
+  const writes = lead.view.teamWrites!;
+  assert.equal(await writes.moveToAlumni(8, { from: 2023, to: 2026, reason: null }), false, "Communications is not theirs");
+  assert.equal(await writes.moveToAlumni(9, { from: 2023, to: 2026, reason: null }), false, "nor is another division's lead");
+  assert.equal(lead.saved.length, 0);
+
+  assert.equal(await writes.moveToAlumni(6, { from: 2025, to: 2026, reason: null }), true);
+  const { rows } = await pages("operations-lead", lead.saved[0]).view.alumni();
+  assert.ok(rows.some((a) => a.name === "Pietro Ricci" && a.from === 2025 && a.to === 2026), "their only role ended, so they left the team");
+});
+
+test("Move to alumni by the operations lead ends the whole membership, in any division (issue #201)", async () => {
+  const ops = pages("operations-lead");
+  assert.equal(await ops.view.teamWrites!.moveToAlumni(8, { from: 2023, to: 2026, reason: "graduated" }), true);
+  const edits = ops.saved[0];
+  assert.ok(!(await pages("operations-lead", edits).view.members()).rows.some((r) => r.name === "Andrea Ferri"));
+  assert.ok((await pages("operations-lead", edits).view.alumni()).rows.some((a) => a.name === "Andrea Ferri"));
+  assert.equal(await ops.view.teamWrites!.moveToAlumni(1, { from: 2022, to: 2026, reason: null }), false, "never themselves");
+});
+
 test("a lead promotes a member beside them, or hands the division over and becomes a member", async () => {
   const together = pages("division-lead");
   assert.equal(await together.view.teamWrites!.promote(7, "together"), true);

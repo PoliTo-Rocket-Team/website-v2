@@ -13,8 +13,10 @@ import {
   departments,
   divisions,
   interviewSlots,
+  dashboardNotices,
   members,
   roles,
+  scopes,
   teamLeaves,
   users,
 } from "@/db/schema";
@@ -24,6 +26,7 @@ import { parsePrivatePathname, parsePublicPathname, publicPathname } from "@/lib
 import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import type { DashboardIdentity } from "./database";
+import { memberLeftNoticesFor } from "./database-notices";
 import {
   columnsFromDetails,
   detailsFromColumns,
@@ -154,15 +157,28 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 /**
  * Board 55b: every role the member still holds ends today, so the Alumni page
- * lists them, and the reason is kept. Their sign-in stays.
+ * lists them, and the reason is kept. Their access grants go, so they come
+ * back as an applicant, and the lead of each division they were in gets a
+ * notice on their dashboard (issue #201), all in one batch. Their sign-in,
+ * users row and member row stay.
  */
 async function leaveTeam(identity: DashboardIdentity, reason: string): Promise<WriteResult<null>> {
   const memberId = identity.memberId;
   if (memberId === null) return refused("This page is for team members.");
   if ((await readLeaveState(memberId)) === "left") return refused("You already left the team.");
+  const why = leaveReason(reason);
+  const notices = await memberLeftNoticesFor(memberId, why);
   await runAuditBatch((db) => [
     db.update(roles).set({ leavedAt: today() }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
-    db.insert(teamLeaves).values({ memberId, reason: leaveReason(reason) }),
+    db.delete(scopes).where(eq(scopes.memberId, memberId)),
+    db.insert(teamLeaves).values({ memberId, reason: why }),
+    ...(notices.length > 0
+      ? [
+          db.insert(dashboardNotices).values(
+            notices.map(({ recipientId, notice }) => ({ recipientId, subjectId: memberId, kind: notice.kind, data: notice.data })),
+          ),
+        ]
+      : []),
   ]);
   updateTag(TEAM_ROSTER_CACHE_TAG);
   return written(null);

@@ -107,10 +107,16 @@ An admin column comes later. **Planned**, no issue yet.
   head is told.
   - **Gap:** nothing tells the department head. Tracked in #188.
 - Move to alumni is confirmed, with the years and an optional reason. Access ends; the account
-  stays.
+  stays. It touches only what the person moving them manages: a division lead ends the roles and
+  the division access in their own division, and the person leaves the team only when no role is
+  left; the operations lead ends the whole membership (#201).
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
   recruitment manager are told. The person moves to Alumni.
-  - **Gap:** nobody is told, and the person keeps member access. Tracked in #178 and #194.
+  - The lead of each division the person was in gets a notice under "Needs your attention" on
+    their Overview, until they dismiss it (#201).
+  - **Gap:** the recruitment manager is not told; the dashboard has none yet. Tracked in #194.
+- Someone with no active role left (they left, or were moved to Alumni) signs in as a non-member
+  and sees the applicant's pages (#201).
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
