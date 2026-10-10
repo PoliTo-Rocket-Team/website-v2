@@ -38,8 +38,7 @@ An admin column comes later. **Planned**, no issue yet.
 - A non-member with no application lands on the My applications empty state, with a
   "See open positions" button (#179).
   - **Gap:** today they get an empty sidebar and a "not found" page. Tracked in #179.
-- **Gap:** the operations lead does not reach My applications, Team tree, Access or Orders, and a
-  division lead does not reach My applications. Tracked in #183.
+- **Gap:** the operations lead does not reach Access or Orders. Tracked in #200.
 - **Overview** is for members, division leads, department heads and the operations lead. A
   non-member gets no Overview.
 - **Team tree** is for members and up.

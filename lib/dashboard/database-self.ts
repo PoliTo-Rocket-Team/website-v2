@@ -23,6 +23,7 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { parsePrivatePathname, parsePublicPathname, publicPathname } from "@/lib/storage/pathname";
 import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
+import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
 import {
   columnsFromDetails,
@@ -295,7 +296,7 @@ async function leadsOf(divisionIds: readonly number[]): Promise<Map<number, stri
 }
 
 async function readMyApplications(identity: DashboardIdentity): Promise<MyApplications | null> {
-  if (identity.kind !== "non-member" && identity.kind !== "member") return null;
+  if (!canReach(identity.kind, "my-applications")) return null;
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
   const letterFiles = alias(applicationFiles, "letter_files");
