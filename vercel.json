@@ -9,5 +9,10 @@
       "path": "/api/cron/delete-withdrawn-files",
       "schedule": "30 3 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "gh-readonly-queue/**": false
+    }
+  }
 }
