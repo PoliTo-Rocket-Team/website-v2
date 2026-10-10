@@ -56,6 +56,8 @@ test("rows read open then past, each with its pill and its My applications ancho
     ),
     none,
   );
+  assert.equal(overview.applications.kind, "rows");
+  if (overview.applications.kind !== "rows") return;
   assert.deepEqual(
     overview.applications.rows.map((r) => [r.id, r.pill, r.unit, r.href]),
     [
@@ -68,6 +70,11 @@ test("rows read open then past, each with its pill and its My applications ancho
   );
   assert.equal(overview.applications.summary, "4 open · 1 past");
   assert.equal(overview.person.line, "Applicant · chiara@example.com");
+});
+
+test("someone whose only applications are withdrawn gets the panel's one-line empty state, not an empty list", () => {
+  const overview = applicantOverview("Chiara", mine([], [past(5, { kind: "withdrawn" }), past(6, { kind: "withdrawn" })]), none);
+  assert.deepEqual(overview.applications, { kind: "empty", line: "No open applications." });
 });
 
 test("open positions count every open role and division of /apply's listing and list the first four", () => {
@@ -90,7 +97,8 @@ test("open positions count every open role and division of /apply's listing and 
     ],
   };
   const { openPositions } = applicantOverview("Chiara", mine([active(1, { kind: "received" })]), listing);
-  assert.equal(openPositions.summary, "5 roles open across 3 divisions");
+  // Operations' two roles have no division, so they add none.
+  assert.equal(openPositions.summary, "5 roles open across 2 divisions");
   assert.deepEqual(
     openPositions.roles.map((r) => [r.title, r.unit, r.href]),
     [
@@ -100,4 +108,21 @@ test("open positions count every open role and division of /apply's listing and 
       ["Role 4", "Operations", "/apply/4-role-4"],
     ],
   );
+});
+
+test("a listing of department-only roles counts no division", () => {
+  const role = (n: number): Role => ({
+    key: `position-${n}`,
+    title: `Role ${n}`,
+    division: "",
+    code: "",
+    description: "",
+    required: [],
+    desirable: [],
+    status: "open",
+    href: `/apply/${n}-role-${n}`,
+  });
+  const listing: ApplyListing = { kind: "many", open: [{ department: "Operations", roles: [role(1), role(2)] }] };
+  const { openPositions } = applicantOverview("Chiara", mine([active(1, { kind: "received" })]), listing);
+  assert.equal(openPositions.summary, "2 roles open");
 });

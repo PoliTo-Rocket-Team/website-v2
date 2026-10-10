@@ -104,7 +104,7 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
         }
       />
 
-      {access.held.length > 0 && <YourAccess access={access} />}
+      {access.held.length > 0 && <YourAccess access={access} drawerOpen={open.kind !== "none"} />}
 
       {rows.length > 0 && (
         <>
@@ -139,8 +139,13 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
   );
 }
 
-/** "Your access · Mission Analysis Division" and a chip per area (board 60); cards on a phone (60m). */
-function YourAccess({ access }: { access: DivisionAccess }) {
+/**
+ * "Your access · Mission Analysis Division" and a chip per area (board 60); cards on a phone (60m).
+ * The chips keep one line, as boards 60 and 60c do: an open drawer leaves the
+ * page too narrow for four "Can edit" chips below 1376px, so there they read
+ * "Edit", the short level the phone cards use (issue #227).
+ */
+function YourAccess({ access, drawerOpen }: { access: DivisionAccess; drawerOpen: boolean }) {
   return (
     <section aria-label="Your access" className="mt-6 max-md:mt-0">
       <h2 className={`${EYEBROW} md:hidden`}>Your access</h2>
@@ -161,7 +166,7 @@ function YourAccess({ access }: { access: DivisionAccess }) {
         <ul className="mt-1.5 flex flex-wrap gap-1.5">
           {access.held.map((h) => (
             <li key={h.target}>
-              <AreaChip target={h.target} level={h.level} iconTone="text-accent" />
+              <AreaChip target={h.target} level={h.level} iconTone="text-accent" shortLevel={drawerOpen} />
             </li>
           ))}
         </ul>
@@ -170,14 +175,30 @@ function YourAccess({ access }: { access: DivisionAccess }) {
   );
 }
 
-/** An area and its level: "Positions Can edit", the level orange at Can edit (boards 60 and 60m). */
-function AreaChip({ target, level, iconTone = "text-text-2" }: { target: AccessTarget; level: AccessLevel; iconTone?: string }) {
+/**
+ * An area and its level: "Positions Can edit", the level orange at Can edit (boards 60 and 60m).
+ * With `shortLevel`, the level reads "Edit" where an open drawer leaves the row short (YourAccess).
+ */
+function AreaChip({
+  target,
+  level,
+  iconTone = "text-text-2",
+  shortLevel = false,
+}: {
+  target: AccessTarget;
+  level: AccessLevel;
+  iconTone?: string;
+  shortLevel?: boolean;
+}) {
   const Icon = TARGET_ICONS[target];
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white-5 px-2 py-0.5 text-[12px]">
       <Icon aria-hidden className={`h-3.5 w-3.5 shrink-0 ${iconTone}`} strokeWidth={1.75} />
       <span className="text-prt-text">{ACCESS_TARGET_LABELS[target]}</span>
-      <span className={level === "edit" ? "text-accent" : "text-prt-muted"}>{ACCESS_LEVEL_LABELS[level]}</span>
+      <span className={level === "edit" ? "text-accent" : "text-prt-muted"}>
+        <span className={shortLevel ? "xl:max-[1375px]:hidden" : undefined}>{ACCESS_LEVEL_LABELS[level]}</span>
+        {shortLevel && <span className="hidden xl:max-[1375px]:inline">{ACCESS_LEVEL_SHORT_LABELS[level]}</span>}
+      </span>
     </span>
   );
 }

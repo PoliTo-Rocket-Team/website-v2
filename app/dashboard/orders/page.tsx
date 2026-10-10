@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { DivisionOrdersView } from "@/components/dashboard/division-orders";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 // (issue #213); anyone else gets the dashboard's not found.
 export default function OrdersPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardPageFallback />}>
       <LiveOrders />
     </Suspense>
   );

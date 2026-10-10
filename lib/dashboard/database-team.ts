@@ -3,11 +3,11 @@ import "server-only";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { applications, applyPositions, dashboardNotices, members, roles, scopes, teamLeaves, users } from "@/db/schema";
+import { applications, applyPositions, members, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { alumniMove, type MoveReach } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
-import { promotedNoticesFor } from "./database-notices";
+import { promotedNoticesInsert, promotionOf } from "./database-notices";
 import { moveApplication } from "./database-recruitment";
 import type { DashboardIdentity } from "./database";
 import type { Departure, EditableRole, Joining, MemberEdit, PromoteMode } from "./team";
@@ -128,17 +128,12 @@ async function promote(identity: DashboardIdentity, personId: number, mode: Prom
   if (!theirs) return false;
   const mine = (await activeRoles(leadId)).find((r) => r.division_id === division && r.type === "lead");
   if (mode === "hand-over" && !mine) return false;
-  const notices = await promotedNoticesFor(personId, division, mode, leadId);
+  const promotion = await promotionOf(personId, division, mode, leadId);
   await runAuditBatch((db) => [
     db.update(roles).set({ type: "lead" }).where(eq(roles.id, theirs.id)),
     ...(mode === "hand-over" && mine ? [db.update(roles).set({ type: "core" }).where(eq(roles.id, mine.id))] : []),
-    ...(notices.length > 0
-      ? [
-          db.insert(dashboardNotices).values(
-            notices.map(({ recipientId, notice }) => ({ recipientId, subjectId: personId, kind: notice.kind, data: notice.data })),
-          ),
-        ]
-      : []),
+    // The insert reads the department's heads itself, inside this batch (issue #227).
+    ...(promotion ? [promotedNoticesInsert(db, promotion)] : []),
   ]);
   return done();
 }

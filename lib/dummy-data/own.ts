@@ -67,14 +67,16 @@ export function serializeOwnChanges(changes: OwnChanges): string {
 }
 
 /**
- * Which own applications a test developer starts with (issue #179): the
- * sample set in ./own-applications.ts, or none, as someone who signed in and
- * has not applied yet. Chosen at sign-in (`applications=none`), kept in its
- * own cookie and cleared on sign out.
+ * Which own applications a test developer starts with: the sample set in
+ * ./own-applications.ts; none, as someone who signed in and has not applied
+ * yet (issue #179); or only withdrawn ones, as someone who withdrew every
+ * application they sent (issue #227). Chosen at sign-in
+ * (`applications=none` or `applications=withdrawn`), kept in its own cookie
+ * and cleared on sign out.
  */
-export type OwnApplicationsStart = "sample" | "none";
+export type OwnApplicationsStart = "sample" | "none" | "withdrawn";
 
-/** The start a cookie names; anything but "none" is the sample set. */
-export function ownApplicationsStartOf(cookie: string | null | undefined): OwnApplicationsStart {
-  return cookie === "none" ? "none" : "sample";
+/** The start a cookie or query value names; anything else is the sample set. */
+export function ownApplicationsStartOf(value: string | null | undefined): OwnApplicationsStart {
+  return value === "none" || value === "withdrawn" ? value : "sample";
 }

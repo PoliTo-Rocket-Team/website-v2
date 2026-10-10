@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { promotionNoticeLine } from "./notices";
 import {
   buildTeamTree,
   canPromote,
@@ -73,7 +74,31 @@ test("a team year starts in October", () => {
 test("a division's page names its department head, who the lead tells about a promotion", () => {
   const directory = divisionDirectory(roster, org, 10, 3);
   assert.equal(directory.scope, "division");
-  if (directory.scope === "division") assert.deepEqual(directory.head, { name: "Chiara Rinaldi", department: "Aerodynamics" });
+  if (directory.scope !== "division") return;
+  assert.deepEqual(directory.heads, [{ memberId: 2, name: "Chiara Rinaldi", department: "Aerodynamics" }]);
+  assert.equal(
+    promotionNoticeLine(directory.heads, { personId: 4, leadId: directory.viewerId }),
+    "Chiara Rinaldi, head of Aerodynamics, is told on their dashboard.",
+  );
+});
+
+test("Promote names no head when the department's head is the lead promoting, who is never told", () => {
+  // Chiara heads Aerodynamics and promotes in Mission Analysis, one of its divisions.
+  const directory = divisionDirectory(roster, org, 10, 2);
+  if (directory.scope !== "division") return assert.fail("a division directory");
+  assert.equal(promotionNoticeLine(directory.heads, { personId: 4, leadId: directory.viewerId }), null);
+
+  // A second head is still named; the viewer is not.
+  const twoHeads = divisionDirectory([...roster, person(8, "Luca Moretti", { role: "head", departmentId: 1 })], org, 10, 2);
+  if (twoHeads.scope !== "division") return assert.fail("a division directory");
+  assert.equal(
+    promotionNoticeLine(twoHeads.heads, { personId: 4, leadId: twoHeads.viewerId }),
+    "Luca Moretti, head of Aerodynamics, is told on their dashboard.",
+  );
+  assert.equal(
+    promotionNoticeLine([], { personId: 4, leadId: 2 }),
+    "Your department has no head on the roster, so no one else is told.",
+  );
 });
 
 test("only a member of a division can be promoted, never a lead or the viewer", () => {

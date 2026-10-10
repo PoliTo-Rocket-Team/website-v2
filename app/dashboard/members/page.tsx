@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { MembersView } from "@/components/dashboard/members";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 // division, the people joining it, and the member panel). It replaces the legacy members page.
 export default function MembersPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardPageFallback />}>
       <LiveMembers />
     </Suspense>
   );

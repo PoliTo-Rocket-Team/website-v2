@@ -18,7 +18,9 @@ export type DummyOwnStatus =
   | { readonly kind: "interview"; readonly slots: readonly InterviewSlot[] }
   | { readonly kind: "accepted" }
   | { readonly kind: "not-selected" }
-  | { readonly kind: "joined"; readonly since: string };
+  | { readonly kind: "joined"; readonly since: string }
+  /** Withdrawn before the test developer signed in (the withdrawn start). */
+  | { readonly kind: "withdrawn" };
 
 export type DummyOwnApplication = {
   readonly id: number;
@@ -126,20 +128,36 @@ export const ownApplications = [
   },
 ] as const satisfies readonly DummyOwnApplication[];
 
-/** A test developer's applications as `viewer`, from `start`. */
-export function ownApplicationsOf(viewer: ViewerKind, start: OwnApplicationsStart): readonly DummyOwnApplication[] {
-  return start === "none" ? [] : ownApplications.filter((a) => a.viewer === viewer);
+/** Still being decided at the start: received, in review or at its interview. */
+function isOpenStatus(status: DummyOwnStatus): boolean {
+  return status.kind === "received" || status.kind === "in-review" || status.kind === "interview";
 }
 
-/** Withdrawn by the test developer. A withdrawn application does not stop them applying again. */
+/**
+ * A test developer's applications as `viewer`, from `start`. The withdrawn
+ * start is the sample set's open applications, each already withdrawn: the
+ * viewer has applied, and nothing they sent is still open (issue #227).
+ */
+export function ownApplicationsOf(viewer: ViewerKind, start: OwnApplicationsStart): readonly DummyOwnApplication[] {
+  const sample: readonly DummyOwnApplication[] = ownApplications.filter((a) => a.viewer === viewer);
+  switch (start) {
+    case "sample":
+      return sample;
+    case "none":
+      return [];
+    case "withdrawn":
+      return sample.filter((a) => isOpenStatus(a.status)).map((a) => ({ ...a, status: { kind: "withdrawn" } }));
+  }
+}
+
+/** Withdrawn, at the start or by the test developer. A withdrawn application does not stop them applying again. */
 export function isWithdrawn(application: DummyOwnApplication, changes: OwnChanges): boolean {
-  return changes.withdrawn.includes(application.id);
+  return application.status.kind === "withdrawn" || changes.withdrawn.includes(application.id);
 }
 
 /** Still being decided, so it can be withdrawn: received, in review or at its interview. */
 export function isOpenOwn(application: DummyOwnApplication, changes: OwnChanges): boolean {
-  const kind = application.status.kind;
-  return !isWithdrawn(application, changes) && (kind === "received" || kind === "in-review" || kind === "interview");
+  return !isWithdrawn(application, changes) && isOpenStatus(application.status);
 }
 
 /** The details each viewer starts with, before they save any. */

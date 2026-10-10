@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { MyAccountView } from "@/components/dashboard/my-account";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 // (lib/dashboard/access.ts); a team member has My profile instead.
 export default function AccountPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardPageFallback />}>
       <LiveAccount />
     </Suspense>
   );

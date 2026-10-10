@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attentionOf, memberLeftNotices, noticeOf, promotedNotices, type Promotion } from "./notices";
+import { attentionOf, memberLeftNotices, noticeOf, promotedNotices, untoldOfPromotion, type Promotion } from "./notices";
 
 const missionAnalysis = { id: 1, name: "Mission Analysis Division" };
 const hardware = { id: 9, name: "Hardware Division" };
@@ -87,6 +87,16 @@ test("the lead who promotes is never told, even when they also head the departme
     [15],
   );
   assert.deepEqual(promotedNotices(promotion, [{ memberId: 2, departmentId: 1 }]), []);
+});
+
+test("the person promoted is never told, even when they hold a head role in the department", () => {
+  const heads = [
+    { memberId: 7, departmentId: 1 },
+    { memberId: 15, departmentId: 1 },
+  ];
+  assert.deepEqual(promotedNotices(promotion, heads).map((n) => n.recipientId), [15]);
+  // The database's insert leaves out the same two people (database-notices.ts).
+  assert.deepEqual(untoldOfPromotion({ personId: 7, leadId: 2 }), [2, 7]);
 });
 
 test("a promoted notice reads as an attention row naming the person, the division and the mode", () => {

@@ -110,6 +110,13 @@ test("sign-in with applications=none starts the viewer with none; a plain sign-i
   assert.match(plain.headers.getSetCookie()[1] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=;.*Max-Age=0`));
 });
 
+test("sign-in with applications=withdrawn starts the viewer with only withdrawn applications (issue #227)", () => {
+  const href = testDeveloperSignInHref("non-member", "/dashboard", "withdrawn");
+  assert.equal(href, "/api/test-developer/sign-in?viewer=non-member&applications=withdrawn&cb=%2Fdashboard");
+  const response = testDeveloperSignIn(new URL(`https://preview.example.org${href}`), PREVIEW);
+  assert.match(response.headers.getSetCookie()[1] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=withdrawn;`));
+});
+
 test("a value that is not one of the four viewers signs nobody in", () => {
   const response = testDeveloperSignIn(
     new URL("http://localhost:3000/api/test-developer/sign-in?viewer=admin"),

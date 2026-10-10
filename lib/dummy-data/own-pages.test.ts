@@ -71,6 +71,18 @@ test("a non-member signed in with applications=none has an empty My applications
   assert.equal(await sample.hasApplied((await sample.applicant())!.id, 1), true);
 });
 
+test("a non-member signed in with applications=withdrawn has only withdrawn applications and keeps the Overview (issue #227)", async () => {
+  const { open } = browser(ownApplicationsStartOf("withdrawn"));
+  const data = open("non-member");
+  const mine = (await data.myApplications())!;
+  assert.deepEqual(mine.active, []);
+  assert.ok(mine.past.length > 0);
+  assert.ok(mine.past.every((p) => p.outcome.kind === "withdrawn"));
+  // They have applied, so the Overview stays theirs (lib/dashboard/access.ts).
+  assert.equal(await data.hasOwnApplications(), true);
+  assert.equal((await data.myAccount())?.openApplications, 0);
+});
+
 test("an accepted application cannot be withdrawn", async () => {
   const { open, own } = browser();
   const accepted = (await open("non-member").myApplications())!.active.find((a) => a.stage.kind === "accepted")!;

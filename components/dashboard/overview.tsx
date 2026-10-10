@@ -67,6 +67,14 @@ export function OverviewView({ overview }: { overview: Overview }) {
 const GRID = "mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]";
 
 /**
+ * The applicant's grid (board 50e): Open positions is 400px at 1440 and
+ * narrows with the window down to 300px, so the Next step line keeps the
+ * one line board 50e gives it at 1280 (issue #227).
+ */
+const APPLICANT_GRID =
+  "mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_clamp(300px,100vw-1040px,400px)]";
+
+/**
  * How the lead's Overview reads on phones: board 40m keeps everything; board
  * 56m keeps the first two figures without their detail line, the attention
  * rows and the interviews as stacked cards, and no recent activity.
@@ -376,7 +384,7 @@ function ApplicantView({ overview }: { overview: ApplicantOverview }) {
       <section className={PERSON_FRAME}>
         <PersonLines name={person.name} line={person.line} since={null} />
       </section>
-      <div className={GRID}>
+      <div className={APPLICANT_GRID}>
         <div className="flex min-w-0 flex-col gap-4">
           {nextStep && <NextStepCard step={nextStep} />}
           <ApplicantApplications applications={applications} />
@@ -424,7 +432,7 @@ function ApplicantApplications({ applications }: { applications: ApplicantOvervi
   return (
     <Panel
       title="Your applications"
-      detail={applications.summary}
+      detail={applications.kind === "rows" ? applications.summary : undefined}
       meta={
         <Link href={all.href} className={`group hidden items-center gap-1.5 text-text-2 transition-colors duration-300 ease-out hover:text-accent md:inline-flex ${FOCUS}`}>
           {all.label}
@@ -432,7 +440,8 @@ function ApplicantApplications({ applications }: { applications: ApplicantOvervi
         </Link>
       }
     >
-      {applications.rows.map((row) => (
+      {applications.kind === "empty" && <li className="px-4 py-3.5 text-[13px] text-prt-muted md:px-5">{applications.line}</li>}
+      {applications.kind === "rows" && applications.rows.map((row) => (
         <li key={row.id}>
           <Link href={row.href} className={ROW_LINK}>
             <span className="min-w-0 flex-1">

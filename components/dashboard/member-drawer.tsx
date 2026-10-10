@@ -17,6 +17,7 @@ import {
   type PromoteMode,
 } from "@/lib/dashboard/team";
 import { shortUnitName } from "@/lib/dashboard/division-access";
+import { promotionNoticeLine } from "@/lib/dashboard/notices";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
@@ -200,7 +201,7 @@ function MemberPanel({
           onOpenChange={(next) => setAsking(next ? "promote" : null)}
           row={row}
           unit={shortUnitName(directory.division)}
-          head={directory.head}
+          noticeLine={promotionNoticeLine(directory.heads, { personId: row.id, leadId: directory.viewerId })}
           onDone={onClose}
         />
       )}
@@ -221,22 +222,24 @@ const PROMOTE_OPTIONS: readonly { mode: PromoteMode; title: string; detail: (fir
 ];
 
 /**
- * Board 59e. The site sends no email: Promote writes a notice to the head of
- * the division's department, shown on their dashboard Overview (#188).
+ * Board 59e. The site sends no email: Promote writes a notice to each head of
+ * the division's department, shown on their dashboard Overview (#188). The
+ * line under the choices names only heads that notice reaches (#227).
  */
 function PromoteDialog({
   open,
   onOpenChange,
   row,
   unit,
-  head,
+  noticeLine,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   row: MemberRow;
   unit: string;
-  head: { name: string; department: string } | null;
+  /** Who the promotion tells; null when it tells nobody but the viewer would be named. */
+  noticeLine: string | null;
   onDone: () => void;
 }) {
   const [mode, setMode] = useState<PromoteMode>("together");
@@ -293,12 +296,12 @@ function PromoteDialog({
             );
           })}
         </div>
-        <p className="mt-4 flex items-start gap-2 text-[13px] text-text-2">
-          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-          {head
-            ? `${head.name}, head of ${head.department}, is told on their dashboard.`
-            : "Your department has no head on the roster, so no one else is told."}
-        </p>
+        {noticeLine !== null && (
+          <p className="mt-4 flex items-start gap-2 text-[13px] text-text-2">
+            <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+            {noticeLine}
+          </p>
+        )}
       </div>
     </ConfirmDialog>
   );

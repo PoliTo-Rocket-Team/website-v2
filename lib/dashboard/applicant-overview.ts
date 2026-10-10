@@ -46,17 +46,30 @@ export type OpenRole = {
 };
 
 export type OpenPositions = {
-  /** "12 roles open across 8 divisions". */
+  /** "12 roles open across 8 divisions"; a role with no division counts in no division. */
   readonly summary: string;
   /** The first few roles, in /apply's order. */
   readonly roles: readonly OpenRole[];
 };
 
+/**
+ * The "Your applications" panel: the rows with "3 open · 1 past", or, for
+ * someone whose only applications are withdrawn, one line in their place
+ * (issue #227). Withdrawn applications are never rows here; they stay under
+ * Past on My applications.
+ */
+export type ApplicantApplications =
+  | { readonly kind: "rows"; readonly summary: string; readonly rows: readonly [ApplicantRow, ...ApplicantRow[]] }
+  | { readonly kind: "empty"; readonly line: string };
+
+/** What the panel says when every application is withdrawn. */
+export const NO_OPEN_APPLICATIONS = "No open applications.";
+
 export type ApplicantOverview = {
   readonly shape: "applicant";
   readonly person: { readonly name: string; readonly line: string };
   readonly nextStep: NextStep | null;
-  readonly applications: { readonly summary: string; readonly rows: readonly ApplicantRow[] };
+  readonly applications: ApplicantApplications;
   readonly openPositions: OpenPositions;
 };
 
@@ -126,24 +139,35 @@ export function openPositionsOf(listing: ApplyListing): OpenPositions {
       href: role.status === "open" ? role.href : "/apply",
     })),
   );
-  const divisions = new Set(roles.map((role) => role.unit)).size;
+  // A department-only role shows its department as its unit, but it is not a division.
+  const divisions = new Set(groups.flatMap((group) => group.roles.map((role) => role.division)).filter((d) => d !== "")).size;
+  const open = plural(roles.length, "role", "roles");
   return {
     summary:
       roles.length === 0
         ? "No roles open right now"
-        : `${plural(roles.length, "role", "roles")} open across ${plural(divisions, "division", "divisions")}`,
+        : divisions === 0
+          ? `${open} open`
+          : `${open} open across ${plural(divisions, "division", "divisions")}`,
     roles: roles.slice(0, OPEN_ROLES_SHOWN),
   };
 }
 
-export function applicantOverview(name: string, mine: MyApplications, listing: ApplyListing): ApplicantOverview {
+function applicationsOf(mine: MyApplications): ApplicantApplications {
   const open = mine.active.map(activeRow);
   const past = mine.past.flatMap((p) => pastRow(p) ?? []);
+  const [first, ...rest] = [...open, ...past];
+  return first === undefined
+    ? { kind: "empty", line: NO_OPEN_APPLICATIONS }
+    : { kind: "rows", summary: applicationsSummary(open.length, past.length), rows: [first, ...rest] };
+}
+
+export function applicantOverview(name: string, mine: MyApplications, listing: ApplyListing): ApplicantOverview {
   return {
     shape: "applicant",
     person: { name, line: `Applicant · ${mine.email}` },
     nextStep: nextStepOf(mine.active),
-    applications: { summary: applicationsSummary(open.length, past.length), rows: [...open, ...past] },
+    applications: applicationsOf(mine),
     openPositions: openPositionsOf(listing),
   };
 }

@@ -77,8 +77,12 @@ session cookie; server code reads the user id from that cookie, then turns the m
 ## When this applies
 
 Any server read or route that shows member-only data. Pass the target that matches the
-`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; the dashboard's writes have it (the recruitment switch, and the position and application writes in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts); see [audited-mutations.md](./audited-mutations.md)). The Access page and Orders read the viewer's division scopes per area instead, at two levels (`view`, `edit`) on four areas (`positions`, `applications`, `members`, `orders`), with `all` covering each ([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts), rules in [lib/dashboard/division-access.ts](../lib/dashboard/division-access.ts)). There are no automated tests
-for the scope logic yet.
+`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; the dashboard's writes have it (the recruitment switch, and the position and application writes in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts); see [audited-mutations.md](./audited-mutations.md)). The Access page and Orders read the viewer's division scopes per area instead, at two levels (`view`, `edit`) on four areas (`positions`, `applications`, `members`, `orders`), with `all` covering each ([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts), rules in [lib/dashboard/division-access.ts](../lib/dashboard/division-access.ts)). Unit tests cover
+the rules: [lib/dashboard/division-access.test.ts](../lib/dashboard/division-access.test.ts)
+for the Access page's areas and levels, [lib/dashboard/orders.test.ts](../lib/dashboard/orders.test.ts)
+for what each Orders level may do, and [lib/apply/recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
+for who may flip the recruitment switch. The database reads that load `ScopeInfo` and the division
+scopes have no tests of their own.
 
 ## Why it is not obvious
 
