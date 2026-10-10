@@ -1,4 +1,5 @@
 import { canReach } from "@/lib/dashboard/access";
+import { alumniMove, type MoveReach } from "@/lib/dashboard/alumni-move";
 import { joinChange, type LeadMove } from "@/lib/dashboard/application-flow";
 import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/dashboard/data";
 import {
@@ -157,6 +158,13 @@ function myDivision(kind: ViewerKind): number | null {
   return mine ? divisionIdOf(mine.placement) : null;
 }
 
+/** What `kind`'s Move to alumni reaches: the whole team for the operations lead, their division for a division lead. */
+function moveReach(kind: ViewerKind): MoveReach | null {
+  if (kind === "operations-lead") return { kind: "team" };
+  const division = myDivision(kind);
+  return division === null ? null : { kind: "division", divisionId: division };
+}
+
 /** The Applications page's move, as the dummy dashboard runs it: Confirm join on the Members page is that move. */
 export type DummyMove = (applicationId: number, move: LeadMove) => Promise<WriteResult<null>>;
 
@@ -204,6 +212,12 @@ function writesFor(
       // Only people on the dummy roster have an Alumni row to move to.
       if (!entry || !mayEdit(kind, entry) || !people.some((p) => p.id === personId)) return false;
       if (departure.from > departure.to || departure.to > thisYear) return false;
+      // The rule the database follows (alumni-move.ts). A dummy person holds one
+      // place, so a move in reach always ends it and they leave the team; one
+      // that would leave them a role elsewhere has no dummy form, so it is refused.
+      const reach = moveReach(kind);
+      const move = reach && alumniMove([{ divisionId: divisionIdOf(entry.placement) }], reach);
+      if (!move || !move.leavesTeam) return false;
       await save({ ...edits, movedToAlumni: { ...edits.movedToAlumni, [personId]: departure } });
       return true;
     },

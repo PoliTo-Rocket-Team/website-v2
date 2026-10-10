@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Pencil, Timer, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Pencil, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
@@ -17,6 +17,8 @@ import {
   interviewSummary,
   rosterSize,
   type ActivityItem,
+  isDismissNotice,
+  type AttentionAction,
   type AttentionItem,
   type AttentionKind,
   type Checklist,
@@ -27,6 +29,7 @@ import {
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { Avatar } from "./avatar";
+import { DismissNotice } from "./dismiss-notice";
 import { PANEL, Panel, RowAction } from "./panel";
 
 // The Overview page: board 40 for the operations lead, 56 for a division
@@ -130,7 +133,7 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.kind];
         return (
-          <li key={item.title} className="flex items-center gap-4 px-4 py-3.5 md:px-5">
+          <li key={attentionKey(item)} className="flex items-center gap-4 px-4 py-3.5 md:px-5">
             <span
               className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-hairline bg-white-5 text-text-2 ${
                 compact ? "hidden md:flex" : "flex"
@@ -154,14 +157,14 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
             {compact ? (
               <>
                 <span className="md:hidden">
-                  <RowAction {...item.action} chip />
+                  <AttentionButton action={item.action} chip />
                 </span>
                 <span className="hidden md:block">
-                  <RowAction {...item.action} />
+                  <AttentionButton action={item.action} />
                 </span>
               </>
             ) : (
-              <RowAction {...item.action} />
+              <AttentionButton action={item.action} />
             )}
           </li>
         );
@@ -214,11 +217,26 @@ function InterviewsPanel({ interviews }: { interviews: readonly UpcomingIntervie
   );
 }
 
+/** A link to the page that handles the row, or Dismiss on a stored notice. */
+function AttentionButton({ action, chip = false }: { action: AttentionAction; chip?: boolean }) {
+  return isDismissNotice(action) ? (
+    <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
+  ) : (
+    <RowAction {...action} chip={chip} />
+  );
+}
+
+/** A notice by its id: two notices may read alike. */
+function attentionKey(item: AttentionItem): string {
+  return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
+}
+
 const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   applications: Inbox,
   "quiet-position": Timer,
   unassigned: UserPlus,
   "no-photo": Timer,
+  notice: UserMinus,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {

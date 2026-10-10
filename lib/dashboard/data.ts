@@ -43,6 +43,11 @@ export interface DashboardData {
    */
   overview(): Promise<TeamSideOverview>;
   /**
+   * Dismiss on a notice under "Needs your attention" (./notices.ts, issue
+   * #201): it leaves the list. Refused for a notice that is not the viewer's.
+   */
+  dismissNotice(noticeId: number): Promise<WriteResult<null>>;
+  /**
    * The Members page: the whole team (#143), or the lead's own division with
    * the people joining it (board 59, #172).
    */
