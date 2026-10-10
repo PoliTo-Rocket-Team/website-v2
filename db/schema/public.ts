@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const positionTypeEnum = pgEnum("position_type", [
@@ -102,6 +103,8 @@ export const users = pgTable("users", {
   dateOfBirth: date("date_of_birth", { mode: "string" }),
   gender: text("gender"),
   referralSource: text("referral_source"),
+  // "Your details" on My account and My profile (issue #169).
+  country: text("country"),
   member: integer("member").references(() => members.memberId),
   createdAt: timestamp("created_at", {
     withTimezone: true,
@@ -253,12 +256,17 @@ export const applications = pgTable("applications", {
     .notNull(),
   status: applicationStatusEnum("status").default("received").notNull(),
   customAnswers: jsonb("custom_answers").array(),
+  /** When the applicant withdrew it (issue #169); the lead no longer sees it. */
+  withdrawnAt: timestamp("withdrawn_at", {
+    withTimezone: true,
+    mode: "string",
+  }),
 }, (table) => ({
-  // One application per user per position (issue #120).
-  userPositionUnique: unique("applications_user_position_unique").on(
-    table.userId,
-    table.applyPositionId,
-  ),
+  // One live application per user per position (issue #120); a withdrawn one
+  // does not count, so the person can apply again (issue #169).
+  userPositionActive: uniqueIndex("applications_user_position_active")
+    .on(table.userId, table.applyPositionId)
+    .where(sql`${table.withdrawnAt} is null`),
   cvFileIdIdx: index("applications_cv_file_id_idx").on(table.cvFileId),
   coverLetterFileIdIdx: index("applications_cover_letter_file_id_idx").on(
     table.coverLetterFileId,
@@ -281,6 +289,42 @@ export const applicationFiles = pgTable("application_files", {
 }, (table) => ({
   r2KeyIdx: index("application_files_r2_key_idx").on(table.pathname),
   fileHashIdx: index("application_files_file_hash_idx").on(table.fileHash),
+}));
+
+/**
+ * The interview times a division lead offers on one application (issue #169;
+ * the lead's side is issue #171). The applicant picks one: `chosen`.
+ */
+export const interviewSlots = pgTable("interview_slots", {
+  id: serial("id").primaryKey(),
+  applicationId: integer("application_id")
+    .references(() => applications.id, { onDelete: "cascade" })
+    .notNull(),
+  startsAt: timestamp("starts_at", { withTimezone: true, mode: "string" }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true, mode: "string" }).notNull(),
+  chosen: boolean("chosen").default(false).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+}, (table) => ({
+  applicationIdx: index("interview_slots_application_idx").on(table.applicationId),
+  oneChosen: uniqueIndex("interview_slots_one_chosen")
+    .on(table.applicationId)
+    .where(sql`${table.chosen}`),
+}));
+
+/** A member leaving the team from My profile (issue #169), with the reason they gave. */
+export const teamLeaves = pgTable("team_leaves", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  reason: text("reason"),
+  leftAt: timestamp("left_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+}, (table) => ({
+  memberIdx: index("team_leaves_member_idx").on(table.memberId),
 }));
 
 export const scopes = pgTable(

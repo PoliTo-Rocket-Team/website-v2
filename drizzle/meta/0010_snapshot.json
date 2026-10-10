@@ -1,6 +1,6 @@
 {
-  "id": "4815972f-d8de-4d3b-b79b-b4b52693dd4b",
-  "prevId": "5b3f70c4-39c4-4028-9741-23241335a95c",
+  "id": "898d9806-5949-4c93-bd24-15a365c85df7",
+  "prevId": "4815972f-d8de-4d3b-b79b-b4b52693dd4b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -819,6 +819,24 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "team_from": {
+          "name": "team_from",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "team_to": {
+          "name": "team_to",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "leave_reason": {
+          "name": "leave_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -895,6 +913,24 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "review_note": {
+          "name": "review_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -905,6 +941,19 @@
           "tableTo": "members",
           "columnsFrom": [
             "requester"
+          ],
+          "columnsTo": [
+            "member_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_reviewed_by_members_member_id_fk": {
+          "name": "orders_reviewed_by_members_member_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "members",
+          "columnsFrom": [
+            "reviewed_by"
           ],
           "columnsTo": [
             "member_id"
@@ -1810,7 +1859,9 @@
       "values": [
         "pending",
         "accepted",
-        "rejected"
+        "rejected",
+        "changes_requested",
+        "cancelled"
       ]
     },
     "public.position_type": {

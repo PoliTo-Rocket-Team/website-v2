@@ -228,15 +228,15 @@ function JoiningBanner({ joining, division, editable }: { joining: Joining; divi
       <ConfirmDialog
         open={asking}
         onOpenChange={setAsking}
-        icon={UserCheck}
+        icon={<UserCheck className="h-5 w-5" strokeWidth={1.75} />}
         tone="success"
         title={`Confirm ${joining.name} joins?`}
+        description={`${firstName} becomes a member of ${division} as ${joining.position}. Confirm once you have their signed NDA.`}
+        cancelLabel="Cancel"
         confirmLabel="Confirm join"
         pending={pending}
         onConfirm={confirm}
-      >
-        {firstName} becomes a member of {division} as {joining.position}. Confirm once you have their signed NDA.
-      </ConfirmDialog>
+      />
     </li>
   );
 }

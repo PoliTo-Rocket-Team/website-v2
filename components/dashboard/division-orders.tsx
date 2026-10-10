@@ -325,17 +325,15 @@ function OrderPanel({
       <ConfirmDialog
         open={asking}
         onOpenChange={setAsking}
-        icon={XCircle}
-        tone="danger"
+        icon={<XCircle className="h-5 w-5" strokeWidth={1.75} />}
         title="Cancel this request?"
+        description={`The request for ${current.item} leaves your orders, and the team leader no longer sees it.`}
         confirmLabel="Cancel request"
         cancelLabel="Keep it"
         danger
         pending={pending}
         onConfirm={cancel}
-      >
-        The request for {current.item} leaves your orders, and the team leader no longer sees it.
-      </ConfirmDialog>
+      />
     </SidePanel>
   );
 }

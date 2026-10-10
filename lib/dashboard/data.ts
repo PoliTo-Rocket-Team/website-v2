@@ -5,6 +5,8 @@ import type { AccessGrant, DivisionAccess } from "./division-access";
 import type { DivisionOrders, Order } from "./orders";
 import type { Overview } from "./overview";
 import type { ApplicationStage, ApplicationsPage, PositionsPage } from "./recruitment";
+import type { YourDetails } from "./details";
+import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumniDirectory, Departure, MemberDirectory, MemberEdit, PromoteMode, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
@@ -74,18 +76,33 @@ export interface DashboardData {
   /** Cancel request: the request leaves the page. Refused once the team leader has approved or rejected it. */
   cancelOrder(orderId: number): Promise<WriteResult<null>>;
 
-  /** Board 45: a team member's own profile. */
+  /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;
   saveLinkedin(text: string): Promise<WriteResult<string | null>>;
   /** A new photo, already cropped square by the browser, or null to remove it. */
   setPhoto(photo: Upload | null): Promise<WriteResult<null>>;
-  requestLeave(): Promise<WriteResult<null>>;
+  /**
+   * Board 55b: the member leaves the team at once, with the reason they gave
+   * (may be empty). They show in Alumni and keep their sign-in.
+   */
+  leaveTeam(reason: string): Promise<WriteResult<null>>;
 
-  /** Board 45b: an applicant's own account. */
+  /** Board 51: an applicant's own account. */
   myAccount(): Promise<MyAccount | null>;
-  withdrawApplication(applicationId: number): Promise<WriteResult<null>>;
-  /** Removes the sign-in; the rest only as ticked. The page signs out after. */
+  /**
+   * "Your details" on My account and My profile, as the edit form sent them;
+   * the apply form starts from what is saved. Answers the details as saved.
+   */
+  saveDetails(input: unknown): Promise<WriteResult<YourDetails>>;
+  /** Boards 51c and 55c: closes the account; the rest only as ticked. The page signs out after. */
   deleteAccount(options: DeleteAccount): Promise<WriteResult<null>>;
+
+  /** Boards 50 and 53: the viewer's own applications; null when they have none to follow. */
+  myApplications(): Promise<MyApplications | null>;
+  /** Board 50b: the lead stops seeing it at once, and it moves to Past as Withdrawn. */
+  withdrawApplication(applicationId: number): Promise<WriteResult<null>>;
+  /** Board 50c: the applicant confirms one of the times the lead offered. */
+  chooseInterviewSlot(applicationId: number, slotId: number): Promise<WriteResult<InterviewSlot>>;
 }
 
 /**

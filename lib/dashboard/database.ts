@@ -206,6 +206,7 @@ async function readPositions(identity: Identity): Promise<ScopedPosition[]> {
     .where(
       and(
         eq(applications.status, "received"),
+        isNull(applications.withdrawnAt),
         inArray(
           applications.applyPositionId,
           scoped.map((r) => r.id),
@@ -386,7 +387,7 @@ async function applicantOverview(identity: Identity): Promise<PersonalOverview> 
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
     .leftJoin(divisions, eq(applyPositions.divisionId, divisions.id))
     .leftJoin(departments, eq(divisions.deptId, departments.id))
-    .where(eq(applications.userId, identity.userId))
+    .where(and(eq(applications.userId, identity.userId), isNull(applications.withdrawnAt)))
     .orderBy(desc(applications.appliedAt));
 
   return {
@@ -488,7 +489,7 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
   const tallies = await db
     .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
     .from(applications)
-    .where(inArray(applications.applyPositionId, scoped.map((r) => r.id)))
+    .where(and(inArray(applications.applyPositionId, scoped.map((r) => r.id)), isNull(applications.withdrawnAt)))
     .groupBy(applications.applyPositionId, applications.status);
 
   return scoped.map((r) => {
@@ -580,7 +581,8 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     .innerJoin(users, eq(applications.userId, users.id))
     .leftJoin(cvFiles, eq(applications.cvFileId, cvFiles.id))
     .leftJoin(letterFiles, eq(applications.coverLetterFileId, letterFiles.id))
-    .where(inArray(applications.applyPositionId, positions.map((p) => p.id)))
+    // A withdrawn application leaves the lead's list at once (issue #169).
+    .where(and(inArray(applications.applyPositionId, positions.map((p) => p.id)), isNull(applications.withdrawnAt)))
     .orderBy(desc(applications.appliedAt), desc(applications.id));
 
   const byId = new Map(positions.map((p) => [p.id, p]));
@@ -633,7 +635,7 @@ async function setApplicationStage(identity: Identity, applicationId: number, st
   const [row] = await getDb()
     .select({ position_id: applications.applyPositionId })
     .from(applications)
-    .where(eq(applications.id, applicationId))
+    .where(and(eq(applications.id, applicationId), isNull(applications.withdrawnAt)))
     .limit(1);
   if (!row || row.position_id === null || !(await reachablePositionIds(identity)).has(row.position_id)) {
     throw new DashboardRefused(`application ${applicationId}`);

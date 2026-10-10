@@ -4,13 +4,13 @@ import { notFound, redirect } from "next/navigation";
 import { MyAccountView } from "@/components/dashboard/my-account";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
-import { deleteAccount, withdrawApplication } from "../actions";
+import { deleteAccount, saveDetails } from "../actions";
 
 export const metadata: Metadata = {
   title: "My account · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 45b: an applicant's own account. Only an applicant reaches it
+// Board 51 (issue #169): an applicant's own account. Only an applicant reaches it
 // (lib/dashboard/access.ts); a team member has My profile instead.
 export default function AccountPage() {
   return (
@@ -29,6 +29,6 @@ async function LiveAccount() {
   const account = await data.myAccount();
   if (account === null) notFound();
   return (
-    <MyAccountView account={account} session={data.viewer.session} withdrawApplication={withdrawApplication} deleteAccount={deleteAccount} />
+    <MyAccountView account={account} session={data.viewer.session} saveDetails={saveDetails} deleteAccount={deleteAccount} />
   );
 }

@@ -165,17 +165,18 @@ export function DivisionAccessView({ access, ...actions }: { access: DivisionAcc
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(next) => !next && setRemoving(null)}
-        icon={UserMinus}
-        tone="danger"
+        icon={<UserMinus className="h-5 w-5" strokeWidth={1.75} />}
         title={removing ? `Remove ${removing.person.name}'s access?` : "Remove access?"}
+        description={
+          removing &&
+          `${removing.person.name.split(" ")[0]} can no longer ${levelVerb(removing)} ${ACCESS_TARGET_LABELS[removing.target]} for ${unit}.`
+        }
+        cancelLabel="Cancel"
         confirmLabel="Remove access"
         danger
         pending={pending}
         onConfirm={() => removing && remove(removing)}
-      >
-        {removing &&
-          `${removing.person.name.split(" ")[0]} can no longer ${levelVerb(removing)} ${ACCESS_TARGET_LABELS[removing.target]} for ${unit}.`}
-      </ConfirmDialog>
+      />
 
       <GiveAccessDrawer
         key={open ? "open" : "closed"}

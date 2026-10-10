@@ -20,7 +20,8 @@ export const PANEL_DANGER_BUTTON = `inline-flex h-11 items-center justify-center
 // 61b, 61c): a title, a scrolling body, and the actions pinned at its foot.
 // From md it slides in from the right over the page, and from xl the page
 // moves left of it (DrawerPage), as the boards show. On a phone it is a full
-// page with a back arrow and the same pinned footer (phone rule, issue #172).
+// page with a back arrow and the same pinned footer (phone rule, issues #169
+// and #172).
 // Built on the repo's Radix dialog primitive: it slides in only under
 // motion-safe and closes at once (issues #79, #80).
 export function SidePanel({

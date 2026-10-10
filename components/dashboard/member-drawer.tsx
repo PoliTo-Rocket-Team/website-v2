@@ -256,48 +256,47 @@ function PromoteDialog({
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      icon={ArrowUpRight}
+      icon={<ArrowUpRight className="h-5 w-5" strokeWidth={1.75} />}
       title={`Promote ${row.name} to division lead?`}
+      description={`${firstName} gets the lead view for ${unit}: positions, applications, members, access and orders.`}
+      cancelLabel="Cancel"
       confirmLabel={`Promote ${firstName}`}
       pending={pending}
       onConfirm={confirm}
-      body={
-        <>
-          <div role="radiogroup" aria-label="How they lead" className="flex flex-col gap-2.5">
-            {PROMOTE_OPTIONS.map((option) => {
-              const on = option.mode === mode;
-              return (
-                <label
-                  key={option.mode}
-                  className={`flex cursor-pointer items-center gap-3.5 rounded-xl border px-4 py-3 transition-colors duration-300 ease-out has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
-                    on ? "border-accent bg-accent/[0.08]" : "border-white-10 hover:border-border-strong"
-                  }`}
-                >
-                  <input type="radio" name="promote-mode" checked={on} onChange={() => setMode(option.mode)} className="sr-only" />
-                  <span
-                    aria-hidden
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${on ? "border-accent" : "border-border-strong"}`}
-                  >
-                    {on && <span className="h-2 w-2 rounded-full bg-accent" />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[14px] font-semibold text-prt-text">{option.title}</span>
-                    <span className="block text-[12px] text-prt-muted">{option.detail(firstName, unit)}</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          <p className="mt-4 flex items-start gap-2 text-[13px] text-text-2">
-            <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-            {head
-              ? `Email ${head.name}, head of ${head.department}, to tell them.`
-              : "Email your department head to tell them."}
-          </p>
-        </>
-      }
     >
-      {firstName} gets the lead view for {unit}: positions, applications, members, access and orders.
+      <div className="mt-5">
+        <div role="radiogroup" aria-label="How they lead" className="flex flex-col gap-2.5">
+          {PROMOTE_OPTIONS.map((option) => {
+            const on = option.mode === mode;
+            return (
+              <label
+                key={option.mode}
+                className={`flex cursor-pointer items-center gap-3.5 rounded-xl border px-4 py-3 transition-colors duration-300 ease-out has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
+                  on ? "border-accent bg-accent/[0.08]" : "border-white-10 hover:border-border-strong"
+                }`}
+              >
+                <input type="radio" name="promote-mode" checked={on} onChange={() => setMode(option.mode)} className="sr-only" />
+                <span
+                  aria-hidden
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${on ? "border-accent" : "border-border-strong"}`}
+                >
+                  {on && <span className="h-2 w-2 rounded-full bg-accent" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[14px] font-semibold text-prt-text">{option.title}</span>
+                  <span className="block text-[12px] text-prt-muted">{option.detail(firstName, unit)}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="mt-4 flex items-start gap-2 text-[13px] text-text-2">
+          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+          {head
+            ? `Email ${head.name}, head of ${head.department}, to tell them.`
+            : "Email your department head to tell them."}
+        </p>
+      </div>
     </ConfirmDialog>
   );
 }
@@ -345,63 +344,59 @@ function AlumniDialog({
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      icon={GraduationCap}
-      tone="danger"
+      icon={<GraduationCap className="h-5 w-5" strokeWidth={1.75} />}
       title={`Move ${row.name} to alumni?`}
+      description={`${firstName} leaves ${unit ?? "the team"} and shows on the Alumni page with the years on the team. Their dashboard access ends. Their account stays.`}
       confirmLabel="Move to alumni"
       cancelLabel={`Keep ${firstName} on the team`}
       danger
       pending={pending}
       onConfirm={confirm}
-      body={
-        <div className="grid grid-cols-2 gap-3">
-          <div className="min-w-0">
-            <label htmlFor={yearsId} className="mb-2 block text-[13px] text-prt-text">
-              On the team
-            </label>
-            <input
-              id={yearsId}
-              value={years}
-              onChange={(e) => {
-                setYears(e.target.value);
-                setError(undefined);
-              }}
-              aria-invalid={error !== undefined}
-              aria-describedby={error ? `${yearsId}-error` : undefined}
-              className={inputClass(error)}
-            />
-          </div>
-          <div className="relative min-w-0">
-            <label htmlFor={reasonId} className="mb-2 block text-[13px] text-prt-text">
-              Reason <span className="ml-1 text-prt-muted">optional</span>
-            </label>
-            <select
-              id={reasonId}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className={`${inputClass()} cursor-pointer appearance-none pr-10`}
-            >
-              <option value="" className="bg-panel">
-                No reason
-              </option>
-              {LEAVE_REASONS.map((r) => (
-                <option key={r} value={r} className="bg-panel">
-                  {LEAVE_REASON_LABELS[r]}
-                </option>
-              ))}
-            </select>
-            <ChevronDown aria-hidden className="pointer-events-none absolute bottom-3.5 right-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
-          </div>
-          {error && (
-            <p id={`${yearsId}-error`} className="col-span-2 -mt-1 text-[12px] text-danger">
-              {error}
-            </p>
-          )}
-        </div>
-      }
     >
-      {firstName} leaves {unit ?? "the team"} and shows on the Alumni page with the years on the team. Their dashboard
-      access ends. Their account stays.
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="min-w-0">
+          <label htmlFor={yearsId} className="mb-2 block text-[13px] text-prt-text">
+            On the team
+          </label>
+          <input
+            id={yearsId}
+            value={years}
+            onChange={(e) => {
+              setYears(e.target.value);
+              setError(undefined);
+            }}
+            aria-invalid={error !== undefined}
+            aria-describedby={error ? `${yearsId}-error` : undefined}
+            className={inputClass(error)}
+          />
+        </div>
+        <div className="relative min-w-0">
+          <label htmlFor={reasonId} className="mb-2 block text-[13px] text-prt-text">
+            Reason <span className="ml-1 text-prt-muted">optional</span>
+          </label>
+          <select
+            id={reasonId}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className={`${inputClass()} cursor-pointer appearance-none pr-10`}
+          >
+            <option value="" className="bg-panel">
+              No reason
+            </option>
+            {LEAVE_REASONS.map((r) => (
+              <option key={r} value={r} className="bg-panel">
+                {LEAVE_REASON_LABELS[r]}
+              </option>
+            ))}
+          </select>
+          <ChevronDown aria-hidden className="pointer-events-none absolute bottom-3.5 right-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
+        </div>
+        {error && (
+          <p id={`${yearsId}-error`} className="col-span-2 -mt-1 text-[12px] text-danger">
+            {error}
+          </p>
+        )}
+      </div>
     </ConfirmDialog>
   );
 }

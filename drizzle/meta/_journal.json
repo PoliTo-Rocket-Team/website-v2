@@ -61,8 +61,22 @@
     {
       "idx": 8,
       "version": "7",
-      "when": 1791588299973,
-      "tag": "0008_dashboard_v2_lead_pages",
+      "when": 1791588091325,
+      "tag": "0008_dashboard_self_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791588092325,
+      "tag": "0009_dashboard_self_v2_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791590820632,
+      "tag": "0010_dashboard_v2_lead_pages",
       "breakpoints": true
     }
   ]
