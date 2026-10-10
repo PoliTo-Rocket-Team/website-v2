@@ -13,9 +13,11 @@ export type TeamEdits = {
   readonly members: Readonly<Record<number, MemberEdit>>;
   /** People moved to alumni, with their years on the team and why they left. */
   readonly movedToAlumni: Readonly<Record<number, Departure>>;
+  /** Dashboard notices dismissed under "Needs your attention" (./notices.ts), by id. */
+  readonly dismissedNotices: readonly number[];
 };
 
-export const NO_EDITS: TeamEdits = { shownOnSite: {}, members: {}, movedToAlumni: {} };
+export const NO_EDITS: TeamEdits = { shownOnSite: {}, members: {}, movedToAlumni: {}, dismissedNotices: [] };
 
 /** Where the dummy dashboard reads and keeps these edits. */
 export type TeamEditsStore = {
@@ -81,6 +83,9 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     shownOnSite: entriesOf(raw.shownOnSite, (v) => (typeof v === "boolean" ? v : null)),
     members: entriesOf(raw.members, readMemberEdit),
     movedToAlumni: entriesOf(raw.movedToAlumni, readDeparture),
+    dismissedNotices: Array.isArray(raw.dismissedNotices)
+      ? raw.dismissedNotices.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)
+      : [],
   };
 }
 

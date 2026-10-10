@@ -5,6 +5,7 @@ import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { applications, applyPositions, members, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { alumniMove, type MoveReach } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
 import { moveApplication } from "./database-recruitment";
 import type { DashboardIdentity } from "./database";
@@ -129,19 +130,47 @@ async function promote(identity: DashboardIdentity, personId: number, mode: Prom
 }
 
 /**
- * Their roles end today and every access grant goes; the account and the
- * member row stay. Why they left goes to team_leaves, like a self-leave.
+ * Move to alumni (board 59d) changes only what the viewer manages, as
+ * ./alumni-move.ts decides: the operations lead ends every open role and
+ * every access grant; a division lead ends the person's roles in their own
+ * division and that division's `division` grants. The years and the
+ * team_leaves row are written only when no active role is left. The account
+ * and the member row stay.
  */
 async function moveToAlumni(identity: DashboardIdentity, personId: number, departure: Departure): Promise<boolean> {
-  if ((await rolesTheViewerChanges(identity, personId)) === null) return false;
+  if (personId === identity.memberId) return false;
+  const reach = moveReachOf(identity);
+  if (reach === null) return false;
+  const active = await activeRoles(personId);
+  const move = alumniMove(active.map((r) => ({ id: r.id, divisionId: r.division_id })), reach);
+  if (move === null) return false;
   const today = new Date().toISOString().slice(0, 10);
+  const grants = move.grants;
+  const ending = move.ending.map((r) => r.id);
   await runAuditBatch((db) => [
-    db.update(roles).set({ leavedAt: today }).where(and(eq(roles.memberId, personId), isNull(roles.leavedAt))),
-    db.delete(scopes).where(eq(scopes.memberId, personId)),
-    db.update(members).set({ teamFrom: departure.from, teamTo: departure.to }).where(eq(members.memberId, personId)),
-    db.insert(teamLeaves).values({ memberId: personId, reason: departure.reason }),
+    db.update(roles).set({ leavedAt: today }).where(and(inArray(roles.id, ending), isNull(roles.leavedAt))),
+    db
+      .delete(scopes)
+      .where(
+        grants.kind === "team"
+          ? eq(scopes.memberId, personId)
+          : and(eq(scopes.memberId, personId), eq(scopes.scope, "division"), eq(scopes.divisionId, grants.divisionId)),
+      ),
+    ...(move.leavesTeam
+      ? [
+          db.update(members).set({ teamFrom: departure.from, teamTo: departure.to }).where(eq(members.memberId, personId)),
+          db.insert(teamLeaves).values({ memberId: personId, reason: departure.reason }),
+        ]
+      : []),
   ]);
   return done();
+}
+
+/** What the viewer's Move to alumni reaches: the whole team for the operations lead, their division for a division lead. */
+function moveReachOf(identity: DashboardIdentity): MoveReach | null {
+  if (identity.kind === "operations-lead") return { kind: "team" };
+  const division = leadDivisionId(identity);
+  return division === null ? null : { kind: "division", divisionId: division };
 }
 
 /**

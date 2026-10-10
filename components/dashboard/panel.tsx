@@ -56,16 +56,18 @@ export function Panel({
 
 /**
  * The small pill at the end of a row: outlined ("Review", "Upload"), or as a
- * `chip`, the smaller filled one board 56m puts on its attention cards.
+ * `chip`, the smaller filled one board 56m puts on its attention cards. A
+ * button that acts in place (Dismiss) wears the same pill.
  */
+export function rowActionClass(chip: boolean): string {
+  return `inline-flex shrink-0 items-center rounded-full font-medium transition-colors duration-300 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+    chip ? "h-6 bg-white-10 px-2.5 text-[12px] hover:text-accent" : "h-8 border border-white-10 px-3.5 text-[13px] hover:border-border-strong"
+  }`;
+}
+
 export function RowAction({ label, href, chip = false }: { label: string; href: string; chip?: boolean }) {
   return (
-    <Link
-      href={href}
-      className={`inline-flex shrink-0 items-center rounded-full font-medium transition-colors duration-300 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-        chip ? "h-6 bg-white-10 px-2.5 text-[12px] hover:text-accent" : "h-8 border border-white-10 px-3.5 text-[13px] hover:border-border-strong"
-      }`}
-    >
+    <Link href={href} className={rowActionClass(chip)}>
       {label}
     </Link>
   );

@@ -174,13 +174,46 @@ test("a member's Your details save keeps the LinkedIn they just changed and the 
   assert.equal(after.details.phone, "+39 340 999 0000");
 });
 
-test("a member who leaves shows in Alumni and still has their profile", async () => {
+test("a member who leaves shows in Alumni and comes back as an applicant, still signed in (issue #201)", async () => {
   const { open } = browser();
   const me = (await open("member").myProfile())!;
   assert.deepEqual(await open("member").leaveTeam("Graduating this term."), { ok: true, value: null });
 
-  assert.equal((await open("member").myProfile())!.leave, "left");
   const { rows } = await open("operations-lead").alumni();
   assert.ok(rows.some((r) => r.name === me.name));
-  assert.equal((await open("member").leaveTeam("")).ok, false);
+
+  const after = open("member");
+  assert.equal(after.viewer.kind, "non-member");
+  assert.equal(after.viewer.name, me.name);
+  assert.equal(await after.myProfile(), null);
+  const account = (await after.myAccount())!;
+  assert.deepEqual([account.name, account.signIn.email], [me.name, me.signIn.email]);
+  assert.equal(await after.hasOwnApplications(), false);
+  assert.equal((await after.leaveTeam("")).ok, false);
+});
+
+test("someone the lead moves to alumni also comes back as an applicant", async () => {
+  const { open } = browser();
+  assert.equal(await open("operations-lead").teamWrites!.moveToAlumni(2, { from: 2023, to: 2026, reason: null }), true);
+  assert.equal(open("division-lead").viewer.kind, "non-member");
+  assert.equal(await open("division-lead").divisionAccess(), null);
+});
+
+test("the division lead sees one member-left notice, and Dismiss takes it off the list (issue #201)", async () => {
+  const { open } = browser();
+  const noticesOf = async () => {
+    const overview = await open("division-lead").overview();
+    assert.equal(overview.shape, "division");
+    return overview.shape === "division" ? overview.attention.filter((a) => a.kind === "notice") : [];
+  };
+  const [notice] = await noticesOf();
+  assert.equal((await noticesOf()).length, 1);
+  assert.equal(notice.title, "Valentina Sala left the team");
+  assert.ok("dismissNotice" in notice.action);
+
+  const id = "dismissNotice" in notice.action ? notice.action.dismissNotice : -1;
+  assert.equal((await open("member").dismissNotice(id)).ok, false, "not the member's notice");
+  assert.deepEqual(await open("division-lead").dismissNotice(id), { ok: true, value: null });
+  assert.deepEqual(await noticesOf(), []);
+  assert.equal((await open("division-lead").dismissNotice(id)).ok, false, "already dismissed");
 });

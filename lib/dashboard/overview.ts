@@ -15,7 +15,18 @@ export type Stat = {
   readonly live?: boolean;
 };
 
-export type AttentionKind = "applications" | "quiet-position" | "unassigned" | "no-photo";
+/** "notice": a stored dashboard notice (./notices.ts), whatever its own kind. */
+export type AttentionKind = "applications" | "quiet-position" | "unassigned" | "no-photo" | "notice";
+
+/** A row's button that dismisses the stored notice it shows (./notices.ts). */
+export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
+
+/** Where a row's button goes, or the notice it dismisses. */
+export type AttentionAction = Link | DismissNotice;
+
+export function isDismissNotice(action: AttentionAction): action is DismissNotice {
+  return "dismissNotice" in action;
+}
 
 export type AttentionItem = {
   readonly kind: AttentionKind;
@@ -23,7 +34,7 @@ export type AttentionItem = {
   /** The shorter title phones show (board 56m), when it differs. */
   readonly phoneTitle?: string;
   readonly detail: string;
-  readonly action: Link;
+  readonly action: AttentionAction;
 };
 
 export type ActivityItem = {
