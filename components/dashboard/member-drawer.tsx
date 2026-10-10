@@ -220,7 +220,10 @@ const PROMOTE_OPTIONS: readonly { mode: PromoteMode; title: string; detail: (fir
   { mode: "hand-over", title: "Hand over the division", detail: (first) => `${first} leads; you become a member` },
 ];
 
-/** Board 59e. The site sends no email: the lead tells the department head themselves. */
+/**
+ * Board 59e. The site sends no email: Promote writes a notice to the head of
+ * the division's department, shown on their dashboard Overview (#188).
+ */
 function PromoteDialog({
   open,
   onOpenChange,
@@ -293,8 +296,8 @@ function PromoteDialog({
         <p className="mt-4 flex items-start gap-2 text-[13px] text-text-2">
           <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
           {head
-            ? `Email ${head.name}, head of ${head.department}, to tell them.`
-            : "Email your department head to tell them."}
+            ? `${head.name}, head of ${head.department}, is told on their dashboard.`
+            : "Your department has no head on the roster, so no one else is told."}
         </p>
       </div>
     </ConfirmDialog>

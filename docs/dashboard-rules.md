@@ -100,7 +100,9 @@ An admin column comes later. **Planned**, no issue yet.
   - **Gap:** the title saved on the panel never reaches the public Team page. Tracked in #189.
 - Promote is confirmed. The lead picks "lead together" or "hand over the division". The department
   head is told.
-  - **Gap:** nothing tells the department head. Tracked in #188.
+  - Each head of the division's department gets a notice under "Needs your attention" on their
+    Overview, naming who now leads the division and how (#188). The lead who promoted is not told.
+    No email is sent.
 - Move to alumni is confirmed, with the years and an optional reason. Access ends; the account
   stays. It touches only what the person moving them manages: a division lead ends the roles and
   the division access in their own division, and the person leaves the team only when no role is
@@ -118,11 +120,41 @@ An admin column comes later. **Planned**, no issue yet.
 - Access is given only on the Access page. You can give only what you have, and only inside your
   scope.
 
+### Access
+
+These rules come from #213 (boards 60, 60b, 60c and 60m).
+
+- There are two levels: **Can view** and **Can edit**. Can view lets a person see an area. Can
+  edit also lets them change it. There is no third level.
+- There are four areas, each scoped to the lead's division: **Positions**, **Applications**,
+  **Members** and **Orders**.
+  - Applications at Can edit moves applications between steps and accepts or rejects them.
+  - Orders at Can view sees the division's orders. Orders at Can edit can also request, edit and
+    cancel them. A person with no Orders access does not see the division's orders.
+- A person holds each area at one level or not at all. In both drawers each area has a tick; a
+  ticked area takes its own level, and an unticked area means no access.
+- Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
+  They cannot change or remove access held above their level, or another lead's access. The
+  server checks every change, not only the drawer.
+- The table has one row per person, with a chip per area and its level, and "Given by".
+  Clicking a row opens Edit access: the person and the division are locked, and Save writes
+  the adds, level changes and removals in one go.
+- "Remove all access" removes every area for that person, after a confirm.
+- "Your access" is one line: "YOUR ACCESS · {division}", then a chip per area with its level.
+- Every change is written to the activity log.
+- On a phone the table is a card per person with the same chips, and a tap opens the same
+  drawer.
+- Single division only. The division selector for department heads is #184 and #185.
+
 ## 4. Orders
 
 - The statuses are Waiting, Approved, Changes requested and Rejected.
 - On Changes requested, the team leader's reason shows, with "Edit and send again".
 - A lead can cancel a request while it is waiting.
+- The Orders page shows to whoever holds Orders in the division (see Access above). Can view
+  only reads the requests; Can edit can also send, edit and cancel them.
+  - **Gap:** the sidebar still lists Orders for anyone the dashboard treats as a division lead;
+    without Orders access the page answers not found. Tracked in #160.
 
 ## 5. Data and testing
 

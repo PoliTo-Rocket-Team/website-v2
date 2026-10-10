@@ -10,12 +10,14 @@ import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import {
   ACCESS_TARGETS,
-  checkGiveAccess,
-  checkRemoveAccess,
+  checkRemoveAllAccess,
+  checkSaveAccess,
+  heldLevel,
   type AccessGrant,
   type AccessLevel,
   type AccessPerson,
   type AccessTarget,
+  type AccessWrite,
   type DivisionAccess,
   type HeldAccess,
 } from "./division-access";
@@ -63,6 +65,19 @@ function isTarget(value: string): value is AccessTarget {
   return (ACCESS_TARGETS as readonly string[]).includes(value);
 }
 
+/** What the member holds in the division, area by area: "all" on a division scope covers each area. */
+async function readHeld(memberId: number, divisionId: number): Promise<HeldAccess[]> {
+  const mine = await getDb()
+    .select({ target: scopes.target, level: scopes.accessLevel })
+    .from(scopes)
+    .where(and(eq(scopes.memberId, memberId), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId)));
+  return ACCESS_TARGETS.flatMap((target) => {
+    const levels = mine.filter((m) => m.target === target || m.target === "all").map((m) => m.level);
+    if (levels.length === 0) return [];
+    return [{ target, level: levels.includes("edit") ? ("edit" as const) : ("view" as const) }];
+  });
+}
+
 async function readDivisionAccess(identity: DashboardIdentity): Promise<DivisionAccess | null> {
   const division = await leadDivision(identity);
   if (division === null || identity.memberId === null) return null;
@@ -70,11 +85,8 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
   const db = getDb();
   const giver = alias(users, "giver");
 
-  const [mine, rows, team] = await Promise.all([
-    db
-      .select({ target: scopes.target, level: scopes.accessLevel })
-      .from(scopes)
-      .where(and(eq(scopes.memberId, me), eq(scopes.scope, "division"), eq(scopes.divisionId, division.id))),
+  const [held, rows, team] = await Promise.all([
+    readHeld(me, division.id),
     db
       .select({
         id: scopes.id,
@@ -113,13 +125,6 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
       .innerJoin(users, eq(users.member, roles.memberId))
       .where(and(eq(roles.divisionId, division.id), isNull(roles.leavedAt))),
   ]);
-
-  // "all" on a division scope covers each target the page shares.
-  const held: HeldAccess[] = ACCESS_TARGETS.flatMap((target) => {
-    const levels = mine.filter((m) => m.target === target || m.target === "all").map((m) => m.level);
-    if (levels.length === 0) return [];
-    return [{ target, level: levels.includes("edit") ? ("edit" as const) : ("view" as const) }];
-  });
 
   const roleOf = new Map(team.map((t) => [t.member_id, t.type]));
   const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string }): AccessPerson => {
@@ -167,50 +172,71 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
   return { division, held, grants, people };
 }
 
-async function giveAccess(identity: DashboardIdentity, input: unknown): Promise<WriteResult<readonly AccessGrant[]>> {
-  const access = await readDivisionAccess(identity);
-  if (access === null || identity.memberId === null) return refused("Only a division lead gives access here.");
-  const checked = checkGiveAccess(access, input);
-  if (!checked.ok) return refused(checked.error);
-  const { personId, targets, level } = checked.value;
+/**
+ * Writes a checked change to one person's access in one audited batch: one
+ * grant per person, area and division, so a level change replaces the old
+ * grant and a removal deletes it. Answers the person's grants as they now read.
+ */
+async function writeAccess(
+  identity: DashboardIdentity,
+  access: DivisionAccess,
+  { personId, changes }: AccessWrite,
+): Promise<WriteResult<readonly AccessGrant[]>> {
+  if (identity.memberId === null) return refused("Only a division lead gives access here.");
   const divisionId = access.division.id;
   const givenBy = identity.memberId;
+  // An added area has no grant yet, so clearing every changed area deletes
+  // only the grants a level change or a removal replaces.
+  const touched = changes.map((c) => c.target);
+  const given = changes.flatMap((c) => (c.kind === "remove" ? [] : [{ target: c.target, level: c.to }]));
 
-  // One grant per person, target and division: a new level replaces the old.
-  await runAuditBatch((db) => [
-    db
-      .delete(scopes)
-      .where(
-        and(
-          eq(scopes.memberId, personId),
-          eq(scopes.scope, "division"),
-          eq(scopes.divisionId, divisionId),
-          inArray(scopes.target, [...targets]),
+  if (changes.length > 0) {
+    await runAuditBatch((db) => [
+      db
+        .delete(scopes)
+        .where(
+          and(
+            eq(scopes.memberId, personId),
+            eq(scopes.scope, "division"),
+            eq(scopes.divisionId, divisionId),
+            inArray(scopes.target, touched),
+          ),
         ),
-      ),
-    db.insert(scopes).values(
-      targets.map((target) => ({
-        memberId: personId,
-        givenBy,
-        scope: "division" as const,
-        target,
-        accessLevel: level satisfies AccessLevel,
-        divisionId,
-      })),
-    ),
-  ]);
+      ...(given.length === 0
+        ? []
+        : [
+            db.insert(scopes).values(
+              given.map(({ target, level }) => ({
+                memberId: personId,
+                givenBy,
+                scope: "division" as const,
+                target,
+                accessLevel: level satisfies AccessLevel,
+                divisionId,
+              })),
+            ),
+          ]),
+    ]);
+  }
 
   const after = await readDivisionAccess(identity);
-  return written(after?.grants.filter((g) => g.person.id === personId && targets.includes(g.target)) ?? []);
+  return written(after?.grants.filter((g) => g.person.id === personId) ?? []);
 }
 
-async function removeAccess(identity: DashboardIdentity, grantId: number): Promise<WriteResult<null>> {
+async function saveAccess(identity: DashboardIdentity, input: unknown): Promise<WriteResult<readonly AccessGrant[]>> {
+  const access = await readDivisionAccess(identity);
+  if (access === null) return refused("Only a division lead gives access here.");
+  const checked = checkSaveAccess(access, input);
+  return checked.ok ? writeAccess(identity, access, checked.value) : refused(checked.error);
+}
+
+async function removeAllAccess(identity: DashboardIdentity, personId: number): Promise<WriteResult<null>> {
   const access = await readDivisionAccess(identity);
   if (access === null) return refused("Only a division lead removes access here.");
-  const checked = checkRemoveAccess(access, grantId);
+  const checked = checkRemoveAllAccess(access, personId);
   if (!checked.ok) return refused(checked.error);
-  await runAuditQuery((db) => db.delete(scopes).where(eq(scopes.id, checked.value.id)));
-  return written(null);
+  const result = await writeAccess(identity, access, checked.value);
+  return result.ok ? written(null) : result;
 }
 
 type DbOrderStatus = (typeof orders.$inferSelect)["status"];
@@ -319,10 +345,29 @@ async function readOrderRows(divisionId: number, orderId?: number): Promise<Orde
     .orderBy(desc(orders.createdAt));
 }
 
-async function readDivisionOrders(identity: DashboardIdentity): Promise<DivisionOrders | null> {
+/**
+ * The division whose orders the viewer reaches, and their level on Orders
+ * there (issue #213): an `orders` grant, or a division scope on `all`. Null
+ * for someone who holds no Orders access.
+ */
+async function ordersAccess(identity: DashboardIdentity): Promise<{ division: { id: number; name: string }; level: AccessLevel } | null> {
   const division = await leadDivision(identity);
-  if (division === null) return null;
-  return { division, orders: (await readOrderRows(division.id)).flatMap(orderOf) };
+  if (division === null || identity.memberId === null) return null;
+  const level = heldLevel(await readHeld(identity.memberId, division.id), "orders");
+  return level === null ? null : { division, level };
+}
+
+/** The division the viewer sends and changes orders in; a reason when they may not. */
+async function orderingDivision(identity: DashboardIdentity): Promise<{ id: number; name: string } | string> {
+  const reach = await ordersAccess(identity);
+  if (reach === null) return "You do not have access to Orders.";
+  return reach.level === "edit" ? reach.division : "You can view orders but not request or change them.";
+}
+
+async function readDivisionOrders(identity: DashboardIdentity): Promise<DivisionOrders | null> {
+  const reach = await ordersAccess(identity);
+  if (reach === null) return null;
+  return { ...reach, orders: (await readOrderRows(reach.division.id)).flatMap(orderOf) };
 }
 
 /** The New order or Edit order fields and quote, checked again on the server. */
@@ -355,8 +400,9 @@ async function placeOrder(
   fields: Record<string, string>,
   quote: Upload | null,
 ): Promise<WriteResult<Order>> {
-  const division = await leadDivision(identity);
-  if (division === null || identity.memberId === null) return refused("Only a division lead sends orders here.");
+  const division = await orderingDivision(identity);
+  if (typeof division === "string") return refused(division);
+  if (identity.memberId === null) return refused("Only a team member sends orders here.");
   const checked = checkedOrder(fields, quote);
   if (!checked.ok) return refused(checked.error);
 
@@ -391,8 +437,8 @@ const ORDER_CHANGED = "This request changed. Reload the page.";
 
 /** The request as stored, when it is one of the lead's division's and still on the page. */
 async function divisionOrder(identity: DashboardIdentity, orderId: number): Promise<{ divisionId: number; order: Order } | string> {
-  const division = await leadDivision(identity);
-  if (division === null) return "Only a division lead changes orders here.";
+  const division = await orderingDivision(identity);
+  if (typeof division === "string") return division;
   const [order] = (await readOrderRows(division.id, orderId)).flatMap(orderOf);
   return order === undefined ? "That request is not in your division." : { divisionId: division.id, order };
 }
@@ -448,7 +494,7 @@ async function editOrder(
 async function cancelOrder(identity: DashboardIdentity, orderId: number): Promise<WriteResult<null>> {
   const found = await divisionOrder(identity, orderId);
   if (typeof found === "string") return refused(found);
-  if (!orderActions(found.order.status).cancel) return refused("The team leader has answered this request.");
+  if (!orderActions(found.order.status, "edit").cancel) return refused("The team leader has answered this request.");
   const changed = await runAuditQuery((db) =>
     db
       .update(orders)
@@ -463,8 +509,8 @@ async function cancelOrder(identity: DashboardIdentity, orderId: number): Promis
 export function databaseDivisionPages(identity: DashboardIdentity) {
   return {
     divisionAccess: () => readDivisionAccess(identity),
-    giveAccess: (input: unknown) => giveAccess(identity, input),
-    removeAccess: (grantId: number) => removeAccess(identity, grantId),
+    saveAccess: (input: unknown) => saveAccess(identity, input),
+    removeAllAccess: (personId: number) => removeAllAccess(identity, personId),
     divisionOrders: () => readDivisionOrders(identity),
     placeOrder: (fields: Record<string, string>, quote: Upload | null) => placeOrder(identity, fields, quote),
     editOrder: (orderId: number, fields: Record<string, string>, quote: Upload | null) =>

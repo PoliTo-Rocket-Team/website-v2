@@ -44,12 +44,12 @@ import {
   dummyDivisionAccess,
   dummyDivisionOrders,
   dummyEditOrder,
-  dummyGiveAccess,
   dummyPlaceOrder,
-  dummyRemoveAccess,
+  dummyRemoveAllAccess,
+  dummySaveAccess,
 } from "./division";
 import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
-import { dummyNoticeAttention, isDummyNoticeOpen } from "./notices";
+import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
@@ -240,7 +240,7 @@ function oldestNew(position: DummyPosition, team: Team): Date {
   return new Date(Math.min(...times));
 }
 
-function attentionFor(kind: ViewerKind, team: Team, dismissed: readonly number[]): AttentionItem[] {
+function attentionFor(kind: ViewerKind, team: Team, dummyNotices: DummyNotices): AttentionItem[] {
   const scoped = positionsFor(kind, team);
   const fresh = scoped.flatMap((p): AttentionItem[] => {
     const n = newApplications([p], team);
@@ -290,7 +290,7 @@ function attentionFor(kind: ViewerKind, team: Team, dismissed: readonly number[]
             .map((p) => p.name),
         )
       : null;
-  const notices = kind === "operations-lead" || kind === "division-lead" ? dummyNoticeAttention(personFor[kind], dismissed, NOW) : [];
+  const notices = kind === "operations-lead" || kind === "division-lead" ? dummyNoticeAttention(personFor[kind], dummyNotices, NOW) : [];
   return [...fresh, ...quiet, ...unassigned, ...(noPhoto ? [noPhoto] : []), ...notices];
 }
 
@@ -307,7 +307,7 @@ function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): Activi
 }
 
 /** Board 40: the operations lead's figures, attention and activity across the team. */
-function teamOverview(team: Team, dismissed: readonly number[]): TeamOverview {
+function teamOverview(team: Team, notices: DummyNotices): TeamOverview {
   const kind = "operations-lead";
   const scoped = positionsFor(kind, team);
   const open = scoped.filter((p) => p.open);
@@ -329,7 +329,7 @@ function teamOverview(team: Team, dismissed: readonly number[]): TeamOverview {
       },
       { label: "Team members", value: String(roster.members), detail: `${roster.season} roster` },
     ],
-    attention: attentionFor(kind, team, dismissed),
+    attention: attentionFor(kind, team, notices),
     activity: activityFor(kind),
   };
 }
@@ -356,7 +356,7 @@ function interviewsFor(divisionId: number, team: Team): UpcomingInterview[] {
 }
 
 /** Board 56: the division lead's figures, attention, interviews and activity, all scoped to their division. */
-function divisionOverview(team: Team, dismissed: readonly number[]): DivisionOverview {
+function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
   const kind = "division-lead";
   const scoped = positionsFor(kind, team);
   const open = scoped.filter((p) => p.open);
@@ -385,7 +385,7 @@ function divisionOverview(team: Team, dismissed: readonly number[]): DivisionOve
         detail: `${members.length === 1 ? "person" : "people"} in ${divisionShortName(division.name)}`,
       },
     ],
-    attention: attentionFor(kind, team, dismissed),
+    attention: attentionFor(kind, team, notices),
     interviews: interviewsFor(division.id, team),
     activity: activityFor(kind),
   };
@@ -454,12 +454,12 @@ function memberOverview(): PersonalOverview {
   };
 }
 
-function overviewFor(kind: ViewerKind, team: Team, dismissed: readonly number[]): TeamSideOverview {
+function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamSideOverview {
   switch (kind) {
     case "operations-lead":
-      return teamOverview(team, dismissed);
+      return teamOverview(team, notices);
     case "division-lead":
-      return divisionOverview(team, dismissed);
+      return divisionOverview(team, notices);
     case "member":
       return memberOverview();
     case "non-member":
@@ -676,10 +676,10 @@ export function dummyDashboardData(
     viewer: dummyViewer(kind),
     navCounts: async () => navCountsFor(kind, team),
     hasOwnApplications: async () => ownApplicationsOf(kind, ownStart).length > 0,
-    overview: async () => overviewFor(kind, team, teamEdits.current.dismissedNotices),
+    overview: async () => overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
-      if (person === null || !isDummyNoticeOpen(person, dismissed, noticeId)) {
+      if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {
         return refused("This notice is not yours, or it was already dismissed.");
       }
       await teamEdits.save({ ...teamEdits.current, dismissedNotices: [...dismissed, noticeId] });
@@ -744,9 +744,9 @@ export function dummyDashboardData(
     moveApplication,
 
     divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person, teamRoster)),
-    giveAccess: async (input) => (person === null ? refused(notOnTeam) : dummyGiveAccess(person, teamRoster, input)),
-    removeAccess: async (grantId) =>
-      person === null ? refused(notOnTeam) : dummyRemoveAccess(person, teamRoster, grantId),
+    saveAccess: async (input) => (person === null ? refused(notOnTeam) : dummySaveAccess(person, teamRoster, input)),
+    removeAllAccess: async (personId) =>
+      person === null ? refused(notOnTeam) : dummyRemoveAllAccess(person, teamRoster, personId),
 
     divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
     placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),

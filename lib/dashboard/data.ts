@@ -90,13 +90,18 @@ export interface DashboardData {
    */
   moveApplication(applicationId: number, move: LeadMove): Promise<WriteResult<null>>;
 
-  /** Boards 60 and 60b: the division lead's Access page, the only place access is given or removed. */
+  /** Boards 60 to 60m: the division lead's Access page, the only place access is given, changed or removed. */
   divisionAccess(): Promise<DivisionAccess | null>;
-  /** One grant per chosen target; answers the grants as the table shows them. */
-  giveAccess(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
-  removeAccess(grantId: number): Promise<WriteResult<null>>;
+  /**
+   * Give access or Edit access (boards 60b, 60c): one person's areas become
+   * the ones sent, each at its own level, in one audited write. Answers the
+   * person's grants as the table shows them.
+   */
+  saveAccess(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
+  /** Remove all access (board 60c): every area the person holds in the division. */
+  removeAllAccess(personId: number): Promise<WriteResult<null>>;
 
-  /** Boards 61 to 61d: the division lead's Orders page. */
+  /** Boards 61 to 61d: the division's Orders page, for whoever holds Orders there; null for anyone else. */
   divisionOrders(): Promise<DivisionOrders | null>;
   /** The New order fields as typed, and the quote when one was attached. */
   placeOrder(fields: Record<string, string>, quote: Upload | null): Promise<WriteResult<Order>>;

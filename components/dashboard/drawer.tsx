@@ -85,7 +85,8 @@ export function PanelBody({ children, className = "" }: { children: ReactNode; c
 }
 
 // A side panel that is a form (boards 60b and 61b): Cancel beside the main
-// button at the foot, and the button submits.
+// button at the foot, and the button submits. `secondary` takes Cancel's
+// place where the board puts another action there (Remove all access, 60c).
 export function Drawer({
   open,
   onOpenChange,
@@ -94,6 +95,7 @@ export function Drawer({
   submitLabel,
   submitting,
   onSubmit,
+  secondary,
   children,
 }: {
   open: boolean;
@@ -103,6 +105,7 @@ export function Drawer({
   submitLabel: string;
   submitting: boolean;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+  secondary?: ReactNode;
   children: ReactNode;
 }) {
   const formId = `${title.toLowerCase().replace(/\W+/g, "-")}-form`;
@@ -114,7 +117,7 @@ export function Drawer({
       detail={detail}
       footer={
         <>
-          <DialogClose className={PANEL_GHOST_BUTTON}>Cancel</DialogClose>
+          {secondary ?? <DialogClose className={PANEL_GHOST_BUTTON}>Cancel</DialogClose>}
           <button type="submit" form={formId} disabled={submitting} className={PANEL_PRIMARY_BUTTON}>
             {submitLabel}
           </button>
