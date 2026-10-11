@@ -1,6 +1,7 @@
 // Who is looking at the dashboard (issue #141). Every page and the sidebar
-// decide what to show from the viewer's kind alone; the access table in
-// ./access.ts says which kind reaches which page.
+// decide what to show from the viewer's standing: their kind, plus the
+// site-content access the Alumni page reads (issue #234). The access table in
+// ./access.ts says which standing reaches which page.
 
 export const VIEWER_KINDS = [
   "operations-lead",
@@ -28,8 +29,21 @@ export function isViewerKind(value: unknown): value is ViewerKind {
  */
 export type ViewerSession = "account" | "test-developer";
 
-export type DashboardViewer = {
-  readonly kind: ViewerKind;
+/**
+ * What decides the dashboard pages a viewer reaches: their kind, and whether
+ * they hold site-content access (a `website` scope row) on top of it. Someone
+ * off the team holds none, whatever scope rows remain (issue #201).
+ */
+export type ViewerStanding =
+  | { readonly kind: "non-member"; readonly siteContent: false }
+  | { readonly kind: Exclude<ViewerKind, "non-member">; readonly siteContent: boolean };
+
+/** A test developer holds no scope rows, so their standing is their kind alone. */
+export function testDeveloperStanding(kind: ViewerKind): ViewerStanding {
+  return { kind, siteContent: false };
+}
+
+export type DashboardViewer = ViewerStanding & {
   readonly name: string;
   /** The line under the name in the user card: "Operations Lead", "Member". */
   readonly role: string;
@@ -91,4 +105,11 @@ export function standingIn(access: MemberAccess, divisionId: number): "lead" | "
 export function ledDivisionIds(access: MemberAccess): number[] {
   const ids = access.activeRoles.flatMap((r) => (r.divisionId !== null && standingIn(access, r.divisionId) === "lead" ? [r.divisionId] : []));
   return [...new Set(ids)];
+}
+
+/** A real account's standing: its viewer kind, and site-content access from a `website` scope row. */
+export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
+  const kind = viewerKindOf(access);
+  if (kind === "non-member") return { kind, siteContent: false };
+  return { kind, siteContent: access?.scopes.includes("website") ?? false };
 }

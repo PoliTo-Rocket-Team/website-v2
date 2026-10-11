@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ledDivisionIds, standingIn, viewerKindOf, type ActiveRoleRef } from "./viewer";
+import { ledDivisionIds, standingIn, viewerKindOf, viewerStandingOf, type ActiveRoleRef } from "./viewer";
 
 const role = (type: ActiveRoleRef["type"], divisionId: number | null = null): ActiveRoleRef => ({ type, divisionId });
 
@@ -32,4 +32,10 @@ test("someone who leads division A and is a member of division B is a lead for A
   assert.equal(standingIn(access, 2), "member");
   assert.equal(standingIn(access, 3), null);
   assert.deepEqual(ledDivisionIds(access), [1]);
+});
+
+test("a website scope row gives site-content access, but not to someone who left the team (issue #234)", () => {
+  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRoles: [role("core")] }), { kind: "member", siteContent: true });
+  assert.deepEqual(viewerStandingOf({ scopes: ["division"], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: false });
+  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRoles: [] }), { kind: "non-member", siteContent: false });
 });

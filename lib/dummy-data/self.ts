@@ -26,7 +26,7 @@ import {
   type MyProfile,
 } from "@/lib/dashboard/self";
 import { homeDivisionOf, membershipsIn, roleIn } from "@/lib/dashboard/team";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import { testDeveloperStanding, type ViewerKind } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
 import { dummyDetails, isOpenOwn, isWithdrawn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
@@ -190,7 +190,7 @@ export function dummyMyApplications(
   changes: OwnChanges,
   start: OwnApplicationsStart,
 ): MyApplications | null {
-  if (!canReach(kind, "my-applications")) return null;
+  if (!canReach(testDeveloperStanding(kind), "my-applications")) return null;
   const own = ownApplicationsOf(kind, start);
   const active: ActiveApplication[] = [];
   const past: PastApplication[] = [];

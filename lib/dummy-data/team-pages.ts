@@ -27,7 +27,7 @@ import {
   type Placement,
   type RosterEntry,
 } from "@/lib/dashboard/team";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import { testDeveloperStanding, type ViewerKind } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, type MemberChange, type TeamEdits } from "./edits";
@@ -185,7 +185,7 @@ export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
 
 /** Whether `kind` may change this person from the Members page: the whole team, or the lead's own division; never themselves. */
 function mayEdit(kind: ViewerKind, entry: RosterEntry): boolean {
-  if (!canReach(kind, "members") || entry.id === SELF_ID[kind]) return false;
+  if (!canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
   if (kind === "operations-lead") return true;
   const division = myDivision(kind);
   return division !== null && isIn(entry.placement, division);
@@ -228,7 +228,7 @@ function writesFor(
   const thisYear = new Date().getUTCFullYear();
   return {
     async setShownOnSite(alumnusId, shown) {
-      if (!canReach(kind, "alumni") || !editedAlumni(edits).some((a) => a.id === alumnusId)) return false;
+      if (!canReach(testDeveloperStanding(kind), "alumni") || !editedAlumni(edits).some((a) => a.id === alumnusId)) return false;
       await save({ ...edits, shownOnSite: { ...edits.shownOnSite, [alumnusId]: shown } });
       return true;
     },
@@ -335,9 +335,9 @@ export function dummyTeamPages(
         joining.map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived })),
       );
     },
-    alumni: async () => alumniDirectory(canReach(kind, "alumni") ? editedAlumni(edits) : []),
+    alumni: async () => alumniDirectory(canReach(testDeveloperStanding(kind), "alumni") ? editedAlumni(edits) : []),
     teamTree: async () =>
-      buildTeamTree(canReach(kind, "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
+      buildTeamTree(canReach(testDeveloperStanding(kind), "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
     teamWrites: writesFor(kind, edits, save, joiners, move),
   };
 }

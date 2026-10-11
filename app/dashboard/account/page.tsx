@@ -26,7 +26,7 @@ async function LiveAccount() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/account");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "my-account")) notFound();
+  if (!canReach(data.viewer, "my-account")) notFound();
   const account = await data.myAccount();
   if (account === null) notFound();
   return (

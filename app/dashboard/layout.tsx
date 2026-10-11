@@ -30,12 +30,11 @@ async function SignedInShell({ children }: { children: ReactNode }) {
   if (opening.kind === "account-unresolved") return <AccountUnresolved />;
   const { data } = opening;
   const [counts, hasOwnApplications] = await Promise.all([data.navCounts(), data.hasOwnApplications()]);
-  const { kind } = data.viewer;
   return (
     <DashboardShell
       viewer={data.viewer}
-      sections={sidebarFor(kind, { counts, hasOwnApplications })}
-      menuPage={userMenuPageFor(kind)}
+      sections={sidebarFor(data.viewer, { counts, hasOwnApplications })}
+      menuPage={userMenuPageFor(data.viewer.kind)}
     >
       {children}
     </DashboardShell>

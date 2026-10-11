@@ -24,6 +24,6 @@ async function LiveTeamTree() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/team-tree");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "team-tree")) notFound();
+  if (!canReach(data.viewer, "team-tree")) notFound();
   return <TeamTreeView tree={await data.teamTree()} />;
 }

@@ -34,7 +34,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
-import type { DashboardViewer, ViewerKind } from "@/lib/dashboard/viewer";
+import { testDeveloperStanding, type DashboardViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { departmentCode, divisionLabel, positionText } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
@@ -194,10 +194,10 @@ function myDivisionId(kind: "division-lead" | "member"): number {
 /** Who a test developer signed in as `kind` is: the dashboard's user card and the navbar show this name. */
 export function dummyViewer(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
-    return { kind, name: applicant.name, role: "Applicant", session: "test-developer" };
+    return { ...testDeveloperStanding(kind), name: applicant.name, role: "Applicant", session: "test-developer" };
   }
   const person = personFor[kind];
-  return { kind, name: person.name, role: person.title, session: "test-developer" };
+  return { ...testDeveloperStanding(kind), name: person.name, role: person.title, session: "test-developer" };
 }
 
 function divisionOf(id: number) {
