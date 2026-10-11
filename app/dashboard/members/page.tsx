@@ -12,9 +12,10 @@ export const metadata: Metadata = {
 
 type Search = Promise<{ division?: string | string[] }>;
 
-// Boards 46 (operations lead: the whole team) and 61e to 61h2 (division lead:
+// Boards 46 (operations lead: the whole team), 61e to 61h2 (division lead:
 // one of their divisions, `?division=` picking which, with the people waiting
-// for Confirm NDA and the member panels). It replaces the legacy members page.
+// for Confirm NDA and the member panels) and 69 to 69c (department head: every
+// division of the department as a tab). It replaces the legacy members page.
 export default function MembersPage({ searchParams }: { searchParams: Search }) {
   return (
     <Suspense fallback={<DashboardPageFallback />}>

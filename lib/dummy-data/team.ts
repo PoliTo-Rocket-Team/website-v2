@@ -55,6 +55,11 @@ export const divisions = [
   { id: 14, name: "Sponsorship Division", departmentId: 6, code: "SP" },
 ] as const satisfies readonly DummyDivision[];
 
+/** Divisions closed in past seasons: the head's Closed tab (board 69, issue #235). Not on the open chart. */
+export const closedDivisions = [
+  { id: 15, name: "Wind Tunnel Division", departmentId: 1, code: "WT", closedOn: "2025-07-15" },
+] as const satisfies readonly (DummyDivision & { readonly closedOn: string })[];
+
 /** Where a row places someone, given the day they joined the team. */
 type Place = (since: string) => Placement;
 
