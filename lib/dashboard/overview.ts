@@ -1,7 +1,9 @@
 // What the Overview page shows. The operations lead sees the team shape
 // (board 40: figures, what needs attention, recent activity); a division lead
 // sees the division shape (board 56: the same, scoped to their division, plus
-// upcoming interviews); a member sees the personal shape (board 52: who they
+// upcoming interviews); a department head sees the department shape (board
+// 62, issue #230: the same across their department, plus a Divisions panel);
+// a member sees the personal shape (board 52: who they
 // are and what is theirs). A non-member who has applied sees the applicant
 // shape (board 50e, ./applicant-overview.ts), which the page builds from My
 // applications and the open positions. The components in
@@ -73,6 +75,53 @@ export type DivisionOverview = {
   readonly activity: readonly ActivityItem[];
 };
 
+/** One division on a department head's Overview (boards 62 and 62m): who leads it, how big it is, what waits. */
+export type DivisionSummary = {
+  readonly id: number;
+  /** "Mission Analysis Division" */
+  readonly name: string;
+  readonly leads: readonly string[];
+  readonly people: number;
+  readonly newApplications: number;
+  readonly openPositions: number;
+};
+
+/**
+ * Board 62 and 62m (issue #230): a department head's figures and attention
+ * across their department, a Divisions panel with one row per division,
+ * upcoming interviews (62m) and recent activity (62).
+ */
+export type DepartmentOverview = {
+  readonly shape: "department";
+  readonly stats: readonly Stat[];
+  readonly attention: readonly AttentionItem[];
+  readonly divisions: readonly DivisionSummary[];
+  readonly interviews: readonly UpcomingInterview[];
+  readonly activity: readonly ActivityItem[];
+};
+
+/** "2 divisions · 16 people", beside the Divisions panel's title (board 62). */
+export function divisionsMeta(divisions: readonly DivisionSummary[]): string {
+  const people = divisions.reduce((sum, d) => sum + d.people, 0);
+  return `${divisions.length} ${divisions.length === 1 ? "division" : "divisions"} · ${people} ${people === 1 ? "person" : "people"}`;
+}
+
+/** "Leads", "Lead", or null for a division with no lead yet. */
+export function leadsLabel(leads: readonly string[]): string | null {
+  if (leads.length === 0) return null;
+  return leads.length === 1 ? "Lead" : "Leads";
+}
+
+/** "MA" for "Mission Analysis Division", "OA" for "Optimization and Analysis Division" (board 62's tile). */
+export function divisionInitials(name: string): string {
+  const words = divisionShortName(name)
+    .split(/\s+/)
+    .filter((w) => w !== "" && !["and", "&", "of", "the"].includes(w.toLowerCase()));
+  if (words.length === 0) return "";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
 export type PersonHeader = {
   readonly name: string;
   /** "Member · Mission Analysis Division · Aerodynamics" */
@@ -121,7 +170,7 @@ export type PersonalOverview = {
 };
 
 /** What the dashboard data interface answers: the team's own Overviews. */
-export type TeamSideOverview = TeamOverview | DivisionOverview | PersonalOverview;
+export type TeamSideOverview = TeamOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
 
 export type Overview = TeamSideOverview | ApplicantOverview;
 

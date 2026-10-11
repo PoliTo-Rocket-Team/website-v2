@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkNewPosition, divisionField, newPositionCode, type DivisionChoice } from "./new-position";
+import { checkNewPosition, divisionField, newPositionCode, startingDivisionId, type DivisionChoice } from "./new-position";
 
 // The New position drawer (boards 57a, 57b, issue #171).
 
@@ -11,6 +11,13 @@ test("one division is locked, several are a choice, none is no drawer", () => {
   assert.deepEqual(divisionField([msa]), { kind: "locked", division: msa });
   assert.deepEqual(divisionField([msa, aoa]), { kind: "choose", divisions: [msa, aoa] });
   assert.equal(divisionField([]), null);
+});
+
+test("New position starts on the open division tab, else on no division (board 63b, issue #230)", () => {
+  assert.equal(startingDivisionId([msa, aoa], null), null, "All divisions picks none");
+  assert.equal(startingDivisionId([msa, aoa], aoa.name), aoa.id);
+  assert.equal(startingDivisionId([msa, aoa], "Structures Analysis Division"), null, "a division the viewer cannot post in");
+  assert.equal(startingDivisionId([msa], null), msa.id, "a lead's one division");
 });
 
 test("the code is made from the division and the id", () => {

@@ -1,5 +1,5 @@
-// Local-only tester sign-in (issue #129). On `next dev`, a reviewer can sign
-// in as one of four seeded testers to see signed-in pages without a Google
+// Local-only tester sign-in (issues #129, #230). On `next dev`, a reviewer can sign
+// in as one of five seeded testers to see signed-in pages without a Google
 // account. Every tester code path asks `testerSignInOn()` first; on previews,
 // production and under the test runner it is off, so the sign-in route is not
 // registered at all.
@@ -26,6 +26,7 @@ export const TESTER_KEYS = [
   "applicant",
   "member",
   "division-lead",
+  "department-head",
   "operations-lead",
 ] as const;
 
@@ -63,6 +64,13 @@ export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
     email: "division-lead.tester@example.com",
     name: "Tester Division Lead",
     sees: "Leads Mission Analysis. Edits that division's positions and applications.",
+  },
+  "department-head": {
+    key: "department-head",
+    id: "7e57e500-0000-4000-8000-000000000005",
+    email: "department-head.tester@example.com",
+    name: "Tester Department Head",
+    sees: "Heads Aerodynamics. Sees every division of it, with division tabs (issue #230).",
   },
   "operations-lead": {
     key: "operations-lead",

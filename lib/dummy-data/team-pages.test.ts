@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { MemberDirectory } from "@/lib/dashboard/team";
 import { membershipsIn } from "@/lib/dashboard/team";
-import { dummyDivisionAccess } from "./division";
+import { dummyAccessPage } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
 import { divisions, people, personFor, positions } from "./team";
 import { dummyJoiners, dummyTeamPages, editedRoster } from "./team-pages";
@@ -80,12 +80,12 @@ test("Leaves the team takes someone off the tree and onto the Alumni page", asyn
 
 test("Leaves the team ends their access and keeps them on record", async () => {
   const lead = pages("division-lead");
-  const before = dummyDivisionAccess(personFor["division-lead"], editedRoster(NO_EDITS))!;
+  const before = dummyAccessPage("division-lead", personFor["division-lead"], editedRoster(NO_EDITS))!;
   assert.ok(before.grants.some((g) => g.person.name === "Luca Marino"));
 
   assert.equal(await lead.view.teamWrites!.moveToAlumni(4, { from: 2024, to: 2026, reason: null }), true);
   const edits = lead.saved[0];
-  const after = dummyDivisionAccess(personFor["division-lead"], editedRoster(edits))!;
+  const after = dummyAccessPage("division-lead", personFor["division-lead"], editedRoster(edits))!;
   assert.ok(!after.grants.some((g) => g.person.name === "Luca Marino"), "their access ends");
   assert.ok(!after.people.some((p) => p.name === "Luca Marino"), "no access can be given to them");
   const alumni = await pages("operations-lead", edits).view.alumni();

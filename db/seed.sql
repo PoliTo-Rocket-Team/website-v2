@@ -698,20 +698,25 @@ WHERE id LIKE '7e57e500-0000-4000-8000-00000000000_'
 INSERT INTO members (member_id, prt_email, discord, nda_name, nda_confirmed_by) VALUES
 (901, 'member.tester@example.com', 'member.tester', 'Tester Member NDA', 1),
 (902, 'division-lead.tester@example.com', 'division-lead.tester', 'Tester Division Lead NDA', 1),
-(903, 'operations-lead.tester@example.com', 'operations-lead.tester', 'Tester Operations Lead NDA', 1);
+(903, 'operations-lead.tester@example.com', 'operations-lead.tester', 'Tester Operations Lead NDA', 1),
+(904, 'department-head.tester@example.com', 'department-head.tester', 'Tester Department Head NDA', 1);
 
 -- The applicant is not a member: no members row, member NULL, no scopes.
 INSERT INTO users (id, email, first_name, last_name, origin, level_of_study, polito_id, program, member, created_at) VALUES
 ('7e57e500-0000-4000-8000-000000000001', 'applicant.tester@example.com', 'Tester', 'Applicant', 'Italy', 'Bachelor', 's900001', 'Aerospace Engineering', NULL, '2026-10-09 10:00:00+02'::timestamptz),
 ('7e57e500-0000-4000-8000-000000000002', 'member.tester@example.com', 'Tester', 'Member', 'Italy', 'Master', 's900002', 'Aerospace Engineering', 901, '2026-10-09 10:00:00+02'::timestamptz),
 ('7e57e500-0000-4000-8000-000000000003', 'division-lead.tester@example.com', 'Tester', 'Division Lead', 'Italy', 'Master', 's900003', 'Aerospace Engineering', 902, '2026-10-09 10:00:00+02'::timestamptz),
-('7e57e500-0000-4000-8000-000000000004', 'operations-lead.tester@example.com', 'Tester', 'Operations Lead', 'Italy', 'Master', 's900004', 'Management Engineering', 903, '2026-10-09 10:00:00+02'::timestamptz);
+('7e57e500-0000-4000-8000-000000000004', 'operations-lead.tester@example.com', 'Tester', 'Operations Lead', 'Italy', 'Master', 's900004', 'Management Engineering', 903, '2026-10-09 10:00:00+02'::timestamptz),
+('7e57e500-0000-4000-8000-000000000005', 'department-head.tester@example.com', 'Tester', 'Department Head', 'Italy', 'Master', 's900005', 'Aerospace Engineering', 904, '2026-10-09 10:00:00+02'::timestamptz);
 
 INSERT INTO roles (member_id, dept_id, division_id, title, started_at, leaved_at, type) VALUES
 (901, (SELECT id FROM departments WHERE code = 'AER'), (SELECT id FROM divisions WHERE code = 'MSA'), 'Mission Analysis Engineer', '2025-10-01'::date, NULL, 'core'),
 (902, (SELECT id FROM departments WHERE code = 'AER'), (SELECT id FROM divisions WHERE code = 'MSA'), 'Mission Analysis Lead', '2025-10-01'::date, NULL, 'lead'),
-(903, (SELECT id FROM departments WHERE code = 'OPS'), NULL, 'Operations Lead', '2025-10-01'::date, NULL, 'lead');
+(903, (SELECT id FROM departments WHERE code = 'OPS'), NULL, 'Operations Lead', '2025-10-01'::date, NULL, 'lead'),
+(904, (SELECT id FROM departments WHERE code = 'AER'), NULL, 'Head of Aerodynamics', '2025-10-01'::date, NULL, 'head');
 
+-- The department head needs no scope row: their head role covers every
+-- division of Aerodynamics (issue #230).
 -- The member has no scopes. The division lead edits everything in Mission
 -- Analysis (target 'all' covers positions and applications). The operations
 -- lead has org-wide edit on positions, the access the recruitment switch
@@ -726,4 +731,5 @@ INSERT INTO better_auth."user" (id, email, name, "emailVerified", "createdAt", "
 ('7e57e500-0000-4000-8000-000000000001', 'applicant.tester@example.com', 'Tester Applicant', true, NOW(), NOW()),
 ('7e57e500-0000-4000-8000-000000000002', 'member.tester@example.com', 'Tester Member', true, NOW(), NOW()),
 ('7e57e500-0000-4000-8000-000000000003', 'division-lead.tester@example.com', 'Tester Division Lead', true, NOW(), NOW()),
-('7e57e500-0000-4000-8000-000000000004', 'operations-lead.tester@example.com', 'Tester Operations Lead', true, NOW(), NOW());
+('7e57e500-0000-4000-8000-000000000004', 'operations-lead.tester@example.com', 'Tester Operations Lead', true, NOW(), NOW()),
+('7e57e500-0000-4000-8000-000000000005', 'department-head.tester@example.com', 'Tester Department Head', true, NOW(), NOW());

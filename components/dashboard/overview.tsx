@@ -12,7 +12,12 @@ import {
 import { sentLabel } from "@/lib/dashboard/my-applications";
 import {
   checklistCount,
+  divisionInitials,
+  divisionShortName,
+  divisionsMeta,
   interviewOrder,
+  leadsLabel,
+  type DivisionSummary,
   interviewSlot,
   interviewSummary,
   rosterSize,
@@ -45,6 +50,17 @@ export function OverviewView({ overview }: { overview: Overview }) {
           interviews={[]}
           activity={overview.activity}
           phone="full"
+        />
+      );
+    case "department":
+      return (
+        <LeadView
+          phone="board-56m"
+          stats={overview.stats}
+          attention={overview.attention}
+          divisions={overview.divisions}
+          interviews={overview.interviews}
+          activity={overview.activity}
         />
       );
     case "division":
@@ -82,22 +98,27 @@ const APPLICANT_GRID =
 type LeadPhoneForm = "full" | "board-56m";
 
 // Boards 40 and 56: four figures, then what needs the lead's attention (and,
-// on 56, the upcoming interviews under it) beside the recent activity.
+// on 56, the upcoming interviews under it) beside the recent activity. Board
+// 62 (a department head, issue #230) puts the Divisions panel under the
+// attention rows; its phone board 62m keeps the interviews and drops the
+// activity, as 56m does, while board 62 shows no interviews.
 function LeadView({
   stats,
   attention,
+  divisions = null,
   interviews,
   activity,
   phone,
 }: {
   stats: readonly Stat[];
   attention: readonly AttentionItem[];
+  divisions?: readonly DivisionSummary[] | null;
   interviews: readonly UpcomingInterview[];
   activity: readonly ActivityItem[];
   phone: LeadPhoneForm;
 }) {
   const compact = phone === "board-56m";
-  const left = attention.length > 0 || interviews.length > 0;
+  const left = attention.length > 0 || interviews.length > 0 || (divisions !== null && divisions.length > 0);
   return (
     <>
       <h1 className="sr-only">Overview</h1>
@@ -111,7 +132,12 @@ function LeadView({
           {left && (
             <div className="flex min-w-0 flex-col gap-4">
               {attention.length > 0 && <AttentionPanel attention={attention} compact={compact} />}
-              {interviews.length > 0 && <InterviewsPanel interviews={interviews} />}
+              {divisions !== null && divisions.length > 0 && <DivisionsPanel divisions={divisions} />}
+              {interviews.length > 0 && (
+                <div className={divisions !== null ? "md:hidden" : undefined}>
+                  <InterviewsPanel interviews={interviews} />
+                </div>
+              )}
             </div>
           )}
           {activity.length > 0 && (
@@ -223,6 +249,63 @@ function InterviewsPanel({ interviews }: { interviews: readonly UpcomingIntervie
       })}
     </Panel>
   );
+}
+
+// Board 62: one row per division, its initials on an accent tile, who leads
+// it and how many people it has, and what waits there on the right. Board
+// 62m: each division is its own card, its initials in a small mono tag, the
+// leads on one line and the counts on the next, and a tap opens its
+// Positions tab.
+function DivisionsPanel({ divisions }: { divisions: readonly DivisionSummary[] }) {
+  return (
+    <Panel title="Divisions" meta={divisionsMeta(divisions)} phoneMeta={String(divisions.length)} phoneCards>
+      {divisions.map((division) => {
+        const lead = leadsLabel(division.leads);
+        const leads = lead === null ? "No lead yet" : `${lead} ${division.leads.join(", ")}`;
+        const counts = `${division.newApplications} new · ${division.openPositions} open`;
+        return (
+          <li key={division.id}>
+            <Link
+              href={`/dashboard/positions?division=${division.id}`}
+              className={`flex items-center gap-4 rounded-xl px-4 py-3.5 transition-colors duration-300 ease-out hover:bg-white-5 md:rounded-none md:px-5 ${FOCUS} focus-visible:-outline-offset-2`}
+            >
+              <span
+                aria-hidden
+                className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-accent/30 bg-accent-soft text-[14px] font-semibold text-accent md:flex"
+              >
+                {divisionInitials(division.name)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span aria-hidden className="rounded bg-white-10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-text-2 md:hidden">
+                    {divisionInitials(division.name)}
+                  </span>
+                  <span className="block truncate text-[16px] font-semibold md:hidden">{divisionShortName(division.name)}</span>
+                  <span className="hidden truncate text-[14px] font-medium md:block">{division.name}</span>
+                </span>
+                <span className="mt-1 block truncate text-[13px] text-prt-muted md:mt-0">
+                  <span className="md:hidden">{lead === null ? leads : `${lead} · ${division.leads.join(", ")}`}</span>
+                  <span className="hidden md:inline">
+                    {leads} · {rosterSize(division.people)}
+                  </span>
+                </span>
+                <span className="mt-0.5 block truncate text-[13px] text-text-2 md:hidden">
+                  {rosterSize(division.people)} · {plural(division.newApplications, "new application", "new applications")} ·{" "}
+                  {division.openPositions} open
+                </span>
+              </span>
+              <span className="hidden shrink-0 text-[13px] font-semibold tabular-nums md:block">{counts}</span>
+              <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-prt-muted md:hidden" strokeWidth={1.75} />
+            </Link>
+          </li>
+        );
+      })}
+    </Panel>
+  );
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 /** A link to the page that handles the row, or Dismiss on a stored notice. */

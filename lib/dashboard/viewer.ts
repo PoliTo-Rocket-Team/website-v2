@@ -7,6 +7,7 @@ import { divisionRoleOf, type DivisionRole, type RoleType } from "./team";
 
 export const VIEWER_KINDS = [
   "operations-lead",
+  "department-head",
   "division-lead",
   "member",
   "non-member",
@@ -16,6 +17,7 @@ export type ViewerKind = (typeof VIEWER_KINDS)[number];
 
 export const VIEWER_KIND_LABELS: Readonly<Record<ViewerKind, string>> = {
   "operations-lead": "Operations lead",
+  "department-head": "Department head",
   "division-lead": "Division lead",
   member: "Member",
   "non-member": "Non-member",
@@ -60,6 +62,8 @@ export function initialsOf(name: string): string {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
+export type ScopeKind = "admin" | "org" | "department" | "division" | "website";
+
 /** One of a member's active roles, as the viewer reads it. */
 export type ActiveRoleRef = {
   readonly type: RoleType;
@@ -69,7 +73,7 @@ export type ActiveRoleRef = {
 
 /** The scope rows and every active role that decide a real member's viewer kind. */
 export type MemberAccess = {
-  readonly scopes: readonly ("admin" | "org" | "department" | "division" | "website")[];
+  readonly scopes: readonly ScopeKind[];
   /** Every role they hold now; none when every role they held has ended. */
   readonly activeRoles: readonly ActiveRoleRef[];
 };
@@ -79,14 +83,16 @@ export type MemberAccess = {
  * #229). No member row is a non-member (an applicant), and so is a member row
  * with no active role: someone who left or was moved to alumni gets the
  * applicant's pages, whatever scope rows remain (issue #201). Org-wide or
- * admin access is the operations lead's; a department or division scope, or a
- * lead or head role in any division, is a division lead's; anyone else on the
- * team is a member.
+ * admin access is the operations lead's; a role of type `head` is a
+ * department head's (issue #230); a department or division scope, or a lead
+ * role in any division, is a division lead's; anyone else on the team is a
+ * member.
  */
 export function viewerKindOf(access: MemberAccess | null): ViewerKind {
   if (access === null || access.activeRoles.length === 0) return "non-member";
   if (access.scopes.some((s) => s === "admin" || s === "org")) return "operations-lead";
-  const leadsSomething = access.activeRoles.some((r) => r.type === "lead" || r.type === "head");
+  if (access.activeRoles.some((r) => r.type === "head")) return "department-head";
+  const leadsSomething = access.activeRoles.some((r) => r.type === "lead");
   if (access.scopes.some((s) => s === "department" || s === "division") || leadsSomething) return "division-lead";
   return "member";
 }
@@ -115,4 +121,60 @@ export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const kind = viewerKindOf(access);
   if (kind === "non-member") return { kind, siteContent: false };
   return { kind, siteContent: access?.scopes.includes("website") ?? false };
+}
+
+/** A scope row as `readIdentity` reads it: which unit it opens. */
+export type ScopeUnitRow = {
+  readonly scope: ScopeKind;
+  readonly divisionId: number | null;
+  readonly deptId: number | null;
+};
+
+/** An active role as `readIdentity` reads it: its type, its division, and its department. */
+export type ScopedRole = {
+  readonly type: RoleType;
+  readonly divisionId: number | null;
+  /** `roles.dept_id`, or the department of the role's division when that is null. */
+  readonly departmentId: number | null;
+};
+
+/** The divisions and departments a viewer's figures and pages cover. */
+export type ViewerUnits = {
+  readonly divisionIds: readonly number[];
+  readonly departmentIds: readonly number[];
+};
+
+/**
+ * What a team member's pages cover (issues #184, #229, #230): the divisions
+ * and departments their scope rows name, plus each active role's own unit. A
+ * role that leads its division (`divisionRoleOf`) adds that division; a head
+ * role adds its department, with no `department` scope row needed.
+ */
+export function viewerUnitsOf(scopeRows: readonly ScopeUnitRow[], roles: readonly ScopedRole[]): ViewerUnits {
+  const divisionIds = scopeRows.flatMap((s) => (s.scope === "division" && s.divisionId !== null ? [s.divisionId] : []));
+  const departmentIds = scopeRows.flatMap((s) => (s.scope === "department" && s.deptId !== null ? [s.deptId] : []));
+  for (const role of roles) {
+    if (role.divisionId !== null && divisionRoleOf(role.type) === "lead") divisionIds.push(role.divisionId);
+    if (role.type === "head" && role.departmentId !== null) departmentIds.push(role.departmentId);
+  }
+  return { divisionIds: [...new Set(divisionIds)], departmentIds: [...new Set(departmentIds)] };
+}
+
+/** A division as the org tables hold it. */
+export type OrgDivisionRow = {
+  readonly id: number;
+  readonly name: string;
+  readonly departmentId: number | null;
+  /** `divisions.closed_at`; null while the division is open. */
+  readonly closedAt: string | null;
+};
+
+/**
+ * The divisions a department head sees (issue #230): every open division of
+ * their department, by name, and none from another department.
+ */
+export function headDivisionsOf<D extends OrgDivisionRow>(departmentId: number, divisions: readonly D[]): D[] {
+  return divisions
+    .filter((d) => d.departmentId === departmentId && d.closedAt === null)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

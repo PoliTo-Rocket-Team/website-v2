@@ -71,9 +71,9 @@ function savedForm(content: PositionContent): Form {
   };
 }
 
-function emptyForm(divisions: readonly DivisionChoice[]): Form {
+function emptyForm(startDivisionId: number | null): Form {
   return {
-    divisionId: divisions.length === 1 ? divisions[0].id : null,
+    divisionId: startDivisionId,
     title: "",
     description: "",
     required: [""],
@@ -88,17 +88,23 @@ export function NewPositionDrawer({
   open,
   onOpenChange,
   divisions,
+  startDivisionId,
+  divisionHint,
   nextId,
   editing = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   divisions: readonly DivisionChoice[];
+  /** The division New position starts on (`startingDivisionId`); null leaves the choice to the viewer. */
+  startDivisionId: number | null;
+  /** The Division field's hint when there is a choice: "2 in Aerodynamics" (board 63b); else "you lead 3". */
+  divisionHint?: string;
   nextId: number;
   /** The saved role to edit; null for New position. The caller keys the drawer by it, so each opening starts from what is saved. */
   editing?: PositionRow | null;
 }) {
-  const [form, setForm] = useState<Form>(() => (editing ? savedForm(editing.content) : emptyForm(divisions)));
+  const [form, setForm] = useState<Form>(() => (editing ? savedForm(editing.content) : emptyForm(startDivisionId)));
   const [errors, setErrors] = useState<NewPositionErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const field = divisionField(divisions);
@@ -109,7 +115,7 @@ export function NewPositionDrawer({
   const close = (next: boolean) => {
     onOpenChange(next);
     if (!next) {
-      setForm(editing ? savedForm(editing.content) : emptyForm(divisions));
+      setForm(editing ? savedForm(editing.content) : emptyForm(startDivisionId));
       setErrors({});
     }
   };
@@ -200,7 +206,7 @@ export function NewPositionDrawer({
             )}
           </Field>
         ) : (
-          <Field label="Division" hint={`you lead ${field.divisions.length}`} error={errors.division}>
+          <Field label="Division" hint={divisionHint ?? `you lead ${field.divisions.length}`} error={errors.division}>
             {(id, describedBy) => (
               <DivisionMenu id={id} describedBy={describedBy} divisions={field.divisions} value={chosen} onChange={(d) => set("divisionId", d.id)} invalid={errors.division !== undefined} />
             )}
