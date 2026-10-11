@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dummyDivisionAccess } from "./division";
+import { dummyAccessPage } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf } from "./notices";
 import { divisions, people, personFor, positions } from "./team";
@@ -57,12 +57,12 @@ test("moving someone to alumni takes them off the tree and onto the Alumni page"
 
 test("moving someone to alumni ends their access and keeps them on record", async () => {
   const lead = pages("division-lead");
-  const before = dummyDivisionAccess(personFor["division-lead"], editedRoster(NO_EDITS))!;
+  const before = dummyAccessPage("division-lead", personFor["division-lead"], editedRoster(NO_EDITS))!;
   assert.ok(before.grants.some((g) => g.person.name === "Luca Marino"));
 
   assert.equal(await lead.view.teamWrites!.moveToAlumni(4, { from: 2024, to: 2026, reason: null }), true);
   const edits = lead.saved[0];
-  const after = dummyDivisionAccess(personFor["division-lead"], editedRoster(edits))!;
+  const after = dummyAccessPage("division-lead", personFor["division-lead"], editedRoster(edits))!;
   assert.ok(!after.grants.some((g) => g.person.name === "Luca Marino"), "their access ends");
   assert.ok(!after.people.some((p) => p.name === "Luca Marino"), "no access can be given to them");
   const alumni = await pages("operations-lead", edits).view.alumni();
@@ -94,12 +94,17 @@ test("a lead promotes a member beside them, or hands the division over and becom
   const together = pages("division-lead");
   assert.equal(await together.view.teamWrites!.promote(7, "together"), true);
   const both = await pages("division-lead", together.saved[0]).view.members();
-  assert.deepEqual(both.rows.filter((r) => r.role === "division-lead").map((r) => r.name).sort(), ["Marco Bianchi", "Sara Conti"]);
+  // Pietro Ricci already leads Mission Analysis beside Marco (issue #230).
+  assert.deepEqual(both.rows.filter((r) => r.role === "division-lead").map((r) => r.name).sort(), [
+    "Marco Bianchi",
+    "Pietro Ricci",
+    "Sara Conti",
+  ]);
 
   const handOver = pages("division-lead");
   assert.equal(await handOver.view.teamWrites!.promote(7, "hand-over"), true);
   const after = await pages("division-lead", handOver.saved[0]).view.members();
-  assert.deepEqual(after.rows.filter((r) => r.role === "division-lead").map((r) => r.name), ["Sara Conti"]);
+  assert.deepEqual(after.rows.filter((r) => r.role === "division-lead").map((r) => r.name).sort(), ["Pietro Ricci", "Sara Conti"]);
 
   assert.equal(await pages("division-lead").view.teamWrites!.promote(74, "together"), false, "another division");
   assert.equal(await pages("operations-lead").view.teamWrites!.promote(7, "together"), false, "only a division lead promotes");

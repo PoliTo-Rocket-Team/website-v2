@@ -11,6 +11,24 @@ import type { DivisionChoice, PositionContent } from "./new-position";
 /** A position as a filter or link names it: the dummy slug, or the database id as text. */
 export type PositionRef = string;
 
+/** A department head's department as the recruitment pages name it, with its open divisions for the tabs. */
+export type DepartmentUnit = {
+  /** "Aerodynamics" */
+  readonly name: string;
+  /** Its open divisions in tab order; the full name is what rows name and tabs key on. */
+  readonly divisions: readonly { readonly id: number; readonly name: string }[];
+};
+
+/** The tab a `?division=<id>` link opens (the Overview's Divisions panel): that division's name, else All divisions. */
+export function divisionTabFor(department: DepartmentUnit, asked: string | null): string | null {
+  return department.divisions.find((d) => String(d.id) === asked)?.name ?? null;
+}
+
+/** "Aerodynamics" reads "Aerodynamics Department" in a page's intro. */
+export function departmentLabel(name: string): string {
+  return /\bDepartment$/.test(name) ? name : `${name} Department`;
+}
+
 export type PositionRow = {
   readonly id: number;
   readonly ref: PositionRef;
@@ -46,6 +64,12 @@ export type PositionsPage = (
       readonly scope: "division";
       /** The lead's division; null when their access names none. */
       readonly division: string | null;
+      readonly positions: readonly PositionRow[];
+    }
+  | {
+      /** A department head (board 63, issue #230): every division of their department, under division tabs. */
+      readonly scope: "department";
+      readonly department: DepartmentUnit;
       readonly positions: readonly PositionRow[];
     }
 ) & {
@@ -131,13 +155,22 @@ export type ApplicationEntry = {
   readonly otherApplications: readonly OtherApplication[];
 };
 
+/** Whose applications the page lists: the whole team's, a lead's division's, or a head's department's (board 64, issue #230). */
+export type ApplicationsScope =
+  | { readonly kind: "team" }
+  | {
+      readonly kind: "division";
+      /** As the page's intro names it; null when the lead's access names none. */
+      readonly division: string | null;
+    }
+  | { readonly kind: "department"; readonly department: DepartmentUnit };
+
 export type ApplicationsPage = {
-  /** The lead's division, as the page's intro names it; null for the whole team. */
-  readonly division: string | null;
+  readonly scope: ApplicationsScope;
   /** The moment the page is seen from (ISO): the interview picker greys out what is past. */
   readonly now: string;
-  /** The positions the viewer reaches, for the position filter. */
-  readonly positions: readonly { readonly ref: PositionRef; readonly title: string }[];
+  /** The positions the viewer reaches, for the position filter, with the division each sits in. */
+  readonly positions: readonly { readonly ref: PositionRef; readonly title: string; readonly division: string }[];
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };

@@ -107,7 +107,8 @@ export const people: readonly DummyPerson[] = ([
   [3, "Sofia Neri", member(1), M, 2024, { program: "Aerospace Eng.", study: "BSc · year 3" }],
   [4, "Luca Marino", member(1), M, 2024, { program: "Physics", study: "MSc · year 2", access: ["Positions · edit"] }],
   [5, "Elif Kaya", member(1), M, 2025, { email: "elif.kaya@gmail.com", hasPhoto: false, program: "Aerospace Eng.", study: "BSc · year 2" }],
-  [6, "Pietro Ricci", member(1), M, 2025, { hasPhoto: false, program: "Mechanical Eng.", study: "MSc · year 1" }],
+  // Leads Mission Analysis with Marco: the co-lead row on Access (board 60, issue #230).
+  [6, "Pietro Ricci", lead(1), "Mission Analysis Lead", 2025, { hasPhoto: false, program: "Mechanical Eng.", study: "MSc · year 1" }],
   [7, "Sara Conti", member(1), M, 2024, { pageTitle: "Mission Analyst", program: "Aerospace Eng.", study: "BSc · year 3", access: ["Applications · view"] }],
   [8, "Andrea Ferri", member(11), M, 2023, { access: ["Projects · edit"] }],
   [9, "Lorenzo De Luca", lead(10), "Avionics Software Lead", 2023],
@@ -263,9 +264,10 @@ function personById(id: number): DummyPerson {
 /** The team member each other viewer signs in as. */
 export const personFor = {
   "operations-lead": personById(1),
+  "department-head": personById(15),
   "division-lead": personById(2),
   member: personById(5),
-} as const satisfies Readonly<Record<"operations-lead" | "division-lead" | "member", DummyPerson>>;
+} as const satisfies Readonly<Record<"operations-lead" | "department-head" | "division-lead" | "member", DummyPerson>>;
 
 // In board 41's order. How many applications each has, and how many are new,
 // comes from ./applications.ts, never from a number kept here. Ids make the

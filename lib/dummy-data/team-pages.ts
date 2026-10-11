@@ -34,6 +34,7 @@ const org: OrgChart = { departments, divisions };
 /** The person each viewer signs in as; the applicant is not on the team. */
 const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
   "operations-lead": 1,
+  "department-head": 15,
   "division-lead": 2,
   member: 5,
   "non-member": null,

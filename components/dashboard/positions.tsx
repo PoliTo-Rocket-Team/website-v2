@@ -6,7 +6,10 @@ import { toast } from "sonner";
 import { setPositionOpen, setRecruitment } from "@/app/dashboard/recruitment-actions";
 import type { WriteResult } from "@/lib/dashboard/write";
 import type { RecruitmentControl } from "@/lib/apply/recruitment-switch";
+import { divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
+import { startingDivisionId } from "@/lib/dashboard/new-position";
 import {
+  departmentLabel,
   departmentsOf,
   filterPositions,
   POSITION_TABS,
@@ -16,6 +19,7 @@ import {
   type PositionTab,
 } from "@/lib/dashboard/recruitment";
 import { FilterMenu, SearchField, Segmented, Toggle } from "./controls";
+import { DivisionTabs } from "./division-tabs";
 import { DrawerPage } from "./drawer";
 import { NewPositionDrawer } from "./new-position-drawer";
 import { PRIMARY_PILL } from "./page-header";
@@ -48,9 +52,19 @@ type PositionDrawer = { readonly kind: "closed" } | { readonly kind: "new" } | {
 
 const CLOSED: PositionDrawer = { kind: "closed" };
 
-export function PositionsView({ page, recruitment }: { page: PositionsPage; recruitment: RecruitmentControl }) {
+export function PositionsView({
+  page,
+  recruitment,
+  initialDivision = null,
+}: {
+  page: PositionsPage;
+  recruitment: RecruitmentControl;
+  /** The division tab a link from the Overview opens; null is All divisions, where the page starts (board 63, issue #230). */
+  initialDivision?: DivisionTab;
+}) {
   const [tab, setTab] = useState<PositionTab>("all");
   const [department, setDepartment] = useState<string | null>(null);
+  const [divisionTab, setDivisionTab] = useState<DivisionTab>(initialDivision);
   const [search, setSearch] = useState("");
   const [drawer, setDrawer] = useState<PositionDrawer>(CLOSED);
   const editing = drawer.kind === "edit" ? (page.positions.find((p) => p.id === drawer.id) ?? null) : null;
@@ -58,8 +72,13 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
   const create = () => setDrawer({ kind: "new" });
   const edit = (row: PositionRow) => setDrawer({ kind: "edit", id: row.id });
   const team = page.scope === "team";
-  const counts = positionTabCounts(page.positions);
-  const rows = filterPositions(page.positions, { tab, department, search });
+  const divisionOptions =
+    page.scope === "department"
+      ? divisionTabs(page.department.divisions.map((d) => d.name), page.positions.map((p) => p.division))
+      : null;
+  const inTab = page.positions.filter((p) => inDivisionTab(p.division, divisionTab));
+  const counts = positionTabCounts(inTab);
+  const rows = filterPositions(inTab, { tab, department, search });
   const canCreate = page.newPosition.divisions.length > 0;
 
   return (
@@ -69,9 +88,11 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
         <div className="min-w-0">
           <h1 className="text-[28px] font-bold leading-tight tracking-[-0.01em]">Positions</h1>
           <p className="mt-1 hidden text-[14px] text-prt-muted md:block">
-            {team
+            {page.scope === "team"
               ? "Open or close roles. Open roles show on the site while recruitment is on."
-              : `Roles in ${page.division ? `the ${page.division}` : "your division"}. Open roles show on the site while recruitment is on.`}
+              : page.scope === "department"
+                ? `Roles in every division of the ${departmentLabel(page.department.name)}. Open roles show on the site while recruitment is on.`
+                : `Roles in ${page.division ? `the ${page.division}` : "your division"}. Open roles show on the site while recruitment is on.`}
           </p>
         </div>
         {canCreate && (
@@ -93,11 +114,19 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
       {page.scope === "team" ? (
         <RecruitmentSwitch open={recruitment.recruitment.isOpen} canSwitch={recruitment.canSwitch} />
       ) : (
-        <RecruitmentNotice open={recruitment.recruitment.isOpen} />
+        <RecruitmentNotice open={recruitment.recruitment.isOpen} department={page.scope === "department"} />
       )}
 
       <div className="mt-4 flex flex-col gap-3 md:mt-6 md:flex-row md:items-center">
-        <div className="flex flex-wrap items-center gap-3">
+        <div
+          className={`flex gap-3 ${divisionOptions ? "flex-col items-start md:flex-row md:flex-wrap md:items-center" : "flex-wrap items-center"}`}
+        >
+          {divisionOptions && (
+            <>
+              <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} />
+              <span aria-hidden className="hidden h-5 w-px bg-hairline md:block" />
+            </>
+          )}
           <Segmented
             label="Show positions"
             value={tab}
@@ -148,10 +177,14 @@ export function PositionsView({ page, recruitment }: { page: PositionsPage; recr
       </ul>
 
       <NewPositionDrawer
-        key={editing ? `edit-${editing.id}` : "new"}
+        key={editing ? `edit-${editing.id}` : `new-${divisionTab ?? "all"}`}
         open={drawerOpen}
         onOpenChange={(open) => !open && setDrawer(CLOSED)}
         divisions={page.newPosition.divisions}
+        startDivisionId={startingDivisionId(page.newPosition.divisions, divisionTab)}
+        divisionHint={
+          page.scope === "department" ? `${page.newPosition.divisions.length} in ${page.department.name}` : undefined
+        }
         nextId={page.newPosition.nextId}
         editing={editing}
       />
@@ -271,7 +304,16 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
 
 // Boards 57 and 57m: a division lead sees the switch's state, not the switch,
 // in one sentence and nothing more. On a phone the strip takes the state's tint.
-function RecruitmentNotice({ open }: { open: boolean }) {
+// A department head's strip names their department's roles from md (board 63).
+function RecruitmentNotice({ open, department }: { open: boolean; department: boolean }) {
+  const whose = department ? (
+    <>
+      <span className="md:hidden">Your</span>
+      <span className="hidden md:inline">Your department&rsquo;s</span>
+    </>
+  ) : (
+    "Your"
+  );
   return (
     <p
       className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-[13px] md:mt-6 md:items-center md:border-hairline md:bg-panel/60 md:px-5 ${
@@ -281,7 +323,9 @@ function RecruitmentNotice({ open }: { open: boolean }) {
       <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full md:mt-0 ${open ? "bg-success" : "bg-dim"}`} />
       <span>
         <span className="font-semibold text-prt-text">{open ? "Recruitment is open." : "Recruitment is closed."}</span>{" "}
-        <span className="text-text-2">{open ? "Your open roles are public on the site." : "Your open roles are hidden on the site."}</span>
+        <span className="text-text-2">
+          {whose} open roles are {open ? "public" : "hidden"} on the site.
+        </span>
       </span>
     </p>
   );

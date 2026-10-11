@@ -1,14 +1,21 @@
 import { randomInt } from "node:crypto";
 import {
-  ACCESS_TARGETS,
   checkRemoveAllAccess,
   checkSaveAccess,
   heldLevel,
+  placesOf,
+  ROLE_HELD_ACCESS,
+  samePlace,
+  type AccessDivision,
   type AccessGrant,
   type AccessLevel,
+  type AccessPage,
   type AccessPerson,
+  type AccessPlace,
   type AccessTarget,
-  type DivisionAccess,
+  type AccessUnit,
+  type HeldAccess,
+  type RoleAccess,
 } from "@/lib/dashboard/division-access";
 import {
   checkNewOrder,
@@ -23,11 +30,13 @@ import {
 } from "@/lib/dashboard/orders";
 import { divisionIdOf, type RosterEntry } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { divisions, people, type DummyPerson } from "./team";
+import { departments, divisions, people, type DummyPerson } from "./team";
 
-// The division lead's Access and Orders pages for the test developer (boards
-// 60 to 61d, issues #145 and #172). The lead is Marco Bianchi, Mission
-// Analysis. The people come from the roster as the test developer left it
+// The Access and Orders pages for the test developer (boards 60 to 61d,
+// issues #145 and #172; the department head's Access, boards 65 and 65b,
+// issue #230). The division lead is Marco Bianchi, Mission Analysis, who leads
+// it with Pietro Ricci; the department head is Chiara Rinaldi, Aerodynamics.
+// The people come from the roster as the test developer left it
 // (./team-pages.ts), so someone moved to alumni has no access here any more.
 
 export type DummyHeldAccess = {
@@ -44,23 +53,33 @@ export const heldAccess = [
   { personId: 2, target: "orders", level: "edit" },
 ] as const satisfies readonly DummyHeldAccess[];
 
+/** Where a grant applies: one division, or a whole department. */
+export type DummyPlace = { readonly divisionId: number } | { readonly departmentId: number };
+
 export type DummyGrant = {
   readonly id: number;
   readonly personId: number;
-  readonly divisionId: number;
+  readonly place: DummyPlace;
   readonly target: AccessTarget;
   readonly level: AccessLevel;
   readonly givenById: number;
   readonly givenOn: string;
 };
 
-/** Board 60's table: Sara Conti, Luca Marino and Sofia Neri, each area in the order given. */
+/**
+ * Board 60's table: Sara Conti, Luca Marino and Sofia Neri, each area in the
+ * order given. Board 65 adds Optimization and Analysis's grants and one the
+ * head gave across the whole department.
+ */
 export const accessGrants = [
-  { id: 1, personId: 7, divisionId: 1, target: "applications", level: "view", givenById: 2, givenOn: "2026-10-02" },
-  { id: 2, personId: 7, divisionId: 1, target: "positions", level: "edit", givenById: 2, givenOn: "2026-10-02" },
-  { id: 3, personId: 4, divisionId: 1, target: "positions", level: "view", givenById: 2, givenOn: "2026-09-28" },
-  { id: 4, personId: 4, divisionId: 1, target: "applications", level: "edit", givenById: 2, givenOn: "2026-09-28" },
-  { id: 5, personId: 3, divisionId: 1, target: "members", level: "view", givenById: 2, givenOn: "2026-10-02" },
+  { id: 1, personId: 7, place: { divisionId: 1 }, target: "applications", level: "view", givenById: 2, givenOn: "2026-10-02" },
+  { id: 2, personId: 7, place: { divisionId: 1 }, target: "positions", level: "edit", givenById: 2, givenOn: "2026-10-02" },
+  { id: 3, personId: 4, place: { divisionId: 1 }, target: "positions", level: "view", givenById: 2, givenOn: "2026-09-28" },
+  { id: 4, personId: 4, place: { divisionId: 1 }, target: "applications", level: "edit", givenById: 2, givenOn: "2026-09-28" },
+  { id: 5, personId: 3, place: { divisionId: 1 }, target: "members", level: "view", givenById: 2, givenOn: "2026-10-02" },
+  { id: 6, personId: 32, place: { divisionId: 2 }, target: "positions", level: "view", givenById: 20, givenOn: "2026-09-28" },
+  { id: 7, personId: 32, place: { divisionId: 2 }, target: "applications", level: "edit", givenById: 20, givenOn: "2026-09-28" },
+  { id: 8, personId: 13, place: { departmentId: 1 }, target: "members", level: "view", givenById: 15, givenOn: "2026-10-02" },
 ] as const satisfies readonly DummyGrant[];
 
 export type DummyOrder = OrderState & {
@@ -114,41 +133,92 @@ function localId(): number {
   return randomInt(1_000_000, 2_000_000_000);
 }
 
+function accessDivision(id: number): AccessDivision {
+  return { id, name: divisionOf(id).name };
+}
+
 function accessPerson(entry: RosterEntry): AccessPerson {
-  return { id: entry.id, name: entry.name, standing: entry.placement.role === "member" ? "member" : "lead" };
+  const divisionId = divisionIdOf(entry.placement);
+  return {
+    id: entry.id,
+    name: entry.name,
+    standing: entry.placement.role === "member" ? "member" : "lead",
+    division: divisionId === null ? null : accessDivision(divisionId),
+  };
+}
+
+/** The viewers an Access page is for. */
+export type AccessViewerKind = "division-lead" | "department-head";
+
+/** The unit a viewer's Access page is about: a lead's division, a head's department; null when their place is neither. */
+function unitOf(kind: AccessViewerKind, viewer: DummyPerson): AccessUnit | null {
+  const placement = viewer.placement;
+  if (kind === "division-lead" && placement.role === "division-lead") {
+    return { kind: "division", division: accessDivision(placement.divisionId) };
+  }
+  if (kind === "department-head" && placement.role === "head") {
+    const department = departments.find((d) => d.id === placement.departmentId)!;
+    return {
+      kind: "department",
+      department,
+      divisions: divisions
+        .filter((d) => d.departmentId === department.id)
+        .map((d) => accessDivision(d.id))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+  return null;
+}
+
+function inUnit(unit: AccessUnit, divisionId: number | null): boolean {
+  if (divisionId === null) return false;
+  return unit.kind === "division" ? unit.division.id === divisionId : unit.divisions.some((d) => d.id === divisionId);
+}
+
+function placeOf(unit: AccessUnit, place: DummyPlace): AccessPlace | null {
+  return placesOf(unit).find((p) =>
+    "divisionId" in place ? p.kind === "division" && p.division.id === place.divisionId : p.kind === "department" && p.department.id === place.departmentId,
+  ) ?? null;
+}
+
+function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
+  if (unit.kind === "department") return ROLE_HELD_ACCESS;
+  return heldAccess.filter((h) => h.personId === viewer.id).map((h) => ({ target: h.target, level: h.level }));
 }
 
 /**
- * Boards 60 and 60b for a lead; null for anyone who leads no division. Only
- * people on `roster` hold access: a grant to someone moved to alumni is gone.
+ * Boards 60 and 60b for a lead, 65 and 65b for a head; null for anyone else.
+ * Only people on `roster` hold access: a grant to someone moved to alumni is
+ * gone. The other leads of the unit show with the access their role gives.
  */
-export function dummyDivisionAccess(lead: DummyPerson, roster: readonly RosterEntry[]): DivisionAccess | null {
-  if (lead.placement.role !== "division-lead") return null;
-  const divisionId = lead.placement.divisionId;
-  const inDivision = roster.filter((e) => divisionIdOf(e.placement) === divisionId);
-  const onTeam = new Map(inDivision.map((e) => [e.id, e]));
+export function dummyAccessPage(kind: AccessViewerKind, viewer: DummyPerson, roster: readonly RosterEntry[]): AccessPage | null {
+  const unit = unitOf(kind, viewer);
+  if (unit === null) return null;
+  const inside = roster.filter((e) => e.id !== viewer.id && inUnit(unit, divisionIdOf(e.placement)));
+  const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e)]));
+  const roleAccess = inside.flatMap((e): RoleAccess[] => {
+    const person = onTeam.get(e.id)!;
+    return person.standing === "lead" && person.division !== null
+      ? [{ person, place: { kind: "division", division: person.division } }]
+      : [];
+  });
   const grants = accessGrants.flatMap((g): AccessGrant[] => {
     const person = onTeam.get(g.personId);
-    if (g.divisionId !== divisionId || person === undefined) return [];
+    const place = placeOf(unit, g.place);
+    if (person === undefined || person.standing === "lead" || place === null) return [];
     return [
       {
         id: g.id,
-        person: accessPerson(person),
+        person,
+        place,
         target: g.target,
         level: g.level,
-        givenBy: g.givenById === lead.id ? "You" : personOf(g.givenById).name,
+        givenBy: g.givenById === viewer.id ? "You" : personOf(g.givenById).name,
         givenOn: g.givenOn,
       },
     ];
   });
-  return {
-    division: { id: divisionId, name: divisionOf(divisionId).name },
-    held: ACCESS_TARGETS.flatMap((target) =>
-      heldAccess.filter((h) => h.personId === lead.id && h.target === target).map((h) => ({ target, level: h.level })),
-    ),
-    grants,
-    people: inDivision.filter((e) => e.id !== lead.id).map(accessPerson),
-  };
+  return { unit, held: heldBy(viewer, unit), roleAccess, grants, people: [...onTeam.values()] };
 }
 
 /**
@@ -159,30 +229,38 @@ export function dummyDivisionAccess(lead: DummyPerson, roster: readonly RosterEn
  * check runs against the stored grants alone.
  */
 export function dummySaveAccess(
-  lead: DummyPerson,
+  kind: AccessViewerKind,
+  viewer: DummyPerson,
   roster: readonly RosterEntry[],
   input: unknown,
 ): WriteResult<readonly AccessGrant[]> {
-  const access = dummyDivisionAccess(lead, roster);
-  if (access === null) return refused("Only a division lead gives access here.");
+  const access = dummyAccessPage(kind, viewer, roster);
+  if (access === null) return refused("Only a division lead or a department head gives access here.");
   const checked = checkSaveAccess(access, input);
   if (!checked.ok) return refused(checked.error);
-  const { personId, changes } = checked.value;
+  const { personId, place, changes } = checked.value;
   const person = access.people.find((p) => p.id === personId)!;
-  const kept = access.grants.filter((g) => g.person.id === personId && !changes.some((c) => c.target === g.target));
+  const kept = access.grants.filter(
+    (g) => g.person.id === personId && !(samePlace(g.place, place) && changes.some((c) => c.target === g.target)),
+  );
   const givenOn = today();
   // Ids rise in area order, as one database insert's do, so the chips read in that order.
   const first = localId();
   const given = changes
     .flatMap((c) => (c.kind === "remove" ? [] : [c]))
-    .map((c, i): AccessGrant => ({ id: first + i, person, target: c.target, level: c.to, givenBy: "You", givenOn }));
+    .map((c, i): AccessGrant => ({ id: first + i, person, place, target: c.target, level: c.to, givenBy: "You", givenOn }));
   return written([...kept, ...given]);
 }
 
 /** Checks Remove all access as the database side does; nothing is stored. */
-export function dummyRemoveAllAccess(lead: DummyPerson, roster: readonly RosterEntry[], personId: number): WriteResult<null> {
-  const access = dummyDivisionAccess(lead, roster);
-  if (access === null) return refused("Only a division lead removes access here.");
+export function dummyRemoveAllAccess(
+  kind: AccessViewerKind,
+  viewer: DummyPerson,
+  roster: readonly RosterEntry[],
+  personId: number,
+): WriteResult<null> {
+  const access = dummyAccessPage(kind, viewer, roster);
+  if (access === null) return refused("Only a division lead or a department head removes access here.");
   const checked = checkRemoveAllAccess(access, personId);
   return checked.ok ? written(null) : refused(checked.error);
 }
@@ -205,6 +283,11 @@ function orderOf(o: DummyOrder): Order {
     requestedOn: o.requestedOn,
     quote: o.quote,
   };
+}
+
+/** Every request from the given divisions: a department head's Overview counts the waiting ones (board 62). */
+export function dummyOrdersIn(divisionIds: readonly number[]): Order[] {
+  return orders.filter((o) => divisionIds.includes(o.divisionId)).map(orderOf);
 }
 
 /** Boards 61 to 61d for someone who holds Orders in their division; null for anyone else. */

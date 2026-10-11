@@ -12,7 +12,9 @@ import {
   type ActivityItem,
   type AttentionItem,
   type ChecklistItem,
+  type DepartmentOverview,
   type DivisionOverview,
+  type DivisionSummary,
   type PersonalOverview,
   type RosterPerson,
   type TeamOverview,
@@ -30,6 +32,8 @@ import {
   quietNote,
   type ApplicationEntry,
   type ApplicationsPage,
+  type ApplicationsScope,
+  type DepartmentUnit,
   type OtherApplication,
   type PositionRow,
   type PositionsPage,
@@ -40,10 +44,11 @@ import { departmentCode, divisionLabel, positionText } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
 import {
+  dummyAccessPage,
   dummyCancelOrder,
-  dummyDivisionAccess,
   dummyDivisionOrders,
   dummyEditOrder,
+  dummyOrdersIn,
   dummyPlaceOrder,
   dummyRemoveAllAccess,
   dummySaveAccess,
@@ -183,6 +188,15 @@ function myDivisionId(kind: "division-lead" | "member"): number {
   return divisionIdOfPerson(personFor[kind])!;
 }
 
+/** The department head viewer's department (Aerodynamics) and its divisions, in tab order (issue #230). */
+function headDepartment() {
+  const placement = personFor["department-head"].placement;
+  const id = placement.role === "head" ? placement.departmentId : -1;
+  const department = departments.find((d) => d.id === id)!;
+  const own = divisions.filter((d) => d.departmentId === id).sort((a, b) => a.name.localeCompare(b.name));
+  return { ...department, divisions: own, divisionIds: own.map((d) => d.id) as number[] };
+}
+
 /** Who a test developer signed in as `kind` is: the dashboard's user card and the navbar show this name. */
 export function dummyViewer(kind: ViewerKind): DashboardViewer {
   if (kind === "non-member") {
@@ -201,9 +215,13 @@ function departmentOf(divisionId: number) {
   return departments.find((d) => d.id === division.departmentId)!;
 }
 
-/** The positions a viewer reaches: the whole team, or the lead's division. */
+/** The positions a viewer reaches: the whole team, the head's department, or the lead's division. */
 function positionsFor(kind: ViewerKind, team: Team): readonly DummyPosition[] {
   if (kind === "operations-lead") return team.positions;
+  if (kind === "department-head") {
+    const ids = headDepartment().divisionIds;
+    return team.positions.filter((p) => ids.includes(p.divisionId));
+  }
   if (kind === "division-lead") return team.positions.filter((p) => p.divisionId === myDivisionId(kind));
   return [];
 }
@@ -249,9 +267,9 @@ function attentionFor(kind: ViewerKind, team: Team, dummyNotices: DummyNotices):
       {
         kind: "applications",
         title: `${plural(n, "new application", "new applications")} for ${p.title}`,
-        // The operations lead sees where the role sits; a division lead, how long it has waited (board 56).
+        // The operations lead sees where the role sits; a lead or head, how long it has waited (boards 56, 62m).
         detail:
-          kind === "division-lead"
+          kind === "division-lead" || kind === "department-head"
             ? oldestLine(oldestNew(p, team), NOW)
             : `${departmentOf(p.divisionId).name} · ${divisionOf(p.divisionId).name}`,
         action: { label: "Review", href: `/dashboard/applications?position=${p.slug}` },
@@ -282,22 +300,27 @@ function attentionFor(kind: ViewerKind, team: Team, dummyNotices: DummyNotices):
             action: { label: "Assign", href: "/dashboard/members" },
           },
         ];
-  const noPhoto =
-    kind === "division-lead"
-      ? noPhotoItem(
-          people
-            .filter((p) => divisionIdOfPerson(p) === myDivisionId(kind) && p.placement.role === "member" && !p.hasPhoto)
-            .map((p) => p.name),
-        )
-      : null;
-  const notices = kind === "operations-lead" || kind === "division-lead" ? dummyNoticeAttention(personFor[kind], dummyNotices, NOW) : [];
+  const covered = kind === "division-lead" ? [myDivisionId(kind)] : kind === "department-head" ? headDepartment().divisionIds : [];
+  const noPhoto = noPhotoItem(
+    people
+      .filter((p) => covered.includes(divisionIdOfPerson(p) ?? -1) && p.placement.role === "member" && !p.hasPhoto)
+      .map((p) => p.name),
+  );
+  const notices =
+    kind === "operations-lead" || kind === "department-head" || kind === "division-lead"
+      ? dummyNoticeAttention(personFor[kind], dummyNotices, NOW)
+      : [];
   return [...fresh, ...quiet, ...unassigned, ...(noPhoto ? [noPhoto] : []), ...notices];
 }
 
 function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): ActivityItem[] {
   const me = personFor[kind];
   const events =
-    kind === "operations-lead" ? activity : activity.filter((a) => a.divisionId === divisionIdOfPerson(me));
+    kind === "operations-lead"
+      ? activity
+      : kind === "department-head"
+        ? activity.filter((a) => a.divisionId !== null && headDepartment().divisionIds.includes(a.divisionId))
+        : activity.filter((a) => a.divisionId === divisionIdOfPerson(me));
   return events.slice(0, 5).map((a) => ({
     actor: a.actor,
     text: a.text,
@@ -335,13 +358,13 @@ function teamOverview(team: Team, notices: DummyNotices): TeamOverview {
 }
 
 /**
- * The lead's division's interviews: its applications at Interview, each booked
+ * The interviews in the given divisions: their applications at Interview, each booked
  * at the time the applicant picked or still waiting for a pick, so the
  * Overview names the people the Applications page shows at that stage.
  * Booked ones come first, soonest first.
  */
-function interviewsFor(divisionId: number, team: Team): UpcomingInterview[] {
-  const positions = new Map(team.positions.filter((p) => p.divisionId === divisionId).map((p) => [p.id, p]));
+function interviewsFor(divisionIds: readonly number[], team: Team): UpcomingInterview[] {
+  const positions = new Map(team.positions.filter((p) => divisionIds.includes(p.divisionId)).map((p) => [p.id, p]));
   const all = applicationsTo([...positions.values()], team).flatMap((a): UpcomingInterview[] => {
     if (a.state.stage !== "interview") return [];
     const who = { applicant: a.applicant.name, position: positions.get(a.positionId)!.title };
@@ -386,7 +409,51 @@ function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
       },
     ],
     attention: attentionFor(kind, team, notices),
-    interviews: interviewsFor(division.id, team),
+    interviews: interviewsFor([division.id], team),
+    activity: activityFor(kind),
+  };
+}
+
+/** Boards 62 and 62m: the department head's figures, attention, divisions, interviews and activity (issue #230). */
+function departmentOverview(team: Team, notices: DummyNotices): DepartmentOverview {
+  const kind = "department-head";
+  const department = headDepartment();
+  const scoped = positionsFor(kind, team);
+  const open = scoped.filter((p) => p.open);
+  const inDepartment = people.filter((p) => department.divisionIds.includes(divisionIdOfPerson(p) ?? -1));
+  const waiting = waitingOrders(dummyOrdersIn(department.divisionIds));
+  const openDivisions = new Set(open.map((p) => p.divisionId)).size;
+  return {
+    shape: "department",
+    stats: [
+      { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
+      { label: "Open positions", value: String(open.length), detail: `In ${plural(openDivisions, "division", "divisions")}` },
+      {
+        label: "Orders",
+        value: `${waiting.count} waiting`,
+        detail: `${formatEuro(waiting.total)} to be placed`,
+        live: waiting.count > 0,
+      },
+      {
+        label: "My department",
+        value: String(inDepartment.length),
+        detail: `${inDepartment.length === 1 ? "person" : "people"} in ${department.name}`,
+      },
+    ],
+    attention: attentionFor(kind, team, notices),
+    divisions: department.divisions.map((division): DivisionSummary => {
+      const own = scoped.filter((p) => p.divisionId === division.id);
+      const members = inDepartment.filter((p) => divisionIdOfPerson(p) === division.id);
+      return {
+        id: division.id,
+        name: division.name,
+        leads: members.filter((p) => p.placement.role === "division-lead").map((p) => p.name),
+        people: members.length,
+        newApplications: newApplications(own, team),
+        openPositions: own.filter((p) => p.open).length,
+      };
+    }),
+    interviews: interviewsFor(department.divisionIds, team),
     activity: activityFor(kind),
   };
 }
@@ -458,6 +525,8 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamS
   switch (kind) {
     case "operations-lead":
       return teamOverview(team, notices);
+    case "department-head":
+      return departmentOverview(team, notices);
     case "division-lead":
       return divisionOverview(team, notices);
     case "member":
@@ -496,10 +565,20 @@ function positionRow(p: DummyPosition, team: Team): PositionRow {
   };
 }
 
-/** The divisions a viewer may post a role in: every one for the operations lead, the lead's own for a division lead. */
+/**
+ * The divisions a viewer may post a role in: every one for the operations
+ * lead, their department's for a department head (board 63b), the lead's own
+ * for a division lead.
+ */
 function postableDivisions(kind: ViewerKind): DivisionChoice[] {
   const ids: number[] =
-    kind === "operations-lead" ? divisions.map((d) => d.id) : kind === "division-lead" ? [myDivisionId(kind)] : [];
+    kind === "operations-lead"
+      ? divisions.map((d) => d.id)
+      : kind === "department-head"
+        ? headDepartment().divisionIds
+        : kind === "division-lead"
+          ? [myDivisionId(kind)]
+          : [];
   return ids.map((id) => {
     const division = divisionOf(id);
     return {
@@ -521,6 +600,9 @@ function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
   const newPosition = { divisions: postableDivisions(kind), nextId: nextPositionId(team) };
   if (kind === "operations-lead") {
     return { scope: "team", positions: rows, newPosition };
+  }
+  if (kind === "department-head") {
+    return { scope: "department", department: departmentUnit(), positions: rows, newPosition };
   }
   if (kind === "division-lead") {
     const division = divisionOf(myDivisionId(kind)).name;
@@ -576,14 +658,31 @@ function applicationEntry(a: DummyApplication, position: DummyPosition, team: Te
   };
 }
 
+/** The head's department as the recruitment pages name it, with its division tabs. */
+function departmentUnit(): DepartmentUnit {
+  const department = headDepartment();
+  return { name: department.name, divisions: department.divisions.map((d) => ({ id: d.id, name: d.name })) };
+}
+
+function applicationsScope(kind: "operations-lead" | "department-head" | "division-lead"): ApplicationsScope {
+  switch (kind) {
+    case "operations-lead":
+      return { kind: "team" };
+    case "department-head":
+      return { kind: "department", department: departmentUnit() };
+    case "division-lead":
+      return { kind: "division", division: divisionOf(myDivisionId(kind)).name };
+  }
+}
+
 function applicationsPage(kind: ViewerKind, team: Team): ApplicationsPage {
-  if (kind !== "operations-lead" && kind !== "division-lead") throw new DashboardRefused("applications");
+  if (kind !== "operations-lead" && kind !== "department-head" && kind !== "division-lead") throw new DashboardRefused("applications");
   const scoped = positionsFor(kind, team);
   const byId = new Map(scoped.map((p) => [p.id, p]));
   return {
-    division: kind === "division-lead" ? divisionOf(myDivisionId(kind)).name : null,
+    scope: applicationsScope(kind),
     now: NOW.toISOString(),
-    positions: scoped.map((p) => ({ ref: p.slug, title: p.title })),
+    positions: scoped.map((p) => ({ ref: p.slug, title: p.title, division: divisionOf(p.divisionId).name })),
     applications: applicationsTo(scoped, team)
       .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
       .map((a) => applicationEntry(a, byId.get(a.positionId)!, team)),
@@ -647,6 +746,7 @@ export function dummyDashboardData(
   const team = teamOf(recruitment.current, changes.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(kind);
+  const accessKind = kind === "division-lead" || kind === "department-head" ? kind : null;
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
   const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));
@@ -743,10 +843,11 @@ export function dummyDashboardData(
 
     moveApplication,
 
-    divisionAccess: async () => (person === null ? null : dummyDivisionAccess(person, teamRoster)),
-    saveAccess: async (input) => (person === null ? refused(notOnTeam) : dummySaveAccess(person, teamRoster, input)),
+    divisionAccess: async () => (accessKind === null || person === null ? null : dummyAccessPage(accessKind, person, teamRoster)),
+    saveAccess: async (input) =>
+      accessKind === null || person === null ? refused(notOnTeam) : dummySaveAccess(accessKind, person, teamRoster, input),
     removeAllAccess: async (personId) =>
-      person === null ? refused(notOnTeam) : dummyRemoveAllAccess(person, teamRoster, personId),
+      accessKind === null || person === null ? refused(notOnTeam) : dummyRemoveAllAccess(accessKind, person, teamRoster, personId),
 
     divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
     placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),

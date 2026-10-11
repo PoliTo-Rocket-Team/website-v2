@@ -184,6 +184,7 @@ const startingDetails: Readonly<Record<ViewerKind, YourDetails>> = {
     birthDate: "2004-07-02",
     linkedin: "linkedin.com/in/elifkaya",
   },
+  "department-head": { ...NO_DETAILS, firstName: "Chiara", lastName: "Rinaldi" },
   "division-lead": { ...NO_DETAILS, firstName: "Marco", lastName: "Bianchi" },
   "operations-lead": { ...NO_DETAILS, firstName: "Giulia", lastName: "Rossi" },
 };

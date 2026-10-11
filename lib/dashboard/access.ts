@@ -6,7 +6,7 @@ import type { ViewerKind } from "./viewer";
 // a row's `reach` does not reach the page. Site content, admin Access and the
 // Activity log are not designed yet, so they have no row.
 
-export const NAV_GROUPS = ["main", "recruitment", "team", "my-division"] as const;
+export const NAV_GROUPS = ["main", "recruitment", "team", "my-department", "my-division"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
 /** The small heading over each group; the main group has none. */
@@ -14,6 +14,7 @@ export const NAV_GROUP_LABELS: Readonly<Record<NavGroup, string | null>> = {
   main: null,
   recruitment: "Recruitment",
   team: "Team",
+  "my-department": "My department",
   "my-division": "My division",
 };
 
@@ -42,7 +43,7 @@ export const DASHBOARD_PAGES = [
     key: "overview",
     label: "Overview",
     href: "/dashboard",
-    reach: { "operations-lead": "main", "division-lead": "main", member: "main", "non-member": "main" },
+    reach: { "operations-lead": "main", "department-head": "main", "division-lead": "main", member: "main", "non-member": "main" },
     // A non-member who has not applied lands on My applications instead
     // (issue #179), so their sidebar lists Overview only once they have
     // applied (board 50e, issue #211).
@@ -52,10 +53,11 @@ export const DASHBOARD_PAGES = [
     key: "my-applications",
     label: "My applications",
     href: "/dashboard/my-applications",
-    reach: { "operations-lead": "main", "division-lead": "main", member: "main", "non-member": "main" },
+    reach: { "operations-lead": "main", "department-head": "main", "division-lead": "main", member: "main", "non-member": "main" },
     // A non-member always sees it, applied or not (issue #179); the team only once they have applied (issue #183).
     shownWhen: {
       "operations-lead": "has-own-applications",
+      "department-head": "has-own-applications",
       "division-lead": "has-own-applications",
       member: "has-own-applications",
     },
@@ -64,19 +66,19 @@ export const DASHBOARD_PAGES = [
     key: "team-tree",
     label: "Team tree",
     href: "/dashboard/team-tree",
-    reach: { "operations-lead": "main", "division-lead": "main", member: "main" },
+    reach: { "operations-lead": "main", "department-head": "main", "division-lead": "main", member: "main" },
   },
   {
     key: "positions",
     label: "Positions",
     href: "/dashboard/positions",
-    reach: { "operations-lead": "recruitment", "division-lead": "recruitment" },
+    reach: { "operations-lead": "recruitment", "department-head": "recruitment", "division-lead": "recruitment" },
   },
   {
     key: "applications",
     label: "Applications",
     href: "/dashboard/applications",
-    reach: { "operations-lead": "recruitment", "division-lead": "recruitment" },
+    reach: { "operations-lead": "recruitment", "department-head": "recruitment", "division-lead": "recruitment" },
   },
   {
     key: "members",
@@ -94,7 +96,8 @@ export const DASHBOARD_PAGES = [
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",
-    reach: { "division-lead": "my-division" },
+    // A department head's Members and Orders pages are #231 and #233; their Access page is here (issue #230).
+    reach: { "department-head": "my-department", "division-lead": "my-division" },
   },
   {
     key: "orders",
@@ -106,7 +109,7 @@ export const DASHBOARD_PAGES = [
     key: "my-profile",
     label: "My profile",
     href: "/dashboard/profile",
-    reach: { "operations-lead": "user-menu", "division-lead": "user-menu", member: "user-menu" },
+    reach: { "operations-lead": "user-menu", "department-head": "user-menu", "division-lead": "user-menu", member: "user-menu" },
   },
   {
     key: "my-account",
