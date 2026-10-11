@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { boardSeatOf, buildTeamTree, homeDivisionOf, inDivisions, type OrgChart, type RosterEntry } from "./team";
-import { boxOf, layoutTeamTree } from "./tree-layout";
+import { boxOf, layoutTeamTree, rowWidth } from "./tree-layout";
 
 const org: OrgChart = {
   departments: [
@@ -74,6 +74,30 @@ test("a multi-division person is drawn once, with a dashed line from each other 
   assert.ok(layout.height > across);
   // Nobody in two divisions: no lines.
   assert.deepEqual(layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6)).links, []);
+});
+
+test("a row's \"also\" tag gets room in the layout and never reaches the next column (board 54e)", () => {
+  // In Mission Analysis since 2023 and Optimization and Analysis since 2025: drawn
+  // under Mission Analysis, with Optimization and Analysis the column to its right.
+  const tagged = person(12, "Anna Villa", inDivisions([
+    { divisionId: 10, role: "member", since: "2023-10-01" },
+    { divisionId: 11, role: "member", since: "2025-10-01" },
+  ]));
+  const plain = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
+  const layout = layoutTeamTree(buildTeamTree([...roster, tagged], org, "2026–27", 6));
+  const row = layout.nodes.find((n) => n.person?.id === 12)!;
+  assert.equal(row.kind, "row");
+  if (row.kind === "row") assert.ok(row.w >= rowWidth(row.person) && row.w > boxOf(plain, 6)!.w, "the tagged row is drawn wide enough for its tag");
+  const nextLead = boxOf(layout, 8)!;
+  assert.ok(row.x + row.w < nextLead.x, "it ends before the next division's column starts");
+  // No card or row is drawn over another.
+  for (const a of layout.nodes) {
+    for (const b of layout.nodes) {
+      if (a === b) continue;
+      const apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+      assert.ok(apart, `${a.key} overlaps ${b.key}`);
+    }
+  }
 });
 
 test("a board seat is read off a role title, in any case and spacing", () => {

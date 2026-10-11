@@ -149,8 +149,9 @@ function TreeCard({
 
 /**
  * A member under their lead: a small avatar and the name; the viewer's row is
- * outlined and marked "you". Their "also" tags follow the name and may run
- * past the row, as board 54e draws them.
+ * outlined and marked "you". Their "also" tags follow the name, as board 54e
+ * draws them; the layout makes the row wide enough to hold them, and the name
+ * gives way before a tag does.
  */
 function MemberRow({ person, found }: { person: TreePerson; found: boolean }) {
   return (
@@ -160,7 +161,7 @@ function MemberRow({ person, found }: { person: TreePerson; found: boolean }) {
       } ${found ? "ring-1 ring-accent" : ""}`}
     >
       <Avatar name={person.name} size="xs" accent={person.self} />
-      <span className={`truncate text-[12px] ${person.also.length > 0 ? "shrink-0" : "min-w-0"} ${person.self ? "font-semibold text-prt-text" : "text-text-2"}`}>
+      <span className={`min-w-0 truncate text-[12px] ${person.self ? "font-semibold text-prt-text" : "text-text-2"}`}>
         {person.name}
         {person.self && " · you"}
       </span>
