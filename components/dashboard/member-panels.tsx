@@ -159,7 +159,7 @@ export function PersonDrawer({
         <Section title="Divisions">
           <ul className="flex flex-col gap-2">
             {p.divisions.map((x) => (
-              <li key={x.divisionId} className="flex items-center gap-3 rounded-[10px] border border-hairline bg-white-5/50 px-3.5 py-2.5">
+              <li key={x.divisionId} className="flex items-center gap-3 rounded-[10px] border border-hairline bg-white-5 px-3.5 py-2.5">
                 {x.sameDepartment ? (
                   <Chips chips={[{ divisionId: x.divisionId, label: x.code ?? x.name, code: x.code !== null }]} />
                 ) : (

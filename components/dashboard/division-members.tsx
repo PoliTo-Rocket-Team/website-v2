@@ -86,7 +86,7 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
                 key={d.id}
                 href={`/dashboard/members?division=${d.id}`}
                 aria-current={current ? "page" : undefined}
-                className={`flex h-8 items-center rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
+                className={`flex h-8 items-center whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
                   current ? "border-white-10 bg-white-10 font-semibold text-prt-text" : "border-hairline text-text-2 hover:text-prt-text"
                 }`}
               >
@@ -257,7 +257,7 @@ function MailAvatar() {
 function WaitingLine({ waiting }: { waiting: WaitingPerson }) {
   return (
     <span className="mt-0.5 flex items-center gap-2 text-[12px]">
-      <span className="inline-flex h-5 items-center rounded bg-warning-soft px-1.5 font-medium text-warning">Waiting for NDA</span>
+      <span className="inline-flex h-5 items-center whitespace-nowrap rounded bg-warning-soft px-1.5 font-medium text-warning">Waiting for NDA</span>
       {noDetailsFilled(waiting.details) && <span className="text-prt-muted">Details not filled yet</span>}
     </span>
   );
@@ -268,7 +268,7 @@ function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-7 shrink-0 items-center rounded-full border border-success/60 px-3 text-[13px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 ${FOCUS}`}
+      className={`inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-success/60 px-3 text-[13px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 ${FOCUS}`}
     >
       Confirm NDA
     </button>
@@ -601,7 +601,7 @@ function JoiningBanner({ joining, division, editable }: { joining: Joining; divi
           type="button"
           onClick={() => setAsking(true)}
           disabled={!joining.ndaArrived}
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]"
+          className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]"
         >
           Confirm join
         </button>

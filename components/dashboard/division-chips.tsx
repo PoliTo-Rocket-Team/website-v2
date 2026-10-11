@@ -12,12 +12,12 @@ export function Chips({ chips }: { chips: readonly DivisionChip[] }) {
         chip.code ? (
           <span
             key={chip.divisionId}
-            className="inline-flex h-6 items-center rounded-md border border-hairline bg-white-5 px-1.5 font-mono text-[11px] font-medium tracking-[0.08em] text-prt-text"
+            className="inline-flex h-6 items-center whitespace-nowrap rounded-md border border-hairline bg-white-5 px-1.5 font-mono text-[11px] font-medium tracking-[0.08em] text-prt-text"
           >
             {chip.label}
           </span>
         ) : (
-          <span key={chip.divisionId} className="inline-flex h-6 items-center rounded-md bg-white-5 px-2 text-[12px] text-prt-muted">
+          <span key={chip.divisionId} className="inline-flex h-6 items-center whitespace-nowrap rounded-md bg-white-5 px-2 text-[12px] text-prt-muted">
             {chip.label}
           </span>
         ),
