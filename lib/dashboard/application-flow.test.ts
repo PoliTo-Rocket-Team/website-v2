@@ -6,6 +6,7 @@ import {
   footerSteps,
   interviewIcs,
   joinChange,
+  memberDivisionNames,
   memberStanding,
   NEW_APPLICANT,
   parseLeadMove,
@@ -24,20 +25,19 @@ import {
   type SlotTime,
 } from "./application-flow";
 import { placeOf, type Interview } from "./my-applications";
+import { membershipsOf } from "./team";
 
 // Where an application stands and how it moves (boards 58 to 58i, issue #171).
 
 const now = new Date("2026-10-09T16:00:00+02:00");
 const NEW = NEW_APPLICANT;
 /** On the team in two other divisions (board 58h2). */
-const MATTEO = memberStanding(
-  [
-    { id: 3, name: "Design & Manufacturing" },
-    { id: 2, name: "Optimization and Analysis" },
-  ],
-  1,
-  2024,
-);
+const MATTEO_DIVISIONS = membershipsOf([
+  { divisionId: 2, role: "member", since: "2024-10-01" },
+  { divisionId: 3, role: "lead", since: "2025-10-01" },
+]);
+const DIVISION_NAMES: Record<number, string> = { 2: "Optimization and Analysis Division", 3: "Design & Manufacturing" };
+const MATTEO = memberStanding(MATTEO_DIVISIONS, (id) => DIVISION_NAMES[id], 1, 2024);
 const slot = (iso: string): SlotTime => slotAt(iso, 30);
 const thu = slot("2026-10-15T17:30:00+02:00");
 const fri = slot("2026-10-16T18:00:00+02:00");
@@ -284,7 +284,9 @@ test("Confirm join gives a new person a member row, a returning one a role, a me
   assert.equal(joinChange(NEW), "new-member");
   assert.equal(joinChange({ kind: "alumnus" }), "new-role");
   assert.equal(joinChange(MATTEO), "new-division");
-  assert.equal(joinChange({ ...MATTEO, inDivision: true }), "nothing");
+  assert.equal(joinChange(memberStanding(MATTEO_DIVISIONS, (id) => DIVISION_NAMES[id], 3, 2024)), "nothing");
+  // The dialogs name their divisions home first: the one they lead.
+  assert.deepEqual(memberDivisionNames(MATTEO), ["Design & Manufacturing", "Optimization and Analysis"]);
 });
 
 test("a member joins a new division with no NDA wait, and no second NDA is ever recorded (board 58h2)", () => {

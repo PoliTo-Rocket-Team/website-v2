@@ -10,7 +10,16 @@ import { DashboardRefused, type TeamWrites } from "./data";
 import { promotedNoticesInsert, promotionOf } from "./database-notices";
 import { moveApplication } from "./database-recruitment";
 import type { DashboardIdentity } from "./database";
-import { homeDivision, membershipsOf, type Departure, type EditableRole, type Joining, type MemberEdit, type PromoteMode } from "./team";
+import {
+  homeDivision,
+  membershipsOfRoles,
+  type Departure,
+  type EditableRole,
+  type Joining,
+  type MemberEdit,
+  type Memberships,
+  type PromoteMode,
+} from "./team";
 import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -81,13 +90,9 @@ async function activeRoles(memberId: number): Promise<ActiveRole[]> {
     .where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)));
 }
 
-/** The person's division roles as memberships: a lead role leads, any other is a member. */
-function membershipsOfRoles(active: readonly ActiveRole[]) {
-  return membershipsOf(
-    active.flatMap((r) =>
-      r.division_id === null ? [] : [{ divisionId: r.division_id, role: r.type === "lead" ? ("lead" as const) : ("member" as const), since: r.started_at }],
-    ),
-  );
+/** The person's division roles as memberships (`membershipsOfRoles`, ./team.ts). */
+function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
+  return membershipsOfRoles(active.map((r) => ({ type: r.type, divisionId: r.division_id, since: r.started_at })));
 }
 
 /**
@@ -119,7 +124,7 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
   // The panel's role is the role in one division: the lead's own, or for the
   // operations lead the person's home division. Their other divisions keep
   // their roles (issue #229).
-  const division = homeDivision(membershipsOfRoles(active));
+  const division = homeDivision(membershipsOfActive(active));
   const divisionRoles = active.filter((r) => r.division_id === division && (r.type === "lead" || r.type === "core"));
   const target = edit.role === null ? active : divisionRoles;
   if (target.length === 0) return false;

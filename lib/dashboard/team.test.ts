@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { promotionNoticeLine } from "./notices";
+import { standingIn } from "./viewer";
 import {
   buildTeamTree,
   canPromote,
@@ -9,6 +10,7 @@ import {
   inDivisions,
   inMemberTab,
   membershipsOf,
+  membershipsOfRoles,
   roleIn,
   withJoined,
   withRoleIn,
@@ -67,6 +69,18 @@ test("a person holds a list of division memberships, each with its own role, and
   // Joining a division they are already in changes nothing.
   assert.deepEqual(withJoined(memberships, 20, "2026-10-09"), memberships);
   assert.equal(withJoined(memberships, 30, "2026-10-09").length, 3);
+});
+
+test("active roles become memberships by the viewer's rule: a lead or head role in a division leads it", () => {
+  const held = [
+    { type: "head" as const, divisionId: 10, since: "2024-10-01" },
+    { type: "core" as const, divisionId: 20, since: "2025-10-01" },
+    { type: "president" as const, divisionId: null, since: "2023-10-01" },
+  ];
+  const memberships = membershipsOfRoles(held);
+  const access = { scopes: [], activeRoles: held };
+  for (const divisionId of [10, 20, 30]) assert.equal(roleIn(memberships, divisionId), standingIn(access, divisionId));
+  assert.equal(memberships.length, 2);
 });
 
 test("picking someone as lead of a division keeps their other divisions", () => {

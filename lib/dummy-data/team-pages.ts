@@ -8,8 +8,6 @@ import {
   buildTeamTree,
   DIVISION_ROLE_OF,
   divisionDirectory,
-  divisionLabel,
-  homeDivision,
   homeDivisionOf,
   inDivisions,
   isIn,
@@ -136,15 +134,8 @@ function joinedEntry(joiner: DummyJoiner, year: number): RosterEntry {
 export function dummyStanding(email: string, divisionId: number, team: readonly RosterEntry[]): ApplicantStanding {
   const entry = team.find((e) => e.email === email);
   if (!entry) return NEW_APPLICANT;
-  const memberships = membershipsIn(entry.placement);
-  const home = homeDivision(memberships);
-  const theirs = [...memberships]
-    .sort((a, b) => Number(b.divisionId === home) - Number(a.divisionId === home))
-    .flatMap((m) => {
-      const division = divisions.find((d) => d.id === m.divisionId);
-      return division ? [{ id: division.id, name: divisionLabel(division.name) }] : [];
-    });
-  return memberStanding(theirs, divisionId, entry.joined);
+  const nameOf = (id: number) => divisions.find((d) => d.id === id)?.name;
+  return memberStanding(membershipsIn(entry.placement), nameOf, divisionId, entry.joined);
 }
 
 /**

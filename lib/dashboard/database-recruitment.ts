@@ -28,7 +28,7 @@ import {
   type LeadMove,
   type OfferedSlots,
 } from "./application-flow";
-import { divisionLabel, homeDivision, membershipsOf } from "./team";
+import { membershipsOfRoles } from "./team";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
 import { positionCode } from "@/lib/apply/positions";
@@ -573,8 +573,9 @@ async function offerSlots(applicationId: number, readStatus: DbStatus, offered: 
 
 /**
  * Where each application's applicant stands with the team: no member row, a
- * member row with no active role, or active roles, read with the divisions
- * those roles are in (home division first) and the year of their NDA.
+ * member row with no active role, or active roles, read as memberships
+ * (`membershipsOfRoles`, ./team.ts) with their divisions' names and the year
+ * of their NDA.
  */
 async function readStandings(applicationIds: readonly number[]): Promise<Map<number, ApplicantStanding>> {
   const standings = new Map<number, ApplicantStanding>();
@@ -607,20 +608,10 @@ async function readStandings(applicationIds: readonly number[]): Promise<Map<num
     if (a.member_id === null) standings.set(a.id, NEW_APPLICANT);
     else if (theirs.length === 0) standings.set(a.id, { kind: "alumnus" });
     else {
-      const names = new Map(theirs.flatMap((r) => (r.division_id === null || r.division_name === null ? [] : [[r.division_id, r.division_name] as const])));
-      const memberships = membershipsOf(
-        theirs.flatMap((r) =>
-          r.division_id === null ? [] : [{ divisionId: r.division_id, role: r.type === "lead" ? ("lead" as const) : ("member" as const), since: r.started_at }],
-        ),
-      );
-      const home = homeDivision(memberships);
-      const ordered = [...memberships].sort((x, y) => Number(y.divisionId === home) - Number(x.divisionId === home));
-      const divisionsIn = ordered.flatMap((m) => {
-        const name = names.get(m.divisionId);
-        return name === undefined ? [] : [{ id: m.divisionId, name: divisionLabel(name) }];
-      });
+      const memberships = membershipsOfRoles(theirs.map((r) => ({ type: r.type, divisionId: r.division_id, since: r.started_at })));
+      const nameOf = (divisionId: number) => theirs.find((r) => r.division_id === divisionId)?.division_name;
       const ndaYear = a.nda_signed_at === null ? null : new Date(a.nda_signed_at).getUTCFullYear();
-      standings.set(a.id, memberStanding(divisionsIn, a.division_id ?? -1, ndaYear));
+      standings.set(a.id, memberStanding(memberships, nameOf, a.division_id ?? -1, ndaYear));
     }
   }
   return standings;

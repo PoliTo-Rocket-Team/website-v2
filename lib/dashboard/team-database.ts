@@ -6,12 +6,12 @@ import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
 import {
   boardSeatOf,
-  inDivisions,
+  membershipsOfRoles,
   type AlumnusRow,
   type BoardSeat,
-  type DivisionMembership,
   type OrgChart,
   type Placement,
+  type RoleHeld,
   type RosterEntry,
 } from "./team";
 
@@ -146,13 +146,12 @@ function placementOf(active: readonly RoleRow[], org: OrgChart): Placement {
     const departmentId = top.dept_id ?? org.divisions.find((d) => d.id === top.division_id)?.departmentId ?? null;
     if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId };
   }
-  return inDivisions(
-    active.flatMap((role): DivisionMembership[] =>
-      org.divisions.some((d) => d.id === role.division_id) && role.division_id !== null
-        ? [{ divisionId: role.division_id, role: role.type === "lead" ? "lead" : "member", since: role.started_at }]
-        : [],
-    ),
-  );
+  const open = active.filter((role) => org.divisions.some((d) => d.id === role.division_id));
+  return { role: "divisions", memberships: membershipsOfRoles(open.map(roleHeld)) };
+}
+
+function roleHeld(role: RoleRow): RoleHeld {
+  return { type: role.type, divisionId: role.division_id, since: role.started_at };
 }
 
 const TARGET_LABELS: Readonly<Record<string, string>> = {

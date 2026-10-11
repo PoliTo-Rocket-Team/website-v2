@@ -6,9 +6,11 @@
 // The order is: New, opened into In review, Interview (times offered, then
 // one booked by the applicant), Accepted (waiting for the signed NDA), Joined.
 // Rejected and Withdrawn end it. Accept only marks the application; only
-// Confirm join, once the NDA arrived, makes the person a team member.
+// Confirm join, once the NDA arrived, makes the person a team member. Someone
+// already on the team waits for no NDA (ADR 0014).
 
 import type { InterviewSlot } from "./my-applications";
+import { divisionLabel, homeFirst, roleIn, type Memberships } from "./team";
 
 /** How long an interview runs, as the lead picks it (board 58c). */
 export const INTERVIEW_LENGTHS = [30, 45, 60] as const;
@@ -236,37 +238,54 @@ function nextState(state: ApplicationState, move: ApplicationMove, now: Date, st
  * signed the team's one NDA when they joined, and never signs a second one
  * (Owner decision, 2026-10-11).
  */
-export type ApplicantStanding =
-  | { readonly kind: "applicant" }
-  | { readonly kind: "alumnus" }
-  | {
-      readonly kind: "member";
-      /** The divisions they are in now, as the dialogs name them, home division first. */
-      readonly divisions: readonly string[];
-      /** Whether they are already in the division the position is in. */
-      readonly inDivision: boolean;
-      /** The year they signed the NDA; null when no date is kept. */
-      readonly ndaYear: number | null;
-    };
+export type ApplicantStanding = { readonly kind: "applicant" } | { readonly kind: "alumnus" } | MemberStanding;
+
+/**
+ * Someone on the team now, toward a position in `positionDivisionId`. Their
+ * divisions are `Memberships`, so none is named twice, and whether they are
+ * in the position's division is read from that list (`inPositionDivision`),
+ * never stored beside it. Build it with `memberStanding`.
+ */
+export type MemberStanding = {
+  readonly kind: "member";
+  readonly memberships: Memberships;
+  /** Each of their divisions' names as the dialogs show them ("Optimization and Analysis"). */
+  readonly divisionNames: Readonly<Record<number, string>>;
+  readonly positionDivisionId: number;
+  /** The year they signed the NDA; null when no date is kept. */
+  readonly ndaYear: number | null;
+};
 
 /** Someone not on the team and never on it. */
 export const NEW_APPLICANT: ApplicantStanding = { kind: "applicant" };
 
 /**
  * A member's standing toward a position in `positionDivisionId`, from the
- * divisions they are in now, home division first.
+ * divisions they are in now. `nameOf` gives a division's name as the org
+ * chart keeps it; a division it has no name for goes unnamed.
  */
 export function memberStanding(
-  divisions: readonly { readonly id: number; readonly name: string }[],
+  memberships: Memberships,
+  nameOf: (divisionId: number) => string | null | undefined,
   positionDivisionId: number,
   ndaYear: number | null,
-): Extract<ApplicantStanding, { kind: "member" }> {
-  return {
-    kind: "member",
-    divisions: divisions.map((d) => d.name),
-    inDivision: divisions.some((d) => d.id === positionDivisionId),
-    ndaYear,
-  };
+): MemberStanding {
+  const divisionNames: Record<number, string> = {};
+  for (const m of memberships) {
+    const name = nameOf(m.divisionId);
+    if (name) divisionNames[m.divisionId] = divisionLabel(name);
+  }
+  return { kind: "member", memberships, divisionNames, positionDivisionId, ndaYear };
+}
+
+/** Whether a member is already in the division the position is in. */
+export function inPositionDivision(standing: MemberStanding): boolean {
+  return roleIn(standing.memberships, standing.positionDivisionId) !== null;
+}
+
+/** A member's divisions as the dialogs name them, home division first (`homeFirst`). */
+export function memberDivisionNames(standing: MemberStanding): string[] {
+  return homeFirst(standing.memberships).flatMap((m) => standing.divisionNames[m.divisionId] ?? []);
 }
 
 /** Whether their join waits for a signed NDA: everyone's but a member's. */
@@ -291,7 +310,7 @@ export function joinChange(standing: ApplicantStanding): JoinChange {
     case "alumnus":
       return "new-role";
     case "member":
-      return standing.inDivision ? "nothing" : "new-division";
+      return inPositionDivision(standing) ? "nothing" : "new-division";
   }
 }
 

@@ -17,6 +17,7 @@ import {
   icsFileName,
   inTab,
   interviewIcs,
+  memberDivisionNames,
   menuSteps,
   PROGRESS_STEPS,
   progressOf,
@@ -465,7 +466,7 @@ function Detail({
           pending={pending}
           onConfirm={() => run({ kind: "confirm-join" })}
         >
-          {memberJoinLine(first, unit, a.standing.divisions)}
+          {memberJoinLine(first, unit, memberDivisionNames(a.standing))}
         </DecisionDialog>
       ) : (
         // 58h: someone new, in neutral words whatever the form says.

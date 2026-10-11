@@ -97,6 +97,43 @@ export function homeDivision(memberships: Memberships): number | null {
   return (memberships.find((m) => m.role === "lead") ?? memberships[0])?.divisionId ?? null;
 }
 
+/** The memberships with the home division (`homeDivision`) first, the rest oldest first. */
+export function homeFirst(memberships: Memberships): readonly DivisionMembership[] {
+  const home = homeDivision(memberships);
+  return [...memberships].sort((a, b) => Number(b.divisionId === home) - Number(a.divisionId === home));
+}
+
+/** The role types the `roles` table holds. */
+export type RoleType = "president" | "head" | "lead" | "core" | null;
+
+/**
+ * What a role of `type` makes its holder in the division it is in: a lead or
+ * head role leads it, any other role is a member of it. `standingIn` in
+ * ./viewer.ts reads a viewer's division roles by this same rule.
+ */
+export function divisionRoleOf(type: RoleType): DivisionRole {
+  return type === "lead" || type === "head" ? "lead" : "member";
+}
+
+/** One active `roles` row, as both data sources read it. */
+export type RoleHeld = {
+  readonly type: RoleType;
+  /** The division it is in; null for a role in no division. */
+  readonly divisionId: number | null;
+  /** `started_at`: "2024-10-01". */
+  readonly since: string;
+};
+
+/** The membership one active role gives (`divisionRoleOf`); null for a role in no division. */
+export function membershipOfRole(role: RoleHeld): DivisionMembership | null {
+  return role.divisionId === null ? null : { divisionId: role.divisionId, role: divisionRoleOf(role.type), since: role.since };
+}
+
+/** A person's memberships from their active roles, each division once (`membershipOfRole`, `membershipsOf`). */
+export function membershipsOfRoles(roles: readonly RoleHeld[]): Memberships {
+  return membershipsOf(roles.flatMap((r) => membershipOfRole(r) ?? []));
+}
+
 /** Where someone sits on the team, which also says what they lead. */
 export type Placement =
   | { readonly role: "team-leader" }

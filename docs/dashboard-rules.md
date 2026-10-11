@@ -100,7 +100,7 @@ An admin column comes later. **Planned**, no issue yet.
   when they joined (see "Divisions per person" below). The panel shows no NDA tick, and its main
   button reads "Add to {division}". It is still confirmed ("Add {name} to {division}?", board
   58h2). The person joins the new division and keeps every division they are in, and no NDA date
-  is recorded for them (#229).
+  is recorded for them (#229, [0014](../.decisions/0014-several-divisions-one-nda.md)).
   - **Gap:** the Members page's joining banner lists only people not on the team yet; a member
     joins from the Applications page. Tracked in #231.
 
@@ -116,7 +116,8 @@ An admin column comes later. **Planned**, no issue yet.
 
 ### Divisions per person
 
-These rules come from the Owner decisions of 2026-10-11 on #229.
+These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
+[0014](../.decisions/0014-several-divisions-one-nda.md).
 
 - One person can be in several divisions at once, as a lead or a member, across departments. Each
   division they are in has its own role. A person is never in the same division twice.
@@ -129,7 +130,9 @@ These rules come from the Owner decisions of 2026-10-11 on #229.
   reads "Also in another division · shown once" (board 54e).
 - The division a person is drawn under, and the one a page names when it shows only one, is
   their home division: the oldest division they lead, else their oldest membership.
-- **Superseded:** the older rule "one person, one division" no longer holds.
+- **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
+  "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
+  replaces it, and also amends 0011's Confirm join rule for someone already on the team.
 - **Gap:** Members, My profile, Access and Orders still show one division per person (the home
   division, or the oldest one a lead leads). Tracked in #231, #230 and #233.
 

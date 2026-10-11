@@ -3,6 +3,8 @@
 // site-content access the Alumni page reads (issue #234). The access table in
 // ./access.ts says which standing reaches which page.
 
+import { divisionRoleOf, type DivisionRole, type RoleType } from "./team";
+
 export const VIEWER_KINDS = [
   "operations-lead",
   "division-lead",
@@ -60,7 +62,7 @@ export function initialsOf(name: string): string {
 
 /** One of a member's active roles, as the viewer reads it. */
 export type ActiveRoleRef = {
-  readonly type: "president" | "head" | "lead" | "core" | null;
+  readonly type: RoleType;
   /** The division it is in; null for a role in no division. */
   readonly divisionId: number | null;
 };
@@ -90,15 +92,16 @@ export function viewerKindOf(access: MemberAccess | null): ViewerKind {
 }
 
 /**
- * What the viewer is in one division: a lead where they hold a lead or head
- * role in it, a member where they hold any other role in it, null where they
- * hold none. Someone who leads division A and is a member of division B is a
- * lead for A and a member for B.
+ * What the viewer is in one division, by the rule the Team pages place
+ * people with (`divisionRoleOf`, ./team.ts): a lead where they hold a lead or
+ * head role in it, a member where they hold any other role in it, null where
+ * they hold none. Someone who leads division A and is a member of division B
+ * is a lead for A and a member for B.
  */
-export function standingIn(access: MemberAccess, divisionId: number): "lead" | "member" | null {
+export function standingIn(access: MemberAccess, divisionId: number): DivisionRole | null {
   const here = access.activeRoles.filter((r) => r.divisionId === divisionId);
   if (here.length === 0) return null;
-  return here.some((r) => r.type === "lead" || r.type === "head") ? "lead" : "member";
+  return here.some((r) => divisionRoleOf(r.type) === "lead") ? "lead" : "member";
 }
 
 /** Every division the viewer leads by role, in the order their roles come. */
