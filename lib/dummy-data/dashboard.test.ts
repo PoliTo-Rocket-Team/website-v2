@@ -233,8 +233,8 @@ test("Confirm join is one rule on both pages: it waits for the NDA tick, the app
   const after = await joined.data.members();
   if (after.scope !== "division") return;
   assert.ok(!after.joining.some((j) => j.applicationId === joining.applicationId));
-  assert.equal(after.rows.filter((r) => r.name === joining.name).length, 1);
-  assert.equal(after.rows.find((r) => r.name === joining.name)?.pageTitle, "Mission Analyst");
+  assert.equal(after.people.filter((r) => r.name === joining.name).length, 1);
+  assert.equal(after.people.find((r) => r.name === joining.name)?.title, "Mission Analyst");
   assert.equal(await joined.data.teamWrites!.confirmJoin(joining.applicationId), false);
   assert.equal((await joined.data.moveApplication(joining.applicationId, { kind: "confirm-join" })).ok, false);
 });
@@ -250,7 +250,7 @@ test("Confirm join on Applications puts the person on the Members page too", asy
   const after = await leadOver(ticked.saved()).data.members();
   if (after.scope !== "division") return;
   assert.ok(!after.joining.some((j) => j.applicationId === joining.applicationId));
-  assert.equal(after.rows.filter((r) => r.name === joining.name).length, 1);
+  assert.equal(after.people.filter((r) => r.name === joining.name).length, 1);
 });
 
 test("an accepted member joins a new division with no NDA wait, keeps their other divisions, and no NDA is recorded (board 58h2)", async () => {
@@ -271,7 +271,7 @@ test("an accepted member joins a new division with no NDA wait, keeps their othe
 
   // He is in Mission Analysis now, and still in both divisions he was in.
   const members = await joined.data.members();
-  assert.ok(members.scope === "division" && members.rows.some((r) => r.name === "Matteo Greco" && r.role === "member"));
+  assert.ok(members.scope === "division" && members.people.some((r) => r.name === "Matteo Greco" && r.role === "member"));
   const tree = await joined.data.teamTree();
   const drawn = tree.departments.flatMap((d) => d.divisions.flatMap((v) => v.members)).filter((p) => p.name === "Matteo Greco");
   assert.equal(drawn.length, 1);

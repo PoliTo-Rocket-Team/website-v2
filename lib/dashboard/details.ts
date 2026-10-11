@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   DEGREE_PROGRAMMES,
   formDefaults,
+  GENDERS,
   STUDY_PROGRAMMES,
   type FormDefaults,
 } from "@/lib/apply/application-form";
@@ -244,6 +245,111 @@ export function columnsFromDetails(change: DetailsChange): Partial<DetailColumns
     columns[COLUMN_OF[key]] = value === "" ? null : key === "linkedin" ? `https://www.${value}` : value;
   }
   return columns;
+}
+
+// A member's details as a lead or head keeps them on the Members page (issue
+// #231, boards 61f, 61g and 61h2): contact, studies and personal. A lead or a
+// head fills them, or the person does after they sign in with the email they
+// were added with (Owner decision, 2026-10-11). Every field may be empty.
+
+export type Gender = (typeof GENDERS)[number];
+
+export type MemberDetails = {
+  /** "d.russo@politorocketteam.it" */
+  readonly prtEmail: string;
+  readonly phone: string;
+  readonly discord: string;
+  /** The short form, "linkedin.com/in/davide-russo". */
+  readonly linkedin: string;
+  /** The digits; the page shows "s312456". */
+  readonly politoId: string;
+  readonly programme: DegreeProgramme | "";
+  readonly level: StudyProgramme | "";
+  /** Where they are from: "Italy". */
+  readonly country: string;
+  /** ISO date, "2001-05-14". */
+  readonly birthDate: string;
+  readonly gender: Gender | "";
+};
+
+export type MemberDetailKey = keyof MemberDetails;
+
+export const NO_MEMBER_DETAILS: MemberDetails = {
+  prtEmail: "",
+  phone: "",
+  discord: "",
+  linkedin: "",
+  politoId: "",
+  programme: "",
+  level: "",
+  country: "",
+  birthDate: "",
+  gender: "",
+};
+
+/** Whether nothing is filled yet: the "Details not filled yet" line under someone waiting for their NDA (board 61e). */
+export function noDetailsFilled(details: MemberDetails): boolean {
+  return Object.values(details).every((value) => value === "");
+}
+
+const memberDetailsSchema = detailsSchema
+  .pick({ phone: true, politoId: true, programme: true, level: true, country: true, birthDate: true, linkedin: true })
+  .extend({
+    prtEmail: z.string().trim().toLowerCase().pipe(optional(z.email("Write an email address.").max(200, "Too long."))),
+    discord: z.string().trim().max(40, "Too long."),
+    gender: z.union([z.literal(""), z.enum(GENDERS, "Pick one.")]),
+  });
+
+export type MemberDetailErrors = Partial<Record<MemberDetailKey, string>>;
+
+/**
+ * The member's details as the Edit details or Add member form sent them,
+ * checked: the clean values, or one message per bad field. The browser and
+ * the server run the same check.
+ */
+export function parseMemberDetails(input: unknown): { ok: true; value: MemberDetails } | { ok: false; errors: MemberDetailErrors } {
+  const result = memberDetailsSchema.safeParse(input);
+  if (!result.success) {
+    const errors: MemberDetailErrors = {};
+    for (const issue of result.error.issues) errors[issue.path[0] as MemberDetailKey] ??= issue.message;
+    return { ok: false, errors };
+  }
+  const linkedin = normalizeLinkedin(result.data.linkedin);
+  if (!linkedin.ok) return { ok: false, errors: { linkedin: linkedin.error } };
+  return { ok: true, value: { ...result.data, linkedin: linkedin.value ?? "" } };
+}
+
+/** A member detail as the drawer shows it (board 61f); null for an empty one. */
+export function memberDetailText(details: MemberDetails, key: MemberDetailKey): string | null {
+  const value = details[key];
+  if (value === "") return null;
+  if (key === "politoId") return `s${value}`;
+  if (key === "level") return levelLabel(value as StudyProgramme);
+  if (key === "birthDate") return detailText({ ...NO_DETAILS, birthDate: value }, "birthDate");
+  return value;
+}
+
+/**
+ * Where each member detail is stored: the person's `users` row, or their
+ * `members` row for the PRT email and Discord (a person waiting for their NDA
+ * keeps those two on their `team_joins` row). An empty field clears its
+ * column.
+ */
+export function columnsFromMemberDetails(details: MemberDetails) {
+  const value = (text: string) => (text === "" ? null : text);
+  return {
+    user: {
+      phone: value(details.phone),
+      linkedin: details.linkedin === "" ? null : `https://www.${details.linkedin}`,
+      politoId: value(details.politoId),
+      program: value(details.programme),
+      levelOfStudy: value(details.level),
+      country: value(details.country),
+      dateOfBirth: value(details.birthDate),
+      gender: value(details.gender),
+    },
+    member: { prtEmail: value(details.prtEmail), discord: value(details.discord) },
+  };
 }
 
 /** What the apply form keeps that "Your details" does not. */

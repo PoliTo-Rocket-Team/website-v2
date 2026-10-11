@@ -1,35 +1,23 @@
 "use client";
 
 import { useId, useState, useTransition } from "react";
-import { ArrowUpRight, ChevronDown, GraduationCap, Info, Pencil } from "lucide-react";
+import { ChevronDown, GraduationCap, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
-import { moveToAlumni, promote, saveMember } from "@/app/dashboard/team-actions";
-import {
-  canPromote,
-  checkDeparture,
-  LEAVE_REASONS,
-  LEAVE_REASON_LABELS,
-  yearsLabel,
-  type EditableRole,
-  type MemberDirectory,
-  type MemberRow,
-  type PromoteMode,
-} from "@/lib/dashboard/team";
-import { shortUnitName } from "@/lib/dashboard/division-access";
-import { promotionNoticeLine } from "@/lib/dashboard/notices";
+import { moveToAlumni, saveMember } from "@/app/dashboard/team-actions";
+import { checkDeparture, LEAVE_REASONS, LEAVE_REASON_LABELS, yearsLabel, type EditableRole, type MemberRow } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
-import { GHOST_PILL } from "./page-header";
 
-// The member panel (board 59b): who the person is, the role the Team page
-// shows under their name, Promote, and moving them to Alumni. Access is not
-// here: the Access page is the only place it is given or removed. The
-// operations lead's panel also sets whether the person leads their division
-// (board 46b). Where the data source stores no Team page writes, or the row
-// is the viewer's own, it shows the same facts with nothing to change.
+// The operations lead's member panel (board 46b): who the person is, the role
+// the Team page shows under their name, whether they lead their division, and
+// moving them to Alumni. Access is not here: the Access page is the only
+// place it is given or removed. A division lead's panel is board 61f
+// (./division-members.tsx). Where the data source stores no Team page
+// writes, or the row is the viewer's own, it shows the same facts with
+// nothing to change.
 
 const ROLE_OPTIONS: readonly { value: EditableRole; label: string }[] = [
   { value: "member", label: "Member" },
@@ -40,12 +28,10 @@ const LABEL = "mb-2 block text-[14px] font-medium text-prt-text";
 
 export function MemberDrawer({
   row,
-  directory,
   editable,
   onClose,
 }: {
   row: MemberRow | null;
-  directory: MemberDirectory;
   editable: boolean;
   onClose: () => void;
 }) {
@@ -54,7 +40,7 @@ export function MemberDrawer({
   if (row !== null && row !== shown) setShown(row);
   const person = row ?? shown;
   return person === null ? null : (
-    <MemberPanel key={person.id} open={row !== null} row={person} directory={directory} editable={editable && !person.self} onClose={onClose} />
+    <MemberPanel key={person.id} open={row !== null} row={person} editable={editable && !person.self} onClose={onClose} />
   );
 }
 
@@ -66,29 +52,26 @@ function editableRoleOf(row: MemberRow): EditableRole | null {
 function MemberPanel({
   open,
   row,
-  directory,
   editable,
   onClose,
 }: {
   open: boolean;
   row: MemberRow;
-  directory: MemberDirectory;
   editable: boolean;
   onClose: () => void;
 }) {
   const startRole = editableRoleOf(row);
   const [role, setRole] = useState<EditableRole | null>(startRole);
   const [title, setTitle] = useState(row.pageTitle ?? "");
-  const [asking, setAsking] = useState<"promote" | "alumni" | null>(null);
+  const [asking, setAsking] = useState(false);
   const [pending, startTransition] = useTransition();
   const titleId = useId();
   const firstName = row.name.split(" ")[0];
   const facts = [row.program, row.study, `joined ${row.joined}`].filter(Boolean).join(" · ");
-  const division = directory.scope === "division";
 
   const save = () =>
     startTransition(async () => {
-      const result = await saveMember(row.id, division ? null : role, title.trim() === "" ? null : title);
+      const result = await saveMember(row.id, role, title.trim() === "" ? null : title);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -145,7 +128,7 @@ function MemberPanel({
           </div>
         </div>
 
-        {!division && editable && startRole !== null && (
+        {editable && startRole !== null && (
           <div className="mt-6">
             <label className="relative block">
               <span className={LABEL}>Leads their division</span>
@@ -165,19 +148,6 @@ function MemberPanel({
           </div>
         )}
 
-        {division && editable && canPromote(row) && (
-          <div className="mt-5 flex items-center justify-between gap-4 rounded-xl border border-hairline px-4 py-3.5">
-            <div className="min-w-0">
-              <p className="text-[14px] font-semibold">Promote</p>
-              <p className="text-[12px] text-prt-muted">Make {firstName} a division lead</p>
-            </div>
-            <button type="button" onClick={() => setAsking("promote")} className={GHOST_PILL}>
-              <ArrowUpRight aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-              Promote
-            </button>
-          </div>
-        )}
-
         {editable && (
           <section className="mt-10 rounded-xl border border-danger/40 bg-danger/[0.06] p-4 md:mt-auto">
             <h2 className="text-[14px] font-semibold">Leaving the team</h2>
@@ -186,7 +156,7 @@ function MemberPanel({
             </p>
             <button
               type="button"
-              onClick={() => setAsking("alumni")}
+              onClick={() => setAsking(true)}
               className="mt-4 inline-flex h-9 items-center rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               Move to alumni
@@ -195,152 +165,47 @@ function MemberPanel({
         )}
       </PanelBody>
 
-      {directory.scope === "division" && (
-        <PromoteDialog
-          open={asking === "promote"}
-          onOpenChange={(next) => setAsking(next ? "promote" : null)}
-          row={row}
-          unit={shortUnitName(directory.division)}
-          noticeLine={promotionNoticeLine(directory.heads, { personId: row.id, leadId: directory.viewerId })}
-          onDone={onClose}
-        />
-      )}
-      <AlumniDialog
-        open={asking === "alumni"}
-        onOpenChange={(next) => setAsking(next ? "alumni" : null)}
-        row={row}
-        unit={row.division === null ? null : shortUnitName(row.division)}
-        onDone={onClose}
-      />
+      <AlumniDialog open={asking} onOpenChange={setAsking} person={row} onDone={onClose} />
     </SidePanel>
   );
 }
 
-const PROMOTE_OPTIONS: readonly { mode: PromoteMode; title: string; detail: (first: string, unit: string) => string }[] = [
-  { mode: "together", title: "Lead together with you", detail: (_, unit) => `${unit} has two leads` },
-  { mode: "hand-over", title: "Hand over the division", detail: (first) => `${first} leads; you become a member` },
-];
-
 /**
- * Board 59e. The site sends no email: Promote writes a notice to each head of
- * the division's department, shown on their dashboard Overview (#188). The
- * line under the choices names only heads that notice reaches (#227).
+ * Board 59d, and "Leaves the team" on a division's Members page (#231): the
+ * years on the team and an optional reason. Every role and every access
+ * grant ends; the account stays.
  */
-function PromoteDialog({
+export function AlumniDialog({
   open,
   onOpenChange,
-  row,
-  unit,
-  noticeLine,
+  person,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  row: MemberRow;
-  unit: string;
-  /** Who the promotion tells; null when it tells nobody but the viewer would be named. */
-  noticeLine: string | null;
-  onDone: () => void;
-}) {
-  const [mode, setMode] = useState<PromoteMode>("together");
-  const [pending, startTransition] = useTransition();
-  const firstName = row.name.split(" ")[0];
-
-  const confirm = () =>
-    startTransition(async () => {
-      const result = await promote(row.id, mode);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(`${row.name} is now a division lead`);
-      onOpenChange(false);
-      onDone();
-    });
-
-  return (
-    <ConfirmDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      icon={<ArrowUpRight className="h-5 w-5" strokeWidth={1.75} />}
-      title={`Promote ${row.name} to division lead?`}
-      description={`${firstName} gets the lead view for ${unit}: positions, applications, members, access and orders.`}
-      cancelLabel="Cancel"
-      confirmLabel={`Promote ${firstName}`}
-      pending={pending}
-      onConfirm={confirm}
-    >
-      <div className="mt-5">
-        <div role="radiogroup" aria-label="How they lead" className="flex flex-col gap-2.5">
-          {PROMOTE_OPTIONS.map((option) => {
-            const on = option.mode === mode;
-            return (
-              <label
-                key={option.mode}
-                className={`flex cursor-pointer items-center gap-3.5 rounded-xl border px-4 py-3 transition-colors duration-300 ease-out has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
-                  on ? "border-accent bg-accent/[0.08]" : "border-white-10 hover:border-border-strong"
-                }`}
-              >
-                <input type="radio" name="promote-mode" checked={on} onChange={() => setMode(option.mode)} className="sr-only" />
-                <span
-                  aria-hidden
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${on ? "border-accent" : "border-border-strong"}`}
-                >
-                  {on && <span className="h-2 w-2 rounded-full bg-accent" />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[14px] font-semibold text-prt-text">{option.title}</span>
-                  <span className="block text-[12px] text-prt-muted">{option.detail(firstName, unit)}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-        {noticeLine !== null && (
-          <p className="mt-4 flex items-start gap-2 text-[13px] text-text-2">
-            <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-            {noticeLine}
-          </p>
-        )}
-      </div>
-    </ConfirmDialog>
-  );
-}
-
-/** Board 59d: the years on the team and an optional reason. Access ends; the account stays. */
-function AlumniDialog({
-  open,
-  onOpenChange,
-  row,
-  unit,
-  onDone,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  row: MemberRow;
-  unit: string | null;
+  person: { readonly id: number; readonly name: string; readonly joined: number };
   onDone: () => void;
 }) {
   const thisYear = new Date().getFullYear();
-  const [years, setYears] = useState(yearsLabel(Math.min(row.joined, thisYear), thisYear));
+  const [years, setYears] = useState(yearsLabel(Math.min(person.joined, thisYear), thisYear));
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   const yearsId = useId();
   const reasonId = useId();
-  const firstName = row.name.split(" ")[0];
+  const firstName = person.name.split(" ")[0];
 
   const confirm = () => {
     const checked = checkDeparture({ years, reason }, thisYear);
     if (!checked.ok) return setError(checked.error);
     setError(undefined);
     startTransition(async () => {
-      const result = await moveToAlumni(row.id, years, reason === "" ? null : reason);
+      const result = await moveToAlumni(person.id, years, reason === "" ? null : reason);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      toast.success(`${row.name} moved to Alumni`);
+      toast.success(`${person.name} moved to Alumni`);
       onOpenChange(false);
       onDone();
     });
@@ -351,9 +216,9 @@ function AlumniDialog({
       open={open}
       onOpenChange={onOpenChange}
       icon={<GraduationCap className="h-5 w-5" strokeWidth={1.75} />}
-      title={`Move ${row.name} to alumni?`}
-      description={`${firstName} leaves ${unit ?? "the team"} and shows on the Alumni page with the years on the team. Their dashboard access ends. Their account stays.`}
-      confirmLabel="Move to alumni"
+      title={`${person.name} leaves the team?`}
+      description={`${firstName} leaves every division and shows on the Alumni page with the years on the team. All their dashboard access ends. Their account stays.`}
+      confirmLabel="Leaves the team"
       cancelLabel={`Keep ${firstName} on the team`}
       danger
       pending={pending}

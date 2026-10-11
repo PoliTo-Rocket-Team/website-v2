@@ -8,6 +8,7 @@ import type { LeadMove } from "./application-flow";
 import type { CreatedPosition } from "./new-position";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { YourDetails } from "./details";
+import type { AddLookup, DetailsTarget } from "./division-members";
 import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumniDirectory, Departure, MemberDirectory, MemberEdit, PromoteMode, TeamTree } from "./team";
@@ -48,10 +49,17 @@ export interface DashboardData {
    */
   dismissNotice(noticeId: number): Promise<WriteResult<null>>;
   /**
-   * The Members page: the whole team (#143), or the lead's own division with
-   * the people joining it (board 59, #172).
+   * The Members page: the whole team (#143), or one of the lead's divisions
+   * (`divisionId`, else their first) with the people waiting for Confirm NDA
+   * and the accepted applicants joining it (boards 59 and 61e, #172, #231).
    */
-  members(): Promise<MemberDirectory>;
+  members(divisionId?: number | null): Promise<MemberDirectory>;
+  /**
+   * Add member's field (boards 61h, 69c): the team members whose name or
+   * email matches, or whether an email is new to the team. Nothing for a
+   * division the viewer's Members page does not reach.
+   */
+  findForAdd(divisionId: number, query: string): Promise<AddLookup>;
   /** The Alumni page (#143). */
   alumni(): Promise<AlumniDirectory>;
   /** The Team tree (#143), built from this year's roster. */
@@ -148,19 +156,48 @@ export interface DashboardData {
 }
 
 /**
- * Each answers whether the change was made: false when the viewer may not
- * make it or the person is not theirs to change.
+ * The boolean writes answer whether the change was made: false when the
+ * viewer may not make it or the person is not theirs to change. Every write
+ * checks on the server, not only in the menu.
  */
 export interface TeamWrites {
   setShownOnSite(alumnusId: number, shown: boolean): Promise<boolean>;
-  /** The member panel's Save: the Team page title, and the role where the panel sets one. */
+  /**
+   * The operations lead's member panel (board 46b): the Team page title, and
+   * the role where the panel sets one. A division lead never changes a lead
+   * (Owner decision on #231), so their role change is refused.
+   */
   saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
-  /** Board 59e: a member of the lead's division becomes its lead, beside the lead or in their place. */
+  /**
+   * Board 59e: a member becomes a lead of the division. Changing a
+   * division's leads is the head's (`mayChangeDivision`, ./team.ts), so a
+   * division lead's Promote is refused (#231).
+   */
   promote(personId: number, mode: PromoteMode): Promise<boolean>;
-  /** Board 59d: the person's roles end and their access goes; their account stays. */
+  /**
+   * "Leaves the team" (board 59d, widened by #231): every role and every
+   * access grant ends and the person moves to Alumni; their account stays.
+   * Refused unless `mayLeaveTeam` (./team.ts) allows it.
+   */
   moveToAlumni(personId: number, departure: Departure): Promise<boolean>;
   /** Board 59: the accepted applicant joins the division the position belongs to. */
   confirmJoin(applicationId: number): Promise<boolean>;
+  /**
+   * Add member (boards 61h, 61h2): someone on the team joins the division at
+   * once and keeps their other divisions; an email new to the team waits for
+   * Confirm NDA. Answers which happened.
+   */
+  addMember(input: unknown): Promise<WriteResult<"joined" | "waiting">>;
+  /** Confirm NDA: the person waiting becomes a member, with the date and who confirmed it. */
+  confirmNda(joinId: number): Promise<boolean>;
+  /** Cancel add: the person waiting for Confirm NDA is no longer added. Nothing else changes, since they never joined. */
+  cancelAdd(joinId: number): Promise<boolean>;
+  /** "Remove from <division>": only that division's role ends. Refused for someone whose only division it is. */
+  removeFromDivision(personId: number, divisionId: number): Promise<boolean>;
+  /** Edit details or Fill details (board 61g): the title in `divisionId`, and the details. */
+  saveMemberDetails(target: DetailsTarget, divisionId: number, input: unknown): Promise<WriteResult<null>>;
+  /** The photo in Edit details: a square JPEG under 500 KB, or null to remove it. */
+  setMemberPhoto(personId: number, divisionId: number, photo: Upload | null): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

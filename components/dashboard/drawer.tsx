@@ -30,6 +30,7 @@ export function SidePanel({
   onOpenChange,
   title,
   detail,
+  leading,
   footer,
   children,
 }: {
@@ -37,6 +38,8 @@ export function SidePanel({
   onOpenChange: (open: boolean) => void;
   title: string;
   detail?: string;
+  /** Beside the title, before it: the person's avatar on the member panels (boards 61f, 61g). */
+  leading?: ReactNode;
   /** The pinned actions; none for a panel that only shows. */
   footer?: ReactNode;
   children: ReactNode;
@@ -56,9 +59,12 @@ export function SidePanel({
             >
               <ArrowLeft aria-hidden className="h-5 w-5" strokeWidth={1.75} />
             </DialogClose>
-            <div className="min-w-0">
-              <DialogTitle className="truncate text-[18px] font-semibold leading-8 md:text-[20px] md:leading-tight">{title}</DialogTitle>
-              {detail && <p className="mt-0.5 truncate text-[13px] text-prt-muted">{detail}</p>}
+            <div className="flex min-w-0 items-center gap-3.5 md:mr-auto">
+              {leading}
+              <div className="min-w-0">
+                <DialogTitle className="truncate text-[18px] font-semibold leading-8 md:text-[20px] md:leading-tight">{title}</DialogTitle>
+                {detail && <p className="mt-0.5 truncate text-[13px] text-prt-muted">{detail}</p>}
+              </div>
             </div>
             <DialogClose
               aria-label="Close"
@@ -92,6 +98,7 @@ export function Drawer({
   onOpenChange,
   title,
   detail,
+  leading,
   submitLabel,
   submitting,
   onSubmit,
@@ -102,6 +109,7 @@ export function Drawer({
   onOpenChange: (open: boolean) => void;
   title: string;
   detail?: string;
+  leading?: ReactNode;
   submitLabel: string;
   submitting: boolean;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
@@ -115,6 +123,7 @@ export function Drawer({
       onOpenChange={onOpenChange}
       title={title}
       detail={detail}
+      leading={leading}
       footer={
         <>
           {secondary ?? <DialogClose className={PANEL_GHOST_BUTTON}>Cancel</DialogClose>}
