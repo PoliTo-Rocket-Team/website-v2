@@ -2,6 +2,7 @@ import { canReach } from "@/lib/dashboard/access";
 import { alumniMove } from "@/lib/dashboard/alumni-move";
 import { joinChange, memberStanding, NEW_APPLICANT, type ApplicantStanding, type LeadMove } from "@/lib/dashboard/application-flow";
 import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/dashboard/data";
+import { departmentMembers } from "@/lib/dashboard/department-members";
 import { NO_MEMBER_DETAILS } from "@/lib/dashboard/details";
 import {
   addOutcome,
@@ -49,7 +50,7 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, detailsKey, type MemberChange, type TeamEdits } from "./edits";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
-import { alumni, departments, divisions, DUMMY_NOW, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
+import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
 
 // The test developer's Team pages (issues #143, #172 and #231): the roster
 // and alumni in ./team.ts with the test developer's own edits (./edits.ts)
@@ -250,13 +251,23 @@ function myDivision(kind: ViewerKind): number | null {
   return mine ? homeDivisionOf(mine.placement) : null;
 }
 
+/** The department the department head heads; null for every other viewer. */
+function myDepartment(kind: ViewerKind): number | null {
+  if (kind !== "department-head") return null;
+  const mine = people.find((p) => p.id === SELF_ID[kind]);
+  return mine?.placement.role === "head" ? mine.placement.departmentId : null;
+}
+
 /**
  * Who `kind` acts as on the Members page: the operations lead reaches the
- * team, a division lead their division; nobody else acts there.
+ * team, a department head their department (issue #235), a division lead
+ * their division; nobody else acts there.
  */
 function actorOf(kind: ViewerKind): TeamActor | null {
   if (!canReach(testDeveloperStanding(kind), "members")) return null;
   if (kind === "operations-lead") return { kind: "team" };
+  const department = myDepartment(kind);
+  if (department !== null) return { kind: "head", departmentIds: [department] };
   const division = myDivision(kind);
   return division === null ? null : { kind: "lead", divisionIds: [division] };
 }
@@ -374,8 +385,8 @@ function writesFor(
       return true;
     },
     async promote() {
-      // Promote changes a division's leads, which only its head does (`mayChangeDivision`);
-      // the dummy dashboard has no head to sign in as, so nobody here may.
+      // Promote is a division lead's button (board 59e), and changing a division's leads is
+      // only its head's (`mayChangeDivision`); the head changes leads in Edit division (#232).
       return false;
     },
     async moveToAlumni(personId, departure) {
@@ -396,7 +407,7 @@ function writesFor(
     },
     async confirmJoin(applicationId) {
       const joiner = joiners.find((j) => j.applicationId === applicationId);
-      if (!joiner || joiner.divisionId !== myDivision(kind) || joiner.joinedIn !== null) return false;
+      if (!joiner || actor === null || !reachesDivision(actor, joiner.divisionId, org) || joiner.joinedIn !== null) return false;
       try {
         return (await move(applicationId, { kind: "confirm-join" })).ok;
       } catch (error) {
@@ -519,17 +530,33 @@ export function dummyTeamPages(
   const joiners = dummyJoiners(current);
   const actor = actorOf(kind);
   const reach = actor?.kind === "lead" ? actor.divisionIds : [];
+  // As the database lists them (`readJoining`): people not on the team yet. A
+  // member joins from the Applications page (board 58h2) or from Add member.
+  const joiningIn = (team: readonly RosterEntry[], division: number): Joining[] =>
+    joiners
+      .filter((j) => j.divisionId === division && j.joinedIn === null && dummyStanding(j.email, j.divisionId, team).kind !== "member")
+      .map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived }));
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
       if (kind === "operations-lead") return teamDirectory(team, org, self);
+      if (actor?.kind === "head") {
+        const [departmentId] = actor.departmentIds;
+        const ids = divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
+        const page = departmentMembers({
+          records: team.map((entry) => recordOf(entry, edits)),
+          org,
+          departmentId,
+          actor,
+          selfId: self,
+          waiting: Object.fromEntries(ids.map((id) => [id, waitingIn(edits, id)])),
+          joining: Object.fromEntries(ids.map((id) => [id, joiningIn(team, id)])),
+          closed: closedDivisions.filter((d) => d.departmentId === departmentId),
+        });
+        return page === null ? NO_MEMBERS : { scope: "department", ...page };
+      }
       if (actor === null || reach.length === 0) return NO_MEMBERS;
       const division = reach.find((id) => id === divisionId) ?? reach[0];
-      // As the database lists them (`readJoining`): people not on the team yet. A
-      // member joins from the Applications page (board 58h2) or from Add member.
-      const joining = joiners.filter(
-        (j) => j.divisionId === division && j.joinedIn === null && dummyStanding(j.email, j.divisionId, team).kind !== "member",
-      );
       const page = divisionMembers({
         records: team.map((entry) => recordOf(entry, edits)),
         org,
@@ -538,7 +565,7 @@ export function dummyTeamPages(
         selfId: self,
         reach,
         waiting: waitingIn(edits, division),
-        joining: joining.map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived })),
+        joining: joiningIn(team, division),
       });
       return page === null ? NO_MEMBERS : { scope: "division", ...page };
     },

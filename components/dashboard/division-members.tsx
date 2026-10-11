@@ -7,10 +7,12 @@ import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, Plus, UserCheck
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
+import type { DivisionRemoval } from "@/lib/dashboard/department-members";
 import { noDetailsFilled } from "@/lib/dashboard/details";
 import {
   headcountLine,
   matchesPerson,
+  type DivisionHeader,
   type DivisionMembers,
   type DivisionPerson,
   type WaitingPerson,
@@ -37,10 +39,11 @@ import { PANEL } from "./panel";
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-type Asking =
-  | { readonly kind: "nda"; readonly waiting: WaitingPerson }
-  | { readonly kind: "cancel"; readonly waiting: WaitingPerson }
-  | { readonly kind: "remove"; readonly person: DivisionPerson }
+/** The "are you sure" a row or a note opened, with the division it is about. */
+export type Asking =
+  | { readonly kind: "nda"; readonly waiting: WaitingPerson; readonly division: string }
+  | { readonly kind: "cancel"; readonly waiting: WaitingPerson; readonly short: string }
+  | { readonly kind: "remove"; readonly person: DivisionPerson; readonly divisionId: number; readonly short: string }
   | { readonly kind: "leave"; readonly person: DivisionPerson };
 
 export function DivisionMembersView({ page, editable }: { page: DivisionMembers; editable: boolean }) {
@@ -52,7 +55,7 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
 
   const { division } = page;
   const people = page.people.filter((p) => matchesPerson(p, query));
-  const waiting = page.waiting.filter((w) => query.trim() === "" || w.email.includes(query.trim().toLowerCase()) || (w.name ?? "").toLowerCase().includes(query.trim().toLowerCase()));
+  const waiting = page.waiting.filter((w) => matchesWaiting(w, query));
   const open = page.people.find((p) => p.id === openId) ?? null;
   const short = divisionLabel(division.name);
   const intro = [division.name, division.code, headcountLine(page)].filter(Boolean).join(" · ");
@@ -115,30 +118,97 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
         <SearchField value={query} onChange={setQuery} placeholder="Search name, email, phone" className="md:w-[240px]" />
       </div>
 
+      <PeopleTable
+        people={people}
+        waiting={waiting}
+        waitingDivision={division}
+        editable={editable}
+        openId={openId}
+        onOpen={setOpenId}
+        removalsOf={(p) => [{ divisionId: division.id, short, removal: p.removal }]}
+        onAsk={setAsking}
+        onFill={fillDetails}
+        phoneCard="chips"
+      />
+
+      {page.waiting.map((w) => (
+        <NoEmailNote key={w.joinId} waiting={w} editable={editable} onFill={() => fillDetails(w)} />
+      ))}
+
+      <PersonDrawer person={open} editable={editable} onClose={() => setOpenId(null)} onEdit={editPerson} />
+      <EditDetailsDrawer target={editing} division={division} onClose={() => setEditing(null)} />
+      <AddMemberDrawer open={adding} onOpenChange={setAdding} target={{ kind: "division", division }} />
+      <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
+    </DrawerPage>
+  );
+}
+
+/** A waiting row matches the search by its email or the name given. */
+export function matchesWaiting(waiting: WaitingPerson, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return q === "" || waiting.email.includes(q) || (waiting.name ?? "").toLowerCase().includes(q);
+}
+
+/**
+ * The people of a Members page (boards 61e, 69, 69b): the rows waiting for
+ * their NDA, then the people, as a table from md and as cards on a phone.
+ * `waitingDivision` is the division the waiting rows wait for. A phone card
+ * shows the person's chips beside them (61m) or one line of codes, role and
+ * year (69m).
+ */
+export function PeopleTable({
+  people,
+  waiting,
+  waitingDivision,
+  editable,
+  openId,
+  onOpen,
+  removalsOf,
+  onAsk,
+  onFill,
+  phoneCard,
+}: {
+  people: readonly DivisionPerson[];
+  waiting: readonly WaitingPerson[];
+  waitingDivision: DivisionHeader | null;
+  editable: boolean;
+  openId: number | null;
+  onOpen: (id: number) => void;
+  /** The divisions the row's menu offers "Remove from <division>" for. */
+  removalsOf: (person: DivisionPerson) => readonly DivisionRemoval[];
+  onAsk: (asking: Asking) => void;
+  onFill: (waiting: WaitingPerson) => void;
+  phoneCard: "chips" | "line";
+}) {
+  const waitingRows = waitingDivision === null ? [] : waiting;
+  const name = waitingDivision?.name ?? "";
+  const short = divisionLabel(name);
+  return (
+    <>
       <ul aria-label="Members" className="mt-4 flex flex-col gap-2.5 md:hidden">
-        {waiting.map((w) => (
+        {waitingRows.map((w) => (
           <li key={`w${w.joinId}`} className={`${PANEL} flex items-center gap-3.5 border-warning/30 px-4 py-3.5`}>
             <MailAvatar />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] font-semibold">{w.email}</span>
               <WaitingLine waiting={w} />
             </span>
-            {editable && <ConfirmNdaButton onClick={() => setAsking({ kind: "nda", waiting: w })} />}
+            {editable && <ConfirmNdaButton onClick={() => onAsk({ kind: "nda", waiting: w, division: name })} />}
           </li>
         ))}
         {people.map((p) => (
           <li key={p.id}>
             <button
               type="button"
-              onClick={() => setOpenId(p.id)}
+              onClick={() => onOpen(p.id)}
               className={`${PANEL} flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
             >
               <Avatar name={p.name} size="ml" photoUrl={p.photoUrl} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[16px] font-semibold">{p.name}</span>
-                <span className="block truncate text-[13px] text-prt-muted">{roleText(p)}</span>
+                <span className="block truncate text-[13px] text-prt-muted">{phoneCard === "chips" ? roleText(p) : phoneLine(p)}</span>
               </span>
-              <Chips chips={p.chips} />
+              {phoneCard === "chips" && <Chips chips={p.chips} />}
             </button>
           </li>
         ))}
@@ -169,69 +239,65 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
-            {waiting.map((w) => (
-              <WaitingRow
-                key={`w${w.joinId}`}
-                waiting={w}
-                division={division}
-                editable={editable}
-                onConfirm={() => setAsking({ kind: "nda", waiting: w })}
-                onFill={() => fillDetails(w)}
-                onCancel={() => setAsking({ kind: "cancel", waiting: w })}
-              />
-            ))}
+            {waitingDivision !== null &&
+              waitingRows.map((w) => (
+                <WaitingRow
+                  key={`w${w.joinId}`}
+                  waiting={w}
+                  division={waitingDivision}
+                  editable={editable}
+                  onConfirm={() => onAsk({ kind: "nda", waiting: w, division: name })}
+                  onFill={() => onFill(w)}
+                  onCancel={() => onAsk({ kind: "cancel", waiting: w, short })}
+                />
+              ))}
             {people.map((p) => (
               <PersonRow
                 key={p.id}
                 person={p}
-                short={short}
+                removals={removalsOf(p)}
                 selected={p.id === openId}
                 editable={editable}
-                onOpen={() => setOpenId(p.id)}
-                onRemove={() => setAsking({ kind: "remove", person: p })}
-                onLeave={() => setAsking({ kind: "leave", person: p })}
+                onOpen={() => onOpen(p.id)}
+                onRemove={(r) => onAsk({ kind: "remove", person: p, divisionId: r.divisionId, short: r.short })}
+                onLeave={() => onAsk({ kind: "leave", person: p })}
               />
             ))}
           </tbody>
         </table>
       </section>
+    </>
+  );
+}
 
-      {page.waiting.map((w) => (
-        <NoEmailNote key={w.joinId} waiting={w} editable={editable} onFill={() => fillDetails(w)} />
-      ))}
-
-      <PersonDrawer
-        person={open}
-        editable={editable}
-        onClose={() => setOpenId(null)}
-        onEdit={editPerson}
-      />
-      <EditDetailsDrawer target={editing} division={division} onClose={() => setEditing(null)} />
-      <AddMemberDrawer open={adding} onOpenChange={setAdding} division={division} />
-
-      <ConfirmNdaDialog asking={asking?.kind === "nda" ? asking.waiting : null} division={division.name} onClose={() => setAsking(null)} />
-      <CancelAddDialog asking={asking?.kind === "cancel" ? asking.waiting : null} short={short} onClose={() => setAsking(null)} />
-      <RemoveDialog
-        person={asking?.kind === "remove" ? asking.person : null}
-        divisionId={division.id}
-        short={short}
-        onClose={() => setAsking(null)}
-      />
+/** The "are you sure" dialogs a Members page's rows and notes open. */
+export function MemberDialogs({ asking, onClose }: { asking: Asking | null; onClose: () => void }) {
+  return (
+    <>
+      <ConfirmNdaDialog asking={asking?.kind === "nda" ? asking : null} onClose={onClose} />
+      <CancelAddDialog asking={asking?.kind === "cancel" ? asking : null} onClose={onClose} />
+      <RemoveDialog asking={asking?.kind === "remove" ? asking : null} onClose={onClose} />
       {asking?.kind === "leave" && (
         <AlumniDialog
           open
-          onOpenChange={(next) => !next && setAsking(null)}
+          onOpenChange={(next) => !next && onClose()}
           person={{ id: asking.person.id, name: asking.person.name, joined: asking.person.since }}
-          onDone={() => setAsking(null)}
+          onDone={onClose}
         />
       )}
-    </DrawerPage>
+    </>
   );
 }
 
 /** The Role column: "Division Lead" in accent for a lead (board 61e), else their title in this division. */
 function roleText(person: DivisionPerson): string {
   return person.role === "lead" ? "Division Lead" : (person.title ?? "Member");
+}
+
+/** A head's phone card line (board 69m): "MA · Division lead · since 2023", with no title left out. */
+function phoneLine(person: DivisionPerson): string {
+  const role = person.role === "lead" ? "Division lead" : person.title;
+  return [person.chips.map((c) => c.label).join(", "), role, `since ${person.since}`].filter(Boolean).join(" · ");
 }
 
 /**
@@ -331,7 +397,7 @@ function WaitingRow({
 
 function PersonRow({
   person,
-  short,
+  removals,
   selected,
   editable,
   onOpen,
@@ -339,16 +405,17 @@ function PersonRow({
   onLeave,
 }: {
   person: DivisionPerson;
-  short: string;
+  removals: readonly DivisionRemoval[];
   selected: boolean;
   editable: boolean;
   onOpen: () => void;
-  onRemove: () => void;
+  onRemove: (removal: DivisionRemoval) => void;
   onLeave: () => void;
 }) {
   const lead = person.role === "lead";
-  const { removal, leave } = person;
-  const offersRemove = removal.kind === "offered" || removal.kind === "locked";
+  const { leave } = person;
+  // Not offered where it is their only division: the menu then holds only "Leaves the team" (Owner decision, 2026-10-11).
+  const offered = removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
   return (
     <tr
       onClick={onOpen}
@@ -374,15 +441,16 @@ function PersonRow({
       <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
         {editable && !person.self ? (
           <RowMenu label={`Actions for ${person.name}`}>
-            {offersRemove && (
+            {offered.map((r) => (
               <MenuItem
-                onSelect={onRemove}
+                key={r.divisionId}
+                onSelect={() => onRemove(r)}
                 icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
-                locked={removal.kind === "locked" ? removal.reason : null}
+                locked={r.removal.kind === "locked" ? r.removal.reason : null}
               >
-                Remove from {short}
+                Remove from {r.short}
               </MenuItem>
-            )}
+            ))}
             <MenuItem onSelect={onLeave} danger locked={leave.allowed ? null : leave.reason}>
               Leaves the team
             </MenuItem>
@@ -466,7 +534,7 @@ function MenuItem({
  * the lead tells the person themselves, with Fill details, Copy email and
  * Open email.
  */
-function NoEmailNote({ waiting, editable, onFill }: { waiting: WaitingPerson; editable: boolean; onFill: () => void }) {
+export function NoEmailNote({ waiting, editable, onFill }: { waiting: WaitingPerson; editable: boolean; onFill: () => void }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(waiting.email);
@@ -505,10 +573,12 @@ function NoEmailNote({ waiting, editable, onFill }: { waiting: WaitingPerson; ed
 }
 
 /** Confirm NDA: an "are you sure" first; the date and the confirmer are recorded. */
-function ConfirmNdaDialog({ asking, division, onClose }: { asking: WaitingPerson | null; division: string; onClose: () => void }) {
+function ConfirmNdaDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "nda" }> | null; onClose: () => void }) {
   const [pending, startTransition] = useTransition();
-  const [shown, setShown] = useState(asking);
-  if (asking !== null && asking !== shown) setShown(asking);
+  const [shownAsking, setShown] = useState(asking);
+  if (asking !== null && asking !== shownAsking) setShown(asking);
+  const shown = shownAsking?.waiting ?? null;
+  const division = shownAsking?.division ?? "";
   const who = shown?.name ?? shown?.email ?? "";
   const confirm = () =>
     startTransition(async () => {
@@ -538,10 +608,12 @@ function ConfirmNdaDialog({ asking, division, onClose }: { asking: WaitingPerson
 }
 
 /** Cancel add: an "are you sure" first; the wait is deleted and nothing else changes, since they never joined. */
-function CancelAddDialog({ asking, short, onClose }: { asking: WaitingPerson | null; short: string; onClose: () => void }) {
+function CancelAddDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "cancel" }> | null; onClose: () => void }) {
   const [pending, startTransition] = useTransition();
-  const [shown, setShown] = useState(asking);
-  if (asking !== null && asking !== shown) setShown(asking);
+  const [shownAsking, setShown] = useState(asking);
+  if (asking !== null && asking !== shownAsking) setShown(asking);
+  const shown = shownAsking?.waiting ?? null;
+  const short = shownAsking?.short ?? "";
   const who = shown?.name ?? shown?.email ?? "";
   const confirm = () =>
     startTransition(async () => {
@@ -571,10 +643,13 @@ function CancelAddDialog({ asking, short, onClose }: { asking: WaitingPerson | n
 }
 
 /** "Remove from <division>": an "are you sure" first; the person keeps their other divisions. */
-function RemoveDialog({ person, divisionId, short, onClose }: { person: DivisionPerson | null; divisionId: number; short: string; onClose: () => void }) {
+function RemoveDialog({ asking, onClose }: { asking: Extract<Asking, { kind: "remove" }> | null; onClose: () => void }) {
   const [pending, startTransition] = useTransition();
-  const [shown, setShown] = useState(person);
-  if (person !== null && person !== shown) setShown(person);
+  const [shownAsking, setShown] = useState(asking);
+  if (asking !== null && asking !== shownAsking) setShown(asking);
+  const shown = shownAsking?.person ?? null;
+  const divisionId = shownAsking?.divisionId ?? -1;
+  const short = shownAsking?.short ?? "";
   const firstName = shown?.name.split(" ")[0] ?? "";
   const others = shown?.divisions.filter((d) => d.divisionId !== divisionId).map((d) => d.name) ?? [];
   const confirm = () =>
@@ -590,7 +665,7 @@ function RemoveDialog({ person, divisionId, short, onClose }: { person: Division
     });
   return (
     <ConfirmDialog
-      open={person !== null}
+      open={asking !== null}
       onOpenChange={(next) => !next && onClose()}
       icon={<UserMinus className="h-5 w-5" strokeWidth={1.75} />}
       danger
@@ -609,7 +684,7 @@ function RemoveDialog({ person, divisionId, short, onClose }: { person: Division
  * NDA arrived" is ticked on the application (58g). It is the Applications
  * page's own Confirm join, so the button waits for that tick here too.
  */
-function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
+export function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
   const [asking, setAsking] = useState(false);
   const [pending, startTransition] = useTransition();
   const firstName = joining.name.split(" ")[0];

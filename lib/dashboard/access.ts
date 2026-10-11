@@ -87,7 +87,8 @@ export const DASHBOARD_PAGES = [
     key: "members",
     label: "Members",
     href: "/dashboard/members",
-    reach: { "operations-lead": "team", "division-lead": "my-division" },
+    // A department head's Members page holds every division of the department (issue #235).
+    reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
   },
   {
     key: "alumni",
@@ -104,7 +105,7 @@ export const DASHBOARD_PAGES = [
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",
-    // A department head's Members page is #235; their Access page is here (issue #230).
+    // A department head's Access page is here (issue #230).
     reach: { "department-head": "my-department", "division-lead": "my-division" },
   },
   {
