@@ -326,9 +326,9 @@ export function MailAvatar() {
 
 export function WaitingLine({ waiting }: { waiting: WaitingPerson }) {
   return (
-    <span className="mt-0.5 flex items-center gap-2 text-[12px]">
+    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]">
       <span className="inline-flex h-5 items-center whitespace-nowrap rounded bg-warning-soft px-1.5 font-medium text-warning">Waiting for NDA</span>
-      {noDetailsFilled(waiting.details) && <span className="text-prt-muted">Details not filled yet</span>}
+      {noDetailsFilled(waiting.details) && <span className="whitespace-nowrap text-prt-muted">Details not filled yet</span>}
     </span>
   );
 }

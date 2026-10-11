@@ -793,14 +793,16 @@ function WaitingItem({
   onFill: () => void;
 }) {
   return (
-    <li className="flex items-center gap-3 bg-warning/[0.04] px-3.5 py-2.5">
+    // The text keeps at least 14rem, so the email and the waiting line stay whole (board 68b8); where the
+    // row cannot also hold the actions beside it (the 440px drawer, a phone), they wrap under the text, on the right.
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-warning/[0.04] px-3.5 py-2.5">
       <MailAvatar />
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 basis-56">
         <span className="block truncate text-[14px] text-prt-text">{waiting.email}</span>
         <WaitingLine waiting={waiting} />
       </span>
       {editable && (
-        <>
+        <span className="ml-auto flex shrink-0 items-center gap-3">
           <ConfirmNdaButton onClick={() => onAsk({ kind: "nda", waiting, division })} />
           <RowMenu label={`Actions for ${waiting.email}`}>
             <MenuItem onSelect={onFill} icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}>
@@ -810,7 +812,7 @@ function WaitingItem({
               Cancel add
             </MenuItem>
           </RowMenu>
-        </>
+        </span>
       )}
     </li>
   );
