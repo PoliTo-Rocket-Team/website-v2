@@ -25,14 +25,14 @@ through their own picker. Why previews and `next dev` run on dummy data is
    `signed-out` or `account-unresolved`.
 
 4. **Pages ask `openDashboard()` and never the database.** A page handles the two closed kinds,
-   checks `canReach`, then reads through `data`:
+   checks `canReach` on the viewer, then reads through `data`:
 
    ```tsx
    const opening = await openDashboard();
    if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/members");
    if (opening.kind === "account-unresolved") return null;
    const { data } = opening;
-   if (!canReach(data.viewer.kind, "members")) notFound();
+   if (!canReach(data.viewer, "members")) notFound();
    return <MembersView directory={await data.members()} editable={data.teamWrites !== null} />;
    ```
    ([app/dashboard/members/page.tsx](../app/dashboard/members/page.tsx))

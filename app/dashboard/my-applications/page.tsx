@@ -28,7 +28,7 @@ async function LiveApplications() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/my-applications");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "my-applications")) notFound();
+  if (!canReach(data.viewer, "my-applications")) notFound();
   const applications = await data.myApplications();
   if (applications === null) notFound();
   if (hasNotApplied(applications)) return <NoApplicationsView />;

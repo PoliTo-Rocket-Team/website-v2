@@ -28,7 +28,7 @@ async function LiveApplications({ searchParams }: { searchParams: Promise<{ posi
   // The layout shows the sign-out screen in place of this page.
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "applications")) notFound();
+  if (!canReach(data.viewer, "applications")) notFound();
   const [page, { position }] = await Promise.all([data.applications(), searchParams]);
   const asked = typeof position === "string" ? position : null;
   const initialPosition = page.positions.some((p) => p.ref === asked) ? asked : null;

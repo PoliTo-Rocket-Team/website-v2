@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { viewerKindOf } from "./viewer";
+import { viewerKindOf, viewerStandingOf } from "./viewer";
 
 const role = (type: "president" | "head" | "lead" | "core" | null) => ({ type });
 
@@ -18,4 +18,10 @@ test("a member row with no active role is a non-member, whatever scope rows rema
   assert.equal(viewerKindOf({ scopes: [], activeRole: null }), "non-member");
   assert.equal(viewerKindOf({ scopes: ["division"], activeRole: null }), "non-member");
   assert.equal(viewerKindOf({ scopes: ["org", "admin"], activeRole: null }), "non-member");
+});
+
+test("a website scope row gives site-content access, but not to someone who left the team (issue #234)", () => {
+  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRole: role("core") }), { kind: "member", siteContent: true });
+  assert.deepEqual(viewerStandingOf({ scopes: ["division"], activeRole: role("lead") }), { kind: "division-lead", siteContent: false });
+  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRole: null }), { kind: "non-member", siteContent: false });
 });
