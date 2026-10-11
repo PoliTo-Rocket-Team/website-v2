@@ -33,6 +33,7 @@ import {
   reachesDivision,
   removalFrom,
   roleIn,
+  standingOfPlacement,
   teamDirectory,
   withJoined,
   withoutDivision,
@@ -295,6 +296,7 @@ function recordOf(entry: RosterEntry, edits: TeamEdits): PersonRecord {
     photoUrl: null,
     since: entry.joined,
     memberships,
+    beyondDivisions: standingOfPlacement(entry.placement).beyond,
     titles,
     details: savedDetails ?? addedDetails ?? (person ? dummyMemberDetails(person) : NO_MEMBER_DETAILS),
     nda: person ? dummyNda(person) : confirmation ? { signedOn: confirmation.on, confirmedBy: confirmer } : null,
@@ -380,9 +382,10 @@ function writesFor(
       // Only people on the dummy roster have an Alumni row to move to.
       if (!entry || actor === null || entry.id === SELF_ID[kind] || !people.some((p) => p.id === personId)) return false;
       if (departure.from > departure.to || departure.to > thisYear) return false;
-      const memberships = membershipsIn(entry.placement);
+      const standing = standingOfPlacement(entry.placement);
+      const { memberships } = standing;
       if (actor.kind !== "team" && !memberships.some((m) => reachesDivision(actor, m.divisionId, org))) return false;
-      if (!mayLeaveTeam(actor, memberships, org).allowed) return false;
+      if (!mayLeaveTeam(actor, standing, org).allowed) return false;
       // Every role ends (alumni-move.ts); the edits keep no ended role, so the whole person moves.
       const roles: { divisionId: number | null }[] =
         memberships.length === 0 ? [{ divisionId: null }] : memberships.map((m) => ({ divisionId: m.divisionId }));

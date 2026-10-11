@@ -20,8 +20,10 @@ import {
   memberRowsFor,
   pagerItems,
   seasonAt,
+  standingOfRoles,
   teamDirectory,
   type OrgChart,
+  type RoleSeat,
   type RosterEntry,
   type TeamActor,
 } from "./team";
@@ -167,10 +169,28 @@ test('"Leaves the team" follows the permission rule for lead, head and team lead
     [aeroHead, alsoSafety, "Also in Safety, so only the team leader can do this"],
     [teamLeader, alsoSafety, true],
   ];
-  for (const [actor, person, expected] of cases) {
-    const permission = mayLeaveTeam(actor, person, twoDepartments);
+  for (const [actor, memberships, expected] of cases) {
+    const permission = mayLeaveTeam(actor, { memberships, beyond: [] }, twoDepartments);
     assert.deepEqual(permission, expected === true ? { allowed: true } : { allowed: false, reason: expected });
   }
+});
+
+test('"Leaves the team" counts every active role: a role in no division is only the team leader\'s to end (#231)', () => {
+  // Rows as the server reads them: each person's one division role is in Mission Analysis.
+  const missionRole: RoleSeat = { type: "core", divisionId: 10, departmentId: 1, title: "Mission Analyst", since: "2024-10-01" };
+  const people: [RoleSeat, string][] = [
+    [{ type: "president", divisionId: null, departmentId: null, title: "Team Leader", since: "2025-10-01" }, "the team leader"],
+    [{ type: "head", divisionId: null, departmentId: 1, title: "Head", since: "2025-10-01" }, "Head of Aerodynamics"],
+    [{ type: null, divisionId: null, departmentId: null, title: "Chief Engineer", since: "2025-10-01" }, "Chief Engineer"],
+  ];
+  for (const [beyond, label] of people) {
+    const standing = standingOfRoles([missionRole, beyond]);
+    const refused = { allowed: false, reason: `Also ${label}, so only the team leader can do this` };
+    assert.deepEqual(mayLeaveTeam(missionLead, standing, twoDepartments), refused);
+    assert.deepEqual(mayLeaveTeam(aeroHead, standing, twoDepartments), refused);
+    assert.deepEqual(mayLeaveTeam(teamLeader, standing, twoDepartments), { allowed: true });
+  }
+  assert.deepEqual(mayLeaveTeam(missionLead, standingOfRoles([missionRole]), twoDepartments), { allowed: true });
 });
 
 test('"Remove from <division>" is not offered for the only division, and a lead cannot take a lead out', () => {

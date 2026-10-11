@@ -173,6 +173,9 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     - a division lead, only if the person is in no division outside the lead's own;
     - a department head, only if all the person's divisions are in the head's department;
     - the team leader, always (and the operations lead, who already ended whole memberships, #201).
+    - A person who also holds a role in no division (team leader, department head, a board seat or
+      any other role kept on a department or the team) can be moved only by the team leader. No
+      lead or head reaches that role, and the move would end it.
   - Otherwise the item is disabled with a lock and the reason, for example "Also in Safety, so only
     the team leader can do this". The server checks the same rule on every request.
 - Confirm NDA, Remove from {division} and Leaves the team each ask "are you sure" first.

@@ -12,11 +12,13 @@ import {
   boardSeatOf,
   membershipsIn,
   membershipsOfRoles,
+  roleBeyondDivisions,
   type AlumnusRow,
   type BoardSeat,
   type OrgChart,
   type Placement,
   type RoleHeld,
+  type RoleSeat,
   type RosterEntry,
 } from "./team";
 
@@ -187,6 +189,10 @@ function roleHeld(role: RoleRow): RoleHeld {
   return { type: role.type, divisionId: role.division_id, since: role.started_at };
 }
 
+function roleSeat(role: RoleRow): RoleSeat {
+  return { ...roleHeld(role), departmentId: role.dept_id, title: role.title };
+}
+
 const TARGET_LABELS: Readonly<Record<string, string>> = {
   all: "All pages",
   positions: "Positions",
@@ -310,6 +316,7 @@ export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
       photoUrl: person.picture,
       since: entry.joined,
       memberships: membershipsIn(entry.placement),
+      beyondDivisions: active.flatMap((role) => roleBeyondDivisions(roleSeat(role)) ?? []),
       titles,
       details: detailsOf(person),
       nda:

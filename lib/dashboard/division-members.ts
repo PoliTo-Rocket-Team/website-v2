@@ -14,6 +14,7 @@ import {
   type OrgChart,
   type Permission,
   type Removal,
+  type RoleBeyondDivisions,
   type TeamActor,
 } from "./team";
 
@@ -123,6 +124,8 @@ export type PersonRecord = {
   readonly photoUrl: string | null;
   readonly since: number;
   readonly memberships: Memberships;
+  /** Every role they hold in no division (team leader, board seat, department): "Leaves the team" ends these too. */
+  readonly beyondDivisions: readonly RoleBeyondDivisions[];
   /** Their role's title in each division they are in. */
   readonly titles: Readonly<Record<number, string | null>>;
   readonly details: MemberDetails;
@@ -205,7 +208,7 @@ export function divisionMembers(input: {
         details: record.details,
         nda: record.nda,
         self: record.id === input.selfId,
-        leave: mayLeaveTeam(actor, record.memberships, org),
+        leave: mayLeaveTeam(actor, { memberships: record.memberships, beyond: record.beyondDivisions }, org),
         removal: removalFrom(actor, record.memberships, divisionId, org),
       },
     ];
@@ -386,6 +389,7 @@ export function lookupForAdd(
       photoUrl: null,
       since: 0,
       memberships: c.memberships,
+      beyondDivisions: [],
       titles: {},
       details: NO_MEMBER_DETAILS,
       nda: null,

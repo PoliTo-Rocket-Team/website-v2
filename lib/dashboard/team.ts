@@ -405,15 +405,90 @@ function divisionName(org: OrgChart, divisionId: number): string {
 }
 
 /**
+ * A role someone holds in no division: the team leader, a board seat, a role
+ * kept on a department (its head, or any other), or any other role kept on
+ * the team. "Leaves the team" ends these too, and no division lead or
+ * department head reaches them.
+ */
+export type RoleBeyondDivisions =
+  | { readonly kind: "team-leader" }
+  | { readonly kind: "board"; readonly seat: BoardSeat }
+  | { readonly kind: "department"; readonly departmentId: number; readonly head: boolean }
+  | { readonly kind: "team"; readonly title: string };
+
+/** One active `roles` row with where it sits, as both data sources read it. */
+export type RoleSeat = RoleHeld & {
+  /** The department it is kept on; null for a role in a division or on the whole team. */
+  readonly departmentId: number | null;
+  readonly title: string;
+};
+
+/** The role as one in no division; null for a role in a division (the team leader's role is never a division's). */
+export function roleBeyondDivisions(role: RoleSeat): RoleBeyondDivisions | null {
+  if (role.type === "president") return { kind: "team-leader" };
+  if (role.divisionId !== null) return null;
+  if (role.departmentId !== null) return { kind: "department", departmentId: role.departmentId, head: role.type === "head" };
+  const seat = boardSeatOf(role.title);
+  return seat === null ? { kind: "team", title: role.title.trim() } : { kind: "board", seat };
+}
+
+/** Everything "Leaves the team" ends: every division someone is in, and every role they hold in no division. */
+export type TeamStanding = {
+  readonly memberships: Memberships;
+  readonly beyond: readonly RoleBeyondDivisions[];
+};
+
+/** Someone's standing from all their active roles (`membershipsOfRoles`, `roleBeyondDivisions`). */
+export function standingOfRoles(roles: readonly RoleSeat[]): TeamStanding {
+  return { memberships: membershipsOfRoles(roles), beyond: roles.flatMap((r) => roleBeyondDivisions(r) ?? []) };
+}
+
+/** Someone's standing from where they sit on the roster: a seat or a head holds no division, and divisions hold nothing else. */
+export function standingOfPlacement(placement: Placement): TeamStanding {
+  switch (placement.role) {
+    case "team-leader":
+      return { memberships: NO_MEMBERSHIPS, beyond: [{ kind: "team-leader" }] };
+    case "board":
+      return { memberships: NO_MEMBERSHIPS, beyond: [{ kind: "board", seat: placement.seat }] };
+    case "head":
+      return { memberships: NO_MEMBERSHIPS, beyond: [{ kind: "department", departmentId: placement.departmentId, head: true }] };
+    case "divisions":
+      return { memberships: placement.memberships, beyond: [] };
+  }
+}
+
+/** "the team leader", "Project Manager", "Head of Aerodynamics", "in Aerodynamics": what the lock reason says they also are. */
+function beyondLabel(role: RoleBeyondDivisions, org: OrgChart): string {
+  switch (role.kind) {
+    case "team-leader":
+      return "the team leader";
+    case "board":
+      return BOARD_SEAT_TITLES[role.seat];
+    case "department": {
+      const name = org.departments.find((d) => d.id === role.departmentId)?.name;
+      if (role.head) return name ? `Head of ${name}` : "a department head";
+      return name ? `in ${name}` : "in a department";
+    }
+    case "team":
+      return role.title === "" ? "on the board" : role.title;
+  }
+}
+
+/**
  * "Leaves the team" (Owner decision, 2026-10-11): a division lead may use it
  * only when the person is in no division outside the lead's own; a department
  * head only when all the person's divisions are in the head's department; the
- * team leader always. Otherwise the reason names the division that stops it
- * and who can do it instead. The menu shows this and the server checks it on
- * every request.
+ * team leader always. A role in no division (team leader, board seat,
+ * department) is outside every lead's and head's reach, so only the team
+ * leader can move someone who holds one (#231, review round 1). Otherwise the
+ * reason names what stops it and who can do it instead. The menu shows this
+ * and the server checks it on every request.
  */
-export function mayLeaveTeam(actor: TeamActor, person: Memberships, org: OrgChart): Permission {
+export function mayLeaveTeam(actor: TeamActor, standing: TeamStanding, org: OrgChart): Permission {
   if (actor.kind === "team") return ALLOWED;
+  const [beyond] = standing.beyond;
+  if (beyond !== undefined) return denied(`Also ${beyondLabel(beyond, org)}, so only the team leader can do this`);
+  const person = standing.memberships;
   if (person.length === 0) return denied("Only the team leader can do this");
   const outside = person.find((m) =>
     actor.kind === "lead"

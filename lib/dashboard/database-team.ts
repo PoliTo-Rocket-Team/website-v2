@@ -35,6 +35,7 @@ import {
   NO_MEMBERS,
   reachesDivision,
   removalFrom,
+  standingOfRoles,
   type Departure,
   type EditableRole,
   type Joining,
@@ -43,6 +44,7 @@ import {
   type Memberships,
   type OrgChart,
   type PromoteMode,
+  type RoleSeat,
   type TeamActor,
 } from "./team";
 import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG } from "./team-database";
@@ -265,18 +267,36 @@ export async function findForAdd(identity: DashboardIdentity, divisionId: number
   return lookupForAdd(query, team, waiting.map((w) => w.email), divisionId, snapshot.org);
 }
 
-type ActiveRole = { id: number; division_id: number | null; type: "president" | "head" | "lead" | "core" | null; started_at: string };
+type ActiveRole = {
+  id: number;
+  division_id: number | null;
+  dept_id: number | null;
+  type: "president" | "head" | "lead" | "core" | null;
+  title: string;
+  started_at: string;
+};
 
 async function activeRoles(memberId: number): Promise<ActiveRole[]> {
   return getDb()
-    .select({ id: roles.id, division_id: roles.divisionId, type: roles.type, started_at: roles.startedAt })
+    .select({
+      id: roles.id,
+      division_id: roles.divisionId,
+      dept_id: roles.deptId,
+      type: roles.type,
+      title: roles.title,
+      started_at: roles.startedAt,
+    })
     .from(roles)
     .where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)));
 }
 
+function roleSeat(r: ActiveRole): RoleSeat {
+  return { type: r.type, divisionId: r.division_id, since: r.started_at, departmentId: r.dept_id, title: r.title };
+}
+
 /** The person's division roles as memberships (`membershipsOfRoles`, ./team.ts). */
 function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
-  return membershipsOfRoles(active.map((r) => ({ type: r.type, divisionId: r.division_id, since: r.started_at })));
+  return membershipsOfRoles(active.map(roleSeat));
 }
 
 /**
@@ -370,9 +390,10 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
   const actor = await readActor(identity, org);
   if (actor === null) return false;
   const active = await activeRoles(personId);
-  const memberships = membershipsOfActive(active);
-  if (actor.kind !== "team" && !memberships.some((m) => reachesDivision(actor, m.divisionId, org))) return false;
-  if (!mayLeaveTeam(actor, memberships, org).allowed) return false;
+  // Every active role counts, a role in no division included: the move ends them all (`standingOfRoles`).
+  const standing = standingOfRoles(active.map(roleSeat));
+  if (actor.kind !== "team" && !standing.memberships.some((m) => reachesDivision(actor, m.divisionId, org))) return false;
+  if (!mayLeaveTeam(actor, standing, org).allowed) return false;
   const move = alumniMove(active.map((r) => ({ id: r.id, divisionId: r.division_id })));
   if (move === null) return false;
   const ending = move.ending.map((r) => r.id);
