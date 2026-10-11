@@ -67,7 +67,7 @@ An admin column comes later. **Planned**, no issue yet.
   A lead of more than one division picks which one Members shows (#231).
   - **Gap:** a lead of more than one division sees only one on Access and Orders. Tracked in #185.
   - **Gap:** a department head's sidebar lists Access but not yet Members or Orders. Tracked in
-    #231 and #233.
+    #235 and #233.
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
   with site-content access, which the full admins can give to anyone. A division lead or
@@ -148,7 +148,7 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.
 - **Gap:** My profile, Access and Orders still show one division per person (the home division,
-  or the oldest one a lead leads). Tracked in #230 and #233.
+  or the oldest one a lead leads). Tracked in #185 and #233.
 
 ### Members page
 

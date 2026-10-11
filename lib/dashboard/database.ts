@@ -456,6 +456,7 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
       ? []
       : db
           .select({
+            member_id: roles.memberId,
             division_id: roles.divisionId,
             type: roles.type,
             first_name: users.firstName,
@@ -474,6 +475,9 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
   const waiting = waitingOrders(orders);
   const noPhoto = noPhotoItem(withoutPhoto);
+  // One row per active role, so someone in two of the department's divisions
+  // has two rows; the department figure counts each person once (issue #229).
+  const headcount = new Set(team.map((t) => t.member_id)).size;
   const nameOf = (r: { first_name: string | null; last_name: string | null; email: string }) =>
     [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email;
 
@@ -511,8 +515,8 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
       },
       {
         label: "My department",
-        value: String(team.length),
-        detail: `${team.length === 1 ? "person" : "people"} in ${department?.name ?? identity.role?.departmentName ?? ""}`,
+        value: String(headcount),
+        detail: `${headcount === 1 ? "person" : "people"} in ${department?.name ?? identity.role?.departmentName ?? ""}`,
       },
     ],
     attention,
@@ -523,7 +527,7 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
         id: division.id,
         name: division.name,
         leads: members.filter((t) => t.type === "lead" || t.type === "head").map(nameOf),
-        people: members.length,
+        people: new Set(members.map((t) => t.member_id)).size,
         newApplications: own.reduce((sum, p) => sum + p.newApplications, 0),
         openPositions: own.filter((p) => p.open).length,
       };
