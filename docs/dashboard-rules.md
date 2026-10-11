@@ -281,6 +281,8 @@ and 67m).
 - The statuses are Waiting, Approved, Changes requested and Rejected.
 - **Who sees.** Anyone with any Orders access sees every order in the team, in every
   department. A person with no Orders access does not see the page.
+  - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
+    Orders access; a lead with no Orders access gets "not found" on the page. Tracked in #160.
 - **Who edits.** A division lead edits the orders of their own division, from any requester in
   it. A department head edits the orders of their whole department. A grant of Orders at Can
   edit opens the orders of the division (or the whole department) it was given in. Nobody edits

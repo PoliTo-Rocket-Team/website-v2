@@ -14,7 +14,7 @@ UPDATE "orders" SET "division_id" = (
   SELECT r."division_id"
   FROM "roles" r
   WHERE r."member_id" = "orders"."requester" AND r."division_id" IS NOT NULL
-  ORDER BY (r."leaved_at" IS NOT NULL), (r."type" IN ('lead', 'head')) DESC, r."started_at", r."id"
+  ORDER BY (r."leaved_at" IS NOT NULL), COALESCE(r."type" IN ('lead', 'head'), false) DESC, r."started_at", r."id"
   LIMIT 1
 )
 WHERE "division_id" IS NULL;--> statement-breakpoint
