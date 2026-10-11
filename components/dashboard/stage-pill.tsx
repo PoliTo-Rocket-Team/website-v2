@@ -1,4 +1,12 @@
-import { stagePill, STAGE_LABELS, stageTone, type ApplicationStage, type ApplicationState, type PillTone } from "@/lib/dashboard/application-flow";
+import {
+  stagePill,
+  STAGE_LABELS,
+  stageTone,
+  type ApplicantStanding,
+  type ApplicationStage,
+  type ApplicationState,
+  type PillTone,
+} from "@/lib/dashboard/application-flow";
 
 // The stage pill of an application (boards 58b, 58i, 58m): a -soft fill under
 // the solid text, as the manifest pairs tags. The words and the tone are the
@@ -15,8 +23,8 @@ const TONE: Readonly<Record<PillTone, string>> = {
 const PILL = "inline-flex h-[22px] max-w-full shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium";
 
 /** The pill for where an application stands; `short` is the phone wording (58m). */
-export function StagePill({ state, short = false }: { state: ApplicationState; short?: boolean }) {
-  const pill = stagePill(state);
+export function StagePill({ state, standing, short = false }: { state: ApplicationState; standing: ApplicantStanding; short?: boolean }) {
+  const pill = stagePill(state, standing);
   return <span className={`${PILL} ${TONE[pill.tone]}`}>{short ? pill.short : pill.label}</span>;
 }
 

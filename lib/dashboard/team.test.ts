@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { promotionNoticeLine } from "./notices";
+import { standingIn } from "./viewer";
 import {
   buildTeamTree,
   canPromote,
   checkDeparture,
   divisionDirectory,
+  inDivisions,
   inMemberTab,
+  membershipsOf,
+  membershipsOfRoles,
+  roleIn,
+  withJoined,
+  withRoleIn,
   memberRowsFor,
   pagerItems,
   seasonAt,
@@ -30,18 +37,85 @@ function person(id: number, name: string, placement: RosterEntry["placement"]): 
   return { id, name, email: `${name.split(" ")[0].toLowerCase()}@prt.it`, placement, pageTitle: null, joined: 2024, program: null, study: null, access: [] };
 }
 
+const lead = (divisionId: number, since = "2024-10-01") => inDivisions([{ divisionId, role: "lead", since }]);
+const member = (divisionId: number | null, since = "2024-10-01") => inDivisions(divisionId === null ? [] : [{ divisionId, role: "member", since }]);
+
 const roster: RosterEntry[] = [
   person(1, "Alessandro Greco", { role: "team-leader" }),
   person(2, "Chiara Rinaldi", { role: "head", departmentId: 1 }),
-  person(3, "Marco Bianchi", { role: "division-lead", divisionId: 10 }),
-  person(4, "Elif Kaya", { role: "member", divisionId: 10 }),
-  person(5, "Bruno Valli", { role: "division-lead", divisionId: 20 }),
-  person(6, "Tommaso Galli", { role: "member", divisionId: null }),
+  person(3, "Marco Bianchi", lead(10)),
+  person(4, "Elif Kaya", member(10)),
+  person(5, "Bruno Valli", lead(20)),
+  person(6, "Tommaso Galli", member(null)),
 ];
+
+test("a person holds a list of division memberships, each with its own role, and never one division twice", () => {
+  const memberships = membershipsOf([
+    { divisionId: 20, role: "member", since: "2025-10-01" },
+    { divisionId: 10, role: "lead", since: "2024-10-01" },
+    // Mission Analysis named a second time, as a member from later: one membership, still a lead, from 2024.
+    { divisionId: 10, role: "member", since: "2026-10-01" },
+  ]);
+  assert.deepEqual(
+    memberships.map((m) => [m.divisionId, m.role, m.since]),
+    [
+      [10, "lead", "2024-10-01"],
+      [20, "member", "2025-10-01"],
+    ],
+  );
+  assert.equal(roleIn(memberships, 10), "lead");
+  assert.equal(roleIn(memberships, 20), "member");
+  assert.equal(roleIn(memberships, 30), null);
+  // Joining a division they are already in changes nothing.
+  assert.deepEqual(withJoined(memberships, 20, "2026-10-09"), memberships);
+  assert.equal(withJoined(memberships, 30, "2026-10-09").length, 3);
+});
+
+test("active roles become memberships by the viewer's rule: a lead or head role in a division leads it", () => {
+  const held = [
+    { type: "head" as const, divisionId: 10, since: "2024-10-01" },
+    { type: "core" as const, divisionId: 20, since: "2025-10-01" },
+    { type: "president" as const, divisionId: null, since: "2023-10-01" },
+  ];
+  const memberships = membershipsOfRoles(held);
+  const access = { scopes: [], activeRoles: held };
+  for (const divisionId of [10, 20, 30]) assert.equal(roleIn(memberships, divisionId), standingIn(access, divisionId));
+  assert.equal(memberships.length, 2);
+});
+
+test("picking someone as lead of a division keeps their other divisions", () => {
+  const before = membershipsOf([
+    { divisionId: 10, role: "member", since: "2024-10-01" },
+    { divisionId: 20, role: "member", since: "2025-10-01" },
+  ]);
+  const after = withRoleIn(before, 20, "lead");
+  assert.deepEqual(
+    after.map((m) => [m.divisionId, m.role]),
+    [
+      [10, "member"],
+      [20, "lead"],
+    ],
+  );
+  // Someone not in the division is not put in it.
+  assert.deepEqual(withRoleIn(before, 30, "lead"), before);
+});
+
+test("a division's page lists a multi-division person with their role in that division", () => {
+  const both = person(8, "Matteo Greco", inDivisions([
+    { divisionId: 10, role: "member", since: "2024-10-01" },
+    { divisionId: 20, role: "lead", since: "2025-10-01" },
+  ]));
+  const inMission = divisionDirectory([...roster, both], org, 10).rows.find((r) => r.id === 8);
+  const inSafety = divisionDirectory([...roster, both], org, 20).rows.find((r) => r.id === 8);
+  assert.equal(inMission?.role, "member");
+  assert.equal(inMission?.division, "Mission Analysis Division");
+  assert.equal(inSafety?.role, "division-lead");
+  assert.equal(inSafety?.department, "Operations");
+});
 
 test("the tree is built from the roster: a person added to it is a node", () => {
   const before = buildTeamTree(roster, org, "2026–27", 4);
-  const after = buildTeamTree([...roster, person(7, "Anna Villa", { role: "member", divisionId: 10 })], org, "2026–27", 4);
+  const after = buildTeamTree([...roster, person(7, "Anna Villa", member(10))], org, "2026–27", 4);
   const names = (tree: typeof before) => tree.departments[0].divisions[0].members.map((m) => m.name);
   assert.deepEqual(names(before), ["Elif Kaya"]);
   assert.deepEqual(names(after), ["Anna Villa", "Elif Kaya"]);

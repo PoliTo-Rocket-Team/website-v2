@@ -83,6 +83,24 @@ export function TeamTreeView({ tree }: { tree: TeamTree }) {
   );
 }
 
+// Someone in several divisions is drawn once (board 54e): each other division
+// they are in gets a blue "also" tag beside them and, on the canvas, a dashed
+// blue line from that division. Blue keeps it apart from the accent path.
+
+const ALSO_TAG = "inline-flex h-4 shrink-0 items-center whitespace-nowrap rounded-full bg-info-soft px-1.5 text-[10px] leading-none text-info";
+
+function AlsoTags({ person }: { person: TreePerson }) {
+  return (
+    <>
+      {person.also.map((d) => (
+        <span key={d.divisionId} className={ALSO_TAG}>
+          also {d.label}
+        </span>
+      ))}
+    </>
+  );
+}
+
 // The card every tree node above the member lists is drawn as.
 
 function TreeCard({
@@ -102,10 +120,16 @@ function TreeCard({
 }) {
   return (
     <div
-      className={`flex h-full w-full items-center gap-2.5 rounded-xl border px-2.5 text-left ${
+      className={`relative flex h-full w-full items-center gap-2.5 rounded-xl border px-2.5 text-left ${
         onPath ? "border-accent/70 bg-accent/[0.06]" : "border-hairline bg-panel"
       } ${found ? "ring-1 ring-accent" : ""}`}
     >
+      {/* A card has no room beside it, so its tags hang from its lower edge. */}
+      {person && person.also.length > 0 && (
+        <span className="absolute -bottom-2 right-2 flex gap-1">
+          <AlsoTags person={person} />
+        </span>
+      )}
       {person && <Avatar name={person.name} size="sm" accent />}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold leading-tight text-prt-text">
@@ -123,7 +147,12 @@ function TreeCard({
   );
 }
 
-/** A member under their lead: a small avatar and the name; the viewer's row is outlined and marked "you". */
+/**
+ * A member under their lead: a small avatar and the name; the viewer's row is
+ * outlined and marked "you". Their "also" tags follow the name, as board 54e
+ * draws them; the layout makes the row wide enough to hold them, and the name
+ * gives way before a tag does.
+ */
 function MemberRow({ person, found }: { person: TreePerson; found: boolean }) {
   return (
     <div
@@ -136,6 +165,7 @@ function MemberRow({ person, found }: { person: TreePerson; found: boolean }) {
         {person.name}
         {person.self && " · you"}
       </span>
+      <AlsoTags person={person} />
     </div>
   );
 }
@@ -324,12 +354,29 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
         </button>
       </div>
 
+      {layout.links.length > 0 && <AlsoLegend />}
       {view && size && <Minimap layout={layout} view={view} size={size} onCentre={(at) => moveTo((current) => ({ ...current, x: size.w / 2 - at.x * current.k, y: size.h / 2 - at.y * current.k }))} />}
     </section>
   );
 }
 
-/** The connectors, grey first and the viewer's path over them in accent, at 1px whatever the zoom. */
+/** What the dashed blue line means (board 54e), shown only while the tree draws one. */
+function AlsoLegend() {
+  return (
+    <p data-canvas-control className="absolute bottom-4 left-4 flex h-8 items-center gap-2.5 rounded-lg border border-hairline bg-panel px-3 text-[11px] text-prt-muted">
+      <svg aria-hidden width="24" height="2" className="overflow-visible">
+        <line x1="0" y1="1" x2="24" y2="1" className="stroke-info" strokeWidth={1.5} strokeDasharray="4 3" />
+      </svg>
+      Also in another division · shown once
+    </p>
+  );
+}
+
+/**
+ * The connectors, grey first, then the dashed blue lines to people drawn under
+ * another division, then the viewer's path over them in accent, at 1px
+ * whatever the zoom.
+ */
 function TreeLines({ layout }: { layout: TreeLayout }) {
   const line = (points: readonly (readonly [number, number])[]) => points.map(([x, y]) => `${x},${y}`).join(" ");
   return (
@@ -339,6 +386,17 @@ function TreeLines({ layout }: { layout: TreeLayout }) {
         .map((e, i) => (
           <polyline key={`g${i}`} points={line(e.points)} fill="none" className="stroke-border-strong" strokeWidth={1} vectorEffect="non-scaling-stroke" />
         ))}
+      {layout.links.map((link) => (
+        <polyline
+          key={link.key}
+          points={line(link.points)}
+          fill="none"
+          className="stroke-info"
+          strokeWidth={1}
+          strokeDasharray="4 3"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
       {layout.edges
         .filter((e) => e.onPath)
         .map((e, i) => (

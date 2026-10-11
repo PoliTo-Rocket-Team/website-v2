@@ -4,14 +4,25 @@
 // module only parses and serializes them; lib/dashboard/open.ts reads and
 // writes the cookie.
 
-import { LEAVE_REASONS, type Departure, type MemberEdit } from "@/lib/dashboard/team";
+import { LEAVE_REASONS, type Departure, type DivisionRole } from "@/lib/dashboard/team";
 import type { DummyNotice } from "./notices";
+
+/**
+ * A person's saved drawer and Promote changes: their page title, and their
+ * role in each division a change set it in. A role is kept per division, so
+ * a change in one never reaches their other divisions (issue #229).
+ */
+export type MemberChange = {
+  readonly pageTitle: string | null;
+  /** Division id to the role set in it. */
+  readonly roles: Readonly<Record<number, DivisionRole>>;
+};
 
 export type TeamEdits = {
   /** Alumni whose "On the site" switch was flipped, by id. */
   readonly shownOnSite: Readonly<Record<number, boolean>>;
-  /** Saved drawer changes, by person id. */
-  readonly members: Readonly<Record<number, MemberEdit>>;
+  /** Saved drawer and Promote changes, by person id. */
+  readonly members: Readonly<Record<number, MemberChange>>;
   /** People moved to alumni, with their years on the team and why they left. */
   readonly movedToAlumni: Readonly<Record<number, Departure>>;
   /** Dashboard notices dismissed under "Needs your attention" (./notices.ts), by id. */
@@ -62,12 +73,14 @@ function readNotice(value: unknown): DummyNotice | null {
   return { id: id as number, recipientId: recipientId as number, kind, subject, createdAt, data };
 }
 
-function readMemberEdit(value: unknown): MemberEdit | null {
+function readMemberChange(value: unknown): MemberChange | null {
   if (!isRecord(value)) return null;
-  const { role, pageTitle } = value;
-  if (role !== null && role !== "division-lead" && role !== "member") return null;
+  const { roles, pageTitle } = value;
   if (pageTitle !== null && typeof pageTitle !== "string") return null;
-  return { role, pageTitle: cleanTitle(pageTitle) };
+  return {
+    pageTitle: cleanTitle(pageTitle),
+    roles: entriesOf(roles, (r) => (r === "lead" || r === "member" ? r : null)),
+  };
 }
 
 function readDeparture(value: unknown): Departure | null {
@@ -96,7 +109,7 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
   if (!isRecord(raw)) return NO_EDITS;
   return {
     shownOnSite: entriesOf(raw.shownOnSite, (v) => (typeof v === "boolean" ? v : null)),
-    members: entriesOf(raw.members, readMemberEdit),
+    members: entriesOf(raw.members, readMemberChange),
     movedToAlumni: entriesOf(raw.movedToAlumni, readDeparture),
     dismissedNotices: Array.isArray(raw.dismissedNotices)
       ? raw.dismissedNotices.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)

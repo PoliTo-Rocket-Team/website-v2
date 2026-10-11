@@ -3,6 +3,8 @@
 // site-content access the Alumni page reads (issue #234). The access table in
 // ./access.ts says which standing reaches which page.
 
+import { divisionRoleOf, type DivisionRole, type RoleType } from "./team";
+
 export const VIEWER_KINDS = [
   "operations-lead",
   "division-lead",
@@ -58,29 +60,54 @@ export function initialsOf(name: string): string {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
-/** The scope rows and the active role that decide a real member's viewer kind. */
+/** One of a member's active roles, as the viewer reads it. */
+export type ActiveRoleRef = {
+  readonly type: RoleType;
+  /** The division it is in; null for a role in no division. */
+  readonly divisionId: number | null;
+};
+
+/** The scope rows and every active role that decide a real member's viewer kind. */
 export type MemberAccess = {
   readonly scopes: readonly ("admin" | "org" | "department" | "division" | "website")[];
-  /** Their newest active role; null when every role they held has ended. */
-  readonly activeRole: { readonly type: "president" | "head" | "lead" | "core" | null } | null;
+  /** Every role they hold now; none when every role they held has ended. */
+  readonly activeRoles: readonly ActiveRoleRef[];
 };
 
 /**
- * A real account's viewer kind. No member row is a non-member (an applicant),
- * and so is a member row with no active role: someone who left or was moved
- * to alumni gets the applicant's pages, whatever scope rows remain (issue
- * #201). Org-wide or admin access is the operations lead's; a department or
- * division scope, or a lead role, is a division lead's; anyone else on the
+ * A real account's viewer kind, read from all their active roles (issue
+ * #229). No member row is a non-member (an applicant), and so is a member row
+ * with no active role: someone who left or was moved to alumni gets the
+ * applicant's pages, whatever scope rows remain (issue #201). Org-wide or
+ * admin access is the operations lead's; a department or division scope, or a
+ * lead or head role in any division, is a division lead's; anyone else on the
  * team is a member.
  */
 export function viewerKindOf(access: MemberAccess | null): ViewerKind {
-  if (access === null || access.activeRole === null) return "non-member";
+  if (access === null || access.activeRoles.length === 0) return "non-member";
   if (access.scopes.some((s) => s === "admin" || s === "org")) return "operations-lead";
-  const roleType = access.activeRole.type;
-  if (access.scopes.some((s) => s === "department" || s === "division") || roleType === "lead" || roleType === "head") {
-    return "division-lead";
-  }
+  const leadsSomething = access.activeRoles.some((r) => r.type === "lead" || r.type === "head");
+  if (access.scopes.some((s) => s === "department" || s === "division") || leadsSomething) return "division-lead";
   return "member";
+}
+
+/**
+ * What the viewer is in one division, by the rule the Team pages place
+ * people with (`divisionRoleOf`, ./team.ts): a lead where they hold a lead or
+ * head role in it, a member where they hold any other role in it, null where
+ * they hold none. Someone who leads division A and is a member of division B
+ * is a lead for A and a member for B.
+ */
+export function standingIn(access: MemberAccess, divisionId: number): DivisionRole | null {
+  const here = access.activeRoles.filter((r) => r.divisionId === divisionId);
+  if (here.length === 0) return null;
+  return here.some((r) => divisionRoleOf(r.type) === "lead") ? "lead" : "member";
+}
+
+/** Every division the viewer leads by role, in the order their roles come. */
+export function ledDivisionIds(access: MemberAccess): number[] {
+  const ids = access.activeRoles.flatMap((r) => (r.divisionId !== null && standingIn(access, r.divisionId) === "lead" ? [r.divisionId] : []));
+  return [...new Set(ids)];
 }
 
 /** A real account's standing: its viewer kind, and site-content access from a `website` scope row. */

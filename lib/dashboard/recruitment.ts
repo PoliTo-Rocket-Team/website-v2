@@ -1,4 +1,4 @@
-import type { ApplicationStage, ApplicationState } from "./application-flow";
+import type { ApplicantStanding, ApplicationStage, ApplicationState } from "./application-flow";
 import type { DivisionChoice, PositionContent } from "./new-position";
 
 // What the Positions and Applications pages show (Dashboard v2 boards 57 and
@@ -121,6 +121,8 @@ export type ApplicationEntry = {
     /** As the application form asked it; it picks "she", "he" or "they" in the dialogs. */
     readonly gender: string | null;
   };
+  /** Where the applicant stands with the team: a member joins with no NDA wait (board 58h2). */
+  readonly standing: ApplicantStanding;
   readonly studies: { readonly year: string | null; readonly degree: string | null };
   readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };
   /** "Today" in the list, "today, 14:32" in the detail panel. */

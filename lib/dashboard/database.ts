@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, isNull, max, min, notInArray, or } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, max, min, notInArray, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getRecruitmentControl, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
@@ -53,7 +53,7 @@ import { databaseTeamWrites, leadDivisionId, readJoining } from "./database-team
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
-import { viewerStandingOf, type DashboardViewer, type ViewerStanding } from "./viewer";
+import { ledDivisionIds, viewerStandingOf, type DashboardViewer, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -78,7 +78,13 @@ type Identity = {
   linkedin: string | null;
   memberId: number | null;
   picture: string | null;
+  /**
+   * The role a single-division page names (`primaryRole`): their highest, the
+   * oldest of those. Pages that still show one division read it (#231).
+   */
   role: ActiveRole | null;
+  /** Every role they hold now, oldest first (issue #229). */
+  roles: readonly ActiveRole[];
   /** The divisions and departments a lead's figures cover. */
   divisionIds: number[];
   departmentIds: number[];
@@ -114,10 +120,10 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     picture: user.picture,
   };
   if (user.member_id === null) {
-    return { ...base, role: null, divisionIds: [], departmentIds: [], ...viewerStandingOf(null) };
+    return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...viewerStandingOf(null) };
   }
 
-  const [scopeRows, [role]] = await Promise.all([
+  const [scopeRows, activeRoles] = await Promise.all([
     db
       .select({ scope: scopes.scope, division_id: scopes.divisionId, dept_id: scopes.deptId })
       .from(scopes)
@@ -136,19 +142,28 @@ async function readIdentity(userId: string): Promise<Identity | null> {
       .leftJoin(divisions, eq(roles.divisionId, divisions.id))
       .leftJoin(departments, eq(divisions.deptId, departments.id))
       .where(and(eq(roles.memberId, user.member_id), isNull(roles.leavedAt)))
-      .orderBy(desc(roles.startedAt))
-      .limit(1),
+      .orderBy(asc(roles.startedAt)),
   ]);
 
-  const standing = viewerStandingOf({ scopes: scopeRows.map((s) => s.scope), activeRole: role ?? null });
+  const access = { scopes: scopeRows.map((s) => s.scope), activeRoles };
+  const standing = viewerStandingOf(access);
   // Someone with no active role left the team: scope rows that outlived it reach nothing.
-  if (standing.kind === "non-member") return { ...base, role: null, divisionIds: [], departmentIds: [], ...standing };
+  if (standing.kind === "non-member") return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...standing };
 
-  const divisionIds = scopeRows.flatMap((s) => (s.scope === "division" && s.division_id !== null ? [s.division_id] : []));
-  if (role?.divisionId != null && (role.type === "lead" || role.type === "head")) divisionIds.push(role.divisionId);
+  // A lead's figures cover every division they lead, and the divisions their scopes name.
+  const scoped = scopeRows.flatMap((s) => (s.scope === "division" && s.division_id !== null ? [s.division_id] : []));
+  const divisionIds = [...new Set([...scoped, ...ledDivisionIds(access)])];
   const departmentIds = scopeRows.flatMap((s) => (s.scope === "department" && s.dept_id !== null ? [s.dept_id] : []));
 
-  return { ...base, role: role ?? null, divisionIds, departmentIds, ...standing };
+  return { ...base, role: primaryRole(activeRoles), roles: activeRoles, divisionIds, departmentIds, ...standing };
+}
+
+const ROLE_RANK: Readonly<Record<NonNullable<ActiveRole["type"]>, number>> = { president: 0, head: 1, lead: 2, core: 3 };
+
+/** Their highest role, the oldest of those when they hold several: a lead role over a member role. */
+function primaryRole(active: readonly ActiveRole[]): ActiveRole | null {
+  const rank = (r: ActiveRole) => (r.type === null ? 4 : ROLE_RANK[r.type]);
+  return [...active].sort((a, b) => rank(a) - rank(b) || a.startedAt.localeCompare(b.startedAt))[0] ?? null;
 }
 
 type ScopedPosition = {
