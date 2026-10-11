@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { applications, applyPositions, divisions, members, roles, scopes, teamJoins, teamLeaves, users } from "@/db/schema";
@@ -30,6 +30,7 @@ import {
 import {
   headDepartmentOf,
   homeDivision,
+  isDivisionRole,
   mayChangeDivision,
   mayLeaveTeam,
   membershipsOfRoles,
@@ -52,9 +53,11 @@ import { departmentMembers, type ClosedDivision } from "./department-members";
 import {
   checkDivisionSave,
   closeRefusal,
+  divisionRowWrites,
   planDivisionSave,
   searchTeam,
   type DivisionPlan,
+  type DivisionRow,
   type DivisionSubject,
   type TeamPerson,
   type TeamSearch,
@@ -346,9 +349,14 @@ function roleSeat(r: ActiveRole): RoleSeat {
   return { type: r.type, divisionId: r.division_id, since: r.started_at, departmentId: r.dept_id, title: r.title };
 }
 
-/** The person's division roles as memberships (`membershipsOfRoles`, ./team.ts). */
+/** The person's lead and member rows in `divisionId` (`isDivisionRole`): never a seat kept on its row. */
+function divisionRowsIn(active: readonly ActiveRole[], divisionId: number): ActiveRole[] {
+  return active.filter((r) => r.division_id === divisionId && isDivisionRole(roleSeat(r)));
+}
+
+/** The person's division roles as memberships (`membershipsOfRoles`, ./team.ts); a seat kept on a division row is none. */
 function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
-  return membershipsOfRoles(active.map(roleSeat));
+  return membershipsOfRoles(active.map(roleSeat).filter(isDivisionRole));
 }
 
 /**
@@ -491,11 +499,11 @@ async function actingOn(identity: DashboardIdentity, divisionId: number): Promis
   return { actor, org };
 }
 
-/** Someone with an active role in `divisionId`, never the viewer: the people a row's actions reach. */
+/** Someone with a lead or member role in `divisionId`, never the viewer: the people a row's actions reach. */
 async function personIn(identity: DashboardIdentity, personId: number, divisionId: number): Promise<ActiveRole[] | null> {
   if (personId === identity.memberId) return null;
   const active = await activeRoles(personId);
-  return active.some((r) => r.division_id === divisionId) ? active : null;
+  return divisionRowsIn(active, divisionId).length > 0 ? active : null;
 }
 
 /** A new role in the division: a member of it from today, with the title given. */
@@ -648,21 +656,23 @@ async function cancelAdd(identity: DashboardIdentity, joinId: number): Promise<b
 }
 
 /**
- * "Remove from <division>": the person's roles in that division end and its
- * division access goes; every other division stays. Refused for someone
- * whose only division it is, and for a lead when a division lead asks
- * (`removalFrom`, ./team.ts).
+ * "Remove from <division>": the person's lead and member rows in that
+ * division end and its division access goes; every other division stays, and
+ * so does a seat kept on its row (`divisionRowsIn`). Refused for someone whose
+ * only division it is and who holds no seat, and for a lead when a division
+ * lead asks (`removalFrom`, ./team.ts).
  */
 async function removeFromDivision(identity: DashboardIdentity, personId: number, divisionId: number): Promise<boolean> {
   const acting = await actingOn(identity, divisionId);
   const active = acting && (await personIn(identity, personId, divisionId));
   if (!acting || !active) return false;
-  if (removalFrom(acting.actor, membershipsOfActive(active), divisionId, acting.org).kind !== "offered") return false;
+  if (removalFrom(acting.actor, standingOfRoles(active.map(roleSeat), acting.org), divisionId, acting.org).kind !== "offered") return false;
+  const ending = divisionRowsIn(active, divisionId).map((r) => r.id);
   await runAuditBatch((db) => [
     db
       .update(roles)
       .set({ leavedAt: today() })
-      .where(and(eq(roles.memberId, personId), eq(roles.divisionId, divisionId), isNull(roles.leavedAt))),
+      .where(and(inArray(roles.id, ending), isNull(roles.leavedAt))),
     db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId))),
   ]);
   return done();
@@ -699,12 +709,14 @@ async function saveMemberDetails(
     return written(null);
   }
 
-  if ((await personIn(identity, target.id, divisionId)) === null) return refused("You can edit only people in your division.");
+  const active = await personIn(identity, target.id, divisionId);
+  if (active === null) return refused("You can edit only people in your division.");
+  const titled = divisionRowsIn(active, divisionId).map((r) => r.id);
   await runAuditBatch((db) => [
     db
       .update(roles)
       .set({ title: title ?? "" })
-      .where(and(eq(roles.memberId, target.id), eq(roles.divisionId, divisionId), isNull(roles.leavedAt))),
+      .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
     db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.member, target.id)),
     db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
   ]);
@@ -776,15 +788,21 @@ async function savedSubject(divisionId: number, org: OrgChart): Promise<Exclude<
     .where(and(eq(divisions.id, divisionId), isNotNull(divisions.closedAt)))
     .limit(1);
   if (!row || row.dept_id === null) return null;
-  const held = await getDb()
-    .selectDistinct({ member_id: roles.memberId })
-    .from(roles)
-    .where(and(eq(roles.divisionId, divisionId), isNull(roles.leavedAt)));
+  const held = await heldRows(divisionId);
   return {
     kind: "closed",
     division: { id: row.id, name: row.name, departmentId: row.dept_id, code: row.code?.trim() || null },
-    stillIn: held.flatMap((r) => (r.member_id === null ? [] : [r.member_id])),
+    stillIn: [...new Set(held.filter((r) => isDivisionRole({ type: r.type, divisionId })).map((r) => r.memberId))],
   };
+}
+
+/** Every active row kept on the division, seats included: `divisionRowWrites` picks the ones a plan touches. */
+async function heldRows(divisionId: number): Promise<DivisionRow[]> {
+  const rows = await getDb()
+    .select({ id: roles.id, member_id: roles.memberId, type: roles.type })
+    .from(roles)
+    .where(and(eq(roles.divisionId, divisionId), isNull(roles.leavedAt)));
+  return rows.flatMap((r) => (r.member_id === null ? [] : [{ id: r.id, memberId: r.member_id, type: r.type }]));
 }
 
 /**
@@ -794,7 +812,9 @@ async function savedSubject(divisionId: number, org: OrgChart): Promise<Exclude<
  * and division access removed) before anyone joins, each lead change in this
  * division only, old leads who leave it (roles ended, its access removed) or
  * leave the team (every role and access ends, as Leaves the team does), and
- * new members. The emails new to the team wait for Confirm NDA after it, as
+ * new members. The rows ended or changed in the division are the lead and
+ * member rows `divisionRowWrites` picks by id, so a seat kept on a division row
+ * stays the seat. The emails new to the team wait for Confirm NDA after it, as
  * Add member records them.
  */
 async function writeDivisionPlan(
@@ -807,7 +827,8 @@ async function writeDivisionPlan(
   const year = Number(on.slice(0, 4));
   const leavers = await Promise.all(plan.leaveTeam.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
   const newRole = (memberId: number, type: "lead" | "core") => ({ memberId, divisionId, title: "", type, startedAt: on });
-  const inDivision = (memberId: number) => and(eq(roles.memberId, memberId), eq(roles.divisionId, divisionId), isNull(roles.leavedAt));
+  const rows = divisionRowWrites(plan, divisionId, create ? [] : await heldRows(divisionId));
+  const open = (ids: readonly number[]) => and(inArray(roles.id, [...ids]), isNull(roles.leavedAt));
   const joining = [...plan.joinAsLead.map((id) => newRole(id, "lead")), ...plan.joinAsMember.map((id) => newRole(id, "core"))];
 
   await runAuditBatch((db) => [
@@ -817,29 +838,19 @@ async function writeDivisionPlan(
           .update(divisions)
           .set({ name: plan.name, code: plan.code, ...(plan.reopen ? { closedAt: null } : {}) })
           .where(eq(divisions.id, divisionId)),
+    ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
     ...(plan.reopen === null
       ? []
       : [
-          db
-            .update(roles)
-            .set({ leavedAt: on })
-            .where(
-              and(
-                eq(roles.divisionId, divisionId),
-                isNull(roles.leavedAt),
-                ...(plan.reopen.keep.length === 0 ? [] : [notInArray(roles.memberId, [...plan.reopen.keep])]),
-              ),
-            ),
           db.delete(teamJoins).where(eq(teamJoins.divisionId, divisionId)),
           db.delete(scopes).where(and(eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId))),
         ]),
-    ...plan.promote.map((id) => db.update(roles).set({ type: "lead" }).where(inDivision(id))),
+    ...(rows.toLead.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(open(rows.toLead))]),
     ...(joining.length === 0 ? [] : [db.insert(roles).values(joining)]),
-    ...plan.demote.map((id) => db.update(roles).set({ type: "core" }).where(and(inDivision(id), eq(roles.type, "lead")))),
-    ...plan.leaveDivision.flatMap((id) => [
-      db.update(roles).set({ leavedAt: on }).where(inDivision(id)),
+    ...(rows.toMember.length === 0 ? [] : [db.update(roles).set({ type: "core" }).where(open(rows.toMember))]),
+    ...plan.leaveDivision.map((id) =>
       db.delete(scopes).where(and(eq(scopes.memberId, id), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId))),
-    ]),
+    ),
     ...leavers.flatMap(({ memberId, active }) => [
       db.update(roles).set({ leavedAt: on }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
       db.delete(scopes).where(eq(scopes.memberId, memberId)),

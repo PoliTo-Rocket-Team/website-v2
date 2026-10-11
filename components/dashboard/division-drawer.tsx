@@ -485,10 +485,11 @@ function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: rea
 
 /** Whether each of the old lead's three outcomes is open, with the reason when it is not. */
 function outcomesFor(lead: DivisionPerson, short: string): Readonly<Record<OldLeadOutcome, Permission>> {
-  const others = lead.divisions.length > 1;
+  // Someone in another division, or with a seat, keeps a place on the team (`mayLeaveDivision`).
+  const mayLeave = lead.removal.kind !== "only-division";
   return {
     member: { allowed: true },
-    "leave-division": others ? { allowed: true } : { allowed: false, reason: `${short} is their only division` },
+    "leave-division": mayLeave ? { allowed: true } : { allowed: false, reason: `${short} is their only division` },
     "leave-team": lead.leave,
   };
 }

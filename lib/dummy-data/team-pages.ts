@@ -610,7 +610,7 @@ function writesFor(
     async removeFromDivision(personId, divisionId) {
       const entry = inReach(personId, divisionId);
       if (!entry || actor === null) return false;
-      if (removalFrom(actor, membershipsIn(entry.placement), divisionId, org).kind !== "offered") return false;
+      if (removalFrom(actor, standingOfPlacement(entry.placement), divisionId, org).kind !== "offered") return false;
       const change = changeOf(personId);
       const joined = { ...change.joined };
       delete joined[divisionId];

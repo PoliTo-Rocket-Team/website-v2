@@ -7,8 +7,10 @@ import {
   checkDeparture,
   inDivisions,
   inMemberTab,
+  isDivisionRole,
   leadsChangedBy,
   mayChangeDivision,
+  mayLeaveDivision,
   mayLeaveTeam,
   membershipsOf,
   membershipsOfRoles,
@@ -21,8 +23,10 @@ import {
   memberRowsFor,
   pagerItems,
   seasonAt,
+  roleBeyondDivisions,
   standingOfRoles,
   teamDirectory,
+  type Memberships,
   type OrgChart,
   type RoleSeat,
   type RosterEntry,
@@ -205,16 +209,53 @@ test('"Leaves the team" reads a head role kept on a division row as head of its 
 });
 
 test('"Remove from <division>" is not offered for the only division, and a lead cannot take a lead out', () => {
-  assert.deepEqual(removalFrom(missionLead, inMission, 10, twoDepartments), { kind: "only-division" });
-  assert.deepEqual(removalFrom(missionLead, alsoSafety, 10, twoDepartments), { kind: "offered" });
-  assert.deepEqual(removalFrom(missionLead, alsoSafety, 20, twoDepartments), { kind: "not-in-reach" });
+  const only = (memberships: Memberships) => ({ memberships, beyond: [] });
+  assert.deepEqual(removalFrom(missionLead, only(inMission), 10, twoDepartments), { kind: "only-division" });
+  assert.deepEqual(removalFrom(missionLead, only(alsoSafety), 10, twoDepartments), { kind: "offered" });
+  assert.deepEqual(removalFrom(missionLead, only(alsoSafety), 20, twoDepartments), { kind: "not-in-reach" });
   const coLead = withRoleIn(alsoSafety, 10, "lead");
-  assert.deepEqual(removalFrom(missionLead, coLead, 10, twoDepartments), {
+  assert.deepEqual(removalFrom(missionLead, only(coLead), 10, twoDepartments), {
     kind: "locked",
     reason: "Leads are changed by the Head of Aerodynamics",
   });
-  assert.deepEqual(removalFrom(aeroHead, coLead, 10, twoDepartments), { kind: "offered" });
+  assert.deepEqual(removalFrom(aeroHead, only(coLead), 10, twoDepartments), { kind: "offered" });
   assert.deepEqual(withoutDivision(alsoSafety, 10).map((m) => m.divisionId), [20]);
+});
+
+test("a seat kept on a division row is the seat, never a lead or member role there (#232, review round 3)", () => {
+  const seats: RoleSeat[] = [
+    { type: "president", divisionId: 10, departmentId: null, title: "Team Leader", since: "2025-10-01" },
+    { type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" },
+  ];
+  const divisionRows: RoleSeat[] = [
+    { type: "lead", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
+    { type: "core", divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
+    { type: null, divisionId: 10, departmentId: null, title: "", since: "2025-10-01" },
+  ];
+  for (const role of seats) assert.equal(isDivisionRole(role), false);
+  for (const role of divisionRows) assert.equal(isDivisionRole(role), true);
+  // The same line the roster draws for every row kept on a division.
+  for (const role of [...seats, ...divisionRows]) assert.equal(isDivisionRole(role), roleBeyondDivisions(role, twoDepartments) === null);
+  assert.equal(isDivisionRole({ type: "core", divisionId: null }), false);
+  // A head whose seat row is kept on Mission Analysis and who leads it beside the seat: one lead membership, from the lead row.
+  const [, headOnMission] = seats;
+  const [leadRow] = divisionRows;
+  const standing = standingOfRoles([headOnMission, leadRow], twoDepartments);
+  assert.deepEqual(
+    standing.memberships.map((m) => [m.divisionId, m.role]),
+    [[10, "lead"]],
+  );
+  assert.equal(standingOfRoles([headOnMission], twoDepartments).memberships.length, 0);
+});
+
+test("a seat holder may leave their only division, since they keep a place on the team (#232, review round 3)", () => {
+  const head = { memberships: inMission, beyond: [{ kind: "head" as const, departmentId: 1 }] };
+  const plain = { memberships: inMission, beyond: [] };
+  assert.equal(mayLeaveDivision(head, 10), true);
+  assert.equal(mayLeaveDivision(plain, 10), false);
+  assert.equal(mayLeaveDivision({ memberships: alsoSafety, beyond: [] }, 10), true);
+  assert.deepEqual(removalFrom(aeroHead, head, 10, twoDepartments), { kind: "offered" });
+  assert.deepEqual(removalFrom(aeroHead, plain, 10, twoDepartments), { kind: "only-division" });
 });
 
 test("a lead cannot rename a division, change its code or change its leads; its head can", () => {

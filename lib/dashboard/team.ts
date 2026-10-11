@@ -137,6 +137,18 @@ export function membershipOfRole(role: RoleHeld): DivisionMembership | null {
   return role.divisionId === null ? null : { divisionId: role.divisionId, role: divisionRoleOf(role.type), since: role.since };
 }
 
+/**
+ * Whether the row is a lead or member role in its division: the only rows a
+ * division write ends or changes. A seat kept on a division row (the team
+ * leader's or a head's role) stays the seat through every division write, since
+ * a seat holder keeps that role beside any division role (Owner decision,
+ * 2026-10-11, on #232). For a row in a division this is exactly
+ * `roleBeyondDivisions(row) === null`: a board seat is never kept on one.
+ */
+export function isDivisionRole(role: Pick<RoleHeld, "type" | "divisionId">): boolean {
+  return role.divisionId !== null && role.type !== "president" && role.type !== "head";
+}
+
 /** A person's memberships from their active roles, each division once (`membershipOfRole`, `membershipsOf`). */
 export function membershipsOfRoles(roles: readonly RoleHeld[]): Memberships {
   return membershipsOf(roles.flatMap((r) => membershipOfRole(r) ?? []));
@@ -469,9 +481,23 @@ export type TeamStanding = {
   readonly beyond: readonly RoleBeyondDivisions[];
 };
 
-/** Someone's standing from all their active roles (`membershipsOfRoles`, `roleBeyondDivisions`). */
+/**
+ * Someone's standing from all their active roles: their division roles as
+ * memberships (`isDivisionRole`) and every seat beyond them
+ * (`roleBeyondDivisions`). A seat kept on a division row is the seat, never a
+ * membership, as the roster reads it.
+ */
 export function standingOfRoles(roles: readonly RoleSeat[], org: OrgChart): TeamStanding {
-  return { memberships: membershipsOfRoles(roles), beyond: roles.flatMap((r) => roleBeyondDivisions(r, org) ?? []) };
+  return { memberships: membershipsOfRoles(roles.filter(isDivisionRole)), beyond: roles.flatMap((r) => roleBeyondDivisions(r, org) ?? []) };
+}
+
+/**
+ * Whether someone may leave one division and keep their place on the team:
+ * when they are in another division, or hold a seat (Owner decision,
+ * 2026-10-11, on #232). Nobody is on the team with neither.
+ */
+export function mayLeaveDivision(standing: TeamStanding, divisionId: number): boolean {
+  return standing.beyond.length > 0 || standing.memberships.some((m) => m.divisionId !== divisionId);
 }
 
 /** Someone's standing from where they sit on the roster: their seat, if any, and every division they are in. */
@@ -556,9 +582,9 @@ export function mayLeaveTeam(actor: TeamActor, standing: TeamStanding, org: OrgC
 /**
  * "Remove from <division>" on a row (Owner decision, 2026-10-11): it ends
  * only that division's role. It is not offered for someone whose only
- * division it is (nobody is on the team with no division: they can only leave
- * it), and a division lead cannot take a lead out, since only the head
- * changes a division's leads.
+ * division it is and who holds no seat (nobody is on the team with neither:
+ * they can only leave it, `mayLeaveDivision`), and a division lead cannot take
+ * a lead out, since only the head changes a division's leads.
  */
 export type Removal =
   | { readonly kind: "offered" }
@@ -566,10 +592,10 @@ export type Removal =
   | { readonly kind: "locked"; readonly reason: string }
   | { readonly kind: "not-in-reach" };
 
-export function removalFrom(actor: TeamActor, person: Memberships, divisionId: number, org: OrgChart): Removal {
-  const role = roleIn(person, divisionId);
+export function removalFrom(actor: TeamActor, person: TeamStanding, divisionId: number, org: OrgChart): Removal {
+  const role = roleIn(person.memberships, divisionId);
   if (role === null || !reachesDivision(actor, divisionId, org)) return { kind: "not-in-reach" };
-  if (person.length === 1) return { kind: "only-division" };
+  if (!mayLeaveDivision(person, divisionId)) return { kind: "only-division" };
   if (role === "lead") {
     const change = mayChangeDivision(actor, divisionId, org);
     if (!change.allowed) return { kind: "locked", reason: change.reason };

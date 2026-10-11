@@ -55,6 +55,19 @@ test("the team leader, a board seat and the head can lead a division and keep th
   assert.ok([14, 94, 15].every((id) => missionAnalysis.elsewhere.includes(id)), "and listed in the division they lead");
 });
 
+test("a seat holder whose only division it is can leave it and keeps the seat", async () => {
+  // The team leader (14) leads Mission Analysis and is in no other division.
+  const first = head();
+  await first.writes.saveDivision(MISSION_ANALYSIS, { ...keep, newLeads: [14] });
+  const row = (await tabOf(first.kept(), MISSION_ANALYSIS))!.people.find((p) => p.id === 14);
+  assert.equal(row?.removal.kind, "offered", "the seat keeps them on the team, so this division is not their last place");
+  const leaves = head(first.kept());
+  const saved = await leaves.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 14, outcome: "leave-division" }] });
+  assert.deepEqual(saved, { ok: true, value: null });
+  assert.equal((await tabOf(leaves.kept(), MISSION_ANALYSIS))!.people.some((p) => p.id === 14), false);
+  assert.equal((await head(leaves.kept()).view.teamTree()).leader?.id, 14, "still the team leader");
+});
+
 test("the old lead's three outcomes: stays as a member, leaves this division, leaves the team", async () => {
   // Anna Villa (13) is in Mission Analysis and Optimization and Analysis: lead her first, then let each outcome play.
   const first = head();

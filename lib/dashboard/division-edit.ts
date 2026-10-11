@@ -3,14 +3,17 @@ import {
   beyondTitle,
   divisionLabel,
   homeDivision,
+  isDivisionRole,
   matchesQuery,
   mayChangeDivision,
+  mayLeaveDivision,
   mayLeaveTeam,
   roleIn,
   type Memberships,
   type OrgChart,
   type OrgDivision,
   type RoleBeyondDivisions,
+  type RoleType,
   type TeamActor,
 } from "./team";
 
@@ -113,9 +116,11 @@ export type DivisionSubject =
       readonly kind: "closed";
       readonly division: OrgDivision;
       /**
-       * People whose role in it never ended. Close division refuses while
-       * anyone is in it, but a division closed before that rule can still hold
-       * roles; the org chart leaves closed divisions out, so it is read here.
+       * People whose lead or member role in it never ended (`isDivisionRole`;
+       * a seat kept on its row is not a role in it). Close division refuses
+       * while anyone is in it, but a division closed before that rule can
+       * still hold roles; the org chart leaves closed divisions out, so it is
+       * read here.
        */
       readonly stillIn: readonly number[];
     };
@@ -189,8 +194,9 @@ function pickError(person: TeamPerson | undefined): string | null {
  * - leads are picked from the whole team and keep their other divisions;
  * - an open division always has at least one lead, so a create, an edit or a
  *   reopen that leaves none is refused;
- * - an old lead leaves this division only when they are in another one, and
- *   leaves the team only when `mayLeaveTeam` allows it.
+ * - an old lead leaves this division only when they are in another one or
+ *   hold a seat (`mayLeaveDivision`), and leaves the team only when
+ *   `mayLeaveTeam` allows it.
  */
 export function planDivisionSave(input: {
   readonly actor: TeamActor;
@@ -246,7 +252,7 @@ export function planDivisionSave(input: {
     const person = byId.get(personId)!;
     if (outcome === "member") demote.push(personId);
     if (outcome === "leave-division") {
-      if (!person.memberships.some((m) => m.divisionId !== divisionId)) {
+      if (divisionId !== null && !mayLeaveDivision(person, divisionId)) {
         return no(`This is ${person.name}'s only division, so they stay as a member or leave the team.`);
       }
       leaveDivision.push(personId);
@@ -307,6 +313,44 @@ export function closeRefusal(
   const count = inIt.people + inIt.waiting;
   if (count === 0) return null;
   return `${count} ${count === 1 ? "person is" : "people are"} still in ${division.name}. Remove them or add them to another division first.`;
+}
+
+/** One active `roles` row kept on the division a plan is about. */
+export type DivisionRow = {
+  readonly id: number;
+  readonly memberId: number;
+  readonly type: RoleType;
+};
+
+/** The rows of the division a plan's writes end or change, by row id. */
+export type DivisionRowWrites = {
+  /** Rows that end: on a reopen everyone's but the kept leads', and the old leads who leave this division. */
+  readonly end: readonly number[];
+  /** Rows that become a lead's. */
+  readonly toLead: readonly number[];
+  /** Lead rows that become a member's. */
+  readonly toMember: readonly number[];
+};
+
+/**
+ * The rows a checked plan ends or changes in its division, out of the active
+ * rows kept on it. Only lead and member rows are touched (`isDivisionRole`):
+ * the team leader or a head whose seat row is kept on the division keeps that
+ * seat through a reopen, a promote, a demote and a leave (#232, review round
+ * 3). Leaving the team is not here: it ends every role, as Leaves the team does.
+ */
+export function divisionRowWrites(plan: DivisionPlan, divisionId: number, held: readonly DivisionRow[]): DivisionRowWrites {
+  const rows = held.filter((r) => isDivisionRole({ type: r.type, divisionId }));
+  const of = (people: readonly number[]) => rows.filter((r) => people.includes(r.memberId));
+  const keep = plan.reopen?.keep;
+  const cleared = keep === undefined ? [] : rows.filter((r) => !keep.includes(r.memberId));
+  return {
+    end: [...new Set([...cleared, ...of(plan.leaveDivision)].map((r) => r.id))],
+    toLead: of(plan.promote).map((r) => r.id),
+    toMember: of(plan.demote)
+      .filter((r) => r.type === "lead")
+      .map((r) => r.id),
+  };
 }
 
 // The lead and member pickers of the division drawers (boards 68b2, 69d)

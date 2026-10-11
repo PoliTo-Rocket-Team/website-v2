@@ -4,9 +4,11 @@ import {
   checkDivisionSave,
   closeRefusal,
   divisionCodeError,
+  divisionRowWrites,
   planDivisionSave,
   searchTeam,
   storedDivisionName,
+  type DivisionRow,
   type DivisionSave,
   type DivisionSubject,
   type TeamPerson,
@@ -141,6 +143,51 @@ test("Leaves the team for an old lead follows the shared rule: someone also in a
   const refused = planDivisionSave({ actor: head, org, subject: missionAnalysis, save, team: away });
   assert.deepEqual(refused, { ok: false, error: "Also in Design & Manufacturing, so only the team leader can do this" });
   assert.ok(planDivisionSave({ actor: { kind: "team" }, org, subject: missionAnalysis, save, team: away }).ok);
+});
+
+// A seat kept on a division row (#232, review round 3): Chiara (6) is Head of
+// Aerodynamics with her head row kept on Mission Analysis (row 104) and leads
+// it beside the seat (row 105); Alessandro (7), the team leader, has his row
+// kept there too (row 106).
+const seatRows: readonly DivisionRow[] = [
+  { id: 101, memberId: 1, type: "lead" },
+  { id: 103, memberId: 3, type: "core" },
+  { id: 104, memberId: 6, type: "head" },
+  { id: 105, memberId: 6, type: "lead" },
+  { id: 106, memberId: 7, type: "president" },
+];
+const headLeads = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [[1, "lead"]], [{ kind: "head", departmentId: 1 }]), ...team.slice(6)];
+const planWithHead = (save: Partial<DivisionSave>, subject: DivisionSubject = missionAnalysis) =>
+  planDivisionSave({ actor: { kind: "team" }, org, subject, save: { ...keep, ...save }, team: headLeads });
+
+test("a seat holder who leads a division may leave it, even when it is their only division", () => {
+  const result = planWithHead({ newLeads: [3], oldLeads: [{ personId: 6, outcome: "leave-division" }] });
+  assert.ok(result.ok);
+  assert.deepEqual(result.plan.leaveDivision, [6]);
+});
+
+test("every division write touches only lead and member rows: a seat kept on the division stays the seat", () => {
+  const leaves = planWithHead({ newLeads: [3], oldLeads: [{ personId: 6, outcome: "leave-division" }] });
+  assert.ok(leaves.ok);
+  assert.deepEqual(divisionRowWrites(leaves.plan, 1, seatRows), { end: [105], toLead: [103], toMember: [] }, "her lead row ends, her head row stays");
+
+  const stays = planWithHead({ oldLeads: [{ personId: 6, outcome: "member" }] });
+  assert.ok(stays.ok);
+  assert.deepEqual(divisionRowWrites(stays.plan, 1, seatRows).toMember, [105], "only the lead row becomes a member's");
+
+  // Promote: Chiara's only row here is the seat, so she is no member to promote; she joins as a lead and the seat row is untouched.
+  const seatOnly = seatRows.filter((r) => r.id !== 105);
+  const team6 = [...team.slice(0, 5), person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1 }]), ...team.slice(6)];
+  const picked = planDivisionSave({ actor: head, org, subject: missionAnalysis, save: { ...keep, newLeads: [6] }, team: team6 });
+  assert.ok(picked.ok && picked.plan.joinAsLead.join() === "6");
+  assert.deepEqual(divisionRowWrites(picked.plan, 1, seatOnly), { end: [], toLead: [], toMember: [] });
+  assert.deepEqual(divisionRowWrites({ ...picked.plan, joinAsLead: [], promote: [6, 7] }, 1, seatRows).toLead, [105], "a seat row never becomes a lead's");
+
+  // Reopen: every lead and member row the closed division still holds ends but the kept lead's; the seats stay.
+  const windTunnel: DivisionSubject = { kind: "closed", division: { id: 9, name: "Wind Tunnel Division", departmentId: 1, code: "WT" }, stillIn: [1, 3, 6] };
+  const reopened = plan({ name: "Wind Tunnel", code: "WT", newLeads: [3, 6] }, windTunnel);
+  assert.ok(reopened.ok);
+  assert.deepEqual(divisionRowWrites(reopened.plan, 9, seatRows), { end: [101], toLead: [103, 105], toMember: [] }, "rows 104 and 106 are never in a write");
 });
 
 test("a code change is planned as one, and the name is kept with 'Division'", () => {
