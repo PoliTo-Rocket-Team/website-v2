@@ -1,9 +1,14 @@
 ignoredBuiltDependencies:
   - '@snaplet/seed'
   - sharp
+  # lefthook's postinstall runs `lefthook install`, which rewrites the shared
+  # .git/hooks shims to point at whichever checkout installed last. A linked
+  # worktree's install would leave the hooks pointing into that worktree, and
+  # they break once it is removed. The binary ships in lefthook's platform
+  # package, so the postinstall is not needed; the `prepare` script
+  # (tools/install-git-hooks.sh) installs the hooks from the main checkout only.
+  - lefthook
 
 onlyBuiltDependencies:
-  # fabrika-cli's postinstall downloads a browser for `review-ui render`;
-  # lefthook's installs its binary.
+  # fabrika-cli's postinstall downloads a browser for `review-ui render`.
   - '@kampus/fabrika-cli'
-  - lefthook
