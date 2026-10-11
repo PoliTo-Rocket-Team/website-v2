@@ -174,10 +174,10 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   the department's name instead. Each person's role is their title in this division, or "Division
   Lead".
 - Phone numbers are blurred until hover (or keyboard focus), in the table and on the member panel.
-- While a side panel is open on a screen 1280px or wider, the Phone and Discord columns are
-  hidden, so names and the "Waiting for NDA" line keep their room (#244).
   The panel's Personal section (date of birth, gender) is blurred the same way. The panel has no
   access section: access lives only on the Access page.
+- While a side panel is open on a screen 1280px or wider, the Phone and Discord columns are
+  hidden, so names and the "Waiting for NDA" line keep their room (#244).
 - A member is added by searching the team by name or by typing an email.
   - Someone already on the team joins the division at once and keeps their other divisions. They
     sign no second NDA: there is one NDA for the whole team
