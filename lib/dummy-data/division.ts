@@ -6,6 +6,7 @@ import {
   ROLE_HELD_ACCESS,
   samePlace,
   ACCESS_TARGETS,
+  type AccessDepartmentUnit,
   type AccessDivision,
   type AccessGrant,
   type AccessLevel,
@@ -24,7 +25,8 @@ import { departments, divisions, people, type DummyPerson } from "./team";
 // The Access pages for the test developer (boards 60 to 60m, issues #145 and
 // #213; the department head's Access, boards 65 and 65b, issue #230); their
 // Orders page is ./orders.ts. The division lead is Marco Bianchi, Mission Analysis, who leads
-// it with Pietro Ricci; the department head is Chiara Rinaldi, Aerodynamics.
+// it with Pietro Ricci; the department head is Chiara Rinaldi, Aerodynamics;
+// the operations lead, Giulia Rossi, has full access across the team (#238).
 // The people come from the roster as the test developer left it
 // (./team-pages.ts), so someone moved to alumni has no access here any more.
 
@@ -92,36 +94,48 @@ function accessDivision(id: number): AccessDivision {
   return { id, name: divisionOf(id).name };
 }
 
-/** The viewers an Access page is for. */
-export type AccessViewerKind = "division-lead" | "department-head";
+/** The viewers an Access page is for: full access (the operations lead, issue #238), a head, a lead. */
+export type AccessViewerKind = "operations-lead" | "division-lead" | "department-head";
+
+function departmentUnit(departmentId: number): AccessDepartmentUnit {
+  return {
+    department: departments.find((d) => d.id === departmentId)!,
+    divisions: divisions
+      .filter((d) => d.departmentId === departmentId)
+      .map((d) => accessDivision(d.id))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
 
 /**
- * The unit a viewer's Access page is about: a lead's division, a head's
- * department; null when their place is neither. A lead of several divisions
- * gets the oldest they lead until #185 gives them all.
+ * The unit a viewer's Access page is about: the whole team for full access,
+ * a lead's division, a head's department; null when their place is none of
+ * these. A lead of several divisions gets the oldest they lead until #185
+ * gives them all.
  */
 function unitOf(kind: AccessViewerKind, viewer: DummyPerson): AccessUnit | null {
   const placement = viewer.placement;
+  if (kind === "operations-lead") {
+    const byName = [...departments].sort((a, b) => a.name.localeCompare(b.name));
+    return { kind: "team", departments: byName.map((d) => departmentUnit(d.id)) };
+  }
   if (kind === "division-lead") {
     const divisionId = ledDivisionOf(placement);
     return divisionId === null ? null : { kind: "division", division: accessDivision(divisionId) };
   }
-  if (placement.role === "head") {
-    const department = departments.find((d) => d.id === placement.departmentId)!;
-    return {
-      kind: "department",
-      department,
-      divisions: divisions
-        .filter((d) => d.departmentId === department.id)
-        .map((d) => accessDivision(d.id))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    };
-  }
+  if (placement.role === "head") return { kind: "department", ...departmentUnit(placement.departmentId) };
   return null;
 }
 
 function unitDivisionIds(unit: AccessUnit): readonly number[] {
-  return unit.kind === "division" ? [unit.division.id] : unit.divisions.map((d) => d.id);
+  switch (unit.kind) {
+    case "division":
+      return [unit.division.id];
+    case "department":
+      return unit.divisions.map((d) => d.id);
+    case "team":
+      return unit.departments.flatMap((d) => d.divisions.map((v) => v.id));
+  }
 }
 
 /** Their memberships inside the unit, home division first (issue #229). */
@@ -130,18 +144,25 @@ function membershipsInUnit(entry: RosterEntry, unit: AccessUnit): readonly Divis
   return homeFirst(membershipsIn(entry.placement)).filter((m) => ids.includes(m.divisionId));
 }
 
+/** Whether the unit's Access page holds them: on a team page everyone on the roster, else anyone in one of its divisions. */
+function inUnit(entry: RosterEntry, unit: AccessUnit): boolean {
+  return unit.kind === "team" || membershipsInUnit(entry, unit).length > 0;
+}
+
 /**
  * The person as the unit's Access page shows them: a lead when they lead a
  * division of the unit, named by the first division of the unit they lead,
- * else the first they are in.
+ * else the first they are in. On a team page a head, a board seat and the
+ * team leader stand as leads too: their access comes with the role.
  */
 function accessPerson(entry: RosterEntry, unit: AccessUnit): AccessPerson {
-  const inUnit = membershipsInUnit(entry, unit);
-  const shown = inUnit.find((m) => m.role === "lead") ?? inUnit[0];
+  const memberships = membershipsInUnit(entry, unit);
+  const shown = memberships.find((m) => m.role === "lead") ?? memberships[0];
+  const seated = unit.kind === "team" && entry.placement.role !== "divisions";
   return {
     id: entry.id,
     name: entry.name,
-    standing: shown?.role === "lead" ? "lead" : "member",
+    standing: shown?.role === "lead" || seated ? "lead" : "member",
     division: shown === undefined ? null : accessDivision(shown.divisionId),
   };
 }
@@ -153,7 +174,7 @@ function placeOf(unit: AccessUnit, place: DummyPlace): AccessPlace | null {
 }
 
 function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
-  if (unit.kind === "department") return ROLE_HELD_ACCESS;
+  if (unit.kind !== "division") return ROLE_HELD_ACCESS;
   return ACCESS_TARGETS.flatMap((target) =>
     heldAccess.filter((h) => h.personId === viewer.id && h.target === target).map((h) => ({ target, level: h.level })),
   );
@@ -168,10 +189,14 @@ function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
 export function dummyAccessPage(kind: AccessViewerKind, viewer: DummyPerson, roster: readonly RosterEntry[]): AccessPage | null {
   const unit = unitOf(kind, viewer);
   if (unit === null) return null;
-  const inside = roster.filter((e) => e.id !== viewer.id && membershipsInUnit(e, unit).length > 0);
+  const inside = roster.filter((e) => e.id !== viewer.id && inUnit(e, unit));
   const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e, unit)]));
   const roleAccess = inside.flatMap((e): RoleAccess[] => {
     const person = onTeam.get(e.id)!;
+    // A head's role covers their department on a team page.
+    if (unit.kind === "team" && e.placement.role === "head") {
+      return [{ person, place: { kind: "department", department: departmentUnit(e.placement.departmentId).department } }];
+    }
     return membershipsInUnit(e, unit)
       .filter((m) => m.role === "lead")
       .map((m) => ({ person, place: { kind: "division", division: accessDivision(m.divisionId) } }));

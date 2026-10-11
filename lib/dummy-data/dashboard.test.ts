@@ -94,6 +94,19 @@ test("Access lists the other leads with their role's access, never the viewer (b
   assert.ok(head.grants.every((g) => g.person.standing === "member"));
 });
 
+test("the operations lead's Access and Orders cover the whole team (issue #238)", async () => {
+  const { data } = session("operations-lead");
+  const access = (await data.divisionAccess())!;
+  assert.equal(access.unit.kind, "team");
+  if (access.unit.kind === "team") assert.equal(access.unit.departments.length, 6);
+  // Grants from both departments with any, Aerodynamics' division and department-wide ones alike.
+  assert.ok(access.grants.some((g) => g.place.kind === "department"));
+  assert.ok(access.roleAccess.some((r) => r.person.name === "Chiara Rinaldi" && r.place.kind === "department"));
+  const orders = (await data.orders())!;
+  assert.deepEqual(orders.scope.edits, [{ kind: "team" }]);
+  assert.equal(orders.scope.decides, null, "full access alone does not decide orders");
+});
+
 test("members and applicants reach neither page", async () => {
   for (const kind of ["member", "non-member"] as const) {
     const { data } = session(kind);

@@ -13,6 +13,8 @@ import {
   checkRemoveAllAccess,
   checkSaveAccess,
   ROLE_HELD_ACCESS,
+  type AccessDepartment,
+  type AccessDepartmentUnit,
   type AccessDivision,
   type AccessGrant,
   type AccessLevel,
@@ -25,7 +27,7 @@ import {
   type HeldAccess,
   type RoleAccess,
 } from "./division-access";
-import { headDivisionsOf } from "./viewer";
+import { headDivisionsOf, isTeamLeader } from "./viewer";
 import {
   canEditOrder,
   checkApproveOrdersChange,
@@ -39,6 +41,7 @@ import {
   ordersPageFor,
   parseEuros,
   stateAfterEdit,
+  WHOLE_TEAM,
   type EditUnit,
   type NewOrder,
   type Order,
@@ -58,7 +61,8 @@ import { refused, written, type Upload, type WriteResult } from "./write";
 // Dashboard v2 boards 60 to 61d, issue #172; boards 65 and 65b, issue #230;
 // boards 61 to 67b, issue #233). A lead's Access division is the one their
 // lead role sits in, else the first division their scopes cover; a head's
-// department is their role's. Orders shows every order in the team and checks
+// department is their role's; full access covers the whole team (issue
+// #238). Orders shows every order in the team and checks
 // each write against the viewer's scope on the server. Reads follow
 // .patterns/drizzle-reads.md; writes follow .patterns/audited-mutations.md
 // and check the lead's access on the server before they run.
@@ -119,9 +123,16 @@ export async function readHeadDepartment(identity: DashboardIdentity): Promise<{
   return { ...department, divisions: headDivisionsOf(id, rows).map((d) => ({ id: d.id, name: d.name })) };
 }
 
+/** Every open department with its open divisions, each by name: the team a full-access viewer's Access page covers (issue #238). */
+async function readTeamUnit(): Promise<AccessUnit> {
+  return { kind: "team", departments: (await readOrgUnits()).map(({ id, name, divisions }) => ({ department: { id, name }, divisions })) };
+}
+
 /** The unit the viewer's Access page is about, and what they hold there; null for anyone with no such page. */
 async function accessUnitOf(identity: DashboardIdentity): Promise<{ unit: AccessUnit; held: readonly HeldAccess[] } | null> {
   if (identity.memberId === null) return null;
+  // Full access holds every area at Can edit across the team (issue #238).
+  if (identity.kind === "operations-lead") return { unit: await readTeamUnit(), held: ROLE_HELD_ACCESS };
   if (identity.kind === "division-lead") {
     const division = await leadDivision(identity);
     if (division === null) return null;
@@ -136,15 +147,28 @@ async function accessUnitOf(identity: DashboardIdentity): Promise<{ unit: Access
   };
 }
 
+/** A lead or head role leads; so does the team leader's, whose access comes with the role and never changes on Access. */
 function isLeadRole(type: string | null): boolean {
-  return type === "lead" || type === "head";
+  return type === "lead" || type === "head" || type === "president";
+}
+
+/** The departments an Access page covers, each with its open divisions: none on a lead's page. */
+function unitDepartmentsOf(unit: AccessUnit): readonly AccessDepartmentUnit[] {
+  switch (unit.kind) {
+    case "division":
+      return [];
+    case "department":
+      return [unit];
+    case "team":
+      return unit.departments;
+  }
 }
 
 /**
  * The Access page (boards 60 and 65): the viewer's unit and what they hold,
  * the other leads with the access their role gives, the grants in the unit
- * (each division's, and on a head's page the department-wide ones), and the
- * people the viewer may give access to.
+ * (each division's, and on a head's or a team page the department-wide
+ * ones), and the people the viewer may give access to.
  */
 async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage | null> {
   const found = await accessUnitOf(identity);
@@ -153,9 +177,11 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const me = identity.memberId;
   const db = getDb();
   const giver = alias(users, "giver");
-  const unitDivisions = unit.kind === "division" ? [unit.division] : unit.divisions;
+  const unitDepartments = unitDepartmentsOf(unit);
+  const unitDivisions = unit.kind === "division" ? [unit.division] : unitDepartments.flatMap((d) => d.divisions);
   const divisionIds = unitDivisions.map((d) => d.id);
-  const department = unit.kind === "department" ? unit.department : null;
+  const departmentIds = unitDepartments.map((d) => d.department.id);
+  const departmentById = (id: number | null) => unitDepartments.find((d) => d.department.id === id)?.department ?? null;
   const inUnitDivisions = and(eq(scopes.scope, "division"), inArray(scopes.divisionId, divisionIds.length ? divisionIds : [-1]));
 
   const [rows, team] = await Promise.all([
@@ -165,6 +191,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
         member_id: scopes.memberId,
         scope: scopes.scope,
         division_id: scopes.divisionId,
+        dept_id: scopes.deptId,
         target: scopes.target,
         level: scopes.accessLevel,
         given_by: scopes.givenBy,
@@ -180,9 +207,9 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .leftJoin(giver, eq(giver.member, scopes.givenBy))
       .where(
         and(
-          department === null
+          departmentIds.length === 0
             ? inUnitDivisions
-            : or(inUnitDivisions, and(eq(scopes.scope, "department"), eq(scopes.deptId, department.id))),
+            : or(inUnitDivisions, and(eq(scopes.scope, "department"), inArray(scopes.deptId, departmentIds))),
           ne(scopes.memberId, me),
           inArray(scopes.target, [...ACCESS_TARGETS]),
         ),
@@ -193,6 +220,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
         member_id: roles.memberId,
         type: roles.type,
         division_id: roles.divisionId,
+        dept_id: roles.deptId,
         first_name: users.firstName,
         last_name: users.lastName,
         email: users.email,
@@ -202,17 +230,24 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .where(
         and(
           isNull(roles.leavedAt),
-          department === null
-            ? inArray(roles.divisionId, divisionIds)
-            : or(inArray(roles.divisionId, divisionIds.length ? divisionIds : [-1]), and(eq(roles.deptId, department.id), eq(roles.type, "head"))),
+          // A team page holds everyone on the team; a head's, their divisions and the department's heads.
+          unit.kind === "team"
+            ? undefined
+            : departmentIds.length === 0
+              ? inArray(roles.divisionId, divisionIds)
+              : or(inArray(roles.divisionId, divisionIds.length ? divisionIds : [-1]), and(inArray(roles.deptId, departmentIds), eq(roles.type, "head"))),
         ),
       ),
   ]);
 
   // One person per member: a lead in any of their roles stands as a lead, placed in that role's division.
   const byMember = new Map<number, AccessPerson>();
+  // The department each head of the unit heads, which their role's access covers.
+  const headOf = new Map<number, AccessDepartment>();
   for (const t of team) {
     if (t.member_id === null) continue;
+    const headed = t.type === "head" && t.division_id === null ? departmentById(t.dept_id) : null;
+    if (headed !== null && !headOf.has(t.member_id)) headOf.set(t.member_id, headed);
     const lead = isLeadRole(t.type);
     const division = unitDivisions.find((d) => d.id === t.division_id) ?? null;
     const known = byMember.get(t.member_id);
@@ -225,7 +260,8 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const roleAccess = [...byMember.values()].flatMap((person): RoleAccess[] => {
     if (person.id === me || person.standing !== "lead") return [];
     if (person.division !== null) return [{ person, place: { kind: "division", division: person.division } }];
-    return department === null ? [] : [{ person, place: { kind: "department", department } }];
+    const headed = headOf.get(person.id);
+    return headed === undefined ? [] : [{ person, place: { kind: "department", department: headed } }];
   });
 
   const ids = rows.map((r) => String(r.id));
@@ -244,12 +280,9 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
     // A lead's access comes with the role: their row is in `roleAccess`.
     if (person.standing === "lead") return [];
     const division = unitDivisions.find((d) => d.id === r.division_id);
+    const department = r.scope === "department" ? departmentById(r.dept_id) : null;
     const place: AccessPlace | null =
-      r.scope === "department" && department !== null
-        ? { kind: "department", department }
-        : division === undefined
-          ? null
-          : { kind: "division", division };
+      department !== null ? { kind: "department", department } : division === undefined ? null : { kind: "division", division };
     if (place === null) return [];
     const givenBy =
       r.given_by === null
@@ -362,17 +395,14 @@ async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Whether the viewer holds the team leader's role now. */
-function isTeamLeader(identity: DashboardIdentity): boolean {
-  return identity.roles.some((r) => r.type === "president");
-}
-
 /**
  * The viewer's Orders scope (issue #233), or null when they hold no Orders
- * access anywhere. A `division` or `department` scope row on `orders` (or on
- * `all`) is access there, at its level; a head's role is Can edit across
- * their department (board 65). Deciding comes from being the team leader,
- * or from a `team` row on `approve_orders`.
+ * access anywhere. Full access edits every order in the team (issue #238). A
+ * `division` or `department` scope row on `orders` (or on `all`) is access
+ * there, at its level; a head's role is Can edit across their department
+ * (board 65). Deciding comes from being the team leader (`isTeamLeader`,
+ * ./viewer.ts), or from a `team` row on `approve_orders`: full access alone
+ * does not decide.
  */
 async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDepartmentUnits[]): Promise<OrdersScope | null> {
   if (identity.memberId === null || identity.kind === "non-member") return null;
@@ -388,10 +418,12 @@ async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDep
     teamLeader: isTeamLeader(identity),
     approveOrders: rows.some((r) => r.scope === "team" && r.target === "approve_orders"),
   });
+  if (identity.kind === "operations-lead") return { edits: [WHOLE_TEAM], decides };
 
-  const edits: EditUnit[] = [];
-  const add = (unit: EditUnit) => {
-    const key = (u: EditUnit) => (u.kind === "division" ? `v${u.division.id}` : `d${u.department.id}`);
+  type UnitEdit = Exclude<EditUnit, { kind: "team" }>;
+  const edits: UnitEdit[] = [];
+  const add = (unit: UnitEdit) => {
+    const key = (u: UnitEdit) => (u.kind === "division" ? `v${u.division.id}` : `d${u.department.id}`);
     if (!edits.some((e) => key(e) === key(unit))) edits.push(unit);
   };
   if (headDepartment !== null) add({ kind: "department", department: { id: headDepartment.id, name: headDepartment.name } });

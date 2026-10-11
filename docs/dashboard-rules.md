@@ -15,21 +15,23 @@ The five people:
 - **Member**: on the team.
 - **Division lead**: leads one or more divisions.
 - **Department head**: heads a department and all its divisions.
-- **Operations lead**: sees the whole team.
+- **Full access**: the team leader, the operations lead and the IT lead. They see and act on the
+  whole team (see "Full access" below).
 
 An admin column comes later. **Planned**, no issue yet.
 
-| Sidebar item or page | Non-member | Member | Division lead | Department head | Operations lead |
+| Sidebar item or page | Non-member | Member | Division lead | Department head | Full access |
 |---|---|---|---|---|---|
 | My applications | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application |
 | Overview | Yes, only with at least one application | Yes | Yes | Yes | Yes |
 | Team tree | No | Yes | Yes | Yes | Yes |
 | Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch |
 | Applications | No | No | Own divisions | All divisions in the department, under division tabs | All |
-| Members | No | No | Their divisions | Their divisions | Their divisions |
+| Members | No | No | Their divisions | Their divisions | The whole team |
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
-| Access | No | No | Their divisions | Their department, under division tabs | Their divisions |
-| Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team |
+| Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
+| Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
+| Activity log | No | No | No | No | The IT lead only |
 | My account | User menu only | No | No | No | No |
 | My profile | No | User menu only | User menu only | User menu only | User menu only |
 | Sign out | User menu only | User menu only | User menu only | User menu only | User menu only |
@@ -38,7 +40,20 @@ An admin column comes later. **Planned**, no issue yet.
 - A non-member with no application lands on the My applications empty state, with a
   "See open positions" button (#179).
   - **Gap:** today they get an empty sidebar and a "not found" page. Tracked in #179.
-- **Gap:** the operations lead does not reach Access or Orders. Tracked in #200.
+- **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
+  #238). Three seats hold it:
+  - the **team leader**: the role of type `president`;
+  - the **operations lead** and the **IT lead**: each seat's role carries a full-access flag
+    (`roles.full_access`, migration 0018), set once in the data. The seat is never read from a
+    department or division code, or from a title, because codes change.
+  - Full access reaches every page in the table, in every department and every division. On
+    Access and Orders it sees and acts on the whole team, and it can give any access to anyone.
+  - An `admin` or `org` scope row still gives full access, as before.
+  - **Exception 1, deciding orders:** by default only the team leader approves, rejects or asks
+    for changes. The operations lead and the IT lead decide only with "Approve orders" (see
+    "4. Orders").
+  - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
+    the page itself is **Planned**, so no sidebar lists it yet.
 - **Overview** is for members, division leads, department heads and the operations lead, and for
   a non-member with at least one application, withdrawn ones included (boards 50e and 50e-m,
   #211). A non-member whose only applications are withdrawn stays on the Overview: the "Your
@@ -73,8 +88,8 @@ An admin column comes later. **Planned**, no issue yet.
   with site-content access, which the full admins can give to anyone. A division lead or
   department head gets nothing from their role here (Owner decision, #234). The sidebar item and
   the page read one rule, and the page answers "not found" to everyone else.
-  - **Gap:** the full admins have no Access page to give site-content access from yet. Tracked
-    in #200.
+  - **Gap:** the full admins' Access page has no site-content area yet, so site-content access
+    cannot be given there. Tracked in #200.
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -293,6 +308,17 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
   that place. The foot has "Remove all access" and "Save". "Remove all access" removes every
   area in every place, after a confirm.
 
+#### Full access
+
+These rules come from #238.
+
+- Full access holds every area at Can edit across the whole team: "YOUR ACCESS · the whole team".
+- The page works as a head's does, across every department: department tabs ("All departments"
+  first) narrow the table, and the "Where" field lists each department, whole, and each of its
+  divisions. The heads and division leads show first, with their role's access, locked.
+- The delegation limit still holds: no area above the viewer's own level, and no lead's role
+  access changes here.
+
 ## 4. Orders
 
 These rules come from the Owner decisions of 2026-10-11 on #233 (boards 61 to 61d, 61m, 67, 67b
@@ -304,7 +330,8 @@ and 67m).
   - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
     Orders access; a lead with no Orders access gets "not found" on the page. Tracked in #160.
 - **Who edits.** A division lead edits the orders of their own division, from any requester in
-  it. A department head edits the orders of their whole department. A grant of Orders at Can
+  it. A department head edits the orders of their whole department. Full access edits every
+  order in the team (#238). A grant of Orders at Can
   edit opens the orders of the division (or the whole department) it was given in. Nobody edits
   outside their scope: those rows show a lock and open read-only. The server checks the scope on
   every write, not only the page.
@@ -337,7 +364,8 @@ and 67m).
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
   developer" switch, with five people: non-member, member, division lead, department head and
-  operations lead.
+  operations lead. The operations lead there sits in the operations lead's seat, so they have
+  full access and do not decide orders.
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and

@@ -1,11 +1,14 @@
-import type { ViewerKind, ViewerStanding } from "./viewer";
+import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } from "./viewer";
 
 // Which viewer reaches which dashboard page, and where the page sits for that
 // viewer (Dashboard v2 boards 51b, 52 and 56; the operations lead keeps boards
 // 40 to 46). One row per page: a new page adds one row. A viewer whose kind is
 // missing from a row's `reach` does not reach the page, unless the row names a
-// `siteContent` place and they hold site-content access. Site content, admin
-// Access and the Activity log are not designed yet, so they have no row.
+// `siteContent` place and they hold site-content access. A row that names a
+// `seat` is reached by that full-access seat alone (issue #238). The
+// `operations-lead` kind is full access: the team leader, the operations lead
+// and the IT lead, or an admin or org scope row (./viewer.ts), so it reaches
+// every page of the team. Site content is not designed yet, so it has no row.
 
 export const NAV_GROUPS = ["main", "recruitment", "team", "my-department", "my-division"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
@@ -38,6 +41,8 @@ type PageRow = {
   readonly siteContent?: NavPlace;
   /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
+  /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
+  readonly seat?: FullAccessSeat;
 };
 
 /** Rows in sidebar order within each group. */
@@ -94,10 +99,9 @@ export const DASHBOARD_PAGES = [
     key: "alumni",
     label: "Alumni",
     href: "/dashboard/alumni",
-    // Owner decision on #234: the full admins (the operations lead kind, which
-    // the team leader and the IT lead share through their admin or org scope)
-    // and anyone given site-content access. A division lead or department head
-    // gets nothing from their role here.
+    // Owner decision on #234: full access (the team leader, the operations
+    // lead and the IT lead, issue #238) and anyone given site-content access.
+    // A division lead or department head gets nothing from their role here.
     reach: { "operations-lead": "team" },
     siteContent: "team",
   },
@@ -105,15 +109,25 @@ export const DASHBOARD_PAGES = [
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",
-    // A department head's Access page is here (issue #230).
-    reach: { "department-head": "my-department", "division-lead": "my-division" },
+    // A department head's Access page is here (issue #230); full access gives
+    // access across the whole team (issue #238).
+    reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
   },
   {
     key: "orders",
     label: "Orders",
     href: "/dashboard/orders",
     // Every order in the team, for anyone with Orders access (issue #233).
-    reach: { "department-head": "my-department", "division-lead": "my-division" },
+    reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
+  },
+  {
+    key: "activity-log",
+    label: "Activity log",
+    href: "/dashboard/activity-log",
+    // Owner decision on #238: the IT lead alone, not the rest of full access.
+    // The page is not built yet, so the sidebar does not list it.
+    reach: { "operations-lead": "unlisted" },
+    seat: "it-lead",
   },
   {
     key: "my-profile",
@@ -163,6 +177,7 @@ export type MenuPage = {
 
 /** Where `page` shows for `viewer`; undefined when the viewer does not reach it. */
 function placeOf(page: PageRow, viewer: ViewerStanding): NavPlace | undefined {
+  if (page.seat !== undefined && seatOf(viewer) !== page.seat) return undefined;
   return page.reach[viewer.kind] ?? (viewer.siteContent ? page.siteContent : undefined);
 }
 

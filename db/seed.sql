@@ -715,6 +715,15 @@ INSERT INTO roles (member_id, dept_id, division_id, title, started_at, leaved_at
 (903, (SELECT id FROM departments WHERE code = 'OPS'), NULL, 'Operations Lead', '2025-10-01'::date, NULL, 'lead'),
 (904, (SELECT id FROM departments WHERE code = 'AER'), NULL, 'Head of Aerodynamics', '2025-10-01'::date, NULL, 'head');
 
+-- Full access from the role (issue #238): the operations lead's and the IT
+-- lead's seats carry the flag, set once here; the team leader is the
+-- `president` role and needs none. The Operations head (member 3), the IT
+-- lead (member 11) and the operations-lead tester hold those seats.
+UPDATE roles SET full_access = 'operations_lead'
+WHERE (member_id = 3 AND title = 'Head of Operations') OR (member_id = 903 AND title = 'Operations Lead');
+UPDATE roles SET full_access = 'it_lead'
+WHERE member_id = 11 AND title = 'IT Lead';
+
 -- The department head needs no scope row: their head role covers every
 -- division of Aerodynamics (issue #230).
 -- The member has no scopes. The division lead edits everything in Mission

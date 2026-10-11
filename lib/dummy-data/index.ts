@@ -759,7 +759,7 @@ export function dummyDashboardData(
   const team = teamOf(recruitment.current, changes.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(kind);
-  const accessKind = kind === "division-lead" || kind === "department-head" ? kind : null;
+  const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
   const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));

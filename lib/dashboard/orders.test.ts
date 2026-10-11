@@ -25,6 +25,7 @@ import {
   stateAfterDecision,
   stateAfterEdit,
   toggleDepartment,
+  WHOLE_TEAM,
   type ApproveOrdersFacts,
   type Order,
   type OrdersScope,
@@ -272,4 +273,15 @@ test("a new order needs an item, a price, a whole quantity and a reason; the lin
   const bad = checkNewOrder({ item: "", link: "amzn.eu/x", price: "0", quantity: "1.5", reason: " " });
   assert.equal(bad.ok, false);
   if (!bad.ok) assert.deepEqual(Object.keys(bad.errors).sort(), ["item", "link", "quantity", "reason", "unitPrice"]);
+});
+
+test("full access edits every order in the team and orders for any division, deciding still apart (issue #238)", () => {
+  const scope: OrdersScope = { edits: [WHOLE_TEAM], decides: null };
+  for (const unit of [inMissionAnalysis, inOptimization, inHardware, null]) assert.equal(canEditOrder(scope, { unit }), true);
+  assert.deepEqual(
+    orderingDivisions(scope, org).map((d) => d.id),
+    [9, 1, 2],
+  );
+  assert.equal(ordersIntro(scope), "Every order in the team. You can edit all of them.");
+  assert.equal(checkDecision(scope.decides, "waiting", { kind: "approve" }).ok, false);
 });
