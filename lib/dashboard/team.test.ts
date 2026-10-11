@@ -184,13 +184,23 @@ test('"Leaves the team" counts every active role: a role in no division is only 
     [{ type: null, divisionId: null, departmentId: null, title: "Chief Engineer", since: "2025-10-01" }, "Chief Engineer"],
   ];
   for (const [beyond, label] of people) {
-    const standing = standingOfRoles([missionRole, beyond]);
+    const standing = standingOfRoles([missionRole, beyond], twoDepartments);
     const refused = { allowed: false, reason: `Also ${label}, so only the team leader can do this` };
     assert.deepEqual(mayLeaveTeam(missionLead, standing, twoDepartments), refused);
     assert.deepEqual(mayLeaveTeam(aeroHead, standing, twoDepartments), refused);
     assert.deepEqual(mayLeaveTeam(teamLeader, standing, twoDepartments), { allowed: true });
   }
-  assert.deepEqual(mayLeaveTeam(missionLead, standingOfRoles([missionRole]), twoDepartments), { allowed: true });
+  assert.deepEqual(mayLeaveTeam(missionLead, standingOfRoles([missionRole], twoDepartments), twoDepartments), { allowed: true });
+});
+
+test('"Leaves the team" reads a head role kept on a division row as head of its department (#231, review round 2)', () => {
+  // The row the actor reader and the roster both read as Head of Aerodynamics: type head, kept on Mission Analysis.
+  const headOnMission: RoleSeat = { type: "head", divisionId: 10, departmentId: null, title: "Head", since: "2025-10-01" };
+  const standing = standingOfRoles([headOnMission], twoDepartments);
+  const refused = { allowed: false, reason: "Also Head of Aerodynamics, so only the team leader can do this" };
+  assert.deepEqual(mayLeaveTeam(missionLead, standing, twoDepartments), refused);
+  assert.deepEqual(mayLeaveTeam(aeroHead, standing, twoDepartments), refused);
+  assert.deepEqual(mayLeaveTeam(teamLeader, standing, twoDepartments), { allowed: true });
 });
 
 test('"Remove from <division>" is not offered for the only division, and a lead cannot take a lead out', () => {

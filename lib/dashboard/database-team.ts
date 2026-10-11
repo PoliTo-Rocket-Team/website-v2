@@ -28,6 +28,7 @@ import {
   type WaitingPerson,
 } from "./division-members";
 import {
+  headDepartmentOf,
   homeDivision,
   mayChangeDivision,
   mayLeaveTeam,
@@ -82,7 +83,7 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
   if (rows.some((r) => r.type === "president")) return { kind: "team" };
   const headOf = rows.flatMap((r) => {
     if (r.type !== "head") return [];
-    const departmentId = r.dept_id ?? org.divisions.find((d) => d.id === r.division_id)?.departmentId ?? null;
+    const departmentId = headDepartmentOf({ departmentId: r.dept_id, divisionId: r.division_id }, org);
     return departmentId === null ? [] : [departmentId];
   });
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
@@ -390,8 +391,9 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
   const actor = await readActor(identity, org);
   if (actor === null) return false;
   const active = await activeRoles(personId);
-  // Every active role counts, a role in no division included: the move ends them all (`standingOfRoles`).
-  const standing = standingOfRoles(active.map(roleSeat));
+  // Every active role counts, one beyond every division included (a head kept on a division row too):
+  // the move ends them all (`standingOfRoles`).
+  const standing = standingOfRoles(active.map(roleSeat), org);
   if (actor.kind !== "team" && !standing.memberships.some((m) => reachesDivision(actor, m.divisionId, org))) return false;
   if (!mayLeaveTeam(actor, standing, org).allowed) return false;
   const move = alumniMove(active.map((r) => ({ id: r.id, divisionId: r.division_id })));

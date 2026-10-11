@@ -10,6 +10,7 @@ import type { PersonRecord } from "./division-members";
 import { normalizeLinkedin } from "./self";
 import {
   boardSeatOf,
+  headDepartmentOf,
   membershipsIn,
   membershipsOfRoles,
   roleBeyondDivisions,
@@ -178,7 +179,7 @@ function placementOf(active: readonly RoleRow[], org: OrgChart): Placement {
   const seat = boardSeatOfRole(top);
   if (seat !== null) return { role: "board", seat };
   if (top.type === "head") {
-    const departmentId = top.dept_id ?? org.divisions.find((d) => d.id === top.division_id)?.departmentId ?? null;
+    const departmentId = headDepartmentOf(roleSeat(top), org);
     if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId };
   }
   const open = active.filter((role) => org.divisions.some((d) => d.id === role.division_id));
@@ -316,7 +317,7 @@ export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
       photoUrl: person.picture,
       since: entry.joined,
       memberships: membershipsIn(entry.placement),
-      beyondDivisions: active.flatMap((role) => roleBeyondDivisions(roleSeat(role)) ?? []),
+      beyondDivisions: active.flatMap((role) => roleBeyondDivisions(roleSeat(role), snapshot.org) ?? []),
       titles,
       details: detailsOf(person),
       nda:
