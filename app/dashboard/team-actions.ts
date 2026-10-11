@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { TeamWrites } from "@/lib/dashboard/data";
+import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
 import { openDashboard } from "@/lib/dashboard/open";
 import { checkDeparture, isPromoteMode, type EditableRole, type PromoteMode } from "@/lib/dashboard/team";
@@ -129,4 +130,34 @@ export async function setMemberPhoto(personId: number, divisionId: number, form:
     file instanceof File && file.size > 0 ? { name: file.name, contentType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } : null;
   if (form !== null && photo === null) return { ok: false, error: "Choose a photo." };
   return answered(await writes.setMemberPhoto(personId, divisionId, photo));
+}
+
+// New division, Edit division, Close division and Reopen (issue #232). The
+// rules are checked again behind each of these (lib/dashboard/division-edit.ts).
+
+/** The lead and member pickers of the division drawers: the whole team, searched by name or email. */
+export async function findPeople(query: string): Promise<TeamSearch> {
+  const opening = await openDashboard();
+  if (opening.kind !== "open" || !canReach(opening.data.viewer, "members") || typeof query !== "string") return { kind: "none" };
+  return opening.data.findPeople(query.slice(0, 200));
+}
+
+export async function createDivision(departmentId: number, input: unknown): Promise<WriteResult<number>> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(departmentId)) return refused("This change could not be saved.");
+  const result = await writes.createDivision(departmentId, input);
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+export async function saveDivision(divisionId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(divisionId)) return REFUSED;
+  return answered(await writes.saveDivision(divisionId, input));
+}
+
+export async function closeDivision(divisionId: number): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(divisionId)) return REFUSED;
+  return answered(await writes.closeDivision(divisionId));
 }

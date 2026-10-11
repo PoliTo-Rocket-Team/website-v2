@@ -137,16 +137,33 @@ export function membershipOfRole(role: RoleHeld): DivisionMembership | null {
   return role.divisionId === null ? null : { divisionId: role.divisionId, role: divisionRoleOf(role.type), since: role.since };
 }
 
+/**
+ * Whether the row is a lead or member role in its division: the only rows a
+ * division write ends or changes. A seat kept on a division row (the team
+ * leader's or a head's role) stays the seat through every division write, since
+ * a seat holder keeps that role beside any division role (Owner decision,
+ * 2026-10-11, on #232). For a row in a division this is exactly
+ * `roleBeyondDivisions(row) === null`: a board seat is never kept on one.
+ */
+export function isDivisionRole(role: Pick<RoleHeld, "type" | "divisionId">): boolean {
+  return role.divisionId !== null && role.type !== "president" && role.type !== "head";
+}
+
 /** A person's memberships from their active roles, each division once (`membershipOfRole`, `membershipsOf`). */
 export function membershipsOfRoles(roles: readonly RoleHeld[]): Memberships {
   return membershipsOf(roles.flatMap((r) => membershipOfRole(r) ?? []));
 }
 
-/** Where someone sits on the team, which also says what they lead. */
+/**
+ * Where someone sits on the team, which also says what they lead. A seat (the
+ * team leader, a board seat, a head) is where they are drawn; its
+ * `memberships` are the divisions they are in beside it, since anyone on the
+ * team can be picked to lead a division (Owner decision, 2026-10-11, on #232).
+ */
 export type Placement =
-  | { readonly role: "team-leader" }
-  | { readonly role: "board"; readonly seat: BoardSeat }
-  | { readonly role: "head"; readonly departmentId: number }
+  | { readonly role: "team-leader"; readonly memberships: Memberships }
+  | { readonly role: "board"; readonly seat: BoardSeat; readonly memberships: Memberships }
+  | { readonly role: "head"; readonly departmentId: number; readonly memberships: Memberships }
   /** In one or more divisions; none yet when they were added to the roster and not placed. */
   | { readonly role: "divisions"; readonly memberships: Memberships };
 
@@ -163,9 +180,9 @@ export function inDivisions(list: readonly DivisionMembership[]): Placement {
   return { role: "divisions", memberships: membershipsOf(list) };
 }
 
-/** Someone's divisions; none for the team leader, a board seat or a head. */
+/** Every division someone is in, a seat's beside it included. */
 export function membershipsIn(placement: Placement): Memberships {
-  return placement.role === "divisions" ? placement.memberships : NO_MEMBERSHIPS;
+  return placement.memberships;
 }
 
 export type OrgDepartment = { readonly id: number; readonly name: string };
@@ -201,9 +218,13 @@ export type RosterEntry = {
   readonly access: readonly string[];
 };
 
-/** The division someone is drawn under on the tree (`homeDivision`); null for a seat, a head or someone not placed. */
+/**
+ * The division someone is drawn under on the tree (`homeDivision`); null for
+ * someone not placed, and for a seat or a head, who is drawn at that seat
+ * whatever division they also lead.
+ */
 export function homeDivisionOf(placement: Placement): number | null {
-  return homeDivision(membershipsIn(placement));
+  return placement.role === "divisions" ? homeDivision(placement.memberships) : null;
 }
 
 /**
@@ -227,9 +248,9 @@ export function departmentIdOf(placement: Placement, org: OrgChart): number | nu
   return org.divisions.find((d) => d.id === divisionId)?.departmentId ?? null;
 }
 
-/** The placement with their role in `divisionId` set; other divisions untouched, and anyone not in it unchanged. */
+/** The placement with their role in `divisionId` set; their seat, other divisions untouched, and anyone not in it unchanged. */
 export function placedWithRoleIn(placement: Placement, divisionId: number, role: DivisionRole): Placement {
-  return placement.role === "divisions" ? { role: "divisions", memberships: withRoleIn(placement.memberships, divisionId, role) } : placement;
+  return { ...placement, memberships: withRoleIn(placement.memberships, divisionId, role) };
 }
 
 export function isLead(role: TeamRole): boolean {
@@ -332,7 +353,7 @@ const ROLE_ORDER: Readonly<Record<TeamRole, number>> = { "team-leader": 0, board
 export function memberRowOf(entry: RosterEntry, org: OrgChart, selfId: number | null = null, divisionId: number | null = null): MemberRow {
   const memberships = membershipsIn(entry.placement);
   const inDivision = divisionId === null ? null : roleIn(memberships, divisionId);
-  const shownDivision = inDivision === null ? homeDivision(memberships) : divisionId;
+  const shownDivision = inDivision === null ? homeDivisionOf(entry.placement) : divisionId;
   const role: TeamRole = inDivision === null ? teamRoleOf(entry.placement) : inDivision === "lead" ? "division-lead" : "member";
   const departmentId =
     entry.placement.role === "head" ? entry.placement.departmentId : (org.divisions.find((d) => d.id === shownDivision)?.departmentId ?? null);
@@ -460,22 +481,53 @@ export type TeamStanding = {
   readonly beyond: readonly RoleBeyondDivisions[];
 };
 
-/** Someone's standing from all their active roles (`membershipsOfRoles`, `roleBeyondDivisions`). */
+/**
+ * Someone's standing from all their active roles: their division roles as
+ * memberships (`isDivisionRole`) and every seat beyond them
+ * (`roleBeyondDivisions`). A seat kept on a division row is the seat, never a
+ * membership, as the roster reads it.
+ */
 export function standingOfRoles(roles: readonly RoleSeat[], org: OrgChart): TeamStanding {
-  return { memberships: membershipsOfRoles(roles), beyond: roles.flatMap((r) => roleBeyondDivisions(r, org) ?? []) };
+  return { memberships: membershipsOfRoles(roles.filter(isDivisionRole)), beyond: roles.flatMap((r) => roleBeyondDivisions(r, org) ?? []) };
 }
 
-/** Someone's standing from where they sit on the roster: a seat or a head holds no division, and divisions hold nothing else. */
+/**
+ * Whether someone may leave one division and keep their place on the team:
+ * when they are in another division, or hold a seat (Owner decision,
+ * 2026-10-11, on #232). Nobody is on the team with neither.
+ */
+export function mayLeaveDivision(standing: TeamStanding, divisionId: number): boolean {
+  return standing.beyond.length > 0 || standing.memberships.some((m) => m.divisionId !== divisionId);
+}
+
+/** Someone's standing from where they sit on the roster: their seat, if any, and every division they are in. */
 export function standingOfPlacement(placement: Placement): TeamStanding {
+  const { memberships } = placement;
   switch (placement.role) {
     case "team-leader":
-      return { memberships: NO_MEMBERSHIPS, beyond: [{ kind: "team-leader" }] };
+      return { memberships, beyond: [{ kind: "team-leader" }] };
     case "board":
-      return { memberships: NO_MEMBERSHIPS, beyond: [{ kind: "board", seat: placement.seat }] };
+      return { memberships, beyond: [{ kind: "board", seat: placement.seat }] };
     case "head":
-      return { memberships: NO_MEMBERSHIPS, beyond: [{ kind: "head", departmentId: placement.departmentId }] };
+      return { memberships, beyond: [{ kind: "head", departmentId: placement.departmentId }] };
     case "divisions":
-      return { memberships: placement.memberships, beyond: [] };
+      return { memberships, beyond: [] };
+  }
+}
+
+/** "Team Leader", "Project Manager", "Head of Aerodynamics": the role as a title names it. */
+export function beyondTitle(role: RoleBeyondDivisions, org: OrgChart): string {
+  switch (role.kind) {
+    case "team-leader":
+      return "Team Leader";
+    case "head": {
+      const name = org.departments.find((d) => d.id === role.departmentId)?.name;
+      return name ? `Head of ${name}` : "Head";
+    }
+    case "department":
+      return org.departments.find((d) => d.id === role.departmentId)?.name ?? "Department";
+    default:
+      return beyondLabel(role, org);
   }
 }
 
@@ -530,9 +582,9 @@ export function mayLeaveTeam(actor: TeamActor, standing: TeamStanding, org: OrgC
 /**
  * "Remove from <division>" on a row (Owner decision, 2026-10-11): it ends
  * only that division's role. It is not offered for someone whose only
- * division it is (nobody is on the team with no division: they can only leave
- * it), and a division lead cannot take a lead out, since only the head
- * changes a division's leads.
+ * division it is and who holds no seat (nobody is on the team with neither:
+ * they can only leave it, `mayLeaveDivision`), and a division lead cannot take
+ * a lead out, since only the head changes a division's leads.
  */
 export type Removal =
   | { readonly kind: "offered" }
@@ -540,10 +592,10 @@ export type Removal =
   | { readonly kind: "locked"; readonly reason: string }
   | { readonly kind: "not-in-reach" };
 
-export function removalFrom(actor: TeamActor, person: Memberships, divisionId: number, org: OrgChart): Removal {
-  const role = roleIn(person, divisionId);
+export function removalFrom(actor: TeamActor, person: TeamStanding, divisionId: number, org: OrgChart): Removal {
+  const role = roleIn(person.memberships, divisionId);
   if (role === null || !reachesDivision(actor, divisionId, org)) return { kind: "not-in-reach" };
-  if (person.length === 1) return { kind: "only-division" };
+  if (!mayLeaveDivision(person, divisionId)) return { kind: "only-division" };
   if (role === "lead") {
     const change = mayChangeDivision(actor, divisionId, org);
     if (!change.allowed) return { kind: "locked", reason: change.reason };
@@ -828,8 +880,11 @@ export function buildTeamTree(
 ): TeamTree {
   const visible = new Set(org.divisions.map((d) => d.id));
   // The home rule over the divisions still open: a closed home division is not drawn.
+  // A seat or a head is drawn at that seat, and each division they also lead lists them as elsewhere.
   const drawnUnder = (entry: RosterEntry): number | null =>
-    homeDivision(membershipsOf(membershipsIn(entry.placement).filter((m) => visible.has(m.divisionId))));
+    entry.placement.role !== "divisions"
+      ? null
+      : homeDivision(membershipsOf(entry.placement.memberships.filter((m) => visible.has(m.divisionId))));
   const node = (entry: RosterEntry): TreePerson => {
     const home = drawnUnder(entry);
     const also = membershipsIn(entry.placement).flatMap((m) => {
@@ -862,8 +917,8 @@ export function buildTeamTree(
           },
         ];
       });
-    // Someone in two of its divisions counts once.
-    const people = new Set(roster.filter((e) => divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
+    // Someone in two of its divisions counts once, and its head once, also when they lead one of them.
+    const people = new Set(roster.filter((e) => e !== head && divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
     const size = (head ? 1 : 0) + people.size;
     return size === 0 ? [] : [{ id: department.id, name: department.name, head: head ? node(head) : null, divisions, size }];
   });

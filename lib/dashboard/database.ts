@@ -49,7 +49,7 @@ import {
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
-import { databaseTeamWrites, findForAdd, readDivisionMembers } from "./database-team";
+import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
@@ -687,6 +687,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     overview: () => overviewOf(identity),
     members: (divisionId) => membersOf(identity, divisionId ?? null),
     findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
+    findPeople: (query) => findPeople(identity, query),
     alumni: async () =>
       alumniDirectory(canReach(identity, "alumni") ? alumniOf(await readTeamSnapshot()) : []),
     teamTree: async () => {

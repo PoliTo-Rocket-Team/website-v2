@@ -194,6 +194,7 @@ export function divisionMembers(input: {
     const here = divisions.find((d) => d.divisionId === divisionId);
     const rest = divisions.filter((d) => d.divisionId !== divisionId);
     const ordered = here ? [here, ...rest] : divisions;
+    const standing = { memberships: record.memberships, beyond: record.beyondDivisions };
     return [
       {
         id: record.id,
@@ -208,8 +209,8 @@ export function divisionMembers(input: {
         details: record.details,
         nda: record.nda,
         self: record.id === input.selfId,
-        leave: mayLeaveTeam(actor, { memberships: record.memberships, beyond: record.beyondDivisions }, org),
-        removal: removalFrom(actor, record.memberships, divisionId, org),
+        leave: mayLeaveTeam(actor, standing, org),
+        removal: removalFrom(actor, standing, divisionId, org),
       },
     ];
   });

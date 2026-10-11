@@ -1,3 +1,4 @@
+import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionHeader, type DivisionMembers, type DivisionPerson, type PersonRecord, type WaitingPerson } from "./division-members";
 import { divisionLabel, type Joining, type OrgChart, type Removal, type TeamActor } from "./team";
 
@@ -45,6 +46,10 @@ export type DepartmentMembers = {
    * and "Close division" entry points show only then.
    */
   readonly divisionTools: boolean;
+  /** Open positions per division id: Close division says how many will close (board 68c). */
+  readonly openPositions: Readonly<Record<number, number>>;
+  /** The code of every open division of the team: a division code is unique among them (#232). */
+  readonly takenCodes: readonly { readonly id: number; readonly name: string; readonly code: string | null }[];
 };
 
 /**
@@ -60,6 +65,8 @@ export function departmentMembers(input: {
   readonly waiting: Readonly<Record<number, readonly WaitingPerson[]>>;
   readonly joining: Readonly<Record<number, readonly Joining[]>>;
   readonly closed: readonly ClosedDivision[];
+  /** Open positions per division id; none counted when left out. */
+  readonly openPositions?: Readonly<Record<number, number>>;
 }): DepartmentMembers | null {
   const { org, departmentId, actor } = input;
   const department = org.departments.find((d) => d.id === departmentId);
@@ -84,16 +91,9 @@ export function departmentMembers(input: {
     everyone: everyoneIn(tabs, divisionIds),
     closed: input.closed,
     divisionTools: mayManageDivisionsIn(actor, departmentId),
+    openPositions: input.openPositions ?? {},
+    takenCodes: org.divisions.map((d) => ({ id: d.id, name: d.name, code: d.code ?? null })),
   };
-}
-
-/**
- * Whether the actor may create, edit, close and reopen divisions in the
- * department: its head or the team, as `mayChangeDivision` answers for each
- * of its divisions. A division lead never may.
- */
-export function mayManageDivisionsIn(actor: TeamActor, departmentId: number): boolean {
-  return actor.kind === "team" || (actor.kind === "head" && actor.departmentIds.includes(departmentId));
 }
 
 /** Everyone once, as their first division of the department lists them, with a removal per division they are in. */

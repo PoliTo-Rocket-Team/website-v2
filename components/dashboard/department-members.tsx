@@ -22,6 +22,8 @@ import { FilterMenu } from "./controls";
 import { SearchField, Tabs } from "./directory";
 import { Chips } from "./division-chips";
 import { JoiningBanner, matchesWaiting, MemberDialogs, NoEmailNote, PeopleTable, type Asking } from "./division-members";
+import { CloseDivisionDialog, ReopenDialog } from "./division-dialogs";
+import { DivisionDrawer, type DivisionDrawerTarget } from "./division-drawer";
 import { DrawerPage } from "./drawer";
 import { AddMemberDrawer, EditDetailsDrawer, PersonDrawer, type EditTarget } from "./member-panels";
 import { EYEBROW, GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
@@ -32,8 +34,11 @@ import { PANEL } from "./panel";
 // its leads and the division tools (69b); Add member starts with a Division
 // select (69c); on a phone the tabs are one select chip (69m). Everything a
 // row does is the lead's page's (./division-members.tsx, #231). "+ New
-// division", "Edit division", "Close division" and "Reopen" are entry points:
-// the drawers and dialogs they open are #232's.
+// division", "Edit division", "Close division" and "Reopen" open the division
+// drawer and dialogs of #232 (./division-drawer.tsx, ./division-dialogs.tsx).
+
+/** Which division drawer is open: New division, Edit division for an open one, or the reopen of a closed one. */
+type DrawerState = { readonly kind: "new" } | { readonly kind: "edit"; readonly divisionId: number } | { readonly kind: "reopen"; readonly closed: ClosedDivision };
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -48,6 +53,9 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
   const [editDivision, setEditDivision] = useState<DivisionHeader | null>(null);
   const [adding, setAdding] = useState(false);
   const [asking, setAsking] = useState<Asking | null>(null);
+  const [drawer, setDrawer] = useState<DrawerState | null>(null);
+  const [closing, setClosing] = useState<number | null>(null);
+  const [reopening, setReopening] = useState<ClosedDivision | null>(null);
 
   const current = tab.kind === "division" ? (page.tabs.find((t) => t.division.id === tab.divisionId) ?? null) : null;
   const listed: readonly DivisionPerson[] = current?.people ?? page.everyone;
@@ -83,14 +91,37 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
 
   const options = departmentTabs(page);
   const newDivision = tools ? (
-    <button type="button" className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`}>
+    <button
+      type="button"
+      onClick={() => setDrawer({ kind: "new" })}
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`}
+    >
       <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
       New division
     </button>
   ) : null;
 
+  // The drawer reads the division from the page, so a change made in it (Add member, Confirm NDA) shows at once.
+  const editedTab = drawer?.kind === "edit" ? (page.tabs.find((t) => t.division.id === drawer.divisionId) ?? null) : null;
+  const drawerTarget: DivisionDrawerTarget | null =
+    drawer === null
+      ? null
+      : drawer.kind === "new"
+        ? { kind: "new", department: page.department }
+        : drawer.kind === "reopen"
+          ? { kind: "reopen", closed: drawer.closed }
+          : editedTab
+            ? { kind: "edit", tab: editedTab }
+            : null;
+  const closingTab = closing === null ? null : (page.tabs.find((t) => t.division.id === closing) ?? null);
+  const fillFromDrawer = (w: WaitingPerson, division: DivisionMembers) => {
+    setDrawer(null);
+    setEditDivision(division.division);
+    setEditing({ kind: "waiting", waiting: w });
+  };
+
   return (
-    <DrawerPage drawerOpen={open !== null || editing !== null || adding}>
+    <DrawerPage drawerOpen={open !== null || editing !== null || adding || drawerTarget !== null}>
       <PageHeader
         title="Members"
         intro={departmentLine(page)}
@@ -137,10 +168,17 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
         )}
       </div>
 
-      {current && <DivisionBar tab={current} tools={tools} />}
+      {current && (
+        <DivisionBar
+          tab={current}
+          tools={tools}
+          onEdit={() => setDrawer({ kind: "edit", divisionId: current.division.id })}
+          onClose={() => setClosing(current.division.id)}
+        />
+      )}
 
       {tab.kind === "closed" ? (
-        <ClosedList closed={page.closed} tools={tools} />
+        <ClosedList closed={page.closed} tools={tools} onReopen={setReopening} />
       ) : (
         <PeopleTable
           people={people}
@@ -170,12 +208,34 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
         />
       )}
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
+      {tools && (
+        <>
+          <DivisionDrawer target={drawerTarget} takenCodes={page.takenCodes} editable={editable} onClose={() => setDrawer(null)} onFill={fillFromDrawer} />
+          <CloseDivisionDialog
+            tab={closingTab}
+            openPositions={closing === null ? 0 : (page.openPositions[closing] ?? 0)}
+            onClose={() => setClosing(null)}
+            onEdit={() => {
+              setClosing(null);
+              if (closingTab) setDrawer({ kind: "edit", divisionId: closingTab.division.id });
+            }}
+          />
+          <ReopenDialog
+            closed={reopening}
+            onClose={() => setReopening(null)}
+            onReopen={(closed) => {
+              setReopening(null);
+              setDrawer({ kind: "reopen", closed });
+            }}
+          />
+        </>
+      )}
     </DrawerPage>
   );
 }
 
 /** Board 69b: the open division's code and name, its leads, and Edit division and Close division for whoever may change it. */
-function DivisionBar({ tab, tools }: { tab: DivisionMembers; tools: boolean }) {
+function DivisionBar({ tab, tools, onEdit, onClose }: { tab: DivisionMembers; tools: boolean; onEdit: () => void; onClose: () => void }) {
   const { division } = tab;
   const leads = tab.people.filter((p) => p.role === "lead");
   return (
@@ -200,11 +260,11 @@ function DivisionBar({ tab, tools }: { tab: DivisionMembers; tools: boolean }) {
       )}
       {tools && (
         <span className="flex items-center gap-2 md:ml-auto">
-          <button type="button" className={GHOST_PILL}>
+          <button type="button" onClick={onEdit} className={GHOST_PILL}>
             <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
             Edit division
           </button>
-          <button type="button" className={DANGER_PILL}>
+          <button type="button" onClick={onClose} className={DANGER_PILL}>
             Close division
           </button>
         </span>
@@ -214,7 +274,7 @@ function DivisionBar({ tab, tools }: { tab: DivisionMembers; tools: boolean }) {
 }
 
 /** The Closed tab: the department's closed divisions, each with the day it closed and Reopen for whoever may reopen it. */
-function ClosedList({ closed, tools }: { closed: readonly ClosedDivision[]; tools: boolean }) {
+function ClosedList({ closed, tools, onReopen }: { closed: readonly ClosedDivision[]; tools: boolean; onReopen: (division: ClosedDivision) => void }) {
   const thisYear = new Date().getUTCFullYear();
   if (closed.length === 0) return <p className={`${PANEL} mt-4 px-5 py-6 text-[14px] text-prt-muted`}>No closed divisions.</p>;
   return (
@@ -227,7 +287,7 @@ function ClosedList({ closed, tools }: { closed: readonly ClosedDivision[]; tool
             <span className="block text-[13px] text-prt-muted">Closed on {shortDate(d.closedOn, thisYear)}</span>
           </span>
           {tools && (
-            <button type="button" className={GHOST_PILL}>
+            <button type="button" onClick={() => onReopen(d)} className={GHOST_PILL}>
               <RotateCcw aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
               Reopen
             </button>

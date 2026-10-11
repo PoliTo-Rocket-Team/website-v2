@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { boardSeatOf, buildTeamTree, homeDivisionOf, inDivisions, type OrgChart, type RosterEntry } from "./team";
+import { boardSeatOf, buildTeamTree, homeDivisionOf, inDivisions, NO_MEMBERSHIPS, type OrgChart, type RosterEntry } from "./team";
 import { boxOf, layoutTeamTree, rowWidth } from "./tree-layout";
 
 const org: OrgChart = {
@@ -23,10 +23,10 @@ const lead = (divisionId: number) => inDivisions([{ divisionId, role: "lead", si
 const member = (divisionId: number) => inDivisions([{ divisionId, role: "member", since: "2024-10-01" }]);
 
 const roster: RosterEntry[] = [
-  person(1, "Alessandro Greco", { role: "team-leader" }),
-  person(2, "Federica Moretti", { role: "board", seat: "chief-engineer" }),
-  person(3, "Lorenzo Gallo", { role: "board", seat: "project-manager" }),
-  person(4, "Chiara Rinaldi", { role: "head", departmentId: 1 }),
+  person(1, "Alessandro Greco", { role: "team-leader", memberships: NO_MEMBERSHIPS }),
+  person(2, "Federica Moretti", { role: "board", seat: "chief-engineer", memberships: NO_MEMBERSHIPS }),
+  person(3, "Lorenzo Gallo", { role: "board", seat: "project-manager", memberships: NO_MEMBERSHIPS }),
+  person(4, "Chiara Rinaldi", { role: "head", departmentId: 1, memberships: NO_MEMBERSHIPS }),
   person(5, "Marco Bianchi", lead(10)),
   person(6, "Elif Kaya", member(10)),
   person(7, "Sofia Neri", member(10)),

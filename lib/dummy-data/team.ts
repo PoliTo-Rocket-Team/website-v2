@@ -4,7 +4,7 @@
 // the Overview read the same people. Later dashboard pages add their arrays
 // beside these.
 
-import { inDivisions, type BoardSeat, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
+import { inDivisions, NO_MEMBERSHIPS, type BoardSeat, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
 
 export type DummyDepartment = OrgDepartment;
 
@@ -63,9 +63,9 @@ export const closedDivisions = [
 /** Where a row places someone, given the day they joined the team. */
 type Place = (since: string) => Placement;
 
-const leader: Place = () => ({ role: "team-leader" });
-const board = (seat: BoardSeat): Place => () => ({ role: "board", seat });
-const head = (departmentId: number): Place => () => ({ role: "head", departmentId });
+const leader: Place = () => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });
+const board = (seat: BoardSeat): Place => () => ({ role: "board", seat, memberships: NO_MEMBERSHIPS });
+const head = (departmentId: number): Place => () => ({ role: "head", departmentId, memberships: NO_MEMBERSHIPS });
 const lead = (divisionId: number): Place => (since) => inDivisions([{ divisionId, role: "lead", since }]);
 /** A member of one division, or of none yet (null): added to the roster, not placed. */
 const member = (divisionId: number | null): Place => (since) => inDivisions(divisionId === null ? [] : [{ divisionId, role: "member", since }]);

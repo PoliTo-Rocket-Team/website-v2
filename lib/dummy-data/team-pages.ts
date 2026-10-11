@@ -2,7 +2,16 @@ import { canReach } from "@/lib/dashboard/access";
 import { alumniMove } from "@/lib/dashboard/alumni-move";
 import { joinChange, memberStanding, NEW_APPLICANT, type ApplicantStanding, type LeadMove } from "@/lib/dashboard/application-flow";
 import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/dashboard/data";
-import { departmentMembers } from "@/lib/dashboard/department-members";
+import { departmentMembers, type ClosedDivision } from "@/lib/dashboard/department-members";
+import {
+  checkDivisionSave,
+  closeRefusal,
+  planDivisionSave,
+  searchTeam,
+  type DivisionPlan,
+  type DivisionSubject,
+  type TeamPerson,
+} from "@/lib/dashboard/division-edit";
 import { NO_MEMBER_DETAILS } from "@/lib/dashboard/details";
 import {
   addOutcome,
@@ -39,8 +48,10 @@ import {
   withJoined,
   withoutDivision,
   type AlumnusRow,
+  type DivisionRole,
   type Joining,
   type OrgChart,
+  type OrgDivision,
   type Placement,
   type RosterEntry,
   type TeamActor,
@@ -57,7 +68,30 @@ import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, people, pos
 // laid over them, the people accepted for a position joining it, and the
 // people added by email waiting for Confirm NDA.
 
-const org: OrgChart = { departments, divisions };
+/** A division with the day it closed, or null while it is open. */
+type DummyDivisionState = OrgDivision & { readonly closedOn: string | null };
+
+/**
+ * The open chart and the closed divisions as the test developer left them:
+ * the divisions ./team.ts starts with, open and closed, with each division
+ * they created, edited, closed or reopened (issue #232) in its place.
+ */
+export function dummyOrg(edits: TeamEdits): { readonly org: OrgChart; readonly closed: readonly (ClosedDivision & { readonly departmentId: number })[] } {
+  const all = new Map<number, DummyDivisionState>();
+  for (const d of divisions) all.set(d.id, { ...d, closedOn: null });
+  for (const d of closedDivisions) all.set(d.id, d);
+  for (const [id, edit] of Object.entries(edits.divisions)) all.set(Number(id), { id: Number(id), ...edit });
+  const states = [...all.values()].filter((d) => departments.some((x) => x.id === d.departmentId)).sort((a, b) => a.id - b.id);
+  return {
+    org: {
+      departments,
+      divisions: states.flatMap(({ closedOn, ...d }) => (closedOn === null ? [d] : [])),
+    },
+    closed: states
+      .flatMap((d) => (d.closedOn === null ? [] : [{ id: d.id, name: d.name, code: d.code ?? null, closedOn: d.closedOn, departmentId: d.departmentId }]))
+      .sort((a, b) => b.closedOn.localeCompare(a.closedOn) || a.id - b.id),
+  };
+}
 
 /** The person each viewer signs in as; the applicant is not on the team. */
 const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
@@ -71,9 +105,13 @@ const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
 /** The day the dummy team's writes happen on: the dummy team is seen from DUMMY_NOW. */
 const TODAY = DUMMY_NOW.slice(0, 10);
 
-/** The placement with each saved change: roles set, divisions joined and left; every other division as it was. */
+/**
+ * The placement with each saved change: roles set, divisions joined and left;
+ * every other division as it was, and a seat or a head kept (a seat picked to
+ * lead a division joins it beside the seat, #232).
+ */
 function placementWith(placement: Placement, change: MemberChange | undefined): Placement {
-  if (!change || placement.role !== "divisions") return placement;
+  if (!change) return placement;
   const joined = Object.entries(change.joined ?? {}).reduce(
     (ms, [divisionId, since]) => withJoined(ms, Number(divisionId), since),
     placement.memberships,
@@ -81,7 +119,7 @@ function placementWith(placement: Placement, change: MemberChange | undefined): 
   const left = (change.left ?? []).reduce((ms, divisionId) => withoutDivision(ms, divisionId), joined);
   return Object.entries(change.roles).reduce(
     (p, [divisionId, role]) => placedWithRoleIn(p, Number(divisionId), role),
-    { role: "divisions", memberships: left } as Placement,
+    { ...placement, memberships: left },
   );
 }
 
@@ -237,7 +275,7 @@ export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
   const moved = people.flatMap((p): AlumnusRow[] => {
     const departure = edits.movedToAlumni[p.id];
     if (departure === undefined) return [];
-    const row = memberRowOf(entryOf(p, edits.members[p.id]), org);
+    const row = memberRowOf(entryOf(p, edits.members[p.id]), dummyOrg(edits).org);
     const unit = row.department ?? "Board";
     return [{ id: p.id, name: p.name, lastRole: row.roleLabel, unit, department: unit, from: departure.from, to: departure.to, shownOnSite: true }];
   });
@@ -335,6 +373,14 @@ function candidateOf(entry: RosterEntry, edits: TeamEdits): TeamCandidate {
   return { id: entry.id, name: entry.name, emails, memberships: record.memberships };
 }
 
+/** Everyone on the team as the division rules read them (lib/dashboard/division-edit.ts). */
+function teamPeople(team: readonly RosterEntry[], edits: TeamEdits): TeamPerson[] {
+  return team.map((entry) => {
+    const candidate = candidateOf(entry, edits);
+    return { id: entry.id, name: entry.name, emails: candidate.emails, memberships: candidate.memberships, beyond: standingOfPlacement(entry.placement).beyond };
+  });
+}
+
 /** The Applications page's move, as the dummy dashboard runs it: Confirm join on the Members page is that move. */
 export type DummyMove = (applicationId: number, move: LeadMove) => Promise<WriteResult<null>>;
 
@@ -349,6 +395,7 @@ function writesFor(
   move: DummyMove,
 ): TeamWrites {
   const team = editedRoster(edits, joiners);
+  const { org, closed } = dummyOrg(edits);
   const find = (id: number) => team.find((e) => e.id === id);
   const thisYear = new Date().getUTCFullYear();
   const actor = actorOf(kind);
@@ -361,7 +408,97 @@ function writesFor(
     return isIn(entry.placement, divisionId) ? entry : null;
   };
 
+  /**
+   * A checked division save (#232), laid over the edits in one save: the
+   * division as it now reads, each lead and member change in that division
+   * only, the old leads who leave the team moved to Alumni, and the emails
+   * new to the team waiting for Confirm NDA.
+   */
+  const applyPlan = async (divisionId: number, departmentId: number, plan: DivisionPlan): Promise<WriteResult<null>> => {
+    let next: TeamEdits = { ...edits, divisions: { ...edits.divisions, [divisionId]: { name: plan.name, code: plan.code, departmentId, closedOn: null } } };
+    const change = (id: number, edit: (c: MemberChange) => MemberChange) => {
+      next = { ...next, members: { ...next.members, [id]: edit(next.members[id] ?? changeOf(id)) } };
+    };
+    const setRole =
+      (role: DivisionRole) =>
+      (c: MemberChange): MemberChange => ({ ...c, roles: { ...c.roles, [divisionId]: role } });
+    const join =
+      (role: DivisionRole) =>
+      (c: MemberChange): MemberChange => ({
+        ...setRole(role)(c),
+        joined: { ...c.joined, [divisionId]: TODAY },
+        left: (c.left ?? []).filter((d) => d !== divisionId),
+      });
+    const leave = (c: MemberChange): MemberChange => {
+      const joined = { ...c.joined };
+      delete joined[divisionId];
+      return { ...c, joined, left: [...(c.left ?? []), divisionId] };
+    };
+    plan.promote.forEach((id) => change(id, setRole("lead")));
+    plan.joinAsLead.forEach((id) => change(id, join("lead")));
+    plan.joinAsMember.forEach((id) => change(id, join("member")));
+    plan.demote.forEach((id) => change(id, setRole("member")));
+    plan.leaveDivision.forEach((id) => change(id, leave));
+    for (const id of plan.leaveTeam) {
+      const person = people.find((p) => p.id === id);
+      // Only people on the dummy roster have an Alumni row to move to, as in Leaves the team.
+      if (!person) return refused(`${find(id)?.name ?? "They"} cannot be moved to Alumni in this preview.`);
+      const departure = { from: Number(person.since.slice(0, 4)), to: Number(TODAY.slice(0, 4)), reason: null };
+      next = { ...next, movedToAlumni: { ...next.movedToAlumni, [id]: departure } };
+    }
+    // A cancelled add's join id is never given out again, as in Add member.
+    const firstJoinId = Math.max(99, ...addedPeople(edits).map((a) => a.joinId), ...edits.cancelled) + 1;
+    const added = plan.emails.map((email, i): DummyWaiting => ({ joinId: firstJoinId + i, email, firstName: "", lastName: "", divisionId, title: null }));
+    if (added.length > 0) next = { ...next, added: [...next.added, ...added] };
+    await save(next);
+    return written(null);
+  };
+
+  /** The division a save is about: open, or closed and being reopened. */
+  const subjectOf = (divisionId: number): Exclude<DivisionSubject, { kind: "new" }> | null => {
+    const open = org.divisions.find((d) => d.id === divisionId);
+    if (open) return { kind: "open", division: open };
+    const shut = closed.find((d) => d.id === divisionId);
+    const division: OrgDivision | null = shut ? { id: shut.id, name: shut.name, departmentId: shut.departmentId, code: shut.code } : null;
+    // A preview division closes only when nobody is in it, and the seeded closed ones hold nobody.
+    return division ? { kind: "closed", division, stillIn: [] } : null;
+  };
+
   return {
+    async createDivision(departmentId, input) {
+      if (actor === null) return refused("Only a department head or the team leader creates a division.");
+      const checked = checkDivisionSave(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planDivisionSave({ actor, org, subject: { kind: "new", departmentId }, save: checked.value, team: teamPeople(team, edits) });
+      if (!planned.ok) return refused(planned.error);
+      const id = Math.max(999, ...org.divisions.map((d) => d.id), ...closed.map((d) => d.id)) + 1;
+      const result = await applyPlan(id, departmentId, planned.plan);
+      return result.ok ? written(id) : result;
+    },
+    async saveDivision(divisionId, input) {
+      const subject = subjectOf(divisionId);
+      if (actor === null || subject === null) return refused("That division is not one you manage.");
+      const checked = checkDivisionSave(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planDivisionSave({ actor, org, subject, save: checked.value, team: teamPeople(team, edits) });
+      if (!planned.ok) return refused(planned.error);
+      return applyPlan(divisionId, subject.division.departmentId, planned.plan);
+    },
+    async closeDivision(divisionId) {
+      if (actor === null) return refused("Only a department head or the team leader closes a division.");
+      const inIt = { people: team.filter((e) => isIn(e.placement, divisionId)).length, waiting: waitingIn(edits, divisionId).length };
+      const refusal = closeRefusal(actor, org, divisionId, inIt);
+      if (refusal !== null) return refused(refusal);
+      const division = org.divisions.find((d) => d.id === divisionId)!;
+      await save({
+        ...edits,
+        divisions: {
+          ...edits.divisions,
+          [divisionId]: { name: division.name, code: division.code ?? null, departmentId: division.departmentId, closedOn: TODAY },
+        },
+      });
+      return written(null);
+    },
     async setShownOnSite(alumnusId, shown) {
       if (!canReach(testDeveloperStanding(kind), "alumni") || !editedAlumni(edits).some((a) => a.id === alumnusId)) return false;
       await save({ ...edits, shownOnSite: { ...edits.shownOnSite, [alumnusId]: shown } });
@@ -473,7 +610,7 @@ function writesFor(
     async removeFromDivision(personId, divisionId) {
       const entry = inReach(personId, divisionId);
       if (!entry || actor === null) return false;
-      if (removalFrom(actor, membershipsIn(entry.placement), divisionId, org).kind !== "offered") return false;
+      if (removalFrom(actor, standingOfPlacement(entry.placement), divisionId, org).kind !== "offered") return false;
       const change = changeOf(personId);
       const joined = { ...change.joined };
       delete joined[divisionId];
@@ -525,10 +662,12 @@ export function dummyTeamPages(
   save: (next: TeamEdits) => Promise<void>,
   current: readonly DummyApplication[] = baseApplications,
   move: DummyMove = NO_MOVE,
-): Pick<DashboardData, "members" | "findForAdd" | "alumni" | "teamTree" | "teamWrites"> {
+  openPositionsIn: (divisionId: number) => number = () => 0,
+): Pick<DashboardData, "members" | "findForAdd" | "findPeople" | "alumni" | "teamTree" | "teamWrites"> {
   const self = SELF_ID[kind];
   const joiners = dummyJoiners(current);
   const actor = actorOf(kind);
+  const { org, closed } = dummyOrg(edits);
   const reach = actor?.kind === "lead" ? actor.divisionIds : [];
   // As the database lists them (`readJoining`): people not on the team yet. A
   // member joins from the Applications page (board 58h2) or from Add member.
@@ -542,7 +681,7 @@ export function dummyTeamPages(
       if (kind === "operations-lead") return teamDirectory(team, org, self);
       if (actor?.kind === "head") {
         const [departmentId] = actor.departmentIds;
-        const ids = divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
+        const ids = org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
         const page = departmentMembers({
           records: team.map((entry) => recordOf(entry, edits)),
           org,
@@ -551,7 +690,8 @@ export function dummyTeamPages(
           selfId: self,
           waiting: Object.fromEntries(ids.map((id) => [id, waitingIn(edits, id)])),
           joining: Object.fromEntries(ids.map((id) => [id, joiningIn(team, id)])),
-          closed: closedDivisions.filter((d) => d.departmentId === departmentId),
+          closed: closed.filter((d) => d.departmentId === departmentId).map(({ departmentId: _, ...d }) => d),
+          openPositions: Object.fromEntries(ids.map((id) => [id, openPositionsIn(id)])),
         });
         return page === null ? NO_MEMBERS : { scope: "department", ...page };
       }
@@ -573,6 +713,11 @@ export function dummyTeamPages(
       if (actor === null || !reachesDivision(actor, divisionId, org)) return { kind: "none" };
       const team = editedRoster(edits, joiners).map((e) => candidateOf(e, edits));
       return lookupForAdd(query, team, waitingIn(edits, divisionId).map((w) => w.email), divisionId, org);
+    },
+    findPeople: async (query) => {
+      // The pickers are New division's and Edit division's: a head's or the team's (#232).
+      if (actor === null || actor.kind === "lead") return { kind: "none" };
+      return searchTeam(query, teamPeople(editedRoster(edits, joiners), edits), org);
     },
     alumni: async () => alumniDirectory(canReach(testDeveloperStanding(kind), "alumni") ? editedAlumni(edits) : []),
     teamTree: async () =>

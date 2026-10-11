@@ -197,8 +197,10 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   show on the member panel, not in the form.
 - The row ⋯ menu has "Remove from {division}" and "Leaves the team".
   - "Remove from {division}" ends only that division's role and its division access; the person
-    keeps their other divisions. When it is the person's only division the menu does not offer it,
-    and the server refuses it: nobody is on the team with no division.
+    keeps their other divisions. When it is the person's only division and they hold no seat (the
+    team leader, a board seat or a department head), the menu does not offer it, and the server
+    refuses it: nobody is on the team with neither a division nor a seat. A seat holder keeps
+    their place on the team through their seat, so they can leave their only division (#232).
   - "Leaves the team" ends every role and every access the person has, and moves them to Alumni
     with the years and an optional reason. The account stays. Who may use it:
     - a division lead, only if the person is in no division outside the lead's own;
@@ -222,7 +224,7 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   "lead together" or "hand over the division", and each head of the division's department gets a
   notice under "Needs your attention" on their Overview, naming who now leads the division and how
   (#188). The head who promoted is not told. No email is sent.
-  - **Gap:** the head changes a division's leads in Edit division, which is #232.
+  - The head changes a division's leads in Edit division (see Divisions below).
 - Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
   and every access ends, after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
@@ -257,7 +259,62 @@ These rules come from #235 (boards 69, 69b, 69c and 69m) and the Owner decisions
   Confirm join, Edit details, Remove from {division} and Leaves the team. The server refuses the
   rest.
 - "+ New division", "Edit division", "Close division" and "Reopen" show only to the department's
-  head (or the team leader). What they open is #232.
+  head (or the team leader). What they open is below.
+
+#### Divisions
+
+These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 68e and 69d).
+
+- Only the head of a division's department, or the team leader, creates, edits, closes or
+  reopens it. A division lead never can, not even for their own division. The server refuses
+  everyone else. Creating or closing a department, and moving a division to another department,
+  are not done here.
+- A division has a name and a code. Divisions have no description.
+  - The code is 2 or 3 letters, kept in capitals. No two open divisions share a code; a closed
+    division's code is free again.
+  - Position codes are built from the division's code when they are read, so changing a code
+    changes the code of every position in that division. The save asks "are you sure" and names
+    the old and new code.
+- Edit division is one drawer with name, code, leads and members.
+- Leads are picked from the whole team and keep their other divisions. Anyone on the team can be
+  picked, the team leader, a board seat and a department head included (Owner decision,
+  2026-10-11, on #232). They keep that role and lead the division beside it: the Members page
+  lists them in the division, and the Team tree still draws them once, at their seat.
+  - A seat stays a seat through every division write. Some seat rows are kept on a division (a
+    head's row, for example). Leaving a division, "Remove from {division}", a promote on a save or
+    a reopen, a lead who stays as a member, and the reopen that ends the roles a closed division
+    still holds each end or change only lead and member roles. They never end or change a seat
+    row. A seat row kept on a division is not a role in it: the person is in that division only
+    when they also hold a lead or member role there.
+- An open division always has at least one lead. A create, an edit or a reopen that would leave
+  it with none is refused.
+- A new lead can replace an old one ("{new} replaces", default "Nobody, add as an extra lead").
+  A replaced lead, and a lead taken off with Remove, gets one of three outcomes:
+  - **Stays as a member** (the default): they keep the division and lose the lead role.
+  - **Leaves {division}**: their role and division access there end; they keep their other
+    divisions, and any seat. Not offered when it is their only division and they hold no seat.
+  - **Leaves the team**: every role and every access ends and they move to Alumni, as "Leaves the
+    team" on the Members page. The same permission rule applies; otherwise it is disabled with a
+    lock and the reason.
+- Name, code and lead changes are saved together with "Save changes", after an "are you sure"
+  that lists each change. Members of an open division change one at a time, as on the Members
+  page: Add member (from the whole team, or an email that then waits for Confirm NDA), Confirm
+  NDA, Cancel add, "Remove from {division}" and "Leaves the team", each behind its own confirm.
+- New division needs a name, a code and at least one lead; "Create division" stays disabled until
+  then, and the server refuses a division without them. Its members are picked in the same
+  drawer, from the team or by email, and join when it is created. Everyone keeps their other
+  divisions.
+- A division cannot close while anyone is in it, people waiting for their NDA included. The
+  dialog then says how many people are left and offers Edit division. Closing an empty division
+  asks "are you sure", then closes its open positions and removes every access given in it.
+- Reopen asks "are you sure", then opens the Edit division drawer for the closed division. It
+  opens again only when that drawer is saved with at least one lead, so an open division never
+  has zero leads. Nobody who was in it before comes back. A division closed before this rule can
+  still hold roles: the save that reopens it ends its lead and member roles, and drops its pending
+  NDA adds and its division access. A seat row kept on it stays. A picked lead who still held a
+  lead or member role there keeps that one role, now as a lead.
+- The site sends no emails here either: the drawer shows the amber note for anyone added by
+  email.
 
 ### Access
 

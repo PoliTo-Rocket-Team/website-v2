@@ -9,6 +9,7 @@ import type { CreatedPosition } from "./new-position";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { YourDetails } from "./details";
 import type { AddLookup, DetailsTarget } from "./division-members";
+import type { TeamSearch } from "./division-edit";
 import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumniDirectory, Departure, MemberDirectory, MemberEdit, PromoteMode, TeamTree } from "./team";
@@ -60,6 +61,12 @@ export interface DashboardData {
    * division the viewer's Members page does not reach.
    */
   findForAdd(divisionId: number, query: string): Promise<AddLookup>;
+  /**
+   * The lead and member pickers of New division and Edit division (boards
+   * 68b2, 69d): the whole team searched by name, or an email (#232). Nothing
+   * for a viewer who manages no division.
+   */
+  findPeople(query: string): Promise<TeamSearch>;
   /** The Alumni page (#143). */
   alumni(): Promise<AlumniDirectory>;
   /** The Team tree (#143), built from this year's roster. */
@@ -223,6 +230,23 @@ export interface TeamWrites {
   saveMemberDetails(target: DetailsTarget, divisionId: number, input: unknown): Promise<WriteResult<null>>;
   /** The photo in Edit details: a square JPEG under 500 KB, or null to remove it. */
   setMemberPhoto(personId: number, divisionId: number, photo: Upload | null): Promise<WriteResult<null>>;
+  /**
+   * New division (board 69d, #232): a division in the department with its
+   * name, code, leads and members, checked by `planDivisionSave`
+   * (./division-edit.ts). Answers the new division's id.
+   */
+  createDivision(departmentId: number, input: unknown): Promise<WriteResult<number>>;
+  /**
+   * Edit division (boards 68b to 68b4), or the save that reopens a closed
+   * division (68e): name, code and leads, with what happens to each old lead.
+   * A closed division reopens only with at least one lead.
+   */
+  saveDivision(divisionId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Close division (board 68c): refused while anyone is in it; closing also
+   * closes its open positions and removes the access given in it.
+   */
+  closeDivision(divisionId: number): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

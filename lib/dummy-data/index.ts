@@ -53,7 +53,7 @@ import {
   dummyPlaceOrder,
   dummySetApproveOrders,
 } from "./orders";
-import { NO_TEAM_EDITS, type TeamEditsStore } from "./edits";
+import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
@@ -85,7 +85,7 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyJoiners, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
+import { dummyJoiners, dummyOrg, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -103,7 +103,25 @@ type Team = {
   readonly applications: readonly DummyApplication[];
   /** What each role says, as the arrays wrote it or the test developer rewrote it. */
   readonly content: ReadonlyMap<number, PositionContent>;
+  /** Division codes the test developer changed in Edit division (#232): a position's code reads its division's code. */
+  readonly divisionCodes: ReadonlyMap<number, string>;
 };
+
+/**
+ * The team with the test developer's division edits (#232): a position in a
+ * closed division is closed, as Close division closes them, and a changed
+ * division code is the one its positions' codes read.
+ */
+function withDivisionEdits(team: Team, edits: TeamEdits): Team {
+  const { closed } = dummyOrg(edits);
+  const shut = new Set(closed.map((d) => d.id));
+  const codes = new Map(Object.entries(edits.divisions).flatMap(([id, d]) => (d.code === null ? [] : [[Number(id), d.code] as const])));
+  return {
+    ...team,
+    positions: team.positions.map((p) => (shut.has(p.divisionId) ? { ...p, open: false } : p)),
+    divisionCodes: codes,
+  };
+}
 
 /**
  * What a role in the arrays says before any edit: the public pages' text
@@ -170,6 +188,7 @@ function teamOf({ isOpen }: Recruitment, state: DummyState): Team {
     }),
     applications: baseApplications.map((a) => ({ ...a, state: state.applications[a.id] ?? a.state })),
     content,
+    divisionCodes: new Map(),
   };
 }
 
@@ -570,7 +589,7 @@ function positionRow(p: DummyPosition, team: Team): PositionRow {
     code: positionCode({
       id: p.id,
       dept_code: departmentCode[divisionOf(p.divisionId).departmentId],
-      div_code: divisionLabel[p.divisionId as keyof typeof divisionLabel].code,
+      div_code: team.divisionCodes.get(p.divisionId) ?? divisionLabel[p.divisionId as keyof typeof divisionLabel].code,
     }),
     content: contentOf(p, team),
   };
@@ -756,13 +775,15 @@ export function dummyDashboardData(
   if (kind !== "non-member" && teamEdits.current.movedToAlumni[personFor[kind].id] !== undefined) {
     return leftTeamDashboard(kind, personFor[kind], recruitment, changes, teamEdits, own);
   }
-  const team = teamOf(recruitment.current, changes.current);
+  const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEdits.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(kind);
   const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
   const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));
+  // Closing a division removes the access given in it (#232).
+  const closedIds = new Set(dummyOrg(teamEdits.current).closed.map((d) => d.id));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(kind, me, own.current, ownStart);
@@ -803,7 +824,9 @@ export function dummyDashboardData(
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
-    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications, moveApplication),
+    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications, moveApplication, (divisionId) =>
+      team.positions.filter((p) => p.divisionId === divisionId && p.open).length,
+    ),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team, teamRoster),
 
@@ -857,11 +880,11 @@ export function dummyDashboardData(
 
     moveApplication,
 
-    divisionAccess: async () => (accessKind === null || person === null ? null : dummyAccessPage(accessKind, person, teamRoster)),
+    divisionAccess: async () => (accessKind === null || person === null ? null : dummyAccessPage(accessKind, person, teamRoster, closedIds)),
     saveAccess: async (input) =>
-      accessKind === null || person === null ? refused(notOnTeam) : dummySaveAccess(accessKind, person, teamRoster, input),
+      accessKind === null || person === null ? refused(notOnTeam) : dummySaveAccess(accessKind, person, teamRoster, input, closedIds),
     removeAllAccess: async (personId) =>
-      accessKind === null || person === null ? refused(notOnTeam) : dummyRemoveAllAccess(accessKind, person, teamRoster, personId),
+      accessKind === null || person === null ? refused(notOnTeam) : dummyRemoveAllAccess(accessKind, person, teamRoster, personId, closedIds),
 
     orders: async () => (accessKind === null || person === null ? null : dummyOrdersPage(accessKind, person)),
     placeOrder: async (fields, quote) =>
