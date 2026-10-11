@@ -11,8 +11,9 @@ export const metadata: Metadata = {
   title: "Access · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 60 to 60m: the division lead's Access page. Only a division lead reaches it
-// (lib/dashboard/access.ts); anyone else gets the dashboard's not found.
+// Boards 60 to 60m and 65 to 65m: the Access page of a division lead, a
+// department head, and full access across the whole team (issue #238). Only
+// they reach it (lib/dashboard/access.ts); anyone else gets the dashboard's not found.
 export default function AccessPage() {
   return (
     <Suspense fallback={<DashboardPageFallback />}>

@@ -53,7 +53,7 @@ import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers } from 
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
-import { viewerStandingOf, viewerUnitsOf, type DashboardViewer, type ViewerStanding } from "./viewer";
+import { standingOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -69,6 +69,13 @@ type ActiveRole = {
   divisionName: string | null;
   departmentId: number | null;
   departmentName: string | null;
+  /** The full-access seat the role is flagged as (issue #238). */
+  fullAccess: FlaggedSeat | null;
+};
+
+const SEAT_OF_FLAG: Readonly<Record<NonNullable<(typeof roles.$inferSelect)["fullAccess"]>, FlaggedSeat>> = {
+  operations_lead: "operations-lead",
+  it_lead: "it-lead",
 };
 
 type Identity = {
@@ -123,7 +130,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...viewerStandingOf(null) };
   }
 
-  const [scopeRows, activeRoles] = await Promise.all([
+  const [scopeRows, roleRows] = await Promise.all([
     db
       .select({ scope: scopes.scope, division_id: scopes.divisionId, dept_id: scopes.deptId })
       .from(scopes)
@@ -137,6 +144,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
         divisionName: divisions.name,
         departmentId: departments.id,
         departmentName: departments.name,
+        fullAccess: roles.fullAccess,
       })
       .from(roles)
       .leftJoin(divisions, eq(roles.divisionId, divisions.id))
@@ -145,6 +153,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
       .where(and(eq(roles.memberId, user.member_id), isNull(roles.leavedAt)))
       .orderBy(asc(roles.startedAt)),
   ]);
+  const activeRoles: ActiveRole[] = roleRows.map((r) => ({ ...r, fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] }));
 
   const access = { scopes: scopeRows.map((s) => s.scope), activeRoles };
   const standing = viewerStandingOf(access);
@@ -664,16 +673,12 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   const identity = await readIdentity(userId);
   if (!identity) return null;
 
-  const viewer: DashboardViewer =
-    identity.kind === "non-member"
-      ? { kind: identity.kind, siteContent: false, name: identity.name, role: "Applicant", session: "account" }
-      : {
-          kind: identity.kind,
-          siteContent: identity.siteContent,
-          name: identity.name,
-          role: identity.role?.title ?? "Member",
-          session: "account",
-        };
+  const viewer: DashboardViewer = {
+    ...standingOf(identity),
+    name: identity.name,
+    role: identity.kind === "non-member" ? "Applicant" : (identity.role?.title ?? "Member"),
+    session: "account",
+  };
   const self = databaseSelfPages(identity);
   return {
     viewer,

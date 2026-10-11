@@ -1,6 +1,7 @@
 // Who is looking at the dashboard (issue #141). Every page and the sidebar
 // decide what to show from the viewer's standing: their kind, plus the
-// site-content access the Alumni page reads (issue #234). The access table in
+// site-content access the Alumni page reads (issue #234), plus, for full
+// access, which full-access seat they hold (issue #238). The access table in
 // ./access.ts says which standing reaches which page.
 
 import { divisionRoleOf, type DivisionRole, type RoleType } from "./team";
@@ -34,17 +35,70 @@ export function isViewerKind(value: unknown): value is ViewerKind {
 export type ViewerSession = "account" | "test-developer";
 
 /**
+ * The three seats that hold every access in the dashboard from the role alone
+ * (Owner decision, 2026-10-11, issue #238): the team leader, the operations
+ * lead and the IT lead. Two things stay apart from full access: deciding
+ * orders is the team leader's unless they gave "Approve orders" (./orders.ts),
+ * and only the IT lead reaches the Activity log (./access.ts).
+ */
+export const FULL_ACCESS_SEATS = ["team-leader", "operations-lead", "it-lead"] as const;
+export type FullAccessSeat = (typeof FULL_ACCESS_SEATS)[number];
+
+/**
+ * The full-access flag a role row carries (`roles.full_access`, drizzle/0018):
+ * the operations lead's and the IT lead's seats are marked once in the data,
+ * never read from a unit's code or a title. The team leader needs no flag:
+ * their role is the `president` type.
+ */
+export type FlaggedSeat = Exclude<FullAccessSeat, "team-leader">;
+
+/**
  * What decides the dashboard pages a viewer reaches: their kind, and whether
  * they hold site-content access (a `website` scope row) on top of it. Someone
- * off the team holds none, whatever scope rows remain (issue #201).
+ * off the team holds none, whatever scope rows remain (issue #201). Full
+ * access is the `operations-lead` kind, and it says which seat gives it:
+ * null when an `admin` or `org` scope row gives it and no seat does.
  */
 export type ViewerStanding =
   | { readonly kind: "non-member"; readonly siteContent: false }
-  | { readonly kind: Exclude<ViewerKind, "non-member">; readonly siteContent: boolean };
+  | { readonly kind: "operations-lead"; readonly seat: FullAccessSeat | null; readonly siteContent: boolean }
+  | { readonly kind: Exclude<ViewerKind, "non-member" | "operations-lead">; readonly siteContent: boolean };
 
-/** A test developer holds no scope rows, so their standing is their kind alone. */
+/**
+ * A test developer holds no scope rows, so their standing is their kind
+ * alone; the operations-lead test developer sits in the operations lead's seat.
+ */
 export function testDeveloperStanding(kind: ViewerKind): ViewerStanding {
-  return { kind, siteContent: false };
+  switch (kind) {
+    case "non-member":
+      return { kind, siteContent: false };
+    case "operations-lead":
+      return { kind, seat: "operations-lead", siteContent: false };
+    default:
+      return { kind, siteContent: false };
+  }
+}
+
+/** The standing alone, out of anything that carries one (an identity, a viewer). */
+export function standingOf(viewer: ViewerStanding): ViewerStanding {
+  switch (viewer.kind) {
+    case "non-member":
+      return { kind: viewer.kind, siteContent: false };
+    case "operations-lead":
+      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent };
+    default:
+      return { kind: viewer.kind, siteContent: viewer.siteContent };
+  }
+}
+
+/** The full-access seat the viewer holds; null for anyone else, and for full access from a scope row alone. */
+export function seatOf(viewer: ViewerStanding): FullAccessSeat | null {
+  return viewer.kind === "operations-lead" ? viewer.seat : null;
+}
+
+/** Whether the viewer is the team leader: the one who decides orders by default (`decideRightOf`, ./orders.ts). */
+export function isTeamLeader(viewer: ViewerStanding): boolean {
+  return seatOf(viewer) === "team-leader";
 }
 
 export type DashboardViewer = ViewerStanding & {
@@ -70,6 +124,8 @@ export type ActiveRoleRef = {
   readonly type: RoleType;
   /** The division it is in; null for a role in no division. */
   readonly divisionId: number | null;
+  /** The full-access seat the role is flagged as; null for every other role. */
+  readonly fullAccess: FlaggedSeat | null;
 };
 
 /** The scope rows and every active role that decide a real member's viewer kind. */
@@ -80,17 +136,33 @@ export type MemberAccess = {
 };
 
 /**
+ * The one rule that recognises a full-access seat (issue #238), from the
+ * active roles alone, with no scope row: a `president` role is the team
+ * leader; a role flagged `operations-lead` or `it-lead` is that seat. A
+ * division lead, a department head or a member holds none. Someone in two
+ * seats is read as the higher: the team leader, then the IT lead, then the
+ * operations lead.
+ */
+export function fullAccessSeatOf(activeRoles: readonly ActiveRoleRef[]): FullAccessSeat | null {
+  if (activeRoles.some((r) => r.type === "president")) return "team-leader";
+  if (activeRoles.some((r) => r.fullAccess === "it-lead")) return "it-lead";
+  if (activeRoles.some((r) => r.fullAccess === "operations-lead")) return "operations-lead";
+  return null;
+}
+
+/**
  * A real account's viewer kind, read from all their active roles (issue
  * #229). No member row is a non-member (an applicant), and so is a member row
  * with no active role: someone who left or was moved to alumni gets the
- * applicant's pages, whatever scope rows remain (issue #201). Org-wide or
- * admin access is the operations lead's; a role of type `head` is a
- * department head's (issue #230); a department or division scope, or a lead
- * role in any division, is a division lead's; anyone else on the team is a
- * member.
+ * applicant's pages, whatever scope rows remain (issue #201). Full access,
+ * the `operations-lead` kind, comes from a full-access seat (issue #238) or
+ * from an org-wide or admin scope row; a role of type `head` is a department
+ * head's (issue #230); a department or division scope, or a lead role in any
+ * division, is a division lead's; anyone else on the team is a member.
  */
 export function viewerKindOf(access: MemberAccess | null): ViewerKind {
   if (access === null || access.activeRoles.length === 0) return "non-member";
+  if (fullAccessSeatOf(access.activeRoles) !== null) return "operations-lead";
   if (access.scopes.some((s) => s === "admin" || s === "org")) return "operations-lead";
   if (access.activeRoles.some((r) => r.type === "head")) return "department-head";
   const leadsSomething = access.activeRoles.some((r) => r.type === "lead");
@@ -117,11 +189,13 @@ export function ledDivisionIds(access: MemberAccess): number[] {
   return [...new Set(ids)];
 }
 
-/** A real account's standing: its viewer kind, and site-content access from a `website` scope row. */
+/** A real account's standing: its viewer kind, its full-access seat, and site-content access from a `website` scope row. */
 export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const kind = viewerKindOf(access);
-  if (kind === "non-member") return { kind, siteContent: false };
-  return { kind, siteContent: access?.scopes.includes("website") ?? false };
+  if (access === null || kind === "non-member") return { kind: "non-member", siteContent: false };
+  const siteContent = access.scopes.includes("website");
+  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent };
+  return { kind, siteContent };
 }
 
 /** A scope row as `readIdentity` reads it: which unit it opens. */

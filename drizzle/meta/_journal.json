@@ -127,6 +127,13 @@
       "when": 1791714000000,
       "tag": "0017_orders_whole_team",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791800000000,
+      "tag": "0018_full_access_seats",
+      "breakpoints": true
     }
   ]
 }

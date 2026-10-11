@@ -89,10 +89,14 @@ export type Order = OrderState & {
   readonly quote: OrderQuote | null;
 };
 
-/** A unit the viewer edits orders in: one division, or a whole department. */
+/** A unit the viewer edits orders in: one division, a whole department, or, with full access (issue #238), the whole team. */
 export type EditUnit =
   | { readonly kind: "division"; readonly division: OrderDivision }
-  | { readonly kind: "department"; readonly department: OrderDepartment };
+  | { readonly kind: "department"; readonly department: OrderDepartment }
+  | { readonly kind: "team" };
+
+/** Full access edits every order in the team (issue #238). */
+export const WHOLE_TEAM: EditUnit = { kind: "team" };
 
 /**
  * Why a viewer may approve, reject or ask for changes: they are the team
@@ -104,7 +108,7 @@ export type DecideRight = "team-leader" | "approve-orders";
  * What the viewer may do on Orders (issue #233). Anyone with any Orders
  * access sees every order in the team; they edit only orders in `edits`: a
  * lead the divisions they hold Orders at Can edit in, a head their whole
- * department. Deciding is apart from editing: `decides` is null for everyone
+ * department, full access the whole team. Deciding is apart from editing: `decides` is null for everyone
  * but the team leader and the people they gave "Approve orders".
  */
 export type OrdersScope = {
@@ -145,18 +149,29 @@ export function ordersPageFor(
 /** Whether the viewer may edit or cancel this order: it belongs to a division or department they edit in. */
 export function canEditOrder(scope: OrdersScope, order: Pick<Order, "unit">): boolean {
   const unit = order.unit;
-  if (unit === null) return false;
-  return scope.edits.some((e) =>
-    e.kind === "division" ? e.division.id === unit.division.id : unit.department !== null && e.department.id === unit.department.id,
-  );
+  return scope.edits.some((e) => {
+    switch (e.kind) {
+      case "team":
+        return true;
+      case "division":
+        return unit !== null && e.division.id === unit.division.id;
+      case "department":
+        return unit !== null && unit.department !== null && e.department.id === unit.department.id;
+    }
+  });
 }
 
-/** The divisions the viewer may send a new order for: each division they edit in, and every division of a department they edit in. */
+/** The divisions the viewer may send a new order for: each division they edit in, and every division of a department, or of the team, they edit in. */
 export function orderingDivisions(scope: OrdersScope, departments: readonly OrgDepartmentUnits[]): OrderDivision[] {
   const found = new Map<number, OrderDivision>();
   for (const e of scope.edits) {
-    if (e.kind === "division") found.set(e.division.id, e.division);
-    else for (const d of departments.find((dep) => dep.id === e.department.id)?.divisions ?? []) found.set(d.id, d);
+    const divisions =
+      e.kind === "division"
+        ? [e.division]
+        : e.kind === "department"
+          ? (departments.find((dep) => dep.id === e.department.id)?.divisions ?? [])
+          : departments.flatMap((dep) => dep.divisions);
+    for (const d of divisions) found.set(d.id, d);
   }
   return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -183,7 +198,7 @@ export function divisionShort(name: string): string {
 }
 
 /** The units the viewer edits, as the intro names them: "Mission Analysis", "Aerodynamics". */
-function editUnitName(unit: EditUnit): string {
+function editUnitName(unit: Exclude<EditUnit, { kind: "team" }>): string {
   return unit.kind === "division" ? divisionShort(unit.division.name) : unit.department.name;
 }
 
@@ -195,7 +210,9 @@ function joinNames(names: readonly string[]): string {
 /** The line under the title (boards 61 and 67): what the viewer edits, and that the rest is read-only. */
 export function ordersIntro(scope: OrdersScope): string {
   if (scope.edits.length === 0) return "Every order in the team. You can view them; none are yours to edit.";
-  return `Every order in the team. You can edit ${joinNames(scope.edits.map(editUnitName))} orders; the rest are read-only.`;
+  if (scope.edits.some((e) => e.kind === "team")) return "Every order in the team. You can edit all of them.";
+  const units = scope.edits.flatMap((e) => (e.kind === "team" ? [] : [editUnitName(e)]));
+  return `Every order in the team. You can edit ${joinNames(units)} orders; the rest are read-only.`;
 }
 
 /** "Aerodynamics · Mission Analysis" on a phone card (board 61m); a dash for an order with no division on record. */

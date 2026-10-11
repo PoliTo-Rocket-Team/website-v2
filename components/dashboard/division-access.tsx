@@ -29,6 +29,8 @@ import {
   areaLevelsOf,
   areaRule,
   canChangePerson,
+  departmentName,
+  departmentOfPlace,
   heldLevel,
   homePlace,
   PERSON_STANDING_LABELS,
@@ -39,6 +41,7 @@ import {
   samePlace,
   shortUnitName,
   unitLine,
+  type AccessDepartmentUnit,
   type AccessGrant,
   type AccessLevel,
   type AccessPage,
@@ -51,7 +54,7 @@ import {
   type RoleAccess,
   type SaveAccess,
 } from "@/lib/dashboard/division-access";
-import { divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
+import { ALL_DEPARTMENTS_LABEL, divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -89,11 +92,24 @@ function rowKey(row: Row): string {
   return `${row.kind}-${personOfRow(row).id}`;
 }
 
-/** "Lead · Mission Analysis", "Member" on a lead's page, "Member · Mission Analysis" on a head's (boards 60 and 65). */
+/** "Lead · Mission Analysis", "Member" on a lead's page, "Member · Mission Analysis" on a head's or a team page (boards 60 and 65). */
 function standingLine(person: AccessPerson, unit: AccessUnit): string {
   const label = PERSON_STANDING_LABELS[person.standing];
-  const showDivision = person.division !== null && (person.standing === "lead" || unit.kind === "department");
+  const showDivision = person.division !== null && (person.standing === "lead" || unit.kind !== "division");
   return showDivision ? `${label} · ${shortUnitName(person.division!.name)}` : label;
+}
+
+/** "your division", "your department", "the team": who the page gives access to. */
+function unitWords(unit: AccessUnit): string {
+  return unit.kind === "team" ? "the team" : `your ${unit.kind}`;
+}
+
+/** The department a row belongs to on a team page (issue #238): its division's, else the department its access is in. */
+function rowDepartment(row: Row, unit: AccessUnit): string | null {
+  const person = personOfRow(row);
+  const place: AccessPlace | undefined =
+    person.division !== null ? { kind: "division", division: person.division } : row.kind === "role" ? row.role.place : row.access.grants[0]?.place;
+  return place === undefined ? null : (departmentOfPlace(unit, place)?.name ?? null);
 }
 
 /** Whether the viewer may change anything of this person's access, in any place they hold it. */
@@ -108,27 +124,40 @@ function changeableIn(access: AccessPage, grants: readonly AccessGrant[], person
 // other leads with the access their role gives (locked), one row per person
 // the unit shared access with, and the Give access and Edit access drawers.
 // A head's page has division tabs, starting on All divisions, and a Where
-// field in the drawers. This is the only dashboard page that gives, changes
-// or removes access. Props in, nothing fetched; the grants live in this
-// page's state, so a save shows at once. Remove all access asks first.
+// field in the drawers. A full-access page (issue #238) is the same across
+// the whole team: department tabs, starting on All departments, and a Where
+// field over every department and division. This is the only dashboard page
+// that gives, changes or removes access. Props in, nothing fetched; the
+// grants live in this page's state, so a save shows at once. Remove all
+// access asks first.
 export function DivisionAccessView({ access, ...actions }: { access: AccessPage } & Actions) {
   const [grants, setGrants] = useState(access.grants);
   const [open, setOpen] = useState<Open>(CLOSED);
   const [divisionTab, setDivisionTab] = useState<DivisionTab>(null);
   const unit = access.unit;
-  const department = unit.kind === "department";
+  // A grant across a whole department carries the "Whole department" tag on a head's and a team page.
+  const department = unit.kind !== "division";
   const allRows: Row[] = [
     ...access.roleAccess.map((role): Row => ({ kind: "role", role })),
     ...accessByPerson(grants).map((row): Row => ({ kind: "grants", access: row })),
   ];
+  // Each row's tab: its division on a head's page, its department on a team page.
+  const tabOf = (row: Row): string | null => (unit.kind === "team" ? rowDepartment(row, unit) : (personOfRow(row).division?.name ?? null));
   const divisionOptions =
     unit.kind === "department"
       ? divisionTabs(
           unit.divisions.map((d) => d.name),
-          allRows.map((row) => personOfRow(row).division?.name ?? null),
+          allRows.map(tabOf),
         )
-      : null;
-  const rows = allRows.filter((row) => inDivisionTab(personOfRow(row).division?.name ?? null, divisionTab));
+      : unit.kind === "team"
+        ? divisionTabs(
+            unit.departments.map((d) => d.department.name),
+            allRows.map(tabOf),
+            ALL_DEPARTMENTS_LABEL,
+          )
+        : null;
+  const tabsOver = unit.kind === "team" ? "department" : "division";
+  const rows = allRows.filter((row) => inDivisionTab(tabOf(row), divisionTab));
   const editing = open.kind === "edit" ? (access.people.find((p) => p.id === open.personId) ?? null) : null;
   const openRow = (person: AccessPerson) => setOpen({ kind: "edit", personId: person.id });
   const changeable = (row: Row) => row.kind === "grants" && changeableIn(access, grants, row.access.person);
@@ -146,7 +175,11 @@ export function DivisionAccessView({ access, ...actions }: { access: AccessPage 
     <DrawerPage drawerOpen={open.kind !== "none"}>
       <PageHeader
         title="Access"
-        intro={`Share what you can do with people in your ${unit.kind}. You can only give access you have.`}
+        intro={
+          unit.kind === "team"
+            ? "Share what you can do with anyone on the team. You can only give access you have."
+            : `Share what you can do with people in ${unitWords(unit)}. You can only give access you have.`
+        }
         phone="bar"
         action={
           access.held.length > 0 && access.people.length > 0 ? (
@@ -163,7 +196,7 @@ export function DivisionAccessView({ access, ...actions }: { access: AccessPage 
       {/* On phones the division pill comes first (board 65m); from md the tabs sit under Your access (board 65). */}
       {divisionOptions && (
         <div className="md:hidden">
-          <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} />
+          <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} over={tabsOver} />
         </div>
       )}
 
@@ -171,7 +204,7 @@ export function DivisionAccessView({ access, ...actions }: { access: AccessPage 
 
       {divisionOptions && (
         <div className="mt-5 hidden md:block">
-          <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} />
+          <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} over={tabsOver} />
         </div>
       )}
 
@@ -487,7 +520,7 @@ function AccessTable({
 }
 
 /** "Aerodynamics · both divisions, and any added later" under Whole department (board 65b). */
-function wholeDepartmentLine(unit: Extract<AccessUnit, { kind: "department" }>): string {
+function wholeDepartmentLine(unit: AccessDepartmentUnit): string {
   const n = unit.divisions.length;
   const which = n === 2 ? "both divisions" : n === 1 ? "its division" : `all ${n} divisions`;
   return `${unit.department.name} · ${which}, and any added later`;
@@ -566,7 +599,7 @@ function AccessDrawer({
     setSubmitting(true);
     try {
       // A lead's division is their only place, so their page sends none.
-      const where = unit.kind === "department" ? { where: placeKey(place) } : {};
+      const where = unit.kind === "division" ? {} : { where: placeKey(place) };
       const result = await actions.saveAccess({ personId, ...where, areas });
       if (!result.ok) {
         setError(result.error);
@@ -629,7 +662,7 @@ function AccessDrawer({
             )}
           </Field>
         ) : (
-          <Field label="Person" hint={`from your ${unit.kind}`}>
+          <Field label="Person" hint={`from ${unitWords(unit)}`}>
             {(id) => (
               <div className="relative">
                 {person && (
@@ -696,6 +729,38 @@ function AccessDrawer({
               })}
             </div>
           </div>
+        )}
+
+        {unit.kind === "team" && (
+          <Field label="Where" hint="a whole department or one division" className="mt-6">
+            {(id) => (
+              <div className="relative">
+                <select
+                  id={id}
+                  value={String(placeKey(place))}
+                  onChange={(e) => {
+                    const next = placesOf(unit).find((p) => String(placeKey(p)) === e.target.value);
+                    if (next) choosePlace(next);
+                  }}
+                  className="h-11 w-full cursor-pointer appearance-none rounded-[10px] border border-white-10 bg-white-5 pl-3 pr-10 text-[15px] text-prt-text transition-colors duration-300 ease-out focus:border-accent focus:outline-none"
+                >
+                  {unit.departments.map((d) => (
+                    <optgroup key={d.department.id} label={departmentName(d.department)}>
+                      <option value={placeKey({ kind: "department", department: d.department })}>
+                        {`Whole department · ${wholeDepartmentLine(d)}`}
+                      </option>
+                      {d.divisions.map((division) => (
+                        <option key={division.id} value={placeKey({ kind: "division", division })}>
+                          {division.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-2" />
+              </div>
+            )}
+          </Field>
         )}
 
         <div className="mt-6" role="group" aria-labelledby={areasLabel}>

@@ -12,6 +12,7 @@ import {
   ordersPageFor,
   stateAfterDecision,
   stateAfterEdit,
+  WHOLE_TEAM,
   type EditUnit,
   type NewOrder,
   type Order,
@@ -32,8 +33,9 @@ import { departments, divisions, people, type DummyPerson } from "./team";
 // boards 61m, 67, 67b and 67m, issue #233): every order in the team, from
 // more than one department, six pages of them. The division lead (Marco
 // Bianchi) edits Mission Analysis orders; the department head (Chiara
-// Rinaldi) edits every Aerodynamics order. Neither is the team leader and
-// neither holds "Approve orders", so both are refused a decision, as the
+// Rinaldi) edits every Aerodynamics order; the operations lead (Giulia Rossi)
+// has full access and edits every order (issue #238). None is the team leader
+// and none holds "Approve orders", so all are refused a decision, as the
 // database side refuses them. Writes check what was sent as the database
 // side does, store nothing, and answer what the page shows next.
 
@@ -181,9 +183,9 @@ function unitOfDivision(divisionId: number): OrderUnit {
 }
 
 /**
- * The viewer's Orders scope, as the database side reads it: a lead's Orders
- * level in the division they lead, a head's whole department at Can edit;
- * null for anyone with no Orders access.
+ * The viewer's Orders scope, as the database side reads it: the whole team
+ * for full access, a lead's Orders level in the division they lead, a head's
+ * whole department at Can edit; null for anyone with no Orders access.
  */
 function scopeOf(kind: AccessViewerKind, viewer: DummyPerson): OrdersScope | null {
   const decides = decideRightOf({
@@ -191,6 +193,8 @@ function scopeOf(kind: AccessViewerKind, viewer: DummyPerson): OrdersScope | nul
     approveOrders: approveOrdersHolders.includes(viewer.id),
   });
   const placement = viewer.placement;
+  // Full access edits every order in the team (issue #238); deciding still needs the team leader's role or the grant.
+  if (kind === "operations-lead") return { edits: [WHOLE_TEAM], decides };
   if (kind === "department-head") {
     if (placement.role !== "head") return null;
     const department = departments.find((d) => d.id === placement.departmentId)!;

@@ -85,7 +85,7 @@ test("active roles become memberships by the viewer's rule: a lead or head role 
     { type: "president" as const, divisionId: null, since: "2023-10-01" },
   ];
   const memberships = membershipsOfRoles(held);
-  const access = { scopes: [], activeRoles: held };
+  const access = { scopes: [], activeRoles: held.map((r) => ({ ...r, fullAccess: null })) };
   for (const divisionId of [10, 20, 30]) assert.equal(roleIn(memberships, divisionId), standingIn(access, divisionId));
   assert.equal(memberships.length, 2);
 });

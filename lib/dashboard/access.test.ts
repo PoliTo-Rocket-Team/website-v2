@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canReach, dashboardLandingFor, landingAfterLeaving, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
-import { testDeveloperStanding as kindOnly, type ViewerKind, type ViewerStanding } from "./viewer";
+import { canReach, DASHBOARD_PAGES, dashboardLandingFor, landingAfterLeaving, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
+import { FULL_ACCESS_SEATS, testDeveloperStanding as kindOnly, type FullAccessSeat, type ViewerKind, type ViewerStanding } from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
 function shape(viewer: ViewerKind | ViewerStanding, facts: SidebarFacts) {
@@ -48,14 +48,40 @@ test("the operations lead sees My applications only once they have applied, and 
   assert.deepEqual(shape("operations-lead", withoutApplications)[0], [null, ["Overview", "Team tree"]]);
 });
 
-test("the operations lead does not reach Access or Orders yet (issue #200)", () => {
-  assert.equal(canReach(kindOnly("operations-lead"), "division-access"), false);
-  assert.equal(canReach(kindOnly("operations-lead"), "orders"), false);
+/** Full access from each seat, with no scope row and no site-content access (issue #238). */
+const fullAccess = (seat: FullAccessSeat | null): ViewerStanding => ({ kind: "operations-lead", seat, siteContent: false });
+
+test("the team leader, the operations lead and the IT lead reach every page of the team (issue #238)", () => {
+  // My account is the applicant's page, and the Activity log is the IT lead's alone (below).
+  const teamPages = DASHBOARD_PAGES.map((p) => p.key).filter((key) => key !== "my-account" && key !== "activity-log");
+  for (const seat of FULL_ACCESS_SEATS) {
+    for (const key of teamPages) assert.equal(canReach(fullAccess(seat), key), true, `${seat} ${key}`);
+  }
+  assert.deepEqual(shape(fullAccess("team-leader"), withoutApplications), [
+    [null, ["Overview", "Team tree"]],
+    ["Recruitment", ["Positions", "Applications"]],
+    ["Team", ["Members", "Alumni", "Access", "Orders"]],
+  ]);
+});
+
+test("full access from an admin or org scope row reaches every page of the team too (issue #238)", () => {
+  assert.equal(canReach(fullAccess(null), "division-access"), true);
+  assert.equal(canReach(fullAccess(null), "orders"), true);
+});
+
+test("only the IT lead reaches the Activity log, and no sidebar lists it until the page is built (issue #238)", () => {
+  assert.equal(canReach(fullAccess("it-lead"), "activity-log"), true);
+  for (const seat of ["team-leader", "operations-lead", null] as const) assert.equal(canReach(fullAccess(seat), "activity-log"), false, String(seat));
+  for (const kind of ["department-head", "division-lead", "member", "non-member"] as const) {
+    assert.equal(canReach(kindOnly(kind), "activity-log"), false, kind);
+  }
+  const listed = sidebarFor(fullAccess("it-lead"), withoutApplications).some((s) => s.items.some((item) => item.key === "activity-log"));
+  assert.equal(listed, false);
 });
 
 test("the Alumni page is for full admins and site-content access, never from a lead's role (issue #234)", () => {
   const reaches: readonly [ViewerStanding, boolean][] = [
-    [{ kind: "operations-lead", siteContent: false }, true],
+    [{ kind: "operations-lead", seat: "operations-lead", siteContent: false }, true],
     [{ kind: "division-lead", siteContent: false }, false],
     [{ kind: "division-lead", siteContent: true }, true],
     [{ kind: "member", siteContent: false }, false],

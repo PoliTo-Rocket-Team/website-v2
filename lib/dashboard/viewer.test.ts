@@ -1,8 +1,31 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { headDivisionsOf, ledDivisionIds, standingIn, viewerKindOf, viewerStandingOf, viewerUnitsOf, type ActiveRoleRef } from "./viewer";
+import {
+  fullAccessSeatOf,
+  headDivisionsOf,
+  isTeamLeader,
+  ledDivisionIds,
+  standingIn,
+  testDeveloperStanding,
+  viewerKindOf,
+  viewerStandingOf,
+  viewerUnitsOf,
+  type ActiveRoleRef,
+  type FlaggedSeat,
+} from "./viewer";
+import { decideRightOf } from "./orders";
 
-const role = (type: ActiveRoleRef["type"], divisionId: number | null = null): ActiveRoleRef => ({ type, divisionId });
+const role = (type: ActiveRoleRef["type"], divisionId: number | null = null, fullAccess: FlaggedSeat | null = null): ActiveRoleRef => ({
+  type,
+  divisionId,
+  fullAccess,
+});
+
+// The three full-access seats as the data holds them (issue #238): the team
+// leader's `president` role, and the flagged Operations head and IT lead roles.
+const teamLeader = role("president");
+const operationsLead = role("head", null, "operations-lead");
+const itLead = role("lead", 17, "it-lead");
 
 test("a real account's viewer kind follows its scopes and role", () => {
   assert.equal(viewerKindOf(null), "non-member");
@@ -93,4 +116,47 @@ test("a head role covers its department with no department scope row (issues #18
     ),
     { divisionIds: [3, 6], departmentIds: [] },
   );
+});
+
+test("the team leader, the operations lead and the IT lead get full access from the role, with no scope row (issue #238)", () => {
+  const seats = [
+    [teamLeader, "team-leader"],
+    [operationsLead, "operations-lead"],
+    [itLead, "it-lead"],
+  ] as const;
+  for (const [held, seat] of seats) {
+    assert.equal(fullAccessSeatOf([held]), seat);
+    assert.deepEqual(viewerStandingOf({ scopes: [], activeRoles: [held] }), { kind: "operations-lead", seat, siteContent: false });
+  }
+});
+
+test("a division lead, a department head and a member hold no full-access seat (issue #238)", () => {
+  for (const held of [role("lead", 3), role("head"), role("core", 3), role(null)]) {
+    assert.equal(fullAccessSeatOf([held]), null);
+    assert.notEqual(viewerKindOf({ scopes: [], activeRoles: [held] }), "operations-lead");
+  }
+});
+
+test("an admin or org scope row still gives full access, with no seat (issue #238)", () => {
+  for (const scope of ["admin", "org"] as const) {
+    assert.deepEqual(viewerStandingOf({ scopes: [scope], activeRoles: [role("core", 3)] }), { kind: "operations-lead", seat: null, siteContent: false });
+  }
+});
+
+test("someone in two seats is read as the higher one", () => {
+  assert.equal(fullAccessSeatOf([itLead, teamLeader]), "team-leader");
+  assert.equal(fullAccessSeatOf([operationsLead, itLead]), "it-lead");
+});
+
+test("by default only the team leader decides orders; the operations lead and the IT lead need Approve orders (issue #238)", () => {
+  const decides = (held: ActiveRoleRef, approveOrders: boolean) =>
+    decideRightOf({ teamLeader: isTeamLeader(viewerStandingOf({ scopes: [], activeRoles: [held] })), approveOrders });
+  assert.equal(decides(teamLeader, false), "team-leader");
+  assert.equal(decides(operationsLead, false), null);
+  assert.equal(decides(itLead, false), null);
+  assert.equal(decides(operationsLead, true), "approve-orders");
+  assert.equal(decides(itLead, true), "approve-orders");
+  // Full access from a scope row alone is not the team leader either.
+  assert.equal(isTeamLeader(viewerStandingOf({ scopes: ["admin"], activeRoles: [role("core", 3)] })), false);
+  assert.equal(isTeamLeader(testDeveloperStanding("operations-lead")), false);
 });
