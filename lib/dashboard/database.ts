@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, isNull, max, min, notInArray, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, max, min, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getRecruitmentControl, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
@@ -41,19 +41,21 @@ import {
   oldestLine,
   type AttentionItem,
   type ChecklistItem,
+  type DepartmentOverview,
   type DivisionOverview,
+  type DivisionSummary,
   type PersonalOverview,
   type TeamOverview,
   type TeamSideOverview,
   type UpcomingInterview,
 } from "./overview";
-import { databaseDivisionPages } from "./database-division";
+import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { databaseTeamWrites, leadDivisionId, readJoining } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
-import { viewerStandingOf, type DashboardViewer, type ViewerStanding } from "./viewer";
+import { viewerStandingOf, viewerUnitsOf, type DashboardViewer, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -134,7 +136,8 @@ async function readIdentity(userId: string): Promise<Identity | null> {
       })
       .from(roles)
       .leftJoin(divisions, eq(roles.divisionId, divisions.id))
-      .leftJoin(departments, eq(divisions.deptId, departments.id))
+      // A head's role names its department; a lead's names it through the division (issue #230).
+      .leftJoin(departments, eq(departments.id, sql`coalesce(${roles.deptId}, ${divisions.deptId})`))
       .where(and(eq(roles.memberId, user.member_id), isNull(roles.leavedAt)))
       .orderBy(desc(roles.startedAt))
       .limit(1),
@@ -144,11 +147,11 @@ async function readIdentity(userId: string): Promise<Identity | null> {
   // Someone with no active role left the team: scope rows that outlived it reach nothing.
   if (standing.kind === "non-member") return { ...base, role: null, divisionIds: [], departmentIds: [], ...standing };
 
-  const divisionIds = scopeRows.flatMap((s) => (s.scope === "division" && s.division_id !== null ? [s.division_id] : []));
-  if (role?.divisionId != null && (role.type === "lead" || role.type === "head")) divisionIds.push(role.divisionId);
-  const departmentIds = scopeRows.flatMap((s) => (s.scope === "department" && s.dept_id !== null ? [s.dept_id] : []));
-
-  return { ...base, role: role ?? null, divisionIds, departmentIds, ...standing };
+  const units = viewerUnitsOf(
+    scopeRows.map((s) => ({ scope: s.scope, divisionId: s.division_id, deptId: s.dept_id })),
+    role ?? null,
+  );
+  return { ...base, role: role ?? null, divisionIds: [...units.divisionIds], departmentIds: [...units.departmentIds], ...standing };
 }
 
 type ScopedPosition = {
@@ -417,6 +420,99 @@ async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   };
 }
 
+/**
+ * Boards 62 and 62m (issue #230): a department head's figures, attention,
+ * divisions, interviews and activity, across their department. The database
+ * holds no activity feed, so that reads empty here.
+ */
+async function departmentOverview(identity: Identity): Promise<DepartmentOverview> {
+  const now = new Date();
+  const department = await readHeadDepartment(identity);
+  const divisionIds = department?.divisions.map((d) => d.id) ?? [];
+  const db = getDb();
+  const [positions, team, orders, withoutPhoto, notices] = await Promise.all([
+    readPositions(identity),
+    divisionIds.length === 0
+      ? []
+      : db
+          .select({
+            division_id: roles.divisionId,
+            type: roles.type,
+            first_name: users.firstName,
+            last_name: users.lastName,
+            email: users.email,
+          })
+          .from(roles)
+          .innerJoin(users, eq(users.member, roles.memberId))
+          .where(and(inArray(roles.divisionId, divisionIds), isNull(roles.leavedAt))),
+    readOrdersIn(divisionIds),
+    readMembersWithoutPhoto(divisionIds),
+    readNoticeAttention(identity, now),
+  ]);
+  const interviews = await readInterviews(positions);
+  const open = positions.filter((p) => p.open);
+  const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
+  const waiting = waitingOrders(orders);
+  const noPhoto = noPhotoItem(withoutPhoto);
+  const nameOf = (r: { first_name: string | null; last_name: string | null; email: string }) =>
+    [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email;
+
+  const attention: AttentionItem[] = [
+    ...positions.flatMap((p): AttentionItem[] =>
+      p.newApplications > 0 && p.oldestNew !== null
+        ? [
+            {
+              kind: "applications",
+              title: `${plural(p.newApplications, "new application", "new applications")} for ${p.title}`,
+              detail: oldestLine(p.oldestNew, now),
+              action: { label: "Review", href: `/dashboard/applications?position=${p.id}` },
+            },
+          ]
+        : [],
+    ),
+    ...(noPhoto ? [noPhoto] : []),
+    ...notices,
+  ];
+
+  return {
+    shape: "department",
+    stats: [
+      { label: "New applications", value: String(fresh), detail: "Waiting for a first look" },
+      {
+        label: "Open positions",
+        value: String(open.length),
+        detail: `In ${plural(new Set(open.map((p) => p.divisionName)).size, "division", "divisions")}`,
+      },
+      {
+        label: "Orders",
+        value: `${waiting.count} waiting`,
+        detail: `${formatEuro(waiting.total)} to be placed`,
+        live: waiting.count > 0,
+      },
+      {
+        label: "My department",
+        value: String(team.length),
+        detail: `${team.length === 1 ? "person" : "people"} in ${department?.name ?? identity.role?.departmentName ?? ""}`,
+      },
+    ],
+    attention,
+    divisions: (department?.divisions ?? []).map((division): DivisionSummary => {
+      const own = positions.filter((p) => p.divisionName === division.name);
+      const members = team.filter((t) => t.division_id === division.id);
+      return {
+        id: division.id,
+        name: division.name,
+        leads: members.filter((t) => t.type === "lead" || t.type === "head").map(nameOf),
+        people: members.length,
+        newApplications: own.reduce((sum, p) => sum + p.newApplications, 0),
+        openPositions: own.filter((p) => p.open).length,
+      };
+    }),
+    interviews,
+    activity: [],
+  };
+}
+
 const monthYear = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
 async function memberOverview(identity: Identity): Promise<PersonalOverview> {
@@ -495,6 +591,8 @@ function overviewOf(identity: Identity): Promise<TeamSideOverview> {
   switch (identity.kind) {
     case "operations-lead":
       return teamOverview(identity);
+    case "department-head":
+      return departmentOverview(identity);
     case "division-lead":
       return divisionOverview(identity);
     case "member":
@@ -515,7 +613,7 @@ async function hasOwnApplications(identity: Identity): Promise<boolean> {
 }
 
 async function navCountsOf(identity: Identity): Promise<NavCounts> {
-  if (identity.kind !== "operations-lead" && identity.kind !== "division-lead") return {};
+  if (identity.kind !== "operations-lead" && identity.kind !== "department-head" && identity.kind !== "division-lead") return {};
   const fresh = (await readPositions(identity)).reduce((sum, p) => sum + p.newApplications, 0);
   return fresh > 0 ? { applications: fresh } : {};
 }

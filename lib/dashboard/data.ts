@@ -1,7 +1,7 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
 import type { DashboardLanding, NavCounts } from "./access";
-import type { AccessGrant, DivisionAccess } from "./division-access";
+import type { AccessGrant, AccessPage } from "./division-access";
 import type { DivisionOrders, Order } from "./orders";
 import type { TeamSideOverview } from "./overview";
 import type { LeadMove } from "./application-flow";
@@ -90,15 +90,16 @@ export interface DashboardData {
    */
   moveApplication(applicationId: number, move: LeadMove): Promise<WriteResult<null>>;
 
-  /** Boards 60 to 60m: the division lead's Access page, the only place access is given, changed or removed. */
-  divisionAccess(): Promise<DivisionAccess | null>;
+  /** Boards 60 to 60m (a division lead) and 65 to 65m (a department head): the Access page, the only place access is given, changed or removed. */
+  divisionAccess(): Promise<AccessPage | null>;
   /**
-   * Give access or Edit access (boards 60b, 60c): one person's areas become
-   * the ones sent, each at its own level, in one audited write. Answers the
-   * person's grants as the table shows them.
+   * Give access or Edit access (boards 60b, 60c, 65b): one person's areas in
+   * one place (the lead's division; the head's whole department or one of its
+   * divisions) become the ones sent, each at its own level, in one audited
+   * write. Answers all the person's grants as the table shows them.
    */
   saveAccess(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
-  /** Remove all access (board 60c): every area the person holds in the division. */
+  /** Remove all access (board 60c): every area the person holds in the viewer's division or department. */
   removeAllAccess(personId: number): Promise<WriteResult<null>>;
 
   /** Boards 61 to 61d: the division's Orders page, for whoever holds Orders there; null for anyone else. */

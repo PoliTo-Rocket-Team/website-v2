@@ -46,6 +46,54 @@ test("a division lead sees only their division's positions and applications (boa
   assert.ok((await data.applications()).applications.every((a) => refs.has(a.position.ref)));
 });
 
+test("a department head sees every division of their department, and New position offers only those (boards 63, 63b, 64)", async () => {
+  const { data } = session("department-head");
+  const aerodynamics = ["Mission Analysis Division", "Optimization and Analysis Division"];
+  const positions = await data.positions();
+  assert.equal(positions.scope, "department");
+  if (positions.scope !== "department") return;
+  assert.deepEqual(positions.department.divisions.map((d) => d.name), aerodynamics);
+  assert.ok(positions.positions.length > 0);
+  assert.deepEqual([...new Set(positions.positions.map((p) => p.division))].sort(), aerodynamics);
+  assert.deepEqual(positions.newPosition.divisions.map((d) => d.name), aerodynamics);
+
+  const applications = await data.applications();
+  assert.equal(applications.scope.kind, "department");
+  const refs = new Set(positions.positions.map((p) => p.ref));
+  assert.ok(applications.applications.length > 0);
+  assert.ok(applications.applications.every((a) => refs.has(a.position.ref)));
+  const [counts] = await Promise.all([data.navCounts()]);
+  assert.equal(counts.applications, newCount(applications.applications));
+
+  // A role in another department is refused.
+  await assert.rejects(data.createPosition({ divisionId: 4, title: "x", description: "x", required: ["x"] }), DashboardRefused);
+});
+
+test("a department head's Overview has a row per division of their department (board 62)", async () => {
+  const overview = await session("department-head").data.overview();
+  assert.equal(overview.shape, "department");
+  if (overview.shape !== "department") return;
+  assert.deepEqual(
+    overview.divisions.map((d) => [d.name, d.leads]),
+    [
+      ["Mission Analysis Division", ["Marco Bianchi", "Pietro Ricci"]],
+      ["Optimization and Analysis Division", ["Paolo Conti"]],
+    ],
+  );
+});
+
+test("Access lists the other leads with their role's access, never the viewer (boards 60 and 65)", async () => {
+  const lead = (await session("division-lead").data.divisionAccess())!;
+  assert.deepEqual(lead.roleAccess.map((r) => r.person.name), ["Pietro Ricci"]);
+  assert.ok(lead.grants.every((g) => g.place.kind === "division"));
+
+  const head = (await session("department-head").data.divisionAccess())!;
+  assert.equal(head.unit.kind, "department");
+  assert.deepEqual(head.roleAccess.map((r) => r.person.name).sort(), ["Marco Bianchi", "Paolo Conti", "Pietro Ricci"]);
+  assert.ok(head.grants.some((g) => g.place.kind === "department"), "a grant across the whole department");
+  assert.ok(head.grants.every((g) => g.person.standing === "member"));
+});
+
 test("members and applicants reach neither page", async () => {
   for (const kind of ["member", "non-member"] as const) {
     const { data } = session(kind);

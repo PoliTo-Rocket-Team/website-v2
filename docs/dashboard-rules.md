@@ -24,11 +24,11 @@ An admin column comes later. **Planned**, no issue yet.
 | My applications | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application |
 | Overview | Yes, only with at least one application | Yes | Yes | Yes | Yes |
 | Team tree | No | Yes | Yes | Yes | Yes |
-| Positions | No | No | Own divisions | All divisions in the department, with a division selector | All, plus the site-wide recruitment switch |
-| Applications | No | No | Own divisions | All divisions in the department, with a division selector | All |
+| Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch |
+| Applications | No | No | Own divisions | All divisions in the department, under division tabs | All |
 | Members | No | No | Their divisions | Their divisions | Their divisions |
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
-| Access | No | No | Their divisions | Their divisions | Their divisions |
+| Access | No | No | Their divisions | Their department, under division tabs | Their divisions |
 | Orders | No | No | Their divisions | Their divisions | Their divisions |
 | My account | User menu only | No | No | No | No |
 | My profile | No | User menu only | User menu only | User menu only | User menu only |
@@ -46,13 +46,27 @@ An admin column comes later. **Planned**, no issue yet.
   link, and the withdrawn applications stay under Past on My applications (Owner decision, #227).
 - **Team tree** is for members and up.
 - **Positions** and **Applications**: a division lead sees their own divisions. A department head
-  sees all divisions in their department and picks one with a division selector. The operations
+  sees all divisions in their department and picks one with division tabs. The operations
   lead sees all of them, plus the site-wide recruitment switch.
-  - **Gap:** there is no department head view and no division selector. Tracked in #184.
+  - A person whose current role has type `head` is a department head. Their role's department
+    (`roles.dept_id`, or the department of the role's division) covers every open division of
+    it, with no `department` scope row needed (#230).
+  - The head's Positions, Applications and Access pages have division tabs: "All divisions"
+    first, then each division with its count. Every page starts on "All divisions" (Owner
+    decision, #230). On a phone the tabs are one "All divisions" pill that opens the same choice.
+  - A division lead of one division sees no tabs.
+  - New position: the division select lists only the head's department's divisions. When a
+    division tab is open, the drawer starts with that division picked; on "All divisions" the
+    head picks one (Owner decision, #230).
+  - The head's Overview adds a Divisions panel: one row per division, with its leads, its people,
+    and its new applications and open positions (board 62). A row opens that division's tab on
+    Positions.
   - **Gap:** any access grant, even view-only, makes a member act as a division lead on
     applications. Tracked in #160.
 - **Members**, **Access** and **Orders** are for division leads and up, scoped to their divisions.
   - **Gap:** a lead of more than one division sees only the first on Members. Tracked in #185.
+  - **Gap:** a department head's sidebar lists Access but not yet Members or Orders. Tracked in
+    #231 and #233.
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
   with site-content access, which the full admins can give to anyone. A division lead or
@@ -152,7 +166,27 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - Every change is written to the activity log.
 - On a phone the table is a card per person with the same chips, and a tap opens the same
   drawer.
-- Single division only. The division selector for department heads is #184 and #185.
+- The other leads of the division are listed first, with "Whole division · Can edit", "With the
+  role" and a lock. Their access comes with the role and cannot be changed or removed here. A
+  lead's own page shows their co-leads, never the lead themselves (Owner decision, #230).
+
+#### Department head
+
+These rules come from #230 (boards 65, 65b and 65m).
+
+- A head's role holds every area at Can edit across their whole department: "YOUR ACCESS ·
+  {department} Department, all divisions".
+- The table lists the division leads of the department first, with "Whole division · Can edit",
+  "With the role" and a lock (Owner decision, #230), then everyone the department shared access
+  with. Division tabs narrow the table to the people of one division.
+- Give access has a "Where" field: the whole department, or one division (Owner decision, #230).
+  A grant for the whole department is a `scopes` row with only `dept_id` set, and its chip carries
+  a "Whole department" tag. A person holds each area at one level per place.
+- The delegation limit is the lead's: a head gives only what they hold, at no higher level, and
+  only inside their department. A lead's role access cannot be removed. The server checks every
+  change.
+- Edit access opens on the first place the person holds access in; changing "Where" shows their
+  areas in that place. "Remove all access" removes every area in every place, after a confirm.
 
 ## 4. Orders
 
@@ -167,7 +201,8 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 ## 5. Data and testing
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
-  developer" switch, with four people: non-member, member, division lead and operations lead.
+  developer" switch, with five people: non-member, member, division lead, department head and
+  operations lead.
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and

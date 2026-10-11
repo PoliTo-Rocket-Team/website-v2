@@ -28,6 +28,7 @@ import {
 } from "./application-flow";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
+import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
 import { interviewStateOf, type SlotRow } from "./interview-slots";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
@@ -40,6 +41,8 @@ import {
   type ApplicationDocument,
   type ApplicationEntry,
   type ApplicationsPage,
+  type ApplicationsScope,
+  type DepartmentUnit,
   type OtherApplication,
   type PositionRow,
   type PositionsPage,
@@ -58,7 +61,7 @@ type Identity = DashboardIdentity;
 type DbStatus = (typeof applications.$inferSelect)["status"];
 
 function isLead(identity: Identity): boolean {
-  return identity.kind === "operations-lead" || identity.kind === "division-lead";
+  return identity.kind === "operations-lead" || identity.kind === "department-head" || identity.kind === "division-lead";
 }
 
 // Positions -------------------------------------------------------------------
@@ -168,7 +171,22 @@ async function positionsPage(identity: Identity): Promise<PositionsPage> {
   ]);
   const newPosition = { divisions: divisionChoices, nextId };
   if (identity.kind === "operations-lead") return { scope: "team", positions, newPosition };
+  const department = await readDepartmentUnit(identity);
+  if (department !== null) return { scope: "department", department, positions, newPosition };
   return { scope: "division", division: identity.role?.divisionName ?? null, positions, newPosition };
+}
+
+/** A department head's department as the recruitment pages name it, with its division tabs (issue #230). */
+async function readDepartmentUnit(identity: Identity): Promise<DepartmentUnit | null> {
+  const department = await readHeadDepartment(identity);
+  return department === null ? null : { name: department.name, divisions: department.divisions };
+}
+
+async function applicationsScope(identity: Identity): Promise<ApplicationsScope> {
+  if (identity.kind === "operations-lead") return { kind: "team" };
+  const department = await readDepartmentUnit(identity);
+  if (department !== null) return { kind: "department", department };
+  return { kind: "division", division: identity.role?.divisionName ?? null };
 }
 
 async function reachablePositionIds(identity: Identity): Promise<Set<number>> {
@@ -359,9 +377,8 @@ function answersOf(raw: unknown[] | null): ApplicationEntry["answers"] {
 async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   if (!isLead(identity)) throw new DashboardRefused("applications");
   const now = new Date();
-  const positions = await readPositionRows(identity, now);
-  const division = identity.kind === "division-lead" ? (identity.role?.divisionName ?? null) : null;
-  if (positions.length === 0) return { division, now: now.toISOString(), positions: [], applications: [] };
+  const [positions, scope] = await Promise.all([readPositionRows(identity, now), applicationsScope(identity)]);
+  if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], applications: [] };
 
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
@@ -408,9 +425,9 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   ]);
   const byId = new Map(positions.map((p) => [p.id, p]));
   return {
-    division,
+    scope,
     now: now.toISOString(),
-    positions: positions.map((p) => ({ ref: p.ref, title: p.title })),
+    positions: positions.map((p) => ({ ref: p.ref, title: p.title, division: p.division })),
     applications: rows.flatMap((r): ApplicationEntry[] => {
       const position = r.position_id === null ? undefined : byId.get(r.position_id);
       if (!position) return [];

@@ -1,10 +1,10 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
-import { divisions, logs, orders, roles, scopes, users } from "@/db/schema";
+import { departments, divisions, logs, orders, roles, scopes, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
@@ -13,14 +13,20 @@ import {
   checkRemoveAllAccess,
   checkSaveAccess,
   heldLevel,
+  ROLE_HELD_ACCESS,
+  type AccessDivision,
   type AccessGrant,
   type AccessLevel,
+  type AccessPage,
   type AccessPerson,
+  type AccessPlace,
   type AccessTarget,
+  type AccessUnit,
   type AccessWrite,
-  type DivisionAccess,
   type HeldAccess,
+  type RoleAccess,
 } from "./division-access";
+import { headDivisionsOf } from "./viewer";
 import {
   checkNewOrder,
   checkQuote,
@@ -36,10 +42,11 @@ import {
 import type { DashboardIdentity } from "./database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
-// The division lead's Access and Orders pages read from and written to the
-// database (boards 43 and 44, issue #145; Dashboard v2 boards 60 to 61d,
-// issue #172). A lead's division is the one their
-// lead role sits in, else the first division their scopes cover. Reads follow
+// The division lead's Access and Orders pages, and the department head's
+// Access page, read from and written to the database (boards 43 and 44, issue
+// #145; Dashboard v2 boards 60 to 61d, issue #172; boards 65 and 65b, issue
+// #230). A lead's division is the one their lead role sits in, else the first
+// division their scopes cover; a head's department is their role's. Reads follow
 // .patterns/drizzle-reads.md; writes follow .patterns/audited-mutations.md
 // and check the lead's access on the server before they run.
 
@@ -78,19 +85,73 @@ async function readHeld(memberId: number, divisionId: number): Promise<HeldAcces
   });
 }
 
-async function readDivisionAccess(identity: DashboardIdentity): Promise<DivisionAccess | null> {
-  const division = await leadDivision(identity);
-  if (division === null || identity.memberId === null) return null;
+/** A department head's department and its open divisions, in tab order (issue #230); null for anyone else. */
+export async function readHeadDepartment(identity: DashboardIdentity): Promise<{ id: number; name: string; divisions: AccessDivision[] } | null> {
+  if (identity.kind !== "department-head") return null;
+  const id = identity.role?.departmentId ?? identity.departmentIds[0] ?? null;
+  if (id === null) return null;
+  const db = getDb();
+  const [[department], rows] = await Promise.all([
+    db
+      .select({ id: departments.id, name: departments.name })
+      .from(departments)
+      .where(and(eq(departments.id, id), isNull(departments.closedAt)))
+      .limit(1),
+    db
+      .select({ id: divisions.id, name: divisions.name, departmentId: divisions.deptId, closedAt: divisions.closedAt })
+      .from(divisions)
+      .where(eq(divisions.deptId, id)),
+  ]);
+  if (!department) return null;
+  return { ...department, divisions: headDivisionsOf(id, rows).map((d) => ({ id: d.id, name: d.name })) };
+}
+
+/** The unit the viewer's Access page is about, and what they hold there; null for anyone with no such page. */
+async function accessUnitOf(identity: DashboardIdentity): Promise<{ unit: AccessUnit; held: readonly HeldAccess[] } | null> {
+  if (identity.memberId === null) return null;
+  if (identity.kind === "division-lead") {
+    const division = await leadDivision(identity);
+    if (division === null) return null;
+    return { unit: { kind: "division", division }, held: await readHeld(identity.memberId, division.id) };
+  }
+  const department = await readHeadDepartment(identity);
+  if (department === null) return null;
+  // A head's role holds every area at Can edit across their department (board 65).
+  return {
+    unit: { kind: "department", department: { id: department.id, name: department.name }, divisions: department.divisions },
+    held: ROLE_HELD_ACCESS,
+  };
+}
+
+function isLeadRole(type: string | null): boolean {
+  return type === "lead" || type === "head";
+}
+
+/**
+ * The Access page (boards 60 and 65): the viewer's unit and what they hold,
+ * the other leads with the access their role gives, the grants in the unit
+ * (each division's, and on a head's page the department-wide ones), and the
+ * people the viewer may give access to.
+ */
+async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage | null> {
+  const found = await accessUnitOf(identity);
+  if (found === null || identity.memberId === null) return null;
+  const { unit, held } = found;
   const me = identity.memberId;
   const db = getDb();
   const giver = alias(users, "giver");
+  const unitDivisions = unit.kind === "division" ? [unit.division] : unit.divisions;
+  const divisionIds = unitDivisions.map((d) => d.id);
+  const department = unit.kind === "department" ? unit.department : null;
+  const inUnitDivisions = and(eq(scopes.scope, "division"), inArray(scopes.divisionId, divisionIds.length ? divisionIds : [-1]));
 
-  const [held, rows, team] = await Promise.all([
-    readHeld(me, division.id),
+  const [rows, team] = await Promise.all([
     db
       .select({
         id: scopes.id,
         member_id: scopes.memberId,
+        scope: scopes.scope,
+        division_id: scopes.divisionId,
         target: scopes.target,
         level: scopes.accessLevel,
         given_by: scopes.givenBy,
@@ -106,8 +167,9 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
       .leftJoin(giver, eq(giver.member, scopes.givenBy))
       .where(
         and(
-          eq(scopes.scope, "division"),
-          eq(scopes.divisionId, division.id),
+          department === null
+            ? inUnitDivisions
+            : or(inUnitDivisions, and(eq(scopes.scope, "department"), eq(scopes.deptId, department.id))),
           ne(scopes.memberId, me),
           inArray(scopes.target, [...ACCESS_TARGETS]),
         ),
@@ -117,20 +179,41 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
       .select({
         member_id: roles.memberId,
         type: roles.type,
+        division_id: roles.divisionId,
         first_name: users.firstName,
         last_name: users.lastName,
         email: users.email,
       })
       .from(roles)
       .innerJoin(users, eq(users.member, roles.memberId))
-      .where(and(eq(roles.divisionId, division.id), isNull(roles.leavedAt))),
+      .where(
+        and(
+          isNull(roles.leavedAt),
+          department === null
+            ? inArray(roles.divisionId, divisionIds)
+            : or(inArray(roles.divisionId, divisionIds.length ? divisionIds : [-1]), and(eq(roles.deptId, department.id), eq(roles.type, "head"))),
+        ),
+      ),
   ]);
 
-  const roleOf = new Map(team.map((t) => [t.member_id, t.type]));
-  const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string }): AccessPerson => {
-    const type = roleOf.get(memberId);
-    return { id: memberId, name: nameOf(row), standing: type === "lead" || type === "head" ? "lead" : "member" };
-  };
+  // One person per member: a lead in any of their roles stands as a lead, placed in that role's division.
+  const byMember = new Map<number, AccessPerson>();
+  for (const t of team) {
+    if (t.member_id === null) continue;
+    const lead = isLeadRole(t.type);
+    const division = unitDivisions.find((d) => d.id === t.division_id) ?? null;
+    const known = byMember.get(t.member_id);
+    if (known !== undefined && (known.standing === "lead" || !lead)) continue;
+    byMember.set(t.member_id, { id: t.member_id, name: nameOf(t), standing: lead ? "lead" : "member", division: division ?? known?.division ?? null });
+  }
+  const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string }): AccessPerson =>
+    byMember.get(memberId) ?? { id: memberId, name: nameOf(row), standing: "member", division: null };
+
+  const roleAccess = [...byMember.values()].flatMap((person): RoleAccess[] => {
+    if (person.id === me || person.standing !== "lead") return [];
+    if (person.division !== null) return [{ person, place: { kind: "division", division: person.division } }];
+    return department === null ? [] : [{ person, place: { kind: "department", department } }];
+  });
 
   const ids = rows.map((r) => String(r.id));
   const given =
@@ -144,6 +227,17 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
 
   const grants = rows.flatMap((r): AccessGrant[] => {
     if (r.member_id === null || !isTarget(r.target)) return [];
+    const person = personOf(r.member_id, r);
+    // A lead's access comes with the role: their row is in `roleAccess`.
+    if (person.standing === "lead") return [];
+    const division = unitDivisions.find((d) => d.id === r.division_id);
+    const place: AccessPlace | null =
+      r.scope === "department" && department !== null
+        ? { kind: "department", department }
+        : division === undefined
+          ? null
+          : { kind: "division", division };
+    if (place === null) return [];
     const givenBy =
       r.given_by === null
         ? null
@@ -152,92 +246,98 @@ async function readDivisionAccess(identity: DashboardIdentity): Promise<Division
           : r.giver_email === null
             ? null
             : nameOf({ first_name: r.giver_first_name, last_name: r.giver_last_name, email: r.giver_email });
-    return [
-      {
-        id: r.id,
-        person: personOf(r.member_id, r),
-        target: r.target,
-        level: r.level,
-        givenBy,
-        givenOn: givenOn.get(String(r.id)) ?? null,
-      },
-    ];
+    return [{ id: r.id, person, place, target: r.target, level: r.level, givenBy, givenOn: givenOn.get(String(r.id)) ?? null }];
   });
 
-  const people = team
-    .flatMap((t) => (t.member_id === null || t.member_id === me ? [] : [personOf(t.member_id, t)]))
-    .filter((p, i, all) => all.findIndex((q) => q.id === p.id) === i)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const people = [...byMember.values()].filter((p) => p.id !== me).sort((a, b) => a.name.localeCompare(b.name));
 
-  return { division, held, grants, people };
+  return { unit, held, roleAccess, grants, people };
+}
+
+/** The `scopes` rows one place holds: a division's, or a department's own (only `dept_id` set). */
+function placeColumns(place: AccessPlace) {
+  return place.kind === "division"
+    ? { scope: "division" as const, deptId: null, divisionId: place.division.id }
+    : { scope: "department" as const, deptId: place.department.id, divisionId: null };
 }
 
 /**
- * Writes a checked change to one person's access in one audited batch: one
- * grant per person, area and division, so a level change replaces the old
- * grant and a removal deletes it. Answers the person's grants as they now read.
+ * Writes checked changes to one person's access in one audited batch: one
+ * grant per person, area and place, so a level change replaces the old grant
+ * and a removal deletes it. Answers the person's grants as they now read.
  */
-async function writeAccess(
-  identity: DashboardIdentity,
-  access: DivisionAccess,
-  { personId, changes }: AccessWrite,
-): Promise<WriteResult<readonly AccessGrant[]>> {
-  if (identity.memberId === null) return refused("Only a division lead gives access here.");
-  const divisionId = access.division.id;
+async function writeAccess(identity: DashboardIdentity, personId: number, writes: readonly AccessWrite[]): Promise<WriteResult<readonly AccessGrant[]>> {
+  if (identity.memberId === null) return refused("Only a division lead or a department head gives access here.");
   const givenBy = identity.memberId;
-  // An added area has no grant yet, so clearing every changed area deletes
-  // only the grants a level change or a removal replaces.
-  const touched = changes.map((c) => c.target);
-  const given = changes.flatMap((c) => (c.kind === "remove" ? [] : [{ target: c.target, level: c.to }]));
+  const statements = writes.filter((w) => w.changes.length > 0);
 
-  if (changes.length > 0) {
-    await runAuditBatch((db) => [
-      db
-        .delete(scopes)
-        .where(
-          and(
-            eq(scopes.memberId, personId),
-            eq(scopes.scope, "division"),
-            eq(scopes.divisionId, divisionId),
-            inArray(scopes.target, touched),
-          ),
-        ),
-      ...(given.length === 0
-        ? []
-        : [
-            db.insert(scopes).values(
-              given.map(({ target, level }) => ({
-                memberId: personId,
-                givenBy,
-                scope: "division" as const,
-                target,
-                accessLevel: level satisfies AccessLevel,
-                divisionId,
-              })),
-            ),
-          ]),
-    ]);
+  if (statements.length > 0) {
+    await runAuditBatch((db) => {
+      const [first, ...rest] = statements.flatMap(({ place, changes }) => {
+        const columns = placeColumns(place);
+        // An added area has no grant yet, so clearing every changed area deletes
+        // only the grants a level change or a removal replaces.
+        const touched = changes.map((c) => c.target);
+        const given = changes.flatMap((c) => (c.kind === "remove" ? [] : [{ target: c.target, level: c.to }]));
+        const where =
+          columns.scope === "division"
+            ? and(eq(scopes.scope, "division"), eq(scopes.divisionId, columns.divisionId))
+            : and(eq(scopes.scope, "department"), eq(scopes.deptId, columns.deptId), isNull(scopes.divisionId));
+        return [
+          db.delete(scopes).where(and(eq(scopes.memberId, personId), where, inArray(scopes.target, touched))),
+          ...(given.length === 0
+            ? []
+            : [
+                db.insert(scopes).values(
+                  given.map(({ target, level }) => ({
+                    memberId: personId,
+                    givenBy,
+                    scope: columns.scope,
+                    target,
+                    accessLevel: level satisfies AccessLevel,
+                    deptId: columns.deptId,
+                    divisionId: columns.divisionId,
+                  })),
+                ),
+              ]),
+        ];
+      });
+      // Every write with a change deletes first, so the batch is never empty.
+      return [first!, ...rest];
+    });
   }
 
-  const after = await readDivisionAccess(identity);
+  const after = await readAccessPage(identity);
   return written(after?.grants.filter((g) => g.person.id === personId) ?? []);
 }
 
 async function saveAccess(identity: DashboardIdentity, input: unknown): Promise<WriteResult<readonly AccessGrant[]>> {
-  const access = await readDivisionAccess(identity);
-  if (access === null) return refused("Only a division lead gives access here.");
+  const access = await readAccessPage(identity);
+  if (access === null) return refused("Only a division lead or a department head gives access here.");
   const checked = checkSaveAccess(access, input);
-  return checked.ok ? writeAccess(identity, access, checked.value) : refused(checked.error);
+  return checked.ok ? writeAccess(identity, checked.value.personId, [checked.value]) : refused(checked.error);
 }
 
 async function removeAllAccess(identity: DashboardIdentity, personId: number): Promise<WriteResult<null>> {
-  const access = await readDivisionAccess(identity);
-  if (access === null) return refused("Only a division lead removes access here.");
+  const access = await readAccessPage(identity);
+  if (access === null) return refused("Only a division lead or a department head removes access here.");
   const checked = checkRemoveAllAccess(access, personId);
   if (!checked.ok) return refused(checked.error);
-  const result = await writeAccess(identity, access, checked.value);
+  const result = await writeAccess(identity, personId, checked.value);
   return result.ok ? written(null) : result;
 }
+
+/** Every request from the given divisions' people: a department head's Overview counts the waiting ones (board 62). */
+export async function readOrdersIn(divisionIds: readonly number[]): Promise<Order[]> {
+  const rows = await Promise.all(divisionIds.map((id) => readOrderRows(id)));
+  const seen = new Set<number>();
+  return rows.flat().flatMap((r) => {
+    if (seen.has(r.id)) return [];
+    seen.add(r.id);
+    return orderOf(r);
+  });
+}
+
 
 type DbOrderStatus = (typeof orders.$inferSelect)["status"];
 
@@ -508,7 +608,7 @@ async function cancelOrder(identity: DashboardIdentity, orderId: number): Promis
 /** The Access and Orders methods of the database side of the data interface. */
 export function databaseDivisionPages(identity: DashboardIdentity) {
   return {
-    divisionAccess: () => readDivisionAccess(identity),
+    divisionAccess: () => readAccessPage(identity),
     saveAccess: (input: unknown) => saveAccess(identity, input),
     removeAllAccess: (personId: number) => removeAllAccess(identity, personId),
     divisionOrders: () => readDivisionOrders(identity),

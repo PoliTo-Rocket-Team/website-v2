@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
+import { VIEWER_KINDS } from "./dashboard/viewer";
 import { TESTER_KEYS, TESTERS, isTesterKey, testerSignInOn } from "./dev-tester";
+import { testDeveloperSignIn } from "./test-developer";
 
 test("tester sign-in is on only for next dev with no VERCEL_ENV", () => {
   assert.equal(testerSignInOn({ NODE_ENV: "development" }), true);
@@ -34,6 +36,24 @@ test("every tester key names a tester with its own id and email", () => {
   assert.equal(new Set(TESTER_KEYS.map((key) => TESTERS[key].email)).size, TESTER_KEYS.length);
   assert.equal(isTesterKey("operations-lead"), true);
   assert.equal(isTesterKey("admin"), false);
+});
+
+test("both sign-ins offer a department head (issue #230)", () => {
+  assert.equal(isTesterKey("department-head"), true);
+  assert.equal(TESTERS["department-head"].email, "department-head.tester@example.com");
+  // The preview's test developer sign-in lists every viewer kind, the department head among them.
+  assert.ok(VIEWER_KINDS.includes("department-head"));
+  const signIn = testDeveloperSignIn(new URL("https://preview.example/api/test-developer/sign-in?viewer=department-head"), {
+    VERCEL_ENV: "preview",
+  });
+  assert.equal(signIn.status, 303);
+  assert.match(signIn.headers.get("Set-Cookie") ?? "", /prt_test_developer=department-head;/);
+});
+
+test("db/seed.sql seeds the department head tester with a head role in Aerodynamics and no scope row", () => {
+  const seed = readFileSync(resolve(process.cwd(), "db/seed.sql"), "utf8");
+  assert.ok(seed.includes("(904, (SELECT id FROM departments WHERE code = 'AER'), NULL, 'Head of Aerodynamics', '2025-10-01'::date, NULL, 'head')"));
+  assert.ok(!/\(904, '(division|department|org)'/.test(seed));
 });
 
 test("db/seed.sql seeds every tester in better_auth.user and public.users", () => {

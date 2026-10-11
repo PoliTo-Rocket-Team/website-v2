@@ -2,7 +2,7 @@
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Search, type LucideIcon } from "lucide-react";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // The small controls of the recruitment pages (boards 41, 41b, 41c): the
@@ -88,24 +88,39 @@ export function Segmented<T extends string>({
   );
 }
 
-/** "All departments ⌄": one of a list, or all of them (`null`). */
+/**
+ * "All departments ⌄": one of a list, or all of them (`null`). As a `chip`
+ * it is the round pill phone boards 63m to 65m draw, with an icon before
+ * the label.
+ */
 export function FilterMenu({
   allLabel,
   options,
   value,
   onChange,
+  label,
+  icon: Icon,
+  chip = false,
 }: {
   allLabel: string;
   options: readonly { readonly value: string; readonly label: string }[];
   value: string | null;
   onChange: (value: string | null) => void;
+  /** What a screen reader hears for the trigger, before the current choice. */
+  label?: string;
+  icon?: LucideIcon;
+  chip?: boolean;
 }) {
   const current = options.find((o) => o.value === value)?.label ?? allLabel;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={`flex h-8 min-w-0 max-w-full items-center gap-2 rounded-lg border border-hairline px-3 text-[13px] text-prt-text transition-colors duration-300 ease-out hover:border-border-strong data-[state=open]:border-border-strong ${FOCUS}`}
+        aria-label={label ? `${label}: ${current}` : undefined}
+        className={`flex h-8 min-w-0 max-w-full items-center gap-2 border border-hairline px-3 text-[13px] text-prt-text transition-colors duration-300 ease-out hover:border-border-strong data-[state=open]:border-border-strong ${
+          chip ? "rounded-full bg-panel/60" : "rounded-lg"
+        } ${FOCUS}`}
       >
+        {Icon && <Icon aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-2" strokeWidth={1.75} />}
         <span className="truncate">{current}</span>
         <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={2} />
       </DropdownMenuTrigger>

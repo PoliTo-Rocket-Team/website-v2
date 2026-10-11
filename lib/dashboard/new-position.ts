@@ -29,6 +29,16 @@ export function divisionField(divisions: readonly DivisionChoice[]): DivisionFie
 }
 
 /**
+ * The division New position starts on (board 63b, issue #230): the one
+ * division a lead posts in; else the division whose tab is open, when the
+ * viewer may post there; else none, so they pick one.
+ */
+export function startingDivisionId(divisions: readonly DivisionChoice[], openTab: string | null): number | null {
+  if (divisions.length === 1) return divisions[0].id;
+  return divisions.find((d) => d.name === openTab)?.id ?? null;
+}
+
+/**
  * The code the new role will get: `AER-MSA-017`. The number is the id the
  * role is stored under, so the drawer shows the next one as a preview and
  * the saved role's code is read back from the id it got.
