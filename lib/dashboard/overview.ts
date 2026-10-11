@@ -160,6 +160,48 @@ export type Roster = {
   readonly people: readonly RosterPerson[];
 };
 
+/** One active role row in the viewer's division, as the personal roster reads it. */
+export type RosterRow = {
+  readonly memberId: number;
+  readonly name: string;
+  /** The row's position type; "lead" or "head" makes the member a division lead. */
+  readonly type: string | null;
+};
+
+/**
+ * The viewer's division on the personal Overview (board 52). One member can
+ * hold more than one active role row in a division (a department head who
+ * also leads it), so the rows collapse to one person per member (issue #249),
+ * a lead when any of their rows is. Leads come first, then up to two other
+ * members, then the viewer; `size` and the detail count distinct members.
+ */
+export function divisionRoster(
+  division: { readonly title: string; readonly department: string },
+  rows: readonly RosterRow[],
+  viewerId: number | null,
+): Roster {
+  const byMember = new Map<number, RosterPerson>();
+  for (const row of rows) {
+    const lead = (byMember.get(row.memberId)?.lead ?? false) || row.type === "lead" || row.type === "head";
+    byMember.set(row.memberId, {
+      name: row.name,
+      role: lead ? "Division lead" : "Member",
+      lead,
+      self: row.memberId === viewerId,
+    });
+  }
+  const people = [...byMember.values()];
+  const leads = people.filter((p) => p.lead && !p.self);
+  const others = people.filter((p) => !p.lead && !p.self).slice(0, 2);
+  const me = people.filter((p) => p.self);
+  return {
+    title: division.title,
+    detail: `${division.department} · ${rosterSize(people.length)}`,
+    size: people.length,
+    people: [...leads, ...others, ...me],
+  };
+}
+
 export type PersonalOverview = {
   readonly shape: "personal";
   readonly person: PersonHeader;

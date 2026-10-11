@@ -34,6 +34,7 @@ import { alumniOf, readTeamSnapshot, rosterOf } from "./team-database";
 import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
   checklistProgress,
+  divisionRoster,
   divisionShortName,
   noPhotoItem,
   oldestLine,
@@ -582,25 +583,15 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
       .from(roles)
       .innerJoin(users, eq(users.member, roles.memberId))
       .where(and(eq(roles.divisionId, role.divisionId), isNull(roles.leavedAt)));
-    const people = rows.map((r) => {
-      const self = r.member_id === identity.memberId;
-      const lead = r.type === "lead" || r.type === "head";
-      return {
-        name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email,
-        role: lead ? "Division lead" : "Member",
-        lead,
-        self,
-      };
-    });
-    const leads = people.filter((p) => p.lead && !p.self);
-    const others = people.filter((p) => !p.lead && !p.self).slice(0, 2);
-    const me = people.filter((p) => p.self);
-    roster = {
-      title: role.divisionName ?? "",
-      detail: `${role.departmentName ?? ""} · ${plural(people.length, "person", "people")}`,
-      size: people.length,
-      people: [...leads, ...others, ...me],
-    };
+    roster = divisionRoster(
+      { title: role.divisionName ?? "", department: role.departmentName ?? "" },
+      rows.flatMap((r) =>
+        r.member_id === null
+          ? []
+          : [{ memberId: r.member_id, type: r.type, name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email }],
+      ),
+      identity.memberId,
+    );
   }
 
   return {
