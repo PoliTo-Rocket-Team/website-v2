@@ -227,10 +227,10 @@ export function PeopleTable({
               <th scope="col" className={TH}>
                 Member
               </th>
-              <th scope="col" className={`${TH} w-[19%]`}>
+              <th scope="col" className={`${TH} w-[19%] ${drawerOpen ? "xl:w-[22%]" : ""}`}>
                 Divisions
               </th>
-              <th scope="col" className={`${TH} w-[15%]`}>
+              <th scope="col" className={`${TH} w-[15%] ${drawerOpen ? "xl:w-[32%]" : ""}`}>
                 Role
               </th>
               <th scope="col" className={`${TH} ${phoneColumn(drawerOpen)} w-[15%]`}>
@@ -356,9 +356,10 @@ export function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
 const DASH = <span className="text-dim">–</span>;
 
 // From xl an open side panel takes 428px of the page, which leaves the table
-// too short for Phone and Discord: they go while it is open, as Orders hides
-// its Department column (board 61b, issue #244), so Member keeps its names and
-// waiting lines whole.
+// about 520px wide at 1280: too short for Phone and Discord. They go while it
+// is open, as Orders hides its Department column (board 61b, issue #244), and
+// Divisions and Role take the room they need there (a department chip, the
+// Confirm NDA button), so no cell runs into the next.
 
 /** The Phone column: from lg, and not while a side panel is open from xl. */
 function phoneColumn(drawerOpen: boolean): string {
