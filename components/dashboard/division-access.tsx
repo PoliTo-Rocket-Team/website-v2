@@ -104,7 +104,7 @@ function changeableIn(access: AccessPage, grants: readonly AccessGrant[], person
 }
 
 // Boards 60, 60b, 60c and 60m (a division lead, issues #213 and #230) and 65,
-// 65b and 65m (a department head, issue #230): what the viewer holds, the
+// 65b, 65c and 65m (a department head, issue #230): what the viewer holds, the
 // other leads with the access their role gives (locked), one row per person
 // the unit shared access with, and the Give access and Edit access drawers.
 // A head's page has division tabs, starting on All divisions, and a Where
@@ -192,7 +192,14 @@ export function DivisionAccessView({ access, ...actions }: { access: AccessPage 
               ))}
             </ul>
           </section>
-          <AccessTable rows={rows} unit={unit} changeable={changeable} onOpen={openRow} department={department} />
+          <AccessTable
+            rows={rows}
+            unit={unit}
+            changeable={changeable}
+            onOpen={openRow}
+            department={department}
+            drawerOpen={open.kind !== "none"}
+          />
         </>
       )}
 
@@ -268,37 +275,65 @@ function AreaChip({
   wholeDepartment?: boolean;
 }) {
   const Icon = TARGET_ICONS[target];
+  // The area and its level never break apart. The tag stays on the same line
+  // where the column has room (board 65c) and drops to a second line inside
+  // the chip where it has not, so it never runs into the Given by column.
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white-5 px-2 py-0.5 text-[12px]">
-      <Icon aria-hidden className={`h-3.5 w-3.5 shrink-0 ${iconTone}`} strokeWidth={1.75} />
-      <span className="text-prt-text">{ACCESS_TARGET_LABELS[target]}</span>
-      <span className={level === "edit" ? "text-accent" : "text-prt-muted"}>
-        <span className={shortLevel ? "xl:max-[1375px]:hidden" : undefined}>{ACCESS_LEVEL_LABELS[level]}</span>
-        {shortLevel && <span className="hidden xl:max-[1375px]:inline">{ACCESS_LEVEL_SHORT_LABELS[level]}</span>}
+    <span className="inline-flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-[12px] bg-white-5 px-2 py-0.5 text-[12px]">
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <Icon aria-hidden className={`h-3.5 w-3.5 shrink-0 ${iconTone}`} strokeWidth={1.75} />
+        <span className="text-prt-text">{ACCESS_TARGET_LABELS[target]}</span>
+        <LevelLabel level={level} short={shortLevel} />
       </span>
       {wholeDepartment && (
-        <span className="rounded-full bg-accent-soft px-1.5 py-px text-[10px] font-medium text-accent">Whole department</span>
+        <span className="whitespace-nowrap rounded-full bg-accent-soft px-1.5 py-px text-[10px] font-medium text-accent">
+          Whole department
+        </span>
       )}
     </span>
   );
 }
 
-/** "Whole division Can edit": the access a lead's role gives, in their whole division (boards 60 and 65). */
-function RoleChip({ place }: { place: AccessPlace }) {
+/** "Can edit" in accent, "Can view" muted; with `short`, "Edit" or "View" where an open drawer leaves the page short (issue #227). */
+function LevelLabel({ level, short }: { level: AccessLevel; short: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white-5 px-2 py-0.5 text-[12px]">
-      <Layers aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-2" strokeWidth={1.75} />
-      <span className="text-prt-text">{place.kind === "division" ? "Whole division" : "Whole department"}</span>
-      <span className="text-accent">{ACCESS_LEVEL_LABELS.edit}</span>
+    <span className={level === "edit" ? "text-accent" : "text-prt-muted"}>
+      <span className={short ? "xl:max-[1375px]:hidden" : undefined}>{ACCESS_LEVEL_LABELS[level]}</span>
+      {short && <span className="hidden xl:max-[1375px]:inline">{ACCESS_LEVEL_SHORT_LABELS[level]}</span>}
     </span>
   );
 }
 
-function GrantChips({ grants, department }: { grants: readonly AccessGrant[]; department: boolean }) {
+/** "Whole division Can edit": the access a lead's role gives, in their whole division (boards 60 and 65). */
+function RoleChip({ place, shortLevel = false }: { place: AccessPlace; shortLevel?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white-5 px-2 py-0.5 text-[12px]">
+      <Layers aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-2" strokeWidth={1.75} />
+      <span className="text-prt-text">{place.kind === "division" ? "Whole division" : "Whole department"}</span>
+      <LevelLabel level="edit" short={shortLevel} />
+    </span>
+  );
+}
+
+function GrantChips({
+  grants,
+  department,
+  shortLevel = false,
+}: {
+  grants: readonly AccessGrant[];
+  department: boolean;
+  shortLevel?: boolean;
+}) {
   return (
     <>
       {grants.map((g) => (
-        <AreaChip key={g.id} target={g.target} level={g.level} wholeDepartment={department && g.place.kind === "department"} />
+        <AreaChip
+          key={g.id}
+          target={g.target}
+          level={g.level}
+          shortLevel={shortLevel}
+          wholeDepartment={department && g.place.kind === "department"}
+        />
       ))}
     </>
   );
@@ -369,10 +404,12 @@ function PersonCard({
 }
 
 // From md the header and every row are subgrids of one set of columns on the
-// table, so Given by keeps its content on one line however narrow the page
-// gets (the drawer takes 440px from xl) and the header still lines up with
-// the rows. Below md the page shows cards instead.
-const TABLE_COLUMNS = "grid grid-cols-[minmax(170px,1fr)_minmax(0,2.4fr)_minmax(max-content,0.75fr)_16px] gap-x-4";
+// table, so the header still lines up with the rows. Given by keeps its
+// content on one line, and Access is never narrower than its widest chip, so
+// neither runs into the other however narrow the page gets (the drawer takes
+// 440px from xl): the person column gives way and its lines truncate. Below
+// md the page shows cards instead.
+const TABLE_COLUMNS = "grid grid-cols-[minmax(0,1fr)_minmax(min-content,2.4fr)_minmax(max-content,0.75fr)_16px] gap-x-4";
 const ROW = "col-span-full grid grid-cols-subgrid items-center px-6";
 
 function AccessTable({
@@ -381,12 +418,14 @@ function AccessTable({
   changeable,
   onOpen,
   department,
+  drawerOpen,
 }: {
   rows: readonly Row[];
   unit: AccessUnit;
   changeable: (row: Row) => boolean;
   onOpen: (person: AccessPerson) => void;
   department: boolean;
+  drawerOpen: boolean;
 }) {
   return (
     <section aria-label="People with access" className={`${PANEL} ${TABLE_COLUMNS} mt-5 hidden overflow-hidden md:grid`}>
@@ -408,7 +447,11 @@ function AccessTable({
                 </span>
               </span>
               <span className="flex flex-col items-start gap-1">
-                {row.kind === "role" ? <RoleChip place={row.role.place} /> : <GrantChips grants={row.access.grants} department={department} />}
+                {row.kind === "role" ? (
+                  <RoleChip place={row.role.place} shortLevel={drawerOpen} />
+                ) : (
+                  <GrantChips grants={row.access.grants} department={department} shortLevel={drawerOpen} />
+                )}
               </span>
               <span className="whitespace-nowrap text-[13px] text-prt-muted">{row.kind === "role" ? "With the role" : givenLine(row.access)}</span>
             </>
@@ -451,7 +494,7 @@ function wholeDepartmentLine(unit: Extract<AccessUnit, { kind: "department" }>):
 }
 
 /**
- * Give access (boards 60b and 65b) or Edit access (60c): one person, on a
+ * Give access (boards 60b and 65b) or Edit access (60c and 65c): one person, on a
  * head's page the place (Where), a tick per area, and a level per ticked
  * area, up to the viewer's own. Save makes the person's areas in that place
  * exactly what is ticked. On Edit the person is locked, and Remove all

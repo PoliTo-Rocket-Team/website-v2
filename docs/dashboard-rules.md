@@ -253,7 +253,7 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 
 #### Department head
 
-These rules come from #230 (boards 65, 65b and 65m).
+These rules come from #230 (boards 65, 65b, 65c and 65m).
 
 - A head's role holds every area at Can edit across their whole department: "YOUR ACCESS ·
   {department} Department, all divisions".
@@ -266,8 +266,10 @@ These rules come from #230 (boards 65, 65b and 65m).
 - The delegation limit is the lead's: a head gives only what they hold, at no higher level, and
   only inside their department. A lead's role access cannot be removed. The server checks every
   change.
-- Edit access opens on the first place the person holds access in; changing "Where" shows their
-  areas in that place. "Remove all access" removes every area in every place, after a confirm.
+- Edit access (board 65c) locks the person ("can't be changed") and keeps "Where" editable. It
+  opens on the first place the person holds access in; changing "Where" shows their areas in
+  that place. The foot has "Remove all access" and "Save". "Remove all access" removes every
+  area in every place, after a confirm.
 
 ## 4. Orders
 
