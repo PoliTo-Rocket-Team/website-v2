@@ -230,7 +230,7 @@ export function PeopleTable({
               <th scope="col" className={`${TH} w-[19%] ${drawerOpen ? "xl:w-[22%]" : ""}`}>
                 Divisions
               </th>
-              <th scope="col" className={`${TH} w-[15%] ${drawerOpen ? "xl:w-[32%]" : ""}`}>
+              <th scope="col" className={`${TH} w-[15%] ${drawerOpen ? "xl:w-[29%]" : ""}`}>
                 Role
               </th>
               <th scope="col" className={`${TH} ${phoneColumn(drawerOpen)} w-[15%]`}>
