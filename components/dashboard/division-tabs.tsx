@@ -22,7 +22,8 @@ export function DivisionTabs({
 }) {
   return (
     <>
-      <div className="hidden md:block">
+      {/* A flex box, so the tabs keep their own width on a full-width row (board 65). */}
+      <div className="hidden min-w-0 md:flex">
         <Segmented
           label="Show divisions"
           value={value ?? ALL}

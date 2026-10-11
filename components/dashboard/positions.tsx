@@ -119,7 +119,7 @@ export function PositionsView({
 
       <div className="mt-4 flex flex-col gap-3 md:mt-6 md:flex-row md:items-center">
         <div
-          className={`flex gap-3 ${divisionOptions ? "flex-col items-start md:flex-row md:flex-wrap md:items-center" : "flex-wrap items-center"}`}
+          className={`flex min-w-0 gap-3 ${divisionOptions ? "flex-col items-start md:flex-row md:flex-wrap md:items-center" : "flex-wrap items-center"}`}
         >
           {divisionOptions && (
             <>
