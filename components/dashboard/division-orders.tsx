@@ -1,33 +1,65 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition, type DragEvent, type FormEvent } from "react";
-import { ExternalLink, FileText, Link2, MessageSquareText, Plus, Upload, X, XCircle } from "lucide-react";
-import { toast } from "sonner";
-import type { AccessLevel } from "@/lib/dashboard/division-access";
+import { useMemo, useRef, useState, useTransition, type DragEvent, type FormEvent, type ReactNode } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  FileText,
+  Link2,
+  ListFilter,
+  Lock,
+  MessageSquareText,
+  Minus,
+  Plus,
+  Search,
+  Upload,
+  X,
+  XCircle,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  appliedSelection,
+  canEditOrder,
   checkNewOrder,
   checkQuote,
+  departmentTick,
+  divisionShort,
+  filterOrders,
   formatEuro,
-  inOrderTab,
+  NO_FILTERS,
   ORDER_STATUS_LABELS,
+  ORDER_STATUSES,
   orderActions,
   orderBreakdown,
   orderFormFields,
-  orderTabs,
+  orderingDivisions,
+  orderPage,
+  ordersIntro,
   orderTotal,
+  pagerSlots,
   parseEuros,
-  sortOrders,
-  type DivisionOrders,
+  toggleDepartment,
+  unitLine,
   type NewOrderErrors,
   type Order,
+  type OrderDivision,
+  type OrderFilters,
+  type OrdersPage,
+  type OrdersScope,
   type OrderStatus,
-  type OrderTab,
+  type OrgDepartmentUnits,
 } from "@/lib/dashboard/orders";
 import { fileSize } from "@/lib/dashboard/recruitment";
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
-import { ConfirmDialog } from "./confirm-dialog";
+import { ConfirmDialog, SHEET_FRAME, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
 import { Drawer, DrawerPage, PANEL_DANGER_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass } from "./field";
+import { DivisionMenu } from "./new-position-drawer";
 import { PANEL } from "./panel";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 
@@ -46,30 +78,54 @@ type Open =
 
 const CLOSED: Open = { kind: "none" };
 
-// Boards 61 to 61d and 61m: the division's requests to the team leader, the
-// status tabs, the request panel with Cancel request and Edit order, and the
-// New order panel. Props in, nothing fetched; the list lives in this page's
-// state, so a sent, edited or cancelled request shows at once. On a phone the
-// table is a stack of cards and each panel is a full page.
-export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; writes: OrderWrites }) {
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
+
+// Boards 61 to 61d, 61m, 67, 67b and 67m (issues #172 and #233): every order
+// in the team, newest first, 12 to a page. The Department · Division and
+// Status column headers each have a filter; rows outside the viewer's scope
+// carry a lock and open read-only. The request panel has Cancel request and
+// Edit order where the viewer may use them, and New order sends a request for
+// one of the viewer's divisions. While a side panel is open the Department
+// column is hidden (board 61b). Props in, nothing fetched; the list lives in
+// this page's state, so a sent, edited or cancelled request shows at once. On a
+// phone the table is a stack of cards, the filters are chips, and each panel
+// is a full page.
+export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWrites }) {
   const [orders, setOrders] = useState(data.orders);
-  const [tab, setTab] = useState<OrderTab>("all");
+  const [filters, setFilters] = useState<OrderFilters>(NO_FILTERS);
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState<Open>(CLOSED);
   const [fresh, setFresh] = useState<number | null>(null);
-  const tabs = orderTabs(orders);
-  const shown = useMemo(() => sortOrders(orders.filter((o) => inOrderTab(o, tab))), [orders, tab]);
+  const choices = useMemo(() => orderingDivisions(data.scope, data.departments), [data.scope, data.departments]);
+  const shown = useMemo(() => orderPage(filterOrders(orders, filters), page), [orders, filters, page]);
   const selected = open.kind === "order" || open.kind === "edit" ? (orders.find((o) => o.id === open.id) ?? null) : null;
+  const drawerOpen = open.kind !== "none";
 
   const replace = (order: Order) => setOrders((all) => all.map((o) => (o.id === order.id ? order : o)));
+  const filter = (next: OrderFilters) => {
+    setFilters(next);
+    setPage(1);
+  };
+  const departmentFilter = (variant: FilterVariant) => (
+    <DepartmentFilter
+      variant={variant}
+      departments={data.departments}
+      value={filters.divisionIds}
+      onApply={(divisionIds) => filter({ ...filters, divisionIds })}
+    />
+  );
+  const statusFilter = (variant: FilterVariant) => (
+    <StatusFilter variant={variant} value={filters.statuses} onApply={(statuses) => filter({ ...filters, statuses })} />
+  );
 
   return (
-    <DrawerPage drawerOpen={open.kind !== "none"}>
+    <DrawerPage drawerOpen={drawerOpen}>
       <PageHeader
         title="Orders"
-        intro="Ask the team leader to place big orders the team card can't cover."
+        intro={ordersIntro(data.scope)}
         phone="bar"
         action={
-          data.level === "edit" ? (
+          choices.length > 0 ? (
             <button type="button" onClick={() => setOpen({ kind: "new" })} className={PRIMARY_PILL}>
               <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
               <span className="md:hidden">New</span>
@@ -79,96 +135,108 @@ export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; wri
         }
       />
 
-      <div
-        role="tablist"
-        aria-label="Show orders"
-        className="mt-5 flex max-w-full max-md:mt-0 gap-1.5 overflow-x-auto md:inline-flex md:gap-1 md:rounded-[10px] md:border md:border-hairline md:p-1"
-      >
-        {tabs.map((t) => (
-          <button
-            key={t.status}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.status}
-            onClick={() => setTab(t.status)}
-            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent md:h-7 md:rounded-[7px] md:border-0 md:px-2.5 ${
-              tab === t.status ? "border-white-10 bg-white-10 font-semibold text-prt-text" : "border-hairline text-text-2 hover:text-prt-text"
-            }`}
-          >
-            {t.label}
-            <span className="font-mono text-[11px] font-normal text-prt-muted">{t.count}</span>
-          </button>
-        ))}
+      <div className="flex items-center gap-2 md:hidden">
+        {departmentFilter("chip")}
+        {statusFilter("chip")}
+        <span className="ml-auto text-[13px] text-prt-muted">Newest first</span>
       </div>
 
-      {shown.length > 0 && (
-        <>
-          <ul aria-label="Orders" className="mt-4 flex flex-col gap-2.5 md:hidden">
-            {shown.map((o) => (
+      <ul aria-label="Orders" className="mt-4 flex flex-col gap-2.5 md:hidden">
+        {shown.orders.map((o) => {
+          const locked = !canEditOrder(data.scope, o);
+          return (
+            <li key={o.id}>
+              <button
+                type="button"
+                onClick={() => setOpen({ kind: "order", id: o.id })}
+                className={`${PANEL} block w-full px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS} ${
+                  o.id === fresh ? "border-accent/40" : ""
+                }`}
+              >
+                <span className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 truncate text-[16px] font-semibold">{o.item}</span>
+                  <StatusPill status={o.status} dot={false} />
+                </span>
+                <span className="block truncate text-[13px] text-prt-muted">{[o.reason, o.requestedBy].filter(Boolean).join(" · ")}</span>
+                <span className="mt-2 flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-[14px] tabular-nums text-text-2">
+                    {formatEuro(orderTotal(o))} · {unitLine(o.unit)}
+                  </span>
+                  {locked && <ReadOnlyLock />}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {shown.orders.length === 0 && <p className="mt-6 text-center text-[14px] text-prt-muted md:hidden">No orders match these filters.</p>}
+      <Pager className="mt-5 md:hidden" page={shown.page} pages={shown.pages} onPage={setPage} />
+
+      <section aria-label="Orders" className={`${PANEL} mt-5 hidden md:block`}>
+        <div className={`${rowGrid(drawerOpen)} h-10 border-b border-hairline`}>
+          <span className={EYEBROW}>Item</span>
+          {!drawerOpen && (
+            <span className="flex items-center gap-1.5">
+              <span className={EYEBROW}>Department · Division</span>
+              {departmentFilter("header")}
+            </span>
+          )}
+          <span className={EYEBROW}>Requested by</span>
+          <span className={`${EYEBROW} text-right`}>Total</span>
+          <span className="flex items-center gap-1.5">
+            <span className={EYEBROW}>Status</span>
+            {statusFilter("header")}
+          </span>
+          <span aria-hidden />
+        </div>
+        <ul className="divide-y divide-hairline">
+          {shown.orders.map((o) => {
+            const on = selected?.id === o.id;
+            const locked = !canEditOrder(data.scope, o);
+            return (
               <li key={o.id}>
                 <button
                   type="button"
                   onClick={() => setOpen({ kind: "order", id: o.id })}
-                  className={`${PANEL} block w-full px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
-                    o.id === fresh ? "border-accent/40" : ""
+                  className={`${rowGrid(drawerOpen)} w-full py-3 text-left transition-colors duration-300 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+                    on || o.id === fresh ? "bg-accent/[0.06]" : "hover:bg-white-5"
                   }`}
                 >
-                  <span className="flex items-start justify-between gap-3">
-                    <span className="min-w-0 truncate text-[16px] font-semibold">{o.item}</span>
-                    <StatusPill status={o.status} dot={false} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[14px] font-medium">{o.item}</span>
+                    {o.reason && <span className="block truncate text-[12px] text-prt-muted">{o.reason}</span>}
                   </span>
-                  <span className="block truncate text-[13px] text-prt-muted">
-                    {[o.reason, o.requestedBy].filter(Boolean).join(" · ")}
+                  {!drawerOpen && (
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] text-prt-text">{o.unit?.department?.name ?? "–"}</span>
+                      {o.unit && <span className="block truncate text-[12px] text-prt-muted">{divisionShort(o.unit.division.name)}</span>}
+                    </span>
+                  )}
+                  <span className="truncate text-[13px] text-text-2">{o.requestedBy}</span>
+                  <span className="text-right">
+                    <span className="block text-[14px] font-semibold tabular-nums">{formatEuro(orderTotal(o))}</span>
+                    <span className="block text-[11px] tabular-nums text-prt-muted">{orderBreakdown(o)}</span>
                   </span>
-                  <span className="mt-2 block text-[14px] tabular-nums text-text-2">{formatEuro(orderTotal(o))}</span>
+                  <span className="min-w-0">
+                    <StatusPill status={o.status} dot />
+                  </span>
+                  <span className="flex justify-end">{locked && <ReadOnlyLock />}</span>
                 </button>
               </li>
-            ))}
-          </ul>
-
-          <section aria-label="Orders" className={`${PANEL} mt-5 hidden overflow-hidden md:block`}>
-            <div aria-hidden className={`${ROW} h-9 border-b border-hairline`}>
-              <span className={EYEBROW}>Item</span>
-              <span className={EYEBROW}>Requested by</span>
-              <span className={`${EYEBROW} text-right`}>Total</span>
-              <span className={EYEBROW}>Status</span>
-            </div>
-            <ul className="divide-y divide-hairline">
-              {shown.map((o) => {
-                const on = selected?.id === o.id;
-                return (
-                  <li key={o.id}>
-                    <button
-                      type="button"
-                      onClick={() => setOpen({ kind: "order", id: o.id })}
-                      className={`${ROW} w-full py-3 text-left transition-colors duration-300 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-                        on || o.id === fresh ? "bg-accent/[0.06]" : "hover:bg-white-5"
-                      }`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-[14px] font-medium">{o.item}</span>
-                        {o.reason && <span className="block truncate text-[12px] text-prt-muted">{o.reason}</span>}
-                      </span>
-                      <span className="truncate text-[13px] text-text-2">{o.requestedBy}</span>
-                      <span className="text-right">
-                        <span className="block text-[14px] font-semibold tabular-nums">{formatEuro(orderTotal(o))}</span>
-                        <span className="block text-[11px] tabular-nums text-prt-muted">{orderBreakdown(o)}</span>
-                      </span>
-                      <span className="min-w-0">
-                        <StatusPill status={o.status} dot />
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        </>
-      )}
+            );
+          })}
+        </ul>
+        {shown.orders.length === 0 && <p className="px-[18px] py-10 text-center text-[14px] text-prt-muted">No orders match these filters.</p>}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center border-t border-hairline px-[18px] py-3">
+          <span className="text-[13px] text-prt-muted">Newest first</span>
+          <Pager page={shown.page} pages={shown.pages} onPage={setPage} />
+          <span aria-hidden />
+        </div>
+      </section>
 
       <OrderPanel
         order={open.kind === "order" ? selected : null}
-        level={data.level}
+        scope={data.scope}
         onClose={() => setOpen(CLOSED)}
         onEdit={(order) => setOpen({ kind: "edit", id: order.id })}
         cancelOrder={writes.cancelOrder}
@@ -182,13 +250,15 @@ export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; wri
         key={open.kind === "new" ? "new" : open.kind === "edit" ? `edit-${open.id}` : "closed"}
         open={open.kind === "new" || (open.kind === "edit" && selected !== null)}
         onOpenChange={(next) => !next && setOpen(selected && open.kind === "edit" ? { kind: "order", id: selected.id } : CLOSED)}
-        divisionName={data.division.name}
+        choices={choices}
+        departments={data.departments}
         editing={open.kind === "edit" ? selected : null}
         writes={writes}
         onSaved={(order, isNew) => {
           if (isNew) {
             setOrders((all) => [order, ...all]);
-            setTab("all");
+            setFilters(NO_FILTERS);
+            setPage(1);
             setOpen(CLOSED);
           } else {
             replace(order);
@@ -201,7 +271,22 @@ export function DivisionOrdersView({ data, writes }: { data: DivisionOrders; wri
   );
 }
 
-const ROW = "grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_110px_152px] items-center gap-x-4 px-[18px]";
+/** Board 61's columns; while a side panel is open the Department column goes (board 61b). */
+function rowGrid(drawerOpen: boolean): string {
+  const columns = drawerOpen
+    ? "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_100px_minmax(0,150px)_20px]"
+    : "grid-cols-[minmax(0,1.5fr)_minmax(0,1.15fr)_minmax(0,0.9fr)_100px_minmax(0,150px)_20px]";
+  return `grid ${columns} items-center gap-x-4 px-[18px]`;
+}
+
+function ReadOnlyLock() {
+  return (
+    <>
+      <Lock aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+      <span className="sr-only">Read-only</span>
+    </>
+  );
+}
 
 // Board 61: Waiting is the neutral pill, Approved green, Changes requested
 // amber, Rejected red. The desktop table marks each with a dot; the phone
@@ -223,23 +308,335 @@ function StatusPill({ status, dot }: { status: OrderStatus; dot: boolean }) {
   );
 }
 
+/** "‹ 1 2 3 … 6 ›", centred, with no total count (Owner decision on #233). */
+function Pager({ page, pages, onPage, className = "" }: { page: number; pages: number; onPage: (page: number) => void; className?: string }) {
+  const step = `flex h-7 w-7 items-center justify-center rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text disabled:pointer-events-none disabled:opacity-40 ${FOCUS}`;
+  return (
+    <nav aria-label="Pages" className={`flex items-center justify-center gap-1.5 ${className}`}>
+      <button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => onPage(page - 1)} className={step}>
+        <ChevronLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+      {pagerSlots(page, pages).map((slot, i) =>
+        slot === "gap" ? (
+          <span key={`gap-${i}`} aria-hidden className="w-7 text-center text-[13px] text-prt-muted">
+            …
+          </span>
+        ) : (
+          <button
+            key={slot}
+            type="button"
+            aria-current={slot === page ? "page" : undefined}
+            aria-label={`Page ${slot}`}
+            onClick={() => onPage(slot)}
+            className={`flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[13px] tabular-nums transition-colors duration-300 ease-out ${FOCUS} ${
+              slot === page ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"
+            }`}
+          >
+            {slot}
+          </button>
+        ),
+      )}
+      <button type="button" aria-label="Next page" disabled={page >= pages} onClick={() => onPage(page + 1)} className={step}>
+        <ChevronRight aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+    </nav>
+  );
+}
+
+/** Where a column filter opens: from its table header (board 67b), or from a phone chip as a bottom sheet (board 61m). */
+type FilterVariant = "header" | "chip";
+
+/**
+ * A column filter: the filter icon in a table header, or a chip on a phone,
+ * opening a panel of checkboxes with Clear and Apply (board 67b). From the
+ * header it hangs under the column, not modal, and closes on Escape or an
+ * outside click; on a phone it is a bottom sheet. It opens under motion-safe
+ * only and closes at once, like every dialog on a redesigned page.
+ */
+function ColumnFilter({
+  variant,
+  label,
+  active,
+  align,
+  open,
+  onOpenChange,
+  children,
+}: {
+  variant: FilterVariant;
+  label: string;
+  active: boolean;
+  align: "start" | "end";
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const lit = active || open;
+  if (variant === "chip") {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogTrigger
+          className={`flex h-8 items-center gap-1.5 rounded-full border bg-panel/60 px-3 text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
+            lit ? "border-accent/60 text-prt-text" : "border-hairline text-text-2"
+          }`}
+        >
+          {label}
+          <ChevronDown aria-hidden className="h-3.5 w-3.5 text-prt-muted" strokeWidth={2} />
+        </DialogTrigger>
+        <DialogPortal>
+          <DialogOverlay className={SHEET_OVERLAY} />
+          <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_FRAME} flex flex-col sm:w-[340px]`}>
+            <SheetGrabber />
+            <DialogTitle className="mb-3 text-[16px] font-semibold">{label}</DialogTitle>
+            {children}
+          </DialogPrimitive.Content>
+        </DialogPortal>
+      </Dialog>
+    );
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+      <span className="relative">
+        <DialogTrigger
+          ref={trigger}
+          aria-label={`Filter by ${label.toLowerCase()}`}
+          className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS} ${
+            lit ? "text-accent" : "text-prt-muted"
+          }`}
+        >
+          <ListFilter aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+        </DialogTrigger>
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onInteractOutside={(e) => {
+            // The trigger toggles the panel itself; an outside press on it must not close and reopen it.
+            if (trigger.current?.contains(e.target as Node)) e.preventDefault();
+          }}
+          className={`absolute top-8 z-40 flex w-[290px] flex-col rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 ${
+            align === "start" ? "-left-[180px]" : "right-0"
+          }`}
+        >
+          <DialogTitle className="sr-only">{label}</DialogTitle>
+          {children}
+        </DialogPrimitive.Content>
+      </span>
+    </Dialog>
+  );
+}
+
+/** A tick box as board 67b draws it: accent when ticked, a dash when some of a department is. */
+function Tick({ state }: { state: "all" | "some" | "none" }) {
+  return (
+    <span
+      aria-hidden
+      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border ${
+        state === "none" ? "border-white-10" : "border-accent bg-accent text-accent-on-accent"
+      }`}
+    >
+      {state === "all" && <Check className="h-3 w-3" strokeWidth={3} />}
+      {state === "some" && <Minus className="h-3 w-3" strokeWidth={3} />}
+    </span>
+  );
+}
+
+const TICK_ROW = `flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors duration-300 ease-out hover:bg-white-5 ${FOCUS}`;
+
+/** Clear and Apply at a filter's foot (board 67b). */
+function FilterFoot({ onClear, onApply }: { onClear: () => void; onApply: () => void }) {
+  return (
+    <div className="mt-1.5 flex items-center justify-between border-t border-hairline px-1.5 pt-2.5 pb-1">
+      <button type="button" onClick={onClear} className={`rounded-md px-1 text-[13px] text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}>
+        Clear
+      </button>
+      <button
+        type="button"
+        onClick={onApply}
+        className={`inline-flex h-8 items-center rounded-full bg-prt-text px-3.5 text-[13px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 ${FOCUS}`}
+      >
+        Apply
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The Department · Division filter (board 67b): a search, then each
+ * department with a tick, its divisions nested under it. Ticking a
+ * department ticks all its divisions. Apply with nothing ticked, or
+ * everything, shows every order.
+ */
+function DepartmentFilter({
+  variant,
+  departments,
+  value,
+  onApply,
+}: {
+  variant: FilterVariant;
+  departments: readonly OrgDepartmentUnits[];
+  value: readonly number[] | null;
+  onApply: (divisionIds: readonly number[] | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [ticked, setTicked] = useState<readonly number[]>([]);
+  const [expanded, setExpanded] = useState<readonly number[]>([]);
+  const [query, setQuery] = useState("");
+  const all = departments.flatMap((d) => d.divisions.map((v) => v.id));
+
+  const onOpenChange = (next: boolean) => {
+    if (next) {
+      const start = value ?? [];
+      setTicked(start);
+      setExpanded(departments.filter((d) => departmentTick(d, start) !== "none").map((d) => d.id));
+      setQuery("");
+    }
+    setOpen(next);
+  };
+  const q = query.trim().toLowerCase();
+  const matches = (d: OrgDepartmentUnits) => q === "" || d.name.toLowerCase().includes(q) || d.divisions.some((v) => v.name.toLowerCase().includes(q));
+  const toggleDivision = (id: number) => setTicked((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
+
+  return (
+    <ColumnFilter variant={variant} label="Department" active={value !== null} align="start" open={open} onOpenChange={onOpenChange}>
+      <label className="relative mb-1 block">
+        <span className="sr-only">Search departments</span>
+        <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-prt-muted" strokeWidth={2} />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search departments"
+          className="h-9 w-full rounded-lg border border-hairline bg-white-5 pl-9 pr-3 text-[13px] text-prt-text outline-none transition-colors duration-300 ease-out placeholder:text-prt-muted focus:border-border-strong"
+        />
+      </label>
+      <ul className="max-h-[320px] overflow-y-auto max-md:max-h-[50svh]">
+        {departments.filter(matches).map((d) => {
+          const state = departmentTick(d, ticked);
+          const isOpen = expanded.includes(d.id) || q !== "";
+          return (
+            <li key={d.id}>
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={state === "all" ? true : state === "some" ? "mixed" : false}
+                  onClick={() => setTicked((t) => toggleDepartment(d, t))}
+                  className={`${TICK_ROW} ${state === "none" ? "text-text-2" : "text-prt-text"}`}
+                >
+                  <Tick state={state} />
+                  <span className="truncate">{d.name}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  aria-label={`${isOpen ? "Hide" : "Show"} ${d.name} divisions`}
+                  onClick={() => setExpanded((e) => (e.includes(d.id) ? e.filter((x) => x !== d.id) : [...e, d.id]))}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+                >
+                  {isOpen ? <ChevronDown aria-hidden className="h-3.5 w-3.5" strokeWidth={2} /> : <ChevronRight aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />}
+                </button>
+              </div>
+              {isOpen && (
+                <ul className="pl-6">
+                  {d.divisions.map((v) => {
+                    const on = ticked.includes(v.id);
+                    return (
+                      <li key={v.id} className="flex">
+                        <button type="button" role="checkbox" aria-checked={on} onClick={() => toggleDivision(v.id)} className={`${TICK_ROW} ${on ? "text-prt-text" : "text-text-2"}`}>
+                          <Tick state={on ? "all" : "none"} />
+                          <span className="truncate">{divisionShort(v.name)}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <FilterFoot
+        onClear={() => setTicked([])}
+        onApply={() => {
+          onApply(appliedSelection(ticked, all));
+          setOpen(false);
+        }}
+      />
+    </ColumnFilter>
+  );
+}
+
+/** The Status filter: one tick per status, with Clear and Apply as the Department filter has. */
+function StatusFilter({
+  variant,
+  value,
+  onApply,
+}: {
+  variant: FilterVariant;
+  value: readonly OrderStatus[] | null;
+  onApply: (statuses: readonly OrderStatus[] | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [ticked, setTicked] = useState<readonly OrderStatus[]>([]);
+  return (
+    <ColumnFilter
+      variant={variant}
+      label="Status"
+      active={value !== null}
+      align="end"
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setTicked(value ?? []);
+        setOpen(next);
+      }}
+    >
+      <ul>
+        {ORDER_STATUSES.map((status) => {
+          const on = ticked.includes(status);
+          return (
+            <li key={status} className="flex">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                onClick={() => setTicked((t) => (on ? t.filter((s) => s !== status) : [...t, status]))}
+                className={`${TICK_ROW} ${on ? "text-prt-text" : "text-text-2"}`}
+              >
+                <Tick state={on ? "all" : "none"} />
+                {ORDER_STATUS_LABELS[status]}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <FilterFoot
+        onClear={() => setTicked([])}
+        onApply={() => {
+          onApply(appliedSelection(ticked, ORDER_STATUSES));
+          setOpen(false);
+        }}
+      />
+    </ColumnFilter>
+  );
+}
+
 const SPEC_LABEL = "whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.2em] text-dim";
 
 /**
  * Boards 61c and 61d: one request, with the team leader's reason when they
- * sent it back. What the lead may still do with it is the domain's answer
- * (orderActions); an approved or rejected request has nothing left to do.
+ * sent it back. What the viewer may still do with it is the domain's answer
+ * (orderActions): an order outside their scope, or one approved or rejected,
+ * opens read-only.
  */
 function OrderPanel({
   order,
-  level,
+  scope,
   onClose,
   onEdit,
   cancelOrder,
   onCancelled,
 }: {
   order: Order | null;
-  level: AccessLevel;
+  scope: OrdersScope;
   onClose: () => void;
   onEdit: (order: Order) => void;
   cancelOrder: OrderWrites["cancelOrder"];
@@ -252,7 +649,7 @@ function OrderPanel({
   const [pending, startTransition] = useTransition();
   const current = order ?? shown;
   if (current === null) return null;
-  const actions = orderActions(current.status, level);
+  const actions = orderActions(scope, current);
   const total = orderTotal(current);
 
   const cancel = () =>
@@ -339,7 +736,7 @@ function OrderPanel({
         onOpenChange={setAsking}
         icon={<XCircle className="h-5 w-5" strokeWidth={1.75} />}
         title="Cancel this request?"
-        description={`The request for ${current.item} leaves your orders, and the team leader no longer sees it.`}
+        description={`The request for ${current.item} leaves the orders, and the team leader no longer sees it.`}
         confirmLabel="Cancel request"
         cancelLabel="Keep it"
         danger
@@ -382,35 +779,52 @@ function QuoteCard({ quote }: { quote: NonNullable<Order["quote"]> }) {
 
 const EMPTY = { item: "", link: "", price: "", quantity: "1", reason: "" };
 
+/** A division as the Division field lists it, with its department under it. */
+type DivisionOption = OrderDivision & { readonly department: string };
+
 /**
  * New order (board 61b), and the same form for Edit order and Edit and send
- * again, opened on the request as it was sent. A new quote replaces the one
- * on file; leaving it empty keeps it.
+ * again, opened on the request as it was sent. A viewer who may order for
+ * more than one division (a department head) picks it first; an edit keeps
+ * the order's own. A new quote replaces the one on file; leaving it empty
+ * keeps it.
  */
 function OrderFormDrawer({
   open,
   onOpenChange,
-  divisionName,
+  choices,
+  departments,
   editing,
   writes,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  divisionName: string;
+  choices: readonly OrderDivision[];
+  departments: readonly OrgDepartmentUnits[];
   editing: Order | null;
   writes: OrderWrites;
   onSaved: (order: Order, isNew: boolean) => void;
 }) {
   const [fields, setFields] = useState(editing === null ? EMPTY : orderFormFields(editing));
+  const options = useMemo(
+    () =>
+      choices.map((d): DivisionOption => ({
+        ...d,
+        department: departments.find((dep) => dep.divisions.some((v) => v.id === d.id))?.name ?? "",
+      })),
+    [choices, departments],
+  );
+  const [division, setDivision] = useState<DivisionOption | null>(options.length === 1 ? options[0] : null);
   const [quote, setQuote] = useState<File | null>(null);
   const [errors, setErrors] = useState<NewOrderErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const unitPrice = parseEuros(fields.price);
   const quantity = /^\d+$/.test(fields.quantity.trim()) ? Number(fields.quantity) : null;
   const total = unitPrice !== null && quantity !== null ? unitPrice * quantity : null;
-  const resend = editing !== null && orderActions(editing.status, "edit").edit === "edit-and-resend";
+  const resend = editing !== null && editing.status === "changes-requested";
   const failed = editing === null ? "Could not send the request" : "Could not save the request";
+  const forDivision = editing?.unit?.division ?? (options.length === 1 ? options[0] : null);
 
   const set = (name: keyof typeof EMPTY) => (e: { target: { value: string } }) => {
     setFields((f) => ({ ...f, [name]: e.target.value }));
@@ -421,12 +835,19 @@ function OrderFormDrawer({
     e.preventDefault();
     const checked = checkNewOrder(fields);
     const quoteError = quote === null ? null : checkQuote(quote);
-    if (!checked.ok || quoteError !== null) {
-      setErrors({ ...(checked.ok ? {} : checked.errors), ...(quoteError ? { quote: quoteError } : {}) });
+    const divisionError = editing === null && division === null ? "Choose the division the order is for." : null;
+    if (!checked.ok || quoteError !== null || divisionError !== null) {
+      setErrors({
+        ...(checked.ok ? {} : checked.errors),
+        ...(quoteError ? { quote: quoteError } : {}),
+        ...(divisionError ? { division: divisionError } : {}),
+      });
       return;
     }
     const form = new FormData();
     for (const [name, value] of Object.entries(fields)) form.set(name, value);
+    const sentDivision = editing?.unit?.division ?? division;
+    if (sentDivision) form.set("division", String(sentDivision.id));
     if (quote) form.set("quote", quote);
     setSubmitting(true);
     try {
@@ -452,12 +873,30 @@ function OrderFormDrawer({
       open={open}
       onOpenChange={onOpenChange}
       title={editing === null ? "New order" : "Edit order"}
-      detail={`For ${divisionName}`}
+      detail={forDivision ? `For ${forDivision.name}` : undefined}
       submitLabel={editing === null || resend ? "Send request" : "Save changes"}
       submitting={submitting}
       onSubmit={submit}
     >
       <div className="flex flex-col gap-5">
+        {editing === null && options.length > 1 && (
+          <Field label="Division" hint={`you order for ${options.length}`} error={errors.division}>
+            {(id, describedBy) => (
+              <DivisionMenu
+                id={id}
+                describedBy={describedBy}
+                divisions={options}
+                value={division}
+                onChange={(d) => {
+                  setDivision(d);
+                  setErrors((all) => ({ ...all, division: undefined }));
+                }}
+                invalid={errors.division !== undefined}
+              />
+            )}
+          </Field>
+        )}
+
         <Field label="Item" error={errors.item}>
           {(id, describedBy) => (
             <input id={id} value={fields.item} onChange={set("item")} aria-invalid={!!errors.item} aria-describedby={describedBy} className={inputClass(errors.item)} />
@@ -600,7 +1039,7 @@ function QuoteField({
             <button
               type="button"
               onClick={() => input.current?.click()}
-              className={`flex h-[52px] w-full items-center justify-center gap-2.5 rounded-[10px] border text-[13px] text-text-2 transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${border}`}
+              className={`flex h-[52px] w-full items-center justify-center gap-2.5 rounded-[10px] border text-[13px] text-text-2 transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS} ${border}`}
             >
               <Upload aria-hidden className="h-4 w-4 shrink-0" />
               {kept === null ? (
@@ -623,7 +1062,7 @@ function QuoteField({
                 type="button"
                 onClick={() => onFile(null)}
                 aria-label={`Remove ${file.name}`}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-2 transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
               >
                 <X aria-hidden className="h-4 w-4" />
               </button>

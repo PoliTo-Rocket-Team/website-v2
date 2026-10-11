@@ -2,7 +2,7 @@ import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
 import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, AccessPage } from "./division-access";
-import type { DivisionOrders, Order } from "./orders";
+import type { Order, OrdersPage } from "./orders";
 import type { TeamSideOverview } from "./overview";
 import type { LeadMove } from "./application-flow";
 import type { CreatedPosition } from "./new-position";
@@ -110,18 +110,42 @@ export interface DashboardData {
   /** Remove all access (board 60c): every area the person holds in the viewer's division or department. */
   removeAllAccess(personId: number): Promise<WriteResult<null>>;
 
-  /** Boards 61 to 61d: the division's Orders page, for whoever holds Orders there; null for anyone else. */
-  divisionOrders(): Promise<DivisionOrders | null>;
-  /** The New order fields as typed, and the quote when one was attached. */
+  /**
+   * Boards 61 to 61d, 61m, 67 and 67b (issue #233): every order in the team,
+   * for anyone with any Orders access, with what the viewer edits and whether
+   * they decide (./orders.ts); null for anyone with no Orders access.
+   */
+  orders(): Promise<OrdersPage | null>;
+  /**
+   * The New order fields as typed, with `division` (the division's id) when
+   * the viewer may order for more than one, and the quote when one was
+   * attached. Refused for a division outside the viewer's scope.
+   */
   placeOrder(fields: Record<string, string>, quote: Upload | null): Promise<WriteResult<Order>>;
   /**
    * Edit order, or Edit and send again (boards 61c and 61d): the request with
    * the fields as typed, back to waiting. A quote replaces the one on file;
-   * none keeps it. Refused once the team leader has approved or rejected it.
+   * none keeps it. Refused for an order outside the viewer's scope
+   * (`canEditOrder`), and once the team leader has approved or rejected it.
    */
   editOrder(orderId: number, fields: Record<string, string>, quote: Upload | null): Promise<WriteResult<Order>>;
-  /** Cancel request: the request leaves the page. Allowed only while the request is waiting: refused on Changes requested, Approved and Rejected. */
+  /**
+   * Cancel request: the request leaves the page. Allowed only while the
+   * request is waiting and in the viewer's scope: refused on Changes
+   * requested, Approved and Rejected, and on anyone else's order.
+   */
   cancelOrder(orderId: number): Promise<WriteResult<null>>;
+  /**
+   * Approve, reject or ask for changes on a waiting request (`checkDecision`,
+   * ./orders.ts): refused for everyone but the team leader and the people
+   * they gave "Approve orders". Answers the request as it now reads.
+   */
+  decideOrder(orderId: number, input: unknown): Promise<WriteResult<Order>>;
+  /**
+   * Give or remove "Approve orders" (`checkApproveOrdersChange`, ./orders.ts):
+   * only the team leader may, and any number of people may hold it.
+   */
+  setApproveOrders(input: unknown): Promise<WriteResult<null>>;
 
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;

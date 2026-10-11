@@ -61,7 +61,8 @@ export async function removeAllAccess(personId: number): Promise<WriteResult<nul
   return write("division-access", (data) => data.removeAllAccess(personId));
 }
 
-const ORDER_FIELDS = ["item", "link", "price", "quantity", "reason"] as const;
+// `division` is the division a new order is for (issue #233); an edit keeps the order's own.
+const ORDER_FIELDS = ["item", "link", "price", "quantity", "reason", "division"] as const;
 
 export async function placeOrder(form: FormData): Promise<WriteResult<Order>> {
   const fields = textFields(form, ORDER_FIELDS);
