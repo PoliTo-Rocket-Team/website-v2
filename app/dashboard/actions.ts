@@ -19,8 +19,8 @@ import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 async function dataFor(pages: DashboardPageKey | readonly DashboardPageKey[]): Promise<DashboardData | string> {
   const opening = await openDashboard();
   if (opening.kind !== "open") return "Sign in again to make changes.";
-  const kind = opening.data.viewer.kind;
-  if (!(typeof pages === "string" ? [pages] : pages).some((page) => canReach(kind, page))) return "You do not have this page.";
+  const { viewer } = opening.data;
+  if (!(typeof pages === "string" ? [pages] : pages).some((page) => canReach(viewer, page))) return "You do not have this page.";
   return opening.data;
 }
 

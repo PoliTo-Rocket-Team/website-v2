@@ -33,7 +33,7 @@ async function LivePositions({ searchParams }: { searchParams: SearchParams }) {
   // The layout shows the sign-out screen in place of this page.
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "positions")) notFound();
+  if (!canReach(data.viewer, "positions")) notFound();
   const [page, recruitment, { division }] = await Promise.all([data.positions(), data.recruitment(), searchParams]);
   const asked = typeof division === "string" ? division : null;
   const initialDivision = page.scope === "department" ? divisionTabFor(page.department, asked) : null;

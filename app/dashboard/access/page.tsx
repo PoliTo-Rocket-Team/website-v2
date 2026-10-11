@@ -26,7 +26,7 @@ async function LiveAccess() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/access");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "division-access")) notFound();
+  if (!canReach(data.viewer, "division-access")) notFound();
   const access = await data.divisionAccess();
   if (access === null) notFound();
   return <DivisionAccessView access={access} saveAccess={saveAccess} removeAllAccess={removeAllAccess} />;

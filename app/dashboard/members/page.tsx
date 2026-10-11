@@ -25,6 +25,6 @@ async function LiveMembers() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/members");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "members")) notFound();
+  if (!canReach(data.viewer, "members")) notFound();
   return <MembersView directory={await data.members()} editable={data.teamWrites !== null} />;
 }

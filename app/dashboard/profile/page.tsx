@@ -26,7 +26,7 @@ async function LiveProfile() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/profile");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "my-profile")) notFound();
+  if (!canReach(data.viewer, "my-profile")) notFound();
   const profile = await data.myProfile();
   if (profile === null) notFound();
   return (

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { canReach, dashboardLandingFor, landingAfterLeaving, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
-import type { ViewerKind } from "./viewer";
+import { testDeveloperStanding as kindOnly, type ViewerKind, type ViewerStanding } from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
-function shape(kind: ViewerKind, facts: SidebarFacts) {
-  return sidebarFor(kind, facts).map((section) => [section.label, section.items.map((item) => item.label)]);
+function shape(viewer: ViewerKind | ViewerStanding, facts: SidebarFacts) {
+  return sidebarFor(typeof viewer === "string" ? kindOnly(viewer) : viewer, facts).map((section) => [section.label, section.items.map((item) => item.label)]);
 }
 
 const withApplications: SidebarFacts = { counts: {}, hasOwnApplications: true };
@@ -29,7 +29,7 @@ test("a division lead's sidebar is Overview, Team tree, then Recruitment and My 
 
 test("a member sees My applications only once they have applied; a non-member always does, alone until they apply (issue #179)", () => {
   assert.deepEqual(shape("member", withoutApplications), [[null, ["Overview", "Team tree"]]]);
-  assert.deepEqual(sidebarFor("non-member", withoutApplications), [
+  assert.deepEqual(sidebarFor(kindOnly("non-member"), withoutApplications), [
     {
       group: "main",
       label: null,
@@ -49,8 +49,28 @@ test("the operations lead sees My applications only once they have applied, and 
 });
 
 test("the operations lead does not reach Access or Orders yet (issue #200)", () => {
-  assert.equal(canReach("operations-lead", "division-access"), false);
-  assert.equal(canReach("operations-lead", "orders"), false);
+  assert.equal(canReach(kindOnly("operations-lead"), "division-access"), false);
+  assert.equal(canReach(kindOnly("operations-lead"), "orders"), false);
+});
+
+test("the Alumni page is for full admins and site-content access, never from a lead's role (issue #234)", () => {
+  const reaches: readonly [ViewerStanding, boolean][] = [
+    [{ kind: "operations-lead", siteContent: false }, true],
+    [{ kind: "division-lead", siteContent: false }, false],
+    [{ kind: "division-lead", siteContent: true }, true],
+    [{ kind: "member", siteContent: false }, false],
+    [{ kind: "member", siteContent: true }, true],
+    [{ kind: "non-member", siteContent: false }, false],
+  ];
+  for (const [viewer, reached] of reaches) {
+    const listed = sidebarFor(viewer, withoutApplications).some((section) => section.items.some((item) => item.key === "alumni"));
+    assert.equal(canReach(viewer, "alumni"), reached, JSON.stringify(viewer));
+    assert.equal(listed, reached, JSON.stringify(viewer));
+  }
+  assert.deepEqual(shape({ kind: "member", siteContent: true }, withoutApplications), [
+    [null, ["Overview", "Team tree"]],
+    ["Team", ["Alumni"]],
+  ]);
 });
 
 test("/dashboard sends only a non-member who has not applied to My applications", () => {
@@ -68,7 +88,7 @@ test("someone who leaves the team goes straight to where /dashboard would send t
 
 test("My profile and My account are in the user menu, never the sidebar", () => {
   for (const kind of ["operations-lead", "division-lead", "member", "non-member"] as const) {
-    const labels = sidebarFor(kind, withApplications).flatMap((section) => section.items.map((item) => item.label));
+    const labels = sidebarFor(kindOnly(kind), withApplications).flatMap((section) => section.items.map((item) => item.label));
     assert.ok(!labels.includes("My profile") && !labels.includes("My account"), kind);
   }
   assert.equal(userMenuPageFor("non-member")?.label, "My account");

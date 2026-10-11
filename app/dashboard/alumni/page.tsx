@@ -10,7 +10,8 @@ export const metadata: Metadata = {
   title: "Alumni · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 46c: everyone who was on the team, for the operations lead.
+// Board 46c: everyone who was on the team, for the full admins and anyone
+// with site-content access (issue #234).
 export default function AlumniPage() {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
@@ -24,6 +25,6 @@ async function LiveAlumni() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/alumni");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "alumni")) notFound();
+  if (!canReach(data.viewer, "alumni")) notFound();
   return <AlumniView directory={await data.alumni()} editable={data.teamWrites !== null} />;
 }

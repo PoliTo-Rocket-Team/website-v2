@@ -16,7 +16,7 @@ const REFUSED: TeamActionResult = { ok: false, error: "This change could not be 
 
 async function writesOn(page: DashboardPageKey): Promise<TeamWrites | null> {
   const opening = await openDashboard();
-  if (opening.kind !== "open" || !canReach(opening.data.viewer.kind, page)) return null;
+  if (opening.kind !== "open" || !canReach(opening.data.viewer, page)) return null;
   return opening.data.teamWrites;
 }
 

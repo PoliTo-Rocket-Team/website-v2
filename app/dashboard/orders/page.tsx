@@ -27,7 +27,7 @@ async function LiveOrders() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/orders");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "orders")) notFound();
+  if (!canReach(data.viewer, "orders")) notFound();
   const orders = await data.divisionOrders();
   if (orders === null) notFound();
   return <DivisionOrdersView data={orders} writes={{ placeOrder, editOrder, cancelOrder }} />;

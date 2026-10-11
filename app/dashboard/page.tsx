@@ -34,7 +34,7 @@ async function LiveOverview() {
   // The layout shows the sign-out screen in place of this page.
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "overview")) notFound();
+  if (!canReach(data.viewer, "overview")) notFound();
   const landing = dashboardLandingFor(data.viewer.kind, await data.hasOwnApplications());
   if (landing !== null) redirect(landing);
   return <OverviewView overview={await overviewOf(data)} />;

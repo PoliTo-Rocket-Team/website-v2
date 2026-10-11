@@ -55,7 +55,7 @@ import { databaseTeamWrites, leadDivisionId, readJoining } from "./database-team
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
-import { viewerKindOf, viewerUnitsOf, type DashboardViewer, type ViewerKind } from "./viewer";
+import { viewerStandingOf, viewerUnitsOf, type DashboardViewer, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -84,8 +84,7 @@ type Identity = {
   /** The divisions and departments a lead's figures cover. */
   divisionIds: number[];
   departmentIds: number[];
-  kind: ViewerKind;
-};
+} & ViewerStanding;
 
 /** Who the signed-in account is; the page modules beside this one read it. */
 export type DashboardIdentity = Identity;
@@ -117,7 +116,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     picture: user.picture,
   };
   if (user.member_id === null) {
-    return { ...base, role: null, divisionIds: [], departmentIds: [], kind: viewerKindOf(null) };
+    return { ...base, role: null, divisionIds: [], departmentIds: [], ...viewerStandingOf(null) };
   }
 
   const [scopeRows, [role]] = await Promise.all([
@@ -144,15 +143,15 @@ async function readIdentity(userId: string): Promise<Identity | null> {
       .limit(1),
   ]);
 
-  const kind = viewerKindOf({ scopes: scopeRows.map((s) => s.scope), activeRole: role ?? null });
+  const standing = viewerStandingOf({ scopes: scopeRows.map((s) => s.scope), activeRole: role ?? null });
   // Someone with no active role left the team: scope rows that outlived it reach nothing.
-  if (kind === "non-member") return { ...base, role: null, divisionIds: [], departmentIds: [], kind };
+  if (standing.kind === "non-member") return { ...base, role: null, divisionIds: [], departmentIds: [], ...standing };
 
   const units = viewerUnitsOf(
     scopeRows.map((s) => ({ scope: s.scope, divisionId: s.division_id, deptId: s.dept_id })),
     role ?? null,
   );
-  return { ...base, role: role ?? null, divisionIds: [...units.divisionIds], departmentIds: [...units.departmentIds], kind };
+  return { ...base, role: role ?? null, divisionIds: [...units.divisionIds], departmentIds: [...units.departmentIds], ...standing };
 }
 
 type ScopedPosition = {
@@ -642,12 +641,16 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   const identity = await readIdentity(userId);
   if (!identity) return null;
 
-  const viewer: DashboardViewer = {
-    kind: identity.kind,
-    name: identity.name,
-    role: identity.kind === "non-member" ? "Applicant" : identity.role?.title ?? "Member",
-    session: "account",
-  };
+  const viewer: DashboardViewer =
+    identity.kind === "non-member"
+      ? { kind: identity.kind, siteContent: false, name: identity.name, role: "Applicant", session: "account" }
+      : {
+          kind: identity.kind,
+          siteContent: identity.siteContent,
+          name: identity.name,
+          role: identity.role?.title ?? "Member",
+          session: "account",
+        };
   const self = databaseSelfPages(identity);
   return {
     viewer,
@@ -656,10 +659,10 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     overview: () => overviewOf(identity),
     members: () => membersOf(identity),
     alumni: async () =>
-      alumniDirectory(canReach(identity.kind, "alumni") ? alumniOf(await readTeamSnapshot()) : []),
+      alumniDirectory(canReach(identity, "alumni") ? alumniOf(await readTeamSnapshot()) : []),
     teamTree: async () => {
       const snapshot = await readTeamSnapshot();
-      const roster = canReach(identity.kind, "team-tree") ? rosterOf(snapshot) : [];
+      const roster = canReach(identity, "team-tree") ? rosterOf(snapshot) : [];
       return buildTeamTree(roster, snapshot.org, seasonAt(new Date()), identity.memberId);
     },
     teamWrites: databaseTeamWrites(identity),

@@ -27,7 +27,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch |
 | Applications | No | No | Own divisions | All divisions in the department, under division tabs | All |
 | Members | No | No | Their divisions | Their divisions | Their divisions |
-| Alumni | No ruling yet | No ruling yet | No ruling yet | No ruling yet | No ruling yet |
+| Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
 | Access | No | No | Their divisions | Their department, under division tabs | Their divisions |
 | Orders | No | No | Their divisions | Their divisions | Their divisions |
 | My account | User menu only | No | No | No | No |
@@ -67,8 +67,13 @@ An admin column comes later. **Planned**, no issue yet.
   - **Gap:** a lead of more than one division sees only the first on Members. Tracked in #185.
   - **Gap:** a department head's sidebar lists Access but not yet Members or Orders. Tracked in
     #231 and #233.
-- **Alumni**: no ruling yet says who sees this page. Today the code shows it to the operations
-  lead only, for the whole team.
+- **Alumni** is where the team checks the public site's alumni content. By default the full
+  admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
+  with site-content access, which the full admins can give to anyone. A division lead or
+  department head gets nothing from their role here (Owner decision, #234). The sidebar item and
+  the page read one rule, and the page answers "not found" to everyone else.
+  - **Gap:** the full admins have no Access page to give site-content access from yet. Tracked
+    in #200.
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
