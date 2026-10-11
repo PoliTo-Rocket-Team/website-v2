@@ -5,6 +5,7 @@ import {
   closeRefusal,
   divisionCodeError,
   divisionRowWrites,
+  peopleInDivision,
   planDivisionSave,
   searchTeam,
   storedDivisionName,
@@ -203,6 +204,16 @@ test("Close division is refused while anyone is in it, people waiting for their 
   assert.match(closeRefusal(head, org, 1, { people: 9, waiting: 0 })!, /9 people are still in Mission Analysis Division/);
   assert.match(closeRefusal(head, org, 1, { people: 0, waiting: 1 })!, /1 person is still/);
   assert.equal(closeRefusal(head, org, 1, { people: 0, waiting: 0 }), null);
+});
+
+test("Close counts only lead and member rows as people: a seat kept on the division is nobody in it", () => {
+  assert.deepEqual(peopleInDivision(1, seatRows), [1, 3, 6], "the head counts once, by her lead row; the team leader's seat row is nobody");
+  // The head left her lead role with "Leaves {division}": only the seat rows are left, so the division closes.
+  const seatsOnly = seatRows.filter((r) => r.type === "head" || r.type === "president");
+  assert.deepEqual(peopleInDivision(1, seatsOnly), []);
+  assert.equal(closeRefusal(head, org, 1, { people: peopleInDivision(1, seatsOnly).length, waiting: 0 }), null);
+  const withMember = [...seatsOnly, { id: 107, memberId: 8, type: "core" as const }];
+  assert.match(closeRefusal(head, org, 1, { people: peopleInDivision(1, withMember).length, waiting: 0 })!, /1 person is still/);
 });
 
 test("the pickers search the whole team, the team leader, board and heads included, and offer a new email", () => {

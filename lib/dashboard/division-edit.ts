@@ -322,6 +322,16 @@ export type DivisionRow = {
   readonly type: RoleType;
 };
 
+/**
+ * The people in the division, each once, out of the active rows kept on it:
+ * only a lead or member row makes someone in it (`isDivisionRole`). A seat row
+ * kept on the division (the team leader's or a head's) does not, so Close
+ * counts the same people the dialog lists, and a reopen clears the same people.
+ */
+export function peopleInDivision(divisionId: number, held: readonly DivisionRow[]): number[] {
+  return [...new Set(held.filter((r) => isDivisionRole({ type: r.type, divisionId })).map((r) => r.memberId))];
+}
+
 /** The rows of the division a plan's writes end or change, by row id. */
 export type DivisionRowWrites = {
   /** Rows that end: on a reopen everyone's but the kept leads', and the old leads who leave this division. */

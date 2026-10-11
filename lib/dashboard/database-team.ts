@@ -54,6 +54,7 @@ import {
   checkDivisionSave,
   closeRefusal,
   divisionRowWrites,
+  peopleInDivision,
   planDivisionSave,
   searchTeam,
   type DivisionPlan,
@@ -788,11 +789,10 @@ async function savedSubject(divisionId: number, org: OrgChart): Promise<Exclude<
     .where(and(eq(divisions.id, divisionId), isNotNull(divisions.closedAt)))
     .limit(1);
   if (!row || row.dept_id === null) return null;
-  const held = await heldRows(divisionId);
   return {
     kind: "closed",
     division: { id: row.id, name: row.name, departmentId: row.dept_id, code: row.code?.trim() || null },
-    stillIn: [...new Set(held.filter((r) => isDivisionRole({ type: r.type, divisionId })).map((r) => r.memberId))],
+    stillIn: peopleInDivision(divisionId, await heldRows(divisionId)),
   };
 }
 
@@ -906,23 +906,23 @@ function refreshPositions() {
 }
 
 /**
- * Close division (board 68c): refused while anyone holds a role in it or
- * waits for their NDA there. Otherwise, in one batch: the division closes,
- * its open positions close, and every access given in it is removed.
+ * Close division (board 68c): refused while anyone holds a lead or member role
+ * in it (`peopleInDivision`: a seat row kept on it is not a person in it, as the
+ * dialog counts) or waits for their NDA there. Otherwise, in one batch: the
+ * division closes, its open positions close, and every access given in it is
+ * removed.
  */
 async function closeDivision(identity: DashboardIdentity, divisionId: number): Promise<WriteResult<null>> {
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
   if (actor === null) return refused("Only a department head or the team leader closes a division.");
   const db = getDb();
-  const [[people], [waiting]] = await Promise.all([
-    db
-      .select({ count: sql<number>`count(distinct ${roles.memberId})::int` })
-      .from(roles)
-      .where(and(eq(roles.divisionId, divisionId), isNull(roles.leavedAt))),
+  const [held, [waiting]] = await Promise.all([
+    heldRows(divisionId),
     db.select({ count: sql<number>`count(*)::int` }).from(teamJoins).where(eq(teamJoins.divisionId, divisionId)),
   ]);
-  const refusal = closeRefusal(actor, snapshot.org, divisionId, { people: Number(people?.count ?? 0), waiting: Number(waiting?.count ?? 0) });
+  const people = peopleInDivision(divisionId, held).length;
+  const refusal = closeRefusal(actor, snapshot.org, divisionId, { people, waiting: Number(waiting?.count ?? 0) });
   if (refusal !== null) return refused(refusal);
   await runAuditBatch((tx) => [
     tx.update(divisions).set({ closedAt: today() }).where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
