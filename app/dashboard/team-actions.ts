@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { TeamWrites } from "@/lib/dashboard/data";
+import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
 import { openDashboard } from "@/lib/dashboard/open";
 import { checkDeparture, isPromoteMode, type EditableRole, type PromoteMode } from "@/lib/dashboard/team";
+import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
 // interface, so a test developer's change lands in their cookie and nowhere
@@ -66,4 +68,65 @@ export async function confirmJoin(applicationId: number): Promise<TeamActionResu
   const writes = await writesOn("members");
   if (!writes || !isId(applicationId)) return REFUSED;
   return done(await writes.confirmJoin(applicationId));
+}
+
+// The lead's Members page (issue #231, boards 61e to 61h2).
+
+/** What a write that can say why it was refused answers. */
+function answered<T>(result: WriteResult<T>): TeamActionResult {
+  if (!result.ok) return { ok: false, error: result.error };
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+/** Add member's field: the team members it finds, or whether an email is new to the team. */
+export async function findForAdd(divisionId: number, query: string): Promise<AddLookup> {
+  const opening = await openDashboard();
+  if (opening.kind !== "open" || !canReach(opening.data.viewer, "members") || !isId(divisionId) || typeof query !== "string") {
+    return { kind: "none" };
+  }
+  return opening.data.findForAdd(divisionId, query.slice(0, 200));
+}
+
+export async function addMember(input: unknown): Promise<WriteResult<"joined" | "waiting">> {
+  const writes = await writesOn("members");
+  if (!writes) return refused("This change could not be saved.");
+  const result = await writes.addMember(input);
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+export async function confirmNda(joinId: number): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(joinId)) return REFUSED;
+  return done(await writes.confirmNda(joinId));
+}
+
+export async function cancelAdd(joinId: number): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(joinId)) return REFUSED;
+  return done(await writes.cancelAdd(joinId));
+}
+
+export async function removeFromDivision(personId: number, divisionId: number): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(personId) || !isId(divisionId)) return REFUSED;
+  return done(await writes.removeFromDivision(personId, divisionId));
+}
+
+export async function saveMemberDetails(target: DetailsTarget, divisionId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isDetailsTarget(target) || !isId(divisionId)) return REFUSED;
+  return answered(await writes.saveMemberDetails(target, divisionId, input));
+}
+
+/** Edit details' photo: the cropped square JPEG in the form's `photo` field, or none to remove it. */
+export async function setMemberPhoto(personId: number, divisionId: number, form: FormData | null): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(personId) || !isId(divisionId)) return REFUSED;
+  const file = form?.get("photo");
+  const photo: Upload | null =
+    file instanceof File && file.size > 0 ? { name: file.name, contentType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } : null;
+  if (form !== null && photo === null) return { ok: false, error: "Choose a photo." };
+  return answered(await writes.setMemberPhoto(personId, divisionId, photo));
 }

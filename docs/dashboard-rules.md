@@ -64,7 +64,8 @@ An admin column comes later. **Planned**, no issue yet.
   - **Gap:** any access grant, even view-only, makes a member act as a division lead on
     applications. Tracked in #160.
 - **Members**, **Access** and **Orders** are for division leads and up, scoped to their divisions.
-  - **Gap:** a lead of more than one division sees only the first on Members. Tracked in #185.
+  A lead of more than one division picks which one Members shows (#231).
+  - **Gap:** a lead of more than one division sees only one on Access and Orders. Tracked in #185.
   - **Gap:** a department head's sidebar lists Access but not yet Members or Orders. Tracked in
     #231 and #233.
 - **Alumni** is where the team checks the public site's alumni content. By default the full
@@ -107,6 +108,15 @@ An admin column comes later. **Planned**, no issue yet.
   is confirmed. Only then does the person become a member.
   - **Gap:** the dashboard has no recruitment manager; only leads can do this step. Tracked in
     #194.
+- Confirm join for someone new asks "Confirm {name} joins {division}?" in neutral words (they,
+  their), whatever the application form says (board 58h).
+- Confirm join for someone already on the team has no NDA wait: they signed the team's one NDA
+  when they joined (see "Divisions per person" below). The panel shows no NDA tick, and its main
+  button reads "Add to {division}". It is still confirmed ("Add {name} to {division}?", board
+  58h2). The person joins the new division and keeps every division they are in, and no NDA date
+  is recorded for them (#229, [0014](../.decisions/0014-several-divisions-one-nda.md)).
+- The Members page's joining banner lists only people not on the team yet. A member joins another
+  division from the Applications page, or from Add member on the Members page (#231).
 
 ### Other rules
 
@@ -118,17 +128,88 @@ An admin column comes later. **Planned**, no issue yet.
 
 ## 3. People
 
-- The role on the member panel is the person's title on the Team page.
+### Divisions per person
+
+These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
+[0014](../.decisions/0014-several-divisions-one-nda.md).
+
+- One person can be in several divisions at once, as a lead or a member, across departments. Each
+  division they are in has its own role. A person is never in the same division twice.
+- Picking someone as lead of a division never moves them out of their other divisions.
+- There is one NDA for the whole team. A member never signs a second one.
+- The viewer's kind reads all their active roles: someone who leads division A and is a member of
+  division B is a lead for A and a member for B.
+- The Team tree shows each person once, under one division, and draws a dashed blue line from
+  every other division they are in, with a blue "also {division}" tag beside them. A legend
+  reads "Also in another division · shown once" (board 54e).
+- The division a person is drawn under, and the one a page names when it shows only one, is
+  their home division: the oldest division they lead, else their oldest membership.
+- **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
+  "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
+  replaces it, and also amends 0011's Confirm join rule for someone already on the team.
+- **Gap:** My profile, Access and Orders still show one division per person (the home division,
+  or the oldest one a lead leads). Tracked in #230 and #233.
+
+### Members page
+
+These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 61h2).
+
+- There is no separate Department page. The Members page holds the division tools for heads, and
+  shows member data. The department head's view is #235.
+- The table shows each person's divisions as code chips. A division in another department shows
+  the department's name instead. Each person's role is their title in this division, or "Division
+  Lead".
+- Phone numbers are blurred until hover (or keyboard focus), in the table and on the member panel.
+  The panel's Personal section (date of birth, gender) is blurred the same way. The panel has no
+  access section: access lives only on the Access page.
+- A member is added by searching the team by name or by typing an email.
+  - Someone already on the team joins the division at once and keeps their other divisions. They
+    sign no second NDA: there is one NDA for the whole team
+    ([0014](../.decisions/0014-several-divisions-one-nda.md)).
+  - An email not on the team becomes "Waiting for NDA". The person holds no role and no member
+    record, so nothing treats them as a member. Only Confirm NDA, by a lead or head, makes them one;
+    it records the date and who confirmed it. Someone coming back after leaving waits too.
+  - When the person first signs in with that email, their account takes over the record they were
+    added with, so they are already who the lead added.
+  - The ⋯ menu on a "Waiting for NDA" row also has "Cancel add". It deletes the pending entry and
+    nothing else changes, since the person never joined.
+- A new member's details are filled by a lead or head (Fill details, or "Fill in their other
+  details now" in Add member), or by the person after they sign in with that email. Members never
+  have to use the site.
+- The site sends no emails. An amber note tells the actor to let the person know, with Fill
+  details, Copy email and Open email.
+- In Edit details, the role field is only for the editor's own division. Roles in other divisions
+  show on the member panel, not in the form.
+- The row ⋯ menu has "Remove from {division}" and "Leaves the team".
+  - "Remove from {division}" ends only that division's role and its division access; the person
+    keeps their other divisions. When it is the person's only division the menu does not offer it,
+    and the server refuses it: nobody is on the team with no division.
+  - "Leaves the team" ends every role and every access the person has, and moves them to Alumni
+    with the years and an optional reason. The account stays. Who may use it:
+    - a division lead, only if the person is in no division outside the lead's own;
+    - a department head, only if all the person's divisions are in the head's department;
+    - the team leader, always (and the operations lead, who already ended whole memberships, #201).
+  - A person who also holds a role beyond every division can be moved only by the team leader (or
+    the operations lead). That role is the team leader, a department head (also when the head role
+    is kept on one of the department's divisions), a board seat, or any other role kept on a
+    department or the team. No lead or head reaches it, and the move would end it.
+  - Otherwise the item is disabled with a lock and the reason, for example "Also in Safety, so only
+    the team leader can do this". The server checks the same rule on every request.
+- Confirm NDA, Cancel add, Remove from {division} and Leaves the team each ask "are you sure"
+  first.
+- A lead cannot rename a division, change its code or change its leads; only the head can. The
+  lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
+  lead's Promote or lead change.
+
+- The role on the operations lead's member panel is the person's title on the Team page.
   - **Gap:** the title saved on the panel never reaches the public Team page. Tracked in #189.
-- Promote is confirmed. The lead picks "lead together" or "hand over the division". The department
-  head is told.
-  - Each head of the division's department gets a notice under "Needs your attention" on their
-    Overview, naming who now leads the division and how (#188). The lead who promoted is not told.
-    No email is sent.
-- Move to alumni is confirmed, with the years and an optional reason. Access ends; the account
-  stays. It touches only what the person moving them manages: a division lead ends the roles and
-  the division access in their own division, and the person leaves the team only when no role is
-  left; the operations lead ends the whole membership (#201).
+- Promote changes a division's leads, so it is the department head's (#231). It is confirmed, with
+  "lead together" or "hand over the division", and each head of the division's department gets a
+  notice under "Needs your attention" on their Overview, naming who now leads the division and how
+  (#188). The head who promoted is not told. No email is sent.
+  - **Gap:** the head's Members view, where Promote lives, is #235.
+- Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
+  and every access ends, after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
   recruitment manager are told. The person moves to Alumni.
   - The lead of each division the person was in gets a notice under "Needs your attention" on

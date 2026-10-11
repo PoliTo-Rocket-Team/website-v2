@@ -4,7 +4,7 @@
 // the Overview read the same people. Later dashboard pages add their arrays
 // beside these.
 
-import type { BoardSeat, OrgDepartment, OrgDivision, Placement } from "@/lib/dashboard/team";
+import { inDivisions, type BoardSeat, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
 
 export type DummyDepartment = OrgDepartment;
 
@@ -25,6 +25,8 @@ export type DummyPerson = {
   readonly program: string;
   readonly study: string;
   readonly access: readonly string[];
+  /** Their title in each division other than their home one; the home one's is `pageTitle` (issue #231). */
+  readonly titles: Readonly<Record<number, string>>;
 };
 
 export const departments = [
@@ -37,27 +39,36 @@ export const departments = [
 ] as const satisfies readonly DummyDepartment[];
 
 export const divisions = [
-  { id: 1, name: "Mission Analysis Division", departmentId: 1 },
-  { id: 2, name: "Optimization and Analysis Division", departmentId: 1 },
-  { id: 3, name: "Design & Manufacturing Division", departmentId: 2 },
-  { id: 4, name: "Structures Analysis Division", departmentId: 2 },
-  { id: 5, name: "Parachutes Division", departmentId: 3 },
-  { id: 6, name: "Recovery Systems Division", departmentId: 3 },
-  { id: 7, name: "Flight Control Systems Division", departmentId: 4 },
-  { id: 8, name: "Systems Engineering Division", departmentId: 4 },
-  { id: 9, name: "Hardware Division", departmentId: 5 },
-  { id: 10, name: "Avionics Software Division", departmentId: 5 },
-  { id: 11, name: "Communications Division", departmentId: 6 },
-  { id: 12, name: "Logistics Division", departmentId: 6 },
-  { id: 13, name: "Safety Division", departmentId: 6 },
-  { id: 14, name: "Sponsorship Division", departmentId: 6 },
+  { id: 1, name: "Mission Analysis Division", departmentId: 1, code: "MA" },
+  { id: 2, name: "Optimization and Analysis Division", departmentId: 1, code: "OA" },
+  { id: 3, name: "Design & Manufacturing Division", departmentId: 2, code: "DM" },
+  { id: 4, name: "Structures Analysis Division", departmentId: 2, code: "SA" },
+  { id: 5, name: "Parachutes Division", departmentId: 3, code: "PC" },
+  { id: 6, name: "Recovery Systems Division", departmentId: 3, code: "RS" },
+  { id: 7, name: "Flight Control Systems Division", departmentId: 4, code: "FC" },
+  { id: 8, name: "Systems Engineering Division", departmentId: 4, code: "SE" },
+  { id: 9, name: "Hardware Division", departmentId: 5, code: "HW" },
+  { id: 10, name: "Avionics Software Division", departmentId: 5, code: "AS" },
+  { id: 11, name: "Communications Division", departmentId: 6, code: "CM" },
+  { id: 12, name: "Logistics Division", departmentId: 6, code: "LG" },
+  { id: 13, name: "Safety Division", departmentId: 6, code: "SF" },
+  { id: 14, name: "Sponsorship Division", departmentId: 6, code: "SP" },
 ] as const satisfies readonly DummyDivision[];
 
-const leader = { role: "team-leader" } as const satisfies Placement;
-const board = (seat: BoardSeat): Placement => ({ role: "board", seat });
-const head = (departmentId: number): Placement => ({ role: "head", departmentId });
-const lead = (divisionId: number): Placement => ({ role: "division-lead", divisionId });
-const member = (divisionId: number | null): Placement => ({ role: "member", divisionId });
+/** Where a row places someone, given the day they joined the team. */
+type Place = (since: string) => Placement;
+
+const leader: Place = () => ({ role: "team-leader" });
+const board = (seat: BoardSeat): Place => () => ({ role: "board", seat });
+const head = (departmentId: number): Place => () => ({ role: "head", departmentId });
+const lead = (divisionId: number): Place => (since) => inDivisions([{ divisionId, role: "lead", since }]);
+/** A member of one division, or of none yet (null): added to the roster, not placed. */
+const member = (divisionId: number | null): Place => (since) => inDivisions(divisionId === null ? [] : [{ divisionId, role: "member", since }]);
+/** In several divisions at once (issue #229): each as [division, role, the year they joined it]. */
+const divisionsOf =
+  (...list: readonly (readonly [divisionId: number, role: DivisionRole, year: number])[]): Place =>
+  () =>
+    inDivisions(list.map(([divisionId, role, year]) => ({ divisionId, role, since: `${year}-10-01` })));
 
 const PROGRAMS = [
   "Aerospace Eng.",
@@ -72,29 +83,31 @@ const PROGRAMS = [
 type Row = readonly [
   id: number,
   name: string,
-  placement: Placement,
+  placement: Place,
   title: string,
   joined: number,
-  extra?: Partial<Pick<DummyPerson, "email" | "pageTitle" | "hasPhoto" | "program" | "study" | "access">>,
+  extra?: Partial<Pick<DummyPerson, "email" | "pageTitle" | "hasPhoto" | "program" | "study" | "access" | "titles">>,
 ];
 
 /** A row in full: email, programme and study follow from the id where the row gives none. */
-function person([id, name, placement, title, joined, extra = {}]: Row): DummyPerson {
+function person([id, name, place, title, joined, extra = {}]: Row): DummyPerson {
   const [first, ...rest] = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(" ");
   const degree = id % 3 === 0 ? "BSc" : "MSc";
+  const since = `${joined}-10-01`;
   return {
     id,
     name,
     email: extra.email ?? `${first[0]}.${rest.join("")}@politorocketteam.it`,
-    placement,
+    placement: place(since),
     title,
     pageTitle: extra.pageTitle ?? null,
-    since: `${joined}-10-01`,
+    since,
     hasPhoto: extra.hasPhoto ?? id % 4 !== 1,
     linkedin: null,
     program: extra.program ?? PROGRAMS[id % PROGRAMS.length],
     study: extra.study ?? `${degree} · year ${degree === "BSc" ? 1 + (id % 3) : 1 + (id % 2)}`,
     access: extra.access ?? [],
+    titles: extra.titles ?? {},
   };
 }
 
@@ -104,7 +117,8 @@ const M = "Member";
 export const people: readonly DummyPerson[] = ([
   [1, "Giulia Rossi", head(6), "Operations Lead", 2022, { hasPhoto: true, access: ["All pages · edit"] }],
   [2, "Marco Bianchi", lead(1), "Mission Analysis Lead", 2023, { hasPhoto: true, pageTitle: "Mission Analysis Lead", program: "Aerospace Eng.", study: "MSc · year 1", access: ["Positions · edit", "Applications · edit"] }],
-  [3, "Sofia Neri", member(1), M, 2024, { program: "Aerospace Eng.", study: "BSc · year 3" }],
+  // Also in Design & Manufacturing, in another department (board 61e's "Structures" chip).
+  [3, "Sofia Neri", divisionsOf([1, "member", 2024], [3, "member", 2025]), M, 2024, { pageTitle: "Mission Analyst", program: "Aerospace Eng.", study: "BSc · year 3", titles: { 3: "CAD Engineer" } }],
   [4, "Luca Marino", member(1), M, 2024, { program: "Physics", study: "MSc · year 2", access: ["Positions · edit"] }],
   [5, "Elif Kaya", member(1), M, 2025, { email: "elif.kaya@gmail.com", hasPhoto: false, program: "Aerospace Eng.", study: "BSc · year 2" }],
   // Leads Mission Analysis with Marco: the co-lead row on Access (board 60, issue #230).
@@ -115,7 +129,8 @@ export const people: readonly DummyPerson[] = ([
   [10, "Tommaso Galli", member(null), M, 2026, { hasPhoto: false }],
   [11, "Chiara Ricci", member(null), M, 2026, { hasPhoto: false }],
   [12, "Kenji Watanabe", member(null), M, 2026, { hasPhoto: false }],
-  [13, "Anna Villa", member(1), M, 2025, { program: "Mathematical Eng.", study: "MSc · year 1" }],
+  // Also in Optimization and Analysis, in the same department (board 61e's "MA OA" chips).
+  [13, "Anna Villa", divisionsOf([1, "member", 2025], [2, "member", 2026]), M, 2025, { pageTitle: "Flight Simulation", program: "Mathematical Eng.", study: "MSc · year 1", titles: { 2: "Optimization Analyst" } }],
   [14, "Alessandro Greco", leader, "Team Leader", 2021],
   [15, "Chiara Rinaldi", head(1), "Head of Aerodynamics", 2022],
   [16, "Davide Russo", head(2), "Head of Structures", 2022],
@@ -174,7 +189,9 @@ export const people: readonly DummyPerson[] = ([
   [69, "Pablo Ruiz", member(9), M, 2025],
   [70, "Gaia Sartori", member(9), M, 2024],
   [71, "Hiro Tanaka", member(9), M, 2025],
-  [72, "Matteo Greco", member(9), M, 2026],
+  // In two divisions across two departments (board 54e): drawn under Design &
+  // Manufacturing, his older one, with a dashed line from Optimization and Analysis.
+  [72, "Matteo Greco", divisionsOf([3, "member", 2024], [2, "member", 2025]), M, 2024],
   [73, "Priya Nair", member(9), M, 2026],
   [74, "Emma Bianco", member(10), M, 2024],
   [75, "Can Yilmaz", member(10), M, 2025],
@@ -199,6 +216,23 @@ export const people: readonly DummyPerson[] = ([
   [93, "Lorenzo Gallo", board("project-manager"), "Project Manager", 2021],
   [94, "Federica Moretti", board("chief-engineer"), "Chief Engineer", 2021],
 ] as const satisfies readonly Row[]).map(person);
+
+/**
+ * Someone a lead added by email who is not on the team yet (board 61e):
+ * waiting for Confirm NDA, with no role and no roster entry.
+ */
+export type DummyWaiting = {
+  readonly joinId: number;
+  readonly email: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly divisionId: number;
+  readonly title: string | null;
+};
+
+export const waitingPeople = [
+  { joinId: 1, email: "elena.marino@studenti.polito.it", firstName: "Elena", lastName: "Marino", divisionId: 1, title: "Mission Analyst" },
+] as const satisfies readonly DummyWaiting[];
 
 /** People who were on the team (board 46c). `shownOnSite` is the switch on the Alumni page. */
 export type DummyAlumnus = {

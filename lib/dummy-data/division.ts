@@ -6,6 +6,7 @@ import {
   placesOf,
   ROLE_HELD_ACCESS,
   samePlace,
+  ACCESS_TARGETS,
   type AccessDivision,
   type AccessGrant,
   type AccessLevel,
@@ -28,7 +29,7 @@ import {
   type OrderQuote,
   type OrderState,
 } from "@/lib/dashboard/orders";
-import { divisionIdOf, type RosterEntry } from "@/lib/dashboard/team";
+import { homeFirst, ledDivisionOf, membershipsIn, type DivisionMembership, type RosterEntry } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { departments, divisions, people, type DummyPerson } from "./team";
 
@@ -137,26 +138,21 @@ function accessDivision(id: number): AccessDivision {
   return { id, name: divisionOf(id).name };
 }
 
-function accessPerson(entry: RosterEntry): AccessPerson {
-  const divisionId = divisionIdOf(entry.placement);
-  return {
-    id: entry.id,
-    name: entry.name,
-    standing: entry.placement.role === "member" ? "member" : "lead",
-    division: divisionId === null ? null : accessDivision(divisionId),
-  };
-}
-
 /** The viewers an Access page is for. */
 export type AccessViewerKind = "division-lead" | "department-head";
 
-/** The unit a viewer's Access page is about: a lead's division, a head's department; null when their place is neither. */
+/**
+ * The unit a viewer's Access page is about: a lead's division, a head's
+ * department; null when their place is neither. A lead of several divisions
+ * gets the oldest they lead until #185 gives them all.
+ */
 function unitOf(kind: AccessViewerKind, viewer: DummyPerson): AccessUnit | null {
   const placement = viewer.placement;
-  if (kind === "division-lead" && placement.role === "division-lead") {
-    return { kind: "division", division: accessDivision(placement.divisionId) };
+  if (kind === "division-lead") {
+    const divisionId = ledDivisionOf(placement);
+    return divisionId === null ? null : { kind: "division", division: accessDivision(divisionId) };
   }
-  if (kind === "department-head" && placement.role === "head") {
+  if (placement.role === "head") {
     const department = departments.find((d) => d.id === placement.departmentId)!;
     return {
       kind: "department",
@@ -170,9 +166,30 @@ function unitOf(kind: AccessViewerKind, viewer: DummyPerson): AccessUnit | null 
   return null;
 }
 
-function inUnit(unit: AccessUnit, divisionId: number | null): boolean {
-  if (divisionId === null) return false;
-  return unit.kind === "division" ? unit.division.id === divisionId : unit.divisions.some((d) => d.id === divisionId);
+function unitDivisionIds(unit: AccessUnit): readonly number[] {
+  return unit.kind === "division" ? [unit.division.id] : unit.divisions.map((d) => d.id);
+}
+
+/** Their memberships inside the unit, home division first (issue #229). */
+function membershipsInUnit(entry: RosterEntry, unit: AccessUnit): readonly DivisionMembership[] {
+  const ids = unitDivisionIds(unit);
+  return homeFirst(membershipsIn(entry.placement)).filter((m) => ids.includes(m.divisionId));
+}
+
+/**
+ * The person as the unit's Access page shows them: a lead when they lead a
+ * division of the unit, named by the first division of the unit they lead,
+ * else the first they are in.
+ */
+function accessPerson(entry: RosterEntry, unit: AccessUnit): AccessPerson {
+  const inUnit = membershipsInUnit(entry, unit);
+  const shown = inUnit.find((m) => m.role === "lead") ?? inUnit[0];
+  return {
+    id: entry.id,
+    name: entry.name,
+    standing: shown?.role === "lead" ? "lead" : "member",
+    division: shown === undefined ? null : accessDivision(shown.divisionId),
+  };
 }
 
 function placeOf(unit: AccessUnit, place: DummyPlace): AccessPlace | null {
@@ -183,24 +200,27 @@ function placeOf(unit: AccessUnit, place: DummyPlace): AccessPlace | null {
 
 function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
   if (unit.kind === "department") return ROLE_HELD_ACCESS;
-  return heldAccess.filter((h) => h.personId === viewer.id).map((h) => ({ target: h.target, level: h.level }));
+  return ACCESS_TARGETS.flatMap((target) =>
+    heldAccess.filter((h) => h.personId === viewer.id && h.target === target).map((h) => ({ target, level: h.level })),
+  );
 }
 
 /**
  * Boards 60 and 60b for a lead, 65 and 65b for a head; null for anyone else.
  * Only people on `roster` hold access: a grant to someone moved to alumni is
- * gone. The other leads of the unit show with the access their role gives.
+ * gone. The other leads of the unit show with the access their role gives,
+ * one row for each division of the unit they lead.
  */
 export function dummyAccessPage(kind: AccessViewerKind, viewer: DummyPerson, roster: readonly RosterEntry[]): AccessPage | null {
   const unit = unitOf(kind, viewer);
   if (unit === null) return null;
-  const inside = roster.filter((e) => e.id !== viewer.id && inUnit(unit, divisionIdOf(e.placement)));
-  const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e)]));
+  const inside = roster.filter((e) => e.id !== viewer.id && membershipsInUnit(e, unit).length > 0);
+  const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e, unit)]));
   const roleAccess = inside.flatMap((e): RoleAccess[] => {
     const person = onTeam.get(e.id)!;
-    return person.standing === "lead" && person.division !== null
-      ? [{ person, place: { kind: "division", division: person.division } }]
-      : [];
+    return membershipsInUnit(e, unit)
+      .filter((m) => m.role === "lead")
+      .map((m) => ({ person, place: { kind: "division", division: accessDivision(m.divisionId) } }));
   });
   const grants = accessGrants.flatMap((g): AccessGrant[] => {
     const person = onTeam.get(g.personId);
@@ -292,8 +312,9 @@ export function dummyOrdersIn(divisionIds: readonly number[]): Order[] {
 
 /** Boards 61 to 61d for someone who holds Orders in their division; null for anyone else. */
 export function dummyDivisionOrders(lead: DummyPerson): DivisionOrders | null {
-  if (lead.placement.role !== "division-lead") return null;
-  const divisionId = lead.placement.divisionId;
+  // One division: the oldest they lead, until Orders shows the whole team (#233).
+  const divisionId = ledDivisionOf(lead.placement);
+  if (divisionId === null) return null;
   const level = heldLevel(
     heldAccess.filter((h) => h.personId === lead.id),
     "orders",

@@ -1,9 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { MoreHorizontal, UserCheck } from "lucide-react";
-import { toast } from "sonner";
-import { confirmJoin } from "@/app/dashboard/team-actions";
+import { useMemo, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 import {
   MEMBER_TABS,
   MEMBER_TAB_LABELS,
@@ -11,42 +9,51 @@ import {
   memberRowsFor,
   pageCount,
   pageOf,
-  type Joining,
   type MemberDirectory,
   type MemberRow,
   type MemberTab,
 } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
-import { ConfirmDialog } from "./confirm-dialog";
 import { Controls, DepartmentFilter, Pager, RolePill, SearchField, TH, Tabs } from "./directory";
+import { DivisionMembersView } from "./division-members";
 import { DrawerPage } from "./drawer";
 import { MemberDrawer } from "./member-drawer";
 import { PageHeader } from "./page-header";
 import { PANEL } from "./panel";
 
 // The Members page. The operations lead sees the whole team with the
-// department filter and pages of nine (board 46); a division lead sees their
-// division, with anyone accepted and waiting to join above it (boards 59 and
-// 59m). Tabs, filter and search narrow the rows here, in the browser;
+// department filter and pages of nine (board 46); a division lead sees one of
+// their divisions (boards 61e to 61h2, ./division-members.tsx).
+export function MembersView({ directory, editable }: { directory: MemberDirectory; editable: boolean }) {
+  if (directory.scope === "division") return <DivisionMembersView page={directory} editable={editable} />;
+  if (directory.scope === "none") return <PageHeader title="Members" intro="" phone="bar" />;
+  return <TeamMembersView rows={directory.rows} departments={directory.departments} editable={editable} />;
+}
+
+// Board 46: tabs, filter and search narrow the rows here, in the browser;
 // choosing a row opens the member panel. On a phone the table is a stack of
 // cards.
-export function MembersView({ directory, editable }: { directory: MemberDirectory; editable: boolean }) {
-  const team = directory.scope === "team";
+function TeamMembersView({
+  rows: allRows,
+  departments,
+  editable,
+}: {
+  rows: readonly MemberRow[];
+  departments: readonly string[];
+  editable: boolean;
+}) {
   const [tab, setTab] = useState<MemberTab>("all");
   const [department, setDepartment] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<number | null>(null);
 
-  const filtered = useMemo(
-    () => memberRowsFor(directory.rows, { department, query }),
-    [directory.rows, department, query],
-  );
+  const filtered = useMemo(() => memberRowsFor(allRows, { department, query }), [allRows, department, query]);
   const inTab = filtered.filter((row) => inMemberTab(row, tab));
   const last = pageCount(inTab.length);
   const current = Math.min(page, last);
-  const rows = team ? pageOf(inTab, current) : inTab;
-  const open = directory.rows.find((row) => row.id === openId) ?? null;
+  const rows = pageOf(inTab, current);
+  const open = allRows.find((row) => row.id === openId) ?? null;
 
   const narrow = (apply: () => void) => {
     apply();
@@ -55,23 +62,7 @@ export function MembersView({ directory, editable }: { directory: MemberDirector
 
   return (
     <DrawerPage drawerOpen={open !== null}>
-      <PageHeader
-        title="Members"
-        intro={
-          team
-            ? "Everyone on the team this year. Changes show on the public Team page."
-            : `${directory.division} · ${people(directory.rows.length)}`
-        }
-        phone={team ? "full" : "bar"}
-      />
-
-      {directory.scope === "division" && directory.joining.length > 0 && (
-        <ul className="mt-6 flex flex-col gap-2.5 max-md:mt-0">
-          {directory.joining.map((joining) => (
-            <JoiningBanner key={joining.applicationId} joining={joining} division={directory.division} editable={editable} />
-          ))}
-        </ul>
-      )}
+      <PageHeader title="Members" intro="Everyone on the team this year. Changes show on the public Team page." phone="full" />
 
       <Controls
         search={
@@ -93,13 +84,7 @@ export function MembersView({ directory, editable }: { directory: MemberDirector
           value={tab}
           onChange={(next) => narrow(() => setTab(next))}
         />
-        {directory.scope === "team" && (
-          <DepartmentFilter
-            departments={directory.departments}
-            value={department}
-            onChange={(next) => narrow(() => setDepartment(next))}
-          />
-        )}
+        <DepartmentFilter departments={departments} value={department} onChange={(next) => narrow(() => setDepartment(next))} />
       </Controls>
 
       <ul aria-label="Members" className="mt-4 flex flex-col gap-2.5 md:hidden">
@@ -129,8 +114,8 @@ export function MembersView({ directory, editable }: { directory: MemberDirector
               <th scope="col" className={TH}>
                 Member
               </th>
-              <th scope="col" className={`${TH} ${team ? "w-[34%]" : "w-[26%]"}`}>
-                {team ? "Department · Division" : "Program"}
+              <th scope="col" className={`${TH} w-[34%]`}>
+                Department · Division
               </th>
               <th scope="col" className={`${TH} w-[168px]`}>
                 Role
@@ -148,7 +133,6 @@ export function MembersView({ directory, editable }: { directory: MemberDirector
               <MemberTableRow
                 key={row.id}
                 row={row}
-                team={team}
                 selected={row.id === openId}
                 panelOpen={open !== null}
                 onOpen={() => setOpenId(row.id)}
@@ -157,28 +141,17 @@ export function MembersView({ directory, editable }: { directory: MemberDirector
           </tbody>
         </table>
         <footer className="flex min-h-[52px] items-center justify-between gap-4 border-t border-hairline px-5 py-3 text-[13px] text-prt-muted">
-          <span>{team ? `Showing ${rows.length} of ${inTab.length}` : people(inTab.length)}</span>
-          {team && <Pager page={current} last={last} onPage={setPage} />}
+          <span>{`Showing ${rows.length} of ${inTab.length}`}</span>
+          <Pager page={current} last={last} onPage={setPage} />
         </footer>
       </section>
-      {team && (
-        <div className="mt-4 flex justify-center md:hidden">
-          <Pager page={current} last={last} onPage={setPage} />
-        </div>
-      )}
+      <div className="mt-4 flex justify-center md:hidden">
+        <Pager page={current} last={last} onPage={setPage} />
+      </div>
 
-      <MemberDrawer
-        row={open}
-        directory={directory}
-        editable={editable}
-        onClose={() => setOpenId(null)}
-      />
+      <MemberDrawer row={open} editable={editable} onClose={() => setOpenId(null)} />
     </DrawerPage>
   );
-}
-
-function people(n: number): string {
-  return `${n} ${n === 1 ? "person" : "people"}`;
 }
 
 /** The line under a name on a phone card: "Division lead", the Team page title, or "Member". */
@@ -188,75 +161,13 @@ function cardLine(row: MemberRow): string {
   return row.pageTitle ?? "Member";
 }
 
-/**
- * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once "The signed
- * NDA arrived" is ticked on the application (58g). It is the Applications
- * page's own Confirm join, so the button waits for that tick here too.
- */
-function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
-  const [asking, setAsking] = useState(false);
-  const [pending, startTransition] = useTransition();
-  const firstName = joining.name.split(" ")[0];
-
-  const confirm = () =>
-    startTransition(async () => {
-      const result = await confirmJoin(joining.applicationId);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      setAsking(false);
-      toast.success(`${joining.name} joined ${division}`);
-    });
-
-  return (
-    <li className="flex flex-col gap-3 rounded-xl border border-success/40 bg-success/[0.06] px-4 py-3.5 md:flex-row md:items-center md:gap-4">
-      <span className="flex min-w-0 flex-1 items-center gap-3.5">
-        <span className="hidden md:block">
-          <Avatar name={joining.name} />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-[15px] font-semibold">{joining.name} is joining</span>
-          <span className="block text-[13px] text-prt-muted">
-            Accepted for {joining.position} · {joining.ndaArrived ? "signed NDA arrived" : "waiting for the signed NDA"}
-          </span>
-        </span>
-      </span>
-      {editable && (
-        <button
-          type="button"
-          onClick={() => setAsking(true)}
-          disabled={!joining.ndaArrived}
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-success/60 px-4 text-[14px] font-semibold text-success transition-colors duration-300 ease-out hover:border-success hover:bg-success/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-success/60 disabled:hover:bg-transparent md:h-8 md:px-3.5 md:text-[13px]"
-        >
-          Confirm join
-        </button>
-      )}
-      <ConfirmDialog
-        open={asking}
-        onOpenChange={setAsking}
-        icon={<UserCheck className="h-5 w-5" strokeWidth={1.75} />}
-        tone="success"
-        title={`Confirm ${joining.name} joins?`}
-        description={`${firstName} becomes a member of ${division} as ${joining.position}. Confirm once you have their signed NDA.`}
-        cancelLabel="Cancel"
-        confirmLabel="Confirm join"
-        pending={pending}
-        onConfirm={confirm}
-      />
-    </li>
-  );
-}
-
 function MemberTableRow({
   row,
-  team,
   selected,
   panelOpen,
   onOpen,
 }: {
   row: MemberRow;
-  team: boolean;
   selected: boolean;
   panelOpen: boolean;
   onOpen: () => void;
@@ -277,11 +188,7 @@ function MemberTableRow({
         </span>
       </td>
       <td className="px-5 py-2.5">
-        {team ? (
-          <TwoLines first={row.department} second={row.division} />
-        ) : (
-          <TwoLines first={row.program} second={row.study} />
-        )}
+        <TwoLines first={row.department} second={row.division} />
       </td>
       <td className="px-5 py-2.5">
         <RolePill role={row.role} label={row.roleLabel} />

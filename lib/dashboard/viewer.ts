@@ -3,6 +3,8 @@
 // site-content access the Alumni page reads (issue #234). The access table in
 // ./access.ts says which standing reaches which page.
 
+import { divisionRoleOf, type DivisionRole, type RoleType } from "./team";
+
 export const VIEWER_KINDS = [
   "operations-lead",
   "department-head",
@@ -61,31 +63,57 @@ export function initialsOf(name: string): string {
 }
 
 export type ScopeKind = "admin" | "org" | "department" | "division" | "website";
-export type RoleType = "president" | "head" | "lead" | "core";
 
-/** The scope rows and the active role that decide a real member's viewer kind. */
+/** One of a member's active roles, as the viewer reads it. */
+export type ActiveRoleRef = {
+  readonly type: RoleType;
+  /** The division it is in; null for a role in no division. */
+  readonly divisionId: number | null;
+};
+
+/** The scope rows and every active role that decide a real member's viewer kind. */
 export type MemberAccess = {
   readonly scopes: readonly ScopeKind[];
-  /** Their newest active role; null when every role they held has ended. */
-  readonly activeRole: { readonly type: RoleType | null } | null;
+  /** Every role they hold now; none when every role they held has ended. */
+  readonly activeRoles: readonly ActiveRoleRef[];
 };
 
 /**
- * A real account's viewer kind. No member row is a non-member (an applicant),
- * and so is a member row with no active role: someone who left or was moved
- * to alumni gets the applicant's pages, whatever scope rows remain (issue
- * #201). Org-wide or admin access is the operations lead's; a role of type
- * `head` is a department head's (issue #230); a department or division
- * scope, or a lead role, is a division lead's; anyone else on the team is a
+ * A real account's viewer kind, read from all their active roles (issue
+ * #229). No member row is a non-member (an applicant), and so is a member row
+ * with no active role: someone who left or was moved to alumni gets the
+ * applicant's pages, whatever scope rows remain (issue #201). Org-wide or
+ * admin access is the operations lead's; a role of type `head` is a
+ * department head's (issue #230); a department or division scope, or a lead
+ * role in any division, is a division lead's; anyone else on the team is a
  * member.
  */
 export function viewerKindOf(access: MemberAccess | null): ViewerKind {
-  if (access === null || access.activeRole === null) return "non-member";
+  if (access === null || access.activeRoles.length === 0) return "non-member";
   if (access.scopes.some((s) => s === "admin" || s === "org")) return "operations-lead";
-  const roleType = access.activeRole.type;
-  if (roleType === "head") return "department-head";
-  if (access.scopes.some((s) => s === "department" || s === "division") || roleType === "lead") return "division-lead";
+  if (access.activeRoles.some((r) => r.type === "head")) return "department-head";
+  const leadsSomething = access.activeRoles.some((r) => r.type === "lead");
+  if (access.scopes.some((s) => s === "department" || s === "division") || leadsSomething) return "division-lead";
   return "member";
+}
+
+/**
+ * What the viewer is in one division, by the rule the Team pages place
+ * people with (`divisionRoleOf`, ./team.ts): a lead where they hold a lead or
+ * head role in it, a member where they hold any other role in it, null where
+ * they hold none. Someone who leads division A and is a member of division B
+ * is a lead for A and a member for B.
+ */
+export function standingIn(access: MemberAccess, divisionId: number): DivisionRole | null {
+  const here = access.activeRoles.filter((r) => r.divisionId === divisionId);
+  if (here.length === 0) return null;
+  return here.some((r) => divisionRoleOf(r.type) === "lead") ? "lead" : "member";
+}
+
+/** Every division the viewer leads by role, in the order their roles come. */
+export function ledDivisionIds(access: MemberAccess): number[] {
+  const ids = access.activeRoles.flatMap((r) => (r.divisionId !== null && standingIn(access, r.divisionId) === "lead" ? [r.divisionId] : []));
+  return [...new Set(ids)];
 }
 
 /** A real account's standing: its viewer kind, and site-content access from a `website` scope row. */
@@ -102,9 +130,9 @@ export type ScopeUnitRow = {
   readonly deptId: number | null;
 };
 
-/** The active role as `readIdentity` reads it: its type, its division, and its department. */
+/** An active role as `readIdentity` reads it: its type, its division, and its department. */
 export type ScopedRole = {
-  readonly type: RoleType | null;
+  readonly type: RoleType;
   readonly divisionId: number | null;
   /** `roles.dept_id`, or the department of the role's division when that is null. */
   readonly departmentId: number | null;
@@ -117,16 +145,18 @@ export type ViewerUnits = {
 };
 
 /**
- * What a team member's pages cover (issues #184, #230): the divisions and
- * departments their scope rows name, plus their role's own unit. A lead role
- * adds its division; a head role adds its department, with no `department`
- * scope row needed.
+ * What a team member's pages cover (issues #184, #229, #230): the divisions
+ * and departments their scope rows name, plus each active role's own unit. A
+ * role that leads its division (`divisionRoleOf`) adds that division; a head
+ * role adds its department, with no `department` scope row needed.
  */
-export function viewerUnitsOf(scopeRows: readonly ScopeUnitRow[], role: ScopedRole | null): ViewerUnits {
+export function viewerUnitsOf(scopeRows: readonly ScopeUnitRow[], roles: readonly ScopedRole[]): ViewerUnits {
   const divisionIds = scopeRows.flatMap((s) => (s.scope === "division" && s.divisionId !== null ? [s.divisionId] : []));
   const departmentIds = scopeRows.flatMap((s) => (s.scope === "department" && s.deptId !== null ? [s.deptId] : []));
-  if (role?.type === "lead" && role.divisionId !== null) divisionIds.push(role.divisionId);
-  if (role?.type === "head" && role.departmentId !== null) departmentIds.push(role.departmentId);
+  for (const role of roles) {
+    if (role.divisionId !== null && divisionRoleOf(role.type) === "lead") divisionIds.push(role.divisionId);
+    if (role.type === "head" && role.departmentId !== null) departmentIds.push(role.departmentId);
+  }
   return { divisionIds: [...new Set(divisionIds)], departmentIds: [...new Set(departmentIds)] };
 }
 

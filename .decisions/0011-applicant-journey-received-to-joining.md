@@ -1,7 +1,7 @@
 ---
 id: 0011
 title: "An application goes Received, In review, Interview, Decision, and Accept never makes the person a member until Confirm join after the signed NDA"
-status: accepted
+status: amended-in-part by [0014](0014-several-divisions-one-nda.md)
 date: 2026-10-10
 tags: [recruitment, applications, dashboard]
 ---
@@ -29,7 +29,7 @@ Who may take each step, and what each viewer sees, is in the dashboard rules doc
    - The applicant sees only: "The team will contact you about joining. Watch your inbox."
    - The lead or the recruitment manager confirms join once the signed NDA is back. Only that makes the person a member.
 6. **Accept does not touch the person's other applications.**
-7. **One person, one division.**
+7. **One person, one division.** Superseded by [0014](./0014-several-divisions-one-nda.md): a person may hold several divisions at once. 0014 also amends rule 5 for someone already on the team, who joins a new division with no NDA wait; rule 5 still holds for everyone else.
 8. **Withdraw.** When the applicant withdraws, the lead stops seeing the application at once. Its files are deleted 30 days later.
 
 **Binding constraints.**

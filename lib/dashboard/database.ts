@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, isNull, max, min, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, max, min, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getRecruitmentControl, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
@@ -26,8 +26,6 @@ import { DashboardRefused, type DashboardData } from "./data";
 import {
   alumniDirectory,
   buildTeamTree,
-  divisionDirectory,
-  NO_DIVISION,
   seasonAt,
   teamDirectory,
   type MemberDirectory,
@@ -51,7 +49,7 @@ import {
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
-import { databaseTeamWrites, leadDivisionId, readJoining } from "./database-team";
+import { databaseTeamWrites, findForAdd, readDivisionMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
@@ -80,7 +78,13 @@ type Identity = {
   linkedin: string | null;
   memberId: number | null;
   picture: string | null;
+  /**
+   * The role a single-division page names (`primaryRole`): their highest, the
+   * oldest of those. Pages that still show one division read it (#231).
+   */
   role: ActiveRole | null;
+  /** Every role they hold now, oldest first (issue #229). */
+  roles: readonly ActiveRole[];
   /** The divisions and departments a lead's figures cover. */
   divisionIds: number[];
   departmentIds: number[];
@@ -116,10 +120,10 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     picture: user.picture,
   };
   if (user.member_id === null) {
-    return { ...base, role: null, divisionIds: [], departmentIds: [], ...viewerStandingOf(null) };
+    return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...viewerStandingOf(null) };
   }
 
-  const [scopeRows, [role]] = await Promise.all([
+  const [scopeRows, activeRoles] = await Promise.all([
     db
       .select({ scope: scopes.scope, division_id: scopes.divisionId, dept_id: scopes.deptId })
       .from(scopes)
@@ -139,19 +143,35 @@ async function readIdentity(userId: string): Promise<Identity | null> {
       // A head's role names its department; a lead's names it through the division (issue #230).
       .leftJoin(departments, eq(departments.id, sql`coalesce(${roles.deptId}, ${divisions.deptId})`))
       .where(and(eq(roles.memberId, user.member_id), isNull(roles.leavedAt)))
-      .orderBy(desc(roles.startedAt))
-      .limit(1),
+      .orderBy(asc(roles.startedAt)),
   ]);
 
-  const standing = viewerStandingOf({ scopes: scopeRows.map((s) => s.scope), activeRole: role ?? null });
+  const access = { scopes: scopeRows.map((s) => s.scope), activeRoles };
+  const standing = viewerStandingOf(access);
   // Someone with no active role left the team: scope rows that outlived it reach nothing.
-  if (standing.kind === "non-member") return { ...base, role: null, divisionIds: [], departmentIds: [], ...standing };
+  if (standing.kind === "non-member") return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...standing };
 
+  // Every division they lead and the department they head, plus the units their scopes name.
   const units = viewerUnitsOf(
     scopeRows.map((s) => ({ scope: s.scope, divisionId: s.division_id, deptId: s.dept_id })),
-    role ?? null,
+    activeRoles,
   );
-  return { ...base, role: role ?? null, divisionIds: [...units.divisionIds], departmentIds: [...units.departmentIds], ...standing };
+  return {
+    ...base,
+    role: primaryRole(activeRoles),
+    roles: activeRoles,
+    divisionIds: [...units.divisionIds],
+    departmentIds: [...units.departmentIds],
+    ...standing,
+  };
+}
+
+const ROLE_RANK: Readonly<Record<NonNullable<ActiveRole["type"]>, number>> = { president: 0, head: 1, lead: 2, core: 3 };
+
+/** Their highest role, the oldest of those when they hold several: a lead role over a member role. */
+function primaryRole(active: readonly ActiveRole[]): ActiveRole | null {
+  const rank = (r: ActiveRole) => (r.type === null ? 4 : ROLE_RANK[r.type]);
+  return [...active].sort((a, b) => rank(a) - rank(b) || a.startedAt.localeCompare(b.startedAt))[0] ?? null;
 }
 
 type ScopedPosition = {
@@ -619,18 +639,16 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
 }
 
 /**
- * The Members page: the whole team for the operations lead, the lead's own
- * division and the people joining it for a division lead.
+ * The Members page: the whole team for the operations lead; for a division
+ * lead one of their divisions, with the people waiting for Confirm NDA and the
+ * people joining it (./database-team.ts).
  */
-async function membersOf(identity: Identity): Promise<MemberDirectory> {
+async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
   if (identity.kind === "operations-lead") {
     const snapshot = await readTeamSnapshot();
     return teamDirectory(rosterOf(snapshot), snapshot.org, identity.memberId);
   }
-  const division = leadDivisionId(identity);
-  if (division === null) return NO_DIVISION;
-  const [snapshot, joining] = await Promise.all([readTeamSnapshot(), readJoining(division)]);
-  return divisionDirectory(rosterOf(snapshot), snapshot.org, division, identity.memberId, joining);
+  return readDivisionMembers(identity, divisionId);
 }
 
 /** The signed-in account's dashboard, or null when nobody is signed in or there is no database. */
@@ -657,7 +675,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     navCounts: () => navCountsOf(identity),
     hasOwnApplications: () => hasOwnApplications(identity),
     overview: () => overviewOf(identity),
-    members: () => membersOf(identity),
+    members: (divisionId) => membersOf(identity, divisionId ?? null),
+    findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
     alumni: async () =>
       alumniDirectory(canReach(identity, "alumni") ? alumniOf(await readTeamSnapshot()) : []),
     teamTree: async () => {

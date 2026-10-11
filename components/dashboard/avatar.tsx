@@ -19,11 +19,21 @@ export function Avatar({
   name,
   size = "md",
   accent = false,
+  photoUrl = null,
 }: {
   name: string;
   size?: keyof typeof SIZES;
   accent?: boolean;
+  /** The person's photo, shown in place of the initials (board 61g). */
+  photoUrl?: string | null;
 }) {
+  if (photoUrl !== null) {
+    return (
+      // A Blob store URL; next/image would need every store host configured.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={photoUrl} alt="" aria-hidden="true" className={`shrink-0 rounded-full object-cover ${SIZES[size]}`} />
+    );
+  }
   return (
     <span
       aria-hidden="true"
