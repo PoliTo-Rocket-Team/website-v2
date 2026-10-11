@@ -9,6 +9,9 @@ export type DivisionTab = string | null;
 
 export const ALL_DIVISIONS_LABEL = "All divisions";
 
+/** The first tab on a full-access Access page, whose tabs are the team's departments (issue #238). */
+export const ALL_DEPARTMENTS_LABEL = "All departments";
+
 export type DivisionTabOption = {
   readonly division: DivisionTab;
   /** "All divisions", "Mission Analysis" */
@@ -25,11 +28,16 @@ function tabLabel(name: string): string {
  * The tabs over a list: All divisions with every row, then each division with
  * its own. `rowDivisions` names each row's division; a row in none counts
  * only under All divisions. Fewer than two divisions need no tabs: null.
+ * The same tabs over departments start on `allLabel`, "All departments".
  */
-export function divisionTabs(divisions: readonly string[], rowDivisions: readonly (string | null)[]): DivisionTabOption[] | null {
+export function divisionTabs(
+  divisions: readonly string[],
+  rowDivisions: readonly (string | null)[],
+  allLabel: string = ALL_DIVISIONS_LABEL,
+): DivisionTabOption[] | null {
   if (divisions.length < 2) return null;
   return [
-    { division: null, label: ALL_DIVISIONS_LABEL, count: rowDivisions.length },
+    { division: null, label: allLabel, count: rowDivisions.length },
     ...divisions.map((division) => ({
       division,
       label: tabLabel(division),

@@ -4,6 +4,8 @@ import {
   accessByPerson,
   checkRemoveAllAccess,
   checkSaveAccess,
+  departmentOfPlace,
+  placeKey,
   placesOf,
   ROLE_HELD_ACCESS,
   type AccessGrant,
@@ -89,7 +91,7 @@ test("a Save goes only to someone in the division, in the division, with at leas
   assert.equal(checkSaveAccess(lead(), { personId: "6", areas: { orders: "view" } }).ok, false);
   assert.equal(checkSaveAccess(lead(), { personId: 6, areas: { orders: "decide" } }).ok, false);
   // A lead has no department-wide place and no other division.
-  assert.equal(checkSaveAccess(lead(), { personId: 6, where: "department", areas: { orders: "view" } }).ok, false);
+  assert.equal(checkSaveAccess(lead(), { personId: 6, where: "department-1", areas: { orders: "view" } }).ok, false);
   assert.equal(checkSaveAccess(lead(), { personId: 6, where: 2, areas: { orders: "view" } }).ok, false);
   assert.equal(checkSaveAccess(lead(), { personId: 6, where: 1, areas: { orders: "view" } }).ok, true);
 });
@@ -149,7 +151,7 @@ test("a head gives access in the whole department or in one of its divisions", (
     placesOf(departmentUnit).map((p) => (p.kind === "department" ? "department" : p.division.id)),
     ["department", 1, 2],
   );
-  const whole = checkSaveAccess(head(), { personId: 3, where: "department", areas: { members: "view" } });
+  const whole = checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { members: "view" } });
   assert.deepEqual(whole, { ok: true, value: { personId: 3, place: wholeDepartment, changes: [{ kind: "add", target: "members", to: "view" }] } });
   const one = checkSaveAccess(head(), { personId: 4, where: 2, areas: { applications: "edit" } });
   assert.deepEqual(one, { ok: true, value: { personId: 4, place: inAoa, changes: [{ kind: "add", target: "applications", to: "edit" }] } });
@@ -160,12 +162,12 @@ test("a head gives access in the whole department or in one of its divisions", (
 
 test("a head gives only what they hold, at no higher level, inside their department", () => {
   const viewOnly: HeldAccess[] = [{ target: "members", level: "view" }];
-  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department", areas: { members: "edit" } }).ok, false);
-  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department", areas: { orders: "view" } }).ok, false);
-  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department", areas: { members: "view" } }).ok, true);
+  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department-1", areas: { members: "edit" } }).ok, false);
+  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department-1", areas: { orders: "view" } }).ok, false);
+  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department-1", areas: { members: "view" } }).ok, true);
   // A division of another department, and a person from another department, are refused.
   assert.equal(checkSaveAccess(head(), { personId: 3, where: 4, areas: { members: "view" } }).ok, false);
-  assert.equal(checkSaveAccess(head(), { personId: 44, where: "department", areas: { members: "view" } }).ok, false);
+  assert.equal(checkSaveAccess(head(), { personId: 44, where: "department-1", areas: { members: "view" } }).ok, false);
 });
 
 test("a lead's role access cannot be changed or removed by a head", () => {
@@ -192,4 +194,32 @@ test("a grant in one place leaves the same area in another place alone; Remove a
       ],
     );
   }
+});
+
+// Full access across the whole team (issue #238) ---------------------------------
+
+const structures = { id: 2, name: "Structures" };
+const dm = { id: 3, name: "Design & Manufacturing Division" };
+const teamUnit: AccessUnit = {
+  kind: "team",
+  departments: [
+    { department: aerodynamics, divisions: [msa, aoa] },
+    { department: structures, divisions: [dm] },
+  ],
+};
+const giulio: AccessPerson = { id: 31, name: "Giulio Russo", standing: "member", division: dm };
+const team = (grants: AccessGrant[] = []) => ({ unit: teamUnit, held: ROLE_HELD_ACCESS, people: [...headPeople, giulio], grants });
+
+test("full access gives access in every department and every division of the team", () => {
+  assert.deepEqual(placesOf(teamUnit).map(placeKey), ["department-1", 1, 2, "department-2", 3]);
+  const otherDepartment = checkSaveAccess(team(), { personId: 31, where: "department-2", areas: { orders: "edit" } });
+  assert.deepEqual(otherDepartment, {
+    ok: true,
+    value: { personId: 31, place: { kind: "department", department: structures }, changes: [{ kind: "add", target: "orders", to: "edit" }] },
+  });
+  assert.equal(checkSaveAccess(team(), { personId: 4, where: 3, areas: { members: "edit" } }).ok, true);
+  // A place outside the team, and a lead's role access, are still refused.
+  assert.equal(checkSaveAccess(team(), { personId: 4, where: 99, areas: { members: "view" } }).ok, false);
+  assert.equal(checkSaveAccess(team(), { personId: 20, where: 2, areas: { members: "view" } }).ok, false);
+  assert.deepEqual(departmentOfPlace(teamUnit, { kind: "division", division: dm }), structures);
 });

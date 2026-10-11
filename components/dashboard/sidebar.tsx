@@ -8,6 +8,7 @@ import {
   BriefcaseBusiness,
   CircleUserRound,
   GraduationCap,
+  History,
   Inbox,
   KeyRound,
   LayoutGrid,
@@ -30,6 +31,7 @@ const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   alumni: GraduationCap,
   orders: ShoppingCart,
   "division-access": KeyRound,
+  "activity-log": History,
   "my-applications": Inbox,
   "my-account": CircleUserRound,
 };

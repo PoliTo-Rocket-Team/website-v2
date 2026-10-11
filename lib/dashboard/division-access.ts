@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 // The Access page (boards 60, 60b, 60c and 60m for a division lead, issues
-// #145 and #213; boards 65, 65b and 65m for a department head, issue #230):
+// #145 and #213; boards 65, 65b and 65m for a department head, issue #230;
+// the same page across the whole team for full access, issue #238):
 // what the viewer may do in their unit, who holds access there with their
 // role, who the viewer shared it with, and the Give access and Edit access
 // rules. Each person holds each area at one level or not at all, in each
@@ -66,38 +67,69 @@ export function departmentName(department: AccessDepartment): string {
   return /\bDepartment$/.test(department.name) ? department.name : `${department.name} Department`;
 }
 
+/** A department with its open divisions, in the order its tabs show them. */
+export type AccessDepartmentUnit = {
+  readonly department: AccessDepartment;
+  readonly divisions: readonly AccessDivision[];
+};
+
 /**
- * The unit an Access page is about: a lead's division, or a head's
- * department with its open divisions, in the order its tabs show them.
+ * The unit an Access page is about: a lead's division, a head's department
+ * with its open divisions, or, with full access (issue #238), the whole team:
+ * every open department with its open divisions, by name.
  */
 export type AccessUnit =
   | { readonly kind: "division"; readonly division: AccessDivision }
-  | { readonly kind: "department"; readonly department: AccessDepartment; readonly divisions: readonly AccessDivision[] };
+  | ({ readonly kind: "department" } & AccessDepartmentUnit)
+  | { readonly kind: "team"; readonly departments: readonly AccessDepartmentUnit[] };
 
 /** Where a grant applies: one division, or a whole department (a `scopes` row with only `dept_id` set). */
 export type AccessPlace =
   | { readonly kind: "division"; readonly division: AccessDivision }
   | { readonly kind: "department"; readonly department: AccessDepartment };
 
-/** The places a viewer gives access in: their division; or their whole department, then each of its divisions. */
-export function placesOf(unit: AccessUnit): AccessPlace[] {
-  if (unit.kind === "division") return [{ kind: "division", division: unit.division }];
+function departmentPlaces(unit: AccessDepartmentUnit): AccessPlace[] {
   return [
     { kind: "department", department: unit.department },
     ...unit.divisions.map((division): AccessPlace => ({ kind: "division", division })),
   ];
 }
 
-/** The place Give access starts on: the lead's division, the head's whole department. */
+/**
+ * The places a viewer gives access in: their division; or their whole
+ * department, then each of its divisions; or, across the team, each
+ * department in turn, whole and then each of its divisions.
+ */
+export function placesOf(unit: AccessUnit): AccessPlace[] {
+  switch (unit.kind) {
+    case "division":
+      return [{ kind: "division", division: unit.division }];
+    case "department":
+      return departmentPlaces(unit);
+    case "team":
+      return unit.departments.flatMap(departmentPlaces);
+  }
+}
+
+/** The place Give access starts on: the lead's division, the head's whole department, the team's first department. */
 export function homePlace(unit: AccessUnit): AccessPlace {
   return placesOf(unit)[0];
 }
 
-/** What the drawers send for a place: "department", or the division's id. */
-export type PlaceKey = "department" | number;
+/** The department a place is in on a team page (issue #238); null when the unit is not the team or holds no such place. */
+export function departmentOfPlace(unit: AccessUnit, place: AccessPlace): AccessDepartment | null {
+  if (unit.kind !== "team") return null;
+  const found = unit.departments.find((d) =>
+    place.kind === "department" ? d.department.id === place.department.id : d.divisions.some((v) => v.id === place.division.id),
+  );
+  return found?.department ?? null;
+}
+
+/** What the drawers send for a place: "department-<id>", or the division's id. */
+export type PlaceKey = `department-${number}` | number;
 
 export function placeKey(place: AccessPlace): PlaceKey {
-  return place.kind === "department" ? "department" : place.division.id;
+  return place.kind === "department" ? `department-${place.department.id}` : place.division.id;
 }
 
 export function samePlace(a: AccessPlace, b: AccessPlace): boolean {
@@ -109,9 +141,9 @@ export function placeLine(place: AccessPlace): string {
   return place.kind === "division" ? place.division.name : `${departmentName(place.department)}, all divisions`;
 }
 
-/** The unit as "Your access" names it (boards 60 and 65). */
+/** The unit as "Your access" names it (boards 60 and 65): on a team page, "the whole team". */
 export function unitLine(unit: AccessUnit): string {
-  return placeLine(homePlace(unit));
+  return unit.kind === "team" ? "the whole team" : placeLine(homePlace(unit));
 }
 
 /** One area the viewer holds in their unit (a chip under "Your access"). */
@@ -120,7 +152,7 @@ export type HeldAccess = {
   readonly level: AccessLevel;
 };
 
-/** A head's role holds every area at Can edit across their department (board 65). */
+/** A head's role holds every area at Can edit across their department (board 65); full access holds it across the team (issue #238). */
 export const ROLE_HELD_ACCESS: readonly HeldAccess[] = ACCESS_TARGETS.map((target) => ({ target, level: "edit" }));
 
 /** A lead or head of the unit, whose access comes with the role, or anyone else in it. */
@@ -295,7 +327,7 @@ export type AccessWrite = {
 const level = z.enum(ACCESS_LEVELS).optional();
 const saveAccessSchema = z.object({
   personId: z.number().int().positive(),
-  where: z.union([z.literal("department"), z.number().int().positive()]).optional(),
+  where: z.union([z.string().regex(/^department-[1-9]\d*$/), z.number().int().positive()]).optional(),
   areas: z.strictObject({ positions: level, applications: level, members: level, orders: level }),
 });
 
@@ -304,9 +336,14 @@ type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
 type AccessFacts = Pick<AccessPage, "unit" | "held" | "people" | "grants">;
 
 function outsideUnit(unit: AccessUnit): string {
-  return unit.kind === "division"
-    ? "You can give access only to people in your division."
-    : "You can give access only to people in your department.";
+  switch (unit.kind) {
+    case "division":
+      return "You can give access only to people in your division.";
+    case "department":
+      return "You can give access only to people in your department.";
+    case "team":
+      return "You can give access only to people on the team.";
+  }
 }
 
 function checkChanges(access: AccessFacts, personId: number, place: AccessPlace, next: AreaLevels): Checked<AccessWrite> {
