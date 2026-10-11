@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { applications, applyPositions, divisions, members, roles, scopes, teamJoins, teamLeaves, users } from "@/db/schema";
@@ -776,12 +776,22 @@ async function savedSubject(divisionId: number, org: OrgChart): Promise<Exclude<
     .where(and(eq(divisions.id, divisionId), isNotNull(divisions.closedAt)))
     .limit(1);
   if (!row || row.dept_id === null) return null;
-  return { kind: "closed", division: { id: row.id, name: row.name, departmentId: row.dept_id, code: row.code?.trim() || null } };
+  const held = await getDb()
+    .selectDistinct({ member_id: roles.memberId })
+    .from(roles)
+    .where(and(eq(roles.divisionId, divisionId), isNull(roles.leavedAt)));
+  return {
+    kind: "closed",
+    division: { id: row.id, name: row.name, departmentId: row.dept_id, code: row.code?.trim() || null },
+    stillIn: held.flatMap((r) => (r.member_id === null ? [] : [r.member_id])),
+  };
 }
 
 /**
  * Writes a checked plan in one batch: the division row (inserted for New
- * division, `closed_at` cleared on a reopen), each lead change in this
+ * division, `closed_at` cleared on a reopen), on a reopen the clearing of
+ * everyone it still held (roles ended but the kept leads', pending NDA adds
+ * and division access removed) before anyone joins, each lead change in this
  * division only, old leads who leave it (roles ended, its access removed) or
  * leave the team (every role and access ends, as Leaves the team does), and
  * new members. The emails new to the team wait for Confirm NDA after it, as
@@ -807,6 +817,22 @@ async function writeDivisionPlan(
           .update(divisions)
           .set({ name: plan.name, code: plan.code, ...(plan.reopen ? { closedAt: null } : {}) })
           .where(eq(divisions.id, divisionId)),
+    ...(plan.reopen === null
+      ? []
+      : [
+          db
+            .update(roles)
+            .set({ leavedAt: on })
+            .where(
+              and(
+                eq(roles.divisionId, divisionId),
+                isNull(roles.leavedAt),
+                ...(plan.reopen.keep.length === 0 ? [] : [notInArray(roles.memberId, [...plan.reopen.keep])]),
+              ),
+            ),
+          db.delete(teamJoins).where(eq(teamJoins.divisionId, divisionId)),
+          db.delete(scopes).where(and(eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId))),
+        ]),
     ...plan.promote.map((id) => db.update(roles).set({ type: "lead" }).where(inDivision(id))),
     ...(joining.length === 0 ? [] : [db.insert(roles).values(joining)]),
     ...plan.demote.map((id) => db.update(roles).set({ type: "core" }).where(and(inDivision(id), eq(roles.type, "lead")))),
@@ -859,7 +885,7 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
   if (!planned.ok) return refused(planned.error);
   const result = await writeDivisionPlan(identity, divisionId, planned.plan, null);
   // Position codes are built from the division's code when read, so a new code reaches every position at once.
-  if (planned.plan.codeChanged || planned.plan.reopen) refreshPositions();
+  if (planned.plan.codeChanged || planned.plan.reopen !== null) refreshPositions();
   return result;
 }
 

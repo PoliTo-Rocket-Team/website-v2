@@ -285,7 +285,9 @@ These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 6
   asks "are you sure", then closes its open positions and removes every access given in it.
 - Reopen asks "are you sure", then opens the Edit division drawer for the closed division. It
   opens again only when that drawer is saved with at least one lead, so an open division never
-  has zero leads. Nobody who was in it before comes back.
+  has zero leads. Nobody who was in it before comes back. A division closed before this rule can
+  still hold roles: the save that reopens it ends them, and drops its pending NDA adds and its
+  division access. A picked lead who still held a role there keeps that one role, now as a lead.
 - The site sends no emails here either: the drawer shows the amber note for anyone added by
   email.
 

@@ -108,7 +108,16 @@ export type TeamPerson = {
 export type DivisionSubject =
   | { readonly kind: "new"; readonly departmentId: number }
   | { readonly kind: "open"; readonly division: OrgDivision }
-  | { readonly kind: "closed"; readonly division: OrgDivision };
+  | {
+      readonly kind: "closed";
+      readonly division: OrgDivision;
+      /**
+       * People whose role in it never ended. Close division refuses while
+       * anyone is in it, but a division closed before that rule can still hold
+       * roles; the org chart leaves closed divisions out, so it is read here.
+       */
+      readonly stillIn: readonly number[];
+    };
 
 /** What a checked save changes; each data source writes it in one go. */
 export type DivisionPlan = {
@@ -117,8 +126,14 @@ export type DivisionPlan = {
   readonly code: string;
   /** The code changed: the division's position codes read the new one from now on. */
   readonly codeChanged: boolean;
-  /** A closed division opens again with this save. */
-  readonly reopen: boolean;
+  /**
+   * A closed division opens again with this save, or null. It comes back
+   * with no members (Owner decision, 2026-10-11): every role still active in
+   * it ends, its pending NDA adds and its division access go, and only the
+   * roles of `keep` stay, the leads this save picks who still held one there.
+   * Those are in `promote`, so nobody gets a second role in the division.
+   */
+  readonly reopen: { readonly keep: readonly number[] } | null;
   /** Members of the division who become its leads. */
   readonly promote: readonly number[];
   /** People not in the division who join it as leads, keeping their other divisions. */
@@ -202,6 +217,9 @@ export function planDivisionSave(input: {
   const divisionId = subject.kind === "new" ? null : subject.division.id;
   const roleHere = (p: TeamPerson) => (divisionId === null ? null : roleIn(p.memberships, divisionId));
   const leads = subject.kind === "open" ? team.filter((p) => roleHere(p) === "lead").map((p) => p.id) : [];
+  const stillIn = subject.kind === "closed" ? subject.stillIn : [];
+  /** A role here this save turns into a lead's: a member of an open division, or a role a closed one still holds. */
+  const holdsRole = (personId: number) => roleHere(byId.get(personId)!) === "member" || stillIn.includes(personId);
 
   const newLeads = [...new Set(save.newLeads)];
   const oldIds = save.oldLeads.map((o) => o.personId);
@@ -254,9 +272,9 @@ export function planDivisionSave(input: {
       name: storedDivisionName(save.name),
       code: save.code,
       codeChanged: subject.kind === "open" && normalizeDivisionCode(subject.division.code ?? "") !== save.code,
-      reopen: subject.kind === "closed",
-      promote: newLeads.filter((p) => roleHere(byId.get(p)!) === "member"),
-      joinAsLead: newLeads.filter((p) => roleHere(byId.get(p)!) === null),
+      reopen: subject.kind === "closed" ? { keep: newLeads.filter((p) => stillIn.includes(p)) } : null,
+      promote: newLeads.filter(holdsRole),
+      joinAsLead: newLeads.filter((p) => !holdsRole(p)),
       demote,
       leaveDivision,
       leaveTeam,

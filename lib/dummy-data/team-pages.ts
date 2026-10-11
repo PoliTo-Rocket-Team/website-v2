@@ -456,7 +456,8 @@ function writesFor(
     if (open) return { kind: "open", division: open };
     const shut = closed.find((d) => d.id === divisionId);
     const division: OrgDivision | null = shut ? { id: shut.id, name: shut.name, departmentId: shut.departmentId, code: shut.code } : null;
-    return division ? { kind: "closed", division } : null;
+    // A preview division closes only when nobody is in it, and the seeded closed ones hold nobody.
+    return division ? { kind: "closed", division, stillIn: [] } : null;
   };
 
   return {
