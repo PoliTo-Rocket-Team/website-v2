@@ -120,8 +120,10 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
     setEditing({ kind: "waiting", waiting: w });
   };
 
+  const drawerOpen = open !== null || editing !== null || adding || drawerTarget !== null;
+
   return (
-    <DrawerPage drawerOpen={open !== null || editing !== null || adding || drawerTarget !== null}>
+    <DrawerPage drawerOpen={drawerOpen}>
       <PageHeader
         title="Members"
         intro={departmentLine(page)}
@@ -191,6 +193,7 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
           onAsk={setAsking}
           onFill={fillDetails}
           phoneCard="line"
+          drawerOpen={drawerOpen}
         />
       )}
 

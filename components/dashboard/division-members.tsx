@@ -66,8 +66,10 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
   };
   const fillDetails = (w: WaitingPerson) => setEditing({ kind: "waiting", waiting: w });
 
+  const drawerOpen = open !== null || editing !== null || adding;
+
   return (
-    <DrawerPage drawerOpen={open !== null || editing !== null || adding}>
+    <DrawerPage drawerOpen={drawerOpen}>
       <PageHeader
         title="Members"
         intro={intro}
@@ -129,6 +131,7 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
         onAsk={setAsking}
         onFill={fillDetails}
         phoneCard="chips"
+        drawerOpen={drawerOpen}
       />
 
       {page.waiting.map((w) => (
@@ -167,6 +170,7 @@ export function PeopleTable({
   onAsk,
   onFill,
   phoneCard,
+  drawerOpen,
 }: {
   people: readonly DivisionPerson[];
   waiting: readonly WaitingPerson[];
@@ -179,6 +183,8 @@ export function PeopleTable({
   onAsk: (asking: Asking) => void;
   onFill: (waiting: WaitingPerson) => void;
   phoneCard: "chips" | "line";
+  /** A side panel is open: Phone and Discord give way (phoneColumn, discordColumn). */
+  drawerOpen: boolean;
 }) {
   const waitingRows = waitingDivision === null ? [] : waiting;
   const name = waitingDivision?.name ?? "";
@@ -227,10 +233,10 @@ export function PeopleTable({
               <th scope="col" className={`${TH} w-[15%]`}>
                 Role
               </th>
-              <th scope="col" className={`${TH} hidden w-[15%] lg:table-cell`}>
+              <th scope="col" className={`${TH} ${phoneColumn(drawerOpen)} w-[15%]`}>
                 Phone
               </th>
-              <th scope="col" className={`${TH} hidden w-[12%] xl:table-cell`}>
+              <th scope="col" className={`${TH} ${discordColumn(drawerOpen)} w-[12%]`}>
                 Discord
               </th>
               <th scope="col" className="w-14">
@@ -249,6 +255,7 @@ export function PeopleTable({
                   onConfirm={() => onAsk({ kind: "nda", waiting: w, division: name })}
                   onFill={() => onFill(w)}
                   onCancel={() => onAsk({ kind: "cancel", waiting: w, short })}
+                  drawerOpen={drawerOpen}
                 />
               ))}
             {people.map((p) => (
@@ -261,6 +268,7 @@ export function PeopleTable({
                 onOpen={() => onOpen(p.id)}
                 onRemove={(r) => onAsk({ kind: "remove", person: p, divisionId: r.divisionId, short: r.short })}
                 onLeave={() => onAsk({ kind: "leave", person: p })}
+                drawerOpen={drawerOpen}
               />
             ))}
           </tbody>
@@ -328,7 +336,7 @@ export function WaitingLine({ waiting }: { waiting: WaitingPerson }) {
   return (
     <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]">
       <span className="inline-flex h-5 items-center whitespace-nowrap rounded bg-warning-soft px-1.5 font-medium text-warning">Waiting for NDA</span>
-      {noDetailsFilled(waiting.details) && <span className="whitespace-nowrap text-prt-muted">Details not filled yet</span>}
+      {noDetailsFilled(waiting.details) && <span className="min-w-0 max-w-full truncate text-prt-muted">Details not filled yet</span>}
     </span>
   );
 }
@@ -347,6 +355,21 @@ export function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
 
 const DASH = <span className="text-dim">–</span>;
 
+// From xl an open side panel takes 428px of the page, which leaves the table
+// too short for Phone and Discord: they go while it is open, as Orders hides
+// its Department column (board 61b, issue #244), so Member keeps its names and
+// waiting lines whole.
+
+/** The Phone column: from lg, and not while a side panel is open from xl. */
+function phoneColumn(drawerOpen: boolean): string {
+  return drawerOpen ? "hidden lg:table-cell xl:hidden" : "hidden lg:table-cell";
+}
+
+/** The Discord column: from xl, and not while a side panel is open. */
+function discordColumn(drawerOpen: boolean): string {
+  return drawerOpen ? "hidden" : "hidden xl:table-cell";
+}
+
 function WaitingRow({
   waiting,
   division,
@@ -354,10 +377,12 @@ function WaitingRow({
   onConfirm,
   onFill,
   onCancel,
+  drawerOpen,
 }: {
   waiting: WaitingPerson;
   division: DivisionMembers["division"];
   editable: boolean;
+  drawerOpen: boolean;
   onConfirm: () => void;
   onFill: () => void;
   onCancel: () => void;
@@ -377,8 +402,8 @@ function WaitingRow({
         <Chips chips={[{ divisionId: division.id, label: division.code ?? divisionLabel(division.name), code: division.code !== null }]} />
       </td>
       <td className="px-5 py-2.5">{editable ? <ConfirmNdaButton onClick={onConfirm} /> : <span className="text-[14px] text-prt-muted">Waiting</span>}</td>
-      <td className="hidden px-5 py-2.5 text-[14px] lg:table-cell">{DASH}</td>
-      <td className="hidden px-5 py-2.5 text-[14px] xl:table-cell">{DASH}</td>
+      <td className={`${phoneColumn(drawerOpen)} px-5 py-2.5 text-[14px]`}>{DASH}</td>
+      <td className={`${discordColumn(drawerOpen)} px-5 py-2.5 text-[14px]`}>{DASH}</td>
       <td className="pr-4 text-right">
         {editable && (
           <RowMenu label={`Actions for ${waiting.email}`}>
@@ -403,11 +428,13 @@ function PersonRow({
   onOpen,
   onRemove,
   onLeave,
+  drawerOpen,
 }: {
   person: DivisionPerson;
   removals: readonly DivisionRemoval[];
   selected: boolean;
   editable: boolean;
+  drawerOpen: boolean;
   onOpen: () => void;
   onRemove: (removal: DivisionRemoval) => void;
   onLeave: () => void;
@@ -434,10 +461,10 @@ function PersonRow({
         <Chips chips={person.chips} />
       </td>
       <td className={`truncate px-5 py-2.5 text-[14px] ${lead ? "text-accent" : "text-prt-text"}`}>{roleText(person)}</td>
-      <td className="hidden px-5 py-2.5 text-[14px] text-text-2 lg:table-cell" onClick={(e) => e.stopPropagation()}>
+      <td className={`${phoneColumn(drawerOpen)} px-5 py-2.5 text-[14px] text-text-2`} onClick={(e) => e.stopPropagation()}>
         {person.details.phone === "" ? DASH : <Private label={`Phone of ${person.name}, hover to show`}>{person.details.phone}</Private>}
       </td>
-      <td className="hidden truncate px-5 py-2.5 text-[14px] text-text-2 xl:table-cell">{person.details.discord || DASH}</td>
+      <td className={`${discordColumn(drawerOpen)} truncate px-5 py-2.5 text-[14px] text-text-2`}>{person.details.discord || DASH}</td>
       <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
         {editable && !person.self ? (
           <RowMenu label={`Actions for ${person.name}`}>
@@ -638,7 +665,7 @@ function CancelAddDialog({ asking, onClose }: { asking: Extract<Asking, { kind: 
       danger
       title={`Cancel adding ${who}?`}
       description={`They are no longer waiting for the NDA in ${short}. They never joined, so nothing else changes.`}
-      cancelLabel="Keep"
+      cancelLabel="Keep them"
       confirmLabel="Cancel add"
       pending={pending}
       onConfirm={confirm}

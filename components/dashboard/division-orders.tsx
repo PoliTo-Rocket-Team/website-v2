@@ -86,7 +86,8 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 // carry a lock and open read-only. The request panel has Cancel request and
 // Edit order where the viewer may use them, and New order sends a request for
 // one of the viewer's divisions. While a side panel is open the Department
-// column is hidden (board 61b). Props in, nothing fetched; the list lives in
+// column is hidden (board 61b), and Requested by too from xl to 1439px wide
+// (rowGrid). Props in, nothing fetched; the list lives in
 // this page's state, so a sent, edited or cancelled request shows at once. On a
 // phone the table is a stack of cards, the filters are chips, and each panel
 // is a full page.
@@ -158,11 +159,16 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
                   <StatusPill status={o.status} dot={false} />
                 </span>
                 <span className="block truncate text-[13px] text-prt-muted">{[o.reason, o.requestedBy].filter(Boolean).join(" · ")}</span>
-                <span className="mt-2 flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-[14px] tabular-nums text-text-2">
+                {/* The department · division line wraps rather than cutting the division short beside the lock (issue #244). */}
+                <span className="mt-2 flex items-start justify-between gap-3">
+                  <span className="min-w-0 break-words text-[14px] tabular-nums text-text-2">
                     {formatEuro(orderTotal(o))} · {unitLine(o.unit)}
                   </span>
-                  {locked && <ReadOnlyLock />}
+                  {locked && (
+                    <span className="flex h-5 shrink-0 items-center">
+                      <ReadOnlyLock />
+                    </span>
+                  )}
                 </span>
               </button>
             </li>
@@ -174,17 +180,17 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
 
       <section aria-label="Orders" className={`${PANEL} mt-5 hidden md:block`}>
         <div className={`${rowGrid(drawerOpen)} h-10 border-b border-hairline`}>
-          <span className={EYEBROW}>Item</span>
+          <span className={`${EYEBROW} whitespace-nowrap`}>Item</span>
           {!drawerOpen && (
             <span className="flex items-center gap-1.5">
-              <span className={EYEBROW}>Department · Division</span>
+              <span className={`${EYEBROW} whitespace-nowrap`}>Department · Division</span>
               {departmentFilter("header")}
             </span>
           )}
-          <span className={EYEBROW}>Requested by</span>
-          <span className={`${EYEBROW} text-right`}>Total</span>
+          <span className={`${EYEBROW} whitespace-nowrap ${requestedByCell(drawerOpen)}`}>Requested by</span>
+          <span className={`${EYEBROW} whitespace-nowrap text-right`}>Total</span>
           <span className="flex items-center gap-1.5">
-            <span className={EYEBROW}>Status</span>
+            <span className={`${EYEBROW} whitespace-nowrap`}>Status</span>
             {statusFilter("header")}
           </span>
           <span aria-hidden />
@@ -212,10 +218,10 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
                       {o.unit && <span className="block truncate text-[12px] text-prt-muted">{divisionShort(o.unit.division.name)}</span>}
                     </span>
                   )}
-                  <span className="truncate text-[13px] text-text-2">{o.requestedBy}</span>
+                  <span className={`truncate text-[13px] text-text-2 ${requestedByCell(drawerOpen)}`}>{o.requestedBy}</span>
                   <span className="text-right">
                     <span className="block text-[14px] font-semibold tabular-nums">{formatEuro(orderTotal(o))}</span>
-                    <span className="block text-[11px] tabular-nums text-prt-muted">{orderBreakdown(o)}</span>
+                    <span className="block truncate text-[11px] tabular-nums text-prt-muted">{orderBreakdown(o)}</span>
                   </span>
                   <span className="min-w-0">
                     <StatusPill status={o.status} dot />
@@ -271,12 +277,24 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
   );
 }
 
-/** Board 61's columns; while a side panel is open the Department column goes (board 61b). */
+/**
+ * Board 61's columns. From xl the Department · Division column keeps room for
+ * its header on one line: 21 mono letters at 10px with 0.3em tracking, then the
+ * filter button (issue #244). While a side panel is open the Department column
+ * goes (board 61b); from xl up to 1439px wide, where the panel leaves the table
+ * about 520 to 680px, Requested by goes too, so no cell is squeezed to a few
+ * letters. From 1440px the table is as wide as on boards 61b to 61d.
+ */
 function rowGrid(drawerOpen: boolean): string {
   const columns = drawerOpen
-    ? "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_100px_minmax(0,150px)_20px]"
-    : "grid-cols-[minmax(0,1.5fr)_minmax(0,1.15fr)_minmax(0,0.9fr)_100px_minmax(0,150px)_20px]";
+    ? "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_100px_minmax(0,150px)_20px] xl:max-[1439px]:grid-cols-[minmax(0,1fr)_100px_minmax(0,150px)_20px]"
+    : "grid-cols-[minmax(0,1.5fr)_minmax(0,1.15fr)_minmax(0,0.9fr)_100px_minmax(0,150px)_20px] xl:grid-cols-[minmax(0,1.5fr)_minmax(220px,1.15fr)_minmax(0,0.9fr)_100px_minmax(0,150px)_20px]";
   return `grid ${columns} items-center gap-x-4 px-[18px]`;
+}
+
+/** The Requested by header and cells: hidden from xl to 1439px while a side panel is open (rowGrid). */
+function requestedByCell(drawerOpen: boolean): string {
+  return drawerOpen ? "xl:max-[1439px]:hidden" : "";
 }
 
 function ReadOnlyLock() {

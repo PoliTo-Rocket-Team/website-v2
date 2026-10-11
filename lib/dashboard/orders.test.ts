@@ -19,6 +19,7 @@ import {
   orderPage,
   ordersIntro,
   ordersPageFor,
+  orgUnitsOf,
   pagerSlots,
   parseEuros,
   sortOrders,
@@ -284,4 +285,28 @@ test("full access edits every order in the team and orders for any division, dec
   );
   assert.equal(ordersIntro(scope), "Every order in the team. You can edit all of them.");
   assert.equal(checkDecision(scope.decides, "waiting", { kind: "approve" }).ok, false);
+});
+
+test("the Department filter lists departments in the team's order, as board 67b does, and divisions by name", () => {
+  const units = orgUnitsOf(
+    [
+      { id: 6, name: "Operations" },
+      { id: 2, name: "Structures" },
+      { id: 1, name: "Aerodynamics" },
+    ],
+    [
+      { id: 2, name: "Optimization and Analysis Division", departmentId: 1 },
+      { id: 7, name: "Logistics Division", departmentId: 6 },
+      { id: 1, name: "Mission Analysis Division", departmentId: 1 },
+      { id: 30, name: "Unplaced Division", departmentId: null },
+    ],
+  );
+  assert.deepEqual(
+    units.map((d) => [d.name, d.divisions.map((v) => v.name)]),
+    [
+      ["Aerodynamics", ["Mission Analysis Division", "Optimization and Analysis Division"]],
+      ["Structures", []],
+      ["Operations", ["Logistics Division"]],
+    ],
+  );
 });

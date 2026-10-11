@@ -10,6 +10,7 @@ import {
   orderActions,
   orderingDivisions,
   ordersPageFor,
+  orgUnitsOf,
   stateAfterDecision,
   stateAfterEdit,
   WHOLE_TEAM,
@@ -162,18 +163,9 @@ function localId(): number {
   return randomInt(1_000_000, 2_000_000_000);
 }
 
-/** Every department and its divisions, by name. */
+/** Every department in the team's order and its divisions (`orgUnitsOf`). */
 function orgUnits(): OrgDepartmentUnits[] {
-  return [...departments]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((d) => ({
-      id: d.id,
-      name: d.name,
-      divisions: divisions
-        .filter((v) => v.departmentId === d.id)
-        .map((v) => ({ id: v.id, name: v.name }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    }));
+  return orgUnitsOf(departments, divisions);
 }
 
 function unitOfDivision(divisionId: number): OrderUnit {
