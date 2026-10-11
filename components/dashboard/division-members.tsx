@@ -316,7 +316,7 @@ export function Private({ children, label }: { children: ReactNode; label: strin
   );
 }
 
-function MailAvatar() {
+export function MailAvatar() {
   return (
     <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-muted">
       <Mail className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -324,7 +324,7 @@ function MailAvatar() {
   );
 }
 
-function WaitingLine({ waiting }: { waiting: WaitingPerson }) {
+export function WaitingLine({ waiting }: { waiting: WaitingPerson }) {
   return (
     <span className="mt-0.5 flex items-center gap-2 text-[12px]">
       <span className="inline-flex h-5 items-center whitespace-nowrap rounded bg-warning-soft px-1.5 font-medium text-warning">Waiting for NDA</span>
@@ -333,7 +333,7 @@ function WaitingLine({ waiting }: { waiting: WaitingPerson }) {
   );
 }
 
-function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
+export function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
@@ -470,7 +470,7 @@ function PersonRow({
   );
 }
 
-function RowMenu({ label, children }: { label: string; children: ReactNode }) {
+export function RowMenu({ label, children }: { label: string; children: ReactNode }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -496,20 +496,24 @@ function RowMenu({ label, children }: { label: string; children: ReactNode }) {
  * A menu item; when `locked` names a reason the item is disabled, with a
  * lock and the reason under it (Owner decision, 2026-10-11).
  */
-function MenuItem({
+export function MenuItem({
   onSelect,
   icon,
   danger = false,
   locked = null,
+  detail = null,
   children,
 }: {
   onSelect: () => void;
   icon?: ReactNode;
   danger?: boolean;
   locked?: string | null;
+  /** A muted line under an open item: "Stays in Structures" (board 68b5). */
+  detail?: string | null;
   children: ReactNode;
 }) {
   const disabled = locked !== null;
+  const under = locked ?? detail;
   return (
     <DropdownMenuPrimitive.Item
       disabled={disabled}
@@ -523,7 +527,7 @@ function MenuItem({
       </span>
       <span className="min-w-0">
         <span className="block">{children}</span>
-        {locked !== null && <span className="mt-0.5 block text-[12px] leading-snug text-dim">{locked}</span>}
+        {under !== null && <span className="mt-0.5 block text-[12px] leading-snug text-dim">{under}</span>}
       </span>
     </DropdownMenuPrimitive.Item>
   );

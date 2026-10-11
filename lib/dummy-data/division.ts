@@ -146,7 +146,7 @@ export type AccessViewerKind = "division-lead" | "department-head";
  * department; null when their place is neither. A lead of several divisions
  * gets the oldest they lead until #185 gives them all.
  */
-function unitOf(kind: AccessViewerKind, viewer: DummyPerson): AccessUnit | null {
+function unitOf(kind: AccessViewerKind, viewer: DummyPerson, closed: ReadonlySet<number>): AccessUnit | null {
   const placement = viewer.placement;
   if (kind === "division-lead") {
     const divisionId = ledDivisionOf(placement);
@@ -158,7 +158,7 @@ function unitOf(kind: AccessViewerKind, viewer: DummyPerson): AccessUnit | null 
       kind: "department",
       department,
       divisions: divisions
-        .filter((d) => d.departmentId === department.id)
+        .filter((d) => d.departmentId === department.id && !closed.has(d.id))
         .map((d) => accessDivision(d.id))
         .sort((a, b) => a.name.localeCompare(b.name)),
     };
@@ -211,8 +211,13 @@ function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
  * gone. The other leads of the unit show with the access their role gives,
  * one row for each division of the unit they lead.
  */
-export function dummyAccessPage(kind: AccessViewerKind, viewer: DummyPerson, roster: readonly RosterEntry[]): AccessPage | null {
-  const unit = unitOf(kind, viewer);
+export function dummyAccessPage(
+  kind: AccessViewerKind,
+  viewer: DummyPerson,
+  roster: readonly RosterEntry[],
+  closed: ReadonlySet<number> = new Set(),
+): AccessPage | null {
+  const unit = unitOf(kind, viewer, closed);
   if (unit === null) return null;
   const inside = roster.filter((e) => e.id !== viewer.id && membershipsInUnit(e, unit).length > 0);
   const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e, unit)]));
@@ -253,8 +258,9 @@ export function dummySaveAccess(
   viewer: DummyPerson,
   roster: readonly RosterEntry[],
   input: unknown,
+  closed: ReadonlySet<number> = new Set(),
 ): WriteResult<readonly AccessGrant[]> {
-  const access = dummyAccessPage(kind, viewer, roster);
+  const access = dummyAccessPage(kind, viewer, roster, closed);
   if (access === null) return refused("Only a division lead or a department head gives access here.");
   const checked = checkSaveAccess(access, input);
   if (!checked.ok) return refused(checked.error);
@@ -278,8 +284,9 @@ export function dummyRemoveAllAccess(
   viewer: DummyPerson,
   roster: readonly RosterEntry[],
   personId: number,
+  closed: ReadonlySet<number> = new Set(),
 ): WriteResult<null> {
-  const access = dummyAccessPage(kind, viewer, roster);
+  const access = dummyAccessPage(kind, viewer, roster, closed);
   if (access === null) return refused("Only a division lead or a department head removes access here.");
   const checked = checkRemoveAllAccess(access, personId);
   return checked.ok ? written(null) : refused(checked.error);

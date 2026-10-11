@@ -1,0 +1,1031 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { ChevronDown, CornerDownLeft, Lock, MailPlus, Pencil, RefreshCw, RotateCcw, Search, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { toast } from "sonner";
+import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
+import type { ClosedDivision } from "@/lib/dashboard/department-members";
+import {
+  divisionCodeError,
+  divisionNameError,
+  normalizeDivisionCode,
+  storedDivisionName,
+  type DivisionSave,
+  type OldLeadOutcome,
+  type TeamPick,
+  type TeamSearch,
+} from "@/lib/dashboard/division-edit";
+import { matchesPerson, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
+import { divisionLabel, type Permission } from "@/lib/dashboard/team";
+import { Avatar } from "./avatar";
+import { ConfirmDialog } from "./confirm-dialog";
+import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
+import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
+import { inputClass } from "./field";
+
+// New division (board 69d), Edit division (68b to 68b8) and the Edit division
+// drawer a closed division reopens from (68e, Owner decision on #232): name and
+// code, the leads, and the members, in one drawer.
+//
+// Name, code and leads are a draft until "Save changes", which asks "are you
+// sure" first; the server checks every rule again (lib/dashboard/division-
+// edit.ts). An open division's members are changed one by one, as on the
+// Members page: Add member, Confirm NDA, Remove and Leaves the team act at
+// once, each behind its own confirm. New division and a reopen gather their
+// members in the draft, since the division is not open yet.
+
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
+const LIST = "overflow-hidden rounded-xl border border-hairline";
+const SECTION_LABEL = "text-[13px] text-prt-text";
+const MEMBERS_SHOWN = 5;
+
+/** What the drawer is about: a new division in a department, an open division, or a closed one being reopened. */
+export type DivisionDrawerTarget =
+  | { readonly kind: "new"; readonly department: { readonly id: number; readonly name: string } }
+  | { readonly kind: "edit"; readonly tab: DivisionMembers }
+  | { readonly kind: "reopen"; readonly closed: ClosedDivision };
+
+type TakenCode = { readonly id: number; readonly name: string; readonly code: string | null };
+
+/** A lead picked in the draft, and the lead they replace, if any (board 68b3). */
+type NewLead = { readonly pick: TeamPick; readonly replaces: number | null };
+
+/** The drawer's draft: what "Save changes" sends. */
+type Draft = {
+  readonly name: string;
+  readonly code: string;
+  readonly added: readonly NewLead[];
+  /** Leads removed with Remove, not replaced. */
+  readonly removed: readonly number[];
+  /** What happens to each lead who is replaced or removed; "member" when not chosen (Owner decision, 2026-10-11). */
+  readonly outcomes: Readonly<Record<number, OldLeadOutcome>>;
+  /** New division and a reopen only: people from the team, and emails new to it. */
+  readonly members: readonly TeamPick[];
+  readonly emails: readonly string[];
+};
+
+function draftOf(target: DivisionDrawerTarget): Draft {
+  const division = target.kind === "edit" ? target.tab.division : target.kind === "reopen" ? target.closed : null;
+  return {
+    name: division ? divisionLabel(division.name) : "",
+    code: division?.code ?? "",
+    added: [],
+    removed: [],
+    outcomes: {},
+    members: [],
+    emails: [],
+  };
+}
+
+function firstName(name: string): string {
+  return name.split(" ")[0] ?? name;
+}
+
+export function DivisionDrawer({
+  target,
+  takenCodes,
+  editable,
+  onClose,
+  onFill,
+}: {
+  target: DivisionDrawerTarget | null;
+  takenCodes: readonly TakenCode[];
+  editable: boolean;
+  onClose: () => void;
+  /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
+  onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+}) {
+  // The last target stays while the panel closes, so its content does not vanish mid-close.
+  const [shown, setShown] = useState(target);
+  if (target !== null && target !== shown) setShown(target);
+  const key = shown === null ? "none" : shown.kind === "edit" ? `e${shown.tab.division.id}` : shown.kind === "reopen" ? `r${shown.closed.id}` : "n";
+  if (shown === null) return null;
+  return <DrawerForm key={key} open={target !== null} target={shown} takenCodes={takenCodes} editable={editable} onClose={onClose} onFill={onFill} />;
+}
+
+function DrawerForm({
+  open,
+  target,
+  takenCodes,
+  editable,
+  onClose,
+  onFill,
+}: {
+  open: boolean;
+  target: DivisionDrawerTarget;
+  takenCodes: readonly TakenCode[];
+  editable: boolean;
+  onClose: () => void;
+  onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+}) {
+  const [draft, setDraft] = useState<Draft>(() => draftOf(target));
+  const [picking, setPicking] = useState<{ readonly replaces: number | null } | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const tab = target.kind === "edit" ? target.tab : null;
+  const divisionId = target.kind === "edit" ? target.tab.division.id : target.kind === "reopen" ? target.closed.id : null;
+  const short = draft.name.trim() === "" ? "the new division" : divisionLabel(draft.name.trim());
+  const leads = tab?.people.filter((p) => p.role === "lead") ?? [];
+  const replacedBy = (leadId: number) => draft.added.find((a) => a.replaces === leadId) ?? null;
+  const gone = leads.filter((l) => draft.removed.includes(l.id) || replacedBy(l.id) !== null);
+  const leadCount = leads.length - gone.length + draft.added.length;
+
+  const code = normalizeDivisionCode(draft.code);
+  const nameError = divisionNameError(draft.name);
+  const codeError = draft.code.trim() === "" ? "Write a code." : divisionCodeError(code, takenCodes, target.kind === "edit" ? target.tab.division.id : null);
+  const leadError = leadCount < 1 ? "A division needs at least one lead." : null;
+  const valid = nameError === null && codeError === null && leadError === null;
+
+  const original = draftOf(target);
+  const nameChanged = target.kind === "edit" && storedDivisionName(draft.name) !== storedDivisionName(original.name);
+  const codeChanged = target.kind === "edit" && code !== normalizeDivisionCode(original.code);
+  const changes = Number(nameChanged) + Number(codeChanged) + draft.added.length + draft.removed.length;
+
+  const save: DivisionSave = {
+    name: draft.name,
+    code,
+    newLeads: draft.added.map((a) => a.pick.id),
+    oldLeads: gone.map((l) => ({ personId: l.id, outcome: draft.outcomes[l.id] ?? "member" })),
+    members: draft.members.map((m) => m.id),
+    emails: draft.emails,
+  };
+
+  const set = (next: Partial<Draft>) => setDraft((d) => ({ ...d, ...next }));
+  const pickLead = (pick: TeamPick) => {
+    setDraft((d) => ({ ...d, added: [...d.added, { pick, replaces: picking?.replaces ?? null }] }));
+    setPicking(null);
+  };
+  const undoLead = (personId: number) => set({ added: draft.added.filter((a) => a.pick.id !== personId) });
+  const setReplaces = (personId: number, replaces: number | null) =>
+    set({ added: draft.added.map((a) => (a.pick.id === personId ? { ...a, replaces } : a.replaces === replaces && replaces !== null ? { ...a, replaces: null } : a)) });
+  const removeLead = (leadId: number) => set({ removed: [...draft.removed, leadId] });
+  const undoRemove = (leadId: number) =>
+    set({ removed: draft.removed.filter((id) => id !== leadId), added: draft.added.map((a) => (a.replaces === leadId ? { ...a, replaces: null } : a)) });
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setShowErrors(true);
+    if (!valid) return;
+    if (target.kind === "edit" && changes === 0) {
+      onClose();
+      return;
+    }
+    setConfirming(true);
+  };
+
+  const confirm = () =>
+    startTransition(async () => {
+      if (target.kind === "new") {
+        const result = await createDivision(target.department.id, save);
+        if (!result.ok) {
+          toast.error("Could not create the division", { description: result.error });
+          return;
+        }
+        toast.success(`${storedDivisionName(draft.name)} is open`);
+      } else {
+        const result = await saveDivision(divisionId!, save);
+        if (!result.ok) {
+          toast.error(target.kind === "reopen" ? "Could not reopen the division" : "Could not save the division", { description: result.error });
+          return;
+        }
+        toast.success(target.kind === "reopen" ? `${storedDivisionName(draft.name)} is open again` : "Division saved");
+      }
+      setConfirming(false);
+      onClose();
+    });
+
+  const title = target.kind === "new" ? "New division" : "Edit division";
+  const detail =
+    target.kind === "new"
+      ? `In ${target.department.name} Department`
+      : target.kind === "reopen"
+        ? `${target.closed.name} · closed`
+        : target.tab.division.name;
+  const submitLabel =
+    target.kind === "new" ? "Create division" : target.kind === "reopen" ? "Reopen division" : changes > 0 ? `Save changes · ${changes}` : "Save changes";
+  const formId = `division-${divisionId ?? "new"}-form`;
+  const blocked = target.kind !== "edit" && !valid;
+
+  return (
+    <SidePanel
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title={title}
+      detail={detail}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className={PANEL_GHOST_BUTTON}>
+            Cancel
+          </button>
+          <button type="submit" form={formId} disabled={pending || blocked} className={`${PANEL_PRIMARY_BUTTON} disabled:cursor-not-allowed disabled:opacity-50`}>
+            {submitLabel}
+          </button>
+        </>
+      }
+    >
+      <form id={formId} noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <PanelBody>
+          <div className="grid grid-cols-[1fr_110px] gap-3">
+            <label className="min-w-0">
+              <span className={`mb-2 block ${SECTION_LABEL}`}>Name</span>
+              <input
+                value={draft.name}
+                maxLength={60}
+                autoComplete="off"
+                placeholder="e.g. Flight Dynamics"
+                onChange={(e) => set({ name: e.target.value })}
+                aria-invalid={showErrors && nameError !== null}
+                className={inputClass(showErrors && nameError !== null ? nameError : undefined)}
+              />
+            </label>
+            <label className="min-w-0">
+              <span className={`mb-2 block ${SECTION_LABEL}`}>Code</span>
+              <input
+                value={draft.code}
+                maxLength={3}
+                autoComplete="off"
+                placeholder="FD"
+                onChange={(e) => set({ code: e.target.value.toUpperCase() })}
+                aria-invalid={draft.code !== "" && codeError !== null}
+                className={`${inputClass(draft.code !== "" && codeError !== null ? codeError : undefined)} font-mono uppercase tracking-[0.15em]`}
+              />
+            </label>
+          </div>
+          {showErrors && nameError !== null && <p className="mt-1.5 text-[12px] text-danger">{nameError}</p>}
+          {draft.code !== "" && codeError !== null ? (
+            <p className="mt-2 text-[12px] text-danger">{codeError}</p>
+          ) : (
+            <p className="mt-2 text-[12px] text-prt-muted">2–3 letters. Used in position codes, like MA-01.</p>
+          )}
+
+          <section className="mt-6">
+            <h3 className={SECTION_LABEL}>
+              Leads
+              <span className="ml-1.5 text-prt-muted">{target.kind === "edit" ? `${leadCount} · at least 1` : leadCount > 0 ? `${leadCount} · at least 1` : "at least 1"}</span>
+            </h3>
+            <div className="mt-2.5">
+              {leads.length === 0 && draft.added.length === 0 ? (
+                <p className={`${LIST} px-4 py-3 text-center text-[13px] text-prt-muted`}>No lead yet</p>
+              ) : (
+                <ul className={`${LIST} divide-y divide-hairline`}>
+                  {leads.map((lead) => (
+                    <OldLeadRow
+                      key={lead.id}
+                      lead={lead}
+                      short={short}
+                      replacedBy={replacedBy(lead.id)?.pick.name ?? null}
+                      removed={draft.removed.includes(lead.id)}
+                      onReplace={() => setPicking({ replaces: lead.id })}
+                      onRemove={() => removeLead(lead.id)}
+                      onUndo={() => undoRemove(lead.id)}
+                    />
+                  ))}
+                  {draft.added.map((a) => (
+                    <NewLeadRow key={a.pick.id} added={a} divisionId={divisionId} short={short} onUndo={() => undoLead(a.pick.id)} />
+                  ))}
+                </ul>
+              )}
+            </div>
+            {picking !== null ? (
+              <PeoplePicker
+                mode="lead"
+                short={short}
+                taken={(p) =>
+                  leads.some((l) => l.id === p.id) || draft.added.some((a) => a.pick.id === p.id) ? "Already a lead" : null
+                }
+                onPick={pickLead}
+                onClose={() => setPicking(null)}
+              />
+            ) : (
+              <button type="button" onClick={() => setPicking({ replaces: null })} className={`${ADD_LINK} mt-3`}>
+                <PlusIcon />
+                Add lead
+              </button>
+            )}
+            {(picking !== null || draft.added.length > 0 || leadError !== null) && (
+              <p className={`mt-3 text-[12px] ${showErrors && leadError !== null ? "text-danger" : "text-prt-muted"}`}>A division needs at least one lead.</p>
+            )}
+
+            {draft.added.map((a) =>
+              leads.length === 0 ? null : (
+                <ReplacesSelect
+                  key={a.pick.id}
+                  added={a}
+                  leads={leads.filter((l) => !draft.removed.includes(l.id) && (replacedBy(l.id) === null || replacedBy(l.id)?.pick.id === a.pick.id))}
+                  onChange={(replaces) => setReplaces(a.pick.id, replaces)}
+                />
+              ),
+            )}
+            {gone.map((lead) => (
+              <OutcomeChoice
+                key={lead.id}
+                lead={lead}
+                short={short}
+                value={draft.outcomes[lead.id] ?? "member"}
+                onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
+              />
+            ))}
+          </section>
+
+          {tab ? (
+            <LiveMembers tab={tab} editable={editable} onFill={(w) => onFill(w, tab)} />
+          ) : (
+            <DraftMembers
+              short={short}
+              members={draft.members}
+              emails={draft.emails}
+              leadIds={draft.added.map((a) => a.pick.id)}
+              onAdd={(pick) => set({ members: [...draft.members, pick] })}
+              onAddEmail={(email) => set({ emails: [...draft.emails, email] })}
+              onDrop={(id) => set({ members: draft.members.filter((m) => m.id !== id) })}
+              onDropEmail={(email) => set({ emails: draft.emails.filter((e) => e !== email) })}
+            />
+          )}
+        </PanelBody>
+      </form>
+
+      <SaveConfirm
+        open={confirming}
+        onOpenChange={setConfirming}
+        pending={pending}
+        target={target}
+        name={storedDivisionName(draft.name)}
+        original={original}
+        code={code}
+        nameChanged={nameChanged}
+        codeChanged={codeChanged}
+        added={draft.added}
+        gone={gone.map((l) => ({ lead: l, outcome: draft.outcomes[l.id] ?? "member" }))}
+        members={draft.members.length + draft.emails.length}
+        onConfirm={confirm}
+      />
+    </SidePanel>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M8 3v10M3 8h10" />
+    </svg>
+  );
+}
+
+/** A lead of the division: ⋯ with Replace and Remove; dimmed once replaced or removed, with Undo (boards 68b, 68b4). */
+function OldLeadRow({
+  lead,
+  short,
+  replacedBy,
+  removed,
+  onReplace,
+  onRemove,
+  onUndo,
+}: {
+  lead: DivisionPerson;
+  short: string;
+  replacedBy: string | null;
+  removed: boolean;
+  onReplace: () => void;
+  onRemove: () => void;
+  onUndo: () => void;
+}) {
+  const goneLine = replacedBy !== null ? `Replaced by ${replacedBy}` : removed ? "Removed as lead" : null;
+  return (
+    <li className={`flex items-center gap-3 px-3.5 py-2.5 ${goneLine ? "opacity-60" : ""}`}>
+      <Avatar name={lead.name} size="md" photoUrl={lead.photoUrl} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] text-prt-text">{lead.name}</span>
+        <span className="block truncate text-[12px] text-prt-muted">{goneLine ?? short}</span>
+      </span>
+      {goneLine ? (
+        <UndoButton onClick={onUndo} label={`Undo for ${lead.name}`} />
+      ) : (
+        <RowMenu label={`Actions for ${lead.name}`}>
+          <MenuItem onSelect={onReplace} icon={<RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+            Replace
+          </MenuItem>
+          <MenuItem onSelect={onRemove} icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+            Remove
+          </MenuItem>
+        </RowMenu>
+      )}
+    </li>
+  );
+}
+
+function UndoButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+    >
+      <Undo2 aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+      Undo
+    </button>
+  );
+}
+
+/** "Also Lead · Recovery · Parachutes" under a new lead (board 68b3). */
+function alsoLine(pick: TeamPick, divisionId: number | null, short: string): string {
+  if (divisionId !== null && pick.divisionIds.includes(divisionId)) return `Member of ${short} now`;
+  if (pick.place === null) return "In no division yet";
+  return `Also ${pick.role.startsWith("Lead") ? "Lead" : "Member"} · ${pick.place}`;
+}
+
+function NewLeadRow({ added, divisionId, short, onUndo }: { added: NewLead; divisionId: number | null; short: string; onUndo: () => void }) {
+  const { pick } = added;
+  return (
+    <li className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
+      <Avatar name={pick.name} size="md" />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[14px] text-prt-text">{pick.name}</span>
+          <span className="inline-flex h-[18px] shrink-0 items-center rounded bg-accent-soft px-1.5 text-[11px] font-medium text-accent">New</span>
+        </span>
+        <span className="block truncate text-[12px] text-prt-muted">{alsoLine(pick, divisionId, short)}</span>
+      </span>
+      <UndoButton onClick={onUndo} label={`Undo adding ${pick.name}`} />
+    </li>
+  );
+}
+
+/** "<new> replaces · optional" (board 68b3): nobody by default, so they lead beside the others. */
+function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: readonly DivisionPerson[]; onChange: (replaces: number | null) => void }) {
+  return (
+    <label className="mt-5 block">
+      <span className={`mb-2 block ${SECTION_LABEL}`}>
+        {added.pick.name} replaces
+        <span className="ml-1.5 text-prt-muted">optional</span>
+      </span>
+      <span className="relative block">
+        <select
+          value={added.replaces ?? ""}
+          onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+          className={`${inputClass()} cursor-pointer appearance-none pr-10`}
+        >
+          <option value="" className="bg-panel text-prt-text">
+            Nobody, add as an extra lead
+          </option>
+          {leads.map((l) => (
+            <option key={l.id} value={l.id} className="bg-panel text-prt-text">
+              {l.name}
+            </option>
+          ))}
+        </select>
+        <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
+      </span>
+    </label>
+  );
+}
+
+/** Whether each of the old lead's three outcomes is open, with the reason when it is not. */
+function outcomesFor(lead: DivisionPerson, short: string): Readonly<Record<OldLeadOutcome, Permission>> {
+  const others = lead.divisions.length > 1;
+  return {
+    member: { allowed: true },
+    "leave-division": others ? { allowed: true } : { allowed: false, reason: `${short} is their only division` },
+    "leave-team": lead.leave,
+  };
+}
+
+/** "What happens to Marco?" (board 68b4): stays as a member, leaves this division, or leaves the team. */
+function OutcomeChoice({
+  lead,
+  short,
+  value,
+  onChange,
+}: {
+  lead: DivisionPerson;
+  short: string;
+  value: OldLeadOutcome;
+  onChange: (outcome: OldLeadOutcome) => void;
+}) {
+  const open = outcomesFor(lead, short);
+  const options: readonly { value: OldLeadOutcome; title: string; detail: string; danger?: boolean }[] = [
+    { value: "member", title: "Stays as a member", detail: `Keeps ${short}, loses lead access` },
+    { value: "leave-division", title: `Leaves ${short}`, detail: "Keeps their other divisions, if any" },
+    { value: "leave-team", title: "Leaves the team", detail: "Moves to Alumni; their access ends", danger: true },
+  ];
+  return (
+    <fieldset className="mt-5">
+      <legend className={`mb-2 ${SECTION_LABEL}`}>What happens to {firstName(lead.name)}?</legend>
+      <div className={`${LIST} divide-y divide-hairline`}>
+        {options.map((o) => {
+          const permission = open[o.value];
+          const disabled = !permission.allowed;
+          const checked = value === o.value;
+          return (
+            <label
+              key={o.value}
+              className={`flex items-start gap-3 px-3.5 py-3 transition-colors duration-300 ease-out ${disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-white-5"}`}
+            >
+              <input
+                type="radio"
+                name={`outcome-${lead.id}`}
+                value={o.value}
+                checked={checked}
+                disabled={disabled}
+                onChange={() => onChange(o.value)}
+                className="peer sr-only"
+              />
+              <span
+                aria-hidden
+                className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent ${
+                  checked ? "border-accent" : "border-white-10"
+                }`}
+              >
+                {checked && <span className="h-2 w-2 rounded-full bg-accent" />}
+              </span>
+              <span className="min-w-0">
+                <span className={`flex items-center gap-1.5 text-[14px] ${disabled ? "text-prt-muted" : o.danger ? "text-danger" : "text-prt-text"}`}>
+                  {disabled && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                  {o.title}
+                </span>
+                <span className="block text-[12px] leading-snug text-prt-muted">{permission.allowed ? o.detail : permission.reason}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+/**
+ * The picker under "+ Add lead" or "+ Add member" (boards 68b2, 68b6, 68b7):
+ * it searches the whole team by name, and in member mode takes an email new
+ * to the team. Escape closes it.
+ */
+function PeoplePicker({
+  mode,
+  short,
+  taken,
+  onPick,
+  onEmail,
+  onClose,
+}: {
+  mode: "lead" | "member";
+  short: string;
+  /** Why someone cannot be picked here ("Already a lead"), or null. */
+  taken: (pick: TeamPick) => string | null;
+  onPick: (pick: TeamPick) => void;
+  onEmail?: (email: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<TeamSearch>({ kind: "none" });
+  const asked = useRef(0);
+
+  useEffect(() => {
+    const ask = ++asked.current;
+    const timer = setTimeout(async () => {
+      const answer = await findPeople(query);
+      if (ask === asked.current) setFound(answer);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const newEmail = mode === "member" && found.kind === "new-email" ? found.email : null;
+  const footer =
+    mode === "lead"
+      ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
+      : newEmail !== null
+        ? "They join once you confirm their signed NDA. You or they can fill in their details."
+        : "Not in the team yet? Type their email to add them as a new member.";
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-hairline bg-panel" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), onClose())}>
+      <label className="flex items-center gap-2.5 border-b border-hairline px-3.5">
+        <Search aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+        <span className="sr-only">{mode === "lead" ? "Search the team for a lead" : "Search the team, or type an email"}</span>
+        <input
+          autoFocus
+          value={query}
+          autoComplete="off"
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={mode === "lead" ? "Search the team" : "Name or email"}
+          className="h-11 min-w-0 flex-1 bg-transparent text-[14px] text-prt-text placeholder:text-dim focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close the search"
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+        >
+          <X aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </button>
+      </label>
+      {found.kind === "people" && (
+        <div className="p-1.5">
+          {mode === "member" && <p className="px-2.5 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-[0.3em] text-dim">In the team</p>}
+          <ul>
+            {found.people.map((p) => {
+              const reason = taken(p);
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    disabled={reason !== null}
+                    onClick={() => onPick(p)}
+                    className={`group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-300 ease-out enabled:hover:bg-white-5 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
+                  >
+                    <Avatar name={p.name} size="md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="shrink-0 text-[14px] text-prt-text">{p.name}</span>
+                        {p.place !== null && <span className="truncate text-[12px] text-prt-muted">{p.place}</span>}
+                      </span>
+                      <span className="block truncate text-[12px] text-prt-muted">{reason ?? p.role}</span>
+                    </span>
+                    <CornerDownLeft aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={1.75} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {newEmail !== null && onEmail && (
+        <div className="p-1.5">
+          <p className="px-2.5 pb-1.5 pt-1 text-[12px] text-prt-muted">No one in the team uses this email.</p>
+          <button
+            type="button"
+            onClick={() => onEmail(newEmail)}
+            className={`group flex w-full items-center gap-3 rounded-lg bg-white-5 px-2.5 py-2 text-left transition-colors duration-300 ease-out hover:bg-white-10 ${FOCUS}`}
+          >
+            <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <MailPlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[14px] text-prt-text">Add {newEmail}</span>
+              <span className="block truncate text-[12px] text-prt-muted">New member of {short}, after the NDA</span>
+            </span>
+            <CornerDownLeft aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
+          </button>
+        </div>
+      )}
+      {mode === "lead" && found.kind === "new-email" && <p className="px-4 py-3 text-[13px] text-prt-muted">No one in the team uses this email.</p>}
+      <p className="border-t border-hairline px-3.5 py-2.5 text-[12px] leading-relaxed text-prt-muted">{footer}</p>
+    </div>
+  );
+}
+
+/** "Also in Structures · Design & Manufacturing", else their title here (board 68b). */
+function memberLine(person: DivisionPerson): string {
+  const other = person.divisions.find((d, i) => i > 0);
+  if (other) return other.sameDepartment ? `Also in ${other.name}` : `Also in ${other.department} · ${other.name}`;
+  return person.title ?? "Member";
+}
+
+/**
+ * An open division's members (boards 68b, 68b5 to 68b8): the people waiting
+ * for their NDA, then everyone who is not a lead, five at first. Each change
+ * here is the Members page's own, made at once behind its confirm.
+ */
+function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable: boolean; onFill: (waiting: WaitingPerson) => void }) {
+  const [query, setQuery] = useState("");
+  const [all, setAll] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [asking, setAsking] = useState<Asking | null>(null);
+  const [, startTransition] = useTransition();
+  const { division } = tab;
+  const short = divisionLabel(division.name);
+  const members = tab.people.filter((p) => p.role !== "lead");
+  const people = members.filter((p) => matchesPerson(p, query));
+  const waiting = tab.waiting.filter((w) => matchesWaiting(w, query));
+  const rows = [...waiting.map((w) => ({ kind: "waiting" as const, w })), ...people.map((p) => ({ kind: "person" as const, p }))];
+  const shown = all ? rows : rows.slice(0, MEMBERS_SHOWN);
+
+  const add = (input: Record<string, unknown>, who: string) =>
+    startTransition(async () => {
+      const result = await addMember({ divisionId: division.id, title: null, ...input });
+      if (!result.ok) {
+        toast.error("Could not add them", { description: result.error });
+        return;
+      }
+      setAdding(false);
+      toast.success(result.value === "joined" ? `${who} joined ${short}` : `${who} is waiting for their NDA. Let them know: the site sends no emails.`);
+    });
+
+  return (
+    <section className="mt-7">
+      <h3 className={SECTION_LABEL}>
+        Members
+        <span className="ml-1.5 text-prt-muted">{members.length}</span>
+        {tab.waiting.length > 0 && <span className="ml-1.5 text-warning">· {tab.waiting.length} waiting</span>}
+      </h3>
+      <label className="relative mt-2.5 flex h-10 items-center">
+        <span className="sr-only">Search members</span>
+        <Search aria-hidden className="pointer-events-none absolute left-3.5 h-4 w-4 text-prt-muted" strokeWidth={1.75} />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search members"
+          className="h-full w-full rounded-xl border border-hairline bg-transparent pl-10 pr-3.5 text-[14px] text-prt-text placeholder:text-prt-muted transition-colors duration-300 ease-out hover:border-border-strong focus:border-border-strong focus:outline-none"
+        />
+      </label>
+      {rows.length > 0 && (
+        <div className={`${LIST} mt-2.5`}>
+          <ul className="divide-y divide-hairline">
+            {shown.map((row) =>
+              row.kind === "waiting" ? (
+                <WaitingItem key={`w${row.w.joinId}`} waiting={row.w} editable={editable} short={short} onAsk={setAsking} onFill={() => onFill(row.w)} division={division.name} />
+              ) : (
+                <MemberItem key={row.p.id} person={row.p} editable={editable} short={short} divisionId={division.id} onAsk={setAsking} />
+              ),
+            )}
+          </ul>
+          {rows.length > MEMBERS_SHOWN && (
+            <button
+              type="button"
+              onClick={() => setAll((a) => !a)}
+              className={`block w-full border-t border-hairline py-2.5 text-center text-[13px] text-prt-text transition-colors duration-300 ease-out hover:bg-white-5 ${FOCUS}`}
+            >
+              {all ? "Show fewer" : `Show all ${rows.length}`}
+            </button>
+          )}
+        </div>
+      )}
+      {editable &&
+        (adding ? (
+          <PeoplePicker
+            mode="member"
+            short={short}
+            taken={(p) => (p.divisionIds.includes(division.id) ? `Already in ${short}` : null)}
+            onPick={(p) => add({ kind: "member", personId: p.id }, p.name)}
+            onEmail={(email) => add({ kind: "email", email, firstName: "", lastName: "", details: null }, email)}
+            onClose={() => setAdding(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setAdding(true)} className={`${ADD_LINK} mt-3`}>
+            <PlusIcon />
+            Add member
+          </button>
+        ))}
+      {tab.waiting.map((w) => (
+        <NoEmailNote key={w.joinId} waiting={w} editable={editable} onFill={() => onFill(w)} />
+      ))}
+      <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
+    </section>
+  );
+}
+
+function WaitingItem({
+  waiting,
+  editable,
+  short,
+  division,
+  onAsk,
+  onFill,
+}: {
+  waiting: WaitingPerson;
+  editable: boolean;
+  short: string;
+  division: string;
+  onAsk: (asking: Asking) => void;
+  onFill: () => void;
+}) {
+  return (
+    <li className="flex items-center gap-3 bg-warning/[0.04] px-3.5 py-2.5">
+      <MailAvatar />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] text-prt-text">{waiting.email}</span>
+        <WaitingLine waiting={waiting} />
+      </span>
+      {editable && (
+        <>
+          <ConfirmNdaButton onClick={() => onAsk({ kind: "nda", waiting, division })} />
+          <RowMenu label={`Actions for ${waiting.email}`}>
+            <MenuItem onSelect={onFill} icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+              Fill details
+            </MenuItem>
+            <MenuItem onSelect={() => onAsk({ kind: "cancel", waiting, short })} danger icon={<UserX className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+              Cancel add
+            </MenuItem>
+          </RowMenu>
+        </>
+      )}
+    </li>
+  );
+}
+
+/** A member's row and ⋯ menu (board 68b5): Remove from the division, and Leaves the team, each locked with a reason when it is not theirs. */
+function MemberItem({
+  person,
+  editable,
+  short,
+  divisionId,
+  onAsk,
+}: {
+  person: DivisionPerson;
+  editable: boolean;
+  short: string;
+  divisionId: number;
+  onAsk: (asking: Asking) => void;
+}) {
+  const { removal, leave } = person;
+  const others = person.divisions.filter((d) => d.divisionId !== divisionId).map((d) => d.name);
+  return (
+    <li className="flex items-center gap-3 px-3.5 py-2.5">
+      <Avatar name={person.name} size="md" photoUrl={person.photoUrl} />
+      <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="shrink-0 text-[14px] text-prt-text">{person.name}</span>
+        <span className="truncate text-[12px] text-prt-muted">{memberLine(person)}</span>
+      </span>
+      {editable && !person.self && (
+        <RowMenu label={`Actions for ${person.name}`}>
+          {(removal.kind === "offered" || removal.kind === "locked") && (
+            <MenuItem
+              onSelect={() => onAsk({ kind: "remove", person, divisionId, short })}
+              icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
+              locked={removal.kind === "locked" ? removal.reason : null}
+              detail={`Stays in ${others.join(", ")}`}
+            >
+              Remove from {short}
+            </MenuItem>
+          )}
+          <MenuItem onSelect={() => onAsk({ kind: "leave", person })} danger locked={leave.allowed ? null : leave.reason}>
+            Leaves the team
+          </MenuItem>
+        </RowMenu>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The members of New division and of a reopen (board 69d): people from the
+ * team and emails new to it, gathered until the division is created or opens
+ * again.
+ */
+function DraftMembers({
+  short,
+  members,
+  emails,
+  leadIds,
+  onAdd,
+  onAddEmail,
+  onDrop,
+  onDropEmail,
+}: {
+  short: string;
+  members: readonly TeamPick[];
+  emails: readonly string[];
+  leadIds: readonly number[];
+  onAdd: (pick: TeamPick) => void;
+  onAddEmail: (email: string) => void;
+  onDrop: (id: number) => void;
+  onDropEmail: (email: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const count = members.length + emails.length;
+  return (
+    <section className="mt-7">
+      <h3 className={SECTION_LABEL}>
+        Members
+        <span className="ml-1.5 text-prt-muted">{count}</span>
+      </h3>
+      {count > 0 && (
+        <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
+          {members.map((m) => (
+            <li key={m.id} className="flex items-center gap-3 px-3.5 py-2.5">
+              <Avatar name={m.name} size="md" />
+              <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                <span className="shrink-0 text-[14px] text-prt-text">{m.name}</span>
+                {m.place !== null && <span className="truncate text-[12px] text-prt-muted">Also in {m.place}</span>}
+              </span>
+              <UndoButton onClick={() => onDrop(m.id)} label={`Undo adding ${m.name}`} />
+            </li>
+          ))}
+          {emails.map((email) => (
+            <li key={email} className="flex items-center gap-3 px-3.5 py-2.5">
+              <MailAvatar />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] text-prt-text">{email}</span>
+                <span className="block truncate text-[12px] text-warning">Waits for their NDA</span>
+              </span>
+              <UndoButton onClick={() => onDropEmail(email)} label={`Undo adding ${email}`} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding ? (
+        <PeoplePicker
+          mode="member"
+          short={short}
+          taken={(p) => (leadIds.includes(p.id) ? "Picked as a lead" : members.some((m) => m.id === p.id) ? "Already added" : null)}
+          onPick={(p) => {
+            onAdd(p);
+            setAdding(false);
+          }}
+          onEmail={(email) => {
+            if (!emails.includes(email)) onAddEmail(email);
+            setAdding(false);
+          }}
+          onClose={() => setAdding(false)}
+        />
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className={`${ADD_LINK} mt-2.5`}>
+          <PlusIcon />
+          Add member
+        </button>
+      )}
+      <p className="mt-6 text-[12px] leading-relaxed text-prt-muted">The lead and members join the new division and keep their other divisions.</p>
+    </section>
+  );
+}
+
+const OUTCOME_LINES: Readonly<Record<OldLeadOutcome, (short: string) => string>> = {
+  member: (short) => `stays in ${short} as a member`,
+  "leave-division": (short) => `leaves ${short} and keeps their other divisions`,
+  "leave-team": () => "leaves the team: they move to Alumni and all their access ends",
+};
+
+/** The "are you sure" before Save changes, Create division or Reopen division, saying what will change. */
+function SaveConfirm({
+  open,
+  onOpenChange,
+  pending,
+  target,
+  name,
+  original,
+  code,
+  nameChanged,
+  codeChanged,
+  added,
+  gone,
+  members,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  pending: boolean;
+  target: DivisionDrawerTarget;
+  name: string;
+  original: Draft;
+  code: string;
+  nameChanged: boolean;
+  codeChanged: boolean;
+  added: readonly NewLead[];
+  gone: readonly { readonly lead: DivisionPerson; readonly outcome: OldLeadOutcome }[];
+  members: number;
+  onConfirm: () => void;
+}) {
+  const short = divisionLabel(name);
+  const lines: ReactNode[] = [];
+  if (nameChanged) lines.push(`The division is renamed ${name}.`);
+  if (codeChanged) {
+    lines.push(
+      <>
+        The code changes from <span className="font-mono">{normalizeDivisionCode(original.code)}</span> to <span className="font-mono">{code}</span>. Every
+        position in this division takes the new code.
+      </>,
+    );
+  }
+  for (const a of added) lines.push(`${a.pick.name} becomes a lead and keeps their other divisions.`);
+  for (const g of gone) lines.push(`${g.lead.name} ${OUTCOME_LINES[g.outcome](short)}.`);
+  if (target.kind !== "edit" && members > 0) lines.push(`${members} ${members === 1 ? "member joins" : "members join"}.`);
+  const leaving = gone.some((g) => g.outcome === "leave-team");
+
+  const title =
+    target.kind === "new" ? `Create ${name}?` : target.kind === "reopen" ? `Reopen ${name}?` : codeChanged && lines.length === 1 ? `Change the code to ${code}?` : `Save changes to ${name}?`;
+  const intro =
+    target.kind === "new"
+      ? `It opens in ${target.department.name} with the code ${code}.`
+      : target.kind === "reopen"
+        ? `It opens again with the code ${code}. Nobody from before comes back.`
+        : null;
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={target.kind === "reopen" ? <RotateCcw className="h-5 w-5" strokeWidth={1.75} /> : <Pencil className="h-5 w-5" strokeWidth={1.75} />}
+      tone={leaving ? "danger" : target.kind === "reopen" ? "success" : "accent"}
+      danger={leaving}
+      title={title}
+      description={
+        <>
+          {intro && <p>{intro}</p>}
+          {lines.length > 0 && (
+            <ul className={`${intro ? "mt-3" : ""} flex list-disc flex-col gap-1.5 pl-5`}>
+              {lines.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      }
+      cancelLabel="Back"
+      confirmLabel={target.kind === "new" ? "Create division" : target.kind === "reopen" ? "Reopen division" : "Save changes"}
+      pending={pending}
+      onConfirm={onConfirm}
+    />
+  );
+}
+

@@ -28,6 +28,20 @@ export type MemberChange = {
   readonly left?: readonly number[];
 };
 
+/**
+ * A division as the test developer left it (issue #232): created, renamed,
+ * recoded, closed or reopened. It replaces the division ./team.ts starts
+ * with, open or closed, or adds a new one.
+ */
+export type DummyDivisionEdit = {
+  /** As stored: "Flight Dynamics Division". */
+  readonly name: string;
+  readonly code: string | null;
+  readonly departmentId: number;
+  /** The day it closed ("2026-10-09"); null while it is open. */
+  readonly closedOn: string | null;
+};
+
 /** Confirm NDA on someone waiting: the day, and the member who confirmed it. */
 export type DummyConfirmation = { readonly on: string; readonly by: number };
 
@@ -50,6 +64,8 @@ export type TeamEdits = {
   readonly cancelled: readonly number[];
   /** Details saved from Edit details: "p12" for person 12, "w3" for the add with join id 3. */
   readonly details: Readonly<Record<string, MemberDetails>>;
+  /** Divisions created, edited, closed or reopened (issue #232), by id. */
+  readonly divisions: Readonly<Record<number, DummyDivisionEdit>>;
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -62,6 +78,7 @@ export const NO_EDITS: TeamEdits = {
   confirmed: {},
   cancelled: [],
   details: {},
+  divisions: {},
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -160,6 +177,15 @@ function readConfirmation(value: unknown): DummyConfirmation | null {
   return { on: value.on, by: value.by as number };
 }
 
+function readDivision(value: unknown): DummyDivisionEdit | null {
+  if (!isRecord(value)) return null;
+  const { name, code, departmentId, closedOn } = value;
+  if (typeof name !== "string" || name.trim() === "" || !Number.isInteger(departmentId)) return null;
+  if (code !== null && typeof code !== "string") return null;
+  if (closedOn !== null && !isDay(closedOn)) return null;
+  return { name: name.slice(0, 80), code: code === null ? null : code.slice(0, 3), departmentId: departmentId as number, closedOn };
+}
+
 function readDetails(value: unknown): Record<string, MemberDetails> {
   if (!isRecord(value)) return {};
   const out: Record<string, MemberDetails> = {};
@@ -202,6 +228,7 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
       ? raw.cancelled.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)
       : [],
     details: readDetails(raw.details),
+    divisions: entriesOf(raw.divisions, readDivision),
   };
 }
 

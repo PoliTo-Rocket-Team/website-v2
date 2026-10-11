@@ -1,0 +1,128 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { AlertTriangle, Briefcase, KeyRound, RotateCcw, Users } from "lucide-react";
+import { toast } from "sonner";
+import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { closeDivision } from "@/app/dashboard/team-actions";
+import type { ClosedDivision } from "@/lib/dashboard/department-members";
+import type { DivisionMembers } from "@/lib/dashboard/division-members";
+import { ConfirmDialog, SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
+
+// Close division (board 68c) and Reopen (board 68e, with the Owner decision of
+// 2026-10-11 on #232). A division with anyone in it cannot close: the dialog
+// says so and offers Edit division in place of the way out. An empty one asks
+// "are you sure", since its open positions close and its division access goes.
+// Reopen leads into the Edit division drawer, and the division opens again
+// only when that drawer is saved with at least one lead.
+
+/** "9 people to move", "2 open positions will close", "Division access goes away". */
+function Summary({ people, positions }: { people: number; positions: number }) {
+  const lines = [
+    ...(people > 0 ? [{ icon: Users, text: `${people} ${people === 1 ? "person" : "people"} to move` }] : []),
+    {
+      icon: Briefcase,
+      text: positions === 0 ? "No open positions to close" : `${positions} open ${positions === 1 ? "position" : "positions"} will close`,
+    },
+    { icon: KeyRound, text: "Division access goes away" },
+  ];
+  return (
+    <ul className="mt-5 flex flex-col gap-2 rounded-xl border border-hairline px-4 py-3 text-[13px] text-text-2">
+      {lines.map(({ icon: Icon, text }) => (
+        <li key={text} className="flex items-center gap-2.5">
+          <Icon aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
+          {text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function CloseDivisionDialog({
+  tab,
+  openPositions,
+  onClose,
+  onEdit,
+}: {
+  tab: DivisionMembers | null;
+  openPositions: number;
+  onClose: () => void;
+  /** Edit division, where the people still in it are removed or moved. */
+  onEdit: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [shownTab, setShown] = useState(tab);
+  if (tab !== null && tab !== shownTab) setShown(tab);
+  const name = shownTab?.division.name ?? "";
+  const people = (shownTab?.people.length ?? 0) + (shownTab?.waiting.length ?? 0);
+  const blocked = people > 0;
+
+  const close = () =>
+    startTransition(async () => {
+      if (!shownTab) return;
+      const result = await closeDivision(shownTab.division.id);
+      if (!result.ok) {
+        toast.error("Could not close the division", { description: result.error });
+        return;
+      }
+      toast.success(`${name} is closed`);
+      onClose();
+    });
+
+  return (
+    <Dialog open={tab !== null} onOpenChange={(next) => !next && onClose()}>
+      <DialogPortal>
+        <DialogOverlay className={SHEET_OVERLAY} />
+        <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[440px]`}>
+          <SheetGrabber />
+          <span aria-hidden className="flex h-11 w-11 items-center justify-center rounded-full border border-danger/40 bg-danger-soft text-danger">
+            <AlertTriangle className="h-5 w-5" strokeWidth={1.75} />
+          </span>
+          <DialogTitle className="mt-5 text-[20px] font-bold leading-snug">Close {name}?</DialogTitle>
+          <p className="mt-2 text-[14px] leading-relaxed text-text-2">
+            {blocked
+              ? `${people} ${people === 1 ? "person is" : "people are"} still in this division. Remove them or add them to another division from Edit division first, then close it.`
+              : "Nobody is in this division. It moves to Closed, where it can be reopened."}
+          </p>
+          <Summary people={people} positions={openPositions} />
+          <div className={SHEET_BUTTONS}>
+            {blocked ? (
+              <button type="button" onClick={onEdit} className={SHEET_CANCEL}>
+                Edit division
+              </button>
+            ) : (
+              <DialogClose className={SHEET_CANCEL}>Cancel</DialogClose>
+            )}
+            <button type="button" onClick={close} disabled={blocked || pending} className={sheetConfirm(true)}>
+              Close division
+            </button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    </Dialog>
+  );
+}
+
+/**
+ * Reopen (board 68e): an "are you sure", then the Edit division drawer for
+ * the closed division. The board's line about picking a lead after the
+ * reopen gives way to the Owner decision: the lead is picked first.
+ */
+export function ReopenDialog({ closed, onClose, onReopen }: { closed: ClosedDivision | null; onClose: () => void; onReopen: (closed: ClosedDivision) => void }) {
+  const [shown, setShown] = useState(closed);
+  if (closed !== null && closed !== shown) setShown(closed);
+  return (
+    <ConfirmDialog
+      open={closed !== null}
+      onOpenChange={(next) => !next && onClose()}
+      icon={<RotateCcw className="h-5 w-5" strokeWidth={1.75} />}
+      tone="success"
+      title={`Reopen ${shown?.name ?? ""}?`}
+      description="It comes back with no members. Pick at least one lead in Edit division; it opens again when you save."
+      cancelLabel="Cancel"
+      confirmLabel="Reopen"
+      onConfirm={() => shown && onReopen(shown)}
+    />
+  );
+}

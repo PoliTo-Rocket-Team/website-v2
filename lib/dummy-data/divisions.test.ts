@@ -1,0 +1,143 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import type { MemberDirectory } from "@/lib/dashboard/team";
+import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
+import { dummyDashboardData } from "./index";
+import { dummyRecruitmentOf } from "./recruitment";
+import { EMPTY_DUMMY_STATE } from "./state";
+import { dummyTeamPages } from "./team-pages";
+
+// New division, Edit division, Close division and Reopen on a preview (#232):
+// what each save does to the team the test developer sees next. The rules
+// themselves are lib/dashboard/division-edit.test.ts's.
+
+/** The head's pages over `edits`, with each save kept after a round trip through the cookie. */
+function head(edits: TeamEdits = NO_EDITS) {
+  let kept = edits;
+  const view = dummyTeamPages("department-head", edits, async (next) => {
+    kept = parseEdits(serializeEdits(next));
+  });
+  return { writes: view.teamWrites!, view, kept: () => kept };
+}
+
+function department(directory: MemberDirectory) {
+  if (directory.scope !== "department") throw new Error(`expected the department page, got ${directory.scope}`);
+  return directory;
+}
+
+const MISSION_ANALYSIS = 1;
+const OPTIMIZATION = 2;
+const WIND_TUNNEL = 15;
+const keep = { name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], members: [], emails: [] };
+
+async function tabOf(edits: TeamEdits, divisionId: number) {
+  return department(await head(edits).view.members()).tabs.find((t) => t.division.id === divisionId);
+}
+
+test("a lead picked from another division leads this one too and keeps their own", async () => {
+  const h = head();
+  // Paolo Conti (20) leads Optimization and Analysis.
+  assert.deepEqual(await h.writes.saveDivision(MISSION_ANALYSIS, { ...keep, newLeads: [20] }), { ok: true, value: null });
+  const paolo = (await tabOf(h.kept(), MISSION_ANALYSIS))!.people.find((p) => p.id === 20)!;
+  assert.equal(paolo.role, "lead");
+  assert.deepEqual(paolo.divisions.map((d) => [d.divisionId, d.role]), [[MISSION_ANALYSIS, "lead"], [OPTIMIZATION, "lead"]]);
+});
+
+test("the old lead's three outcomes: stays as a member, leaves this division, leaves the team", async () => {
+  // Anna Villa (13) is in Mission Analysis and Optimization and Analysis: lead her first, then let each outcome play.
+  const first = head();
+  await first.writes.saveDivision(MISSION_ANALYSIS, { ...keep, newLeads: [13] });
+
+  const stays = head(first.kept());
+  await stays.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 13, outcome: "member" }] });
+  assert.equal((await tabOf(stays.kept(), MISSION_ANALYSIS))!.people.find((p) => p.id === 13)?.role, "member");
+
+  const leaves = head(first.kept());
+  await leaves.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 13, outcome: "leave-division" }] });
+  assert.equal((await tabOf(leaves.kept(), MISSION_ANALYSIS))!.people.some((p) => p.id === 13), false);
+  assert.ok((await tabOf(leaves.kept(), OPTIMIZATION))!.people.some((p) => p.id === 13), "keeps Optimization and Analysis");
+
+  // Pietro Ricci (6) only leads Mission Analysis, so the head may move him to Alumni.
+  const gone = head();
+  assert.equal((await gone.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 6, outcome: "leave-team" }] })).ok, true);
+  assert.ok(gone.kept().movedToAlumni[6]);
+  const alumni = await dummyTeamPages("operations-lead", gone.kept(), async () => {}).alumni();
+  assert.ok(alumni.rows.some((a) => a.name === "Pietro Ricci"));
+});
+
+test("a changed code is the one the division's position codes read", async () => {
+  const h = head();
+  await h.writes.saveDivision(MISSION_ANALYSIS, { ...keep, code: "MX" });
+  const data = dummyDashboardData(
+    "department-head",
+    { current: dummyRecruitmentOf(undefined), save: async () => {} },
+    { current: EMPTY_DUMMY_STATE, save: async () => {} },
+    { current: h.kept(), save: async () => {} },
+  );
+  const rows = (await data.positions()).positions.filter((p) => p.division === "Mission Analysis Division");
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((p) => p.code.split("-")[1] === "MX"), rows.map((p) => p.code).join());
+});
+
+test("New division opens with its lead and members; a new email waits for Confirm NDA", async () => {
+  const h = head();
+  const created = await h.writes.createDivision(1, { name: "Flight Dynamics", code: "FD", newLeads: [13], oldLeads: [], members: [7], emails: ["new.person@studenti.polito.it"] });
+  assert.ok(created.ok);
+  const tab = (await tabOf(h.kept(), created.value))!;
+  assert.equal(tab.division.name, "Flight Dynamics Division");
+  assert.deepEqual(tab.people.map((p) => [p.id, p.role]), [[13, "lead"], [7, "member"]]);
+  assert.deepEqual(tab.waiting.map((w) => w.email), ["new.person@studenti.polito.it"]);
+
+  const confirm = head(h.kept());
+  assert.equal(await confirm.writes.confirmNda(tab.waiting[0].joinId), true);
+  const after = (await tabOf(confirm.kept(), created.value))!;
+  assert.equal(after.waiting.length, 0);
+  assert.ok(after.people.some((p) => p.signInEmail === "new.person@studenti.polito.it"));
+});
+
+test("closing an empty division moves it to Closed, closes its open positions and drops its access", async () => {
+  const h = head();
+  assert.equal((await h.writes.closeDivision(MISSION_ANALYSIS)).ok, false, "people are still in it");
+  // A new division, then its only lead moved out from the Members list, leaves it empty.
+  const created = await h.writes.createDivision(1, { name: "Flight Dynamics", code: "FD", newLeads: [13], oldLeads: [], members: [], emails: [] });
+  assert.ok(created.ok);
+  const emptied = head(h.kept());
+  assert.equal(await emptied.writes.removeFromDivision(13, created.value), true);
+  const closer = head(emptied.kept());
+  assert.deepEqual(await closer.writes.closeDivision(created.value), { ok: true, value: null });
+  const page = department(await head(closer.kept()).view.members());
+  assert.ok(page.closed.some((d) => d.id === created.value));
+  assert.ok(!page.tabs.some((t) => t.division.id === created.value));
+
+  // Optimization and Analysis has an open position and access given in it.
+  const shut: TeamEdits = { ...NO_EDITS, divisions: { [OPTIMIZATION]: { name: "Optimization and Analysis Division", code: "OA", departmentId: 1, closedOn: "2026-10-09" } } };
+  const data = dummyDashboardData(
+    "department-head",
+    { current: dummyRecruitmentOf(undefined), save: async () => {} },
+    { current: EMPTY_DUMMY_STATE, save: async () => {} },
+    { current: shut, save: async () => {} },
+  );
+  const positions = (await data.positions()).positions.filter((p) => p.division === "Optimization and Analysis Division");
+  assert.ok(positions.length > 0 && positions.every((p) => !p.open));
+  const access = (await data.divisionAccess())!;
+  assert.ok(access.unit.kind === "department" && !access.unit.divisions.some((d) => d.id === OPTIMIZATION));
+  assert.ok(!access.grants.some((g) => g.place.kind === "division" && g.place.division.id === OPTIMIZATION));
+});
+
+test("Reopen opens a closed division only with a lead, and with no members", async () => {
+  const h = head();
+  const none = await h.writes.saveDivision(WIND_TUNNEL, { ...keep, name: "Wind Tunnel", code: "WT" });
+  assert.deepEqual(none, { ok: false, error: "A division needs at least one lead." });
+  assert.ok((await h.writes.saveDivision(WIND_TUNNEL, { ...keep, name: "Wind Tunnel", code: "WT", newLeads: [13] })).ok);
+  const tab = (await tabOf(h.kept(), WIND_TUNNEL))!;
+  assert.deepEqual(tab.people.map((p) => [p.id, p.role]), [[13, "lead"]]);
+  assert.ok(!department(await head(h.kept()).view.members()).closed.some((d) => d.id === WIND_TUNNEL));
+});
+
+test("a division lead's division writes are refused on the server", async () => {
+  const lead = dummyTeamPages("division-lead", NO_EDITS, async () => assert.fail("nothing is saved"));
+  assert.equal((await lead.teamWrites!.saveDivision(MISSION_ANALYSIS, { ...keep, code: "MX" })).ok, false);
+  assert.equal((await lead.teamWrites!.createDivision(1, { ...keep, name: "Flight Dynamics", code: "FD", newLeads: [3] })).ok, false);
+  assert.equal((await lead.teamWrites!.closeDivision(MISSION_ANALYSIS)).ok, false);
+  assert.deepEqual(await lead.findPeople("Sara"), { kind: "none" });
+});
