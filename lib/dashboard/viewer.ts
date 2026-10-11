@@ -62,7 +62,8 @@ export function initialsOf(name: string): string {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
-export type ScopeKind = "admin" | "org" | "department" | "division" | "website";
+/** `scopes.scope`. A `team` row is "Approve orders" (issue #233): it opens no page and changes no viewer kind. */
+export type ScopeKind = "admin" | "org" | "department" | "division" | "website" | "team";
 
 /** One of a member's active roles, as the viewer reads it. */
 export type ActiveRoleRef = {

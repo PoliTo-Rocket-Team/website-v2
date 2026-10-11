@@ -104,14 +104,15 @@ export const DASHBOARD_PAGES = [
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",
-    // A department head's Members and Orders pages are #235 and #233; their Access page is here (issue #230).
+    // A department head's Members page is #235; their Access page is here (issue #230).
     reach: { "department-head": "my-department", "division-lead": "my-division" },
   },
   {
     key: "orders",
     label: "Orders",
     href: "/dashboard/orders",
-    reach: { "division-lead": "my-division" },
+    // Every order in the team, for anyone with Orders access (issue #233).
+    reach: { "department-head": "my-department", "division-lead": "my-division" },
   },
   {
     key: "my-profile",

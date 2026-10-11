@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
-import { DivisionOrdersView } from "@/components/dashboard/division-orders";
+import { OrdersView } from "@/components/dashboard/division-orders";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { cancelOrder, editOrder, placeOrder } from "../actions";
@@ -11,9 +11,9 @@ export const metadata: Metadata = {
   title: "Orders · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 61 to 61d: the division's Orders page. Only a division lead reaches it
-// (lib/dashboard/access.ts), and only with Orders access in the division
-// (issue #213); anyone else gets the dashboard's not found.
+// Boards 61 to 61d, 61m, 67, 67b and 67m: every order in the team (issue
+// #233). A division lead or a department head reaches it (lib/dashboard/access.ts),
+// and only with Orders access somewhere; anyone else gets the dashboard's not found.
 export default function OrdersPage() {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
@@ -28,7 +28,7 @@ async function LiveOrders() {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "orders")) notFound();
-  const orders = await data.divisionOrders();
+  const orders = await data.orders();
   if (orders === null) notFound();
-  return <DivisionOrdersView data={orders} writes={{ placeOrder, editOrder, cancelOrder }} />;
+  return <OrdersView data={orders} writes={{ placeOrder, editOrder, cancelOrder }} />;
 }

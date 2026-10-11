@@ -52,6 +52,8 @@ export const scopeTypeEnum = pgEnum("scope_type", [
   "department",
   "division",
   "website",
+  // A team-wide grant in no unit: "Approve orders" (issue #233, drizzle/0017).
+  "team",
 ]);
 
 export const targetTypeEnum = pgEnum("target_type", [
@@ -63,6 +65,8 @@ export const targetTypeEnum = pgEnum("target_type", [
   "faq",
   "blog",
   "logs",
+  // "Approve orders", given by the team leader on scope `team` (issue #233).
+  "approve_orders",
 ]);
 
 export const accessLevelTypeEnum = pgEnum("access_level_type", [
@@ -191,7 +195,12 @@ export const orders = pgTable("orders", {
     withTimezone: true,
     mode: "string",
   }),
-});
+  // The division the order was made for (issue #233, drizzle/0017); null only
+  // for an old order whose requester held no role in a division.
+  divisionId: integer("division_id").references(() => divisions.id),
+}, (table) => ({
+  divisionIdx: index("orders_division_id_idx").on(table.divisionId),
+}));
 
 export const applyPositions = pgTable("apply_positions", {
   id: serial("id").primaryKey(),

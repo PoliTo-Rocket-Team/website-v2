@@ -302,7 +302,8 @@ export function NewPositionDrawer({
   );
 }
 
-function DivisionMenu({
+/** The Division field's menu: each division with its department under it. New order uses it too (issue #233). */
+export function DivisionMenu<D extends Pick<DivisionChoice, "id" | "name" | "department">>({
   id,
   describedBy,
   divisions,
@@ -312,9 +313,9 @@ function DivisionMenu({
 }: {
   id: string;
   describedBy: string | undefined;
-  divisions: readonly DivisionChoice[];
-  value: DivisionChoice | null;
-  onChange: (division: DivisionChoice) => void;
+  divisions: readonly D[];
+  value: D | null;
+  onChange: (division: D) => void;
   invalid: boolean;
 }) {
   return (

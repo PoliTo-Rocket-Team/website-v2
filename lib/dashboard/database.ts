@@ -31,7 +31,7 @@ import {
   type MemberDirectory,
 } from "./team";
 import { alumniOf, readTeamSnapshot, rosterOf } from "./team-database";
-import { formatEuro, waitingOrders } from "./orders";
+import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
   checklistProgress,
   divisionShortName,
@@ -382,18 +382,19 @@ async function readInterviews(positions: readonly ScopedPosition[]): Promise<Upc
  */
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
-  const [positions, memberCount, divisionOrders, withoutPhoto, notices] = await Promise.all([
+  const [positions, memberCount, ordersPage, withoutPhoto, notices] = await Promise.all([
     readPositions(identity),
     readActiveMemberCount(identity.divisionIds),
-    databaseDivisionPages(identity).divisionOrders(),
+    databaseDivisionPages(identity).orders(),
     readMembersWithoutPhoto(identity.divisionIds),
     readNoticeAttention(identity, now),
   ]);
   const interviews = await readInterviews(positions);
   const open = positions.filter((p) => p.open);
   const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
-  const waiting = divisionOrders ? waitingOrders(divisionOrders.orders) : { count: 0, total: 0 };
-  const divisionName = identity.role?.divisionName ?? divisionOrders?.division.name ?? "";
+  // The figure counts the lead's own divisions' orders, though Orders shows the whole team (issue #233).
+  const waiting = ordersPage ? waitingOrders(ordersOfDivisions(ordersPage.orders, identity.divisionIds)) : { count: 0, total: 0 };
+  const divisionName = identity.role?.divisionName ?? "";
   const noPhoto = noPhotoItem(withoutPhoto);
 
   const attention: AttentionItem[] = [

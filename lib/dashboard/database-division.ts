@@ -12,7 +12,6 @@ import {
   ACCESS_TARGETS,
   checkRemoveAllAccess,
   checkSaveAccess,
-  heldLevel,
   ROLE_HELD_ACCESS,
   type AccessDivision,
   type AccessGrant,
@@ -28,25 +27,39 @@ import {
 } from "./division-access";
 import { headDivisionsOf } from "./viewer";
 import {
+  canEditOrder,
+  checkApproveOrdersChange,
+  checkDecision,
   checkNewOrder,
+  checkOrderDivision,
   checkQuote,
+  decideRightOf,
   orderActions,
+  orderingDivisions,
+  ordersPageFor,
   parseEuros,
   stateAfterEdit,
-  type DivisionOrders,
+  type EditUnit,
   type NewOrder,
   type Order,
+  type OrderDecision,
+  type OrdersPage,
+  type OrdersScope,
   type OrderState,
+  type OrderUnit,
+  type OrgDepartmentUnits,
   type StoredOrderStatus,
 } from "./orders";
 import type { DashboardIdentity } from "./database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
-// The division lead's Access and Orders pages, and the department head's
-// Access page, read from and written to the database (boards 43 and 44, issue
-// #145; Dashboard v2 boards 60 to 61d, issue #172; boards 65 and 65b, issue
-// #230). A lead's division is the one their lead role sits in, else the first
-// division their scopes cover; a head's department is their role's. Reads follow
+// The Access pages of a division lead and a department head, and the Orders
+// page, read from and written to the database (boards 43 and 44, issue #145;
+// Dashboard v2 boards 60 to 61d, issue #172; boards 65 and 65b, issue #230;
+// boards 61 to 67b, issue #233). A lead's Access division is the one their
+// lead role sits in, else the first division their scopes cover; a head's
+// department is their role's. Orders shows every order in the team and checks
+// each write against the viewer's scope on the server. Reads follow
 // .patterns/drizzle-reads.md; writes follow .patterns/audited-mutations.md
 // and check the lead's access on the server before they run.
 
@@ -327,17 +340,74 @@ async function removeAllAccess(identity: DashboardIdentity, personId: number): P
   return result.ok ? written(null) : result;
 }
 
-/** Every request from the given divisions' people: a department head's Overview counts the waiting ones (board 62). */
-export async function readOrdersIn(divisionIds: readonly number[]): Promise<Order[]> {
-  const rows = await Promise.all(divisionIds.map((id) => readOrderRows(id)));
-  const seen = new Set<number>();
-  return rows.flat().flatMap((r) => {
-    if (seen.has(r.id)) return [];
-    seen.add(r.id);
-    return orderOf(r);
-  });
+/** Every open department and its open divisions, by name: the Department filter (board 67b) and New order read it. */
+async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
+  const db = getDb();
+  const [deps, divs] = await Promise.all([
+    db.select({ id: departments.id, name: departments.name }).from(departments).where(isNull(departments.closedAt)),
+    db
+      .select({ id: divisions.id, name: divisions.name, department_id: divisions.deptId })
+      .from(divisions)
+      .where(isNull(divisions.closedAt)),
+  ]);
+  return deps
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      divisions: divs
+        .filter((v) => v.department_id === d.id)
+        .map((v) => ({ id: v.id, name: v.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Whether the viewer holds the team leader's role now. */
+function isTeamLeader(identity: DashboardIdentity): boolean {
+  return identity.roles.some((r) => r.type === "president");
+}
+
+/**
+ * The viewer's Orders scope (issue #233), or null when they hold no Orders
+ * access anywhere. A `division` or `department` scope row on `orders` (or on
+ * `all`) is access there, at its level; a head's role is Can edit across
+ * their department (board 65). Deciding comes from being the team leader,
+ * or from a `team` row on `approve_orders`.
+ */
+async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDepartmentUnits[]): Promise<OrdersScope | null> {
+  if (identity.memberId === null || identity.kind === "non-member") return null;
+  const [rows, headDepartment] = await Promise.all([
+    getDb()
+      .select({ scope: scopes.scope, target: scopes.target, level: scopes.accessLevel, division_id: scopes.divisionId, dept_id: scopes.deptId })
+      .from(scopes)
+      .where(eq(scopes.memberId, identity.memberId)),
+    readHeadDepartment(identity),
+  ]);
+  const ordersRows = rows.filter((r) => (r.scope === "division" || r.scope === "department") && (r.target === "orders" || r.target === "all"));
+  const decides = decideRightOf({
+    teamLeader: isTeamLeader(identity),
+    approveOrders: rows.some((r) => r.scope === "team" && r.target === "approve_orders"),
+  });
+
+  const edits: EditUnit[] = [];
+  const add = (unit: EditUnit) => {
+    const key = (u: EditUnit) => (u.kind === "division" ? `v${u.division.id}` : `d${u.department.id}`);
+    if (!edits.some((e) => key(e) === key(unit))) edits.push(unit);
+  };
+  if (headDepartment !== null) add({ kind: "department", department: { id: headDepartment.id, name: headDepartment.name } });
+  for (const r of ordersRows) {
+    if (r.level !== "edit") continue;
+    if (r.scope === "department") {
+      const department = org.find((d) => d.id === r.dept_id);
+      if (department) add({ kind: "department", department: { id: department.id, name: department.name } });
+    } else {
+      const division = org.flatMap((d) => d.divisions).find((d) => d.id === r.division_id);
+      if (division) add({ kind: "division", division });
+    }
+  }
+  if (headDepartment === null && ordersRows.length === 0 && decides === null) return null;
+  return { edits, decides };
+}
 
 type DbOrderStatus = (typeof orders.$inferSelect)["status"];
 
@@ -361,6 +431,10 @@ type OrderRow = {
   quote_name: string | null;
   review_note: string | null;
   reviewed_at: string | null;
+  division_id: number | null;
+  division_name: string | null;
+  department_id: number | null;
+  department_name: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -378,6 +452,14 @@ function stateOf(r: OrderRow): OrderState | null {
   return { status, changes: { reason: r.review_note ?? "", by, on: (r.reviewed_at ?? r.created_at).slice(0, 10) } };
 }
 
+function unitOf(r: OrderRow): OrderUnit | null {
+  if (r.division_id === null || r.division_name === null) return null;
+  return {
+    division: { id: r.division_id, name: r.division_name },
+    department: r.department_id === null || r.department_name === null ? null : { id: r.department_id, name: r.department_name },
+  };
+}
+
 // `orders.description` holds the shop link; `orders.price` the price of one,
 // without IVA; `orders.quote_name` the quote's pathname in the private store,
 // which no route serves yet, so the quote shows by name only.
@@ -392,6 +474,7 @@ function orderOf(r: OrderRow): Order[] {
       reason: r.reason,
       link: r.description,
       requestedBy: r.email === null ? "" : nameOf({ first_name: r.first_name, last_name: r.last_name, email: r.email }),
+      unit: unitOf(r),
       unitPrice: r.price === null ? 0 : (parseEuros(r.price) ?? 0),
       quantity: r.quantity ?? 1,
       shipping: null,
@@ -416,6 +499,10 @@ function orderColumns() {
     quote_name: orders.quoteName,
     review_note: orders.reviewNote,
     reviewed_at: orders.reviewedAt,
+    division_id: divisions.id,
+    division_name: divisions.name,
+    department_id: departments.id,
+    department_name: departments.name,
     first_name: users.firstName,
     last_name: users.lastName,
     email: users.email,
@@ -425,49 +512,43 @@ function orderColumns() {
   };
 }
 
-/** Everyone who has held a role in the division, so a person who left keeps their orders there. */
-function requestersOf(divisionId: number) {
-  return getDb().selectDistinct({ id: roles.memberId }).from(roles).where(eq(roles.divisionId, divisionId));
-}
-
-async function readOrderRows(divisionId: number, orderId?: number): Promise<OrderRow[]> {
+/** Orders as the page reads them: every order in the team, or only the given divisions', or one order. */
+async function readOrderRows(where: { divisionIds?: readonly number[]; orderId?: number } = {}): Promise<OrderRow[]> {
   return getDb()
     .select(orderColumns())
     .from(orders)
     .leftJoin(users, eq(users.member, orders.requester))
     .leftJoin(reviewer, eq(reviewer.member, orders.reviewedBy))
+    .leftJoin(divisions, eq(divisions.id, orders.divisionId))
+    .leftJoin(departments, eq(departments.id, divisions.deptId))
     .where(
       and(
-        inArray(orders.requester, requestersOf(divisionId)),
-        orderId === undefined ? undefined : eq(orders.id, orderId),
+        where.divisionIds === undefined ? undefined : inArray(orders.divisionId, where.divisionIds.length ? [...where.divisionIds] : [-1]),
+        where.orderId === undefined ? undefined : eq(orders.id, where.orderId),
       ),
     )
-    .orderBy(desc(orders.createdAt));
+    .orderBy(desc(orders.createdAt), desc(orders.id));
 }
 
-/**
- * The division whose orders the viewer reaches, and their level on Orders
- * there (issue #213): an `orders` grant, or a division scope on `all`. Null
- * for someone who holds no Orders access.
- */
-async function ordersAccess(identity: DashboardIdentity): Promise<{ division: { id: number; name: string }; level: AccessLevel } | null> {
-  const division = await leadDivision(identity);
-  if (division === null || identity.memberId === null) return null;
-  const level = heldLevel(await readHeld(identity.memberId, division.id), "orders");
-  return level === null ? null : { division, level };
+/** Every request made for the given divisions: a division lead's and a department head's Overview count the waiting ones (boards 56 and 62). */
+export async function readOrdersIn(divisionIds: readonly number[]): Promise<Order[]> {
+  return (await readOrderRows({ divisionIds })).flatMap(orderOf);
 }
 
-/** The division the viewer sends and changes orders in; a reason when they may not. */
-async function orderingDivision(identity: DashboardIdentity): Promise<{ id: number; name: string } | string> {
-  const reach = await ordersAccess(identity);
-  if (reach === null) return "You do not have access to Orders.";
-  return reach.level === "edit" ? reach.division : "You can view orders but not request or change them.";
+/** The Orders page (issue #233): every order in the team, for anyone with Orders access; null for anyone else. */
+async function readOrdersPage(identity: DashboardIdentity): Promise<OrdersPage | null> {
+  const org = await readOrgUnits();
+  const scope = await readOrdersScope(identity, org);
+  if (scope === null) return null;
+  return ordersPageFor(scope, org, (await readOrderRows()).flatMap(orderOf));
 }
 
-async function readDivisionOrders(identity: DashboardIdentity): Promise<DivisionOrders | null> {
-  const reach = await ordersAccess(identity);
-  if (reach === null) return null;
-  return { ...reach, orders: (await readOrderRows(reach.division.id)).flatMap(orderOf) };
+/** The viewer's scope and one stored request, or why there is nothing to act on. */
+async function scopedOrder(identity: DashboardIdentity, orderId: number): Promise<{ scope: OrdersScope; order: Order } | string> {
+  const scope = await readOrdersScope(identity, await readOrgUnits());
+  if (scope === null) return "You do not have access to Orders.";
+  const [order] = (await readOrderRows({ orderId })).flatMap(orderOf);
+  return order === undefined ? "That request is no longer on the page." : { scope, order };
 }
 
 /** The New order or Edit order fields and quote, checked again on the server. */
@@ -500,9 +581,12 @@ async function placeOrder(
   fields: Record<string, string>,
   quote: Upload | null,
 ): Promise<WriteResult<Order>> {
-  const division = await orderingDivision(identity);
-  if (typeof division === "string") return refused(division);
   if (identity.memberId === null) return refused("Only a team member sends orders here.");
+  const org = await readOrgUnits();
+  const scope = await readOrdersScope(identity, org);
+  if (scope === null) return refused("You do not have access to Orders.");
+  const division = checkOrderDivision(orderingDivisions(scope, org), fields.division);
+  if (!division.ok) return refused(division.error);
   const checked = checkedOrder(fields, quote);
   if (!checked.ok) return refused(checked.error);
 
@@ -515,6 +599,7 @@ async function placeOrder(
         .insert(orders)
         .values({
           requester,
+          divisionId: division.value.id,
           name: order.item,
           description: order.link,
           reason: order.reason,
@@ -524,7 +609,7 @@ async function placeOrder(
         })
         .returning({ id: orders.id }),
     );
-    const [placed] = (await readOrderRows(division.id, row.id)).flatMap(orderOf);
+    const [placed] = (await readOrderRows({ orderId: row.id })).flatMap(orderOf);
     return written(placed);
   } catch (error) {
     if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
@@ -535,13 +620,7 @@ async function placeOrder(
 /** A guarded order write that changed no row: the request moved on since the page read it. */
 const ORDER_CHANGED = "This request changed. Reload the page.";
 
-/** The request as stored, when it is one of the lead's division's and still on the page. */
-async function divisionOrder(identity: DashboardIdentity, orderId: number): Promise<{ divisionId: number; order: Order } | string> {
-  const division = await orderingDivision(identity);
-  if (typeof division === "string") return division;
-  const [order] = (await readOrderRows(division.id, orderId)).flatMap(orderOf);
-  return order === undefined ? "That request is not in your division." : { divisionId: division.id, order };
-}
+const OUT_OF_SCOPE = "This order is outside your division or department, so it is read-only for you.";
 
 async function editOrder(
   identity: DashboardIdentity,
@@ -549,8 +628,9 @@ async function editOrder(
   fields: Record<string, string>,
   quote: Upload | null,
 ): Promise<WriteResult<Order>> {
-  const found = await divisionOrder(identity, orderId);
+  const found = await scopedOrder(identity, orderId);
   if (typeof found === "string") return refused(found);
+  if (!canEditOrder(found.scope, found.order)) return refused(OUT_OF_SCOPE);
   if (stateAfterEdit(found.order.status) === null) return refused("The team leader has answered this request.");
   const checked = checkedOrder(fields, quote);
   if (!checked.ok) return refused(checked.error);
@@ -587,14 +667,15 @@ async function editOrder(
     if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
     return refused(ORDER_CHANGED);
   }
-  const [edited] = (await readOrderRows(found.divisionId, orderId)).flatMap(orderOf);
+  const [edited] = (await readOrderRows({ orderId })).flatMap(orderOf);
   return edited === undefined ? refused("The team leader has answered this request.") : written(edited);
 }
 
 async function cancelOrder(identity: DashboardIdentity, orderId: number): Promise<WriteResult<null>> {
-  const found = await divisionOrder(identity, orderId);
+  const found = await scopedOrder(identity, orderId);
   if (typeof found === "string") return refused(found);
-  if (!orderActions(found.order.status, "edit").cancel) return refused("The team leader has answered this request.");
+  if (!canEditOrder(found.scope, found.order)) return refused(OUT_OF_SCOPE);
+  if (!orderActions(found.scope, found.order).cancel) return refused("The team leader has answered this request.");
   const changed = await runAuditQuery((db) =>
     db
       .update(orders)
@@ -605,16 +686,82 @@ async function cancelOrder(identity: DashboardIdentity, orderId: number): Promis
   return changed.length === 0 ? refused(ORDER_CHANGED) : written(null);
 }
 
+const DB_STATUS_AFTER: Readonly<Record<OrderDecision["kind"], DbOrderStatus>> = {
+  approve: "accepted",
+  reject: "rejected",
+  "ask-for-changes": "changes_requested",
+};
+
+/** Approve, reject or ask for changes, checked on the server (`checkDecision`). */
+async function decideOrder(identity: DashboardIdentity, orderId: number, input: unknown): Promise<WriteResult<Order>> {
+  if (identity.memberId === null) return refused("Only the team leader, or someone they gave Approve orders, decides orders.");
+  const found = await scopedOrder(identity, orderId);
+  if (typeof found === "string") return refused(found);
+  const checked = checkDecision(found.scope.decides, found.order.status, input);
+  if (!checked.ok) return refused(checked.error);
+  const decision = checked.value;
+  const reviewedBy = identity.memberId;
+  const changed = await runAuditQuery((db) =>
+    db
+      .update(orders)
+      .set({
+        status: DB_STATUS_AFTER[decision.kind],
+        reviewNote: decision.kind === "ask-for-changes" ? decision.reason : null,
+        reviewedBy,
+        reviewedAt: new Date().toISOString(),
+      })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "pending")))
+      .returning({ id: orders.id }),
+  );
+  if (changed.length === 0) return refused(ORDER_CHANGED);
+  const [decided] = (await readOrderRows({ orderId })).flatMap(orderOf);
+  return decided === undefined ? refused(ORDER_CHANGED) : written(decided);
+}
+
+/** Give or remove "Approve orders": only the team leader, any number of holders (`checkApproveOrdersChange`). */
+async function setApproveOrders(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  if (identity.memberId === null) return refused("Only the team leader gives or removes Approve orders.");
+  const db = getDb();
+  const [active, holders] = await Promise.all([
+    db.select({ member_id: roles.memberId, type: roles.type }).from(roles).where(isNull(roles.leavedAt)),
+    db
+      .select({ member_id: scopes.memberId })
+      .from(scopes)
+      .where(and(eq(scopes.scope, "team"), eq(scopes.target, "approve_orders"))),
+  ]);
+  const ids = (rows: readonly { member_id: number | null }[]) => [...new Set(rows.flatMap((r) => (r.member_id === null ? [] : [r.member_id])))];
+  const checked = checkApproveOrdersChange(
+    {
+      byTeamLeader: isTeamLeader(identity),
+      team: ids(active),
+      teamLeaders: ids(active.filter((r) => r.type === "president")),
+      holders: ids(holders),
+    },
+    input,
+  );
+  if (!checked.ok) return refused(checked.error);
+  const { personId, holds } = checked.value;
+  const givenBy = identity.memberId;
+  await runAuditQuery((tx) =>
+    holds
+      ? tx.insert(scopes).values({ memberId: personId, givenBy, scope: "team", target: "approve_orders", accessLevel: "edit" })
+      : tx.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "team"), eq(scopes.target, "approve_orders"))),
+  );
+  return written(null);
+}
+
 /** The Access and Orders methods of the database side of the data interface. */
 export function databaseDivisionPages(identity: DashboardIdentity) {
   return {
     divisionAccess: () => readAccessPage(identity),
     saveAccess: (input: unknown) => saveAccess(identity, input),
     removeAllAccess: (personId: number) => removeAllAccess(identity, personId),
-    divisionOrders: () => readDivisionOrders(identity),
+    orders: () => readOrdersPage(identity),
     placeOrder: (fields: Record<string, string>, quote: Upload | null) => placeOrder(identity, fields, quote),
     editOrder: (orderId: number, fields: Record<string, string>, quote: Upload | null) =>
       editOrder(identity, orderId, fields, quote),
     cancelOrder: (orderId: number) => cancelOrder(identity, orderId),
+    decideOrder: (orderId: number, input: unknown) => decideOrder(identity, orderId, input),
+    setApproveOrders: (input: unknown) => setApproveOrders(identity, input),
   };
 }
