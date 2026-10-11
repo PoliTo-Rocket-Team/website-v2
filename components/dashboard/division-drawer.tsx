@@ -127,7 +127,9 @@ function DrawerForm({
 
   const tab = target.kind === "edit" ? target.tab : null;
   const divisionId = target.kind === "edit" ? target.tab.division.id : target.kind === "reopen" ? target.closed.id : null;
-  const short = draft.name.trim() === "" ? "the new division" : divisionLabel(draft.name.trim());
+  // Only a division being created is new; one being reopened or edited already exists (issue #249).
+  const unnamed = target.kind === "new" ? "the new division" : "this division";
+  const short = draft.name.trim() === "" ? unnamed : divisionLabel(draft.name.trim());
   const leads = tab?.people.filter((p) => p.role === "lead") ?? [];
   const replacedBy = (leadId: number) => draft.added.find((a) => a.replaces === leadId) ?? null;
   const gone = leads.filter((l) => draft.removed.includes(l.id) || replacedBy(l.id) !== null);
@@ -335,6 +337,7 @@ function DrawerForm({
           ) : (
             <DraftMembers
               short={short}
+              unnamed={unnamed}
               members={draft.members}
               emails={draft.emails}
               leadIds={draft.added.map((a) => a.pick.id)}
@@ -869,6 +872,7 @@ function MemberItem({
  */
 function DraftMembers({
   short,
+  unnamed,
   members,
   emails,
   leadIds,
@@ -878,6 +882,8 @@ function DraftMembers({
   onDropEmail,
 }: {
   short: string;
+  /** "the new division" or "this division": the division the footer names, whatever its draft name. */
+  unnamed: string;
   members: readonly TeamPick[];
   emails: readonly string[];
   leadIds: readonly number[];
@@ -939,7 +945,7 @@ function DraftMembers({
           Add member
         </button>
       )}
-      <p className="mt-6 text-[12px] leading-relaxed text-prt-muted">The lead and members join the new division and keep their other divisions.</p>
+      <p className="mt-6 text-[12px] leading-relaxed text-prt-muted">The lead and members join {unnamed} and keep their other divisions.</p>
     </section>
   );
 }
