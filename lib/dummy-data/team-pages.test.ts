@@ -304,6 +304,42 @@ test("the operations lead gets the whole Team tree (issue #183)", async () => {
   assert.ok((await ops.teamTree()).departments.length > 0);
 });
 
+function departmentPage(directory: MemberDirectory) {
+  if (directory.scope !== "department") throw new Error(`expected a department page, got ${directory.scope}`);
+  return directory;
+}
+
+test("the department head's Members page holds their department's divisions, and its closed one (#235)", async () => {
+  const page = departmentPage(await pages("department-head").view.members());
+  assert.equal(page.department.name, "Aerodynamics");
+  assert.deepEqual(page.tabs.map((t) => t.division.code), ["MA", "OA"]);
+  assert.deepEqual(page.closed.map((d) => d.name), ["Wind Tunnel Division"]);
+  assert.equal(new Set(page.everyone.map((p) => p.id)).size, page.everyone.length, "everyone once");
+  assert.ok(page.everyone.some((p) => p.name === "Matteo Greco"), "in Optimization and Analysis beside Structures");
+  assert.ok(!page.everyone.some((p) => p.name === "Federica Leone"), "nobody from Structures alone");
+});
+
+test("a department head acts only on people in their department's divisions; the server refuses the rest (#235)", async () => {
+  const { view, saved } = pages("department-head");
+  const writes = view.teamWrites!;
+  const SOFIA = 3; // Mission Analysis, and Design & Manufacturing in Structures
+  const MATTEO = 72; // Design & Manufacturing, and Optimization and Analysis
+  const FEDERICA = 21; // leads Design & Manufacturing only
+  const LUCA = 4; // Mission Analysis only
+  const years = { reason: "graduated", from: 2024, to: 2026 } as const;
+
+  assert.equal(await writes.removeFromDivision(MATTEO, 2), true, "out of Optimization, keeping Structures");
+  assert.equal(await writes.removeFromDivision(MATTEO, 3), false, "Design & Manufacturing is not the head's");
+  assert.equal(await writes.removeFromDivision(FEDERICA, 3), false);
+  assert.equal(await writes.moveToAlumni(SOFIA, years), false, "also in Structures");
+  assert.equal(await writes.moveToAlumni(FEDERICA, years), false);
+  assert.equal(await writes.moveToAlumni(LUCA, years), true);
+  assert.equal((await writes.addMember({ kind: "member", divisionId: 3, personId: LUCA, title: null })).ok, false);
+  assert.deepEqual(await writes.addMember({ kind: "member", divisionId: 2, personId: LUCA, title: null }), { ok: true, value: "joined" });
+  assert.equal(saved.length, 3);
+  assert.deepEqual(await view.findForAdd(3, "Luca Marino"), { kind: "none" }, "Add member finds nobody for a division outside the department");
+});
+
 test("a malformed edits cookie reads as no edits", () => {
   assert.deepEqual(parseEdits("not json"), NO_EDITS);
   assert.deepEqual(parseEdits(JSON.stringify({ members: { 7: { role: "admin" } }, shownOnSite: { x: true } })), NO_EDITS);

@@ -66,8 +66,9 @@ An admin column comes later. **Planned**, no issue yet.
 - **Members**, **Access** and **Orders** are for division leads and up, scoped to their divisions.
   A lead of more than one division picks which one Members shows (#231).
   - **Gap:** a lead of more than one division sees only one on Access and Orders. Tracked in #185.
-  - **Gap:** a department head's sidebar lists Access but not yet Members or Orders. Tracked in
-    #235 and #233.
+  - A department head's Members page holds every division of their department (#235).
+  - **Gap:** a department head's sidebar lists Access and Members but not yet Orders. Tracked in
+    #233.
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
   with site-content access, which the full admins can give to anyone. A division lead or
@@ -155,7 +156,7 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
 These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 61h2).
 
 - There is no separate Department page. The Members page holds the division tools for heads, and
-  shows member data. The department head's view is #235.
+  shows member data. The department head's view is below (#235).
 - The table shows each person's divisions as code chips. A division in another department shows
   the department's name instead. Each person's role is their title in this division, or "Division
   Lead".
@@ -207,7 +208,7 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   "lead together" or "hand over the division", and each head of the division's department gets a
   notice under "Needs your attention" on their Overview, naming who now leads the division and how
   (#188). The head who promoted is not told. No email is sent.
-  - **Gap:** the head's Members view, where Promote lives, is #235.
+  - **Gap:** the head changes a division's leads in Edit division, which is #232.
 - Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
   and every access ends, after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
@@ -222,6 +223,27 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   also withdraw their open applications in the same dialog.
 - Access is given only on the Access page. You can give only what you have, and only inside your
   scope.
+
+#### Department head's Members page
+
+These rules come from #235 (boards 69, 69b, 69c and 69m) and the Owner decisions on #231.
+
+- The page lists every open division of the head's department. Its tabs are "All divisions" (where
+  it starts), one per division, and "Closed". On a phone the tabs are one "All divisions" select.
+- "All divisions" lists everyone in the department's divisions once, leads first. Each row shows
+  the person's role and title in their first division of the department. Its ⋯ menu offers
+  "Remove from {division}" for each division of the department the person is in, under the rules
+  above, and "Leaves the team".
+- A division tab is that division's page as its lead sees it, people waiting for their NDA
+  included, under a bar with the division's code, name and leads.
+- "Closed" lists the department's closed divisions with the day each closed.
+- Add member starts with a Division select. It lists only the department's open divisions and
+  starts on the open division tab, else the first.
+- A head acts only on people in their department's divisions: adding, Confirm NDA, Cancel add,
+  Confirm join, Edit details, Remove from {division} and Leaves the team. The server refuses the
+  rest.
+- "+ New division", "Edit division", "Close division" and "Reopen" show only to the department's
+  head (or the team leader). What they open is #232.
 
 ### Access
 

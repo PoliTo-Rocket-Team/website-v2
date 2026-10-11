@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Building2, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserPlus, X } from "lucide-react";
+import { Building2, Check, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserPlus, X } from "lucide-react";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { addMember, findForAdd, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
@@ -515,20 +517,35 @@ function PhotoField({ person, divisionId }: { person: DivisionPerson; divisionId
 
 const EMPTY_DRAFT: Draft = { ...NO_MEMBER_DETAILS, title: "" };
 
+/** Where Add member adds to: one division (a lead's page), or a choice of the department's divisions (a head's, board 69c). */
+export type AddTarget =
+  | { readonly kind: "division"; readonly division: DivisionHeader }
+  | {
+      readonly kind: "department";
+      /** "Aerodynamics" */
+      readonly department: string;
+      readonly divisions: readonly DivisionHeader[];
+      /** The division the select starts on: the open tab's, else the first. */
+      readonly start: number;
+    };
+
 /**
- * Add member (boards 61h and 61h2): type an email or search the team by name.
- * Someone on the team joins at once and keeps their other divisions; an email
- * new to the team shows the amber "Not in the team yet" line and waits for
- * Confirm NDA. "Fill in their other details now" opens the rest of the form.
- * The site sends no emails, so the drawer says to tell them.
+ * Add member (boards 61h, 61h2 and 69c): type an email or search the team by
+ * name. Someone on the team joins at once and keeps their other divisions; an
+ * email new to the team shows the amber "Not in the team yet" line and waits
+ * for Confirm NDA. "Fill in their other details now" opens the rest of the
+ * form. The site sends no emails, so the drawer says to tell them. A head
+ * picks the division first, from their department's divisions only.
  */
-export function AddMemberDrawer({ open, onOpenChange, division }: { open: boolean; onOpenChange: (open: boolean) => void; division: DivisionHeader }) {
+export function AddMemberDrawer({ open, onOpenChange, target }: { open: boolean; onOpenChange: (open: boolean) => void; target: AddTarget }) {
   const [round, setRound] = useState(0);
+  const start = target.kind === "division" ? target.division.id : target.start;
   return (
     <AddForm
-      key={round}
+      // A new round, or a new starting division, starts a fresh form.
+      key={`${round}-${start}`}
       open={open}
-      division={division}
+      target={target}
       onOpenChange={(next) => {
         onOpenChange(next);
         if (!next) setRound((r) => r + 1);
@@ -537,7 +554,63 @@ export function AddMemberDrawer({ open, onOpenChange, division }: { open: boolea
   );
 }
 
-function AddForm({ open, onOpenChange, division }: { open: boolean; onOpenChange: (open: boolean) => void; division: DivisionHeader }) {
+/** The Division select at the top of a head's Add member (board 69c): a code chip and the name, the department's divisions only. */
+function DivisionSelect({
+  id,
+  divisions,
+  value,
+  onChange,
+}: {
+  id: string;
+  divisions: readonly DivisionHeader[];
+  value: DivisionHeader;
+  onChange: (divisionId: number) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger id={id} className={`${inputClass()} flex items-center gap-2.5 text-left data-[state=open]:border-accent ${FOCUS}`}>
+        <DivisionName division={value} />
+        <ChevronDown aria-hidden className="ml-auto h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+      </DropdownMenuTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuPrimitive.Content
+          align="start"
+          sideOffset={6}
+          className="z-50 w-[var(--radix-dropdown-menu-trigger-width)] rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
+        >
+          <DropdownMenuPrimitive.RadioGroup value={String(value.id)} onValueChange={(next) => onChange(Number(next))}>
+            {divisions.map((d) => (
+              <DropdownMenuPrimitive.RadioItem
+                key={d.id}
+                value={String(d.id)}
+                className="flex h-10 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[14px] outline-none transition-colors data-[highlighted]:bg-white-5"
+              >
+                <DivisionName division={d} />
+                <DropdownMenuPrimitive.ItemIndicator className="ml-auto">
+                  <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
+                </DropdownMenuPrimitive.ItemIndicator>
+              </DropdownMenuPrimitive.RadioItem>
+            ))}
+          </DropdownMenuPrimitive.RadioGroup>
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPortal>
+    </DropdownMenu>
+  );
+}
+
+function DivisionName({ division }: { division: DivisionHeader }) {
+  return (
+    <>
+      {division.code !== null && <Chips chips={[{ divisionId: division.id, label: division.code, code: true }]} />}
+      <span className="min-w-0 truncate text-[14px] text-prt-text">{divisionLabel(division.name)}</span>
+    </>
+  );
+}
+
+function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: (open: boolean) => void; target: AddTarget }) {
+  const choices = target.kind === "department" ? target.divisions : [target.division];
+  const [divisionId, setDivisionId] = useState(target.kind === "division" ? target.division.id : target.start);
+  const division = choices.find((d) => d.id === divisionId) ?? choices[0];
   const [query, setQuery] = useState("");
   const [lookup, setLookup] = useState<AddLookup>({ kind: "none" });
   const [picked, setPicked] = useState<TeamMatch | null>(null);
@@ -597,7 +670,35 @@ function AddForm({ open, onOpenChange, division }: { open: boolean; onOpenChange
   };
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} title="Add member" detail={`To ${division.name}`} submitLabel="Add member" submitting={pending} onSubmit={submit}>
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add member"
+      detail={target.kind === "department" ? `To a division in ${target.department}` : `To ${division.name}`}
+      submitLabel="Add member"
+      submitting={pending}
+      onSubmit={submit}
+    >
+      {target.kind === "department" && (
+        <div className="mb-5">
+          <Field label="Division" hint={`${choices.length} in ${target.department}`}>
+            {(id) => (
+              <DivisionSelect
+                id={id}
+                divisions={choices}
+                value={division}
+                onChange={(next) => {
+                  setDivisionId(next);
+                  // Who is already here, or waiting here, depends on the division.
+                  setPicked(null);
+                  setLookup({ kind: "none" });
+                }}
+              />
+            )}
+          </Field>
+          <p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>
+        </div>
+      )}
       <Field label="Email" hint="or search the team by name" error={errors.email}>
         {(id, describedBy) =>
           picked ? (
@@ -653,7 +754,7 @@ function AddForm({ open, onOpenChange, division }: { open: boolean; onOpenChange
           ))}
         </ul>
       )}
-      {picked !== null && <p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>}
+      {picked !== null && target.kind === "division" && <p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>}
       {picked === null && lookup.kind === "waiting" && (
         <p className="mt-2 flex items-start gap-2 text-[13px] text-warning">
           <UserPlus aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />

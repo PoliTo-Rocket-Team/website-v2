@@ -1,10 +1,10 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { applications, applyPositions, members, roles, scopes, teamJoins, teamLeaves, users } from "@/db/schema";
+import { applications, applyPositions, divisions, members, roles, scopes, teamJoins, teamLeaves, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { publicPathname } from "@/lib/storage/pathname";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
@@ -48,7 +48,8 @@ import {
   type RoleSeat,
   type TeamActor,
 } from "./team";
-import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG } from "./team-database";
+import { departmentMembers, type ClosedDivision } from "./department-members";
+import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -91,17 +92,11 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
   return { kind: "lead", divisionIds: identity.divisionIds };
 }
 
-/** The divisions the actor's Members page lists, the one it opens on first. */
-function reachOf(identity: DashboardIdentity, actor: TeamActor, org: OrgChart): number[] {
+/** The divisions a division lead's Members page lists, the one it opens on first. A head's page is their department's. */
+function reachOf(identity: DashboardIdentity, actor: Extract<TeamActor, { kind: "lead" }>, org: OrgChart): number[] {
   const open = (id: number) => org.divisions.some((d) => d.id === id);
   const first = leadDivisionId(identity);
-  const ids =
-    actor.kind === "head"
-      ? [...identity.divisionIds, ...org.divisions.filter((d) => actor.departmentIds.includes(d.departmentId)).map((d) => d.id)]
-      : actor.kind === "lead"
-        ? actor.divisionIds
-        : [];
-  const unique = [...new Set(ids)].filter(open);
+  const unique = [...new Set(actor.divisionIds)].filter(open);
   return first !== null && unique.includes(first) ? [first, ...unique.filter((id) => id !== first)] : unique;
 }
 
@@ -227,15 +222,58 @@ function waitingPerson(row: WaitingRow): WaitingPerson {
   };
 }
 
+/** The department's closed divisions, most recently closed first (board 69's Closed tab). */
+async function readClosedDivisions(departmentId: number): Promise<ClosedDivision[]> {
+  const rows = await getDb()
+    .select({ id: divisions.id, name: divisions.name, code: divisions.code, closed_at: divisions.closedAt })
+    .from(divisions)
+    .where(and(eq(divisions.deptId, departmentId), isNotNull(divisions.closedAt)))
+    .orderBy(desc(divisions.closedAt), asc(divisions.id));
+  return rows.flatMap((r) => (r.closed_at === null ? [] : [{ id: r.id, name: r.name, code: r.code, closedOn: r.closed_at }]));
+}
+
 /**
- * The Members page of a division lead or head (boards 61e to 61h2): one of
- * the divisions they reach, `divisionId` or the first, with everyone in it,
- * the people waiting for Confirm NDA and the accepted applicants joining.
+ * A department head's Members page (boards 69 to 69c, issue #235): every
+ * open division of their department, each with the people waiting for
+ * Confirm NDA and the accepted applicants joining, and its closed divisions.
+ * A head of several departments sees the first.
+ */
+async function readDepartmentMembers(
+  identity: DashboardIdentity,
+  actor: Extract<TeamActor, { kind: "head" }>,
+  snapshot: TeamSnapshot,
+): Promise<MemberDirectory> {
+  const [departmentId] = actor.departmentIds;
+  if (departmentId === undefined) return NO_MEMBERS;
+  const divisionIds = snapshot.org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
+  const [perDivision, closed] = await Promise.all([
+    Promise.all(divisionIds.map(async (id) => ({ id, joining: await readJoining(id), waiting: await readWaiting(id) }))),
+    readClosedDivisions(departmentId),
+  ]);
+  const page = departmentMembers({
+    records: recordsOf(snapshot),
+    org: snapshot.org,
+    departmentId,
+    actor,
+    selfId: identity.memberId,
+    waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map(waitingPerson)])),
+    joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
+    closed,
+  });
+  return page === null ? NO_MEMBERS : { scope: "department", ...page };
+}
+
+/**
+ * The Members page of a division lead (boards 61e to 61h2): one of the
+ * divisions they reach, `divisionId` or the first, with everyone in it, the
+ * people waiting for Confirm NDA and the accepted applicants joining. A head
+ * gets their department's page instead.
  */
 export async function readDivisionMembers(identity: DashboardIdentity, divisionId: number | null): Promise<MemberDirectory> {
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
   if (actor === null || actor.kind === "team") return NO_MEMBERS;
+  if (actor.kind === "head") return readDepartmentMembers(identity, actor, snapshot);
   const reach = reachOf(identity, actor, snapshot.org);
   const division = reach.find((id) => id === divisionId) ?? reach[0];
   if (division === undefined) return NO_MEMBERS;
@@ -409,21 +447,21 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
 }
 
 /**
- * Confirm join from the Members page's banner (board 59) is the Applications
- * page's Confirm join (58h): the same move, through the same rule, so it waits
- * for the NDA tick, marks the application joined and never gives someone
- * already on the team a second role. Only for the lead's own division.
+ * Confirm join from the Members page's banner (boards 59, 69m) is the
+ * Applications page's Confirm join (58h): the same move, through the same
+ * rule, so it waits for the NDA tick, marks the application joined and never
+ * gives someone already on the team a second role. Only for a division the
+ * viewer's Members page reaches: the lead's own, or the head's department's.
  */
 async function confirmJoin(identity: DashboardIdentity, applicationId: number): Promise<boolean> {
-  const division = leadDivisionId(identity);
-  if (division === null || identity.memberId === null) return false;
+  if (identity.memberId === null) return false;
   const [row] = await getDb()
-    .select({ id: applications.id })
+    .select({ division_id: applyPositions.divisionId })
     .from(applications)
     .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .where(and(eq(applications.id, applicationId), eq(applyPositions.divisionId, division)))
+    .where(eq(applications.id, applicationId))
     .limit(1);
-  if (!row) return false;
+  if (!row || row.division_id === null || (await actingOn(identity, row.division_id)) === null) return false;
   try {
     return (await moveApplication(identity, applicationId, { kind: "confirm-join" })).ok;
   } catch (error) {
