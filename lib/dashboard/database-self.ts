@@ -328,7 +328,7 @@ async function leadsOf(divisionIds: readonly number[]): Promise<Map<number, stri
 }
 
 async function readMyApplications(identity: DashboardIdentity): Promise<MyApplications | null> {
-  if (!canReach(identity.kind, "my-applications")) return null;
+  if (!canReach(identity, "my-applications")) return null;
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
   const letterFiles = alias(applicationFiles, "letter_files");

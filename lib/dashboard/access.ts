@@ -1,10 +1,11 @@
-import type { ViewerKind } from "./viewer";
+import type { ViewerKind, ViewerStanding } from "./viewer";
 
 // Which viewer reaches which dashboard page, and where the page sits for that
 // viewer (Dashboard v2 boards 51b, 52 and 56; the operations lead keeps boards
-// 40 to 46). One row per page: a new page adds one row. A viewer missing from
-// a row's `reach` does not reach the page. Site content, admin Access and the
-// Activity log are not designed yet, so they have no row.
+// 40 to 46). One row per page: a new page adds one row. A viewer whose kind is
+// missing from a row's `reach` does not reach the page, unless the row names a
+// `siteContent` place and they hold site-content access. Site content, admin
+// Access and the Activity log are not designed yet, so they have no row.
 
 export const NAV_GROUPS = ["main", "recruitment", "team", "my-division"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
@@ -32,6 +33,8 @@ type PageRow = {
   readonly label: string;
   readonly href: `/dashboard${string}`;
   readonly reach: Readonly<Partial<Record<ViewerKind, NavPlace>>>;
+  /** Where the page shows for a viewer whose kind does not reach it but who holds site-content access. */
+  readonly siteContent?: NavPlace;
   /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
 };
@@ -88,7 +91,12 @@ export const DASHBOARD_PAGES = [
     key: "alumni",
     label: "Alumni",
     href: "/dashboard/alumni",
+    // Owner decision on #234: the full admins (the operations lead kind, which
+    // the team leader and the IT lead share through their admin or org scope)
+    // and anyone given site-content access. A division lead or department head
+    // gets nothing from their role here.
     reach: { "operations-lead": "team" },
+    siteContent: "team",
   },
   {
     key: "division-access",
@@ -148,9 +156,9 @@ export type MenuPage = {
   readonly href: string;
 };
 
-/** Where `page` shows for `kind`; undefined when the viewer does not reach it. */
-function placeOf(page: PageRow, kind: ViewerKind): NavPlace | undefined {
-  return page.reach[kind];
+/** Where `page` shows for `viewer`; undefined when the viewer does not reach it. */
+function placeOf(page: PageRow, viewer: ViewerStanding): NavPlace | undefined {
+  return page.reach[viewer.kind] ?? (viewer.siteContent ? page.siteContent : undefined);
 }
 
 function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean {
@@ -162,14 +170,17 @@ function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean
   }
 }
 
-export function canReach(kind: ViewerKind, key: DashboardPageKey): boolean {
-  return DASHBOARD_PAGES.some((page) => page.key === key && placeOf(page, kind) !== undefined);
+/** Whether `viewer` reaches the page: the one rule its sidebar item and the page itself both read. */
+export function canReach(viewer: ViewerStanding, key: DashboardPageKey): boolean {
+  return DASHBOARD_PAGES.some((page) => page.key === key && placeOf(page, viewer) !== undefined);
 }
 
 /** The viewer's sidebar: their groups in order, each with the pages listed there for them. */
-export function sidebarFor(kind: ViewerKind, facts: SidebarFacts): NavSection[] {
+export function sidebarFor(viewer: ViewerStanding, facts: SidebarFacts): NavSection[] {
   return NAV_GROUPS.flatMap((group) => {
-    const items = DASHBOARD_PAGES.filter((page) => placeOf(page, kind) === group && shownFor(page, kind, facts)).map(
+    const items = DASHBOARD_PAGES.filter(
+      (page) => placeOf(page, viewer) === group && shownFor(page, viewer.kind, facts),
+    ).map(
       (page): NavItem => ({ key: page.key, label: page.label, href: page.href, count: facts.counts[page.key] || null }),
     );
     return items.length === 0 ? [] : [{ group, label: NAV_GROUP_LABELS[group], items }];
@@ -199,7 +210,7 @@ export function landingAfterLeaving(hasOwnApplications: boolean): DashboardLandi
 
 /** The page the user menu opens for this viewer: My account for a non-member, My profile for the team. */
 export function userMenuPageFor(kind: ViewerKind): MenuPage | null {
-  const page = DASHBOARD_PAGES.find((row) => placeOf(row, kind) === "user-menu");
+  const page = DASHBOARD_PAGES.find((row: PageRow) => row.reach[kind] === "user-menu");
   return page ? { key: page.key, label: page.label, href: page.href } : null;
 }
 

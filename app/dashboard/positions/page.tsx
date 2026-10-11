@@ -27,7 +27,7 @@ async function LivePositions() {
   // The layout shows the sign-out screen in place of this page.
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
-  if (!canReach(data.viewer.kind, "positions")) notFound();
+  if (!canReach(data.viewer, "positions")) notFound();
   const [page, recruitment] = await Promise.all([data.positions(), data.recruitment()]);
   return <PositionsView page={page} recruitment={recruitment} />;
 }
