@@ -42,6 +42,7 @@ import {
   type OtherApplication,
   type PositionRef,
 } from "@/lib/dashboard/recruitment";
+import { divisionLabel } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { FilterMenu, Segmented } from "./controls";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
@@ -97,7 +98,7 @@ export function ApplicationsView({
   /** Shows the step at once, then saves it; a refusal puts the row back and says why. */
   const move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =>
     startTransition(async () => {
-      const result = applyMove(application.state, step, new Date(page.now));
+      const result = applyMove(application.state, step, new Date(page.now), application.standing);
       if (result.ok) setState({ id: application.id, state: result.state });
       const saved = await moveApplication(application.id, step);
       if (!saved.ok) toast.error(saved.error);
@@ -180,7 +181,7 @@ export function ApplicationsView({
                   <>
                     <span className="truncate text-[13px] text-text-2">{studiesLine(a.studies.degree, a.studies.year)}</span>
                     <span className="min-w-0">
-                      <StagePill state={a.state} />
+                      <StagePill state={a.state} standing={a.standing} />
                     </span>
                     <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-prt-muted">
                       {a.documents.length > 0 && <FileText aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />}
@@ -214,10 +215,10 @@ export function ApplicationsView({
               </span>
               <span className="shrink-0 pt-0.5">
                 <span className="md:hidden">
-                  <StagePill state={a.state} short />
+                  <StagePill state={a.state} standing={a.standing} short />
                 </span>
                 <span className="hidden md:inline">
-                  <StagePill state={a.state} />
+                  <StagePill state={a.state} standing={a.standing} />
                 </span>
               </span>
             </button>
@@ -308,9 +309,9 @@ function Detail({
   const [asking, setAsking] = useState<Asking>(null);
   const first = firstNameOf(a.applicant.name);
   const they = pronounsOf(a.applicant.gender);
-  const footer = footerSteps(a.state);
-  const pill = stagePill(a.state);
-  const unit = a.position.division.replace(/ Division$/, "");
+  const unit = divisionLabel(a.position.division);
+  const footer = footerSteps(a.state, a.standing, unit);
+  const pill = stagePill(a.state, a.standing);
   const close = () => setAsking(null);
   const run = (step: LeadMove) => onMove(a, step, close);
 
@@ -364,7 +365,7 @@ function Detail({
           <p className="min-w-0 truncate text-[13px] text-prt-muted">
             {a.position.title} · applied {a.applied.at}
           </p>
-          <StagePill state={a.state} short />
+          <StagePill state={a.state} standing={a.standing} short />
         </div>
 
         <StageCard application={a} first={first} they={they} now={now} pending={pending} onAsk={setAsking} onMove={(step) => onMove(a, step)} />
@@ -451,22 +452,55 @@ function Detail({
           ? `${capital(they.possessive)} application moves to Rejected, and ${they.subject} ${verb(they, "sees", "see")} "Not selected" on ${they.possessive} My applications page. The site sends no email: tell ${they.object} yourself. You can't undo this.`
           : `${capital(they.subject)} ${verb(they, "sees", "see")} "Not selected" on ${they.possessive} My applications page. You can't undo this.`}
       </DecisionDialog>
-      <DecisionDialog
-        open={asking === "confirm-join"}
-        onOpenChange={(open) => !open && close()}
-        tone="success"
-        icon={<UserPlus className="h-5 w-5" strokeWidth={1.75} />}
-        title={`Confirm ${first} joins ${unit}?`}
-        cancelLabel="Not yet"
-        confirmLabel={`Yes, ${they.subject} ${verb(they, "joins", "join")}`}
-        pending={pending}
-        onConfirm={() => run({ kind: "confirm-join" })}
-      >
-        Only confirm once {they.possessive} signed NDA has arrived. {capital(they.subject)} {verb(they, "becomes", "become")} a member,{" "}
-        {verb(they, "gets", "get")} the member dashboard, and {verb(they, "shows", "show")} up in Members and on the Team tree.
-      </DecisionDialog>
+      {a.standing.kind === "member" ? (
+        // 58h2: already on the team, so no NDA wait; they keep every division they are in.
+        <DecisionDialog
+          open={asking === "confirm-join"}
+          onOpenChange={(open) => !open && close()}
+          tone="success"
+          icon={<UserPlus className="h-5 w-5" strokeWidth={1.75} />}
+          title={`Add ${first} to ${unit}?`}
+          cancelLabel="Not yet"
+          confirmLabel="Yes, add them"
+          pending={pending}
+          onConfirm={() => run({ kind: "confirm-join" })}
+        >
+          {memberJoinLine(first, unit, a.standing.divisions)}
+        </DecisionDialog>
+      ) : (
+        // 58h: someone new, in neutral words whatever the form says.
+        <DecisionDialog
+          open={asking === "confirm-join"}
+          onOpenChange={(open) => !open && close()}
+          tone="success"
+          icon={<UserPlus className="h-5 w-5" strokeWidth={1.75} />}
+          title={`Confirm ${first} joins ${unit}?`}
+          cancelLabel="Not yet"
+          confirmLabel="Yes, they join"
+          pending={pending}
+          onConfirm={() => run({ kind: "confirm-join" })}
+        >
+          Only confirm once their signed NDA has arrived. They become a member, get the member dashboard, and show up in Members and on the Team
+          tree.
+        </DecisionDialog>
+      )}
     </>
   );
+}
+
+/**
+ * Board 58h2's question: "Matteo is already in Optimization and Analysis and
+ * signed the NDA. They join Mission Analysis too and keep Optimization and
+ * Analysis." Several divisions read "in A and in B", as names hold "and".
+ */
+function memberJoinLine(first: string, unit: string, divisions: readonly string[]): string {
+  if (divisions.length === 0) return `${first} is already on the team and signed the NDA. They join ${unit}.`;
+  if (divisions.length === 1) {
+    return `${first} is already in ${divisions[0]} and signed the NDA. They join ${unit} too and keep ${divisions[0]}.`;
+  }
+  const places = `${divisions.slice(0, -1).join(", in ")} and in ${divisions[divisions.length - 1]}`;
+  const kept = divisions.length === 2 ? "both" : `all ${divisions.length}`;
+  return `${first} is already in ${places}, and signed the NDA. They join ${unit} too and keep ${kept}.`;
 }
 
 function FooterButton({
@@ -561,6 +595,23 @@ function StageCard({
               Change times
             </button>
           </div>
+        </div>
+      </Section>
+    );
+  }
+  if (state.stage === "accepted" && a.standing.kind === "member") {
+    // 58h2: they signed the team's one NDA when they joined, so there is nothing to tick.
+    const signed = a.standing.ndaYear === null ? "when they joined" : `in ${a.standing.ndaYear}`;
+    return (
+      <Section title="Joining">
+        <div className="rounded-xl border border-success/40 bg-success/5 px-4 py-4">
+          <p className="flex items-center gap-2.5 text-[15px] font-semibold">
+            <Signature aria-hidden className="h-4 w-4 text-success" strokeWidth={1.75} />
+            Ready to confirm the join
+          </p>
+          <p className="mt-2 text-[12px] leading-relaxed text-text-2">
+            Accepted on {dayMonth(state.acceptedAt)}. {first} is already a member and signed the NDA {signed}, so no NDA is needed.
+          </p>
         </div>
       </Section>
     );

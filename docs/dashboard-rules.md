@@ -52,7 +52,8 @@ An admin column comes later. **Planned**, no issue yet.
   - **Gap:** any access grant, even view-only, makes a member act as a division lead on
     applications. Tracked in #160.
 - **Members**, **Access** and **Orders** are for division leads and up, scoped to their divisions.
-  - **Gap:** a lead of more than one division sees only the first on Members. Tracked in #185.
+  - **Gap:** a lead of more than one division sees only one on Members. Tracked in #185 and
+    #231.
 - **Alumni**: no ruling yet says who sees this page. Today the code shows it to the operations
   lead only, for the whole team.
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
@@ -88,6 +89,15 @@ An admin column comes later. **Planned**, no issue yet.
   is confirmed. Only then does the person become a member.
   - **Gap:** the dashboard has no recruitment manager; only leads can do this step. Tracked in
     #194.
+- Confirm join for someone new asks "Confirm {name} joins {division}?" in neutral words (they,
+  their), whatever the application form says (board 58h).
+- Confirm join for someone already on the team has no NDA wait: they signed the team's one NDA
+  when they joined (see "Divisions per person" below). The panel shows no NDA tick, and its main
+  button reads "Add to {division}". It is still confirmed ("Add {name} to {division}?", board
+  58h2). The person joins the new division and keeps every division they are in, and no NDA date
+  is recorded for them (#229).
+  - **Gap:** the Members page's joining banner lists only people not on the team yet; a member
+    joins from the Applications page. Tracked in #231.
 
 ### Other rules
 
@@ -98,6 +108,25 @@ An admin column comes later. **Planned**, no issue yet.
   PDF of at most 2 MB.
 
 ## 3. People
+
+### Divisions per person
+
+These rules come from the Owner decisions of 2026-10-11 on #229.
+
+- One person can be in several divisions at once, as a lead or a member, across departments. Each
+  division they are in has its own role. A person is never in the same division twice.
+- Picking someone as lead of a division never moves them out of their other divisions.
+- There is one NDA for the whole team. A member never signs a second one.
+- The viewer's kind reads all their active roles: someone who leads division A and is a member of
+  division B is a lead for A and a member for B.
+- The Team tree shows each person once, under one division, and draws a dashed blue line from
+  every other division they are in, with a blue "also {division}" tag beside them. A legend
+  reads "Also in another division · shown once" (board 54e).
+- The division a person is drawn under, and the one a page names when it shows only one, is
+  their home division: the oldest division they lead, else their oldest membership.
+- **Superseded:** the older rule "one person, one division" no longer holds.
+- **Gap:** Members, My profile, Access and Orders still show one division per person (the home
+  division, or the oldest one a lead leads). Tracked in #231, #230 and #233.
 
 - The role on the member panel is the person's title on the Team page.
   - **Gap:** the title saved on the panel never reaches the public Team page. Tracked in #189.

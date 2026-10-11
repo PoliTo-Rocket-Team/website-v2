@@ -10,7 +10,7 @@ import { DashboardRefused, type TeamWrites } from "./data";
 import { promotedNoticesInsert, promotionOf } from "./database-notices";
 import { moveApplication } from "./database-recruitment";
 import type { DashboardIdentity } from "./database";
-import type { Departure, EditableRole, Joining, MemberEdit, PromoteMode } from "./team";
+import { homeDivision, membershipsOf, type Departure, type EditableRole, type Joining, type MemberEdit, type PromoteMode } from "./team";
 import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -21,7 +21,11 @@ import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 // audit helpers (.patterns/audited-mutations.md), and drops the cached
 // roster so the Team pages read the change.
 
-/** The division a lead's Members page is about; null for anyone else. */
+/**
+ * The division a lead's Members page is about; null for anyone else. A lead of
+ * several divisions sees the one their primary role is in, as before; #231
+ * gives the page every division they lead.
+ */
 export function leadDivisionId(identity: DashboardIdentity): number | null {
   if (identity.kind !== "division-lead") return null;
   return identity.role?.divisionId ?? identity.divisionIds[0] ?? null;
@@ -34,7 +38,9 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 /**
  * Accepted applicants to the division's positions who are not members yet
  * (board 59). The application stays accepted; Confirm join, once the signed
- * NDA arrived, makes them a member.
+ * NDA arrived, makes them a member. Someone already on the team joins from the
+ * Applications page (board 58h2, issue #229); the banner does not list them
+ * until #231.
  */
 export async function readJoining(divisionId: number): Promise<Joining[]> {
   const rows = await getDb()
@@ -66,13 +72,22 @@ export async function readJoining(divisionId: number): Promise<Joining[]> {
   }));
 }
 
-type ActiveRole = { id: number; division_id: number | null; type: "president" | "head" | "lead" | "core" | null };
+type ActiveRole = { id: number; division_id: number | null; type: "president" | "head" | "lead" | "core" | null; started_at: string };
 
 async function activeRoles(memberId: number): Promise<ActiveRole[]> {
   return getDb()
-    .select({ id: roles.id, division_id: roles.divisionId, type: roles.type })
+    .select({ id: roles.id, division_id: roles.divisionId, type: roles.type, started_at: roles.startedAt })
     .from(roles)
     .where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)));
+}
+
+/** The person's division roles as memberships: a lead role leads, any other is a member. */
+function membershipsOfRoles(active: readonly ActiveRole[]) {
+  return membershipsOf(
+    active.flatMap((r) =>
+      r.division_id === null ? [] : [{ divisionId: r.division_id, role: r.type === "lead" ? ("lead" as const) : ("member" as const), since: r.started_at }],
+    ),
+  );
 }
 
 /**
@@ -101,8 +116,11 @@ function done(): true {
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const active = await rolesTheViewerChanges(identity, personId);
   if (active === null) return false;
-  // The panel's role is the division role: a lead or a member of a division.
-  const divisionRoles = active.filter((r) => r.division_id !== null && (r.type === "lead" || r.type === "core"));
+  // The panel's role is the role in one division: the lead's own, or for the
+  // operations lead the person's home division. Their other divisions keep
+  // their roles (issue #229).
+  const division = homeDivision(membershipsOfRoles(active));
+  const divisionRoles = active.filter((r) => r.division_id === division && (r.type === "lead" || r.type === "core"));
   const target = edit.role === null ? active : divisionRoles;
   if (target.length === 0) return false;
   const ids = target.map((r) => r.id);

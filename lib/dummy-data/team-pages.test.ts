@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { membershipsIn } from "@/lib/dashboard/team";
 import { dummyDivisionAccess } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf } from "./notices";
@@ -136,15 +137,28 @@ test("an application the lead accepts joins the waiting list", () => {
   assert.ok(!dummyJoiners(applications).some((j) => j.applicationId === accepted.id));
 });
 
-test("the division lead's joining banners match the accepted applications to the division's positions", async () => {
+test("the division lead's joining banners match the accepted applications of people not on the team yet", async () => {
   const directory = await pages("division-lead").view.members();
   assert.ok(directory.scope === "division");
   const division = divisions.find((d) => d.name === directory.division)!;
+  const onTeam = new Set(people.map((p) => p.email));
   const accepted = applications.filter(
-    (a) => a.state.stage === "accepted" && positions.find((p) => p.id === a.positionId)?.divisionId === division.id,
+    (a) =>
+      a.state.stage === "accepted" &&
+      positions.find((p) => p.id === a.positionId)?.divisionId === division.id &&
+      !onTeam.has(a.applicant.email),
   );
   assert.ok(accepted.length > 1);
   assert.deepEqual(directory.joining.map((j) => j.applicationId).sort(), accepted.map((a) => a.id).sort());
+});
+
+test("the dummy team has someone in two divisions across two departments (issue #229)", () => {
+  const departmentOf = (divisionId: number) => divisions.find((d) => d.id === divisionId)!.departmentId;
+  const across = people.filter((p) => {
+    const memberships = membershipsIn(p.placement);
+    return memberships.length >= 2 && new Set(memberships.map((m) => departmentOf(m.divisionId))).size >= 2;
+  });
+  assert.ok(across.length >= 1);
 });
 
 test("viewers who do not reach a page get no data from it", async () => {

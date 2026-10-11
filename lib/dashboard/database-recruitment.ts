@@ -20,12 +20,15 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import {
   applyMove,
   joinChange,
+  memberStanding,
+  NEW_APPLICANT,
+  type ApplicantStanding,
   type ApplicationState,
   type JoinChange,
   type LeadMove,
-  type Membership,
   type OfferedSlots,
 } from "./application-flow";
+import { divisionLabel, homeDivision, membershipsOf } from "./team";
 import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
 import { positionCode } from "@/lib/apply/positions";
@@ -402,9 +405,10 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
     .where(and(inArray(applications.applyPositionId, positions.map((p) => p.id)), isNull(applications.withdrawnAt)))
     .orderBy(desc(applications.appliedAt), desc(applications.id));
 
-  const [slots, others] = await Promise.all([
+  const [slots, others, standings] = await Promise.all([
     readSlots(rows.filter((r) => r.status === "interview").map((r) => r.id)),
     readOtherApplications(rows),
+    readStandings(rows.map((r) => r.id)),
   ]);
   const byId = new Map(positions.map((p) => [p.id, p]));
   return {
@@ -425,6 +429,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
             politoId: r.polito_id,
             gender: r.gender,
           },
+          standing: standings.get(r.id) ?? NEW_APPLICANT,
           studies: { year: r.year, degree: r.degree },
           position: { ref: position.ref, title: position.title, division: position.division },
           applied: appliedLabels(new Date(r.applied_at), now),
@@ -476,9 +481,11 @@ const statusFor: Readonly<Record<Exclude<ApplicationState["stage"], "withdrawn">
 
 export async function moveApplication(identity: Identity, applicationId: number, move: LeadMove): Promise<WriteResult<null>> {
   const row = await readApplicationFor(identity, applicationId);
-  const before = stateOf(row, (await readSlots([row.id])).get(row.id) ?? []);
+  const [slots, standings] = await Promise.all([readSlots([row.id]), readStandings([row.id])]);
+  const before = stateOf(row, slots.get(row.id) ?? []);
+  const standing = standings.get(row.id) ?? NEW_APPLICANT;
   const now = new Date();
-  const result = applyMove(before, move, now);
+  const result = applyMove(before, move, now, standing);
   if (!result.ok) return refused(result.reason);
   // A move that changes nothing writes nothing: "open" on an interview keeps its times and booking.
   if (!result.changed) return written(null);
@@ -511,7 +518,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
 
     case "joined": {
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
-      const change = joinChange(await membershipOf(row.id));
+      const change = joinChange(standing);
       if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused(APPLICATION_CHANGED);
       updateTag(TEAM_ROSTER_CACHE_TAG);
       return written(null);
@@ -564,32 +571,75 @@ async function offerSlots(applicationId: number, readStatus: DbStatus, offered: 
   return result.rows.length > 0;
 }
 
-/** Where the applicant stands with the team: no member row, a member row with no active role, or an active role. */
-async function membershipOf(applicationId: number): Promise<Membership> {
-  const [row] = await getDb()
-    .select({
-      member_id: users.member,
-      active_roles: sql<number>`(select count(*) from ${roles} r where r.member_id = ${users.member} and r.leaved_at is null)`.mapWith(Number),
-    })
+/**
+ * Where each application's applicant stands with the team: no member row, a
+ * member row with no active role, or active roles, read with the divisions
+ * those roles are in (home division first) and the year of their NDA.
+ */
+async function readStandings(applicationIds: readonly number[]): Promise<Map<number, ApplicantStanding>> {
+  const standings = new Map<number, ApplicantStanding>();
+  if (applicationIds.length === 0) return standings;
+  const db = getDb();
+  const applicants = await db
+    .select({ id: applications.id, member_id: users.member, division_id: applyPositions.divisionId, nda_signed_at: members.ndaSignedAt })
     .from(applications)
     .innerJoin(users, eq(users.id, applications.userId))
-    .where(eq(applications.id, applicationId))
-    .limit(1);
-  if (!row || row.member_id === null) return "applicant";
-  return row.active_roles > 0 ? "member" : "alumnus";
+    .innerJoin(applyPositions, eq(applyPositions.id, applications.applyPositionId))
+    .leftJoin(members, eq(members.memberId, users.member))
+    .where(inArray(applications.id, [...applicationIds]));
+  const memberIds = [...new Set(applicants.flatMap((a) => (a.member_id === null ? [] : [a.member_id])))];
+  const active =
+    memberIds.length === 0
+      ? []
+      : await db
+          .select({
+            member_id: roles.memberId,
+            type: roles.type,
+            started_at: roles.startedAt,
+            division_id: roles.divisionId,
+            division_name: divisions.name,
+          })
+          .from(roles)
+          .leftJoin(divisions, eq(divisions.id, roles.divisionId))
+          .where(and(inArray(roles.memberId, memberIds), isNull(roles.leavedAt)));
+  for (const a of applicants) {
+    const theirs = active.filter((r) => r.member_id === a.member_id);
+    if (a.member_id === null) standings.set(a.id, NEW_APPLICANT);
+    else if (theirs.length === 0) standings.set(a.id, { kind: "alumnus" });
+    else {
+      const names = new Map(theirs.flatMap((r) => (r.division_id === null || r.division_name === null ? [] : [[r.division_id, r.division_name] as const])));
+      const memberships = membershipsOf(
+        theirs.flatMap((r) =>
+          r.division_id === null ? [] : [{ divisionId: r.division_id, role: r.type === "lead" ? ("lead" as const) : ("member" as const), since: r.started_at }],
+        ),
+      );
+      const home = homeDivision(memberships);
+      const ordered = [...memberships].sort((x, y) => Number(y.divisionId === home) - Number(x.divisionId === home));
+      const divisionsIn = ordered.flatMap((m) => {
+        const name = names.get(m.divisionId);
+        return name === undefined ? [] : [{ id: m.divisionId, name: divisionLabel(name) }];
+      });
+      const ndaYear = a.nda_signed_at === null ? null : new Date(a.nda_signed_at).getUTCFullYear();
+      standings.set(a.id, memberStanding(divisionsIn, a.division_id ?? -1, ndaYear));
+    }
+  }
+  return standings;
 }
 
 /**
- * Confirm join (58h, and the Members page's banner, 59): the one write that
- * adds a person to the team, doing what `joinChange` (./application-flow.ts)
- * decided. In one statement, and only while the application is still
- * accepted with the NDA arrived: a new `members` row (the NDA date, the name
- * and the confirming lead on it) linked from their `users` row, a member role
- * titled with the position in its division unless they already hold an
- * active role, then the application marked joined. The guards are repeated
- * in the statement so a person who joined meanwhile still gets no second
- * role. Their other applications are not touched. True when the application
- * was marked joined.
+ * Confirm join (58h and 58h2, and the Members page's banner, 59): the one
+ * write that adds a person to the team, doing what `joinChange`
+ * (./application-flow.ts) decided. In one statement, and only while the
+ * application is still accepted with the NDA arrived, or the applicant is on
+ * the team already and so signed the team's one NDA: a new `members` row (the
+ * NDA date, the name and the confirming lead on it) linked from their `users`
+ * row for a new person, a member role titled with the position in its
+ * division unless they already hold an active role in that division, then the
+ * application marked joined. A member keeps every other role they hold and no
+ * NDA date is written for them (issue #229). The guards are repeated in the
+ * statement so a person who joined the division meanwhile still gets no
+ * second role in it. Their other applications are not touched. True when the
+ * application was marked joined.
  */
 async function confirmJoin(identity: Identity, applicationId: number, joinedAt: string, change: JoinChange): Promise<boolean> {
   const addMember = change === "new-member";
@@ -603,7 +653,11 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
         join ${users} u on u.id = a.user_id
         join ${applyPositions} p on p.id = a.apply_position_id
         join ${divisions} d on d.id = p.division_id
-        where a.id = ${applicationId} and a.status = 'accepted' and a.nda_arrived_at is not null and a.withdrawn_at is null
+        where a.id = ${applicationId} and a.status = 'accepted' and a.withdrawn_at is null
+          and (
+            a.nda_arrived_at is not null
+            or exists (select 1 from ${roles} r where r.member_id = u.member and r.leaved_at is null)
+          )
       ),
       new_member as (
         insert into ${members} (nda_signed_at, nda_name, nda_confirmed_by)
@@ -626,7 +680,9 @@ async function confirmJoin(identity: Identity, applicationId: number, joinedAt: 
         from app
         where ${addRole}::boolean
           and exists (select 1 from the_member)
-          and not exists (select 1 from ${roles} r where r.member_id = app.member_id and r.leaved_at is null)
+          and not exists (
+            select 1 from ${roles} r where r.member_id = app.member_id and r.division_id = app.division_id and r.leaved_at is null
+          )
         returning id
       )
       update ${applications} set status = 'joined', joined_at = ${joinedAt}

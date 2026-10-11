@@ -25,7 +25,7 @@ import {
   type MyAccount,
   type MyProfile,
 } from "@/lib/dashboard/self";
-import { divisionIdOf } from "@/lib/dashboard/team";
+import { homeDivisionOf, membershipsIn, roleIn } from "@/lib/dashboard/team";
 import type { ViewerKind } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
@@ -58,7 +58,8 @@ function signInOf(person: DummyPerson): DummySignIn {
 }
 
 export function dummyMyProfile(kind: ViewerKind, person: DummyPerson, changes: OwnChanges, leave: LeaveState): MyProfile {
-  const division = divisions.find((d) => d.id === divisionIdOf(person.placement));
+  // My profile names one division, their home one, until #231 lists them all.
+  const division = divisions.find((d) => d.id === homeDivisionOf(person.placement));
   const login = signInOf(person);
   const details = dummyDetails(kind, changes);
   return {
@@ -117,7 +118,7 @@ function placeOf(positionId: number) {
 
 /** The lead of a division, who offers its interview times. */
 function leadOf(divisionId: number): string {
-  return people.find((p) => p.placement.role === "division-lead" && p.placement.divisionId === divisionId)?.name ?? "Your lead";
+  return people.find((p) => roleIn(membershipsIn(p.placement), divisionId) === "lead")?.name ?? "Your lead";
 }
 
 function activeStage(application: DummyOwnApplication, changes: OwnChanges): ActiveStage | null {

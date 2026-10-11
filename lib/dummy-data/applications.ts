@@ -130,6 +130,30 @@ const featured: readonly Featured[] = [
   },
 ];
 
+/**
+ * Applications from people already on the team (board 58h2, issue #229),
+ * numbered after every other one so no id above changes. Matteo Greco is in
+ * Design & Manufacturing and Optimization and Analysis (./team.ts); accepted
+ * for Mission Analysis, he joins it with no NDA wait and keeps both.
+ */
+const fromTheTeam: readonly Featured[] = [
+  {
+    positionId: 1,
+    applicant: {
+      name: "Matteo Greco",
+      email: "m.greco@politorocketteam.it",
+      phone: "+39 347 552 0193",
+      politoId: "301874",
+      year: "Year 1 Master's",
+      degree: "Aerospace Engineering",
+      gender: "Male",
+    },
+    appliedAt: "2026-10-01T18:20:00+02:00",
+    state: { stage: "accepted", acceptedAt: "2026-10-08T11:00:00+02:00", ndaArrived: false },
+    answer: { question: simulation, answer: "A load case model of our last airframe in Abaqus, for the Design & Manufacturing division." },
+  },
+];
+
 /** How many more applications each position holds, by stage, beyond the featured ones. */
 const counts: Readonly<Record<number, Readonly<Partial<Record<ApplicationStage, number>>>>> = {
   1: { new: 7, "in-review": 1, accepted: 1, rejected: 2 },
@@ -207,6 +231,7 @@ function built(): DummyApplication[] {
       });
     });
   }
+  for (const f of fromTheTeam) list.push({ id: id++, cvBytes: 180_000, letterBytes: 60_000, ...f });
   return list;
 }
 

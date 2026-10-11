@@ -166,13 +166,17 @@ export function checkOffer(slots: readonly SlotTime[], now: Date): { ok: true; o
   return { ok: true, offered: offered as unknown as OfferedSlots };
 }
 
-/** The state after `move`, or why the move is not allowed from here. */
-export function applyMove(state: ApplicationState, move: ApplicationMove, now: Date): MoveResult {
-  const next = nextState(state, move, now);
+/**
+ * The state after `move`, or why the move is not allowed from here. `standing`
+ * is where the applicant stands with the team: someone already on it signed
+ * the team's one NDA, so their join waits for none and records none.
+ */
+export function applyMove(state: ApplicationState, move: ApplicationMove, now: Date, standing: ApplicantStanding): MoveResult {
+  const next = nextState(state, move, now, standing);
   return next.ok ? { ...next, changed: !sameState(state, next.state) } : next;
 }
 
-function nextState(state: ApplicationState, move: ApplicationMove, now: Date): Next {
+function nextState(state: ApplicationState, move: ApplicationMove, now: Date, standing: ApplicantStanding): Next {
   const at = now.toISOString();
   switch (move.kind) {
     case "open":
@@ -208,11 +212,12 @@ function nextState(state: ApplicationState, move: ApplicationMove, now: Date): N
 
     case "set-nda":
       if (state.stage !== "accepted") return illegal("Only an accepted application waits for the NDA.");
+      if (!needsNda(standing)) return illegal("They signed the team's NDA when they joined. There is no second one.");
       return moved({ ...state, ndaArrived: move.arrived });
 
     case "confirm-join":
       if (state.stage !== "accepted") return illegal("Only an accepted application can join the team.");
-      if (!state.ndaArrived) return illegal("Tick that the signed NDA arrived first.");
+      if (needsNda(standing) && !state.ndaArrived) return illegal("Tick that the signed NDA arrived first.");
       return moved({ stage: "joined", joinedAt: at }, true);
 
     case "withdraw":
@@ -226,27 +231,67 @@ function nextState(state: ApplicationState, move: ApplicationMove, now: Date): N
 // Joining the team ---------------------------------------------------------------
 
 /**
- * Where the applicant stands with the team when Confirm join runs: not on it
- * yet, on it before and left (a member row with no active role), or on it now.
+ * Where the applicant stands with the team: not on it yet, on it before and
+ * left (a member row with no active role), or on it now. Someone on it now
+ * signed the team's one NDA when they joined, and never signs a second one
+ * (Owner decision, 2026-10-11).
  */
-export type Membership = "applicant" | "alumnus" | "member";
+export type ApplicantStanding =
+  | { readonly kind: "applicant" }
+  | { readonly kind: "alumnus" }
+  | {
+      readonly kind: "member";
+      /** The divisions they are in now, as the dialogs name them, home division first. */
+      readonly divisions: readonly string[];
+      /** Whether they are already in the division the position is in. */
+      readonly inDivision: boolean;
+      /** The year they signed the NDA; null when no date is kept. */
+      readonly ndaYear: number | null;
+    };
+
+/** Someone not on the team and never on it. */
+export const NEW_APPLICANT: ApplicantStanding = { kind: "applicant" };
+
+/**
+ * A member's standing toward a position in `positionDivisionId`, from the
+ * divisions they are in now, home division first.
+ */
+export function memberStanding(
+  divisions: readonly { readonly id: number; readonly name: string }[],
+  positionDivisionId: number,
+  ndaYear: number | null,
+): Extract<ApplicantStanding, { kind: "member" }> {
+  return {
+    kind: "member",
+    divisions: divisions.map((d) => d.name),
+    inDivision: divisions.some((d) => d.id === positionDivisionId),
+    ndaYear,
+  };
+}
+
+/** Whether their join waits for a signed NDA: everyone's but a member's. */
+export function needsNda(standing: ApplicantStanding): boolean {
+  return standing.kind !== "member";
+}
 
 /**
  * What Confirm join adds to the team: a member row and their role for a new
- * person, a role for someone coming back, nothing for someone already on the
- * team, who never gets a second role. Every data source and both pages that
- * offer Confirm join (Applications 58g, Members 59) ask this one rule.
+ * person, a role for someone coming back, a membership of the new division
+ * for someone already on the team, who keeps every division they are in
+ * (Owner decision, 2026-10-11), and nothing for someone already in it. Every
+ * data source and both pages that offer Confirm join (Applications 58h and
+ * 58h2, Members 59) ask this one rule.
  */
-export type JoinChange = "new-member" | "new-role" | "nothing";
+export type JoinChange = "new-member" | "new-role" | "new-division" | "nothing";
 
-export function joinChange(membership: Membership): JoinChange {
-  switch (membership) {
+export function joinChange(standing: ApplicantStanding): JoinChange {
+  switch (standing.kind) {
     case "applicant":
       return "new-member";
     case "alumnus":
       return "new-role";
     case "member":
-      return "nothing";
+      return standing.inDivision ? "nothing" : "new-division";
   }
 }
 
@@ -288,12 +333,21 @@ export type LeadStep = { readonly label: string; readonly move: LeadMove["kind"]
 /**
  * The two buttons at the foot of the detail panel: the outlined one on the
  * left and the main one on the right. `ready` is false while the main one
- * waits on something (Confirm join waits for the NDA tick). A decided
- * application has none.
+ * waits on something (Confirm join waits for the NDA tick). Someone already on
+ * the team waits for nothing: the main button adds them to `division` (board
+ * 58h2). A decided application has none.
  */
 export function footerSteps(
   state: ApplicationState,
+  standing: ApplicantStanding,
+  division: string,
 ): { readonly secondary: LeadStep; readonly primary: LeadStep & { readonly ready: boolean } } | null {
+  if (state.stage === "accepted" && !needsNda(standing)) {
+    return {
+      secondary: { label: "Withdraw acceptance", move: "reject" },
+      primary: { label: `Add to ${division}`, move: "confirm-join", ready: true },
+    };
+  }
   switch (state.stage) {
     case "new":
     case "in-review":
@@ -337,8 +391,16 @@ export function menuSteps(state: ApplicationState): readonly LeadStep[] {
 
 export type PillTone = "neutral" | "info" | "accent" | "success" | "muted";
 
-/** The stage pill in the list and the panel (58b, 58i): its words, its phone words (58m), its colour. */
-export function stagePill(state: ApplicationState): { readonly label: string; readonly short: string; readonly tone: PillTone } {
+/**
+ * The stage pill in the list and the panel (58b, 58i): its words, its phone
+ * words (58m), its colour. An accepted member waits for no NDA, so their pill
+ * names none.
+ */
+export function stagePill(
+  state: ApplicationState,
+  standing: ApplicantStanding,
+): { readonly label: string; readonly short: string; readonly tone: PillTone } {
+  if (state.stage === "accepted" && !needsNda(standing)) return { label: "Accepted", short: "Accepted", tone: "success" };
   switch (state.stage) {
     case "new":
       return { label: "New", short: "New", tone: "neutral" };

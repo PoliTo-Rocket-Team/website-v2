@@ -27,11 +27,20 @@ export type Point = readonly [x: number, y: number];
 
 export type TreeEdge = { readonly points: readonly Point[]; readonly onPath: boolean };
 
+/**
+ * A dashed line from a division to someone in it who is drawn under another
+ * division (board 54e): from the foot of the division's member rail, down
+ * under the tree, across and up to them.
+ */
+export type TreeLink = { readonly key: string; readonly divisionId: number; readonly personId: number; readonly points: readonly Point[] };
+
 export type TreeLayout = {
   readonly width: number;
   readonly height: number;
   readonly nodes: readonly TreeNode[];
   readonly edges: readonly TreeEdge[];
+  /** The dashed lines to people drawn under another division; none when nobody is in two. */
+  readonly links: readonly TreeLink[];
   /** What the canvas opens on: the viewer's department, or the top of the tree for the leader and board. Null for no place. */
   readonly focus: Box | null;
 };
@@ -42,6 +51,10 @@ const COLUMN_GAP = 12;
 const DEPARTMENT_GAP = 48;
 const BOARD_GAP = 24;
 const ROW = { pitch: 30, h: 24, top: 14, rail: 14, indent: 26 } as const;
+
+/** How far under the lowest card or row a dashed line runs across, and the step between two of them. */
+const LINK_DROP = 28;
+const LINK_STEP = 8;
 
 const LEADER_Y = 0;
 const BOARD_Y = LEADER_Y + CARD.h + 56;
@@ -71,10 +84,16 @@ function membersHeight(count: number): number {
   return count === 0 ? 0 : ROW.top + (count - 1) * ROW.pitch + ROW.h;
 }
 
+/** Where a dashed line can reach a person: their box, whether anything is drawn under it in its column, and the gap beside the column. */
+type Target = { readonly box: Box; readonly covered: boolean; readonly gutterX: number };
+
 export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const path = tree.path;
   const nodes: TreeNode[] = [];
   const edges: TreeEdge[] = [];
+  /** Where each division's dashed lines start: the foot of its member rail, or under its card. */
+  const starts = new Map<number, Point>();
+  const targets = new Map<number, Target>();
 
   const columns = tree.departments.map((department) => {
     const leads = department.divisions.length;
@@ -154,6 +173,11 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
         h: ROW.h,
       }));
       division.members.forEach((person, k) => nodes.push({ kind: "row", key: `row-${person.id}`, ...rows[k], person }));
+      const gutterX = leadBox.x + leadBox.w + COLUMN_GAP / 2;
+      if (division.lead) targets.set(division.lead.id, { box: leadBox, covered: rows.length > 0, gutterX });
+      division.members.forEach((person, k) => targets.set(person.id, { box: rows[k], covered: k < rows.length - 1, gutterX }));
+      const lastRow = rows[rows.length - 1];
+      starts.set(division.id, lastRow ? [railX, lastRow.y + lastRow.h / 2] : [middle(leadBox), bottom(leadBox)]);
       if (rows.length > 0) {
         const rowMiddle = (box: Box) => box.y + box.h / 2;
         edges.push({ points: [[railX, bottom(leadBox)], [railX, rowMiddle(rows[rows.length - 1])]], onPath: false });
@@ -172,7 +196,45 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
     left += columnWidth + DEPARTMENT_GAP;
   }
 
-  return { width, height, nodes, edges, focus };
+  const links = linksOf(tree, nodes, starts, targets);
+  for (const link of links) height = Math.max(height, ...link.points.map(([, y]) => y + LINK_STEP));
+  return { width, height, nodes, edges, links, focus };
+}
+
+/**
+ * One dashed line per division a person is in beyond the one they are drawn
+ * under (board 54e). Each runs down from the division's rail to just under the
+ * lowest card or row it passes, across, and up to the person: straight up into
+ * the bottom of their box when nothing is drawn under it, else up the gap
+ * beside their column and into its side, so it crosses no one. Lines are
+ * stacked LINK_STEP apart so no two run across on one level.
+ */
+function linksOf(tree: TeamTree, nodes: readonly TreeNode[], starts: ReadonlyMap<number, Point>, targets: ReadonlyMap<number, Target>): TreeLink[] {
+  const links: TreeLink[] = [];
+  for (const division of tree.departments.flatMap((d) => d.divisions)) {
+    const start = starts.get(division.id);
+    for (const personId of division.elsewhere) {
+      const target = targets.get(personId);
+      if (!start || !target) continue;
+      const { box, covered, gutterX } = target;
+      const endX = covered ? gutterX : middle(box);
+      const [from, to] = [Math.min(start[0], endX, box.x), Math.max(start[0], endX, box.x + box.w)];
+      const lowest = Math.max(start[1], ...nodes.filter((n) => n.x < to && n.x + n.w > from).map(bottom));
+      const busY = lowest + LINK_DROP + links.length * LINK_STEP;
+      const up: Point[] = covered
+        ? [
+            [gutterX, busY],
+            [gutterX, box.y + box.h / 2],
+            [box.x + box.w, box.y + box.h / 2],
+          ]
+        : [
+            [endX, busY],
+            [endX, bottom(box)],
+          ];
+      links.push({ key: `also-${division.id}-${personId}`, divisionId: division.id, personId, points: [start, [start[0], busY], ...up] });
+    }
+  }
+  return links;
 }
 
 /** The box of the card or row that shows `personId`, for "Find someone" and "Show me". */

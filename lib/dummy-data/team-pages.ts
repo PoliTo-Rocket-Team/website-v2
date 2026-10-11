@@ -1,19 +1,28 @@
 import { canReach } from "@/lib/dashboard/access";
 import { alumniMove, type MoveReach } from "@/lib/dashboard/alumni-move";
-import { joinChange, type LeadMove } from "@/lib/dashboard/application-flow";
+import { joinChange, memberStanding, NEW_APPLICANT, type ApplicantStanding, type LeadMove } from "@/lib/dashboard/application-flow";
 import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/dashboard/data";
 import { promotedNotices, type DepartmentHeadRole } from "@/lib/dashboard/notices";
 import {
   alumniDirectory,
   buildTeamTree,
+  DIVISION_ROLE_OF,
   divisionDirectory,
-  divisionIdOf,
+  divisionLabel,
+  homeDivision,
+  homeDivisionOf,
+  inDivisions,
+  isIn,
   memberRowOf,
+  membershipsIn,
   NO_DIVISION,
+  placedWithRoleIn,
+  roleIn,
   teamDirectory,
+  withJoined,
   type AlumnusRow,
+  type DivisionRole,
   type Joining,
-  type MemberEdit,
   type OrgChart,
   type Placement,
   type RosterEntry,
@@ -21,7 +30,7 @@ import {
 import type { ViewerKind } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { applications as baseApplications, type DummyApplication } from "./applications";
-import { cleanTitle, type TeamEdits } from "./edits";
+import { cleanTitle, type MemberChange, type TeamEdits } from "./edits";
 import { withDummyNotices } from "./notices";
 import { alumni, departments, divisions, DUMMY_NOW, people, positions, roster, type DummyPerson } from "./team";
 
@@ -39,22 +48,19 @@ const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
   "non-member": null,
 };
 
-function placementWith(placement: Placement, edit: MemberEdit | undefined): Placement {
-  if (!edit || edit.role === null) return placement;
-  if (placement.role === "division-lead" || placement.role === "member") {
-    if (placement.divisionId === null) return placement;
-    return { role: edit.role, divisionId: placement.divisionId };
-  }
-  return placement;
+/** The placement with each division role a saved change set; their other divisions as they were. */
+function placementWith(placement: Placement, change: MemberChange | undefined): Placement {
+  if (!change) return placement;
+  return Object.entries(change.roles).reduce((p, [divisionId, role]) => placedWithRoleIn(p, Number(divisionId), role), placement);
 }
 
-function entryOf(person: DummyPerson, edit: MemberEdit | undefined): RosterEntry {
+function entryOf(person: DummyPerson, change: MemberChange | undefined): RosterEntry {
   return {
     id: person.id,
     name: person.name,
     email: person.email,
-    placement: placementWith(person.placement, edit),
-    pageTitle: edit ? edit.pageTitle : person.pageTitle,
+    placement: placementWith(person.placement, change),
+    pageTitle: change ? change.pageTitle : person.pageTitle,
     joined: Number(person.since.slice(0, 4)),
     program: person.program,
     study: person.study,
@@ -77,6 +83,8 @@ export type DummyJoiner = Joining & {
   readonly study: string;
   /** The year Confirm join ran; null while they wait. */
   readonly joinedIn: number | null;
+  /** The day Confirm join ran ("2026-10-09"); null while they wait. */
+  readonly joinedOn: string | null;
 };
 
 /** Roster ids for people who joined from an application, clear of the people and alumni ids. */
@@ -100,6 +108,7 @@ export function dummyJoiners(current: readonly DummyApplication[]): DummyJoiner[
         program: a.applicant.degree,
         study: a.applicant.year,
         joinedIn: a.state.stage === "joined" ? new Date(a.state.joinedAt).getUTCFullYear() : null,
+        joinedOn: a.state.stage === "joined" ? new Date(a.state.joinedAt).toISOString().slice(0, 10) : null,
       },
     ];
   });
@@ -110,7 +119,7 @@ function joinedEntry(joiner: DummyJoiner, year: number): RosterEntry {
     id: JOINER_ID_BASE + joiner.applicationId,
     name: joiner.name,
     email: joiner.email,
-    placement: { role: "member", divisionId: joiner.divisionId },
+    placement: inDivisions([{ divisionId: joiner.divisionId, role: "member", since: `${year}-10-01` }]),
     pageTitle: joiner.position,
     joined: year,
     program: joiner.program,
@@ -120,18 +129,46 @@ function joinedEntry(joiner: DummyJoiner, year: number): RosterEntry {
 }
 
 /**
+ * Where an applicant with `email` stands with the dummy team, toward a
+ * position in `divisionId`: on `team` by their email, or new. A member signed
+ * the team's NDA in the year they joined.
+ */
+export function dummyStanding(email: string, divisionId: number, team: readonly RosterEntry[]): ApplicantStanding {
+  const entry = team.find((e) => e.email === email);
+  if (!entry) return NEW_APPLICANT;
+  const memberships = membershipsIn(entry.placement);
+  const home = homeDivision(memberships);
+  const theirs = [...memberships]
+    .sort((a, b) => Number(b.divisionId === home) - Number(a.divisionId === home))
+    .flatMap((m) => {
+      const division = divisions.find((d) => d.id === m.divisionId);
+      return division ? [{ id: division.id, name: divisionLabel(division.name) }] : [];
+    });
+  return memberStanding(theirs, divisionId, entry.joined);
+}
+
+/**
  * This year's roster after the test developer's edits: moved people left
  * out, saved drawers and promotions applied, joined applicants added as
- * `joinChange` says (someone already on the team gets no second place).
+ * `joinChange` says: a new person as a new entry, someone already on the team
+ * in the new division beside every one they were in (issue #229).
  */
 export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] = []): RosterEntry[] {
   const onTeam = people.map((p) => entryOf(p, edits.members[p.id]));
-  const joined = joiners.flatMap((j) => {
-    if (j.joinedIn === null) return [];
-    const membership = onTeam.some((e) => e.email === j.email) ? "member" : "applicant";
-    return joinChange(membership) === "nothing" ? [] : [joinedEntry(j, j.joinedIn)];
+  const added: RosterEntry[] = [];
+  const joinedTeam = onTeam.map((entry): RosterEntry => {
+    if (entry.placement.role !== "divisions") return entry;
+    const memberships = joiners.reduce(
+      (ms, j) => (j.joinedOn !== null && j.email === entry.email ? withJoined(ms, j.divisionId, j.joinedOn) : ms),
+      entry.placement.memberships,
+    );
+    return { ...entry, placement: { role: "divisions", memberships } };
   });
-  return [...onTeam, ...joined].filter((e) => edits.movedToAlumni[e.id] === undefined);
+  for (const j of joiners) {
+    if (j.joinedIn === null) continue;
+    if (joinChange(dummyStanding(j.email, j.divisionId, onTeam)) === "new-member") added.push(joinedEntry(j, j.joinedIn));
+  }
+  return [...joinedTeam, ...added].filter((e) => edits.movedToAlumni[e.id] === undefined);
 }
 
 /** The alumni, those the test developer moved included, with their switches as flipped. */
@@ -150,14 +187,20 @@ export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
 function mayEdit(kind: ViewerKind, entry: RosterEntry): boolean {
   if (!canReach(kind, "members") || entry.id === SELF_ID[kind]) return false;
   if (kind === "operations-lead") return true;
-  return kind === "division-lead" && divisionIdOf(entry.placement) === myDivision(kind);
+  const division = myDivision(kind);
+  return division !== null && isIn(entry.placement, division);
 }
 
 /** The division a division lead leads; null for every other viewer. */
 function myDivision(kind: ViewerKind): number | null {
   if (kind !== "division-lead") return null;
   const mine = people.find((p) => p.id === SELF_ID[kind]);
-  return mine ? divisionIdOf(mine.placement) : null;
+  return mine ? homeDivisionOf(mine.placement) : null;
+}
+
+/** The division a drawer's role change is about: the lead's own, or the person's home division for the operations lead. */
+function drawerDivision(kind: ViewerKind, entry: RosterEntry): number | null {
+  return kind === "division-lead" ? myDivision(kind) : homeDivisionOf(entry.placement);
 }
 
 /** What `kind`'s Move to alumni reaches: the whole team for the operations lead, their division for a division lead. */
@@ -192,22 +235,32 @@ function writesFor(
     async saveMember(personId, edit) {
       const entry = find(personId);
       if (!entry || !mayEdit(kind, entry)) return false;
-      if (edit.role !== null) {
-        const ownRole = entry.placement.role === "division-lead" || entry.placement.role === "member";
-        if (!ownRole || divisionIdOf(entry.placement) === null) return false;
-      }
-      const next: MemberEdit = { role: edit.role, pageTitle: cleanTitle(edit.pageTitle) };
+      const division = drawerDivision(kind, entry);
+      // The drawer sets the role in one division; a seat or head, or someone in no division, has none to set.
+      if (edit.role !== null && (division === null || !isIn(entry.placement, division))) return false;
+      const before = edits.members[personId]?.roles ?? {};
+      const next: MemberChange = {
+        pageTitle: cleanTitle(edit.pageTitle),
+        roles: edit.role === null || division === null ? before : { ...before, [division]: DIVISION_ROLE_OF[edit.role] },
+      };
       await save({ ...edits, members: { ...edits.members, [personId]: next } });
       return true;
     },
     async promote(personId, mode) {
       const entry = find(personId);
       const self = find(SELF_ID[kind] ?? -1);
-      if (kind !== "division-lead" || !entry || !self || !mayEdit(kind, entry) || entry.placement.role !== "member") return false;
-      const division = divisions.find((d) => d.id === divisionIdOf(entry.placement));
+      const divisionId = myDivision(kind);
+      if (kind !== "division-lead" || !entry || !self || divisionId === null || !mayEdit(kind, entry)) return false;
+      if (roleIn(membershipsIn(entry.placement), divisionId) !== "member") return false;
+      const division = divisions.find((d) => d.id === divisionId);
       if (!division) return false;
-      const members = { ...edits.members, [personId]: { role: "division-lead" as const, pageTitle: entry.pageTitle } };
-      if (mode === "hand-over") members[self.id] = { role: "member", pageTitle: self.pageTitle };
+      // Only this division changes for either of them (`withRoleIn`); their other divisions stay.
+      const roleChange = (who: RosterEntry, role: DivisionRole): MemberChange => ({
+        pageTitle: who.pageTitle,
+        roles: { ...(edits.members[who.id]?.roles ?? {}), [divisionId]: role },
+      });
+      const members = { ...edits.members, [personId]: roleChange(entry, "lead") };
+      if (mode === "hand-over") members[self.id] = roleChange(self, "member");
       // As the database does: the heads of the division's department are told (#188).
       const heads = team.flatMap((e): DepartmentHeadRole[] =>
         e.placement.role === "head" ? [{ memberId: e.id, departmentId: e.placement.departmentId }] : [],
@@ -224,11 +277,14 @@ function writesFor(
       // Only people on the dummy roster have an Alumni row to move to.
       if (!entry || !mayEdit(kind, entry) || !people.some((p) => p.id === personId)) return false;
       if (departure.from > departure.to || departure.to > thisYear) return false;
-      // The rule the database follows (alumni-move.ts). A dummy person holds one
-      // place, so a move in reach always ends it and they leave the team; one
-      // that would leave them a role elsewhere has no dummy form, so it is refused.
+      // The rule the database follows (alumni-move.ts), over every division they
+      // are in. A move that would leave them a role elsewhere has no dummy form
+      // (the edits keep no ended role), so it is refused.
       const reach = moveReach(kind);
-      const move = reach && alumniMove([{ divisionId: divisionIdOf(entry.placement) }], reach);
+      const memberships = membershipsIn(entry.placement);
+      const roles: { divisionId: number | null }[] =
+        memberships.length === 0 ? [{ divisionId: null }] : memberships.map((m) => ({ divisionId: m.divisionId }));
+      const move = reach && alumniMove(roles, reach);
       if (!move || !move.leavesTeam) return false;
       await save({ ...edits, movedToAlumni: { ...edits.movedToAlumni, [personId]: departure } });
       return true;
@@ -266,7 +322,11 @@ export function dummyTeamPages(
       if (kind === "operations-lead") return teamDirectory(team, org, self);
       const division = myDivision(kind);
       if (division === null) return NO_DIVISION;
-      const joining = joiners.filter((j) => j.divisionId === division && j.joinedIn === null);
+      // As the database lists them (`readJoining`): people not on the team yet. A
+      // member joins from the Applications page (board 58h2) until #231.
+      const joining = joiners.filter(
+        (j) => j.divisionId === division && j.joinedIn === null && dummyStanding(j.email, j.divisionId, team).kind !== "member",
+      );
       return divisionDirectory(
         team,
         org,

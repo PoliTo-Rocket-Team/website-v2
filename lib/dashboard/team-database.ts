@@ -4,7 +4,16 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
-import { boardSeatOf, type AlumnusRow, type BoardSeat, type OrgChart, type Placement, type RosterEntry } from "./team";
+import {
+  boardSeatOf,
+  inDivisions,
+  type AlumnusRow,
+  type BoardSeat,
+  type DivisionMembership,
+  type OrgChart,
+  type Placement,
+  type RosterEntry,
+} from "./team";
 
 // The database side of the Team pages (issue #143). One cached snapshot of
 // every role, the open org chart and every scope (ADR 0003: full-directory
@@ -121,18 +130,29 @@ function rank(role: RoleRow): number {
   return role.type === null ? 5 : ROLE_RANK[role.type];
 }
 
-/** Where an active role puts someone; a unit that is closed or missing counts as not placed. */
-function placementOf(role: RoleRow, org: OrgChart): Placement {
-  const division = org.divisions.find((d) => d.id === role.division_id);
-  if (role.type === "president") return { role: "team-leader" };
-  const seat = boardSeatOfRole(role);
+/**
+ * Where someone's active roles put them, highest first: the team leader, a
+ * board seat or a head by their top role; anyone else in every open division
+ * they hold a role in, each with its own role (issue #229). A role in a closed
+ * or missing division places them nowhere, so someone with only such roles is
+ * on the roster and not yet placed.
+ */
+function placementOf(active: readonly RoleRow[], org: OrgChart): Placement {
+  const [top] = active;
+  if (top.type === "president") return { role: "team-leader" };
+  const seat = boardSeatOfRole(top);
   if (seat !== null) return { role: "board", seat };
-  if (role.type === "head") {
-    const departmentId = role.dept_id ?? division?.departmentId ?? null;
+  if (top.type === "head") {
+    const departmentId = top.dept_id ?? org.divisions.find((d) => d.id === top.division_id)?.departmentId ?? null;
     if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId };
   }
-  if (role.type === "lead" && division) return { role: "division-lead", divisionId: division.id };
-  return { role: "member", divisionId: division?.id ?? null };
+  return inDivisions(
+    active.flatMap((role): DivisionMembership[] =>
+      org.divisions.some((d) => d.id === role.division_id) && role.division_id !== null
+        ? [{ divisionId: role.division_id, role: role.type === "lead" ? "lead" : "member", since: role.started_at }]
+        : [],
+    ),
+  );
 }
 
 const TARGET_LABELS: Readonly<Record<string, string>> = {
@@ -162,7 +182,7 @@ function rolesByMember(snapshot: TeamSnapshot): Map<number, RoleRow[]> {
   return byMember;
 }
 
-/** Everyone with an active role, placed by the highest one. */
+/** Everyone with an active role, placed by all of them (`placementOf`). */
 export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
   const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
   return [...rolesByMember(snapshot)].flatMap(([memberId, memberRoles]): RosterEntry[] => {
@@ -174,7 +194,7 @@ export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
       {
         id: memberId,
         ...named,
-        placement: placementOf(active[0], snapshot.org),
+        placement: placementOf(active, snapshot.org),
         pageTitle: active[0].title || null,
         joined: Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
         program: person?.program ?? null,

@@ -21,7 +21,7 @@ import {
   type OrderQuote,
   type OrderState,
 } from "@/lib/dashboard/orders";
-import { divisionIdOf, type RosterEntry } from "@/lib/dashboard/team";
+import { isIn, ledDivisionOf, membershipsIn, roleIn, type RosterEntry } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { divisions, people, type DummyPerson } from "./team";
 
@@ -114,8 +114,9 @@ function localId(): number {
   return randomInt(1_000_000, 2_000_000_000);
 }
 
-function accessPerson(entry: RosterEntry): AccessPerson {
-  return { id: entry.id, name: entry.name, standing: entry.placement.role === "member" ? "member" : "lead" };
+/** The person as the division's Access page shows them: their standing in that division. */
+function accessPerson(entry: RosterEntry, divisionId: number): AccessPerson {
+  return { id: entry.id, name: entry.name, standing: roleIn(membershipsIn(entry.placement), divisionId) === "lead" ? "lead" : "member" };
 }
 
 /**
@@ -123,9 +124,10 @@ function accessPerson(entry: RosterEntry): AccessPerson {
  * people on `roster` hold access: a grant to someone moved to alumni is gone.
  */
 export function dummyDivisionAccess(lead: DummyPerson, roster: readonly RosterEntry[]): DivisionAccess | null {
-  if (lead.placement.role !== "division-lead") return null;
-  const divisionId = lead.placement.divisionId;
-  const inDivision = roster.filter((e) => divisionIdOf(e.placement) === divisionId);
+  // One division: the oldest they lead, until the department head work gives them all (#230).
+  const divisionId = ledDivisionOf(lead.placement);
+  if (divisionId === null) return null;
+  const inDivision = roster.filter((e) => isIn(e.placement, divisionId));
   const onTeam = new Map(inDivision.map((e) => [e.id, e]));
   const grants = accessGrants.flatMap((g): AccessGrant[] => {
     const person = onTeam.get(g.personId);
@@ -133,7 +135,7 @@ export function dummyDivisionAccess(lead: DummyPerson, roster: readonly RosterEn
     return [
       {
         id: g.id,
-        person: accessPerson(person),
+        person: accessPerson(person, divisionId),
         target: g.target,
         level: g.level,
         givenBy: g.givenById === lead.id ? "You" : personOf(g.givenById).name,
@@ -147,7 +149,7 @@ export function dummyDivisionAccess(lead: DummyPerson, roster: readonly RosterEn
       heldAccess.filter((h) => h.personId === lead.id && h.target === target).map((h) => ({ target, level: h.level })),
     ),
     grants,
-    people: inDivision.filter((e) => e.id !== lead.id).map(accessPerson),
+    people: inDivision.filter((e) => e.id !== lead.id).map((e) => accessPerson(e, divisionId)),
   };
 }
 
@@ -209,8 +211,9 @@ function orderOf(o: DummyOrder): Order {
 
 /** Boards 61 to 61d for someone who holds Orders in their division; null for anyone else. */
 export function dummyDivisionOrders(lead: DummyPerson): DivisionOrders | null {
-  if (lead.placement.role !== "division-lead") return null;
-  const divisionId = lead.placement.divisionId;
+  // One division: the oldest they lead, until Orders shows the whole team (#233).
+  const divisionId = ledDivisionOf(lead.placement);
+  if (divisionId === null) return null;
   const level = heldLevel(
     heldAccess.filter((h) => h.personId === lead.id),
     "orders",

@@ -4,7 +4,7 @@
 // the Overview read the same people. Later dashboard pages add their arrays
 // beside these.
 
-import type { BoardSeat, OrgDepartment, OrgDivision, Placement } from "@/lib/dashboard/team";
+import { inDivisions, type BoardSeat, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
 
 export type DummyDepartment = OrgDepartment;
 
@@ -53,11 +53,20 @@ export const divisions = [
   { id: 14, name: "Sponsorship Division", departmentId: 6 },
 ] as const satisfies readonly DummyDivision[];
 
-const leader = { role: "team-leader" } as const satisfies Placement;
-const board = (seat: BoardSeat): Placement => ({ role: "board", seat });
-const head = (departmentId: number): Placement => ({ role: "head", departmentId });
-const lead = (divisionId: number): Placement => ({ role: "division-lead", divisionId });
-const member = (divisionId: number | null): Placement => ({ role: "member", divisionId });
+/** Where a row places someone, given the day they joined the team. */
+type Place = (since: string) => Placement;
+
+const leader: Place = () => ({ role: "team-leader" });
+const board = (seat: BoardSeat): Place => () => ({ role: "board", seat });
+const head = (departmentId: number): Place => () => ({ role: "head", departmentId });
+const lead = (divisionId: number): Place => (since) => inDivisions([{ divisionId, role: "lead", since }]);
+/** A member of one division, or of none yet (null): added to the roster, not placed. */
+const member = (divisionId: number | null): Place => (since) => inDivisions(divisionId === null ? [] : [{ divisionId, role: "member", since }]);
+/** In several divisions at once (issue #229): each as [division, role, the year they joined it]. */
+const divisionsOf =
+  (...list: readonly (readonly [divisionId: number, role: DivisionRole, year: number])[]): Place =>
+  () =>
+    inDivisions(list.map(([divisionId, role, year]) => ({ divisionId, role, since: `${year}-10-01` })));
 
 const PROGRAMS = [
   "Aerospace Eng.",
@@ -72,24 +81,25 @@ const PROGRAMS = [
 type Row = readonly [
   id: number,
   name: string,
-  placement: Placement,
+  placement: Place,
   title: string,
   joined: number,
   extra?: Partial<Pick<DummyPerson, "email" | "pageTitle" | "hasPhoto" | "program" | "study" | "access">>,
 ];
 
 /** A row in full: email, programme and study follow from the id where the row gives none. */
-function person([id, name, placement, title, joined, extra = {}]: Row): DummyPerson {
+function person([id, name, place, title, joined, extra = {}]: Row): DummyPerson {
   const [first, ...rest] = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(" ");
   const degree = id % 3 === 0 ? "BSc" : "MSc";
+  const since = `${joined}-10-01`;
   return {
     id,
     name,
     email: extra.email ?? `${first[0]}.${rest.join("")}@politorocketteam.it`,
-    placement,
+    placement: place(since),
     title,
     pageTitle: extra.pageTitle ?? null,
-    since: `${joined}-10-01`,
+    since,
     hasPhoto: extra.hasPhoto ?? id % 4 !== 1,
     linkedin: null,
     program: extra.program ?? PROGRAMS[id % PROGRAMS.length],
@@ -173,7 +183,9 @@ export const people: readonly DummyPerson[] = ([
   [69, "Pablo Ruiz", member(9), M, 2025],
   [70, "Gaia Sartori", member(9), M, 2024],
   [71, "Hiro Tanaka", member(9), M, 2025],
-  [72, "Matteo Greco", member(9), M, 2026],
+  // In two divisions across two departments (board 54e): drawn under Design &
+  // Manufacturing, his older one, with a dashed line from Optimization and Analysis.
+  [72, "Matteo Greco", divisionsOf([3, "member", 2024], [2, "member", 2025]), M, 2024],
   [73, "Priya Nair", member(9), M, 2026],
   [74, "Emma Bianco", member(10), M, 2024],
   [75, "Can Yilmaz", member(10), M, 2025],

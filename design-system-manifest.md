@@ -64,7 +64,9 @@ Rules:
   `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
   `white-5` with `prt-muted`. `info` marks In review and nothing else: on the stage pill and tag, and
   on the panel's stage menu trigger and its dot (`toneSurface`, `toneDot`). It is not a second
-  accent.
+  accent. The one other use is the Team tree (board 54e, issue #229, `team-tree.tsx`): the
+  dashed line from a division to someone drawn under another one, their "also {division}" tag
+  (`info-soft` fill, `info` text) and the legend's line, so they read apart from the accent path.
 - The legacy palettes `rocket`, `space`, `mission`, `cosmos` and the shadcn role variables in
   `app/globals.css` serve `app/(legacy)/` and `components/ui/` only. Do not use them on a
   redesigned surface. Note the shadcn `accent` name is taken by the PRT orange
