@@ -344,6 +344,37 @@ export const teamLeaves = pgTable("team_leaves", {
 }));
 
 /**
+ * Someone a lead or head added to a division who is not on the team yet
+ * (issue #231): "Waiting for NDA" until Confirm NDA. The person is a `users`
+ * row: their account when they have one, else a row keyed `added:<uuid>`
+ * that holds the email they were added with, as rows from the old site do.
+ * The `sync_auth_users` trigger (drizzle/0001) gives that row their account
+ * id when they first sign in with the email, and `user_id` follows it
+ * (ON UPDATE CASCADE). They hold no member row and no role, so nothing reads
+ * them as a member; Confirm NDA creates both and deletes this row. The PRT
+ * email and Discord wait here, since they live on the member row.
+ */
+export const teamJoins = pgTable("team_joins", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id")
+    .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" })
+    .notNull(),
+  divisionId: integer("division_id")
+    .references(() => divisions.id)
+    .notNull(),
+  title: text("title"),
+  prtEmail: text("prt_email"),
+  discord: text("discord"),
+  addedBy: integer("added_by").references(() => members.memberId, { onDelete: "set null" }),
+  addedAt: timestamp("added_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+}, (table) => ({
+  userDivision: uniqueIndex("team_joins_user_division").on(table.userId, table.divisionId),
+  divisionIdx: index("team_joins_division_idx").on(table.divisionId),
+}));
+
+/**
  * A notice on one member's dashboard (issue #201), shown under "Needs your
  * attention" until they dismiss it. `kind` names what happened and `data`
  * holds what the notice says about it; lib/dashboard/notices.ts owns both,

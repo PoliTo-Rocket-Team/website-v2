@@ -26,8 +26,6 @@ import { DashboardRefused, type DashboardData } from "./data";
 import {
   alumniDirectory,
   buildTeamTree,
-  divisionDirectory,
-  NO_DIVISION,
   seasonAt,
   teamDirectory,
   type MemberDirectory,
@@ -49,7 +47,7 @@ import {
 } from "./overview";
 import { databaseDivisionPages } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
-import { databaseTeamWrites, leadDivisionId, readJoining } from "./database-team";
+import { databaseTeamWrites, findForAdd, readDivisionMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
@@ -536,18 +534,16 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
 }
 
 /**
- * The Members page: the whole team for the operations lead, the lead's own
- * division and the people joining it for a division lead.
+ * The Members page: the whole team for the operations lead; for a division
+ * lead one of their divisions, with the people waiting for Confirm NDA and the
+ * people joining it (./database-team.ts).
  */
-async function membersOf(identity: Identity): Promise<MemberDirectory> {
+async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
   if (identity.kind === "operations-lead") {
     const snapshot = await readTeamSnapshot();
     return teamDirectory(rosterOf(snapshot), snapshot.org, identity.memberId);
   }
-  const division = leadDivisionId(identity);
-  if (division === null) return NO_DIVISION;
-  const [snapshot, joining] = await Promise.all([readTeamSnapshot(), readJoining(division)]);
-  return divisionDirectory(rosterOf(snapshot), snapshot.org, division, identity.memberId, joining);
+  return readDivisionMembers(identity, divisionId);
 }
 
 /** The signed-in account's dashboard, or null when nobody is signed in or there is no database. */
@@ -574,7 +570,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     navCounts: () => navCountsOf(identity),
     hasOwnApplications: () => hasOwnApplications(identity),
     overview: () => overviewOf(identity),
-    members: () => membersOf(identity),
+    members: (divisionId) => membersOf(identity, divisionId ?? null),
+    findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
     alumni: async () =>
       alumniDirectory(canReach(identity, "alumni") ? alumniOf(await readTeamSnapshot()) : []),
     teamTree: async () => {

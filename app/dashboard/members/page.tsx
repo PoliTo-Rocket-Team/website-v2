@@ -10,21 +10,27 @@ export const metadata: Metadata = {
   title: "Members · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 46 (operations lead: the whole team) and 59 (division lead: their
-// division, the people joining it, and the member panel). It replaces the legacy members page.
-export default function MembersPage() {
+type Search = Promise<{ division?: string | string[] }>;
+
+// Boards 46 (operations lead: the whole team) and 61e to 61h2 (division lead:
+// one of their divisions, `?division=` picking which, with the people waiting
+// for Confirm NDA and the member panels). It replaces the legacy members page.
+export default function MembersPage({ searchParams }: { searchParams: Search }) {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
-      <LiveMembers />
+      <LiveMembers searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function LiveMembers() {
+async function LiveMembers({ searchParams }: { searchParams: Search }) {
   const opening = await openDashboard();
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/members");
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "members")) notFound();
-  return <MembersView directory={await data.members()} editable={data.teamWrites !== null} />;
+  const { division } = await searchParams;
+  const divisionId = Number(typeof division === "string" ? division : undefined);
+  const directory = await data.members(Number.isSafeInteger(divisionId) && divisionId > 0 ? divisionId : null);
+  return <MembersView directory={directory} editable={data.teamWrites !== null} />;
 }

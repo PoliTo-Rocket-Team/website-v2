@@ -1,3 +1,5 @@
+import type { DivisionMembers } from "./division-members";
+
 // The Team pages of the dashboard (issue #143): Members (boards 46, 46b),
 // Alumni (46c) and the Team tree (42, 42b). Both sides of the data
 // interface hand these shapes to the pages; the components render them and
@@ -88,6 +90,11 @@ export function withJoined(memberships: Memberships, divisionId: number, since: 
   return membershipsOf([...memberships, { divisionId, role: "member", since }]);
 }
 
+/** The memberships without `divisionId`: "Remove from <division>" (issue #231). Every other division stays. */
+export function withoutDivision(memberships: Memberships, divisionId: number): Memberships {
+  return membershipsOf(memberships.filter((m) => m.divisionId !== divisionId));
+}
+
 /**
  * The one division a person is drawn under on the Team tree, and named by
  * where a page shows a single division: the oldest one they lead, else their
@@ -161,7 +168,13 @@ export function membershipsIn(placement: Placement): Memberships {
 }
 
 export type OrgDepartment = { readonly id: number; readonly name: string };
-export type OrgDivision = { readonly id: number; readonly name: string; readonly departmentId: number };
+export type OrgDivision = {
+  readonly id: number;
+  readonly name: string;
+  readonly departmentId: number;
+  /** The short code the Members page shows on a chip: "MA". Null where none is set. */
+  readonly code?: string | null;
+};
 
 /** The departments and divisions that are open now, in display order. */
 export type OrgChart = {
@@ -284,24 +297,17 @@ export type DepartmentHead = {
 
 /**
  * Who a viewer's Members page lists: the whole team for the operations lead
- * (board 46), one division for a division lead (boards 59 and 59b), with the
- * people joining it and its department head.
+ * (board 46); one division for a division lead, with every division they are
+ * in and what the lead may do to each (boards 61e to 61h2, issue #231); and
+ * nothing for anyone else.
  */
 export type MemberDirectory =
   | { readonly scope: "team"; readonly rows: readonly MemberRow[]; readonly departments: readonly string[] }
-  | {
-      readonly scope: "division";
-      readonly division: string;
-      readonly rows: readonly MemberRow[];
-      readonly joining: readonly Joining[];
-      /** The department's heads, the viewer among them when they head it. */
-      readonly heads: readonly DepartmentHead[];
-      /** The viewer's member id: the lead who would promote. */
-      readonly viewerId: number | null;
-    };
+  | ({ readonly scope: "division" } & DivisionMembers)
+  | { readonly scope: "none" };
 
-/** A division lead with nothing to list: no division, nobody joining, no head. */
-export const NO_DIVISION: MemberDirectory = { scope: "division", division: "", rows: [], joining: [], heads: [], viewerId: null };
+/** A viewer with no division to list. */
+export const NO_MEMBERS: MemberDirectory = { scope: "none" };
 
 function roleLabelOf(placement: Placement, role: TeamRole, org: OrgChart): string {
   if (placement.role === "board") return BOARD_SEAT_TITLES[placement.seat];
@@ -349,32 +355,122 @@ function byRoleThenName(a: MemberRow, b: MemberRow): number {
   return ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.name.localeCompare(b.name);
 }
 
-export function teamDirectory(roster: readonly RosterEntry[], org: OrgChart, selfId: number | null = null): MemberDirectory {
+export function teamDirectory(
+  roster: readonly RosterEntry[],
+  org: OrgChart,
+  selfId: number | null = null,
+): Extract<MemberDirectory, { scope: "team" }> {
   const rows = roster.map((entry) => memberRowOf(entry, org, selfId)).sort(byRoleThenName);
   const present = new Set(rows.map((r) => r.department));
   return { scope: "team", rows, departments: org.departments.map((d) => d.name).filter((n) => present.has(n)) };
 }
 
-export function divisionDirectory(
-  roster: readonly RosterEntry[],
-  org: OrgChart,
-  divisionId: number,
-  selfId: number | null = null,
-  joining: readonly Joining[] = [],
-): MemberDirectory {
-  const division = org.divisions.find((d) => d.id === divisionId);
-  // Everyone in the division, each with their role in it, whatever else they are in.
-  const rows = roster
-    .filter((entry) => isIn(entry.placement, divisionId))
-    .map((entry) => memberRowOf(entry, org, selfId, divisionId))
-    .sort(byRoleThenName);
-  const department = org.departments.find((d) => d.id === division?.departmentId);
-  const heads: DepartmentHead[] = department
-    ? roster
-        .filter((e) => e.placement.role === "head" && e.placement.departmentId === department.id)
-        .map((e) => ({ memberId: e.id, name: e.name, department: department.name }))
-    : [];
-  return { scope: "division", division: division?.name ?? "", rows, joining, heads, viewerId: selfId };
+// Who may change whom on the Members page (issue #231, boards 61e to 61h2)
+
+/**
+ * Who acts on the Members page, by what they lead. The team leader reaches
+ * the whole team; the operations lead does too, as Move to alumni already let
+ * them (#201). A head reaches their departments, a division lead their
+ * divisions.
+ */
+export type TeamActor =
+  | { readonly kind: "team" }
+  | { readonly kind: "head"; readonly departmentIds: readonly number[] }
+  | { readonly kind: "lead"; readonly divisionIds: readonly number[] };
+
+/** Whether an action is open to the actor; when it is not, the reason the menu shows beside the lock. */
+export type Permission = { readonly allowed: true } | { readonly allowed: false; readonly reason: string };
+
+const ALLOWED: Permission = { allowed: true };
+
+function denied(reason: string): Permission {
+  return { allowed: false, reason };
+}
+
+function departmentOfDivision(org: OrgChart, divisionId: number): OrgDepartment | null {
+  const departmentId = org.divisions.find((d) => d.id === divisionId)?.departmentId;
+  return org.departments.find((d) => d.id === departmentId) ?? null;
+}
+
+/** "the Head of Aerodynamics" when every division is in one department, else "the team leader". */
+function whoReachesAll(memberships: Memberships, org: OrgChart): string {
+  const departments = new Set(memberships.map((m) => departmentOfDivision(org, m.divisionId)?.id ?? null));
+  const [only] = [...departments];
+  const department = departments.size === 1 && only !== null ? org.departments.find((d) => d.id === only) : undefined;
+  return department ? `the Head of ${department.name}` : "the team leader";
+}
+
+function divisionName(org: OrgChart, divisionId: number): string {
+  return divisionLabel(org.divisions.find((d) => d.id === divisionId)?.name ?? "another division");
+}
+
+/**
+ * "Leaves the team" (Owner decision, 2026-10-11): a division lead may use it
+ * only when the person is in no division outside the lead's own; a department
+ * head only when all the person's divisions are in the head's department; the
+ * team leader always. Otherwise the reason names the division that stops it
+ * and who can do it instead. The menu shows this and the server checks it on
+ * every request.
+ */
+export function mayLeaveTeam(actor: TeamActor, person: Memberships, org: OrgChart): Permission {
+  if (actor.kind === "team") return ALLOWED;
+  if (person.length === 0) return denied("Only the team leader can do this");
+  const outside = person.find((m) =>
+    actor.kind === "lead"
+      ? !actor.divisionIds.includes(m.divisionId)
+      : !actor.departmentIds.includes(departmentOfDivision(org, m.divisionId)?.id ?? -1),
+  );
+  if (outside === undefined) return ALLOWED;
+  const who = actor.kind === "lead" ? whoReachesAll(person, org) : "the team leader";
+  return denied(`Also in ${divisionName(org, outside.divisionId)}, so only ${who} can do this`);
+}
+
+/**
+ * "Remove from <division>" on a row (Owner decision, 2026-10-11): it ends
+ * only that division's role. It is not offered for someone whose only
+ * division it is (nobody is on the team with no division: they can only leave
+ * it), and a division lead cannot take a lead out, since only the head
+ * changes a division's leads.
+ */
+export type Removal =
+  | { readonly kind: "offered" }
+  | { readonly kind: "only-division" }
+  | { readonly kind: "locked"; readonly reason: string }
+  | { readonly kind: "not-in-reach" };
+
+export function removalFrom(actor: TeamActor, person: Memberships, divisionId: number, org: OrgChart): Removal {
+  const role = roleIn(person, divisionId);
+  if (role === null || !reachesDivision(actor, divisionId, org)) return { kind: "not-in-reach" };
+  if (person.length === 1) return { kind: "only-division" };
+  if (role === "lead") {
+    const change = mayChangeDivision(actor, divisionId, org);
+    if (!change.allowed) return { kind: "locked", reason: change.reason };
+  }
+  return { kind: "offered" };
+}
+
+/** Whether the actor's Members page reaches the division: theirs as lead, their department's as head, any as the team. */
+export function reachesDivision(actor: TeamActor, divisionId: number, org: OrgChart): boolean {
+  if (actor.kind === "team") return true;
+  if (actor.kind === "lead") return actor.divisionIds.includes(divisionId);
+  return actor.departmentIds.includes(departmentOfDivision(org, divisionId)?.id ?? -1);
+}
+
+/** The line under a lead's Members header: "Leads are changed by the Head of Aerodynamics". */
+export function leadsChangedBy(divisionId: number, org: OrgChart): string {
+  const department = departmentOfDivision(org, divisionId);
+  return `Leads are changed by ${department ? `the Head of ${department.name}` : "the team leader"}`;
+}
+
+/**
+ * Renaming a division, changing its code or changing its leads (Owner
+ * decision, 2026-10-11): only the head of its department, or the team. A
+ * division lead never can, even of their own division; the reason is the
+ * line their page shows.
+ */
+export function mayChangeDivision(actor: TeamActor, divisionId: number, org: OrgChart): Permission {
+  if (actor.kind === "lead") return denied(leadsChangedBy(divisionId, org));
+  return reachesDivision(actor, divisionId, org) ? ALLOWED : denied("Only the team leader can do this");
 }
 
 // Promote and Move to alumni (boards 59e and 59d)
@@ -388,11 +484,6 @@ export type PromoteMode = (typeof PROMOTE_MODES)[number];
 
 export function isPromoteMode(value: unknown): value is PromoteMode {
   return typeof value === "string" && (PROMOTE_MODES as readonly string[]).includes(value);
-}
-
-/** Who may be promoted: a member of a division, never a lead or someone not yet placed. */
-export function canPromote(row: Pick<MemberRow, "role" | "division" | "self">): boolean {
-  return row.role === "member" && row.division !== null && !row.self;
 }
 
 /** Why someone left, as the Move to alumni confirm offers it (board 59d). Optional. */
