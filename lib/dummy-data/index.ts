@@ -43,16 +43,16 @@ import { applications as baseApplications, type DummyApplication } from "./appli
 import { departmentCode, divisionLabel, positionText } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
+import { dummyAccessPage, dummyRemoveAllAccess, dummySaveAccess } from "./division";
 import {
-  dummyAccessPage,
   dummyCancelOrder,
-  dummyDivisionOrders,
+  dummyDecideOrder,
   dummyEditOrder,
   dummyOrdersIn,
+  dummyOrdersPage,
   dummyPlaceOrder,
-  dummyRemoveAllAccess,
-  dummySaveAccess,
-} from "./division";
+  dummySetApproveOrders,
+} from "./orders";
 import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
@@ -412,8 +412,8 @@ function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
   const open = scoped.filter((p) => p.open);
   const division = divisionOf(myDivisionId(kind));
   const members = people.filter((p) => isIn(p.placement, division.id));
-  const orders = dummyDivisionOrders(personFor[kind])!;
-  const waiting = waitingOrders(orders.orders);
+  // The figure counts the lead's own division's orders, though Orders shows the whole team (issue #233).
+  const waiting = waitingOrders(dummyOrdersIn([division.id]));
   return {
     shape: "division",
     stats: [
@@ -726,6 +726,7 @@ function teamPersonFor(kind: ViewerKind): DummyPerson | null {
 }
 
 const notOnTeam = "This page is for team members.";
+const noOrders = "You do not have access to Orders.";
 
 /**
  * The dashboard of a team member the test developer signed in as after they
@@ -885,11 +886,16 @@ export function dummyDashboardData(
     removeAllAccess: async (personId) =>
       accessKind === null || person === null ? refused(notOnTeam) : dummyRemoveAllAccess(accessKind, person, teamRoster, personId, closedIds),
 
-    divisionOrders: async () => (person === null ? null : dummyDivisionOrders(person)),
-    placeOrder: async (fields, quote) => (person === null ? refused(notOnTeam) : dummyPlaceOrder(person, fields, quote)),
+    orders: async () => (accessKind === null || person === null ? null : dummyOrdersPage(accessKind, person)),
+    placeOrder: async (fields, quote) =>
+      accessKind === null || person === null ? refused(noOrders) : dummyPlaceOrder(accessKind, person, fields, quote),
     editOrder: async (id, fields, quote) =>
-      person === null ? refused(notOnTeam) : dummyEditOrder(person, id, fields, quote),
-    cancelOrder: async (id) => (person === null ? refused(notOnTeam) : dummyCancelOrder(person, id)),
+      accessKind === null || person === null ? refused(noOrders) : dummyEditOrder(accessKind, person, id, fields, quote),
+    cancelOrder: async (id) => (accessKind === null || person === null ? refused(noOrders) : dummyCancelOrder(accessKind, person, id)),
+    decideOrder: async (id, input) =>
+      accessKind === null || person === null ? refused(noOrders) : dummyDecideOrder(accessKind, person, id, input),
+    setApproveOrders: async (input) =>
+      person === null ? refused(notOnTeam) : dummySetApproveOrders(person, teamRoster.map((e) => e.id), input),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(kind, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {

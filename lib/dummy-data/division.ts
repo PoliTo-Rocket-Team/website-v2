@@ -2,7 +2,6 @@ import { randomInt } from "node:crypto";
 import {
   checkRemoveAllAccess,
   checkSaveAccess,
-  heldLevel,
   placesOf,
   ROLE_HELD_ACCESS,
   samePlace,
@@ -18,24 +17,13 @@ import {
   type HeldAccess,
   type RoleAccess,
 } from "@/lib/dashboard/division-access";
-import {
-  checkNewOrder,
-  checkQuote,
-  orderActions,
-  stateAfterEdit,
-  type DivisionOrders,
-  type NewOrder,
-  type Order,
-  type OrderQuote,
-  type OrderState,
-} from "@/lib/dashboard/orders";
 import { homeFirst, ledDivisionOf, membershipsIn, type DivisionMembership, type RosterEntry } from "@/lib/dashboard/team";
-import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
+import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { departments, divisions, people, type DummyPerson } from "./team";
 
-// The Access and Orders pages for the test developer (boards 60 to 61d,
-// issues #145 and #172; the department head's Access, boards 65 and 65b,
-// issue #230). The division lead is Marco Bianchi, Mission Analysis, who leads
+// The Access pages for the test developer (boards 60 to 60m, issues #145 and
+// #213; the department head's Access, boards 65 and 65b, issue #230); their
+// Orders page is ./orders.ts. The division lead is Marco Bianchi, Mission Analysis, who leads
 // it with Pietro Ricci; the department head is Chiara Rinaldi, Aerodynamics.
 // The people come from the roster as the test developer left it
 // (./team-pages.ts), so someone moved to alumni has no access here any more.
@@ -82,40 +70,6 @@ export const accessGrants = [
   { id: 7, personId: 32, place: { divisionId: 2 }, target: "applications", level: "edit", givenById: 20, givenOn: "2026-09-28" },
   { id: 8, personId: 13, place: { departmentId: 1 }, target: "members", level: "view", givenById: 15, givenOn: "2026-10-02" },
 ] as const satisfies readonly DummyGrant[];
-
-export type DummyOrder = OrderState & {
-  readonly id: number;
-  readonly divisionId: number;
-  readonly requesterId: number;
-  readonly item: string;
-  readonly reason: string;
-  readonly link: string | null;
-  /** Euro cents. */
-  readonly unitPrice: number;
-  readonly quantity: number;
-  readonly shipping: number | null;
-  readonly requestedOn: string;
-  readonly quote: OrderQuote | null;
-};
-
-const sentBack: OrderState = {
-  status: "changes-requested",
-  changes: {
-    reason: "Amazon is over our limit for this item. Add a quote from a second shop, then send it again.",
-    by: "Alessandro Greco",
-    on: "2026-10-05",
-  },
-};
-
-/** Board 61's requests. */
-export const orders: readonly DummyOrder[] = [
-  { id: 1, divisionId: 1, requesterId: 2, item: "Steel wire", reason: "For the launch rail", link: "https://uk.rs-online.com/web/p/steel-wire/1234567", unitPrice: 5955, quantity: 2, shipping: null, status: "waiting", requestedOn: "2026-10-08", quote: { name: "quote_RS_2026-10-02.pdf", size: 188_416, href: null } },
-  { id: 2, divisionId: 1, requesterId: 2, item: "CO2 cartridges", reason: "Ejection tests at Roccaraso", link: "https://www.amazon.it/dp/B07CO2XXXX", unitPrice: 12480, quantity: 1, shipping: null, ...sentBack, requestedOn: "2026-10-07", quote: { name: "quote_amazon_2026-10-03.pdf", size: 188_416, href: null } },
-  { id: 3, divisionId: 1, requesterId: 3, item: "Mini 3-ring system", reason: "Recovery bay mock-up", link: null, unitPrice: 15000, quantity: 1, shipping: 1330, status: "waiting", requestedOn: "2026-10-06", quote: null },
-  { id: 4, divisionId: 1, requesterId: 2, item: "Loctite", reason: "Launch rail screws", link: null, unitPrice: 1180, quantity: 3, shipping: null, status: "approved", requestedOn: "2026-10-01", quote: null },
-  { id: 5, divisionId: 1, requesterId: 4, item: "M4 heated inserts", reason: "Roccaraso launch", link: null, unitPrice: 2300, quantity: 3, shipping: null, status: "approved", requestedOn: "2026-09-29", quote: null },
-  { id: 6, divisionId: 1, requesterId: 3, item: "Concave mirror", reason: "Optical test bench", link: null, unitPrice: 4824, quantity: 1, shipping: null, status: "rejected", requestedOn: "2026-09-22", quote: null },
-];
 
 function personOf(id: number): DummyPerson {
   return people.find((p) => p.id === id)!;
@@ -292,135 +246,3 @@ export function dummyRemoveAllAccess(
   return checked.ok ? written(null) : refused(checked.error);
 }
 
-function stateOf(o: OrderState): OrderState {
-  return o.status === "changes-requested" ? { status: o.status, changes: o.changes } : { status: o.status };
-}
-
-function orderOf(o: DummyOrder): Order {
-  return {
-    ...stateOf(o),
-    id: o.id,
-    item: o.item,
-    reason: o.reason,
-    link: o.link,
-    requestedBy: personOf(o.requesterId).name,
-    unitPrice: o.unitPrice,
-    quantity: o.quantity,
-    shipping: o.shipping,
-    requestedOn: o.requestedOn,
-    quote: o.quote,
-  };
-}
-
-/** Every request from the given divisions: a department head's Overview counts the waiting ones (board 62). */
-export function dummyOrdersIn(divisionIds: readonly number[]): Order[] {
-  return orders.filter((o) => divisionIds.includes(o.divisionId)).map(orderOf);
-}
-
-/** Boards 61 to 61d for someone who holds Orders in their division; null for anyone else. */
-export function dummyDivisionOrders(lead: DummyPerson): DivisionOrders | null {
-  // One division: the oldest they lead, until Orders shows the whole team (#233).
-  const divisionId = ledDivisionOf(lead.placement);
-  if (divisionId === null) return null;
-  const level = heldLevel(
-    heldAccess.filter((h) => h.personId === lead.id),
-    "orders",
-  );
-  if (level === null) return null;
-  return {
-    division: { id: divisionId, name: divisionOf(divisionId).name },
-    level,
-    orders: orders.filter((o) => o.divisionId === divisionId).map(orderOf),
-  };
-}
-
-/** The Orders page when the person may request and change orders there; a reason when not. */
-function orderingPage(lead: DummyPerson): DivisionOrders | string {
-  const page = dummyDivisionOrders(lead);
-  if (page === null) return "You do not have access to Orders.";
-  return page.level === "edit" ? page : "You can view orders but not request or change them.";
-}
-
-/** The New order or Edit order fields, checked as the database side checks them. */
-function checkedOrder(fields: Record<string, string>, quote: Upload | null): { ok: true; value: NewOrder } | { ok: false; error: string } {
-  const checked = checkNewOrder({
-    item: fields.item ?? "",
-    link: fields.link ?? "",
-    price: fields.price ?? "",
-    quantity: fields.quantity ?? "",
-    reason: fields.reason ?? "",
-  });
-  if (!checked.ok) return { ok: false, error: Object.values(checked.errors)[0] ?? "Check the form." };
-  if (quote !== null) {
-    const error = checkQuote({ type: quote.contentType, size: quote.bytes.byteLength, name: quote.name });
-    if (error !== null) return { ok: false, error };
-  }
-  return checked;
-}
-
-function quoteOf(upload: Upload): OrderQuote {
-  return { name: upload.name, size: upload.bytes.byteLength, href: null };
-}
-
-export function dummyPlaceOrder(
-  lead: DummyPerson,
-  fields: Record<string, string>,
-  quote: Upload | null,
-): WriteResult<Order> {
-  const page = orderingPage(lead);
-  if (typeof page === "string") return refused(page);
-  const checked = checkedOrder(fields, quote);
-  if (!checked.ok) return refused(checked.error);
-  return written({
-    id: localId(),
-    ...checked.value,
-    requestedBy: lead.name,
-    shipping: null,
-    status: "waiting",
-    requestedOn: today(),
-    quote: quote === null ? null : quoteOf(quote),
-  });
-}
-
-/**
- * Checks an edit as the database side does and answers the request as it now
- * reads; nothing is stored. A request sent on the page lives only in the
- * page's state, so it is answered as sent now.
- */
-export function dummyEditOrder(
-  lead: DummyPerson,
-  orderId: number,
-  fields: Record<string, string>,
-  quote: Upload | null,
-): WriteResult<Order> {
-  const page = orderingPage(lead);
-  if (typeof page === "string") return refused(page);
-  const checked = checkedOrder(fields, quote);
-  if (!checked.ok) return refused(checked.error);
-  const stored = page.orders.find((o) => o.id === orderId);
-  if (stored === undefined) {
-    if (orders.some((o) => o.id === orderId)) return refused("That request is not in your division.");
-    return written({ id: orderId, ...checked.value, requestedBy: lead.name, shipping: null, status: "waiting", requestedOn: today(), quote: quote === null ? null : quoteOf(quote) });
-  }
-  const next = stateAfterEdit(stored.status);
-  if (next === null) return refused("The team leader has answered this request.");
-  return written({
-    ...next,
-    ...checked.value,
-    id: stored.id,
-    requestedBy: stored.requestedBy,
-    shipping: stored.shipping,
-    requestedOn: stored.requestedOn,
-    quote: quote === null ? stored.quote : quoteOf(quote),
-  });
-}
-
-export function dummyCancelOrder(lead: DummyPerson, orderId: number): WriteResult<null> {
-  const page = orderingPage(lead);
-  if (typeof page === "string") return refused(page);
-  const stored = page.orders.find((o) => o.id === orderId);
-  if (stored === undefined) {
-    return orders.some((o) => o.id === orderId) ? refused("That request is not in your division.") : written(null);
-  }
-  return orderActions(stored.status, page.level).cancel ? written(null) : refused("The team leader has answered this request.");
-}

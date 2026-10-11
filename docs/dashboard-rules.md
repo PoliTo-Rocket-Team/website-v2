@@ -29,7 +29,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Members | No | No | Their divisions | Their divisions | Their divisions |
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
 | Access | No | No | Their divisions | Their department, under division tabs | Their divisions |
-| Orders | No | No | Their divisions | Their divisions | Their divisions |
+| Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team |
 | My account | User menu only | No | No | No | No |
 | My profile | No | User menu only | User menu only | User menu only | User menu only |
 | Sign out | User menu only | User menu only | User menu only | User menu only | User menu only |
@@ -63,12 +63,11 @@ An admin column comes later. **Planned**, no issue yet.
     Positions.
   - **Gap:** any access grant, even view-only, makes a member act as a division lead on
     applications. Tracked in #160.
-- **Members**, **Access** and **Orders** are for division leads and up, scoped to their divisions.
-  A lead of more than one division picks which one Members shows (#231).
-  - **Gap:** a lead of more than one division sees only one on Access and Orders. Tracked in #185.
+- **Members** and **Access** are for division leads and up, scoped to their divisions. A lead of
+  more than one division picks which one Members shows (#231). **Orders** shows every order in
+  the team; see "4. Orders".
+  - **Gap:** a lead of more than one division sees only one on Access. Tracked in #185.
   - A department head's Members page holds every division of their department (#235).
-  - **Gap:** a department head's sidebar lists Access and Members but not yet Orders. Tracked in
-    #233.
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
   with site-content access, which the full admins can give to anyone. A division lead or
@@ -148,8 +147,8 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.
-- **Gap:** My profile, Access and Orders still show one division per person (the home division,
-  or the oldest one a lead leads). Tracked in #185 and #233.
+- **Gap:** My profile and Access still show one division per person (the home division, or the
+  oldest one a lead leads). Tracked in #185.
 
 ### Members page
 
@@ -300,8 +299,9 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - There are four areas, each scoped to the lead's division: **Positions**, **Applications**,
   **Members** and **Orders**.
   - Applications at Can edit moves applications between steps and accepts or rejects them.
-  - Orders at Can view sees the division's orders. Orders at Can edit can also request, edit and
-    cancel them. A person with no Orders access does not see the division's orders.
+  - Orders at either level shows every order in the team (#233). Orders at Can edit also lets
+    them request, edit and cancel the orders of that division. Orders at Can view edits nothing.
+    A person with no Orders access does not see the Orders page.
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
@@ -341,13 +341,43 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
 
 ## 4. Orders
 
+These rules come from the Owner decisions of 2026-10-11 on #233 (boards 61 to 61d, 61m, 67, 67b
+and 67m).
+
 - The statuses are Waiting, Approved, Changes requested and Rejected.
-- On Changes requested, the team leader's reason shows, with "Edit and send again".
-- A lead can cancel a request while it is waiting.
-- The Orders page shows to whoever holds Orders in the division (see Access above). Can view
-  only reads the requests; Can edit can also send, edit and cancel them.
-  - **Gap:** the sidebar still lists Orders for anyone the dashboard treats as a division lead;
-    without Orders access the page answers not found. Tracked in #160.
+- **Who sees.** Anyone with any Orders access sees every order in the team, in every
+  department. A person with no Orders access does not see the page.
+  - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
+    Orders access; a lead with no Orders access gets "not found" on the page. Tracked in #160.
+- **Who edits.** A division lead edits the orders of their own division, from any requester in
+  it. A department head edits the orders of their whole department. A grant of Orders at Can
+  edit opens the orders of the division (or the whole department) it was given in. Nobody edits
+  outside their scope: those rows show a lock and open read-only. The server checks the scope on
+  every write, not only the page.
+- Each order stores its own division, set when it is made. A lead orders for their division; a
+  head picks one of their department's divisions in New order. Older orders took their
+  requester's division in migration 0017.
+- Editing a request, or "Edit and send again" on Changes requested, sends it back to Waiting.
+  A request can be cancelled only while it is waiting.
+- **Who decides.** By default only the team leader approves, rejects or asks for changes. The
+  operations lead and the IT lead do not, although they have every other access. The team leader
+  can give **"Approve orders"** to any number of people, from their Access page; there is no
+  limit on how many hold it. Only the team leader gives or removes it. The server refuses a
+  decision from anyone else, and a decision on a request that is not waiting.
+  - **Gap:** the team leader's Access page, where "Approve orders" is given, and the buttons to
+    approve, reject or ask for changes are not built yet; the server rules are. Tracked in #200
+    and #238.
+- Approve, reject, ask for changes and cancel each ask "are you sure" first. Asking for changes
+  needs a reason, which shows on Changes requested with "Edit and send again".
+- **The table.** No tabs. The Department · Division and Status column headers each have a filter.
+  The department filter is a list of departments with checkboxes, each with its divisions nested;
+  ticking a department ticks all its divisions. Clear and Apply sit at the foot.
+- 12 orders per page, newest first. "Newest first" sits on the left of the pager row, and the
+  pager is centred ("‹ 1 2 3 … 6 ›"), with no total count.
+- While a side panel is open (New order, an order, Edit order), the Department column is hidden.
+- On a phone, Department and Status are filter chips, each card has a "{department} · {division}"
+  line, locked cards show a lock, and there is a pager.
+- The site sends no email: where someone must be told, the page tells the actor to contact them.
 
 ## 5. Data and testing
 
