@@ -164,6 +164,41 @@ test('someone added by email is "Waiting for NDA" and no member until Confirm ND
   assert.equal(await pages("division-lead", confirmed).view.teamWrites!.confirmNda(nora.joinId), false, "only once");
 });
 
+test('Cancel add deletes a "Waiting for NDA" entry and nothing else; only a lead or head of that division may (#231)', async () => {
+  const lead = pages("division-lead");
+  await lead.view.teamWrites!.addMember({
+    kind: "email",
+    divisionId: MISSION_ANALYSIS,
+    email: "nora.blu@studenti.polito.it",
+    firstName: "Nora",
+    lastName: "Blu",
+    title: null,
+    details: null,
+  });
+  const waiting = reread(lead.saved[0]);
+  const before = divisionPage(await pages("division-lead", waiting).view.members());
+  const nora = before.waiting.find((w) => w.email === "nora.blu@studenti.polito.it")!;
+  const elena = before.waiting.find((w) => w.email === "elena.marino@studenti.polito.it")!;
+
+  assert.equal(await pages("member", waiting).view.teamWrites!.cancelAdd(nora.joinId), false, "a member cannot");
+
+  const first = pages("division-lead", waiting);
+  assert.equal(await first.view.teamWrites!.cancelAdd(nora.joinId), true);
+  const second = pages("division-lead", reread(first.saved[0]));
+  assert.equal(await second.view.teamWrites!.cancelAdd(elena.joinId), true, "also an add the dummy team starts with");
+  const cancelled = reread(second.saved[0]);
+  const after = divisionPage(await pages("division-lead", cancelled).view.members());
+  assert.deepEqual(after.waiting, [], "no one waits any more");
+  assert.deepEqual(after.people.map((p) => p.id), before.people.map((p) => p.id), "no member changed");
+  assert.deepEqual(editedRoster(cancelled), editedRoster(waiting), "the roster is as it was");
+  assert.equal(await pages("division-lead", cancelled).view.teamWrites!.confirmNda(nora.joinId), false, "nothing left to confirm");
+
+  const again = pages("division-lead", cancelled);
+  await again.view.teamWrites!.addMember({ kind: "email", divisionId: MISSION_ANALYSIS, email: "nora.blu@studenti.polito.it", firstName: "Nora", lastName: "Blu", title: null, details: null });
+  const readded = divisionPage(await pages("division-lead", reread(again.saved[0])).view.members());
+  assert.ok(readded.waiting.some((w) => w.email === "nora.blu@studenti.polito.it"), "the email can be added again");
+});
+
 test("an existing member added to another division joins at once, keeps their other divisions and signs no second NDA (#231)", async () => {
   // Matteo Greco is in Design & Manufacturing and Optimization and Analysis.
   const matteo = people.find((p) => p.name === "Matteo Greco")!;

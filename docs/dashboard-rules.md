@@ -157,6 +157,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     it records the date and who confirmed it. Someone coming back after leaving waits too.
   - When the person first signs in with that email, their account takes over the record they were
     added with, so they are already who the lead added.
+  - The ⋯ menu on a "Waiting for NDA" row also has "Cancel add". It deletes the pending entry and
+    nothing else changes, since the person never joined.
 - A new member's details are filled by a lead or head (Fill details, or "Fill in their other
   details now" in Add member), or by the person after they sign in with that email. Members never
   have to use the site.
@@ -179,7 +181,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     department or the team. No lead or head reaches it, and the move would end it.
   - Otherwise the item is disabled with a lock and the reason, for example "Also in Safety, so only
     the team leader can do this". The server checks the same rule on every request.
-- Confirm NDA, Remove from {division} and Leaves the team each ask "are you sure" first.
+- Confirm NDA, Cancel add, Remove from {division} and Leaves the team each ask "are you sure"
+  first.
 - A lead cannot rename a division, change its code or change its leads; only the head can. The
   lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
   lead's Promote or lead change.

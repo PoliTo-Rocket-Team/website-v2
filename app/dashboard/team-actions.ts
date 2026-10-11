@@ -102,6 +102,12 @@ export async function confirmNda(joinId: number): Promise<TeamActionResult> {
   return done(await writes.confirmNda(joinId));
 }
 
+export async function cancelAdd(joinId: number): Promise<TeamActionResult> {
+  const writes = await writesOn("members");
+  if (!writes || !isId(joinId)) return REFUSED;
+  return done(await writes.cancelAdd(joinId));
+}
+
 export async function removeFromDivision(personId: number, divisionId: number): Promise<TeamActionResult> {
   const writes = await writesOn("members");
   if (!writes || !isId(personId) || !isId(divisionId)) return REFUSED;

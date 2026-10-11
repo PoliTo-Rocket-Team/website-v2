@@ -46,6 +46,8 @@ export type TeamEdits = {
   readonly added: readonly DummyWaiting[];
   /** Confirm NDA, by the add's join id. */
   readonly confirmed: Readonly<Record<number, DummyConfirmation>>;
+  /** Cancel add, by the add's join id. */
+  readonly cancelled: readonly number[];
   /** Details saved from Edit details: "p12" for person 12, "w3" for the add with join id 3. */
   readonly details: Readonly<Record<string, MemberDetails>>;
 };
@@ -58,6 +60,7 @@ export const NO_EDITS: TeamEdits = {
   notices: [],
   added: [],
   confirmed: {},
+  cancelled: [],
   details: {},
 };
 
@@ -195,6 +198,9 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
       : [],
     added: Array.isArray(raw.added) ? raw.added.flatMap((a) => readAdded(a) ?? []).slice(-MAX_ADDED) : [],
     confirmed: entriesOf(raw.confirmed, readConfirmation),
+    cancelled: Array.isArray(raw.cancelled)
+      ? raw.cancelled.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)
+      : [],
     details: readDetails(raw.details),
   };
 }

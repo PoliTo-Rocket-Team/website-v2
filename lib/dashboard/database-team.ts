@@ -585,6 +585,18 @@ async function confirmNda(identity: DashboardIdentity, joinId: number): Promise<
 }
 
 /**
+ * Cancel add: the wait is deleted, and nothing else changes. The person never
+ * joined, so they hold no role and no member row to end.
+ */
+async function cancelAdd(identity: DashboardIdentity, joinId: number): Promise<boolean> {
+  if (identity.memberId === null) return false;
+  const [row] = await getDb().select({ divisionId: teamJoins.divisionId }).from(teamJoins).where(eq(teamJoins.id, joinId)).limit(1);
+  if (!row || (await actingOn(identity, row.divisionId)) === null) return false;
+  await runAuditQuery((db) => db.delete(teamJoins).where(eq(teamJoins.id, joinId)));
+  return done();
+}
+
+/**
  * "Remove from <division>": the person's roles in that division end and its
  * division access goes; every other division stays. Refused for someone
  * whose only division it is, and for a lead when a division lead asks
@@ -679,6 +691,7 @@ export function databaseTeamWrites(identity: DashboardIdentity): TeamWrites {
     confirmJoin: (applicationId) => confirmJoin(identity, applicationId),
     addMember: (input) => addMember(identity, input),
     confirmNda: (joinId) => confirmNda(identity, joinId),
+    cancelAdd: (joinId) => cancelAdd(identity, joinId),
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
     setMemberPhoto: (personId, divisionId, photo) => setMemberPhoto(identity, personId, divisionId, photo),

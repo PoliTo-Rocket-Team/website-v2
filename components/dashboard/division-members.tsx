@@ -3,10 +3,10 @@
 import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, Plus, UserCheck, UserMinus } from "lucide-react";
+import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, Plus, UserCheck, UserMinus, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
+import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
 import { noDetailsFilled } from "@/lib/dashboard/details";
 import {
   headcountLine,
@@ -31,13 +31,15 @@ import { PANEL } from "./panel";
 // role, phone (blurred until hover) and Discord, the people added by email
 // who wait for Confirm NDA, and the amber note that the site sends no
 // emails. A row opens the member panel (61f); its ⋯ menu removes the person
-// from this division or records that they leave the team, each behind an
-// "are you sure". The leads are read-only here: only the head changes them.
+// from this division or records that they leave the team, and a waiting row's
+// menu cancels the add, each behind an "are you sure". The leads are
+// read-only here: only the head changes them.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 type Asking =
   | { readonly kind: "nda"; readonly waiting: WaitingPerson }
+  | { readonly kind: "cancel"; readonly waiting: WaitingPerson }
   | { readonly kind: "remove"; readonly person: DivisionPerson }
   | { readonly kind: "leave"; readonly person: DivisionPerson };
 
@@ -175,6 +177,7 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
                 editable={editable}
                 onConfirm={() => setAsking({ kind: "nda", waiting: w })}
                 onFill={() => fillDetails(w)}
+                onCancel={() => setAsking({ kind: "cancel", waiting: w })}
               />
             ))}
             {people.map((p) => (
@@ -207,6 +210,7 @@ export function DivisionMembersView({ page, editable }: { page: DivisionMembers;
       <AddMemberDrawer open={adding} onOpenChange={setAdding} division={division} />
 
       <ConfirmNdaDialog asking={asking?.kind === "nda" ? asking.waiting : null} division={division.name} onClose={() => setAsking(null)} />
+      <CancelAddDialog asking={asking?.kind === "cancel" ? asking.waiting : null} short={short} onClose={() => setAsking(null)} />
       <RemoveDialog
         person={asking?.kind === "remove" ? asking.person : null}
         divisionId={division.id}
@@ -283,12 +287,14 @@ function WaitingRow({
   editable,
   onConfirm,
   onFill,
+  onCancel,
 }: {
   waiting: WaitingPerson;
   division: DivisionMembers["division"];
   editable: boolean;
   onConfirm: () => void;
   onFill: () => void;
+  onCancel: () => void;
 }) {
   return (
     <tr className="bg-warning/[0.04]">
@@ -312,6 +318,9 @@ function WaitingRow({
           <RowMenu label={`Actions for ${waiting.email}`}>
             <MenuItem onSelect={onFill} icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}>
               Fill details
+            </MenuItem>
+            <MenuItem onSelect={onCancel} danger icon={<UserX className="h-3.5 w-3.5" strokeWidth={1.75} />}>
+              Cancel add
             </MenuItem>
           </RowMenu>
         )}
@@ -522,6 +531,39 @@ function ConfirmNdaDialog({ asking, division, onClose }: { asking: WaitingPerson
       description={`Confirm once you have their signed NDA. They become a member of ${division}, and today's date and your name are recorded.`}
       cancelLabel="Cancel"
       confirmLabel="Confirm NDA"
+      pending={pending}
+      onConfirm={confirm}
+    />
+  );
+}
+
+/** Cancel add: an "are you sure" first; the wait is deleted and nothing else changes, since they never joined. */
+function CancelAddDialog({ asking, short, onClose }: { asking: WaitingPerson | null; short: string; onClose: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const [shown, setShown] = useState(asking);
+  if (asking !== null && asking !== shown) setShown(asking);
+  const who = shown?.name ?? shown?.email ?? "";
+  const confirm = () =>
+    startTransition(async () => {
+      if (!shown) return;
+      const result = await cancelAdd(shown.joinId);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${who} is no longer added to ${short}`);
+      onClose();
+    });
+  return (
+    <ConfirmDialog
+      open={asking !== null}
+      onOpenChange={(next) => !next && onClose()}
+      icon={<UserX className="h-5 w-5" strokeWidth={1.75} />}
+      danger
+      title={`Cancel adding ${who}?`}
+      description={`They are no longer waiting for the NDA in ${short}. They never joined, so nothing else changes.`}
+      cancelLabel="Keep"
+      confirmLabel="Cancel add"
       pending={pending}
       onConfirm={confirm}
     />

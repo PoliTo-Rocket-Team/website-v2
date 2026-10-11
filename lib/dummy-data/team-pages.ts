@@ -160,9 +160,9 @@ function joinedEntry(joiner: DummyJoiner, year: number): RosterEntry {
   };
 }
 
-/** Everyone added by email, the ones ./team.ts starts with and the test developer's own. */
+/** Everyone added by email, the ones ./team.ts starts with and the test developer's own, less any add cancelled. */
 function addedPeople(edits: TeamEdits): DummyWaiting[] {
-  return [...waitingPeople, ...edits.added];
+  return [...waitingPeople, ...edits.added].filter((a) => !edits.cancelled.includes(a.joinId));
 }
 
 function addedName(added: DummyWaiting): string {
@@ -431,7 +431,8 @@ function writesFor(
         return written("joined");
       }
       if (add.kind !== "email") return refused("Check the form.");
-      const joinId = Math.max(99, ...addedPeople(edits).map((a) => a.joinId)) + 1;
+      // A cancelled add's join id is never given out again, so it cannot hide the new add.
+      const joinId = Math.max(99, ...addedPeople(edits).map((a) => a.joinId), ...edits.cancelled) + 1;
       const added: DummyWaiting = { joinId, email: add.email, firstName: add.firstName, lastName: add.lastName, divisionId: add.divisionId, title: add.title };
       await save({
         ...edits,
@@ -446,6 +447,15 @@ function writesFor(
       if (!added || actor === null || self === null || edits.confirmed[joinId] !== undefined) return false;
       if (!reachesDivision(actor, added.divisionId, org)) return false;
       await save({ ...edits, confirmed: { ...edits.confirmed, [joinId]: { on: TODAY, by: self } } });
+      return true;
+    },
+    async cancelAdd(joinId) {
+      const added = addedPeople(edits).find((a) => a.joinId === joinId);
+      if (!added || actor === null || edits.confirmed[joinId] !== undefined) return false;
+      if (!reachesDivision(actor, added.divisionId, org)) return false;
+      const details = { ...edits.details };
+      delete details[detailsKey({ kind: "waiting", joinId })];
+      await save({ ...edits, added: edits.added.filter((a) => a.joinId !== joinId), cancelled: [...edits.cancelled, joinId], details });
       return true;
     },
     async removeFromDivision(personId, divisionId) {

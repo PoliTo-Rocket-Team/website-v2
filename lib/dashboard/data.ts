@@ -190,6 +190,8 @@ export interface TeamWrites {
   addMember(input: unknown): Promise<WriteResult<"joined" | "waiting">>;
   /** Confirm NDA: the person waiting becomes a member, with the date and who confirmed it. */
   confirmNda(joinId: number): Promise<boolean>;
+  /** Cancel add: the person waiting for Confirm NDA is no longer added. Nothing else changes, since they never joined. */
+  cancelAdd(joinId: number): Promise<boolean>;
   /** "Remove from <division>": only that division's role ends. Refused for someone whose only division it is. */
   removeFromDivision(personId: number, divisionId: number): Promise<boolean>;
   /** Edit details or Fill details (board 61g): the title in `divisionId`, and the details. */
