@@ -125,10 +125,31 @@ export function decideRightOf(viewer: { readonly teamLeader: boolean; readonly a
 /** An open department with its open divisions, for the Department filter (board 67b) and New order. */
 export type OrgDepartmentUnits = OrderDepartment & { readonly divisions: readonly OrderDivision[] };
 
+/**
+ * The open departments in the team's order, each with its open divisions by
+ * name: the order board 67b lists them in, and the Team tree draws them in
+ * (departments by id). Both data sources build the Department filter here.
+ */
+export function orgUnitsOf(
+  departments: readonly OrderDepartment[],
+  divisions: readonly (OrderDivision & { readonly departmentId: number | null })[],
+): OrgDepartmentUnits[] {
+  return [...departments]
+    .sort((a, b) => a.id - b.id)
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      divisions: divisions
+        .filter((v) => v.departmentId === d.id)
+        .map((v) => ({ id: v.id, name: v.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+}
+
 /** The Orders page (boards 61 to 61d, 61m, 67, 67b, 67m): every order in the team, and what the viewer may do. */
 export type OrdersPage = {
   readonly scope: OrdersScope;
-  /** Every open department and its open divisions, by name. */
+  /** Every open department in the team's order (`orgUnitsOf`), and its open divisions by name. */
   readonly departments: readonly OrgDepartmentUnits[];
   readonly orders: readonly Order[];
 };

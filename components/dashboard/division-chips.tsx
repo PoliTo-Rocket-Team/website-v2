@@ -17,7 +17,8 @@ export function Chips({ chips }: { chips: readonly DivisionChip[] }) {
             {chip.label}
           </span>
         ) : (
-          <span key={chip.divisionId} className="inline-flex h-6 items-center whitespace-nowrap rounded-md bg-white-5 px-2 text-[12px] text-prt-muted">
+          // A department name truncates where a narrow column (an open side panel) leaves it short.
+          <span key={chip.divisionId} className="inline-block h-6 max-w-full truncate rounded-md bg-white-5 px-2 text-[12px] leading-6 text-prt-muted">
             {chip.label}
           </span>
         ),

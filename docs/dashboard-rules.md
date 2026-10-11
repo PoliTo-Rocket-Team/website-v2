@@ -39,7 +39,6 @@ An admin column comes later. **Planned**, no issue yet.
 - **My applications** shows for everyone, but only when they have at least one application.
 - A non-member with no application lands on the My applications empty state, with a
   "See open positions" button (#179).
-  - **Gap:** today they get an empty sidebar and a "not found" page. Tracked in #179.
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
   #238). Three seats hold it:
   - the **team leader**: the role of type `president`;
@@ -89,7 +88,7 @@ An admin column comes later. **Planned**, no issue yet.
   department head gets nothing from their role here (Owner decision, #234). The sidebar item and
   the page read one rule, and the page answers "not found" to everyone else.
   - **Gap:** the full admins' Access page has no site-content area yet, so site-content access
-    cannot be given there. Tracked in #200.
+    cannot be given there. Tracked in #247.
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -177,6 +176,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - Phone numbers are blurred until hover (or keyboard focus), in the table and on the member panel.
   The panel's Personal section (date of birth, gender) is blurred the same way. The panel has no
   access section: access lives only on the Access page.
+- While a side panel is open on a screen 1280px or wider, the Phone and Discord columns are
+  hidden, so names and the "Waiting for NDA" line keep their room (#244).
 - A member is added by searching the team by name or by typing an email.
   - Someone already on the team joins the division at once and keeps their other divisions. They
     sign no second NDA: there is one NDA for the whole team
@@ -335,7 +336,8 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
   server checks every change, not only the drawer.
 - The table has one row per person, with a chip per area and its level, and "Given by".
   Clicking a row opens Edit access: the person and the division are locked, and Save writes
-  the adds, level changes and removals in one go.
+  the adds, level changes and removals in one go. While a side panel is open on a screen 1280px
+  or wider, "Given by" is hidden, so names and the full "Can edit" chips keep their room (#244).
 - "Remove all access" removes every area for that person, after a confirm.
 - "Your access" is one line: "YOUR ACCESS · {division}", then a chip per area with its level.
 - Every change is written to the activity log.
@@ -403,18 +405,20 @@ and 67m).
   limit on how many hold it. Only the team leader gives or removes it. The server refuses a
   decision from anyone else, and a decision on a request that is not waiting.
   - **Gap:** the team leader's Access page, where "Approve orders" is given, and the buttons to
-    approve, reject or ask for changes are not built yet; the server rules are. Tracked in #200
-    and #238.
+    approve, reject or ask for changes are not built yet; the server rules are. Tracked in #247.
 - Approve, reject, ask for changes and cancel each ask "are you sure" first. Asking for changes
   needs a reason, which shows on Changes requested with "Edit and send again".
 - **The table.** No tabs. The Department · Division and Status column headers each have a filter.
   The department filter is a list of departments with checkboxes, each with its divisions nested;
-  ticking a department ticks all its divisions. Clear and Apply sit at the foot.
+  ticking a department ticks all its divisions. Clear and Apply sit at the foot. Departments are
+  in the team's order, as on the Team tree and board 67b; divisions are by name (#244).
 - 12 orders per page, newest first. "Newest first" sits on the left of the pager row, and the
   pager is centred ("‹ 1 2 3 … 6 ›"), with no total count.
 - While a side panel is open (New order, an order, Edit order), the Department column is hidden.
+  On screens from 1280px to 1439px wide, Requested by is hidden too, so no cell is squeezed (#244).
 - On a phone, Department and Status are filter chips, each card has a "{department} · {division}"
-  line, locked cards show a lock, and there is a pager.
+  line that wraps rather than cutting the division short, locked cards show a lock, and there is
+  a pager.
 - The site sends no email: where someone must be told, the page tells the actor to contact them.
 
 ## 5. Data and testing

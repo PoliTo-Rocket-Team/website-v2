@@ -338,25 +338,17 @@ function LevelLabel({ level, short }: { level: AccessLevel; short: boolean }) {
 }
 
 /** "Whole division Can edit": the access a lead's role gives, in their whole division (boards 60 and 65). */
-function RoleChip({ place, shortLevel = false }: { place: AccessPlace; shortLevel?: boolean }) {
+function RoleChip({ place }: { place: AccessPlace }) {
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white-5 px-2 py-0.5 text-[12px]">
       <Layers aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-2" strokeWidth={1.75} />
       <span className="text-prt-text">{place.kind === "division" ? "Whole division" : "Whole department"}</span>
-      <LevelLabel level="edit" short={shortLevel} />
+      <LevelLabel level="edit" short={false} />
     </span>
   );
 }
 
-function GrantChips({
-  grants,
-  department,
-  shortLevel = false,
-}: {
-  grants: readonly AccessGrant[];
-  department: boolean;
-  shortLevel?: boolean;
-}) {
+function GrantChips({ grants, department }: { grants: readonly AccessGrant[]; department: boolean }) {
   return (
     <>
       {grants.map((g) => (
@@ -364,7 +356,6 @@ function GrantChips({
           key={g.id}
           target={g.target}
           level={g.level}
-          shortLevel={shortLevel}
           wholeDepartment={department && g.place.kind === "department"}
         />
       ))}
@@ -440,9 +431,15 @@ function PersonCard({
 // table, so the header still lines up with the rows. Given by keeps its
 // content on one line, and Access is never narrower than its widest chip, so
 // neither runs into the other however narrow the page gets (the drawer takes
-// 440px from xl): the person column gives way and its lines truncate. Below
+// 440px from xl): the person column gives way and its lines truncate. While a
+// side panel is open from xl, Given by goes and Person and Access share the
+// row evenly, as Orders hides its Department column (board 61b, issue #244):
+// names stay readable and the chips keep their full "Can edit" level. Below
 // md the page shows cards instead.
-const TABLE_COLUMNS = "grid grid-cols-[minmax(0,1fr)_minmax(min-content,2.4fr)_minmax(max-content,0.75fr)_16px] gap-x-4";
+function tableColumns(drawerOpen: boolean): string {
+  const open = drawerOpen ? "xl:grid-cols-[minmax(0,1fr)_minmax(min-content,1fr)_16px]" : "";
+  return `grid grid-cols-[minmax(0,1fr)_minmax(min-content,2.4fr)_minmax(max-content,0.75fr)_16px] ${open} gap-x-4`;
+}
 const ROW = "col-span-full grid grid-cols-subgrid items-center px-6";
 
 function AccessTable({
@@ -460,12 +457,13 @@ function AccessTable({
   department: boolean;
   drawerOpen: boolean;
 }) {
+  const givenBy = drawerOpen ? "xl:hidden" : "";
   return (
-    <section aria-label="People with access" className={`${PANEL} ${TABLE_COLUMNS} mt-5 hidden overflow-hidden md:grid`}>
+    <section aria-label="People with access" className={`${PANEL} ${tableColumns(drawerOpen)} mt-5 hidden overflow-hidden md:grid`}>
       <div aria-hidden className={`${ROW} h-9 border-b border-hairline`}>
         <span className={EYEBROW}>Person</span>
         <span className={EYEBROW}>Access</span>
-        <span className={`${EYEBROW} whitespace-nowrap`}>Given by</span>
+        <span className={`${EYEBROW} whitespace-nowrap ${givenBy}`}>Given by</span>
       </div>
       <ul className="col-span-full grid grid-cols-subgrid divide-y divide-hairline">
         {rows.map((row) => {
@@ -481,12 +479,14 @@ function AccessTable({
               </span>
               <span className="flex flex-col items-start gap-1">
                 {row.kind === "role" ? (
-                  <RoleChip place={row.role.place} shortLevel={drawerOpen} />
+                  <RoleChip place={row.role.place} />
                 ) : (
-                  <GrantChips grants={row.access.grants} department={department} shortLevel={drawerOpen} />
+                  <GrantChips grants={row.access.grants} department={department} />
                 )}
               </span>
-              <span className="whitespace-nowrap text-[13px] text-prt-muted">{row.kind === "role" ? "With the role" : givenLine(row.access)}</span>
+              <span className={`whitespace-nowrap text-[13px] text-prt-muted ${givenBy}`}>
+                {row.kind === "role" ? "With the role" : givenLine(row.access)}
+              </span>
             </>
           );
           return (

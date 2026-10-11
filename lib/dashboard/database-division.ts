@@ -39,6 +39,7 @@ import {
   orderActions,
   orderingDivisions,
   ordersPageFor,
+  orgUnitsOf,
   parseEuros,
   stateAfterEdit,
   WHOLE_TEAM,
@@ -373,26 +374,17 @@ async function removeAllAccess(identity: DashboardIdentity, personId: number): P
   return result.ok ? written(null) : result;
 }
 
-/** Every open department and its open divisions, by name: the Department filter (board 67b) and New order read it. */
+/** Every open department in the team's order and its open divisions (`orgUnitsOf`): the Department filter (board 67b) and New order read it. */
 async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
   const db = getDb();
   const [deps, divs] = await Promise.all([
     db.select({ id: departments.id, name: departments.name }).from(departments).where(isNull(departments.closedAt)),
     db
-      .select({ id: divisions.id, name: divisions.name, department_id: divisions.deptId })
+      .select({ id: divisions.id, name: divisions.name, departmentId: divisions.deptId })
       .from(divisions)
       .where(isNull(divisions.closedAt)),
   ]);
-  return deps
-    .map((d) => ({
-      id: d.id,
-      name: d.name,
-      divisions: divs
-        .filter((v) => v.department_id === d.id)
-        .map((v) => ({ id: v.id, name: v.name }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return orgUnitsOf(deps, divs);
 }
 
 /**
