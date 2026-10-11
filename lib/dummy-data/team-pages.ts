@@ -105,9 +105,13 @@ const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
 /** The day the dummy team's writes happen on: the dummy team is seen from DUMMY_NOW. */
 const TODAY = DUMMY_NOW.slice(0, 10);
 
-/** The placement with each saved change: roles set, divisions joined and left; every other division as it was. */
+/**
+ * The placement with each saved change: roles set, divisions joined and left;
+ * every other division as it was, and a seat or a head kept (a seat picked to
+ * lead a division joins it beside the seat, #232).
+ */
 function placementWith(placement: Placement, change: MemberChange | undefined): Placement {
-  if (!change || placement.role !== "divisions") return placement;
+  if (!change) return placement;
   const joined = Object.entries(change.joined ?? {}).reduce(
     (ms, [divisionId, since]) => withJoined(ms, Number(divisionId), since),
     placement.memberships,
@@ -115,7 +119,7 @@ function placementWith(placement: Placement, change: MemberChange | undefined): 
   const left = (change.left ?? []).reduce((ms, divisionId) => withoutDivision(ms, divisionId), joined);
   return Object.entries(change.roles).reduce(
     (p, [divisionId, role]) => placedWithRoleIn(p, Number(divisionId), role),
-    { role: "divisions", memberships: left } as Placement,
+    { ...placement, memberships: left },
   );
 }
 

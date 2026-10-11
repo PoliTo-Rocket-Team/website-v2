@@ -259,8 +259,10 @@ These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 6
     changes the code of every position in that division. The save asks "are you sure" and names
     the old and new code.
 - Edit division is one drawer with name, code, leads and members.
-- Leads are picked from the whole team and keep their other divisions. Someone who holds a team
-  role beyond the divisions (the team leader, a board seat, a department head) is not offered.
+- Leads are picked from the whole team and keep their other divisions. Anyone on the team can be
+  picked, the team leader, a board seat and a department head included (Owner decision,
+  2026-10-11, on #232). They keep that role and lead the division beside it: the Members page
+  lists them in the division, and the Team tree still draws them once, at their seat.
 - An open division always has at least one lead. A create, an edit or a reopen that would leave
   it with none is refused.
 - A new lead can replace an old one ("{new} replaces", default "Nobody, add as an extra lead").

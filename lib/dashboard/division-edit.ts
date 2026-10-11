@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  beyondTitle,
   divisionLabel,
   homeDivision,
   matchesQuery,
@@ -170,11 +171,14 @@ function managePermission(actor: TeamActor, departmentId: number, org: OrgChart)
   return department ? `Only the Head of ${department.name} or the team leader can do this.` : "Only the team leader can do this.";
 }
 
-/** Why someone cannot be picked to lead or join a division here, or null. */
+/**
+ * Why someone cannot be picked to lead or join a division here, or null.
+ * Anyone on the team can be picked, the team leader, a board seat and a head
+ * included: they keep that role and hold the division role beside it (Owner
+ * decision, 2026-10-11, on #232).
+ */
 function pickError(person: TeamPerson | undefined): string | null {
-  if (!person) return "They are not on the team.";
-  // A seat, a head or the team leader is placed by that role, so a division role would not show.
-  return person.beyond.length > 0 ? `${person.name} holds a team role beyond the divisions, so they cannot join one here.` : null;
+  return person ? null : "They are not on the team.";
 }
 
 /**
@@ -314,7 +318,7 @@ export type TeamPick = {
   readonly email: string;
   /** "Aerodynamics · Mission Analysis": their home division and its department; null when they are in none. */
   readonly place: string | null;
-  /** "Member", or "Lead · Parachutes" for someone who leads a division. */
+  /** "Member", "Lead · Parachutes" for someone who leads a division, or their seat: "Team Leader", "Head of Recovery". */
   readonly role: string;
   readonly divisionIds: readonly number[];
 };
@@ -336,12 +340,13 @@ function pickOf(person: TeamPerson, org: OrgChart): TeamPick {
   const department = org.departments.find((d) => d.id === org.divisions.find((v) => v.id === home)?.departmentId);
   const led = person.memberships.find((m) => m.role === "lead");
   const ledLabel = led ? label(led.divisionId) : null;
+  const [seat] = person.beyond;
   return {
     id: person.id,
     name: person.name,
     email: person.emails[0] ?? "",
     place: home === null || !department ? null : `${department.name} · ${label(home)}`,
-    role: ledLabel === null ? "Member" : `Lead · ${ledLabel}`,
+    role: seat !== undefined ? beyondTitle(seat, org) : ledLabel === null ? "Member" : `Lead · ${ledLabel}`,
     divisionIds: person.memberships.map((m) => m.divisionId),
   };
 }
@@ -349,19 +354,17 @@ function pickOf(person: TeamPerson, org: OrgChart): TeamPick {
 /**
  * A picker's search over the whole team (Owner decision, 2026-10-11): an
  * email finds the member who uses it, or says it is new to the team; anything
- * else searches names. Someone who holds a team role beyond the divisions is
- * not listed (`planDivisionSave` refuses them).
+ * else searches names. Everyone on the team is listed, the team leader, the
+ * board and the heads included (`pickError`).
  */
 export function searchTeam(query: string, team: readonly TeamPerson[], org: OrgChart): TeamSearch {
   const text = query.trim();
-  const pickable = team.filter((p) => p.beyond.length === 0);
   if (z.email().safeParse(text).success) {
     const email = text.toLowerCase();
     const member = team.find((p) => p.emails.some((e) => e.trim().toLowerCase() === email));
-    if (!member) return { kind: "new-email", email };
-    return member.beyond.length === 0 ? { kind: "people", people: [pickOf(member, org)] } : { kind: "none" };
+    return member ? { kind: "people", people: [pickOf(member, org)] } : { kind: "new-email", email };
   }
   if (text.length < 2) return { kind: "none" };
-  const people = pickable.filter((p) => matchesQuery([p.name], text)).slice(0, SEARCH_LIMIT);
+  const people = team.filter((p) => matchesQuery([p.name], text)).slice(0, SEARCH_LIMIT);
   return people.length === 0 ? { kind: "none" } : { kind: "people", people: people.map((p) => pickOf(p, org)) };
 }

@@ -43,6 +43,18 @@ test("a lead picked from another division leads this one too and keeps their own
   assert.deepEqual(paolo.divisions.map((d) => [d.divisionId, d.role]), [[MISSION_ANALYSIS, "lead"], [OPTIMIZATION, "lead"]]);
 });
 
+test("the team leader, a board seat and the head can lead a division and keep their own role", async () => {
+  // Alessandro Greco (14) is the team leader, Federica Moretti (94) the Chief Engineer, Chiara Rinaldi (15) the head.
+  const h = head();
+  assert.deepEqual(await h.writes.saveDivision(MISSION_ANALYSIS, { ...keep, newLeads: [14, 94, 15] }), { ok: true, value: null });
+  const leads = (await tabOf(h.kept(), MISSION_ANALYSIS))!.people.filter((p) => p.role === "lead").map((p) => p.id);
+  assert.ok([14, 94, 15].every((id) => leads.includes(id)), leads.join());
+  const tree = await head(h.kept()).view.teamTree();
+  assert.equal(tree.leader?.id, 14, "still drawn as the team leader");
+  const missionAnalysis = tree.departments.flatMap((d) => d.divisions).find((d) => d.id === MISSION_ANALYSIS)!;
+  assert.ok([14, 94, 15].every((id) => missionAnalysis.elsewhere.includes(id)), "and listed in the division they lead");
+});
+
 test("the old lead's three outcomes: stays as a member, leaves this division, leaves the team", async () => {
   // Anna Villa (13) is in Mission Analysis and Optimization and Analysis: lead her first, then let each outcome play.
   const first = head();

@@ -12,6 +12,7 @@ import {
   mayLeaveTeam,
   membershipsOf,
   membershipsOfRoles,
+  NO_MEMBERSHIPS,
   removalFrom,
   roleIn,
   withJoined,
@@ -47,8 +48,8 @@ const lead = (divisionId: number, since = "2024-10-01") => inDivisions([{ divisi
 const member = (divisionId: number | null, since = "2024-10-01") => inDivisions(divisionId === null ? [] : [{ divisionId, role: "member", since }]);
 
 const roster: RosterEntry[] = [
-  person(1, "Alessandro Greco", { role: "team-leader" }),
-  person(2, "Chiara Rinaldi", { role: "head", departmentId: 1 }),
+  person(1, "Alessandro Greco", { role: "team-leader", memberships: NO_MEMBERSHIPS }),
+  person(2, "Chiara Rinaldi", { role: "head", departmentId: 1, memberships: NO_MEMBERSHIPS }),
   person(3, "Marco Bianchi", lead(10)),
   person(4, "Elif Kaya", member(10)),
   person(5, "Bruno Valli", lead(20)),

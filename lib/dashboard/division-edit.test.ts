@@ -44,6 +44,8 @@ const team: TeamPerson[] = [
   person(4, "Laura Greco", [[2, "lead"]]),
   person(5, "Davide Russo", [[1, "member"], [3, "member"]]),
   person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1 }]),
+  person(7, "Alessandro Greco", [], [{ kind: "team-leader" }]),
+  person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: "chief-engineer" }]),
 ];
 
 const head: TeamActor = { kind: "head", departmentIds: [1] };
@@ -106,8 +108,17 @@ test("a lead picked from another division joins as a lead; a member here is prom
   assert.ok(result.ok);
   assert.deepEqual(result.plan.joinAsLead, [4]);
   assert.deepEqual(result.plan.promote, [3]);
-  assert.equal(plan({ newLeads: [6] }).ok, false, "a head is placed by their head role");
   assert.equal(plan({ newLeads: [1] }).ok, false, "already a lead");
+  assert.equal(plan({ newLeads: [99] }).ok, false, "not on the team");
+});
+
+test("anyone on the team can be picked as a lead: the team leader, a board seat and a head join beside their role", () => {
+  const result = plan({ newLeads: [6, 7, 8] });
+  assert.ok(result.ok);
+  assert.deepEqual(result.plan.joinAsLead, [6, 7, 8]);
+  assert.deepEqual(result.plan.leaveTeam, [], "their own role is untouched");
+  const created = plan({ name: "Flight Dynamics", code: "FD", newLeads: [7], members: [6] }, { kind: "new", departmentId: 1 });
+  assert.ok(created.ok && created.plan.joinAsLead.join() === "7" && created.plan.joinAsMember.join() === "6");
 });
 
 test("each outcome for an old lead is planned as chosen, within the rules", () => {
@@ -147,11 +158,13 @@ test("Close division is refused while anyone is in it, people waiting for their 
   assert.equal(closeRefusal(head, org, 1, { people: 0, waiting: 0 }), null);
 });
 
-test("the pickers search the whole team, leave out team roles beyond the divisions, and offer a new email", () => {
+test("the pickers search the whole team, the team leader, board and heads included, and offer a new email", () => {
   const found = searchTeam("ra", team, org);
   assert.ok(found.kind === "people");
   assert.ok(found.people.some((p) => p.name === "Laura Greco" && p.place === "Aerodynamics · Optimization and Analysis" && p.role === "Lead · Optimization and Analysis"));
-  assert.ok(!found.people.some((p) => p.id === 6), "the head is not listed");
+  assert.ok(found.people.some((p) => p.id === 6 && p.role === "Head of Aerodynamics"), "the head is listed by their role");
+  const leader = searchTeam("alessandro@prt.it", team, org);
+  assert.ok(leader.kind === "people" && leader.people[0].id === 7 && leader.people[0].role === "Team Leader");
   assert.deepEqual(searchTeam("New.Person@studenti.polito.it", team, org), { kind: "new-email", email: "new.person@studenti.polito.it" });
   assert.equal(plan({ name: "Flight Dynamics", code: "FD", newLeads: [3], emails: ["sara@prt.it"] }, { kind: "new", departmentId: 1 }).ok, false, "a team address is a person, not a new email");
 });

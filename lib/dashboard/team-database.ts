@@ -169,20 +169,24 @@ function rank(role: RoleRow): number {
 /**
  * Where someone's active roles put them, highest first: the team leader, a
  * board seat or a head by their top role; anyone else in every open division
- * they hold a role in, each with its own role (issue #229). A role in a closed
- * or missing division places them nowhere, so someone with only such roles is
- * on the roster and not yet placed.
+ * they hold a role in, each with its own role (issue #229). A seat or a head
+ * also keeps each division role they hold beside it, since anyone can lead a
+ * division (Owner decision, 2026-10-11, on #232); a head row kept on a
+ * division is the seat, not a role in it. A role in a closed or missing
+ * division places them nowhere, so someone with only such roles is on the
+ * roster and not yet placed.
  */
 function placementOf(active: readonly RoleRow[], org: OrgChart): Placement {
   const [top] = active;
-  if (top.type === "president") return { role: "team-leader" };
+  const open = active.filter((role) => org.divisions.some((d) => d.id === role.division_id));
+  const beside = () => membershipsOfRoles(open.filter((role) => roleBeyondDivisions(roleSeat(role), org) === null).map(roleHeld));
+  if (top.type === "president") return { role: "team-leader", memberships: beside() };
   const seat = boardSeatOfRole(top);
-  if (seat !== null) return { role: "board", seat };
+  if (seat !== null) return { role: "board", seat, memberships: beside() };
   if (top.type === "head") {
     const departmentId = headDepartmentOf(roleSeat(top), org);
-    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId };
+    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, memberships: beside() };
   }
-  const open = active.filter((role) => org.divisions.some((d) => d.id === role.division_id));
   return { role: "divisions", memberships: membershipsOfRoles(open.map(roleHeld)) };
 }
 
