@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { DepartmentGroup, Departments as DepartmentsData, DivisionLead, GroupMember } from "@/lib/about/types";
 import { groupLayout } from "./group-layout";
@@ -53,8 +53,8 @@ function Member({ member }: { member: GroupMember }) {
       />
       {leads.length > 0 && (
         <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-5 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5">
-          {leads.map((l) => (
-            <Lead key={`${l.division}-${l.name}`} lead={l} />
+          {leads.map((l, i) => (
+            <Lead key={`${l.division}-${l.name}-${i}`} lead={l} />
           ))}
         </ul>
       )}
@@ -65,19 +65,31 @@ function Member({ member }: { member: GroupMember }) {
 /** CSS custom properties the classes below read. */
 type Vars = Record<`--${string}`, string | number>;
 
-function Group({ group }: { group: DepartmentGroup }) {
+/**
+ * What the Team page editor wraps (board 80e, issue #285): each member of a
+ * slide by their place across all the slides in order, and each slide's
+ * heading, where "+ Add department" sits.
+ */
+export type DepartmentFrames = {
+  readonly member?: (index: number, member: ReactNode) => ReactNode;
+  readonly heading?: (heading: ReactNode) => ReactNode;
+};
+
+function Group({ group, offset, frames }: { group: DepartmentGroup; offset: number; frames: DepartmentFrames }) {
   const { columns, gap, width } = groupLayout(group);
   const grid: Vars = { "--cols": columns, "--gap": `${gap}px`, "--w": `${width}px` };
+  const heading = <h3 className="text-[20px] font-bold tracking-[-0.02em] lg:text-center lg:text-[30px]">{group.name}</h3>;
   return (
     <>
-      <h3 className="text-[20px] font-bold tracking-[-0.02em] lg:text-center lg:text-[30px]">{group.name}</h3>
+      {frames.heading?.(heading) ?? heading}
       <div
         style={grid}
         className="mt-5 grid grid-cols-1 gap-y-6 lg:mx-auto lg:mt-10 lg:max-w-[var(--w)] lg:grid-cols-[repeat(var(--cols),minmax(0,1fr))] lg:gap-x-[var(--gap)] lg:gap-y-16"
       >
-        {group.members.map((m, i) => (
-          <Member key={`${m.name}-${i}`} member={m} />
-        ))}
+        {group.members.map((m, i) => {
+          const member = <Member member={m} />;
+          return <Fragment key={`${m.name}-${i}`}>{frames.member?.(offset + i, member) ?? member}</Fragment>;
+        })}
       </div>
     </>
   );
@@ -85,11 +97,14 @@ function Group({ group }: { group: DepartmentGroup }) {
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label: string }) {
+function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[]; label: string; frames: DepartmentFrames }) {
   const scroller = useRef<HTMLDivElement>(null);
   const slides = useRef<(HTMLDivElement | null)[]>([]);
-  const [current, setCurrent] = useState(0);
+  const [shownSlide, setCurrent] = useState(0);
   const count = groups.length;
+  // In the editor a slide can go while it is in view.
+  const current = Math.min(shownSlide, count - 1);
+  const offsets = groups.map((_, i) => groups.slice(0, i).reduce((n, g) => n + g.members.length, 0));
 
   /** The scroll position that puts slide i where its snap aligns it: centred from lg, at the start below. */
   const targetOf = useCallback((i: number) => {
@@ -183,7 +198,7 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
               i === current ? "opacity-100" : "opacity-[0.35]"
             }`}
           >
-            <Group group={g} />
+            <Group group={g} offset={offsets[i]} frames={frames} />
           </div>
         ))}
       </div>
@@ -231,13 +246,13 @@ function Carousel({ groups, label }: { groups: readonly DepartmentGroup[]; label
   );
 }
 
-export function Departments({ departments }: { departments: DepartmentsData }) {
+export function Departments({ departments, frames = {} }: { departments: DepartmentsData; frames?: DepartmentFrames }) {
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
         <SectionHead title={departments.title} intro={departments.intro} align="centre" />
         <div className="mt-10 lg:mt-14">
-          <Carousel groups={departments.groups} label={departments.title} />
+          <Carousel groups={departments.groups} label={departments.title} frames={frames} />
         </div>
       </div>
     </section>
