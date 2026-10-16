@@ -1,5 +1,5 @@
 import { parseDetails, type YourDetails } from "@/lib/dashboard/details";
-import { isViewerKind, type ViewerKind } from "@/lib/dashboard/viewer";
+import { isTestViewer, type TestViewer } from "@/lib/dashboard/viewer";
 
 // What a test developer changed on their own pages (issue #169): applications
 // they withdrew, interview times they picked, and the "Your details" they
@@ -14,7 +14,7 @@ export type OwnChanges = {
   /** The interview slot picked, by own application id. */
   readonly slots: Readonly<Record<number, number>>;
   /** Saved details, by the viewer they were saved as. */
-  readonly details: Readonly<Partial<Record<ViewerKind, YourDetails>>>;
+  readonly details: Readonly<Partial<Record<TestViewer, YourDetails>>>;
 };
 
 export const NO_OWN_CHANGES: OwnChanges = { withdrawn: [], slots: {}, details: {} };
@@ -52,11 +52,11 @@ export function parseOwnChanges(cookie: string | null | undefined): OwnChanges {
       if (isId(id) && isId(value)) slots[id] = value;
     }
   }
-  const details: Partial<Record<ViewerKind, YourDetails>> = {};
+  const details: Partial<Record<TestViewer, YourDetails>> = {};
   if (isRecord(raw.details)) {
     for (const [kind, value] of Object.entries(raw.details)) {
       const parsed = parseDetails(value);
-      if (isViewerKind(kind) && parsed.ok) details[kind] = parsed.value;
+      if (isTestViewer(kind) && parsed.ok) details[kind] = parsed.value;
     }
   }
   return { withdrawn, slots, details };

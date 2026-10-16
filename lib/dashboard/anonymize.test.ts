@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { getTableColumns, type InferSelectModel, type Table } from "drizzle-orm";
 import { applications, members, users } from "@/db/schema";
+import { alumniOf, alumniYears, type AlumniEntry, type AlumniRecord } from "@/lib/about/alumni-record";
 import {
   ANONYMIZED_EMAIL,
   anonymizationPlan,
@@ -10,6 +11,7 @@ import {
   CLEARED_MEMBER,
   clearedUser,
   LOG_SCRUBS,
+  logScrubsOf,
   scrubLogData,
   scrubReaches,
   type AnonymizationStep,
@@ -24,7 +26,15 @@ const DAY = 24 * 60 * 60 * 1000;
 const daysAgo = (days: number) => new Date(NOW.getTime() - days * DAY);
 
 function account(overrides: Partial<DeletedAccount> = {}): DeletedAccount {
-  return { userId: "u-1", memberId: 7, deletedAt: daysAgo(366), anonymizedAt: null, signedInAgain: false, ...overrides };
+  return {
+    userId: "u-1",
+    memberId: 7,
+    deletedAt: daysAgo(366),
+    anonymizedAt: null,
+    signedInAgain: false,
+    alumni: { name: "Giulia Rossi", removed: false },
+    ...overrides,
+  };
 }
 
 /** A store over fixed accounts: it returns every one, so the rule under test is the domain's own. */
@@ -181,7 +191,75 @@ test("anonymization keeps every statistics field and deletes no statistics row",
     if (step.kind === "clear-member") assert.deepEqual(Object.keys(step.set).sort(), ["discord", "mobileNumber", "ndaName", "picture", "prtEmail"]);
     if (step.kind === "clear-applications") assert.deepEqual(Object.keys(step.set).sort(), ["cvName", "mlName"]);
   }
-  assert.ok(plan.every((step) => ["clear-user", "clear-member", "clear-applications", "delete-application-files", "scrub-logs"].includes(step.kind)));
+  assert.ok(
+    plan.every((step) =>
+      ["keep-alumni-entry", "clear-user", "clear-member", "clear-applications", "delete-application-files", "scrub-logs"].includes(step.kind),
+    ),
+  );
+});
+
+// The alumni entry (issue #257) ---------------------------------------------------
+
+/** One member with two years of roles, as the Alumni page reads the record. */
+function alumniRecordAfter(entry: Pick<AlumniEntry, "who" | "founder" | "removed">): AlumniRecord {
+  return {
+    units: { departments: [{ id: 1, name: "Aerodynamics" }], divisions: [{ id: 4, name: "Wind Tunnel", departmentId: 1 }] },
+    roles: [{ memberId: 7, type: "core", title: "Aerodynamicist", startedAt: "2024-10-01", leftAt: "2025-09-15", departmentId: null, divisionId: 4 }],
+    // Anonymized: the team record holds no name any more.
+    people: [{ memberId: 7, name: null, email: ANONYMIZED_EMAIL }],
+    entries: [{ id: 3, name: null, photo: null, shown: true, fixes: [], ...entry }],
+    imported: [],
+  };
+}
+
+test("anonymizing keeps the alumni entry: the record's name is copied to it before the user row loses it", () => {
+  const plan = anonymizationPlan(account(), NOW);
+  assert.deepEqual(plan[0], { kind: "keep-alumni-entry", memberId: 7, name: "Giulia Rossi" });
+  assert.ok(plan.findIndex((step) => step.kind === "keep-alumni-entry") < plan.findIndex((step) => step.kind === "clear-user"));
+  assert.ok(plan.every((step) => step.kind !== "clear-alumni-entry"));
+  // Every private field it cleared before is still cleared.
+  assert.deepEqual(plan.find((step) => step.kind === "clear-user"), { kind: "clear-user", userId: "u-1", set: clearedUser(NOW) });
+  assert.deepEqual(plan.find((step) => step.kind === "clear-member"), { kind: "clear-member", memberId: 7, set: CLEARED_MEMBER });
+  assert.deepEqual(plan.find((step) => step.kind === "clear-applications"), { kind: "clear-applications", userId: "u-1", set: CLEARED_APPLICATION });
+});
+
+test("after anonymization the Alumni page still lists them: name, years, roles and founder mark", () => {
+  const record = alumniRecordAfter({ who: { kind: "member", memberId: 7, keptName: "Giulia Rossi" }, founder: "co-founder", removed: false });
+  const [giulia] = alumniOf(record, 2026);
+  assert.equal(giulia?.name, "Giulia Rossi");
+  assert.equal(giulia?.founder, "co-founder");
+  assert.deepEqual(giulia?.lines.map((l) => [l.year, l.group, l.role]), [[2024, "Aerodynamics", "Aerodynamicist"]]);
+  const years = alumniYears(alumniOf(record, 2026));
+  assert.deepEqual(years.map((y) => y.groups.map((g) => g.entries.map((e) => [e.name, e.role, e.tag]))), [[[["Giulia Rossi", "Aerodynamicist", "CO-FOUNDER"]]]]);
+});
+
+test("someone who ticked the remove box loses every name and photo on the entry, and the page lists them nowhere", () => {
+  const plan = anonymizationPlan(account({ alumni: { name: "Giulia Rossi", removed: true } }), NOW);
+  assert.deepEqual(plan[0], { kind: "clear-alumni-entry", memberId: 7, set: { recordName: null, name: null, photo: null } });
+  assert.ok(plan.every((step) => step.kind !== "keep-alumni-entry"));
+  assert.ok(plan.some((step) => step.kind === "clear-user") && plan.some((step) => step.kind === "clear-member"));
+  const record = alumniRecordAfter({ who: { kind: "member", memberId: 7, keptName: null }, founder: "co-founder", removed: true });
+  assert.deepEqual(alumniYears(alumniOf(record, 2026)), []);
+});
+
+test("someone never on the team has no alumni step", () => {
+  const plan = anonymizationPlan(account({ memberId: null, alumni: null }), NOW);
+  assert.ok(plan.every((step) => step.kind !== "keep-alumni-entry" && step.kind !== "clear-alumni-entry"));
+});
+
+test("the alumni entry's log rows keep a kept name, and lose it when the person asked to be removed", () => {
+  const person = { userId: "u-1", memberId: 7 };
+  const row = log("public", "alumni_entries", "3", null, { id: 3, member_id: 7, record_name: "Giulia Rossi", name: "Giulia R.", photo: "https://store.example/photo/alumni-a.jpg", shown: true });
+  const scrubbedWith = (removed: boolean) => {
+    const keys = logScrubsOf({ memberId: 7, alumni: { name: "Giulia Rossi", removed } })
+      .filter((scrub) => scrubReaches(scrub, person, row))
+      .flatMap((scrub) => scrub.keys);
+    return scrubLogData(row.newData, keys);
+  };
+  assert.deepEqual(scrubbedWith(false), { id: 3, member_id: 7, record_name: "Giulia Rossi", name: "Giulia R.", shown: true });
+  assert.deepEqual(scrubbedWith(true), { id: 3, member_id: 7, shown: true });
+  const someoneElse = log("public", "alumni_entries", "4", null, { id: 4, member_id: 8, record_name: "Marco Bianchi" });
+  assert.ok(logScrubsOf({ memberId: 7, alumni: { name: null, removed: true } }).every((scrub) => !scrubReaches(scrub, person, someoneElse)));
 });
 
 test("a person who was never on the team has no member step", () => {

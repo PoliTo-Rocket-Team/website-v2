@@ -25,10 +25,10 @@ An admin column comes later. **Planned**, no issue yet.
 | My applications | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application |
 | Overview | Yes, only with at least one application | Yes | Yes | Yes | Yes |
 | Team tree | No | Yes | Yes | Yes | Yes |
-| Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch |
-| Applications | No | No | Own divisions | All divisions in the department, under division tabs | All |
-| Members | No | No | Their divisions | Their divisions | The whole team |
-| Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
+| Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
+| Applications | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
+| Members | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | The IT lead only |
@@ -53,6 +53,38 @@ An admin column comes later. **Planned**, no issue yet.
     "4. Orders").
   - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
     the page itself is **Planned**, so no sidebar lists it yet.
+- **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
+  the operations lead and the IT lead, but some of their pages differ. The operations lead and the
+  IT lead keep boards 40 and 46.
+  - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
+    (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
+    is Alumni. Each content page adds its own row there.
+  - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
+    the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
+    the orders waiting for a decision (one row, naming the oldest, with Review), the approved
+    orders not ordered yet (one row, naming up to three items, with Open), and each open position
+    that closes within 7 days, soonest first. Stored notices follow. The orders rows show counts
+    and items, never a price. A Departments panel lists each department with its head, its
+    divisions and people, and its new applications and open positions. Recent activity has no
+    Activity log link.
+  - **Gap:** positions keep no closing day in the database, so no position reads as closing soon
+    there. Only the dummy data sets one.
+  - **Members, List view (board 73):** the whole team, with an "All departments" select, an
+    "All divisions" select (the chosen department's divisions), and a search over name, email and
+    phone. Heads and leads come first: the team leader, the board seats, department heads,
+    division leads, then members, by name within each. Each row shows the member, their division
+    codes (a head shows the codes of their department's divisions) and their role. There is no
+    Phone or Discord column; those stay in the member panel, which opens read only from a row.
+    There is no New division, New department or Closed divisions control here. Pages of eight.
+  - **Members, Table view (boards 73b, 73c):** every member field: name, divisions, role, PRT
+    email, phone, Discord, PoliTo ID, program, level, from, date of birth, gender and NDA. The
+    name column stays pinned; the table fills the screen and scrolls both ways, with no pages.
+    Phone, date of birth and gender stay blurred until hover. Divisions, Role, Program, Level,
+    From, Gender and NDA each have a filter: a search, a tick and a count per value, Clear, and
+    "N selected". Within a column any ticked value matches; across columns all must.
+  - **Positions and Applications:** as the operations lead's, with "All departments" and "All
+    divisions" selects, as on the department head's boards 63 and 64. New position lists every
+    division of the team.
 - **Overview** is for members, division leads, department heads and the operations lead, and for
   a non-member with at least one application, withdrawn ones included (boards 50e and 50e-m,
   #211). A non-member whose only applications are withdrawn stays on the Overview: the "Your
@@ -87,8 +119,9 @@ An admin column comes later. **Planned**, no issue yet.
   with site-content access, which the full admins can give to anyone. A division lead or
   department head gets nothing from their role here (Owner decision, #234). The sidebar item and
   the page read one rule, and the page answers "not found" to everyone else.
-  - **Gap:** the full admins' Access page has no site-content area yet, so site-content access
-    cannot be given there. Tracked in #247.
+  - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
+    `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
+    the Alumni page.
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -238,6 +271,18 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
+- Alumni entries survive anonymization (#257). Anonymizing a deleted account clears the private
+  fields, but keeps the person's alumni entry: their name, years, roles and founder mark stay on
+  the Alumni page as part of the team's history. The entry's photo goes.
+  - Leave the team and Delete account show an unticked box, "Remove my name from the Alumni
+    page". Ticked, the person leaves the Alumni page at once, and anonymization later clears
+    every name and photo on their entry. They can also ask for removal later.
+- The Alumni page (#257) is built from the roles: each academic year lists who held which role
+  in which department or division, closed ones included. 2021–22, 2022–23 and the 2024–25
+  advisors come from a one-time import. The dashboard's Alumni page only fixes how someone shows
+  (name, founder mark, photo, per-year role text, shown or hidden); a fix never writes a role, a
+  division or access. "Add alumni" adds external advisors to the Advisors group and nowhere else;
+  the server refuses any other group.
 - Access is given only on the Access page. You can give only what you have, and only inside your
   scope.
 
@@ -412,12 +457,21 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
 
 #### Full access
 
-These rules come from #238.
+These rules come from #238 and #247 (boards 71 and 71b).
 
-- Full access holds every area at Can edit across the whole team: "YOUR ACCESS · the whole team".
-- The page works as a head's does, across every department: department tabs ("All departments"
-  first) narrow the table, and the "Where" field lists each department, whole, and each of its
-  divisions. The heads and division leads show first, with their role's access, locked.
+- Full access holds every area at Can edit across the whole team, Alumni included: "YOUR ACCESS ·
+  Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
+  team leader.
+- Above the table: Everyone, Full access and Approve orders tabs, each with its count, and an "All
+  departments" select. The other full-access seats show first ("Full access · Whole team", "With
+  the role", locked), then the heads and division leads with their role's access, locked.
+- Give access picks a person from the whole team and a Where: the whole team (a `team` scope row
+  in no unit, which covers every department and any added later), one department, or one division.
+  The areas are Positions, Applications, Members, Alumni and Orders, each at Can view or Can edit.
+  Alumni is given to the whole team only.
+- **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
+  it from anyone else. The operations lead and the IT lead give every other access. The Activity
+  log is never given: it stays the IT lead's.
 - The delegation limit still holds: no area above the viewer's own level, and no lead's role
   access changes here.
 
@@ -426,7 +480,12 @@ These rules come from #238.
 These rules come from the Owner decisions of 2026-10-11 on #233 (boards 61 to 61d, 61m, 67, 67b
 and 67m).
 
-- The statuses are Waiting, Approved, Changes requested and Rejected.
+- The statuses are Waiting, Approved, Ordered, Changes requested and Rejected.
+- **Ordered** follows Approved and nothing else (#247, board 70c). An approved order shows "Approved
+  by you on {date}" (or the approver's name) and a "Mark as ordered" button. The people who decide
+  orders (the team leader and the holders of "Approve orders") mark an order as ordered, and only
+  an approved one; the server refuses it from anyone else and from any other status. Ordered is
+  final: nobody edits, decides or cancels it. Its pill is grey.
 - **Who sees.** Anyone with any Orders access sees every order in the team, in every
   department. A person with no Orders access does not see the page.
   - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
@@ -447,10 +506,13 @@ and 67m).
   can give **"Approve orders"** to any number of people, from their Access page; there is no
   limit on how many hold it. Only the team leader gives or removes it. The server refuses a
   decision from anyone else, and a decision on a request that is not waiting.
-  - **Gap:** the team leader's Access page, where "Approve orders" is given, and the buttons to
-    approve, reject or ask for changes are not built yet; the server rules are. Tracked in #247.
-- Approve, reject, ask for changes and cancel each ask "are you sure" first. Asking for changes
-  needs a reason, which shows on Changes requested with "Edit and send again".
+- **Deciding on the page** (#247, boards 70 to 70e). A waiting order opened by someone who decides
+  shows Reject, Ask for changes and Approve; Edit moves to the panel's head. While a panel is open
+  the Department column is hidden. Ask for changes opens a "What should change" note, which is
+  required; the requester sees it and can edit and send the request again. Reject opens a "Why
+  (optional)" note; the requester sees the reason, and a rejected request can never be edited or
+  sent again: they make a new one.
+- Approve, reject, ask for changes, mark as ordered and cancel each ask "are you sure" first.
 - **The table.** No tabs. The Department · Division and Status column headers each have a filter.
   The department filter is a list of departments with checkboxes, each with its divisions nested;
   ticking a department ticks all its divisions. Clear and Apply sit at the foot. Departments are
@@ -467,9 +529,10 @@ and 67m).
 ## 5. Data and testing
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
-  developer" switch, with five people: non-member, member, division lead, department head and
-  operations lead. The operations lead there sits in the operations lead's seat, so they have
-  full access and do not decide orders.
+  developer" switch, with six people: team leader, operations lead, department head, division
+  lead, member and non-member. The operations lead there sits in the operations lead's seat, so
+  they have full access and do not decide orders; the team leader decides orders and gives
+  "Approve orders" (#247), and sees boards 72 to 73c (#252).
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and

@@ -110,7 +110,7 @@ test("Close department moves each division with its people and closes the empty 
   assert.ok(!after.departments.flatMap((d) => d.divisions).some((d) => d.id === created.value), "the empty division is closed");
 
   const view = pages("operations-lead", closer.kept()).view;
-  assert.ok(!(await view.alumni()).rows.some((a) => a.id === CHIARA), "the head is not moved to Alumni");
+  assert.ok(!(await view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "the head is not moved to Alumni");
   const members = await view.members();
   assert.ok(members.scope === "team" && members.rows.some((r) => r.id === CHIARA), "and stays on the team");
 });

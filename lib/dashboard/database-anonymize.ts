@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
-import { applicationFiles, applications, betterAuthUsers, logs, members, users } from "@/db/schema";
+import { alumniEntries, alumniRoleFixes, applicationFiles, applications, betterAuthUsers, logs, members, users } from "@/db/schema";
 import { parsePrivatePathname, parsePublicPathname } from "@/lib/storage/pathname";
 import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile } from "@/lib/storage/public-store";
@@ -24,9 +24,13 @@ async function deletedAccounts(cutoff: Date): Promise<DeletedAccount[]> {
       deletedAt: users.deletedAt,
       anonymizedAt: users.anonymizedAt,
       liveUser: betterAuthUsers.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      alumniRemovedAt: alumniEntries.removedAt,
     })
     .from(users)
     .leftJoin(betterAuthUsers, eq(betterAuthUsers.id, users.id))
+    .leftJoin(alumniEntries, eq(alumniEntries.memberId, users.member))
     .where(and(isNotNull(users.deletedAt), isNull(users.anonymizedAt), lte(users.deletedAt, cutoff.toISOString())));
   return rows.flatMap((row) =>
     row.deletedAt === null
@@ -38,6 +42,13 @@ async function deletedAccounts(cutoff: Date): Promise<DeletedAccount[]> {
             deletedAt: new Date(row.deletedAt),
             anonymizedAt: row.anonymizedAt === null ? null : new Date(row.anonymizedAt),
             signedInAgain: row.liveUser !== null,
+            alumni:
+              row.memberId === null
+                ? null
+                : {
+                    name: [row.firstName, row.lastName].filter(Boolean).join(" ").trim() || null,
+                    removed: row.alumniRemovedAt !== null,
+                  },
           },
         ],
   );
@@ -45,16 +56,19 @@ async function deletedAccounts(cutoff: Date): Promise<DeletedAccount[]> {
 
 async function personalFiles(account: DeletedAccount): Promise<PersonalFile[]> {
   const db = getDb();
-  const [files, member] = await Promise.all([
+  const [files, member, entry] = await Promise.all([
     db.select({ pathname: applicationFiles.pathname }).from(applicationFiles).where(eq(applicationFiles.userId, account.userId)),
     account.memberId === null
       ? Promise.resolve([])
       : db.select({ picture: members.picture }).from(members).where(eq(members.memberId, account.memberId)).limit(1),
+    account.memberId === null
+      ? Promise.resolve([])
+      : db.select({ photo: alumniEntries.photo }).from(alumniEntries).where(eq(alumniEntries.memberId, account.memberId)).limit(1),
   ]);
-  const photo = storedPhotoPathname(member[0]?.picture ?? null);
+  const photos = [storedPhotoPathname(member[0]?.picture ?? null), storedPhotoPathname(entry[0]?.photo ?? null)];
   return [
     ...files.map((file) => ({ store: "private", pathname: file.pathname }) as const),
-    ...(photo === null ? [] : [{ store: "public", pathname: photo } as const]),
+    ...photos.flatMap((photo) => (photo === null ? [] : [{ store: "public", pathname: photo } as const])),
   ];
 }
 
@@ -81,6 +95,10 @@ function scrubOwner(scrub: LogScrub, userId: string, memberId: number | null): S
         sql`${logs.oldData} ->> ${scrub.owner.column} = ${userId}`,
         sql`${logs.newData} ->> ${scrub.owner.column} = ${userId}`,
       );
+    case "member-column":
+      return memberId === null
+        ? undefined
+        : or(sql`${logs.oldData} ->> 'member_id' = ${String(memberId)}`, sql`${logs.newData} ->> 'member_id' = ${String(memberId)}`);
   }
 }
 
@@ -98,6 +116,23 @@ function scrubQuery(db: Db, scrub: LogScrub, userId: string, memberId: number | 
 
 function stepQueries(db: Db, step: AnonymizationStep): BatchItem<"pg">[] {
   switch (step.kind) {
+    case "keep-alumni-entry":
+      return [
+        db
+          .insert(alumniEntries)
+          .values({ kind: "member", memberId: step.memberId, recordName: step.name, photo: null })
+          .onConflictDoUpdate({
+            target: alumniEntries.memberId,
+            set: { recordName: sql`coalesce(excluded.record_name, ${alumniEntries.recordName})`, photo: null },
+          }),
+      ];
+    case "clear-alumni-entry":
+      return [
+        db
+          .delete(alumniRoleFixes)
+          .where(sql`${alumniRoleFixes.entryId} in (select ${alumniEntries.id} from ${alumniEntries} where ${alumniEntries.memberId} = ${step.memberId})`),
+        db.update(alumniEntries).set(step.set).where(eq(alumniEntries.memberId, step.memberId)),
+      ];
     case "clear-user":
       return [db.update(users).set(step.set).where(eq(users.id, step.userId))];
     case "clear-member":

@@ -40,6 +40,7 @@ import { shortUnitName } from "@/lib/dashboard/division-access";
 import { divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
 import {
   departmentLabel,
+  divisionsOf,
   documentsLine,
   type ApplicationEntry,
   type ApplicationsPage,
@@ -79,11 +80,14 @@ export function ApplicationsView({
   page,
   initialPosition,
   lead,
+  teamSelects = false,
 }: {
   page: ApplicationsPage;
   initialPosition: PositionRef | null;
   /** The viewer's name: the interview email is signed with it. */
   lead: string;
+  /** The team leader's "All departments" and "All divisions" selects (board 64 with whole-team selects, issue #252). */
+  teamSelects?: boolean;
 }) {
   const [states, setState] = useOptimistic(
     Object.fromEntries(page.applications.map((a) => [a.id, a.state])) as Record<number, ApplicationState>,
@@ -94,18 +98,30 @@ export function ApplicationsView({
   const [position, setPosition] = useState<PositionRef | null>(initialPosition);
   // A department head's page starts on All divisions (board 64, issue #230).
   const [divisionTab, setDivisionTab] = useState<DivisionTab>(null);
+  const [department, setDepartment] = useState<string | null>(null);
+  const [division, setDivision] = useState<string | null>(null);
   const [chosenId, setChosenId] = useState<number | null>(null);
 
-  const department = page.scope.kind === "department" ? page.scope.department : null;
+  const headDepartment = page.scope.kind === "department" ? page.scope.department : null;
   const applications = page.applications.map((a) => ({ ...a, state: states[a.id] ?? a.state }));
-  const divisionOptions = department
-    ? divisionTabs(department.divisions.map((d) => d.name), applications.map((a) => a.position.division))
+  const divisionOptions = headDepartment
+    ? divisionTabs(headDepartment.divisions.map((d) => d.name), applications.map((a) => a.position.division))
     : null;
-  const tabPositions = page.positions.filter((p) => inDivisionTab(p.division, divisionTab));
+  const departmentNames = teamSelects ? [...new Set(page.positions.map((p) => p.department))] : [];
+  const divisionNames = teamSelects ? divisionsOf(page.positions, department) : [];
+  // A division left chosen from another department reads as all divisions.
+  const shownDivision = division !== null && divisionNames.includes(division) ? division : null;
+  const tabPositions = page.positions.filter(
+    (p) =>
+      inDivisionTab(p.division, divisionTab) &&
+      (department === null || p.department === department) &&
+      (shownDivision === null || p.division === shownDivision),
+  );
+  const inUnits = new Set(tabPositions.map((p) => p.ref));
   // A position filter left on a role of another division shows that division's rows no more.
   const shownPosition = tabPositions.some((p) => p.ref === position) ? position : null;
   const inPosition = applications.filter(
-    (a) => inDivisionTab(a.position.division, divisionTab) && (shownPosition === null || a.position.ref === shownPosition),
+    (a) => inUnits.has(a.position.ref) && (shownPosition === null || a.position.ref === shownPosition),
   );
   const counts = tabCounts(inPosition.map((a) => a.state.stage));
   const rows = inPosition.filter((a) => inTab(a.state.stage, tab));
@@ -144,6 +160,23 @@ export function ApplicationsView({
             </div>
             <span aria-hidden className="hidden h-5 w-px bg-hairline md:block" />
           </>
+        )}
+        {teamSelects && (
+          <div className="hidden items-center gap-3 md:flex">
+            <FilterMenu
+              allLabel="All departments"
+              value={department}
+              onChange={setDepartment}
+              options={departmentNames.map((d) => ({ value: d, label: d }))}
+            />
+            <FilterMenu
+              allLabel="All divisions"
+              value={shownDivision}
+              onChange={setDivision}
+              options={divisionNames.map((d) => ({ value: d, label: d }))}
+            />
+            <span aria-hidden className="h-5 w-px bg-hairline" />
+          </div>
         )}
         <Segmented
           label="Show applications"
@@ -198,8 +231,8 @@ export function ApplicationsView({
                   </span>
                 </span>
                 <span className="flex min-w-0 items-center gap-2">
-                  {department ? (
-                    // A head's list says which division each role sits in (board 64).
+                  {headDepartment || teamSelects ? (
+                    // A head's list says which division each role sits in (board 64), as the team leader's does.
                     <span className="min-w-0">
                       <span className="block truncate text-[13px] leading-snug text-text-2">{a.position.title}</span>
                       <span className="block truncate text-[12px] leading-snug text-prt-muted">

@@ -26,7 +26,7 @@ import {
   type MyProfile,
 } from "@/lib/dashboard/self";
 import { homeDivisionOf, membershipsIn, roleIn } from "@/lib/dashboard/team";
-import { testDeveloperStanding, type ViewerKind } from "@/lib/dashboard/viewer";
+import { testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
 import { dummyDetails, isOpenOwn, isWithdrawn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
@@ -57,7 +57,12 @@ function signInOf(person: DummyPerson): DummySignIn {
   return signIns.find((s) => s.personId === person.id) ?? { personId: person.id, signInEmail: person.email, teamEmail: person.email };
 }
 
-export function dummyMyProfile(kind: ViewerKind, person: DummyPerson, changes: OwnChanges, leave: LeaveState): MyProfile {
+/** The team address the site shows for a person the test developer can be. */
+export function teamEmailOf(person: DummyPerson): string {
+  return signInOf(person).teamEmail;
+}
+
+export function dummyMyProfile(kind: TestViewer, person: DummyPerson, changes: OwnChanges, leave: LeaveState): MyProfile {
   // My profile names one division, their home one, until #231 lists them all.
   const division = divisions.find((d) => d.id === homeDivisionOf(person.placement));
   const login = signInOf(person);
@@ -104,7 +109,9 @@ export function dummyMyAccount(applicant: { name: string; email: string }, chang
 }
 
 export function dummyDeleteAccount(options: DeleteAccount): WriteResult<null> {
-  return typeof options.withdrawOpenApplications === "boolean" ? written(null) : refused("Check the form.");
+  return typeof options.withdrawOpenApplications === "boolean" && typeof options.removeFromAlumni === "boolean"
+    ? written(null)
+    : refused("Check the form.");
 }
 
 // My applications ---------------------------------------------------------
@@ -185,7 +192,7 @@ function pastOf(application: DummyOwnApplication, withdrawn: boolean): PastAppli
  * table keeps off My applications.
  */
 export function dummyMyApplications(
-  kind: ViewerKind,
+  kind: TestViewer,
   me: { firstName: string; email: string },
   changes: OwnChanges,
   start: OwnApplicationsStart,

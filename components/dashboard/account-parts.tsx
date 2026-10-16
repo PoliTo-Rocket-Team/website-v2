@@ -1,20 +1,27 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Info, LogIn, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { authClient } from "@/lib/auth-client";
-import { DELETE_ACCOUNT_COPY, DELETE_WORD, deleteConfirmed, type SignIn } from "@/lib/dashboard/self";
+import { useSignOut } from "@/components/use-sign-out";
+import {
+  DELETE_ACCOUNT_COPY,
+  DELETE_MEMBER_DIALOG_COPY,
+  DELETE_WORD,
+  deleteConfirmed,
+  REMOVE_FROM_ALUMNI_HINT,
+  REMOVE_FROM_ALUMNI_LABEL,
+  type SignIn,
+} from "@/lib/dashboard/self";
 import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
-import { TEST_DEVELOPER_SIGN_OUT_HREF } from "@/lib/test-developer";
 import { ConfirmDialog } from "./confirm-dialog";
 import { inputClass } from "./field";
 import { PANEL } from "./panel";
 
 // Parts My profile (board 55) and My account (board 51) share: the titled
-// card, the sign-in cards, signing out, and Delete account.
+// card, the sign-in cards and Delete account. Signing out is
+// components/use-sign-out.ts, shared with the navbar's account menu.
 
 /** A titled card; `danger` gives the red edge and tint of "Delete account" and "Leave or delete". */
 export function Card({
@@ -46,24 +53,6 @@ export function Card({
       {children}
     </section>
   );
-}
-
-/** Ends the session the viewer has: the test developer cookie, or the Better Auth session. */
-export function useSignOut(session: ViewerSession): () => Promise<void> {
-  const router = useRouter();
-  return async () => {
-    if (session === "test-developer") {
-      window.location.assign(TEST_DEVELOPER_SIGN_OUT_HREF);
-      return;
-    }
-    const { error } = await authClient.signOut();
-    if (error) {
-      toast.error(`Could not sign out. ${error.message ?? "Please try again."}`);
-      return;
-    }
-    router.replace("/login");
-    router.refresh();
-  };
 }
 
 /** The accent circle with the person's initials (boards 51 and 55m). */
@@ -137,9 +126,34 @@ export function DangerRow({ title, text, children }: { title: string; text: stri
 }
 
 /**
+ * "Remove my name from the Alumni page" on Leave the team and Delete account
+ * (boards 55b and 55c, issue #257): unticked at first, with the hint under it.
+ */
+export function RemoveFromAlumniBox({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+  const id = useId();
+  return (
+    <label htmlFor={id} className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-white-5 px-4 py-3.5">
+      <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
+      <span
+        aria-hidden
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
+          checked ? "border-danger bg-danger text-prt-text" : "border-border-strong"
+        }`}
+      >
+        {checked && <Check className="h-3 w-3" strokeWidth={2.5} />}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[14px] font-medium text-prt-text">{REMOVE_FROM_ALUMNI_LABEL}</span>
+        <span className="mt-1 block text-[13px] leading-relaxed text-prt-muted">{REMOVE_FROM_ALUMNI_HINT}</span>
+      </span>
+    </label>
+  );
+}
+
+/**
  * Boards 51c and 55c: type DELETE, then the account closes and the page signs
  * out. An applicant may also withdraw their open applications; a member
- * leaves the team with it.
+ * leaves the team with it, and may ask to be removed from the Alumni page.
  */
 export function DeleteAccountDialog({
   open,
@@ -155,10 +169,11 @@ export function DeleteAccountDialog({
   /** How many open applications an applicant has; null for a member. */
   openApplications: number | null;
   member: boolean;
-  deleteAccount: (withdrawOpenApplications: boolean) => Promise<WriteResult<null>>;
+  deleteAccount: (withdrawOpenApplications: boolean, removeFromAlumni: boolean) => Promise<WriteResult<null>>;
 }) {
   const [typed, setTyped] = useState("");
   const [alsoWithdraw, setAlsoWithdraw] = useState(false);
+  const [removeFromAlumni, setRemoveFromAlumni] = useState(false);
   const [pending, setPending] = useState(false);
   const signOut = useSignOut(session);
   const inputId = useId();
@@ -169,6 +184,7 @@ export function DeleteAccountDialog({
     if (!next) {
       setTyped("");
       setAlsoWithdraw(false);
+      setRemoveFromAlumni(false);
     }
   };
 
@@ -176,7 +192,7 @@ export function DeleteAccountDialog({
     if (!deleteConfirmed(typed)) return;
     setPending(true);
     try {
-      const result = await deleteAccount(alsoWithdraw);
+      const result = await deleteAccount(alsoWithdraw, member && removeFromAlumni);
       if (!result.ok) {
         toast.error("Could not delete your account", { description: result.error });
         return;
@@ -194,7 +210,7 @@ export function DeleteAccountDialog({
       onOpenChange={close}
       icon={<Trash2 className="h-[18px] w-[18px]" strokeWidth={1.75} />}
       title="Delete your account?"
-      description={member ? `You leave the team too. ${DELETE_ACCOUNT_COPY}` : DELETE_ACCOUNT_COPY}
+      description={member ? DELETE_MEMBER_DIALOG_COPY : DELETE_ACCOUNT_COPY}
       cancelLabel="Keep account"
       confirmLabel="Delete account"
       danger
@@ -235,6 +251,7 @@ export function DeleteAccountDialog({
         spellCheck={false}
         className={`${inputClass()} mt-2 font-mono tracking-[0.2em]`}
       />
+      {member && <RemoveFromAlumniBox checked={removeFromAlumni} onChange={setRemoveFromAlumni} />}
     </ConfirmDialog>
   );
 }

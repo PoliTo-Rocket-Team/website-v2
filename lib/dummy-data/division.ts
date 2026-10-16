@@ -1,11 +1,15 @@
 import { randomInt } from "node:crypto";
 import {
+  canGiveApproveOrders,
   checkRemoveAllAccess,
   checkSaveAccess,
+  FULL_HELD_ACCESS,
+  NO_APPROVE_ORDERS,
   placesOf,
   ROLE_HELD_ACCESS,
   samePlace,
-  ACCESS_TARGETS,
+  UNIT_TARGETS,
+  WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
   type AccessDivision,
   type AccessGrant,
@@ -15,24 +19,29 @@ import {
   type AccessPlace,
   type AccessTarget,
   type AccessUnit,
+  type ApproveOrdersAccess,
   type HeldAccess,
   type RoleAccess,
+  type UnitTarget,
 } from "@/lib/dashboard/division-access";
+import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 import { homeFirst, ledDivisionOf, membershipsIn, type DivisionMembership, type RosterEntry } from "@/lib/dashboard/team";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import { departments, divisions, people, type DummyPerson } from "./team";
+import { departments, divisions, people, personFor, type DummyPerson } from "./team";
 
 // The Access pages for the test developer (boards 60 to 60m, issues #145 and
 // #213; the department head's Access, boards 65 and 65b, issue #230); their
 // Orders page is ./orders.ts. The division lead is Marco Bianchi, Mission Analysis, who leads
 // it with Pietro Ricci; the department head is Chiara Rinaldi, Aerodynamics;
-// the operations lead, Giulia Rossi, has full access across the team (#238).
+// the operations lead, Giulia Rossi, has full access across the team (#238),
+// and so does the team leader, Alessandro Greco, who alone gives "Approve
+// orders" (boards 71 and 71b, issue #247).
 // The people come from the roster as the test developer left it
 // (./team-pages.ts), so someone moved to alumni has no access here any more.
 
 export type DummyHeldAccess = {
   readonly personId: number;
-  readonly target: AccessTarget;
+  readonly target: UnitTarget;
   readonly level: AccessLevel;
 };
 
@@ -44,8 +53,8 @@ export const heldAccess = [
   { personId: 2, target: "orders", level: "edit" },
 ] as const satisfies readonly DummyHeldAccess[];
 
-/** Where a grant applies: one division, or a whole department. */
-export type DummyPlace = { readonly divisionId: number } | { readonly departmentId: number };
+/** Where a grant applies: one division, a whole department, or the whole team. */
+export type DummyPlace = { readonly divisionId: number } | { readonly departmentId: number } | { readonly wholeTeam: true };
 
 export type DummyGrant = {
   readonly id: number;
@@ -71,7 +80,24 @@ export const accessGrants = [
   { id: 6, personId: 32, place: { divisionId: 2 }, target: "positions", level: "view", givenById: 20, givenOn: "2026-09-28" },
   { id: 7, personId: 32, place: { divisionId: 2 }, target: "applications", level: "edit", givenById: 20, givenOn: "2026-09-28" },
   { id: 8, personId: 13, place: { departmentId: 1 }, target: "members", level: "view", givenById: 15, givenOn: "2026-10-02" },
+  // Board 71: Alumni across the whole team, which only full access gives.
+  { id: 9, personId: 3, place: { wholeTeam: true }, target: "alumni", level: "edit", givenById: 1, givenOn: "2026-10-03" },
 ] as const satisfies readonly DummyGrant[];
+
+/**
+ * Who the team leader gave "Approve orders" (board 71): Sara Conti, a member
+ * of Mission Analysis. None of the test developer's other viewers holds it.
+ */
+export const approveOrdersHolders: readonly { readonly personId: number; readonly givenOn: string }[] = [{ personId: 7, givenOn: "2026-10-06" }];
+
+/** The team leader: they decide orders and give "Approve orders". */
+export const TEAM_LEADER_ID = personFor["team-leader"].id;
+
+/** The full-access seat each dummy person holds (issue #238): the team leader and the operations lead. The sample team has no IT lead. */
+function seatOfPerson(person: DummyPerson): FullAccessSeat | null {
+  if (person.placement.role === "team-leader") return "team-leader";
+  return person.id === personFor["operations-lead"].id ? "operations-lead" : null;
+}
 
 function personOf(id: number): DummyPerson {
   return people.find((p) => p.id === id)!;
@@ -169,16 +195,36 @@ function accessPerson(entry: RosterEntry, unit: AccessUnit): AccessPerson {
 }
 
 function placeOf(unit: AccessUnit, place: DummyPlace): AccessPlace | null {
-  return placesOf(unit).find((p) =>
-    "divisionId" in place ? p.kind === "division" && p.division.id === place.divisionId : p.kind === "department" && p.department.id === place.departmentId,
-  ) ?? null;
+  return (
+    placesOf(unit).find((p) => {
+      if ("wholeTeam" in place) return p.kind === "team";
+      if ("divisionId" in place) return p.kind === "division" && p.division.id === place.divisionId;
+      return p.kind === "department" && p.department.id === place.departmentId;
+    }) ?? null
+  );
 }
 
 function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
-  if (unit.kind !== "division") return ROLE_HELD_ACCESS;
-  return ACCESS_TARGETS.flatMap((target) =>
+  if (unit.kind === "team") return FULL_HELD_ACCESS;
+  if (unit.kind === "department") return ROLE_HELD_ACCESS;
+  return UNIT_TARGETS.flatMap((target) =>
     heldAccess.filter((h) => h.personId === viewer.id && h.target === target).map((h) => ({ target, level: h.level })),
   );
+}
+
+/** "Approve orders" on a team page: who holds it, and whether the viewer gives it; nothing on a lead's or head's. */
+function approveOrdersOf(viewer: DummyPerson, unit: AccessUnit, onTeam: ReadonlyMap<number, AccessPerson>): ApproveOrdersAccess {
+  if (unit.kind !== "team") return NO_APPROVE_ORDERS;
+  const canGive = canGiveApproveOrders(seatOfPerson(viewer));
+  return {
+    canGive,
+    yours: canGive || approveOrdersHolders.some((h) => h.personId === viewer.id),
+    holders: approveOrdersHolders.flatMap((h) => {
+      const person = onTeam.get(h.personId);
+      if (person === undefined) return [];
+      return [{ person, givenBy: viewer.id === TEAM_LEADER_ID ? "You" : personOf(TEAM_LEADER_ID).name, givenOn: h.givenOn }];
+    }),
+  };
 }
 
 /**
@@ -199,6 +245,9 @@ export function dummyAccessPage(
   const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e, unit)]));
   const roleAccess = inside.flatMap((e): RoleAccess[] => {
     const person = onTeam.get(e.id)!;
+    // A full-access seat covers the whole team on a team page (board 71).
+    const seat = unit.kind === "team" ? seatOfPerson(personOf(e.id)) : null;
+    if (seat !== null) return [{ person, place: WHOLE_TEAM_PLACE, seat }];
     // A head's role covers their department on a team page.
     if (unit.kind === "team" && e.placement.role === "head") {
       return [{ person, place: { kind: "department", department: departmentUnit(e.placement.departmentId).department } }];
@@ -223,7 +272,16 @@ export function dummyAccessPage(
       },
     ];
   });
-  return { unit, held: heldBy(viewer, unit), roleAccess, grants, people: [...onTeam.values()] };
+  // Full access first (board 71), then the heads and the leads.
+  const ordered = [...roleAccess].sort((a, b) => Number(b.place.kind === "team") - Number(a.place.kind === "team"));
+  return {
+    unit,
+    held: heldBy(viewer, unit),
+    roleAccess: ordered,
+    grants,
+    people: [...onTeam.values()],
+    approveOrders: approveOrdersOf(viewer, unit, onTeam),
+  };
 }
 
 /**

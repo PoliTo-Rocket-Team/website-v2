@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseAlumnusKey } from "@/lib/about/alumni-record";
 import { canReach, type DashboardPageKey } from "@/lib/dashboard/access";
 import type { TeamWrites } from "@/lib/dashboard/data";
 import type { TeamSearch } from "@/lib/dashboard/division-edit";
@@ -33,10 +34,44 @@ function done(ok: boolean): TeamActionResult {
   return { ok: true };
 }
 
-export async function setShownOnSite(alumnusId: number, shown: boolean): Promise<TeamActionResult> {
+// The Alumni page (boards 78 to 78c, issue #257). Each write changes only
+// how someone shows on the public Alumni page, never their roles.
+
+/** A photo sent in a form's `photo` field, read into memory; null when none was sent. */
+async function photoIn(form: FormData | null): Promise<Upload | null> {
+  const file = form?.get("photo");
+  return file instanceof File && file.size > 0 ? { name: file.name, contentType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } : null;
+}
+
+export async function setAlumnusShown(key: string, shown: boolean): Promise<TeamActionResult> {
   const writes = await writesOn("alumni");
-  if (!writes || !isId(alumnusId) || typeof shown !== "boolean") return REFUSED;
-  return done(await writes.setShownOnSite(alumnusId, shown));
+  const alumnus = parseAlumnusKey(key);
+  if (!writes || alumnus === null || typeof shown !== "boolean") return REFUSED;
+  return done(await writes.setAlumnusShown(alumnus, shown));
+}
+
+export async function fixAlumnus(key: string, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("alumni");
+  const alumnus = parseAlumnusKey(key);
+  if (!writes || alumnus === null) return REFUSED;
+  return answered(await writes.fixAlumnus(alumnus, input));
+}
+
+/** The fix panel's photo: a JPEG or PNG in the form's `photo` field, or no form to remove it. */
+export async function setAlumnusPhoto(key: string, form: FormData | null): Promise<TeamActionResult> {
+  const writes = await writesOn("alumni");
+  const alumnus = parseAlumnusKey(key);
+  if (!writes || alumnus === null) return REFUSED;
+  const photo = await photoIn(form);
+  if (form !== null && photo === null) return { ok: false, error: "Choose a photo." };
+  return answered(await writes.setAlumnusPhoto(alumnus, photo));
+}
+
+/** Add advisor (board 78c): the fields, and the photo in the form's `photo` field when one was picked. */
+export async function addAdvisor(input: unknown, form: FormData | null): Promise<TeamActionResult> {
+  const writes = await writesOn("alumni");
+  if (!writes) return REFUSED;
+  return answered(await writes.addAdvisor(input, await photoIn(form)));
 }
 
 export async function saveMember(

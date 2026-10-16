@@ -22,7 +22,8 @@ export function Avatar({
   fallback,
   initialsClass = "text-[10px]",
 }: {
-  person: Pick<Person, "name" | "photo">;
+  /** A photo in public/team/, or a public store URL (an alumni photo, issue #257). */
+  person: { name: string; photo?: string };
   /** Width and height, for example "h-[60px] w-[60px] lg:h-[120px] lg:w-[120px]". */
   sizeClass: string;
   /** The photo's rendered width for next/image, for example "120px". */
@@ -33,7 +34,8 @@ export function Avatar({
   return (
     <span className={`relative block shrink-0 overflow-hidden rounded-full bg-surface-2 ${sizeClass}`}>
       {person.photo !== undefined ? (
-        <Image src={person.photo} alt="" fill sizes={sizes} className="object-cover" />
+        // A store URL is served as stored: next/image would need every store host configured.
+        <Image src={person.photo} alt="" fill sizes={sizes} unoptimized={!person.photo.startsWith("/")} className="object-cover" />
       ) : (
         <>
           {fallback !== "initials" && (

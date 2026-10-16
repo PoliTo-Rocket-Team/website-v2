@@ -4,7 +4,7 @@ import type { ApplyPosition } from "@/db/types";
 import type { ApplyData } from "@/lib/apply/data";
 import { isPublic, type Recruitment } from "@/lib/apply/positions";
 import { applyFormDefaults } from "@/lib/dashboard/details";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import type { TestViewer } from "@/lib/dashboard/viewer";
 import { NO_OWN_CHANGES, type OwnApplicationsStart, type OwnChanges } from "./own";
 import { dummyDetails, isWithdrawn, ownApplicationsOf } from "./own-applications";
 import { applicant as nonMember, departments, divisions, personFor, positions, type DummyPosition } from "./team";
@@ -161,7 +161,7 @@ export function dummyOpenLimit(selector: string | null): number | null {
  * The applicant each test developer viewer signs in as. The form starts from
  * their "Your details" as saved on My account or My profile (issue #169).
  */
-function applicantFor(viewer: ViewerKind, own: OwnChanges): Applicant {
+function applicantFor(viewer: TestViewer, own: OwnChanges): Applicant {
   return {
     id: `test-developer:${viewer}`,
     email: viewer === "non-member" ? nonMember.email : personFor[viewer].email,
@@ -197,7 +197,7 @@ const sentInThisServer = new SentApplications();
  * the own applications `ownStart` names.
  */
 export function dummyApplyData(
-  viewer: ViewerKind | null,
+  viewer: TestViewer | null,
   openSelector: string | null,
   recruitment: Recruitment = DEFAULT_DUMMY_RECRUITMENT,
   sent: SentApplications = sentInThisServer,

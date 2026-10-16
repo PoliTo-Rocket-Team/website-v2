@@ -67,10 +67,13 @@ export function DepartmentFilter({
   departments,
   value,
   onChange,
+  allLabel = "All departments",
 }: {
   departments: readonly string[];
   value: string | null;
   onChange: (department: string | null) => void;
+  /** The choice that narrows nothing: "All departments", or "All divisions" on the team leader's Members (board 73). */
+  allLabel?: string;
 }) {
   const options: readonly (string | null)[] = [null, ...departments];
   return (
@@ -78,7 +81,7 @@ export function DepartmentFilter({
       <DropdownMenuTrigger
         className={`flex h-10 items-center gap-2 rounded-xl border border-hairline px-3.5 text-[14px] text-prt-text transition-colors duration-300 ease-out hover:border-border-strong data-[state=open]:border-border-strong ${FOCUS}`}
       >
-        {value ?? "All departments"}
+        {value ?? allLabel}
         <ChevronDown aria-hidden className="h-4 w-4 text-prt-muted" strokeWidth={1.75} />
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
@@ -97,7 +100,7 @@ export function DepartmentFilter({
                 value={option ?? ""}
                 className="flex h-8 cursor-default items-center justify-between gap-4 rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[state=checked]:text-prt-text data-[highlighted]:text-prt-text"
               >
-                {option ?? "All departments"}
+                {option ?? allLabel}
                 <DropdownMenuPrimitive.ItemIndicator>
                   <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
                 </DropdownMenuPrimitive.ItemIndicator>

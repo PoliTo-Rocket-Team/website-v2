@@ -306,6 +306,23 @@ function phoneLine(person: DivisionPerson): string {
   return [person.chips.map((c) => c.label).join(", "), role, `since ${person.since}`].filter(Boolean).join(" · ");
 }
 
+/**
+ * Private data is blurred until hover (Owner decision, 2026-10-11), and
+ * until keyboard focus, so it can be read without a mouse. The division list
+ * no longer shows a phone (issue #251); the whole-team Members table does.
+ */
+export function Private({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <span
+      tabIndex={0}
+      aria-label={label}
+      className={`inline-block max-w-full truncate rounded-sm align-middle blur-[5px] transition-[filter] duration-300 ease-out hover:blur-none focus-visible:blur-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent`}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function MailAvatar() {
   return (
     <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-muted">

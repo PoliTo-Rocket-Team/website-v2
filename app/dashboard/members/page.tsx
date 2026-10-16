@@ -12,7 +12,8 @@ export const metadata: Metadata = {
 
 type Search = Promise<{ division?: string | string[] }>;
 
-// Boards 46 (operations lead: the whole team), 61e to 61h2 (division lead:
+// Boards 46 (operations lead: the whole team), 73 to 73c (the team leader:
+// the whole team with every member field, issue #252), 61e to 61h2 (division lead:
 // one of their divisions, `?division=` picking which, with the people waiting
 // for Confirm NDA and the member panels) and 69 to 69c (department head: every
 // division of the department as a tab). It replaces the legacy members page.

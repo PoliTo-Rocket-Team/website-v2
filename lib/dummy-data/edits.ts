@@ -4,6 +4,8 @@
 // module only parses and serializes them; lib/dashboard/open.ts reads and
 // writes the cookie.
 
+import { parseAlumnusKey, type EntryChange, type RoleFix } from "@/lib/about/alumni-record";
+import { MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, type NewAdvisor } from "@/lib/dashboard/alumni";
 import { parseMemberDetails, type MemberDetails } from "@/lib/dashboard/details";
 import { LEAVE_REASONS, type Departure, type DivisionRole } from "@/lib/dashboard/team";
 import type { DummyNotice } from "./notices";
@@ -60,9 +62,21 @@ export type DummyDepartmentEdit = {
 /** Confirm NDA on someone waiting: the day, and the member who confirmed it. */
 export type DummyConfirmation = { readonly on: string; readonly by: number };
 
+/**
+ * What the test developer changed on the Alumni page (issue #257): how
+ * someone shows, by their key ("m12", "e5"), and the advisors they added. A
+ * preview keeps no photos.
+ */
+export type DummyAlumniEdits = {
+  readonly entries: Readonly<Record<string, Omit<EntryChange, "photo">>>;
+  readonly advisors: readonly NewAdvisor[];
+};
+
+export const NO_ALUMNI_EDITS: DummyAlumniEdits = { entries: {}, advisors: [] };
+
 export type TeamEdits = {
-  /** Alumni whose "On the site" switch was flipped, by id. */
-  readonly shownOnSite: Readonly<Record<number, boolean>>;
+  /** The Alumni page's fixes and added advisors. */
+  readonly alumni: DummyAlumniEdits;
   /** Saved drawer and Promote changes, by person id. */
   readonly members: Readonly<Record<number, MemberChange>>;
   /** People moved to alumni, with their years on the team and why they left. */
@@ -86,7 +100,7 @@ export type TeamEdits = {
 };
 
 export const NO_EDITS: TeamEdits = {
-  shownOnSite: {},
+  alumni: NO_ALUMNI_EDITS,
   members: {},
   movedToAlumni: {},
   dismissedNotices: [],
@@ -224,6 +238,47 @@ function readDetails(value: unknown): Record<string, MemberDetails> {
   return out;
 }
 
+/** The Alumni page's entries are the largest after notices: fewer are kept. */
+const MAX_ALUMNI_ENTRIES = 8;
+const MAX_ADVISORS = 3;
+
+function readFix(value: unknown): RoleFix | null {
+  if (!isRecord(value) || !Number.isInteger(value.year) || typeof value.group !== "string" || typeof value.role !== "string") return null;
+  return { year: value.year as number, group: value.group.slice(0, MAX_ALUMNI_ROLE), role: value.role.slice(0, MAX_ALUMNI_ROLE) };
+}
+
+function readEntryChange(value: unknown): Omit<EntryChange, "photo"> | null {
+  if (!isRecord(value)) return null;
+  const { shown, removed, name, founder, fixes } = value;
+  const change: { -readonly [K in keyof Omit<EntryChange, "photo">]: EntryChange[K] } = {};
+  if (typeof shown === "boolean") change.shown = shown;
+  if (typeof removed === "boolean") change.removed = removed;
+  if (name === null || typeof name === "string") change.name = name === null ? null : name.slice(0, MAX_ALUMNI_NAME);
+  if (founder === null || founder === "founder" || founder === "co-founder") change.founder = founder;
+  if (Array.isArray(fixes)) change.fixes = fixes.flatMap((f) => readFix(f) ?? []).slice(0, 12);
+  return change;
+}
+
+function readAdvisor(value: unknown): NewAdvisor | null {
+  if (!isRecord(value)) return null;
+  const { name, role, from, to } = value;
+  if (typeof name !== "string" || typeof role !== "string" || !Number.isInteger(from) || !Number.isInteger(to)) return null;
+  return { name: name.slice(0, MAX_ALUMNI_NAME), role: role.slice(0, MAX_ALUMNI_ROLE), from: from as number, to: to as number };
+}
+
+function readAlumniEdits(value: unknown): DummyAlumniEdits {
+  if (!isRecord(value)) return NO_ALUMNI_EDITS;
+  const entries: Record<string, Omit<EntryChange, "photo">> = {};
+  if (isRecord(value.entries)) {
+    for (const [key, raw] of Object.entries(value.entries).slice(-MAX_ALUMNI_ENTRIES)) {
+      const change = readEntryChange(raw);
+      if (parseAlumnusKey(key) !== null && change !== null) entries[key] = change;
+    }
+  }
+  const advisors = Array.isArray(value.advisors) ? value.advisors.flatMap((a) => readAdvisor(a) ?? []).slice(-MAX_ADVISORS) : [];
+  return { entries, advisors };
+}
+
 /** A title as typed, trimmed and capped; empty is none. */
 export function cleanTitle(title: string | null): string | null {
   const trimmed = title?.trim().slice(0, MAX_TITLE) ?? "";
@@ -241,7 +296,7 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
   }
   if (!isRecord(raw)) return NO_EDITS;
   return {
-    shownOnSite: entriesOf(raw.shownOnSite, (v) => (typeof v === "boolean" ? v : null)),
+    alumni: readAlumniEdits(raw.alumni),
     members: entriesOf(raw.members, readMemberChange),
     movedToAlumni: entriesOf(raw.movedToAlumni, readDeparture),
     dismissedNotices: Array.isArray(raw.dismissedNotices)

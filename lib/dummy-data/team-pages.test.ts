@@ -75,7 +75,7 @@ test("Leaves the team takes someone off the tree and onto the Alumni page", asyn
   assert.ok(!names.includes("Elif Kaya"));
 
   const alumni = await pages("operations-lead", edits).view.alumni();
-  assert.ok(alumni.rows.some((a) => a.name === "Elif Kaya" && a.from === 2025 && a.to === 2026 && a.shownOnSite === true));
+  assert.ok(alumni.rows.some((a) => a.name === "Elif Kaya" && a.from === 2025 && a.to === 2026 && a.shown === true));
 });
 
 test("Leaves the team ends their access and keeps them on record", async () => {
@@ -293,7 +293,7 @@ test("viewers who do not reach a page get no data from it", async () => {
   assert.equal((await member.members()).scope, "none");
   assert.deepEqual(await member.findForAdd(MISSION_ANALYSIS, "sara"), { kind: "none" });
   assert.deepEqual((await member.alumni()).rows, []);
-  assert.equal(await member.teamWrites!.setShownOnSite(1006, true), false);
+  assert.equal(await member.teamWrites!.setAlumnusShown("m1006", true), false);
   assert.equal((await member.teamWrites!.addMember({ kind: "member", divisionId: 1, personId: 3, title: null })).ok, false);
   const applicant = pages("non-member").view;
   assert.equal((await applicant.teamTree()).departments.length, 0);
