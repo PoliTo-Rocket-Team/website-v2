@@ -200,6 +200,18 @@ export function firstPostError(errors: PostFieldErrors): { field: PostField; err
   return undefined;
 }
 
+/**
+ * A failed check's errors as the panel still shows them: a field's error goes
+ * once the field is edited after the check, so a fixed field stops reading as
+ * wrong before the next save.
+ */
+export function standingErrors(failed: { fields: PostFields; errors: PostFieldErrors } | null, now: PostFields): PostFieldErrors {
+  if (failed === null) return {};
+  return Object.fromEntries(
+    FIELD_ORDER.filter((field) => failed.errors[field] !== undefined && failed.fields[field] === now[field]).map((field) => [field, failed.errors[field]]),
+  );
+}
+
 /** A check as a write's answer: the post, or the first thing it still needs. */
 export function postCheckResult(check: PostCheck): WriteResult<OutreachPost> {
   if (check.ok) return { ok: true, value: check.value };

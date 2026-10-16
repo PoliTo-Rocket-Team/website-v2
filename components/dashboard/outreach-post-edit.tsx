@@ -10,7 +10,7 @@ import { PostPage } from "@/components/outreach/post-page";
 import type { EditBlocks } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import { slugOf, type Neighbouring } from "@/lib/outreach";
-import { checkPostFields, firstPostError, postFieldsOf, postViewOf, type PostFieldErrors, type PostFields } from "@/lib/outreach-post-fields";
+import { checkPostFields, firstPostError, postFieldsOf, postViewOf, standingErrors, type PostFieldErrors, type PostFields } from "@/lib/outreach-post-fields";
 import type { OutreachPost, OutreachTag } from "@/lib/outreach-types";
 import { EditShell } from "./edit-shell";
 import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post-panel";
@@ -47,7 +47,8 @@ export function OutreachPostEdit({
   const [fields, setFields] = useState<PostFields>(() => postFieldsOf(editorVersion(initial.version)));
   // A save hands the panel the stored fields; it starts afresh on them.
   const [revision, setRevision] = useState(0);
-  const [errors, setErrors] = useState<PostFieldErrors>({});
+  // The last failed check and the fields it judged; an edited field drops its error.
+  const [failed, setFailed] = useState<{ fields: PostFields; errors: PostFieldErrors } | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [expanded, setExpanded] = useState<PostSection[]>([]);
   const [scrollTo, setScrollTo] = useState<{ section: PostSection } | null>(null);
@@ -55,6 +56,7 @@ export function OutreachPostEdit({
 
   const opened = editorVersion(item.version);
   const view = postViewOf(fields, opened);
+  const errors = standingErrors(failed, fields);
 
   const openSection = useCallback((section: PostSection) => {
     setPanelOpen(true);
@@ -65,7 +67,7 @@ export function OutreachPostEdit({
   const save = (step: PublishStep) => {
     const check = checkPostFields(fields, opened, tags);
     if (!check.ok) {
-      setErrors(check.errors);
+      setFailed({ fields, errors: check.errors });
       const first = firstPostError(check.errors);
       if (first !== undefined) {
         openSection(SECTION_OF[first.field]);
@@ -73,7 +75,7 @@ export function OutreachPostEdit({
       }
       return;
     }
-    setErrors({});
+    setFailed(null);
     startTransition(async () => {
       const result = await saveOutreachPost(item.id, step, fields);
       if (!result.ok) {
