@@ -9,6 +9,11 @@ import { TEST_VIEWERS } from "../dashboard/viewer";
 import { TESTERS } from "../dev-tester";
 import { checkFaqFields, fieldsOf as faqFields } from "../faq/faq";
 import { checkPartnerFields, fieldsOf as partnerFields } from "../partners-fields";
+import { publicOutreach } from "../outreach-editor";
+import { importedOutreach } from "../outreach-import";
+import { checkPostFields, draftOfFields, postFieldsOf } from "../outreach-post-fields";
+import { checkSummitFields, summitFieldsOf } from "../outreach-summit-fields";
+import { CHANNEL_NAMES } from "../outreach-types";
 import { orderStatusEnum } from "../../db/schema";
 import { ANONYMIZED_KEPT_NAME } from "../../db/seed/alumni";
 import {
@@ -19,6 +24,9 @@ import {
   isActive,
   memberOfUser,
   orgOf,
+  outreachItemsOf,
+  outreachSummitOf,
+  outreachTagsOf,
   partnerItemsOf,
   resolvesTo,
   SEED_AREAS,
@@ -331,4 +339,71 @@ test("every order, application and slot names seeded rows", () => {
   unique(data.interviewSlots.map((s) => s.id), "a slot id");
   unique(data.partners.map((p) => p.id), "a partner id");
   unique(data.faqs.map((f) => f.id), "a question id");
+});
+
+// Outreach (issue #309).
+
+test("every tag and every channel type is on a seeded post, among both draft and published posts", () => {
+  const items = outreachItemsOf(data);
+  const versions = items.flatMap((item) =>
+    item.version.state === "draft" ? [item.version.draft] : [item.version.published, ...(item.version.draft === null ? [] : [item.version.draft])],
+  );
+  for (const tag of outreachTagsOf(data)) assert.ok(versions.some((p) => p.tags.includes(tag.name)), tag.name);
+  for (const name of CHANNEL_NAMES) assert.ok(versions.some((p) => p.channels[name] !== undefined), name);
+  assert.ok(items.some((i) => i.version.state === "published" && i.version.draft === null), "no published post");
+  assert.ok(items.some((i) => i.version.state === "published" && i.version.draft !== null), "no published post with draft changes");
+  assert.ok(items.some((i) => i.version.state === "draft"), "no draft post");
+});
+
+test("the outreach rows read back to the import's content, plus the seed's own posts and draft", () => {
+  const imported = importedOutreach();
+  assert.deepEqual(outreachTagsOf(data), imported.tags);
+  assert.deepEqual(outreachSummitOf(data), imported.summit);
+  const items = outreachItemsOf(data);
+  assert.equal(items.length, data.outreachPosts.length, "a post has no version");
+  for (const item of imported.posts) {
+    const seeded = items.find((i) => i.id === item.id);
+    assert.ok(seeded?.version.state === "published", `post ${item.id}`);
+    assert.deepEqual(seeded.version.published, item.version.state === "published" && item.version.published, `post ${item.id}`);
+  }
+  const shown = publicOutreach({ posts: items, summit: outreachSummitOf(data)!, tags: outreachTagsOf(data) });
+  assert.equal(shown.posts.length, items.filter((i) => i.version.state === "published").length);
+});
+
+test("every seeded post and summit version passes the editor's own checks", () => {
+  const tags = outreachTagsOf(data);
+  for (const item of outreachItemsOf(data)) {
+    if (item.version.state === "draft") {
+      const draft = item.version.draft;
+      const saved = draftOfFields(postFieldsOf(draft), draft, tags);
+      assert.ok(saved.ok, `post ${item.id}: ${JSON.stringify(saved)}`);
+      assert.deepEqual(saved.value, draft, `post ${item.id} is not what Save draft keeps`);
+      continue;
+    }
+    for (const post of [item.version.published, ...(item.version.draft === null ? [] : [item.version.draft])]) {
+      const checked = checkPostFields(postFieldsOf(post), post, tags);
+      assert.ok(checked.ok, `post ${item.id}: ${JSON.stringify(checked)}`);
+      assert.deepEqual(checked.value, post, `post ${item.id} is not what Publish keeps`);
+    }
+  }
+  const summit = outreachSummitOf(data);
+  assert.ok(summit);
+  const checked = checkSummitFields(summitFieldsOf(summit.published), summit.published);
+  assert.ok(checked.ok, JSON.stringify(checked));
+});
+
+test("every outreach key is unique, and every post tag names a seeded version and a tag in the list", () => {
+  unique(data.outreachPosts.map((p) => p.id), "an outreach post id");
+  unique(data.outreachTags.map((t) => t.name), "a tag name");
+  unique(data.outreachTags.map((t) => t.listOrder), "a tag's place in the list");
+  unique(data.outreachPostVersions.map((v) => `${v.postId}/${v.version}`), "an outreach post version");
+  unique(data.outreachPostTags.map((t) => `${t.postId}/${t.version}/${t.position}`), "a post tag's place");
+  unique(data.outreachPostTags.map((t) => `${t.postId}/${t.version}/${t.tagName}`), "a tag on one post version");
+  const tagNames = new Set(data.outreachTags.map((t) => t.name));
+  for (const t of data.outreachPostTags) {
+    assert.ok(tagNames.has(t.tagName), `post ${t.postId}: ${t.tagName} is not in the tag list`);
+    assert.ok(data.outreachPostVersions.some((v) => v.postId === t.postId && v.version === t.version), `post ${t.postId} ${t.version}`);
+  }
+  for (const v of data.outreachPostVersions) assert.ok(data.outreachPosts.some((p) => p.id === v.postId), `version of post ${v.postId}`);
+  assert.equal(data.outreachTags.filter((t) => t.award).length, 1, "the list has one award tag");
 });
