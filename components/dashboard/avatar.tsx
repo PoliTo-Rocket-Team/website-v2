@@ -4,6 +4,8 @@ const SIZES = {
   xs: "h-5 w-5 text-[8px]",
   sm: "h-7 w-7 text-[10px]",
   md: "h-8 w-8 text-[11px]",
+  /** The navbar's account button (board 01b). */
+  nav: "h-[38px] w-[38px] text-[12px]",
   ml: "h-11 w-11 text-[13px]",
   /** The applicant at the top of the detail panel (board 41b). */
   panel: "h-12 w-12 text-[15px]",
