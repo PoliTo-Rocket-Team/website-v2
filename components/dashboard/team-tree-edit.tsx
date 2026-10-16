@@ -177,7 +177,8 @@ function StructureCanvas({
 
   return (
     <section ref={frame} aria-label="Team structure" className="mt-6 overflow-x-auto rounded-xl border border-hairline px-4 py-6 md:px-8 md:py-8">
-      <div className="md:mx-auto md:w-max">
+      {/* Columns share the frame's width, so the whole row, Add department included, fits without scrolling (77b); past the narrowest column it scrolls. */}
+      <div className="md:min-w-min">
         {leader && (
           <div className="flex flex-col items-center">
             <div className="flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border border-accent/70 bg-accent/[0.06] px-3 text-center">
@@ -188,9 +189,9 @@ function StructureCanvas({
             <span aria-hidden className="hidden h-4 border-l border-border-strong md:block" />
           </div>
         )}
-        <ol className="mt-4 flex flex-col gap-6 md:mt-0 md:flex-row md:gap-2.5">
+        <ol className="mt-4 flex flex-col gap-6 md:mt-0 md:flex-row md:justify-center md:gap-2.5">
           {columns.map((column, i) => (
-            <li key={column.key} className="relative md:w-[150px] md:shrink-0 md:pt-4">
+            <li key={column.key} className="relative md:min-w-[112px] md:max-w-[150px] md:flex-1 md:basis-0 md:pt-4">
               {/* The bus under the leader, and the tick down to this column. */}
               {leader && (
                 <span aria-hidden className="hidden md:block">
