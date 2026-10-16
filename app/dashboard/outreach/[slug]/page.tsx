@@ -6,7 +6,7 @@ import { OutreachPostEdit } from "@/components/dashboard/outreach-post-edit";
 import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import type { PostFrame } from "@/components/outreach/post";
 import { PostPage } from "@/components/outreach/post-page";
-import { maySiteContent } from "@/lib/content/gate";
+import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { postBySlug } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
@@ -20,8 +20,8 @@ type Params = { params: Promise<{ slug: string }> };
 // Board 74b (issue #288): an Outreach post on its real page under the edit
 // shell, each part outlined as a block. The post is read as the public page
 // reads it (lib/outreach-public.ts), so it shows as published and
-// nothing on it can be changed yet. The site-content rule decides who opens
-// it (lib/content/gate.ts); everyone else gets the dashboard's not found.
+// nothing on it can be changed yet. The Outreach page's reach decides who opens
+// it (lib/dashboard/access.ts, the site-content rule); everyone else gets the dashboard's not found.
 export default function OutreachPostEditPage({ params }: Params) {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
@@ -37,7 +37,7 @@ async function LivePost({ params }: Params) {
   const opening = await openDashboard();
   if (opening.kind === "signed-out") redirect(`/login?cb=/dashboard/outreach/${encodeURIComponent(slug)}`);
   if (opening.kind === "account-unresolved") return null;
-  if (!maySiteContent(opening.data.viewer)) notFound();
+  if (!canReach(opening.data.viewer, "outreach")) notFound();
   const { posts } = await publishedOutreach();
   const post = postBySlug(posts, slug);
   if (post === undefined) notFound();

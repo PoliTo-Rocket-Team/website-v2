@@ -2,7 +2,7 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
 import { maySiteContent, SITE_CONTENT_REFUSAL } from "./gate";
 import { nextSiteOrder, reorderedSlots, type SiteSlot } from "./order";
-import { afterStep, editorVersion, type ContentItem, type PublishStep, type Versioned } from "./versioned";
+import { afterStep, editorVersion, unpublished, type ContentItem, type PublishStep, type Versioned } from "./versioned";
 
 // One content type's editor (issue #256): the reads and writes a dashboard
 // content page makes, behind the site-content gate (./gate.ts), with the
@@ -36,6 +36,8 @@ export interface ContentEditor<T> {
    */
   save(id: number | null, step: PublishStep, prepare: (current: T | null) => Promise<WriteResult<T>>): Promise<WriteResult<ContentItem<T>>>;
   remove(id: number): Promise<WriteResult<null>>;
+  /** Unpublish: the item leaves the public site and stays as a draft (`unpublished`). */
+  unpublish(id: number): Promise<WriteResult<ContentItem<T>>>;
   /** One group's items, in the order of `ids`. A group is read from the version the editor shows. */
   reorder(inGroup: (content: T) => boolean, ids: readonly number[]): Promise<WriteResult<null>>;
 }
@@ -63,6 +65,14 @@ export function contentEditor<T>(viewer: ViewerStanding, store: ContentStore<T>)
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
       if (!(await store.list()).some((item) => item.id === id)) return refused(gone);
       return store.remove(id);
+    },
+
+    async unpublish(id) {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      const current = (await store.list()).find((item) => item.id === id);
+      if (current === undefined) return refused(gone);
+      const version = unpublished(current.version);
+      return version === null ? refused("This item is not on the site.") : store.update(id, version);
     },
 
     async reorder(inGroup, ids) {
