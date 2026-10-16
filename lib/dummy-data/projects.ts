@@ -3,6 +3,8 @@ import type { ContentStore } from "@/lib/content/editor";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ContentItem, Versioned } from "@/lib/content/versioned";
 import { isProjectRecord } from "@/lib/project-content/check";
+import type { EditStamp } from "@/lib/project-content/edited";
+import type { EditHistory } from "@/lib/project-content/editor";
 import { importedProjects } from "@/lib/project-content/import";
 import { PROJECT_SECTIONS, type ProjectRecord, type ProjectSection } from "@/lib/project-content/record";
 import {
@@ -14,6 +16,7 @@ import {
   type ContentEditsStore,
 } from "./content-edits";
 import { DUMMY_STATE_COOKIE_BYTES } from "./state";
+import { DUMMY_NOW } from "./team";
 
 // The projects on previews and in test-developer sessions (issue #295), which
 // never touch a database. They start from the projects the import carries
@@ -169,4 +172,27 @@ export function dummyProjectStore(edits: DummyProjectEditsStore): ContentStore<P
     await edits.save(next);
     return null;
   });
+}
+
+/** Who last edited each seed project, as board 75 lists them: VES's draft changes are today's. */
+const SEED_STAMPS: readonly (readonly [number, EditStamp])[] = [
+  [1, { at: "2026-09-12T11:00:00+02:00", by: "Giulia Rossi" }],
+  [DRAFTED_ID, { at: DUMMY_NOW, by: "Marco Bianchi" }],
+  [3, { at: "2026-10-02T15:00:00+02:00", by: "Elisa Marchi" }],
+];
+
+/**
+ * The dummy projects' edit history, seen from the dummy team's moment: the
+ * seed's stamps, and every project the test developer saved, edited today by
+ * `by` (the person they are signed in as). Moving a card is not an edit.
+ */
+export function dummyProjectHistory(edits: DummyProjectEditsStore, by: string | null): EditHistory {
+  return {
+    async stamps() {
+      const stamps = new Map(SEED_STAMPS);
+      for (const item of edits.current.saved) stamps.set(item.id, { at: DUMMY_NOW, by });
+      return stamps;
+    },
+    now: () => new Date(DUMMY_NOW),
+  };
 }

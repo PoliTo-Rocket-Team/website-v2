@@ -60,7 +60,7 @@ Rules:
   board 05). Outreach tags are data, so the home Track record cards (`latest.tsx`) give the
   award tag accent and every other tag `white-10` with `prt-text`. Project status pills sit on a texture, so they follow
   board 21 instead: flown = `ground/70` with `prt-text`, In design = `prt-text` with `ground`
-  (`projects.tsx`).
+  (`project-card.tsx`).
 - Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
   `stage-pill.tsx`): New and "Interview · no time yet" = `white-10` with `prt-text`, In review =
   `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
@@ -354,7 +354,7 @@ the rocket stays where it rests. The canvas wrapper hangs above and below the ca
 bottom only. The vehicle and camera hold still in the scene.
 At rest the nose sits about 30px below the card top and
 the flags show just above the info box. The canvas takes no pointer events. No raycast hover
-(`projects.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
+(`project-card.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
 `rocket-card-3d.tsx`, not the JSX. Any new vehicle model follows
 `.claude/skills/rocket-surface/`.
 Phones (board 24): the cards sit side by side in a horizontal swipe row (`swipe-row.tsx`),
@@ -365,7 +365,7 @@ values. The rocket keeps the nose-to-mid-body framing, its nose about 20px below
 The row clips its vertical overflow (the hanging canvases), so it ends below the cards' whole
 shadow (56px), and the dots pull back up to sit 20px under the cards: the clip never cuts the
 shadow into a line (issue #50, `swipe-row.tsx`).
-Phone copy is shorter (`phone` text in `projects.tsx`): VES "130 mm, all-SRAD systems. Mark II
+Phone copy is shorter (the record's `phone` text, drawn by `project-card.tsx`): VES "130 mm, all-SRAD systems. Mark II
 won Design & Build at IREC 2025.", years "24–25", Cavour motor "Solid L", VES "MARKS" "Mk I–II",
 Efesto fuel "Ethanol".
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
-import { HomeProjectCard } from "@/components/landing/projects";
+import { HomeProjectCard } from "@/components/landing/project-card";
 import { ProjectHero } from "@/components/project-page/hero";
 import { dummyDataOn } from "@/lib/dummy-data/mode";
 import type { HomeCardView } from "@/lib/project-content/record";
