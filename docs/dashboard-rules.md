@@ -237,8 +237,44 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
 - The person who takes over keeps every role they already hold.
 - A lead taken off with Remove and no replacement is not a hand-over: Remove keeps its three
   outcomes (see Divisions below).
-- **Planned:** a role holder's own request from My profile, which the next level up confirms
-  (board 55d), is #262.
+- **A role holder's own request from My profile** (#262, boards 55d and 62c; Owner decisions of
+  2026-10-16):
+  - A division lead and a department head see **Hand over your role** on My profile in place of
+    "Leave the team". A member with no role, and the team leader, keep "Leave the team" (the team
+    leader hands over from the Team Leader box, board 77i). The server refuses Leave the team
+    for a lead or a head.
+  - Someone who leads a division and heads a department hands over the department. Someone who
+    leads two divisions hands over the oldest one.
+  - The dialog asks two things, with nothing picked at first: **1. Who takes over**, a select of
+    the people in their unit (everyone else in the lead's division, a co-lead included; everyone
+    in a division of the head's department who does not head it already), and **2. After you
+    hand it over**: Become an advisor ("Stay in <unit> with the Advisor role, without the lead
+    role. Your access ends.") or Leave the team.
+  - **Send for confirmation** stores a **pending hand-over** and changes no role and no access.
+    One request waits per person; My profile then shows that it waits, for whom, and what they do
+    next. It is refused when nobody could confirm it (no head in the department, or no team
+    leader).
+  - **Who confirms:** the next level up. A head of the lead's department confirms a division
+    lead's request; the team leader confirms a department head's. Nobody answers their own
+    request. Only they see the request, and the server refuses Confirm and Decline from
+    everyone else, full access included.
+  - **The approver's row (board 62c):** the request is the top row of "Needs your attention" on
+    their Overview, on an accent background: "<person> wants to hand over <role> to <successor>",
+    then "Sent <when> · <first name> then becomes an advisor, without access" (or "then leaves the
+    team"), with **Decline** and **Confirm**. A request whose sender no longer holds the role
+    shows no row.
+  - **Confirm** runs the hand-over at once with the chosen successor and outcome: the successor
+    holds the role and its access (a lead's successor leads the division; a head's successor
+    gets a head role on the department and keeps every role they hold). A sender who chose
+    Become an advisor keeps only the Advisor role in their unit, and **every access row they held
+    is removed**; one who chose Leave the team leaves, as Leaves the team does. Confirm is
+    refused when the successor is no longer in the unit; Decline still answers it.
+  - **Decline** changes no role. The sender may send a new request.
+  - **Both answers notify the sender:** a notice under "Needs your attention" on their Overview
+    ("<approver> confirmed your hand-over" or "declined"). A sender who is now an advisor reads it
+    on their member Overview, above board 52's panels.
+  - **Gap:** a sender who chose Leave the team is off the team once it is confirmed. Their notice
+    is stored, but the applicant's pages show no notices.
 
 ### Members page
 
@@ -306,7 +342,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
   and every access ends, after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
-  recruitment manager are told. The person moves to Alumni.
+  recruitment manager are told. The person moves to Alumni. A division lead or a department head
+  hands their role over instead (see Handing over a role).
   - The lead of each division the person was in gets a notice under "Needs your attention" on
     their Overview, until they dismiss it (#201).
   - **Gap:** the recruitment manager is not told; the dashboard has none yet. Tracked in #194.

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
@@ -25,6 +25,7 @@ import {
   interviewSummary,
   rosterSize,
   type ActivityItem,
+  isAnswerHandOver,
   isDismissNotice,
   type AttentionAction,
   type AttentionItem,
@@ -37,6 +38,7 @@ import {
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { Avatar } from "./avatar";
+import { AnswerHandOver } from "./answer-hand-over";
 import { DismissNotice } from "./dismiss-notice";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
@@ -186,18 +188,24 @@ function LeadView({
 }
 
 // On board 56m each row is its own card, with no icon tile, the shorter
-// title and a small filled pill.
+// title and a small filled pill. A hand-over waiting for the viewer (board
+// 62c, issue #262) is the top row, on an accent tint with an accent icon
+// tile, and answers with Decline and Confirm.
 function AttentionPanel({ attention, compact }: { attention: readonly AttentionItem[]; compact: boolean }) {
   return (
     <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`} phoneCards={compact}>
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.kind];
+        const handOver = item.kind === "hand-over";
         return (
-          <li key={attentionKey(item)} className="flex items-center gap-4 px-4 py-3.5 md:px-5">
+          <li
+            key={attentionKey(item)}
+            className={`flex items-center gap-4 px-4 py-3.5 md:px-5 ${handOver ? "bg-accent/[0.05] md:last:rounded-b-xl" : ""}`}
+          >
             <span
-              className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-hairline bg-white-5 text-text-2 ${
-                compact ? "hidden md:flex" : "flex"
-              }`}
+              className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+                handOver ? "border-accent/30 bg-accent-soft text-accent" : "border-hairline bg-white-5 text-text-2"
+              } ${compact ? "hidden md:flex" : "flex"}`}
             >
               <Icon aria-hidden className="h-4 w-4" strokeWidth={1.75} />
             </span>
@@ -365,6 +373,7 @@ function plural(n: number, one: string, many: string): string {
 
 /** A link to the page that handles the row, or Dismiss on a stored notice. */
 function AttentionButton({ action, chip = false }: { action: AttentionAction; chip?: boolean }) {
+  if (isAnswerHandOver(action)) return <AnswerHandOver requestId={action.answerHandOver} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -372,8 +381,9 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
   );
 }
 
-/** A notice by its id: two notices may read alike. */
+/** A notice or a hand-over by its id: two of them may read alike. */
 function attentionKey(item: AttentionItem): string {
+  if (isAnswerHandOver(item.action)) return `hand-over-${item.action.answerHandOver}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -385,6 +395,7 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   notice: UserMinus,
   "orders-to-decide": ShoppingCart,
   "approved-orders": Package,
+  "hand-over": ArrowRightLeft,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
@@ -405,11 +416,19 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
 // Board 52m: the person sits on the page with no frame and no edit button
 // (My profile is in the user menu), each panel's count moves beside its title,
 // and the hint is left out.
+// Board 52. A member's stored notices, when they have any (the answer to a
+// hand-over they sent, issue #262), sit above it as the leads' "Needs your
+// attention" panel, so board 52 itself is unchanged when there are none.
 function PersonalView({ overview }: { overview: PersonalOverview }) {
-  const { person, checklist, roster, hint } = overview;
+  const { attention, person, checklist, roster, hint } = overview;
   const main = checklist ? <ChecklistPanel checklist={checklist} /> : null;
   return (
     <>
+      {attention.length > 0 && (
+        <div className="mb-5 md:mb-6">
+          <AttentionPanel attention={attention} compact />
+        </div>
+      )}
       <section className={PERSON_FRAME}>
         <PersonLines name={person.name} line={person.line} since={person.since} />
         {person.edit && (

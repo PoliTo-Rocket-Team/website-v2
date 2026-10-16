@@ -14,12 +14,14 @@ import {
   type LeaveState,
   type MyProfile,
 } from "@/lib/dashboard/self";
+import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
 import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Drawer } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { HandOverDialog, handOverRowText } from "./hand-over-dialog";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
 import { DetailValue, EditPill, YourDetailsCard } from "./your-details";
@@ -30,6 +32,7 @@ type Actions = {
   removePhoto: () => Promise<WriteResult<null>>;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
   leaveTeam: (reason: string, removeFromAlumni: boolean) => Promise<WriteResult<DashboardLanding>>;
+  sendHandOver: (input: HandOverSend) => Promise<WriteResult<null>>;
   deleteAccount: (withdrawOpenApplications: boolean, removeFromAlumni: boolean) => Promise<WriteResult<null>>;
 };
 
@@ -46,7 +49,14 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
         <DetailsCard profile={profile} saveLinkedin={actions.saveLinkedin} />
         <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
         <AccountCard signIn={profile.signIn} />
-        <LeaveOrDelete leave={profile.leave} session={session} leaveTeam={actions.leaveTeam} deleteAccount={actions.deleteAccount} />
+        <LeaveOrDelete
+          leave={profile.leave}
+          handOver={profile.handOver}
+          session={session}
+          leaveTeam={actions.leaveTeam}
+          sendHandOver={actions.sendHandOver}
+          deleteAccount={actions.deleteAccount}
+        />
       </div>
     </>
   );
@@ -385,28 +395,48 @@ const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your a
 /**
  * Board 55's "Leave or delete": one card from md, two on phones (55m). Leave
  * asks first, with an optional reason (55b); Delete asks for the word DELETE
- * (55c).
+ * (55c). A division lead or a department head has "Hand over your role" in
+ * place of Leave (board 55d, issue #262): it asks who takes over and what
+ * they do next, then waits for the next level up.
  */
 function LeaveOrDelete({
   leave: initial,
+  handOver: initialOffer,
   session,
   leaveTeam,
+  sendHandOver,
   deleteAccount,
 }: {
   leave: LeaveState;
+  handOver: HandOverOffer | null;
   session: ViewerSession;
   leaveTeam: Actions["leaveTeam"];
+  sendHandOver: Actions["sendHandOver"];
   deleteAccount: Actions["deleteAccount"];
 }) {
   const [leave, setLeave] = useState(initial);
-  const [asking, setAsking] = useState<"leave" | "delete" | null>(null);
+  const [offer, setOffer] = useState(initialOffer);
+  const [asking, setAsking] = useState<"leave" | "hand-over" | "delete" | null>(null);
   const left = leave === "left";
 
-  const leaveButton = !left && (
-    <button type="button" onClick={() => setAsking("leave")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
-      Leave the team
-    </button>
-  );
+  const exitRow =
+    offer !== null ? (
+      <DangerRow title="Hand over your role" text={handOverRowText(offer)}>
+        {offer.waiting === null && (
+          <button type="button" onClick={() => setAsking("hand-over")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
+            Hand over your role
+          </button>
+        )}
+      </DangerRow>
+    ) : (
+      <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
+        {!left && (
+          <button type="button" onClick={() => setAsking("leave")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
+            Leave the team
+          </button>
+        )}
+      </DangerRow>
+    );
   const deleteButton = (
     <button type="button" onClick={() => setAsking("delete")} className={`${DANGER_PILL} w-full md:w-auto`}>
       Delete account
@@ -417,20 +447,14 @@ function LeaveOrDelete({
     <>
       <Card title="Leave or delete" danger className="hidden md:block">
         <div className="divide-y divide-danger/25">
-          <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
-            {leaveButton}
-          </DangerRow>
+          {exitRow}
           <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
             {deleteButton}
           </DangerRow>
         </div>
       </Card>
       <div className="flex flex-col gap-5 md:hidden">
-        <section className="rounded-xl border border-hairline bg-panel/60">
-          <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
-            {leaveButton}
-          </DangerRow>
-        </section>
+        <section className="rounded-xl border border-hairline bg-panel/60">{exitRow}</section>
         <DangerBox>
           <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
             {deleteButton}
@@ -445,6 +469,18 @@ function LeaveOrDelete({
         // The dialog stays open, pending, until the applicant's page replaces this one (issue #227).
         onLeft={() => setLeave("left")}
       />
+      {offer !== null && (
+        <HandOverDialog
+          open={asking === "hand-over"}
+          onOpenChange={(open) => setAsking(open ? "hand-over" : null)}
+          offer={offer}
+          sendHandOver={sendHandOver}
+          onSent={(waiting) => {
+            setOffer({ ...offer, waiting });
+            setAsking(null);
+          }}
+        />
+      )}
       <DeleteAccountDialog
         open={asking === "delete"}
         onOpenChange={(open) => setAsking(open ? "delete" : null)}

@@ -28,6 +28,7 @@ import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
+import { readHandOverOffer } from "./database-hand-over";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
   columnsFromDetails,
@@ -54,6 +55,7 @@ import {
 import { fileSize } from "./recruitment";
 import {
   checkPhoto,
+  HAND_OVER_FIRST,
   leaveReason,
   normalizeLinkedin,
   type DeleteAccount,
@@ -96,10 +98,11 @@ async function readLeaveState(memberId: number): Promise<LeaveState> {
 async function readProfile(identity: DashboardIdentity): Promise<MyProfile | null> {
   const memberId = identity.memberId;
   if (identity.kind === "non-member" || memberId === null) return null;
-  const [[member], details, leave] = await Promise.all([
+  const [[member], details, leave, handOver] = await Promise.all([
     getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
     readDetails(identity.userId),
     readLeaveState(memberId),
+    readHandOverOffer(identity),
   ]);
   const role = identity.role;
   const linkedin = identity.linkedin === null ? null : normalizeLinkedin(identity.linkedin);
@@ -112,6 +115,7 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
     signIn: { provider: "google", email: identity.email },
     leave,
     details,
+    handOver,
   };
 }
 
@@ -179,6 +183,8 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
   const memberId = identity.memberId;
   if (memberId === null) return refused("This page is for team members.");
   if ((await readLeaveState(memberId)) === "left") return refused("You already left the team.");
+  // A lead or head leaves through "Hand over your role", which the next level up confirms (issue #262).
+  if ((await readHandOverOffer(identity)) !== null) return refused(HAND_OVER_FIRST);
   const why = leaveReason(reason);
   const notices = await memberLeftNoticesFor(memberId, why);
   await runAuditBatch((db) => [

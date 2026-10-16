@@ -71,7 +71,7 @@ import {
 } from "./orders";
 import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
-import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
+import { HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
@@ -103,7 +103,7 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
+import { dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -574,7 +574,7 @@ function rosterPreview(me: DummyPerson): RosterPerson[] {
   }));
 }
 
-function memberOverview(): PersonalOverview {
+function memberOverview(notices: DummyNotices): PersonalOverview {
   const me = personFor.member;
   const division = divisionOf(myDivisionId("member"));
   const department = departmentOf(division.id);
@@ -597,6 +597,7 @@ function memberOverview(): PersonalOverview {
   const size = people.filter((p) => isIn(p.placement, division.id)).length;
   return {
     shape: "personal",
+    attention: dummyNoticeAttention(me, notices, NOW),
     person: {
       name: me.name,
       line: `${me.title} · ${division.name} · ${department.name}`,
@@ -627,7 +628,7 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamS
     case "division-lead":
       return divisionOverview(team, notices);
     case "member":
-      return memberOverview();
+      return memberOverview(notices);
     case "non-member":
       throw new DashboardRefused("a non-member's Overview is built from My applications");
   }
@@ -869,6 +870,12 @@ export function dummyDashboardData(
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(viewer, me, own.current, ownStart);
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [viewer]: details } });
+  // Hand over your role from My profile, and its answer on the next level up's Overview (issue #262).
+  const handOvers = dummyHandOverPages(viewer, teamEdits.current, teamEdits.save, team.applications);
+  const shapeOfOverview = (): TeamSideOverview =>
+    viewer === "team-leader"
+      ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
+      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current));
 
   // One move for both pages: the Applications panel and the Members page's
   // Confirm join (board 59) run it, so the application is the one record of
@@ -892,10 +899,14 @@ export function dummyDashboardData(
     viewer: dummyViewer(viewer, holders),
     navCounts: async () => navCountsFor(kind, team),
     hasOwnApplications: async () => ownApplicationsOf(viewer, ownStart).length > 0,
-    overview: async () =>
-      viewer === "team-leader"
-        ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
-        : overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
+    // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c).
+    overview: async () => {
+      const overview = shapeOfOverview();
+      const answering = handOvers.attention(NOW);
+      return answering.length === 0 ? overview : { ...overview, attention: [...answering, ...overview.attention] };
+    },
+    sendHandOver: handOvers.sendHandOver,
+    answerHandOver: handOvers.answerHandOver,
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {
@@ -1005,7 +1016,7 @@ export function dummyDashboardData(
     // Seen from the dummy team's moment, so a question saved here reads "Today".
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
 
-    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
+    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {
       if (person === null) return refused(notOnTeam);
       const result = dummySaveLinkedin(text);
@@ -1017,6 +1028,8 @@ export function dummyDashboardData(
     async leaveTeam(reason, removeFromAlumni) {
       if (person === null) return refused(notOnTeam);
       if (leaveStateOf(person) === "left") return refused("You already left the team.");
+      // A lead or head leaves through "Hand over your role", which the next level up confirms (issue #262).
+      if (handOvers.offer() !== null) return refused(HAND_OVER_FIRST);
       // The reason is checked as the database side checks it; a preview keeps none.
       leaveReason(reason);
       const year = new Date(DUMMY_NOW).getUTCFullYear();

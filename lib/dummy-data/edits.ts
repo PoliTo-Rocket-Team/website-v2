@@ -9,6 +9,9 @@ import { MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, type NewAdvisor } from "@/lib/dashboa
 import { parseMemberDetails, type MemberDetails } from "@/lib/dashboard/details";
 import type { AdvisorPlace, SteppingDown } from "@/lib/dashboard/hand-over";
 import { LEAVE_REASONS, type Departure, type DivisionRole } from "@/lib/dashboard/team";
+import { isHandOverOutcome } from "@/lib/dashboard/hand-over";
+import type { RequestedRole } from "@/lib/dashboard/hand-over-request";
+import type { DummyHandOver } from "./hand-overs";
 import type { DummyNotice } from "./notices";
 import type { DummyWaiting } from "./team";
 
@@ -127,6 +130,8 @@ export type TeamEdits = {
   readonly advisors: Readonly<Record<number, DummyAdvisor>>;
   /** Who "Hand over the role" made the team leader (board 77i, issue #253); null while it is the one in the arrays. */
   readonly teamLeader: number | null;
+  /** Hand-overs sent from My profile, and the seeded ones once answered (issue #262, ./hand-overs.ts). */
+  readonly handOvers: readonly DummyHandOver[];
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -144,6 +149,7 @@ export const NO_EDITS: TeamEdits = {
   departments: {},
   advisors: {},
   teamLeader: null,
+  handOvers: [],
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -283,6 +289,31 @@ function readAdvisorRole(value: unknown): DummyAdvisor | null {
   return { place, access: value.access };
 }
 
+/** A request is small, and a test developer sends a few at most. */
+const MAX_HAND_OVERS = 6;
+
+function readRequestedRole(value: unknown): RequestedRole | null {
+  if (!isRecord(value)) return null;
+  const id = (key: string) => Number.isInteger(value[key]) && (value[key] as number) > 0;
+  if (value.kind === "lead" && id("divisionId")) return { kind: "lead", divisionId: value.divisionId as number };
+  if (value.kind === "head" && id("departmentId")) return { kind: "head", departmentId: value.departmentId as number };
+  return null;
+}
+
+function readHandOver(value: unknown): DummyHandOver | null {
+  if (!isRecord(value)) return null;
+  const { id, fromId, toId, outcome, sentAt, answered } = value;
+  const role = readRequestedRole(value.role);
+  if (!Number.isInteger(id) || !Number.isInteger(fromId) || !Number.isInteger(toId) || role === null) return null;
+  if (!isHandOverOutcome(outcome) || typeof sentAt !== "string" || Number.isNaN(Date.parse(sentAt))) return null;
+  let answer: DummyHandOver["answered"] = null;
+  if (answered !== null) {
+    if (!isRecord(answered) || (answered.answer !== "confirmed" && answered.answer !== "declined") || !Number.isInteger(answered.by)) return null;
+    answer = { answer: answered.answer, by: answered.by as number };
+  }
+  return { id: id as number, fromId: fromId as number, role, toId: toId as number, outcome, sentAt, answered: answer };
+}
+
 function readDetails(value: unknown): Record<string, MemberDetails> {
   if (!isRecord(value)) return {};
   const out: Record<string, MemberDetails> = {};
@@ -371,6 +402,7 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     departments: entriesOf(raw.departments, readDepartment),
     advisors: entriesOf(raw.advisors, readAdvisorRole),
     teamLeader: Number.isInteger(raw.teamLeader) && (raw.teamLeader as number) > 0 ? (raw.teamLeader as number) : null,
+    handOvers: Array.isArray(raw.handOvers) ? raw.handOvers.flatMap((h) => readHandOver(h) ?? []).slice(-MAX_HAND_OVERS) : [],
   };
 }
 

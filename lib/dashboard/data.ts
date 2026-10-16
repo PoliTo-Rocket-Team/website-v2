@@ -18,6 +18,7 @@ import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
 import type { Promotion } from "./hand-over";
+import type { HandOverAnswer } from "./hand-over-request";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
@@ -201,6 +202,18 @@ export interface DashboardData {
    * page that now opens their dashboard (landingAfterLeaving, ./access.ts).
    */
   leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>>;
+  /**
+   * Board 55d (issue #262): "Send for confirmation" stores the lead's or
+   * head's hand-over as waiting, checked by `planHandOverSend`
+   * (./hand-over-request.ts). No role changes until the next level up answers.
+   */
+  sendHandOver(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Board 62c: Confirm or Decline on a hand-over waiting for the viewer,
+   * checked by `planHandOverAnswer`. Confirm runs the hand-over at once;
+   * either answer notifies the sender. Refused for anyone but the next level up.
+   */
+  answerHandOver(requestId: number, answer: HandOverAnswer): Promise<WriteResult<null>>;
 
   /** Board 51: an applicant's own account. */
   myAccount(): Promise<MyAccount | null>;

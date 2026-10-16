@@ -16,6 +16,7 @@ import {
   type MyApplications,
   type PastApplication,
 } from "@/lib/dashboard/my-applications";
+import type { HandOverOffer } from "@/lib/dashboard/hand-over-request";
 import { fileSize } from "@/lib/dashboard/recruitment";
 import {
   checkPhoto,
@@ -62,7 +63,13 @@ export function teamEmailOf(person: DummyPerson): string {
   return signInOf(person).teamEmail;
 }
 
-export function dummyMyProfile(kind: TestViewer, person: DummyPerson, changes: OwnChanges, leave: LeaveState): MyProfile {
+export function dummyMyProfile(
+  kind: TestViewer,
+  person: DummyPerson,
+  changes: OwnChanges,
+  leave: LeaveState,
+  handOver: HandOverOffer | null,
+): MyProfile {
   // My profile names one division, their home one, until #231 lists them all.
   const division = divisions.find((d) => d.id === homeDivisionOf(person.placement));
   const login = signInOf(person);
@@ -76,6 +83,7 @@ export function dummyMyProfile(kind: TestViewer, person: DummyPerson, changes: O
     signIn: { provider: "google", email: login.signInEmail },
     leave,
     details,
+    handOver,
   };
 }
 

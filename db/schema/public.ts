@@ -441,6 +441,49 @@ export const dashboardNotices = pgTable("dashboard_notices", {
   recipientIdx: index("dashboard_notices_recipient_idx").on(table.recipientId),
 }));
 
+/** What the person who hands over a role does next (lib/dashboard/hand-over.ts). */
+export const handOverOutcomeEnum = pgEnum("hand_over_outcome", ["advisor", "leave"]);
+
+/** The role a lead or head hands over from My profile: never the team leader's (board 77i). */
+export const handOverRoleEnum = pgEnum("hand_over_role", ["lead", "head"]);
+
+export const handOverDecisionEnum = pgEnum("hand_over_decision", ["confirmed", "declined"]);
+
+/**
+ * A hand-over a division lead or a department head sent from My profile
+ * (issue #262, board 55d). It changes no role until the next level up
+ * confirms it from their Overview (board 62c); lib/dashboard/hand-over-request.ts
+ * owns who that is. A lead hands over a division, a head a department, and
+ * one person has at most one request waiting.
+ */
+export const handOverRequests = pgTable("hand_over_requests", {
+  id: serial("id").primaryKey(),
+  fromId: integer("from_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  role: handOverRoleEnum("role").notNull(),
+  divisionId: integer("division_id").references(() => divisions.id),
+  deptId: integer("dept_id").references(() => departments.id),
+  toId: integer("to_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  outcome: handOverOutcomeEnum("outcome").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  decision: handOverDecisionEnum("decision"),
+  decidedBy: integer("decided_by").references(() => members.memberId, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneWaiting: uniqueIndex("hand_over_requests_one_waiting").on(table.fromId).where(sql`${table.decision} is null`),
+  unit: check(
+    "hand_over_requests_unit",
+    sql`(${table.role} = 'lead' and ${table.divisionId} is not null and ${table.deptId} is null) or (${table.role} = 'head' and ${table.deptId} is not null and ${table.divisionId} is null)`,
+  ),
+  someoneElse: check("hand_over_requests_someone_else", sql`${table.fromId} <> ${table.toId}`),
+  decided: check("hand_over_requests_decided", sql`(${table.decision} is null) = (${table.decidedAt} is null)`),
+}));
+
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made
