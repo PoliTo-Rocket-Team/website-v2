@@ -504,7 +504,7 @@ function ChannelsSection({
   const alreadyAdded = CHANNEL_NAMES.filter((name) => added.has(name)).map((name) => CHANNEL_LABELS[name]);
   return (
     <>
-      <p className="text-[12px] text-prt-muted">The cards beside the post. At least Instagram or LinkedIn.</p>
+      <p className="text-[12px] text-prt-muted">The cards on the right of the post. At least one channel.</p>
       {channels.map((channel) => {
         const Icon = CHANNEL_ICONS[channel.name];
         const label = CHANNEL_LABELS[channel.name];

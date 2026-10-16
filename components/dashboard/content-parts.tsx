@@ -19,13 +19,13 @@ export const CONTENT_FOCUS = "focus-visible:outline focus-visible:outline-2 focu
 
 const STATUS_TONE: Readonly<Record<ContentStatus, string>> = {
   published: "bg-success-soft text-success",
-  draft: "bg-warning-soft text-warning",
+  draft: "bg-white-5 text-text-2",
   "draft-changes": "bg-warning-soft text-warning",
 };
 
 const STATUS_DOT: Readonly<Record<ContentStatus, string>> = {
   published: "bg-success",
-  draft: "bg-warning",
+  draft: "bg-prt-muted",
   "draft-changes": "bg-warning",
 };
 
