@@ -110,8 +110,12 @@ export function EditShell<Id extends string, Section extends string, Page extend
   const checklistId = useId();
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-ground text-prt-text">
-      <header className="relative flex h-[60px] shrink-0 items-center gap-4 border-b border-hairline bg-panel px-4 md:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 text-[13px]">
+      {/* Three columns: the middle one is centred while the right group fits
+          its half, and moves left when that group grows (Desktop | Phone and
+          "Changes show on the page as you type" beside the page switch), so
+          the controls never overlap. */}
+      <header className="relative grid h-[60px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-hairline bg-panel px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] md:px-6">
+        <div className="flex min-w-0 items-center gap-2.5 text-[13px]">
           <Link
             href={section.href}
             aria-label={`Back to ${section.label}`}
@@ -127,11 +131,11 @@ export function EditShell<Id extends string, Section extends string, Page extend
           <StatePill status={status} />
         </div>
 
-        <div className="absolute left-1/2 hidden -translate-x-1/2 md:block">
+        <div className="hidden md:block">
           {switcher === null ? devices : <PageSwitcher {...switcher} />}
         </div>
 
-        <div className="flex flex-1 items-center justify-end gap-2.5">
+        <div className="flex items-center justify-end gap-2.5">
           {switcher !== null && <div className="mr-0.5 hidden md:block">{devices}</div>}
           {saved !== undefined && <p className="hidden whitespace-nowrap text-[12px] text-prt-muted lg:block">{saved}</p>}
           <button
@@ -287,6 +291,12 @@ export function EditableBlock({ id, className = "", children }: { id: string; cl
   const shown = start
     ? "opacity-100"
     : "opacity-0 group-hover/block:opacity-100 group-focus-within/block:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
+  // The publish checklist hangs pinned under Publish while a new item opens
+  // (board 74f): 244px wide, 16px in from the window's right edge. "Start
+  // here" sits left of it, so it moves in from the block's right edge far
+  // enough to clear the checklist; from 1440px the page's centred column
+  // leaves room for the board's own spot.
+  const chipPlace = start ? "md:right-[220px] min-[1440px]:right-[145px]" : "md:right-[33px]";
   return (
     <div className={`group/block relative ${className}`}>
       {children}
@@ -302,7 +312,7 @@ export function EditableBlock({ id, className = "", children }: { id: string; cl
         type="button"
         onClick={chip.edit}
         aria-label={`${chip.label}: ${chip.name}`}
-        className={`absolute -top-3 right-6 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] md:right-[33px] ${shown} focus-visible:opacity-100 ${CONTENT_FOCUS}`}
+        className={`absolute -top-3 right-6 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] ${chipPlace} ${shown} focus-visible:opacity-100 ${CONTENT_FOCUS}`}
       >
         <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
         {chip.label}

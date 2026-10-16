@@ -432,7 +432,7 @@ function BlockCard({
       onDragEnd={drag.onDragEnd}
       className={`group/card relative flex gap-2 rounded-[10px] border py-2.5 pl-2 pr-1.5 transition-colors duration-300 ease-out ${
         open ? "border-accent" : "border-hairline hover:border-border-strong"
-      } ${highlight ? "bg-accent/[0.04]" : "bg-white-5/40"} ${dragged ? "opacity-50" : ""}`}
+      } ${highlight ? "bg-accent/[0.04]" : "bg-white-5"} ${dragged ? "opacity-50" : ""}`}
     >
       <GripVertical aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-grab text-dim" strokeWidth={1.75} />
       <div className="min-w-0 flex-1">
@@ -461,7 +461,7 @@ function BlockCard({
           <button type="button" onClick={onOpen} className={`block w-full rounded-md text-left ${CONTENT_FOCUS}`}>
             {kindLabel}
             <span
-              className={`mt-1 line-clamp-2 block ${
+              className={`mt-1 line-clamp-2 ${
                 block.kind === "heading" ? "text-[14px] font-semibold text-prt-text" : "text-[13px] leading-[1.5] text-text-2"
               }`}
             >

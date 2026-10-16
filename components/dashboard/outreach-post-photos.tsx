@@ -179,7 +179,7 @@ export function PhotosSection({
       </ul>
 
       {opened !== undefined && open !== null && (
-        <div className="space-y-2.5 rounded-[10px] border border-accent bg-white-5/40 p-3">
+        <div className="space-y-2.5 rounded-[10px] border border-accent bg-white-5 p-3">
           <div className="flex items-center justify-between gap-3">
             <label htmlFor={altId} className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">
               Photo {openIndex + 1}
