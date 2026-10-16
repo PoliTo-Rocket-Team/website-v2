@@ -14,7 +14,7 @@ import { written } from "./write";
 // The database side of the projects (issue #295): the store a projects editor
 // writes through, and the public read the project pages, the home Projects
 // section and /projects make. Writes go through runAuditQuery or
-// runAuditBatch, so the audit triggers of migration 0027 log who made them,
+// runAuditBatch, so the audit triggers of migration 0028 log who made them,
 // then refresh the public read (.patterns/audited-mutations.md).
 
 export const PROJECTS_CACHE_TAG = "projects";
