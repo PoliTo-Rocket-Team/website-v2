@@ -345,10 +345,11 @@ from md to lg it keeps a 2.2:1 shape. Phones (board 24): one column, the feature
 title, photo 150px tall, no arrow), then only the first news card, 20px below,
 then "All news". The other two news cards are desktop-only (from md).
 
-**Projects:** exactly three cards, Cavour, VES and Efesto, with the board 21 data from
-`design/specs-from-old-site.md`, each on its texture, 618px tall, with a `.glass-info` box
+**Projects:** one card per published project, in site order (today Cavour, VES and Efesto,
+with the board 21 data from `design/specs-from-old-site.md`), each on its texture, 618px tall, with a `.glass-info` box
 inset 32px at the bottom (20px from lg to xl). From md to lg the cards stack, 480px wide at
-most. Each card renders Cavour live in 3D. At rest it shows from the nose to
+most. Each card renders its record's rocket model live in 3D (Cavour on the three cards today;
+a project with no model of its own draws the shared placeholder, `lib/rocket-model.ts`). At rest it shows from the nose to
 mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
 the rocket stays where it rests. The canvas wrapper hangs above and below the card and is clipped to the card's sides and
 bottom only. The vehicle and camera hold still in the scene.
@@ -372,15 +373,17 @@ Efesto fuel "Ethanol".
 **/projects** (boards 22 and 22m, `app/projects/page.tsx`, `components/projects/`): the header
 figures, then one `.glass-info` card per project: texture panel, facts, then the launch log
 (Efesto: work lines). Every fact comes from the projects' published records
-(`lib/project-content/`, issue #295), and the header counts their launches. A project with its own page
-has a clickable card: the name is the link, and its `::after` covers the card, so the whole
-card is the target. The card takes `.glass-linked`, and keyboard focus shows an accent outline
-4px outside it. A project with no page has no link.
+(`lib/project-content/`, issue #295), and the header counts their launches. Every published
+project has its own page (issue #301), so every card is clickable: the name is the link, and its
+`::after` covers the card, so the whole card is the target. The card takes `.glass-linked`, and
+keyboard focus shows an accent outline 4px outside it.
 
-**Project pages** (`/projects/cavour`, `/projects/ves`, `/projects/efesto`; boards 23 to 25 and
-23m to 25m): one template, `components/project-page/`, draws every project page from the
-project's published record (`pageRecordOf` in `lib/project-content/record.ts`). There are no
-per-project components; a new project page is a new record and a thin route. The built Cavour page is the layout reference.
+**Project pages** (`/projects/[slug]`, `app/projects/[slug]/page.tsx`; boards 23 to 25 and
+23m to 25m): one route and one template, `components/project-page/`, draw every published
+project's page from its record (`pageRecordOf` in `lib/project-content/record.ts`). There are no
+per-project components and no per-project routes: a new project is a stored record, created with
+New project on the dashboard Projects page (issue #301), and needs no new file. The built Cavour
+page is the layout reference.
 - Order: hero, 01 The name and 02 The design side by side, then versions, launch history, the
   plan, numbered reasons and gallery, then the next project.
 - A section the record has no data for is an absent key, and the page leaves it out entirely,
@@ -506,6 +509,6 @@ stacked.
   292px on phones) until the two boards agree.
 - **Between phone and desktop.** Boards 21 and 24 cover 1440px and 390px. From 768px to
   1023px the page uses the desktop layout with the menu in place of the link row.
-- **Subroutes.** `/projects`, the three project pages and `/apply` are built (Page rules
+- **Subroutes.** `/projects`, the project pages and `/apply` are built (Page rules
   above). `/about/*`, `/outreach`, `/partners` and the news page are still being designed
   (HANDOFF "Todo").

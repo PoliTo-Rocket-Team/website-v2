@@ -732,10 +732,20 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   public page in a new tab, and only a published project has one.
 - Dragging a card, or the arrow keys on its grip, sets the site order. It is saved at once, and
   the home Projects section, /projects and each page's next-project card follow it.
-- Only the full admins and holders of site-content access reach the page; everyone else gets the
-  dashboard's not found.
-- Previews never touch a database: a test developer's new order stays in their own cookie until
-  they sign out, and their saves read as edited today by the person they signed in as.
+- New project (#301), in the page header, asks for the name, the address and whether it is a
+  rocket or an engine. The name is at most 40 characters. The address follows the name until it
+  is typed in itself; it is lower-case letters and digits joined by single hyphens, at most 40
+  characters, and no other project may hold it in its published version or its draft. The server
+  refuses the same.
+- Create draft stores the project as a draft at the end of the site order and opens it in the
+  editor (board 75b). The draft has a line of starting copy in every section, a brand texture
+  picked by its address, and the placeholder rocket on its card and page. No public page shows
+  it, and its address has no page, until it is published.
+- Only the full admins and holders of site-content access reach the page or use New project;
+  everyone else gets the dashboard's not found.
+- Previews never touch a database: a test developer's new order and new projects stay in their
+  own cookie until they sign out, and their saves read as edited today by the person they signed
+  in as.
 
 ### Project pages (#298 and #299, boards 75b and 75c)
 
