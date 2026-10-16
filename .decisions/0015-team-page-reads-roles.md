@@ -25,7 +25,7 @@ Owner decision, 2026-10-16, on the Team page design (epic #259, https://github.c
 3. **Core members.** Everyone else with an active role, by name, with the title their role carries in the dashboard.
 4. **Contacts.** Photo from `members.picture`, LinkedIn from `users.linkedin`, team email from `members.prt_email`. A missing value is an absent key, so the page draws the PRT mark or initials and no empty link.
 5. **Read path.** The page reads the cached team snapshot (tag `team-roster`); every role write refreshes it. Previews and dummy mode read the dummy team (ADR 0009), never a database.
-6. **Still hand-typed.** The header figures, "In numbers", the advisors, the intro text and the group photo stay in `lib/about/team.ts` until later slices of #259 make them editable.
+6. **The rest of the page.** The advisors are a hand-added list stored apart from roles (the `team_page_advisors` store, `lib/about/advisors.ts`), seeded from the hand-typed record; the page shows the published list. The intro text and the group photo come from the visual layer; while the layer leaves one empty, the page keeps the hand-typed one. Only the header figures and "In numbers" stay hand-typed in `lib/about/team.ts`.
 
 **Binding constraints.**
 - Never write roles, divisions, departments, access or member records to change what the Team page shows; that is the visual layer's job.
@@ -38,4 +38,4 @@ Owner decision, 2026-10-16, on the Team page design (epic #259, https://github.c
 - Placing someone other than the board seats on the arc (for example a department head) is a visual-layer edit, not a role change.
 - The "Gap" line for #189 in `docs/dashboard-rules.md` is removed.
 
-Followed today: the builder is [lib/about/team-roles.ts](../lib/about/team-roles.ts); the page's read is [lib/about/team-data.ts](../lib/about/team-data.ts); the snapshot is [lib/dashboard/team-database.ts](../lib/dashboard/team-database.ts); the visual layer is [lib/about/team-layer.ts](../lib/about/team-layer.ts), saved and published through [lib/about/team-page-editor.ts](../lib/about/team-page-editor.ts) (#283).
+Followed today: the builder is [lib/about/team-roles.ts](../lib/about/team-roles.ts); the page's read is [lib/about/team-data.ts](../lib/about/team-data.ts); the snapshot is [lib/dashboard/team-database.ts](../lib/dashboard/team-database.ts); the visual layer is [lib/about/team-layer.ts](../lib/about/team-layer.ts), saved and published through [lib/about/team-page-editor.ts](../lib/about/team-page-editor.ts) (#283), and it holds the intro text and the group photo; the advisors are [lib/about/advisors.ts](../lib/about/advisors.ts), stored in `team_page_advisors` through [lib/dashboard/database-team-advisors.ts](../lib/dashboard/database-team-advisors.ts) (#286).

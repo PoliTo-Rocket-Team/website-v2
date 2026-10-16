@@ -18,9 +18,10 @@ import type { DepartmentGroup, Member, TeamPage, UpTo } from "./types";
 // leads, every department and every core member come from the roles the
 // dashboard sets, so a title saved on the member panel reaches the page once
 // the `team-roster` cache is refreshed. The visual layer (./team-layer.ts,
-// issue #283) is laid on that build; the header, the advisors, "In numbers"
-// and, unless the layer sets them, the intro text and the group photo stay
-// the hand-typed values of ./team.ts. Pure: the database
+// issue #283) is laid on that build; the header, "In numbers" and, unless
+// the layer sets them, the intro text and the group photo stay the
+// hand-typed values of ./team.ts. The advisors come from the stored list
+// (./advisors.ts, issue #286), laid on by ./team-data.ts. Pure: the database
 // (lib/about/team-data.ts) and the dummy team read the same build.
 
 export type { TeamPerson } from "./team-person";
