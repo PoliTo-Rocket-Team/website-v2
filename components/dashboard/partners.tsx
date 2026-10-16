@@ -87,6 +87,7 @@ export function PartnersView({ items: initial }: { items: readonly ContentItem<P
             title={title}
             items={ordered.filter((item) => shownOf(item).tier === tier)}
             selectedId={editing?.id ?? null}
+            panelOpen={panel.kind !== "closed"}
             onOpen={(id) => setPanel({ kind: "edit", id })}
             onReorder={(ids) => reordered(tier, ids)}
             onRemoved={removed}
@@ -112,6 +113,7 @@ function TierGroup({
   title,
   items,
   selectedId,
+  panelOpen,
   onOpen,
   onReorder,
   onRemoved,
@@ -119,6 +121,7 @@ function TierGroup({
   title: string;
   items: readonly ContentItem<Partner>[];
   selectedId: number | null;
+  panelOpen: boolean;
   onOpen: (id: number) => void;
   onReorder: (ids: readonly number[]) => void;
   onRemoved: (id: number) => void;
@@ -160,6 +163,7 @@ function TierGroup({
               key={item.id}
               item={item}
               selected={item.id === selectedId}
+              panelOpen={panelOpen}
               dragged={dragging?.id === item.id}
               onOpen={() => onOpen(item.id)}
               onDragStart={(event) => {
@@ -187,6 +191,7 @@ function TierGroup({
 function PartnerRow({
   item,
   selected,
+  panelOpen,
   dragged,
   onOpen,
   onDragStart,
@@ -199,6 +204,7 @@ function PartnerRow({
 }: {
   item: ContentItem<Partner>;
   selected: boolean;
+  panelOpen: boolean;
   dragged: boolean;
   onOpen: () => void;
   onDragStart: (event: DragEvent) => void;
@@ -210,6 +216,10 @@ function PartnerRow({
   onRemove: () => void;
 }) {
   const partner = shownOf(item);
+  // While a side panel is open from 1280px, the list keeps under half the width: the website
+  // column and the grip give way and the logo box narrows, so the name and one line keep their
+  // room (as Members, Orders and Access do, #244). Drag still works on the row itself.
+  const squeezed = panelOpen ? "xl:hidden" : "";
   return (
     <li
       draggable
@@ -221,13 +231,13 @@ function PartnerRow({
         selected ? "bg-accent/[0.08]" : "hover:bg-white-5"
       } ${dragged ? "opacity-50" : ""}`}
     >
-      <GripVertical aria-hidden className="hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block" strokeWidth={1.75} />
-      <LogoBox logo={partner.logo} name={partner.name} size="row" />
+      <GripVertical aria-hidden className={`hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block ${squeezed}`} strokeWidth={1.75} />
+      <LogoBox logo={partner.logo} name={partner.name} size={panelOpen ? "row-narrow" : "row"} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] text-prt-text">{partner.name}</span>
         <span className="block truncate text-[13px] text-prt-muted">{partner.oneLiner}</span>
       </span>
-      <span className={`hidden w-[200px] shrink-0 truncate text-[13px] lg:block ${partner.website ? "text-text-2" : "text-dim"}`}>
+      <span className={`hidden w-[200px] shrink-0 truncate text-[13px] lg:block ${squeezed} ${partner.website ? "text-text-2" : "text-dim"}`}>
         {partner.website ? websiteLabel(partner.website) : "No website"}
       </span>
       <span className="w-[86px] shrink-0">
@@ -327,9 +337,22 @@ function StatusPill({ status, short = false }: { status: ContentStatus; short?: 
  * the public pages draw it. A logo a preview did not keep (lib/dummy-data/
  * partners.ts) shows the partner's name, as the boards draw every logo.
  */
-function LogoBox({ logo, name, size }: { logo: Pick<PartnerLogo, "src" | "darkLogo">; name: string; size: "row" | "panel" }) {
-  const box = size === "row" ? "h-10 w-[78px] md:w-[110px] rounded-md bg-white-5 px-2.5" : "h-[72px] w-[180px] rounded-lg border border-hairline bg-ground px-4";
-  const img = size === "row" ? "max-h-[22px]" : "max-h-10";
+function LogoBox({
+  logo,
+  name,
+  size,
+}: {
+  logo: Pick<PartnerLogo, "src" | "darkLogo">;
+  name: string;
+  // "row-narrow" is a list row beside an open side panel: it keeps the phone width from 1280px.
+  size: "row" | "row-narrow" | "panel";
+}) {
+  const box = {
+    row: "h-10 w-[78px] md:w-[110px] rounded-md bg-white-5 px-2.5",
+    "row-narrow": "h-10 w-[78px] md:w-[110px] xl:w-[78px] rounded-md bg-white-5 px-2.5",
+    panel: "h-[72px] w-[180px] rounded-lg border border-hairline bg-ground px-4",
+  }[size];
+  const img = size === "panel" ? "max-h-10" : "max-h-[22px]";
   return (
     <span className={`flex shrink-0 items-center justify-center overflow-hidden ${box}`}>
       {logo.src === "" ? (

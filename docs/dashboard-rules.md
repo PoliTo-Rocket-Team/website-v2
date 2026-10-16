@@ -450,6 +450,9 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Partners are grouped Main, then Media, each with its count. Dragging a row, or Move up and Move
   down in its menu, sets its place within its tier; /partners and the home logo strip follow that
   order.
+- While a side panel is open on a screen 1280px or wider, the website column and the drag grip
+  are hidden and the logo box narrows, so names and one lines keep their room (#244). A row still
+  drags by itself, and its menu still moves it.
 - The panel enforces the text limits of `PARTNER_TEXT_LIMITS` (one line 80, about 220, support
   160, counted as characters, so "ò" is one) with a live counter, and the server refuses a text
   over its limit.
