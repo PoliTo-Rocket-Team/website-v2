@@ -9,6 +9,7 @@ import { alumni } from "./alumni";
 import { audit } from "./audit";
 import { faqSeed } from "./faq";
 import { ordersSeed } from "./orders";
+import { outreachSeed } from "./outreach";
 import { partnersSeed } from "./partners";
 import { people } from "./people";
 import { recruitmentSeed } from "./recruitment";
@@ -24,5 +25,6 @@ export const SEED_MODULES: readonly SeedModule<SeedTx>[] = [
   recruitmentSeed,
   partnersSeed,
   faqSeed,
+  outreachSeed,
   audit,
 ];

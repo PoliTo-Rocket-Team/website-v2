@@ -16,6 +16,11 @@ import {
   type interviewSlots,
   type members,
   type orders,
+  type outreachPosts,
+  type outreachPostTags,
+  type outreachPostVersions,
+  type outreachSummitVersions,
+  type outreachTags,
   type partners,
   type partnerVersions,
   type recruitmentSetting,
@@ -28,6 +33,10 @@ import { publicItems, statusOf, versionedFromRows, type ContentItem, type Versio
 import { APPLICATION_STAGES, type ApplicationStage } from "@/lib/dashboard/application-flow";
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
 import type { FaqVersion } from "@/lib/faq/faq";
+import { trackRecord } from "@/lib/outreach";
+import type { SummitVersions } from "@/lib/outreach-editor";
+import { draftFromColumns, outreachPostOf, postFromColumns, summitFromColumns } from "@/lib/outreach-rows";
+import { CHANNEL_NAMES, type OutreachDraft, type OutreachTag, type PostItem, type PostVersions } from "@/lib/outreach-types";
 import type { Partner } from "@/lib/partners";
 import { partnerFromColumns } from "@/lib/partners-rows";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
@@ -47,6 +56,13 @@ import { ALUMNI_ENTRY_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
 import { FAQ_ROWS, FAQ_VERSION_ROWS } from "./faq";
 import { ORDER_ROWS } from "./orders";
+import {
+  OUTREACH_POST_ROWS,
+  OUTREACH_POST_TAG_ROWS,
+  OUTREACH_POST_VERSION_ROWS,
+  OUTREACH_SUMMIT_ROWS,
+  OUTREACH_TAG_ROWS,
+} from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
 import { APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
@@ -70,6 +86,11 @@ export type SeedData = {
   readonly partnerVersions: readonly InferInsertModel<typeof partnerVersions>[];
   readonly faqs: readonly InferInsertModel<typeof faqs>[];
   readonly faqVersions: readonly InferInsertModel<typeof faqVersions>[];
+  readonly outreachTags: readonly InferInsertModel<typeof outreachTags>[];
+  readonly outreachPosts: readonly InferInsertModel<typeof outreachPosts>[];
+  readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
+  readonly outreachPostTags: readonly InferInsertModel<typeof outreachPostTags>[];
+  readonly outreachSummitVersions: readonly InferInsertModel<typeof outreachSummitVersions>[];
 };
 
 export const SEED_DATA: SeedData = {
@@ -89,6 +110,11 @@ export const SEED_DATA: SeedData = {
   partnerVersions: PARTNER_VERSION_ROWS.rows,
   faqs: FAQ_ROWS.rows,
   faqVersions: FAQ_VERSION_ROWS.rows,
+  outreachTags: OUTREACH_TAG_ROWS.rows,
+  outreachPosts: OUTREACH_POST_ROWS.rows,
+  outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
+  outreachPostTags: OUTREACH_POST_TAG_ROWS.rows,
+  outreachSummitVersions: OUTREACH_SUMMIT_ROWS.rows,
 };
 
 /** The academic year the Alumni page counts as current when the seed was written (2026–27). */
@@ -293,9 +319,70 @@ export function faqItemsOf(data: SeedData): ContentItem<FaqVersion>[] {
   );
 }
 
-export type SeedArea = "structure" | "people" | "alumni" | "access" | "orders" | "recruitment" | "partners" | "faq";
+// Outreach (issue #309), read back from the rows the way
+// lib/dashboard/database-outreach.ts reads them.
 
-export const SEED_AREAS: readonly SeedArea[] = ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq"];
+/** The tag list in its order. */
+export function outreachTagsOf(data: SeedData): OutreachTag[] {
+  return [...data.outreachTags].sort((a, b) => a.listOrder - b.listOrder).map((t) => ({ name: t.name, award: t.award ?? false }));
+}
+
+/** The posts in site order, each with its versions: a live post's are whole, a never-published draft may not be. */
+export function outreachItemsOf(data: SeedData): PostItem[] {
+  const tagsOf = (postId: number, version: string) =>
+    data.outreachPostTags
+      .filter((t) => t.postId === postId && t.version === version)
+      .sort((a, b) => a.position - b.position)
+      .map((t) => t.tagName);
+  return [...data.outreachPosts]
+    .sort((a, b) => a.siteOrder - b.siteOrder || a.id! - b.id!)
+    .flatMap((post): PostItem[] => {
+      // A column the insert leaves out reads back as null, as the database answers it.
+      const rows = data.outreachPostVersions
+        .filter((v) => v.postId === post.id)
+        .map((v) => ({ ...v, place: v.place ?? null, summaryPhone: v.summaryPhone ?? null }));
+      const published = rows.find((v) => v.version === "published");
+      const draft = rows.find((v) => v.version === "draft");
+      const version: PostVersions | null =
+        published !== undefined
+          ? {
+              state: "published",
+              published: postFromColumns(published, tagsOf(post.id!, "published")),
+              draft: draft === undefined ? null : postFromColumns(draft, tagsOf(post.id!, "draft")),
+            }
+          : draft === undefined
+            ? null
+            : { state: "draft", draft: draftFromColumns(draft, tagsOf(post.id!, "draft")) };
+      return version === null ? [] : [{ id: post.id!, siteOrder: post.siteOrder, version }];
+    });
+}
+
+/** The summit's versions, or null when it has no published one, which the public read refuses. */
+export function outreachSummitOf(data: SeedData): SummitVersions | null {
+  const summit = versionedFromRows(data.outreachSummitVersions.map((row) => ({ kind: row.version, content: summitFromColumns({ ...row, storyPhone: row.storyPhone ?? null }) })));
+  return summit?.state === "published" ? summit : null;
+}
+
+/** Every version of every post, published or draft. */
+function outreachVersionsOf(data: SeedData): OutreachDraft[] {
+  return outreachItemsOf(data).flatMap((item) =>
+    item.version.state === "draft" ? [item.version.draft] : [item.version.published, ...(item.version.draft === null ? [] : [item.version.draft])],
+  );
+}
+
+export type SeedArea = "structure" | "people" | "alumni" | "access" | "orders" | "recruitment" | "partners" | "faq" | "outreach";
+
+export const SEED_AREAS: readonly SeedArea[] = [
+  "structure",
+  "people",
+  "alumni",
+  "access",
+  "orders",
+  "recruitment",
+  "partners",
+  "faq",
+  "outreach",
+];
 
 export type SeedCase = {
   readonly area: SeedArea;
@@ -675,6 +762,80 @@ export const SEED_CASES: readonly SeedCase[] = [
           item.version.draft !== null &&
           item.version.draft.answer.join("\n") !== item.version.published.answer.join("\n"),
       ),
+  },
+  {
+    area: "outreach",
+    case: "Every tag in the tag list on at least one published post, Award the one award tag",
+    rows: "`outreach_tags`, `outreach_post_tags.tag_name`",
+    exercisedBy: `${issue(287)}, ${issue(290)}`,
+    holds: (data) => {
+      const tags = outreachTagsOf(data);
+      const used = new Set(publicItems(outreachItemsOf(data)).flatMap((p) => p.tags));
+      const award = tags.filter((t) => t.award).map((t) => t.name);
+      return tags.length > 0 && tags.every((t) => used.has(t.name)) && award.length === 1 && award[0] === "Award";
+    },
+  },
+  {
+    area: "outreach",
+    case: "Every channel type on a published post: Instagram, LinkedIn, YouTube, Facebook, X, TikTok and Other link",
+    rows: "`outreach_post_versions.channels` of post 14",
+    exercisedBy: `${issue(290)}, ${issue(278)}`,
+    holds: (data) => {
+      const posts = publicItems(outreachItemsOf(data));
+      return CHANNEL_NAMES.every((name) => posts.some((p) => p.channels[name] !== undefined));
+    },
+  },
+  {
+    area: "outreach",
+    case: "A post first shared by another account",
+    rows: "`outreach_post_versions.channels` `account`, posts 3, 5 and 14",
+    exercisedBy: issue(290),
+    holds: (data) => publicItems(outreachItemsOf(data)).some((p) => Object.values(p.channels).some((c) => c?.account !== undefined)),
+  },
+  {
+    area: "outreach",
+    case: "Published posts enough for the home Track record's featured card and three news cards",
+    rows: "`outreach_post_versions` version `published`",
+    exercisedBy: `${issue(293)}, ${issue(289)}`,
+    holds: (data) => trackRecord(publicItems(outreachItemsOf(data)))?.news.length === 3,
+  },
+  {
+    area: "outreach",
+    case: "Every photo with alt text, and a post with several photos for the photo grid",
+    rows: "`outreach_post_versions.photos`, post 14",
+    exercisedBy: issue(291),
+    holds: (data) =>
+      outreachVersionsOf(data).every((p) => p.photos.every((photo) => photo.alt.trim() !== "")) &&
+      publicItems(outreachItemsOf(data)).some((p) => p.photos.length > 1),
+  },
+  {
+    area: "outreach",
+    case: "A published post with draft changes that the public pages do not show",
+    rows: "`outreach_post_versions` of post 4 (IAC 2024, Milan)",
+    exercisedBy: `${issue(287)}, ${issue(290)}`,
+    holds: (data) =>
+      outreachItemsOf(data).some(
+        (item) => item.version.state === "published" && item.version.draft !== null && item.version.draft.lead !== item.version.published.lead,
+      ),
+  },
+  {
+    area: "outreach",
+    case: "A new post saved as a draft before it is whole, never published, so the public pages do not show it",
+    rows: "`outreach_post_versions` of post 15",
+    exercisedBy: issue(292),
+    holds: (data) => {
+      const shown = new Set(publicItems(outreachItemsOf(data)).map((p) => p.title));
+      return outreachItemsOf(data).some(
+        (item) => item.version.state === "draft" && outreachPostOf(item.version.draft) === null && !shown.has(item.version.draft.title),
+      );
+    },
+  },
+  {
+    area: "outreach",
+    case: "The featured summit, published, with its editions",
+    rows: "`outreach_summit_versions` version `published`",
+    exercisedBy: `${issue(287)}, ${issue(289)}`,
+    holds: (data) => (outreachSummitOf(data)?.published.editions.length ?? 0) >= 1,
   },
 ];
 
