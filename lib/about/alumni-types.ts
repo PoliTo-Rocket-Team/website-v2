@@ -45,7 +45,7 @@ export type AlumniCopy = {
   years: { eyebrow: string; title: string };
 };
 
-/** What the page shows, built from the record by `alumniPage` (./alumni-record.ts). */
+/** What the page shows, built from the record by `alumniPageData` (./alumni-data.ts). */
 export type AlumniPageData = {
   founders: readonly Founder[];
   /** Newest first. */

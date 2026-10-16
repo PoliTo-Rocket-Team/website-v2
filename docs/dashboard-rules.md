@@ -245,11 +245,11 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
     page". Ticked, the person leaves the Alumni page at once, and anonymization later clears
     every name and photo on their entry. They can also ask for removal later.
 - The Alumni page (#257) is built from the roles: each academic year lists who held which role
-  in which department or division, closed ones included. 2021–22 to 2022–23 come from a one-time
-  import. The dashboard's Alumni page only fixes how someone shows (name, founder mark, photo,
-  per-year role text, shown or hidden); a fix never writes a role, a division or access. "Add
-  alumni" adds external advisors to the Advisors group and nowhere else; the server refuses any
-  other group.
+  in which department or division, closed ones included. 2021–22, 2022–23 and the 2024–25
+  advisors come from a one-time import. The dashboard's Alumni page only fixes how someone shows
+  (name, founder mark, photo, per-year role text, shown or hidden); a fix never writes a role, a
+  division or access. "Add alumni" adds external advisors to the Advisors group and nowhere else;
+  the server refuses any other group.
 - Access is given only on the Access page. You can give only what you have, and only inside your
   scope.
 

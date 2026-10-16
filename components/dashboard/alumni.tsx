@@ -308,8 +308,12 @@ function AlumnusTableRow({
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
           <Avatar name={row.name} photoUrl={row.photo} />
-          <span className="block min-w-0 truncate text-[15px] text-prt-text">{row.name}</span>
-          <Tags row={row} />
+          {/* The name goes first: when it and its tags do not fit on one line (a side panel open
+              at 1280px), the tags wrap under it instead of squeezing it (board 78b). */}
+          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3.5 gap-y-1">
+            <span className="block max-w-full truncate text-[15px] text-prt-text">{row.name}</span>
+            <Tags row={row} />
+          </span>
         </span>
       </td>
       <td className="px-5 py-2.5">
