@@ -270,10 +270,20 @@ export function setOutcome(launch: LaunchFields, outcome: Outcome): LaunchFields
 
 export const HISTORY_KEEPS_A_LAUNCH = "A launch history on the page keeps one launch at least. Switch Launch history off to take it off the page.";
 
-/** Removes a launch, or refuses: a launch history on the page keeps one. */
-export function removeLaunch(fields: LaunchesFields, index: number): WriteResult<LaunchesFields> {
+/**
+ * A row the panel removed: the section's fields without it, and the uploaded
+ * photos it held. The panel cannot put those back on the page, so their files
+ * go unless a stored version of a project shows them (the editor's `discardPhoto`).
+ */
+export type Removal<F> = { readonly fields: F; readonly letGo: readonly string[] };
+
+/** Removes a launch, or refuses: a launch history on the page keeps one. Its photos are let go. */
+export function removeLaunch(fields: LaunchesFields, index: number): WriteResult<Removal<LaunchesFields>> {
   if (fields.shown && fields.items.length <= 1) return refused(HISTORY_KEEPS_A_LAUNCH);
-  return written({ ...fields, items: fields.items.filter((_, i) => i !== index) });
+  return written({
+    fields: { ...fields, items: fields.items.filter((_, i) => i !== index) },
+    letGo: (fields.items[index]?.photos ?? []).map((p) => p.src),
+  });
 }
 
 // Plan
@@ -363,10 +373,11 @@ function galleryOf(fields: GalleryFields): GallerySection | null {
 
 export const GALLERY_KEEPS_A_PHOTO = "A gallery on the page keeps one photo at least. Switch Gallery off to take it off the page.";
 
-/** Removes a photo, or refuses: a gallery on the page keeps one. */
-export function removeGalleryItem(fields: GalleryFields, index: number): WriteResult<GalleryFields> {
+/** Removes a photo, or refuses: a gallery on the page keeps one. Its uploaded file is let go. */
+export function removeGalleryItem(fields: GalleryFields, index: number): WriteResult<Removal<GalleryFields>> {
   if (fields.shown && fields.items.length <= 1) return refused(GALLERY_KEEPS_A_PHOTO);
-  return written({ ...fields, items: fields.items.filter((_, i) => i !== index) });
+  const src = fields.items[index]?.src ?? null;
+  return written({ fields: { ...fields, items: fields.items.filter((_, i) => i !== index) }, letGo: src === null ? [] : [src] });
 }
 
 // The four sections together
@@ -500,6 +511,18 @@ export function listPhotos(record: ProjectRecord): string[] {
   const launches = record.kind === "vehicle" ? (record.launches?.entries ?? []) : [];
   const gallery = record.gallery?.items ?? [];
   return [...launches.flatMap((l) => (l.photos ?? []).map((p) => p.src)), ...gallery.flatMap((item) => ("src" in item ? [item.src] : []))];
+}
+
+/**
+ * Every uploaded photo the panel holds, a section switched off included:
+ * switching it back on puts them on the page again, so no save may delete
+ * their files while the panel holds them.
+ */
+export function heldPhotos(fields: ListFields): string[] {
+  return [
+    ...fields.launches.items.flatMap((l) => l.photos.map((p) => p.src)),
+    ...fields.gallery.items.flatMap((item) => (item.src === null ? [] : [item.src])),
+  ];
 }
 
 // What the browser sent, read back field by field.

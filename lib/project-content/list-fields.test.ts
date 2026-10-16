@@ -215,6 +215,36 @@ test("a save carries only photos the version had or this side uploaded; uploads 
   assert.equal((await projectEditor(member, memoryContentStore(importedProjects()), undefined, files).uploadPhoto(jpeg)).ok, false);
 });
 
+test("a photo file stays while the panel can still put it on the page, and goes once nothing can", async () => {
+  const dropped: string[] = [];
+  const recording: PhotoFiles = { ...files, drop: async (srcs) => void dropped.push(...srcs.filter((src) => src === UPLOADED)) };
+  const editor = projectEditor(admin, memoryContentStore(importedProjects()), undefined, recording);
+  const fields = fieldsOf(ves);
+  const on: ProjectFields = { ...fields, gallery: { ...fields.gallery, items: [...fields.gallery.items, { src: UPLOADED, alt: "The pad", caption: "" }] } };
+  assert.ok((await editor.saveFields(2, "publish", on)).ok);
+
+  const off: ProjectFields = { ...on, gallery: { ...on.gallery, shown: false } };
+  assert.ok((await editor.saveFields(2, "publish", off)).ok);
+  assert.deepEqual(dropped, [], "a save with Gallery off keeps the file the panel holds");
+  assert.ok((await editor.saveFields(2, "publish", on)).ok, "switched back on, the photo publishes again");
+
+  const removed = removeGalleryItem(on.gallery, on.gallery.items.length - 1);
+  assert.ok(removed.ok);
+  assert.deepEqual(removed.value.letGo, [UPLOADED]);
+  await editor.discardPhoto(UPLOADED);
+  assert.deepEqual(dropped, [], "a published version still shows it");
+  assert.ok((await editor.saveFields(2, "publish", { ...on, gallery: removed.value.fields })).ok);
+  assert.deepEqual(dropped, [UPLOADED], "once nothing shows or holds it, the file goes");
+
+  dropped.length = 0;
+  const launches = { ...fields.launches, items: [...fields.launches.items, newLaunch] };
+  const gone = removeLaunch(launches, launches.items.length - 1);
+  assert.ok(gone.ok);
+  assert.deepEqual(gone.value.letGo, [UPLOADED], "removing a launch lets its unsaved photos go");
+  await editor.discardPhoto(UPLOADED);
+  assert.deepEqual(dropped, [UPLOADED]);
+});
+
 test("a request is read as the list fields only in their shape", () => {
   const fields = fieldsOf(ves);
   assert.deepEqual(readProjectFields(JSON.parse(JSON.stringify(fields))), fields);

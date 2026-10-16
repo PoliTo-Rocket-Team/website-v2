@@ -218,9 +218,11 @@ export function LaunchesEditor({
     reorder(order);
   };
   const remove = (key: number) =>
-    apply(removeLaunch(launches, rowKeys.indexOf(key)), (next) => {
+    apply(removeLaunch(launches, rowKeys.indexOf(key)), ({ fields: next, letGo }) => {
       setKeys(rowKeys.filter((k) => k !== key));
       onChange(() => next);
+      // The server keeps a file while a stored version of a project shows it.
+      for (const src of letGo) void PROJECT_UPLOADS.discard(src);
     });
   const add = () => {
     const key = nextKey.current++;
@@ -678,10 +680,9 @@ export function GalleryEditor({
         removeRow={(index) => {
           const result = removeGalleryItem(gallery, index);
           if (!result.ok) return result;
-          const src = gallery.items[index]?.src;
           // The server keeps the file while a stored version of a project shows it.
-          if (src) void PROJECT_UPLOADS.discard(src);
-          return { ok: true, value: result.value.items };
+          for (const src of result.value.letGo) void PROJECT_UPLOADS.discard(src);
+          return { ok: true, value: result.value.fields.items };
         }}
         row={(item: GalleryItemFields, i, update) => (
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2.5">

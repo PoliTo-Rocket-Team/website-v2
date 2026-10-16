@@ -765,8 +765,13 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   optional caption; a placeholder slot stays until it is removed. A shown gallery keeps one photo
   at least.
 - Launch and gallery photos upload the moment they are picked, as Outreach photos do: behind the
-  site-content gate, to the public store under `project-photos/`, and a file no version of any
-  project shows any more is deleted. A save refuses a photo this side did not upload.
+  site-content gate, to the public store under `project-photos/`. A save refuses a photo this side
+  did not upload. A file is deleted once no version of any project shows it and the open editor
+  holds it no more: removing a photo or a whole launch deletes its file unless a saved version
+  shows it, and a save with Launch history or Gallery off keeps the files of the photos still in
+  the panel, so switching the section back on brings them back. Leaving the editor with photos
+  that are only in the panel (a section that is off, or an upload not yet saved) leaves their
+  files in the store, as Outreach does.
 - Desktop edits the desktop text. Phone edits the phone text of the fields that have one; an empty
   phone field shows the desktop text, except the story texts, which always have their own.
 - An optional section (Versions, Launch history, Plan, Why, Gallery) has a show-on-page switch in its header. Off, the section

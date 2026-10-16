@@ -7,7 +7,7 @@ import { checkPhotoUpload, filesNoLongerShown, freeingFiles, isPhotoSrc, type Ph
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { editedLine, type EditStamp } from "./edited";
 import { checkProjectFields, type ProjectFields } from "./fields";
-import { listPhotos } from "./list-fields";
+import { heldPhotos, listPhotos } from "./list-fields";
 import type { ProjectRecord } from "./record";
 
 // The projects' editor (issues #255, #297 and #298): the shared content
@@ -19,7 +19,8 @@ import type { ProjectRecord } from "./record";
 // projects, seen from the dummy team's moment. Photos of a launch or of the
 // gallery (issue #299) are uploaded the way Outreach's are
 // (lib/outreach-photos.ts): stored at once behind the gate, put on the
-// project by a save, and deleted once no version of any project shows them.
+// project by a save, and deleted once no version of any project shows them
+// and the panel holds them no more.
 
 /** When each project was last edited and by whom, and the moment the list counts "today" from. */
 export interface EditHistory {
@@ -41,6 +42,12 @@ export const NO_PHOTO_FILES: PhotoFiles = {
 
 /** The uploaded photos a project's version shows: its launches' and its gallery's. */
 const photosIn = (record: ProjectRecord): PhotoSrc[] => listPhotos(record).filter(isPhotoSrc);
+
+/** `files`, never deleting the photos in `held`. */
+function keeping(files: Pick<PhotoFiles, "drop">, held: readonly string[]): Pick<PhotoFiles, "drop"> {
+  const kept = new Set(held);
+  return { drop: (srcs) => files.drop(srcs.filter((src) => !kept.has(src))) };
+}
 
 /**
  * The record, or why not: each photo is one the version the panel opened on
@@ -87,12 +94,16 @@ export function projectEditor(
   const editor = contentEditor(viewer, freeingFiles(store, files, photosIn));
   return {
     ...editor,
-    saveFields: (id, step, fields) =>
-      editor.save(id, step, async (opened) => {
+    saveFields(id, step, fields) {
+      // A section switched off leaves the record but stays in the panel, photos
+      // and all, so this save deletes none of the files the fields still hold.
+      const saving = contentEditor(viewer, freeingFiles(store, keeping(files, heldPhotos(fields)), photosIn));
+      return saving.save(id, step, async (opened) => {
         if (opened === null) return refused("Unknown project.");
         const record = checkProjectFields(fields, opened);
         return record.ok ? checkProjectPhotos(record.value, opened, files) : record;
-      }),
+      });
+    },
     async board() {
       const items = await editor.list();
       if (items === null) return null;

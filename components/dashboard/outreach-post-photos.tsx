@@ -147,7 +147,7 @@ export function PhotosSection({
               <button
                 type="button"
                 aria-pressed={open === key}
-                aria-label={`Photo ${index + 1}${cover && index === 0 ? ", the cover" : ""}:${photo.alt.trim() || "no description yet"}`}
+                aria-label={`Photo ${index + 1}${cover && index === 0 ? ", the cover" : ""}: ${photo.alt.trim() || "no description yet"}`}
                 onClick={() => setOpen(open === key ? null : key)}
                 className={`absolute inset-0 rounded-lg ${CONTENT_FOCUS}`}
               >
