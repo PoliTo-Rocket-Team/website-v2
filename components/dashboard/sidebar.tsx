@@ -17,6 +17,7 @@ import {
   Network,
   ShoppingCart,
   Users,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import type { DashboardPageKey, MenuPage, NavSection } from "@/lib/dashboard/access";
@@ -33,6 +34,8 @@ const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   alumni: GraduationCap,
   partners: Handshake,
   faq: CircleHelp,
+  // Not listed until the Team page editor lands (issue #283).
+  "team-page": UsersRound,
   orders: ShoppingCart,
   "division-access": KeyRound,
   "activity-log": History,

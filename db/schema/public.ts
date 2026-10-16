@@ -632,6 +632,19 @@ export const faqVersions = pgTable(
   }),
 );
 
+// The Team page's visual layer (issue #283, ADR 0015): one document, kept as
+// the published version /about/the-team lays on the roles build and an
+// optional draft, one row each. It holds what an editor changed on the page
+// (lib/about/team-layer.ts), never a role, division, department or access.
+export const teamPageLayerVersions = pgTable("team_page_layer_versions", {
+  id: serial("id").primaryKey(),
+  version: contentVersionEnum("version").notNull().unique("team_page_layer_versions_version_unique"),
+  layer: jsonb("layer").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
 export const logs = pgTable("logs", {
   id: serial("id").primaryKey(),
   schemaName: text("schema_name").notNull(),

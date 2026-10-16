@@ -38,4 +38,4 @@ Owner decision, 2026-10-16, on the Team page design (epic #259, https://github.c
 - Placing someone other than the board seats on the arc (for example a department head) is a visual-layer edit, not a role change.
 - The "Gap" line for #189 in `docs/dashboard-rules.md` is removed.
 
-Followed today: the builder is [lib/about/team-roles.ts](../lib/about/team-roles.ts); the page's read is [lib/about/team-data.ts](../lib/about/team-data.ts); the snapshot is [lib/dashboard/team-database.ts](../lib/dashboard/team-database.ts).
+Followed today: the builder is [lib/about/team-roles.ts](../lib/about/team-roles.ts); the page's read is [lib/about/team-data.ts](../lib/about/team-data.ts); the snapshot is [lib/dashboard/team-database.ts](../lib/dashboard/team-database.ts); the visual layer is [lib/about/team-layer.ts](../lib/about/team-layer.ts), saved and published through [lib/about/team-page-editor.ts](../lib/about/team-page-editor.ts) (#283).
