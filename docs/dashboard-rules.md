@@ -205,16 +205,16 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
 
 These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 61h2).
 
-- There is no separate Department page. The Members page holds the division tools for heads, and
-  shows member data. The department head's view is below (#235).
+- There is no separate Department page. The Members page shows member data only: it holds no
+  structure tools. Divisions and departments are created, edited and closed in the Team tree's
+  edit view (see Team structure below, #251). The department head's view is below (#235).
 - The table shows each person's divisions as code chips. A division in another department shows
   the department's name instead. Each person's role is their title in this division, or "Division
   Lead".
-- Phone numbers are blurred until hover (or keyboard focus), in the table and on the member panel.
-  The panel's Personal section (date of birth, gender) is blurred the same way. The panel has no
+- The Members lists have no Phone or Discord column (Owner decision, 2026-10-16, #251). Both stay
+  on the member panel, where the phone number is blurred until hover (or keyboard focus). The
+  panel's Personal section (date of birth, gender) is blurred the same way. The panel has no
   access section: access lives only on the Access page.
-- While a side panel is open on a screen 1280px or wider, the Phone and Discord columns are
-  hidden, so names and the "Waiting for NDA" line keep their room (#244).
 - A member is added by searching the team by name or by typing an email.
   - Someone already on the team joins the division at once and keeps their other divisions. They
     sign no second NDA: there is one NDA for the whole team
@@ -295,30 +295,86 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 These rules come from #235 (boards 69, 69b, 69c and 69m) and the Owner decisions on #231.
 
 - The page lists every open division of the head's department. Its tabs are "All divisions" (where
-  it starts), one per division, and "Closed". On a phone the tabs are one "All divisions" select.
+  it starts) and one per division; there is no Closed tab. On a phone the tabs are one "All
+  divisions" select.
 - "All divisions" lists everyone in the department's divisions once, leads first. Each row shows
   the person's role and title in their first division of the department. Its ⋯ menu offers
   "Remove from {division}" for each division of the department the person is in, under the rules
   above, and "Leaves the team".
 - A division tab is that division's page as its lead sees it, people waiting for their NDA
-  included, under a bar with the division's code, name and leads.
-- "Closed" lists the department's closed divisions with the day each closed.
+  included, under a bar with the division's code, name and leads. The bar has no Edit division or
+  Close division button.
 - Add member starts with a Division select. It lists only the department's open divisions and
   starts on the open division tab, else the first.
 - A head acts only on people in their department's divisions: adding, Confirm NDA, Cancel add,
   Confirm join, Edit details, Remove from {division} and Leaves the team. The server refuses the
   rest.
-- "+ New division", "Edit division", "Close division" and "Reopen" show only to the department's
-  head (or the team leader). What they open is below.
+- The page has no "+ New division", "Edit division", "Close division" or "Reopen": the head edits
+  their divisions in the Team tree's edit view (below).
+
+#### Team structure
+
+These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77g, 66t and 66t-b).
+
+- Structure is edited in one place: the Team tree's edit view. The Team tree header shows one
+  **Edit** button to the team leader, to full access (#238) and to a department head. A division
+  lead and a member get none; a division lead keeps adding and removing members on Members.
+- The edit view shows the team leader on top and one column per open department: its box (name,
+  head, how many people), then each division's box (name, lead, how many people), every box
+  collapsed. **Done** returns to the tree. There is no closed-divisions list.
+- The team leader and full access see a pencil on every box, **+ Add division** under each
+  department column and **+ Add department** at the end of the row (board 77b).
+- A department head sees pencils and **+ Add division** only on their own department's divisions.
+  Every other department is dimmed and read-only, and no department has a pencil or Add
+  department (board 66t-b). The server refuses a division create, edit or close by a head outside
+  their own department, not only the page.
+- A division's pencil opens Edit division (below), with **Close division** in its footer. Add
+  division opens New division in the department of the column it is under.
+
+#### Departments
+
+- Only the team leader and full access create, edit or close a department. A department head
+  never can, not even their own. The server refuses everyone else.
+- **New department** (board 77d) needs a name, a code of 2 or 3 letters no other open department
+  uses, and exactly one head, picked from the team. The head keeps their divisions. Someone who
+  already holds a seat (the team leader, a board seat, another department's head) cannot be
+  picked. Divisions are added after, with Add division.
+- **Edit department** (board 77e) shows the name, the code, the head, and the divisions as rows
+  that open to list their people, lead first, read-only. Save changes stores a new name or code,
+  after an "are you sure" that lists each change. Changing the head is not here: role hand-over is
+  #253.
+- **Close department** (board 77f), from Edit department's footer:
+  - Each open division gets a choice: move it to another open department, or close it. A division
+    with anyone in it (people waiting for their NDA included) can only move.
+  - The head gets a choice too, in the drawer's "Head" block, with neither option picked at first
+    (Owner decision, 2026-10-16). Nobody gets a role automatically.
+    - **Become an advisor:** the head role ends and one active role with the Advisor title starts,
+      in no department and no division. Every access row they hold is removed (Owner decision,
+      2026-10-16).
+    - **Leave the team:** every role they hold ends and their access goes, as Leaves the team
+      does, so they appear on Alumni.
+  - Close department stays disabled until every division and the head have a choice. The server
+    refuses a close that picks nothing for the head of a department that has one.
+  - A division that moves takes its people, its leads and its open positions with it. Every role
+    and access row that names the old department for that division follows it. A seat row kept on
+    the division (a head's, the team leader's) does not move.
+  - A division that closes closes as Close division closes it: its open positions close and its
+    division access goes.
+  - The department closes (`closed_at` is set) and its department access goes.
+  - It asks "are you sure" first, listing what happens to each division and to the head. A closed
+    department cannot be reopened.
 
 #### Divisions
 
-These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 68e and 69d).
+These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 68c and 69d) and
+of 2026-10-16 on #251.
 
-- Only the head of a division's department, or the team leader, creates, edits, closes or
-  reopens it. A division lead never can, not even for their own division. The server refuses
-  everyone else. Creating or closing a department, and moving a division to another department,
-  are not done here.
+- Only the head of a division's department, the team leader or full access creates, edits or
+  closes it. A division lead never can, not even for their own division. The server refuses
+  everyone else.
+- **No reopen.** A closed division never opens again: there is no Reopen control, no Closed tab
+  and no save that clears a division's `closed_at` (board 68e is dropped). Closed divisions stay
+  only as names in history; a team that needs one back creates a new division.
 - A division has a name and a code. Divisions have no description.
   - The code is 2 or 3 letters, kept in capitals. No two open divisions share a code; a closed
     division's code is free again.
@@ -331,13 +387,12 @@ These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 6
   2026-10-11, on #232). They keep that role and lead the division beside it: the Members page
   lists them in the division, and the Team tree still draws them once, at their seat.
   - A seat stays a seat through every division write. Some seat rows are kept on a division (a
-    head's row, for example). Leaving a division, "Remove from {division}", a promote on a save or
-    a reopen, a lead who stays as a member, and the reopen that ends the roles a closed division
-    still holds each end or change only lead and member roles. They never end or change a seat
-    row. A seat row kept on a division is not a role in it: the person is in that division only
-    when they also hold a lead or member role there.
-- An open division always has at least one lead. A create, an edit or a reopen that would leave
-  it with none is refused.
+    head's row, for example). Leaving a division, "Remove from {division}", a promote on a save,
+    and a lead who stays as a member each end or change only lead and member roles. They never end
+    or change a seat row. A seat row kept on a division is not a role in it: the person is in that
+    division only when they also hold a lead or member role there.
+- An open division always has at least one lead. A create or an edit that would leave it with
+  none is refused.
 - A new lead can replace an old one ("{new} replaces", default "Nobody, add as an extra lead").
   A replaced lead, and a lead taken off with Remove, gets one of three outcomes:
   - **Stays as a member** (the default): they keep the division and lose the lead role.
@@ -357,12 +412,6 @@ These rules come from the Owner decisions of 2026-10-11 on #232 (boards 68b to 6
 - A division cannot close while anyone is in it, people waiting for their NDA included. The
   dialog then says how many people are left and offers Edit division. Closing an empty division
   asks "are you sure", then closes its open positions and removes every access given in it.
-- Reopen asks "are you sure", then opens the Edit division drawer for the closed division. It
-  opens again only when that drawer is saved with at least one lead, so an open division never
-  has zero leads. Nobody who was in it before comes back. A division closed before this rule can
-  still hold roles: the save that reopens it ends its lead and member roles, and drops its pending
-  NDA adds and its division access. A seat row kept on it stays. A picked lead who still held a
-  lead or member role there keeps that one role, now as a lead.
 - The site sends no emails here either: the drawer shows the amber note for anyone added by
   email.
 

@@ -32,8 +32,9 @@ export type MemberChange = {
 
 /**
  * A division as the test developer left it (issue #232): created, renamed,
- * recoded, closed or reopened. It replaces the division ./team.ts starts
- * with, open or closed, or adds a new one.
+ * recoded, closed, or moved to another department when its own closed
+ * (#251). It replaces the division ./team.ts starts with, open or closed, or
+ * adds a new one.
  */
 export type DummyDivisionEdit = {
   /** As stored: "Flight Dynamics Division". */
@@ -42,6 +43,20 @@ export type DummyDivisionEdit = {
   readonly departmentId: number;
   /** The day it closed ("2026-10-09"); null while it is open. */
   readonly closedOn: string | null;
+};
+
+/**
+ * A department as the test developer left it (issue #251): created, renamed,
+ * recoded or closed. It replaces the department ./team.ts starts with, or
+ * adds a new one.
+ */
+export type DummyDepartmentEdit = {
+  readonly name: string;
+  readonly code: string | null;
+  /** The day it closed; null while it is open. */
+  readonly closedOn: string | null;
+  /** The head New department picked; null for a department ./team.ts starts with, whose head is in the arrays. */
+  readonly headId: number | null;
 };
 
 /** Confirm NDA on someone waiting: the day, and the member who confirmed it. */
@@ -78,8 +93,16 @@ export type TeamEdits = {
   readonly cancelled: readonly number[];
   /** Details saved from Edit details: "p12" for person 12, "w3" for the add with join id 3. */
   readonly details: Readonly<Record<string, MemberDetails>>;
-  /** Divisions created, edited, closed or reopened (issue #232), by id. */
+  /** Divisions created, edited, closed or moved (issues #232, #251), by id. */
   readonly divisions: Readonly<Record<number, DummyDivisionEdit>>;
+  /** Departments created, edited or closed (issue #251), by id. */
+  readonly departments: Readonly<Record<number, DummyDepartmentEdit>>;
+  /**
+   * People a closed department's "Become an advisor" made advisors (Owner
+   * decision, 2026-10-16): each holds one Advisor role in no department and
+   * no division, as the database starts it.
+   */
+  readonly advisorRoles: readonly number[];
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -93,6 +116,8 @@ export const NO_EDITS: TeamEdits = {
   cancelled: [],
   details: {},
   divisions: {},
+  departments: {},
+  advisorRoles: [],
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -200,6 +225,16 @@ function readDivision(value: unknown): DummyDivisionEdit | null {
   return { name: name.slice(0, 80), code: code === null ? null : code.slice(0, 3), departmentId: departmentId as number, closedOn };
 }
 
+function readDepartment(value: unknown): DummyDepartmentEdit | null {
+  if (!isRecord(value)) return null;
+  const { name, code, closedOn, headId } = value;
+  if (typeof name !== "string" || name.trim() === "") return null;
+  if (code !== null && typeof code !== "string") return null;
+  if (closedOn !== null && !isDay(closedOn)) return null;
+  if (headId !== null && !(Number.isInteger(headId) && (headId as number) > 0)) return null;
+  return { name: name.slice(0, 80), code: code === null ? null : code.slice(0, 3), closedOn, headId: headId as number | null };
+}
+
 function readDetails(value: unknown): Record<string, MemberDetails> {
   if (!isRecord(value)) return {};
   const out: Record<string, MemberDetails> = {};
@@ -284,6 +319,10 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
       : [],
     details: readDetails(raw.details),
     divisions: entriesOf(raw.divisions, readDivision),
+    departments: entriesOf(raw.departments, readDepartment),
+    advisorRoles: Array.isArray(raw.advisorRoles)
+      ? raw.advisorRoles.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)
+      : [],
   };
 }
 

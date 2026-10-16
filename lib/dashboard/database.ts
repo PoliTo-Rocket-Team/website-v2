@@ -53,7 +53,7 @@ import {
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
-import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers } from "./database-team";
+import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
@@ -732,6 +732,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
       const roster = canReach(identity, "team-tree") ? rosterOf(snapshot) : [];
       return buildTeamTree(roster, snapshot.org, seasonAt(new Date()), identity.memberId);
     },
+    teamStructure: () => readTeamStructure(identity),
     teamWrites: { ...databaseTeamWrites(identity), ...databaseAlumniWrites(identity) },
     dismissNotice: (noticeId) => dismissNotice(identity, noticeId),
     recruitment: getRecruitmentControl,

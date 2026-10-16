@@ -7,7 +7,7 @@ import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
 import { dummyTeamPages } from "./team-pages";
 
-// New division, Edit division, Close division and Reopen on a preview (#232):
+// New division, Edit division and Close division on a preview (#232, #251):
 // what each save does to the team the test developer sees next. The rules
 // themselves are lib/dashboard/division-edit.test.ts's.
 
@@ -120,7 +120,7 @@ test("New division opens with its lead and members; a new email waits for Confir
   assert.ok(after.people.some((p) => p.signInEmail === "new.person@studenti.polito.it"));
 });
 
-test("closing an empty division moves it to Closed, closes its open positions and drops its access", async () => {
+test("closing an empty division takes it off the chart, closes its open positions and drops its access", async () => {
   const h = head();
   assert.equal((await h.writes.closeDivision(MISSION_ANALYSIS)).ok, false, "people are still in it");
   // A new division, then its only lead moved out from the Members list, leaves it empty.
@@ -131,8 +131,9 @@ test("closing an empty division moves it to Closed, closes its open positions an
   const closer = head(emptied.kept());
   assert.deepEqual(await closer.writes.closeDivision(created.value), { ok: true, value: null });
   const page = department(await head(closer.kept()).view.members());
-  assert.ok(page.closed.some((d) => d.id === created.value));
   assert.ok(!page.tabs.some((t) => t.division.id === created.value));
+  const structure = (await head(closer.kept()).view.teamStructure())!;
+  assert.ok(!structure.departments.flatMap((d) => d.divisions).some((d) => d.id === created.value), "no closed-divisions list either");
 
   // Optimization and Analysis has an open position and access given in it.
   const shut: TeamEdits = { ...NO_EDITS, divisions: { [OPTIMIZATION]: { name: "Optimization and Analysis Division", code: "OA", departmentId: 1, closedOn: "2026-10-09" } } };
@@ -149,14 +150,12 @@ test("closing an empty division moves it to Closed, closes its open positions an
   assert.ok(!access.grants.some((g) => g.place.kind === "division" && g.place.division.id === OPTIMIZATION));
 });
 
-test("Reopen opens a closed division only with a lead, and with no members", async () => {
-  const h = head();
-  const none = await h.writes.saveDivision(WIND_TUNNEL, { ...keep, name: "Wind Tunnel", code: "WT" });
-  assert.deepEqual(none, { ok: false, error: "A division needs at least one lead." });
-  assert.ok((await h.writes.saveDivision(WIND_TUNNEL, { ...keep, name: "Wind Tunnel", code: "WT", newLeads: [13] })).ok);
-  const tab = (await tabOf(h.kept(), WIND_TUNNEL))!;
-  assert.deepEqual(tab.people.map((p) => [p.id, p.role]), [[13, "lead"]]);
-  assert.ok(!department(await head(h.kept()).view.members()).closed.some((d) => d.id === WIND_TUNNEL));
+test("a closed division never opens again: a save on it is refused, even with a lead (#251)", async () => {
+  const h = head(NO_EDITS);
+  const saved = await h.writes.saveDivision(WIND_TUNNEL, { ...keep, name: "Wind Tunnel", code: "WT", newLeads: [13] });
+  assert.deepEqual(saved, { ok: false, error: "That division is not one you manage." });
+  assert.equal(h.kept(), NO_EDITS, "nothing is saved");
+  assert.equal(await tabOf(h.kept(), WIND_TUNNEL), undefined);
 });
 
 test("a division lead's division writes are refused on the server", async () => {
