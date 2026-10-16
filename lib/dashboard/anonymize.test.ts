@@ -156,6 +156,7 @@ const application: InferSelectModel<typeof applications> = {
   customAnswers: [{ question: "Why?", answer: "Rockets" }],
   withdrawnAt: null,
   acceptedAt: "2024-09-20T10:00:00.000Z",
+  rejectedAt: null,
   ndaArrivedAt: "2024-09-25T10:00:00.000Z",
   joinedAt: "2024-10-01T10:00:00.000Z",
 };

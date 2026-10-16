@@ -3,11 +3,10 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { OverviewView } from "@/components/dashboard/overview";
-import { openApplyData } from "@/lib/apply/open";
-import { applyListing } from "@/lib/apply/positions";
-import { canReach, dashboardLandingFor } from "@/lib/dashboard/access";
+import { canReach } from "@/lib/dashboard/access";
 import { applicantOverview } from "@/lib/dashboard/applicant-overview";
 import type { DashboardData } from "@/lib/dashboard/data";
+import { alumniOverview } from "@/lib/dashboard/my-alumni";
 import { openDashboard } from "@/lib/dashboard/open";
 import type { Overview } from "@/lib/dashboard/overview";
 
@@ -15,11 +14,11 @@ export const metadata: Metadata = {
   title: "Overview · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 40 (the operations lead), 72 (the team leader), 56 (a division lead), 52 (a member) and
-// 50e (a non-member who has applied). Every viewer reaches it
-// (lib/dashboard/access.ts); what it shows is the viewer's own overview. A
-// non-member who has not applied yet goes to My applications instead (issue
-// #179).
+// Board 40 (the operations lead), 72 (the team leader), 56 (a division
+// lead), 52 (a member), 50e and 50f (a non-member, with and without an
+// application shown) and issue #317's board 56 (an alumnus). Every viewer
+// reaches it and lands on it (lib/dashboard/access.ts); what it shows is the
+// viewer's own overview.
 export default function OverviewPage() {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
@@ -35,16 +34,25 @@ async function LiveOverview() {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "overview")) notFound();
-  const landing = dashboardLandingFor(data.viewer.kind, await data.hasOwnApplications());
-  if (landing !== null) redirect(landing);
   return <OverviewView overview={await overviewOf(data)} />;
 }
 
-// A non-member's Overview reads their applications as My applications does
-// and the open positions as /apply does (issue #211).
+// Off the team, the Overview reads the applications My applications shows
+// (issue #211) and lists no open positions (issue #317); an alumnus's adds
+// their Alumni entry.
 async function overviewOf(data: DashboardData): Promise<Overview> {
-  if (data.viewer.kind !== "non-member") return data.overview();
-  const [mine, apply] = await Promise.all([data.myApplications(), openApplyData()]);
-  if (mine === null) notFound();
-  return applicantOverview(data.viewer.name, mine, applyListing(await apply.publicPositions()));
+  switch (data.viewer.kind) {
+    case "non-member": {
+      const mine = await data.myApplications();
+      if (mine === null) notFound();
+      return applicantOverview(data.viewer.name, mine);
+    }
+    case "alumni": {
+      const [mine, me] = await Promise.all([data.myApplications(), data.myAlumni()]);
+      if (mine === null || me === null) notFound();
+      return alumniOverview(data.viewer.name, me, mine);
+    }
+    default:
+      return data.overview();
+  }
 }

@@ -11,7 +11,7 @@ import {
 } from "@/lib/about/alumni-record";
 import { BOARD_SEAT_TITLES, type OrgChart, type OrgDivision, type Placement, type RosterEntry } from "@/lib/dashboard/team";
 import type { DummyAlumniEdits } from "./edits";
-import { DUMMY_NOW, type DummyAlumnus } from "./team";
+import { DUMMY_NOW, formerMember, type DummyAlumnus } from "./team";
 
 // The test developer's Alumni record (issue #257): the dummy team's roles,
 // as the database would hold them, with the real one-time import beside
@@ -51,6 +51,17 @@ function placementRoles(memberId: number, placement: Placement, org: OrgChart, s
   return [...seat, ...inDivisions];
 }
 
+/**
+ * The Alumni viewer's roles (issue #317): a member of Structures Analysis
+ * in 2022–23 and of Mission Analysis in 2023–24, then its lead in 2024–25,
+ * so My alumni lists three years (board 56b). All ended.
+ */
+export const formerMemberRoles: readonly RecordRole[] = [
+  { memberId: formerMember.id, type: "core", title: "Member", startedAt: "2022-10-01", leftAt: "2023-09-30", departmentId: null, divisionId: 4 },
+  { memberId: formerMember.id, type: "core", title: "Member", startedAt: "2023-10-01", leftAt: "2024-09-30", departmentId: null, divisionId: 1 },
+  { memberId: formerMember.id, type: "lead", title: "Division Lead", startedAt: "2024-10-01", leftAt: "2025-06-30", departmentId: null, divisionId: 1 },
+];
+
 /** The one role an Alumni row stands for, when the roster no longer knows the person. */
 function rowRole(row: DummyAlumnus, units: AlumniRecord["units"], startedAt: string, leftAt: string): RecordRole {
   const department = units.departments.find((d) => d.name === row.department);
@@ -85,6 +96,7 @@ export function dummyAlumniRecord(input: {
       const leftAt = `${row.to}-06-30`;
       return placement === null ? [rowRole(row, units, startedAt, leftAt)] : placementRoles(row.id, placement, org, startedAt, leftAt);
     }),
+    ...formerMemberRoles,
   ];
   const imported = importedEntries(IMPORTED_FIRST_ID);
   const hidden = former.flatMap(({ row }): AlumniEntry[] =>
@@ -105,7 +117,11 @@ export function dummyAlumniRecord(input: {
   const base: AlumniRecord = {
     units,
     roles,
-    people: [...team.map((e) => ({ memberId: e.id, name: e.name, email: e.email })), ...former.map(({ row }) => ({ memberId: row.id, name: row.name, email: null }))],
+    people: [
+      ...team.map((e) => ({ memberId: e.id, name: e.name, email: e.email })),
+      ...former.map(({ row }) => ({ memberId: row.id, name: row.name, email: null })),
+      { memberId: formerMember.id, name: formerMember.name, email: formerMember.email },
+    ],
     entries: [...hidden, ...imported.entries, ...advisors],
     imported: imported.imported,
   };

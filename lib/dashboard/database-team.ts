@@ -61,7 +61,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { seatOf } from "./viewer";
+import { isOffTeam, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -111,7 +111,7 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
  * cover. Null for anyone else.
  */
 async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
-  if (identity.memberId === null || identity.kind === "non-member") return null;
+  if (identity.memberId === null || isOffTeam(identity.kind)) return null;
   if (identity.kind === "operations-lead") return { kind: "team" };
   const rows = await getDb()
     .select({ type: roles.type, dept_id: roles.deptId, division_id: roles.divisionId })

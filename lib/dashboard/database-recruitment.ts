@@ -525,6 +525,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
           .set({
             status: "accepted",
             acceptedAt: after.acceptedAt,
+            rejectedAt: null,
             ndaArrivedAt: after.ndaArrived ? (row.nda_arrived_at ?? now.toISOString()) : null,
           })
           .where(unchanged)
@@ -544,8 +545,11 @@ export async function moveApplication(identity: Identity, applicationId: number,
     case "new":
     case "in-review":
     case "rejected": {
+      // Reject records when it was decided, the time the applicant's pages
+      // count a month from (issue #317); moving it back clears it.
+      const rejectedAt = after.stage === "rejected" ? now.toISOString() : null;
       const changed = await runAuditQuery((db) =>
-        db.update(applications).set({ status: statusFor[after.stage] }).where(unchanged).returning({ id: applications.id }),
+        db.update(applications).set({ status: statusFor[after.stage], rejectedAt }).where(unchanged).returning({ id: applications.id }),
       );
       return changed.length === 0 ? refused(APPLICATION_CHANGED) : written(null);
     }

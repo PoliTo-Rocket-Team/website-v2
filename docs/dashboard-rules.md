@@ -9,9 +9,12 @@ built yet is marked **Planned**.
 
 ## 1. Who sees what
 
-The five people:
+The six people:
 
 - **Non-member**: signed in, not on the team (an applicant).
+- **Alumni**: signed in, every role ended, and on the Alumni record (#317). An alumnus holds no
+  access: leaving ends every role and grant, and any access row left over gives nothing. To get
+  access again they are added back with a role.
 - **Member**: on the team.
 - **Division lead**: leads one or more divisions.
 - **Department head**: heads a department and all its divisions.
@@ -25,27 +28,35 @@ them. A former team leader who became an advisor keeps full access through an ac
 
 An admin column comes later. **Planned**, no issue yet.
 
-| Sidebar item or page | Non-member | Member | Division lead | Department head | Full access |
-|---|---|---|---|---|---|
-| My applications | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application |
-| Overview | Yes, only with at least one application | Yes | Yes | Yes | Yes |
-| Team tree | No | Yes | Yes | Yes | Yes |
-| Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
-| Applications | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
-| Members | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
-| Partners | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| FAQ | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
-| Orders | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
-| Activity log | No | No | No | No | The IT lead only |
-| My account | User menu only | No | No | No | No |
-| My profile | No | User menu only | User menu only | User menu only | User menu only |
-| Sign out | User menu only | User menu only | User menu only | User menu only | User menu only |
+| Sidebar item or page | Non-member | Alumni | Member | Division lead | Department head | Full access |
+|---|---|---|---|---|---|---|
+| My applications | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown |
+| Overview | Yes | Yes | Yes | Yes | Yes | Yes |
+| My alumni | No | Yes | No | No | No | No |
+| Team tree | No | No | Yes | Yes | Yes | Yes |
+| Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
+| Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
+| Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Partners | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| Alumni | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| FAQ | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| Access | No | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
+| Orders | No | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
+| Activity log | No | No | No | No | No | The IT lead only |
+| My account | User menu only | User menu only | No | No | No | No |
+| My profile | No | No | User menu only | User menu only | User menu only | User menu only |
+| Sign out | User menu only | User menu only | User menu only | User menu only | User menu only | User menu only |
 
-- **My applications** shows for everyone, but only when they have at least one application.
-- A non-member with no application lands on the My applications empty state, with a
-  "See open positions" button (#179).
+- **An application is shown** while it is being decided (received, in review, at its interview),
+  and until one month after its latest decision: accept, reject, another team taking the person,
+  join, or withdraw. After an accept, the join is the latest decision. Then it leaves the Overview
+  and My applications, for everyone; the data stays (Owner decision, #317). A decision from before
+  its time was stored (`rejected_at`, migration 0027) counts as past the month.
+- **My applications** shows for everyone, but only while one of their applications is shown.
+  With none shown, its address opens the Overview.
+- **Every viewer lands on the Overview** (#317). A non-member with nothing shown sees their name,
+  their sign-in address and "No applications right now" (board 50f). Before #317 they landed on
+  the My applications empty state (#179).
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
   #238). Three seats hold it:
   - the **team leader**: the role of type `president`;
@@ -89,11 +100,18 @@ An admin column comes later. **Planned**, no issue yet.
   - **Positions and Applications:** as the operations lead's, with "All departments" and "All
     divisions" selects, as on the department head's boards 63 and 64. New position lists every
     division of the team.
-- **Overview** is for members, division leads, department heads and the operations lead, and for
-  a non-member with at least one application, withdrawn ones included (boards 50e and 50e-m,
-  #211). A non-member whose only applications are withdrawn stays on the Overview: the "Your
-  applications" panel shows one line, "No open applications.", with its "Open My applications"
-  link, and the withdrawn applications stay under Past on My applications (Owner decision, #227).
+- **Overview** is for everyone. A non-member's lists their shown applications (boards 50e and
+  50e-m, #211) or says there are none (board 50f); a withdrawn application is never a row there,
+  and stays under Past on My applications (Owner decision, #227). Neither a non-member's nor an
+  alumnus's Overview lists open positions (Owner decision, #317).
+- **An alumnus's Overview** (board 56, #317) reads "Former member · {last unit} · {years}" from
+  their ended roles, then a card that says whether the Alumni page lists them, with "Open My
+  alumni". Their shown applications follow it.
+- **My alumni** (board 56b, #317): "Show me on the Alumni page" is the person's own request, the
+  same one the leave-time box "Remove my name from the Alumni page" records (#257); an editor's
+  Hidden on board 78 is not theirs to undo. The photo is the one the Alumni page shows, checked as
+  on board 78b. The role history lists each academic year from the team's roles, read-only: a
+  wrong entry is the team leader's to fix on the Alumni page.
 - **Team tree** is for members and up.
 - **Positions** and **Applications**: a division lead sees their own divisions. A department head
   sees all divisions in their department and picks one with division tabs. The operations
@@ -131,7 +149,7 @@ An admin column comes later. **Planned**, no issue yet.
   Team. Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
   may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
   `lib/content/gate.ts`). See "6. Site content".
-- **My account** (non-member) and **My profile** (member and up) open from the user menu only,
+- **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
 - The PRT logo links to the site home. There is no "back to site" button.
@@ -310,8 +328,9 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   - The lead of each division the person was in gets a notice under "Needs your attention" on
     their Overview, until they dismiss it (#201).
   - **Gap:** the recruitment manager is not told; the dashboard has none yet. Tracked in #194.
-- Someone with no active role left (they left, or were moved to Alumni) signs in as a non-member
-  and sees the applicant's pages (#201).
+- Someone with no active role left (they left, or were moved to Alumni) signs in as an alumnus
+  when the Alumni record knows them, else as a non-member (#201, #317). Either way they open on
+  their Overview.
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
@@ -595,8 +614,10 @@ and 67m).
 ## 5. Data and testing
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
-  developer" switch, with six people: team leader, operations lead, department head, division
-  lead, member and non-member. The operations lead there sits in the operations lead's seat, so
+  developer" switch, with seven people: team leader, operations lead, department head, division
+  lead, member, alumni and non-member. The alumni viewer is a former member with three years of
+  ended roles, an Alumni entry, one application decided within the last month and one decided
+  before it (#317). The operations lead there sits in the operations lead's seat, so
   they have full access and do not decide orders; the team leader decides orders and gives
   "Approve orders" (#247), and sees boards 72 to 73c (#252). "Approve orders" given or removed
   there is kept until sign out, so after switching to the member it went to, that member reaches
