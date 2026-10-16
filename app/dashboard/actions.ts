@@ -192,9 +192,31 @@ export async function removePhoto(): Promise<WriteResult<null>> {
 
 export async function leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>> {
   const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? ""), removeFromAlumni === true));
-  // Off the team, the sidebar and every page change to the applicant's (issue #201).
+  // Off the team, the sidebar and every page change to an alumnus's (issues #201, #317).
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
+}
+
+/**
+ * My alumni's switch (board 56b, issue #317). The Overview's card reads it
+ * again; the public Alumni page follows its cache tag (./database-alumni.ts).
+ */
+export async function setMyAlumniShown(shown: boolean): Promise<WriteResult<null>> {
+  if (typeof shown !== "boolean") return refused("Check the switch.");
+  const result = await write("my-alumni", (data) => data.setMyAlumniShown(shown));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** My alumni's photo: the one the Alumni page shows beside their name. */
+export async function uploadMyAlumniPhoto(form: FormData): Promise<WriteResult<null>> {
+  const photo = await uploadOf(form, "photo");
+  if (photo === null) return refused("Choose a photo.");
+  return write("my-alumni", (data) => data.setMyAlumniPhoto(photo));
+}
+
+export async function removeMyAlumniPhoto(): Promise<WriteResult<null>> {
+  return write("my-alumni", (data) => data.setMyAlumniPhoto(null));
 }
 
 /** "Send for confirmation" on My profile (board 55d, issue #262): the hand-over waits; no role changes. */

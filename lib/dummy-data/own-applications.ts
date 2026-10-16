@@ -1,23 +1,27 @@
 import { NO_DETAILS, type YourDetails } from "@/lib/dashboard/details";
-import type { InterviewSlot } from "@/lib/dashboard/my-applications";
+import { isShownAt, type InterviewSlot, type StoredApplication } from "@/lib/dashboard/my-applications";
 import type { TestViewer } from "@/lib/dashboard/viewer";
 import type { OwnApplicationsStart, OwnChanges } from "./own";
-import { applicant, personFor } from "./team";
+import { applicant, DUMMY_NOW, formerMember, personFor } from "./team";
 
 // The test developer's own applications and details (boards 50 to 55,
 // issue #169). The applicant has one application at each step, so a review
 // sees the received, in review, interview and accepted cards together; the
 // member has one in review and the one they joined with (board 53); each lead
-// has one at its interview, to another division (issue #183). What a test
-// developer changes on top (./own.ts) is laid over these.
+// has one at its interview, to another division (issue #183); the alumnus has
+// one decided within the last month and one decided before it, so only the
+// first is shown (issue #317). What a test developer changes on top
+// (./own.ts) is laid over these.
 
 /** Where a dummy application stands before any change. */
 export type DummyOwnStatus =
   | { readonly kind: "received" }
   | { readonly kind: "in-review" }
   | { readonly kind: "interview"; readonly slots: readonly InterviewSlot[] }
-  | { readonly kind: "accepted" }
-  | { readonly kind: "not-selected" }
+  /** `decidedAt`: when it was accepted, the time the one-month rule counts from (issue #317). */
+  | { readonly kind: "accepted"; readonly decidedAt: string }
+  /** `decidedAt`: when it was rejected. */
+  | { readonly kind: "not-selected"; readonly decidedAt: string }
   | { readonly kind: "joined"; readonly since: string }
   /** Withdrawn before the test developer signed in (the withdrawn start). */
   | { readonly kind: "withdrawn" };
@@ -77,7 +81,7 @@ export const ownApplications = [
     viewer: "non-member",
     positionId: 9,
     sent: "2026-09-18T17:05:00+02:00",
-    status: { kind: "accepted" },
+    status: { kind: "accepted", decidedAt: "2026-10-01T10:00:00+02:00" },
     files: [CV],
     answer: "Abaqus for my thesis, and some ANSYS in a course.",
   },
@@ -85,8 +89,8 @@ export const ownApplications = [
     id: 105,
     viewer: "non-member",
     positionId: 10,
-    sent: "2026-03-03T12:00:00+01:00",
-    status: { kind: "not-selected" },
+    sent: "2026-09-22T12:00:00+02:00",
+    status: { kind: "not-selected", decidedAt: "2026-10-03T11:00:00+02:00" },
     files: [CV],
     answer: "behance.net/chiaralombardi",
   },
@@ -126,6 +130,24 @@ export const ownApplications = [
     files: [CV, LETTER],
     answer: "Yes, I packed the drogue for our last two launches.",
   },
+  {
+    id: 501,
+    viewer: "alumni",
+    positionId: 6,
+    sent: "2026-09-01T10:00:00+02:00",
+    status: { kind: "not-selected", decidedAt: "2026-09-24T17:00:00+02:00" },
+    files: [CV],
+    answer: "OpenFOAM on our fins, when I was in Mission Analysis.",
+  },
+  {
+    id: 502,
+    viewer: "alumni",
+    positionId: 4,
+    sent: "2026-03-02T10:00:00+01:00",
+    status: { kind: "not-selected", decidedAt: "2026-04-10T12:00:00+02:00" },
+    files: [CV],
+    answer: "RocketPy, and the trajectory tools I wrote as Mission Analysis lead.",
+  },
 ] as const satisfies readonly DummyOwnApplication[];
 
 /** Still being decided at the start: received, in review or at its interview. */
@@ -153,6 +175,37 @@ export function ownApplicationsOf(viewer: TestViewer, start: OwnApplicationsStar
 /** Withdrawn, at the start or by the test developer. A withdrawn application does not stop them applying again. */
 export function isWithdrawn(application: DummyOwnApplication, changes: OwnChanges): boolean {
   return application.status.kind === "withdrawn" || changes.withdrawn.includes(application.id);
+}
+
+/** When a withdrawal happened: the dummy team is seen from DUMMY_NOW, so then. */
+const WITHDRAWN_AT = new Date(DUMMY_NOW).toISOString();
+
+/** A dummy application as the database would store it, so the one-month rule reads it as it reads a real one. */
+export function storedOwn(application: DummyOwnApplication, changes: OwnChanges): StoredApplication {
+  const base = { appliedAt: application.sent, withdrawnAt: null, acceptedAt: null, rejectedAt: null, joinedAt: null };
+  if (isWithdrawn(application, changes)) return { ...base, status: "received", withdrawnAt: WITHDRAWN_AT };
+  const status = application.status;
+  switch (status.kind) {
+    case "received":
+      return { ...base, status: "received" };
+    case "in-review":
+      return { ...base, status: "pending" };
+    case "interview":
+      return { ...base, status: "interview" };
+    case "accepted":
+      return { ...base, status: "accepted", acceptedAt: status.decidedAt };
+    case "not-selected":
+      return { ...base, status: "rejected", rejectedAt: status.decidedAt };
+    case "joined":
+      return { ...base, status: "joined", joinedAt: status.since };
+    case "withdrawn":
+      return { ...base, status: "received", withdrawnAt: WITHDRAWN_AT };
+  }
+}
+
+/** Shown on the Overview and My applications, seen from DUMMY_NOW (`isShownAt`, issue #317). */
+export function isShownOwn(application: DummyOwnApplication, changes: OwnChanges): boolean {
+  return isShownAt(storedOwn(application, changes), new Date(DUMMY_NOW));
 }
 
 /** Still being decided, so it can be withdrawn: received, in review or at its interview. */
@@ -188,6 +241,7 @@ const startingDetails: Readonly<Record<TestViewer, YourDetails>> = {
   "division-lead": { ...NO_DETAILS, firstName: "Marco", lastName: "Bianchi" },
   "operations-lead": { ...NO_DETAILS, firstName: "Giulia", lastName: "Rossi" },
   "team-leader": { ...NO_DETAILS, firstName: "Alessandro", lastName: "Greco" },
+  alumni: { ...NO_DETAILS, firstName: formerMember.firstName, lastName: formerMember.lastName },
 };
 
 /** The viewer's details: as saved, else as they start. */

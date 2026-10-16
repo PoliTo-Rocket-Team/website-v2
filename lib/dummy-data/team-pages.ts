@@ -96,7 +96,7 @@ import {
 } from "@/lib/dashboard/hand-over-request";
 import type { AttentionItem } from "@/lib/dashboard/overview";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
-import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
+import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, formerMember, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
 
 // The test developer's Team pages (issues #143, #172 and #231): the roster
 // and alumni in ./team.ts with the test developer's own edits (./edits.ts)
@@ -160,6 +160,7 @@ const SELF_ID: Readonly<Record<TestViewer, number | null>> = {
   "department-head": 15,
   "division-lead": 2,
   member: 5,
+  alumni: formerMember.id,
   "non-member": null,
 };
 

@@ -211,6 +211,13 @@
       "when": 1792150955487,
       "tag": "0029_hand_over_requests_lapse",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792151015487,
+      "tag": "0030_application_rejected_at",
+      "breakpoints": true
     }
   ]
 }

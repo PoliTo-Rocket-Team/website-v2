@@ -45,7 +45,14 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
     <>
       <PageHeader title="My profile" intro="How you appear on the site and to the team." />
       <div className="mt-6 flex flex-col gap-5">
-        <PhotoCard name={profile.name} photoUrl={profile.photoUrl} uploadPhoto={actions.uploadPhoto} removePhoto={actions.removePhoto} />
+        <PhotoCard
+          name={profile.name}
+          photoUrl={profile.photoUrl}
+          uploadPhoto={actions.uploadPhoto}
+          removePhoto={actions.removePhoto}
+          detail="Used on the site to show you. Make sure your face is clear even when small. Square image, JPEG or PNG, up to 2 MB; we crop and resize it for you."
+          previews={PROFILE_PREVIEWS}
+        />
         <DetailsCard profile={profile} saveLinkedin={actions.saveLinkedin} />
         <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
         <AccountCard signIn={profile.signIn} />
@@ -62,16 +69,34 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
   );
 }
 
-function PhotoCard({
+/** One size the photo shows at on the site, with where: "Team page", "Dashboard", "Alumni page". */
+export type PhotoPreviewSize = { readonly caption: string; readonly size: string };
+
+/** Board 55: the Team page's size beside the dashboard's. */
+const PROFILE_PREVIEWS: readonly PhotoPreviewSize[] = [
+  { caption: "Team page", size: "h-[72px] w-[72px] text-[24px] md:h-24 md:w-24 md:text-[30px]" },
+  { caption: "Dashboard", size: "h-8 w-8 text-[11px] md:h-10 md:w-10 md:text-[13px]" },
+];
+
+/**
+ * The Photo card: the photo at each size the site shows it, Upload photo
+ * through the crop dialog, and Remove photo. My profile (board 55) and My
+ * alumni (board 56b, issue #317) each hand in their own writes and sizes.
+ */
+export function PhotoCard({
   name,
   photoUrl,
   uploadPhoto,
   removePhoto,
+  detail,
+  previews,
 }: {
   name: string;
   photoUrl: string | null;
   uploadPhoto: Actions["uploadPhoto"];
   removePhoto: Actions["removePhoto"];
+  detail: string;
+  previews: readonly PhotoPreviewSize[];
 }) {
   const [shown, setShown] = useState(photoUrl);
   const [cropping, setCropping] = useState<File | null>(null);
@@ -133,14 +158,12 @@ function PhotoCard({
   };
 
   return (
-    <Card
-      title="Photo"
-      detail="Used on the site to show you. Make sure your face is clear even when small. Square image, JPEG or PNG, up to 2 MB; we crop and resize it for you."
-    >
+    <Card title="Photo" detail={detail}>
       <div className="flex flex-col gap-6 px-5 py-5 md:flex-row md:items-end md:justify-between md:px-6">
         <div className="flex items-end gap-6 md:gap-7">
-          <PhotoPreview name={name} url={shown} size="h-[72px] w-[72px] text-[24px] md:h-24 md:w-24 md:text-[30px]" caption="Team page" />
-          <PhotoPreview name={name} url={shown} size="h-8 w-8 text-[11px] md:h-10 md:w-10 md:text-[13px]" caption="Dashboard" />
+          {previews.map((preview) => (
+            <PhotoPreview key={preview.caption} name={name} url={shown} size={preview.size} caption={preview.caption} />
+          ))}
         </div>
         <div className="flex flex-col items-stretch gap-3 md:items-end">
           <input

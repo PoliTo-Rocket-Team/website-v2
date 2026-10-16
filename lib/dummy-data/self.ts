@@ -30,7 +30,7 @@ import { homeDivisionOf, membershipsIn, roleIn } from "@/lib/dashboard/team";
 import { testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
-import { dummyDetails, isOpenOwn, isWithdrawn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
+import { dummyDetails, isOpenOwn, isShownOwn, isWithdrawn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
 import type { OwnApplicationsStart, OwnChanges } from "./own";
 import { departments, divisions, people, positions, type DummyPerson } from "./team";
 
@@ -107,12 +107,18 @@ export function dummySaveDetails(input: unknown, editor: DetailsEditor, current:
   return parsed.ok ? written(applyDetailsChange(current, parsed.value)) : refused(firstDetailError(parsed.errors));
 }
 
-export function dummyMyAccount(applicant: { name: string; email: string }, changes: OwnChanges, start: OwnApplicationsStart): MyAccount {
+/** My account for someone off the team: the applicant, or the alumnus (issue #317). */
+export function dummyMyAccount(
+  viewer: "non-member" | "alumni",
+  person: { name: string; email: string },
+  changes: OwnChanges,
+  start: OwnApplicationsStart,
+): MyAccount {
   return {
-    name: applicant.name,
-    signIn: { provider: "google", email: applicant.email },
-    details: dummyDetails("non-member", changes),
-    openApplications: ownApplicationsOf("non-member", start).filter((a) => isOpenOwn(a, changes)).length,
+    name: person.name,
+    signIn: { provider: "google", email: person.email },
+    details: dummyDetails(viewer, changes),
+    openApplications: ownApplicationsOf(viewer, start).filter((a) => isOpenOwn(a, changes)).length,
   };
 }
 
@@ -206,7 +212,8 @@ export function dummyMyApplications(
   start: OwnApplicationsStart,
 ): MyApplications | null {
   if (!canReach(testDeveloperStanding(kind), "my-applications")) return null;
-  const own = ownApplicationsOf(kind, start);
+  // Only what the one-month rule shows, seen from the dummy team's moment (issue #317).
+  const own = ownApplicationsOf(kind, start).filter((a) => isShownOwn(a, changes));
   const active: ActiveApplication[] = [];
   const past: PastApplication[] = [];
   for (const application of own) {

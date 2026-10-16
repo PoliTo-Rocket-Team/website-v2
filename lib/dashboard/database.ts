@@ -21,7 +21,8 @@ import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import { getCurrentUserId } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
-import { canReach, landingAfterLeaving, type NavCounts } from "./access";
+import { canReach, LANDING_AFTER_LEAVING, type NavCounts } from "./access";
+import { isShownAt } from "./my-applications";
 import { DashboardRefused, type DashboardData } from "./data";
 import {
   buildTeamTree,
@@ -33,7 +34,7 @@ import {
 import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
 import { wholeTeamMembers } from "./team-members";
-import { databaseAlumniWrites, readAlumniDirectory } from "./database-alumni";
+import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
 import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
   checklistProgress,
@@ -63,7 +64,7 @@ import { databaseFaqStore } from "./database-faqs";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { upcomingInterviews } from "./interview-slots";
-import { SEAT_OF_FLAG, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
+import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, isOffTeam, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -170,10 +171,12 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     scopeRows.map((s) => ({ scope: s.scope, target: s.target, divisionId: s.division_id, deptId: s.dept_id })),
     openDepartmentIds,
   );
-  const access = { scopes: unitRows.map((s) => s.scope), activeRoles };
+  // Someone with no active role left the team: an alumnus when the Alumni record knows them (issue #317).
+  const onAlumniRecord = activeRoles.length === 0 && (await readOwnAlumnus(user.member_id)) !== null;
+  const access = { scopes: unitRows.map((s) => s.scope), activeRoles, onAlumniRecord };
   const standing = viewerStandingOf(access);
-  // Someone with no active role left the team: scope rows that outlived it reach nothing.
-  if (standing.kind === "non-member") return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...standing };
+  // Off the team, scope rows that outlived the roles reach nothing.
+  if (isOffTeam(standing.kind)) return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...standing };
 
   // Every division they lead and the department they head, plus the units their scopes name.
   const units = viewerUnitsOf(unitRows, activeRoles);
@@ -679,18 +682,26 @@ function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
     case "member":
       return memberOverview(identity);
     case "non-member":
-      return Promise.reject(new DashboardRefused("a non-member's Overview is built from My applications"));
+    case "alumni":
+      return Promise.reject(new DashboardRefused("an Overview off the team is built from My applications"));
   }
 }
 
-async function hasOwnApplications(identity: Identity): Promise<boolean> {
-  const db = getDb();
-  const [row] = await db
-    .select({ id: applications.id })
+/** Whether one of the viewer's applications is shown now (issue #317); a hidden one stays stored. */
+async function hasShownApplications(identity: Identity): Promise<boolean> {
+  const rows = await getDb()
+    .select({
+      status: applications.status,
+      appliedAt: applications.appliedAt,
+      withdrawnAt: applications.withdrawnAt,
+      acceptedAt: applications.acceptedAt,
+      rejectedAt: applications.rejectedAt,
+      joinedAt: applications.joinedAt,
+    })
     .from(applications)
-    .where(eq(applications.userId, identity.userId))
-    .limit(1);
-  return row !== undefined;
+    .where(eq(applications.userId, identity.userId));
+  const now = new Date();
+  return rows.some((row) => isShownAt(row, now));
 }
 
 async function navCountsOf(identity: Identity): Promise<NavCounts> {
@@ -716,6 +727,22 @@ async function membersOf(identity: Identity, divisionId: number | null): Promise
   return readDivisionMembers(identity, divisionId);
 }
 
+/**
+ * The line under the name on the user card: "Alumni" or "Applicant" off the
+ * team (the layout reads "Signed in" for an applicant with nothing shown,
+ * `userCardRole`, ./viewer.ts), else the role's title.
+ */
+function roleLabelOf(identity: Identity): string {
+  switch (identity.kind) {
+    case "alumni":
+      return VIEWER_KIND_LABELS.alumni;
+    case "non-member":
+      return "Applicant";
+    default:
+      return identity.role?.title ?? "Member";
+  }
+}
+
 /** The signed-in account's dashboard, or null when nobody is signed in or there is no database. */
 export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   if (!isDatabaseConfigured()) return null;
@@ -727,14 +754,14 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   const viewer: DashboardViewer = {
     ...standingOf(identity),
     name: identity.name,
-    role: identity.kind === "non-member" ? "Applicant" : (identity.role?.title ?? "Member"),
+    role: roleLabelOf(identity),
     session: "account",
   };
   const self = databaseSelfPages(identity);
   return {
     viewer,
     navCounts: () => navCountsOf(identity),
-    hasOwnApplications: () => hasOwnApplications(identity),
+    hasShownApplications: () => hasShownApplications(identity),
     overview: () => overviewOf(identity),
     members: (divisionId) => membersOf(identity, divisionId ?? null),
     findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
@@ -763,10 +790,11 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
     ...self,
-    // Their applications stay theirs, so they say where the dashboard opens next (#227).
+    ...databaseOwnAlumni(identity),
+    // Every viewer opens on their Overview, so leaving opens it too (issue #317).
     async leaveTeam(reason, removeFromAlumni) {
       const left = await self.leaveTeam(reason, removeFromAlumni);
-      return left.ok ? written(landingAfterLeaving(await hasOwnApplications(identity))) : left;
+      return left.ok ? written(LANDING_AFTER_LEAVING) : left;
     },
   };
 }

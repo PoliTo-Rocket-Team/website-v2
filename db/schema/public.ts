@@ -315,6 +315,9 @@ export const applications = pgTable("applications", {
   // "The signed NDA arrived" tick sets `nda_arrived_at`; Confirm join sets
   // `joined_at` once the person is on the team.
   acceptedAt: timestamp("accepted_at", { withTimezone: true, mode: "string" }),
+  // Reject, or another team taking the person, sets `rejected_at` (issue
+  // #317): the decision time the one-month rule on the applicant's pages reads.
+  rejectedAt: timestamp("rejected_at", { withTimezone: true, mode: "string" }),
   ndaArrivedAt: timestamp("nda_arrived_at", { withTimezone: true, mode: "string" }),
   joinedAt: timestamp("joined_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({

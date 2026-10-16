@@ -34,8 +34,12 @@ export const NAV_GROUP_LABELS: Readonly<Record<NavGroup, string | null>> = {
  */
 export type NavPlace = NavGroup | "user-menu" | "unlisted";
 
-/** A sidebar item that shows only when a fact about the viewer holds. */
-export type NavCondition = "has-own-applications";
+/**
+ * A sidebar item that shows only when a fact about the viewer holds: today,
+ * that at least one of their applications is shown (`isShownAt`,
+ * ./my-applications.ts, issue #317).
+ */
+export type NavCondition = "has-shown-applications";
 
 type PageRow = {
   readonly key: string;
@@ -60,23 +64,45 @@ export const DASHBOARD_PAGES = [
     key: "overview",
     label: "Overview",
     href: "/dashboard",
-    reach: { "operations-lead": "main", "department-head": "main", "division-lead": "main", member: "main", "non-member": "main" },
-    // A non-member who has not applied lands on My applications instead
-    // (issue #179), so their sidebar lists Overview only once they have
-    // applied (board 50e, issue #211).
-    shownWhen: { "non-member": "has-own-applications" },
+    // Every viewer lands here, a non-member with nothing shown too (board
+    // 50f, issue #317).
+    reach: {
+      "operations-lead": "main",
+      "department-head": "main",
+      "division-lead": "main",
+      member: "main",
+      alumni: "main",
+      "non-member": "main",
+    },
+  },
+  {
+    key: "my-alumni",
+    label: "My alumni",
+    href: "/dashboard/my-alumni",
+    // Board 56b (issue #317): how an alumnus shows on the Alumni page.
+    reach: { alumni: "main" },
   },
   {
     key: "my-applications",
     label: "My applications",
     href: "/dashboard/my-applications",
-    reach: { "operations-lead": "main", "department-head": "main", "division-lead": "main", member: "main", "non-member": "main" },
-    // A non-member always sees it, applied or not (issue #179); the team only once they have applied (issue #183).
+    reach: {
+      "operations-lead": "main",
+      "department-head": "main",
+      "division-lead": "main",
+      member: "main",
+      alumni: "main",
+      "non-member": "main",
+    },
+    // Listed only while one of their applications is shown, for everyone
+    // (issue #317; the team since issue #183).
     shownWhen: {
-      "operations-lead": "has-own-applications",
-      "department-head": "has-own-applications",
-      "division-lead": "has-own-applications",
-      member: "has-own-applications",
+      "operations-lead": "has-shown-applications",
+      "department-head": "has-shown-applications",
+      "division-lead": "has-shown-applications",
+      member: "has-shown-applications",
+      alumni: "has-shown-applications",
+      "non-member": "has-shown-applications",
     },
   },
   {
@@ -175,7 +201,8 @@ export const DASHBOARD_PAGES = [
     key: "my-account",
     label: "My account",
     href: "/dashboard/account",
-    reach: { "non-member": "user-menu" },
+    // Someone off the team keeps their account and its details (issues #201, #317).
+    reach: { alumni: "user-menu", "non-member": "user-menu" },
   },
 ] as const satisfies readonly PageRow[];
 
@@ -187,8 +214,8 @@ export type NavCounts = Readonly<Partial<Record<DashboardPageKey, number>>>;
 /** What the sidebar needs to know about the viewer, read through the dashboard data interface. */
 export type SidebarFacts = {
   readonly counts: NavCounts;
-  /** The viewer has sent at least one application (My applications shows for the team). */
-  readonly hasOwnApplications: boolean;
+  /** At least one of the viewer's applications is shown (`isShownAt`, ./my-applications.ts). */
+  readonly hasShownApplications: boolean;
 };
 
 export type NavItem = {
@@ -226,8 +253,8 @@ function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean
   switch (page.shownWhen?.[kind]) {
     case undefined:
       return true;
-    case "has-own-applications":
-      return facts.hasOwnApplications;
+    case "has-shown-applications":
+      return facts.hasShownApplications;
   }
 }
 
@@ -249,27 +276,19 @@ export function sidebarFor(viewer: ViewerStanding, facts: SidebarFacts): NavSect
 }
 
 /**
- * Where /dashboard sends the viewer, or null when it shows them their
- * Overview: a non-member who has not applied yet lands on My applications,
- * its empty page (issue #179).
+ * The page that opens the dashboard: every viewer lands on their Overview,
+ * a non-member with nothing shown too (board 50f, issue #317). Before that a
+ * non-member who had not applied landed on My applications (issue #179).
  */
-export function dashboardLandingFor(kind: ViewerKind, hasOwnApplications: boolean): "/dashboard/my-applications" | null {
-  return kind === "non-member" && !hasOwnApplications ? "/dashboard/my-applications" : null;
-}
-
-/** The page that opens the dashboard for a viewer: their Overview, or the page /dashboard sends them to. */
-export type DashboardLanding = "/dashboard" | "/dashboard/my-applications";
+export type DashboardLanding = "/dashboard";
 
 /**
- * Where someone who just left the team opens the dashboard: as a non-member
- * (issue #201), straight to the page /dashboard would send them to, so the
- * move skips the redirect, which shows an empty page while it runs (issue #227).
+ * Where someone who just left the team opens the dashboard: their Overview,
+ * as every viewer (issue #317), with no redirect on the way (issue #227).
  */
-export function landingAfterLeaving(hasOwnApplications: boolean): DashboardLanding {
-  return dashboardLandingFor("non-member", hasOwnApplications) ?? "/dashboard";
-}
+export const LANDING_AFTER_LEAVING: DashboardLanding = "/dashboard";
 
-/** The page the user menu opens for this viewer: My account for a non-member, My profile for the team. */
+/** The page the user menu opens for this viewer: My account off the team, My profile on it. */
 export function userMenuPageFor(kind: ViewerKind): MenuPage | null {
   const page = DASHBOARD_PAGES.find((row: PageRow) => row.reach[kind] === "user-menu");
   return page ? { key: page.key, label: page.label, href: page.href } : null;

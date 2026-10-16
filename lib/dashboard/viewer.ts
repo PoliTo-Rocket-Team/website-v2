@@ -2,8 +2,9 @@
 // decide what to show from the viewer's standing: their kind, plus the
 // site-content access the Alumni page reads (issue #234), plus the "Approve
 // orders" grant the Orders page reads (issue #270), plus, for full access,
-// which full-access seat they hold (issue #238). The access table in
-// ./access.ts says which standing reaches which page.
+// which full-access seat they hold (issue #238). Someone off the team is an
+// alumnus when the Alumni record knows them, else a non-member (issue #317).
+// The access table in ./access.ts says which standing reaches which page.
 
 import { divisionRoleOf, type DivisionRole, type RoleType } from "./team";
 
@@ -12,6 +13,7 @@ export const VIEWER_KINDS = [
   "department-head",
   "division-lead",
   "member",
+  "alumni",
   "non-member",
 ] as const;
 
@@ -22,8 +24,16 @@ export const VIEWER_KIND_LABELS: Readonly<Record<ViewerKind, string>> = {
   "department-head": "Department head",
   "division-lead": "Division lead",
   member: "Member",
+  alumni: "Alumni",
   "non-member": "Non-member",
 };
+
+/** The kinds off the team: they hold no role, so no access (issues #201, #317). */
+export type OffTeamKind = "alumni" | "non-member";
+
+export function isOffTeam(kind: ViewerKind): kind is OffTeamKind {
+  return kind === "alumni" || kind === "non-member";
+}
 
 export function isViewerKind(value: unknown): value is ViewerKind {
   return typeof value === "string" && (VIEWER_KINDS as readonly string[]).includes(value);
@@ -73,20 +83,20 @@ export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead", Flagge
  * null when an `admin` or `org` scope row gives it and no seat does.
  */
 export type ViewerStanding =
-  | { readonly kind: "non-member"; readonly siteContent: false; readonly approveOrders: false }
+  | { readonly kind: OffTeamKind; readonly siteContent: false; readonly approveOrders: false }
   | {
       readonly kind: "operations-lead";
       readonly seat: FullAccessSeat | null;
       readonly siteContent: boolean;
       readonly approveOrders: boolean;
     }
-  | { readonly kind: Exclude<ViewerKind, "non-member" | "operations-lead">; readonly siteContent: boolean; readonly approveOrders: boolean };
+  | { readonly kind: Exclude<ViewerKind, OffTeamKind | "operations-lead">; readonly siteContent: boolean; readonly approveOrders: boolean };
 
 /**
- * Who a test developer looks as (issue #141): one of the five viewer kinds,
- * or the team leader (issue #247), who has full access like the operations
- * lead but sits in the team leader's seat, so decides orders and gives
- * "Approve orders".
+ * Who a test developer looks as (issue #141): one of the viewer kinds, the
+ * alumnus included (issue #317), or the team leader (issue #247), who has
+ * full access like the operations lead but sits in the team leader's seat,
+ * so decides orders and gives "Approve orders".
  */
 export const TEST_VIEWERS = ["team-leader", ...VIEWER_KINDS] as const;
 export type TestViewer = (typeof TEST_VIEWERS)[number];
@@ -113,6 +123,7 @@ export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
 export function testDeveloperStanding(viewer: TestViewer, approveOrders = false): ViewerStanding {
   switch (viewer) {
     case "non-member":
+    case "alumni":
       return { kind: viewer, siteContent: false, approveOrders: false };
     case "team-leader":
       return { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders };
@@ -132,6 +143,7 @@ export function testViewerOf(viewer: ViewerStanding): TestViewer {
 export function standingOf(viewer: ViewerStanding): ViewerStanding {
   switch (viewer.kind) {
     case "non-member":
+    case "alumni":
       return { kind: viewer.kind, siteContent: false, approveOrders: false };
     case "operations-lead":
       return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
@@ -156,6 +168,22 @@ export type DashboardViewer = ViewerStanding & {
   readonly role: string;
   readonly session: ViewerSession;
 };
+
+/**
+ * The line under the name on the user card. Someone off the team reads
+ * "Alumni" (board 56), or "Applicant" while an application of theirs is
+ * shown, else "Signed in" (boards 50e, 50f); the team reads their role's title.
+ */
+export function userCardRole(viewer: DashboardViewer, hasShownApplications: boolean): string {
+  switch (viewer.kind) {
+    case "alumni":
+      return VIEWER_KIND_LABELS.alumni;
+    case "non-member":
+      return hasShownApplications ? "Applicant" : "Signed in";
+    default:
+      return viewer.role;
+  }
+}
 
 /** "Giulia Rossi" gives "GR"; one word gives its first two letters. */
 export function initialsOf(name: string): string {
@@ -186,6 +214,11 @@ export type MemberAccess = {
   readonly scopes: readonly ScopeKind[];
   /** Every role they hold now; none when every role they held has ended. */
   readonly activeRoles: readonly ActiveRoleRef[];
+  /**
+   * The Alumni record has an entry for them (`alumniOf`, lib/about/alumni-record.ts):
+   * read only once they hold no active role, so absent means no entry.
+   */
+  readonly onAlumniRecord?: boolean;
 };
 
 /**
@@ -205,16 +238,18 @@ export function fullAccessSeatOf(activeRoles: readonly ActiveRoleRef[]): FullAcc
 
 /**
  * A real account's viewer kind, read from all their active roles (issue
- * #229). No member row is a non-member (an applicant), and so is a member row
- * with no active role: someone who left or was moved to alumni gets the
- * applicant's pages, whatever scope rows remain (issue #201). Full access,
+ * #229). No member row is a non-member (an applicant). A member row with no
+ * active role is off the team, whatever scope rows remain (issue #201): an
+ * alumnus when the Alumni record has an entry for them, else a non-member
+ * (issue #317). Full access,
  * the `operations-lead` kind, comes from a full-access seat (issue #238) or
  * from an org-wide or admin scope row; a role of type `head` is a department
  * head's (issue #230); a department or division scope, or a lead role in any
  * division, is a division lead's; anyone else on the team is a member.
  */
 export function viewerKindOf(access: MemberAccess | null): ViewerKind {
-  if (access === null || access.activeRoles.length === 0) return "non-member";
+  if (access === null) return "non-member";
+  if (access.activeRoles.length === 0) return access.onAlumniRecord === true ? "alumni" : "non-member";
   if (fullAccessSeatOf(access.activeRoles) !== null) return "operations-lead";
   if (access.scopes.some((s) => s === "admin" || s === "org")) return "operations-lead";
   if (access.activeRoles.some((r) => r.type === "head")) return "department-head";
@@ -249,7 +284,9 @@ export function ledDivisionIds(access: MemberAccess): number[] {
  */
 export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const kind = viewerKindOf(access);
-  if (access === null || kind === "non-member") return { kind: "non-member", siteContent: false, approveOrders: false };
+  // Off the team, scope rows that outlived the roles reach nothing (issue #201).
+  if (isOffTeam(kind)) return { kind, siteContent: false, approveOrders: false };
+  if (access === null) return { kind: "non-member", siteContent: false, approveOrders: false };
   const siteContent = access.scopes.includes("website");
   const approveOrders = access.scopes.includes("team");
   if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, approveOrders };

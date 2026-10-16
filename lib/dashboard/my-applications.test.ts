@@ -1,12 +1,55 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { placeOf, withdrawnOnDelete, type OwnApplication, type StoredApplication } from "./my-applications";
+import { isShownAt, oneMonthAfter, placeOf, withdrawnOnDelete, type OwnApplication, type StoredApplication } from "./my-applications";
 
 const sent = (status: StoredApplication["status"], joinedAt: string | null = null): StoredApplication => ({
   status,
   appliedAt: "2026-03-02T09:00:00.000Z",
   withdrawnAt: null,
+  acceptedAt: null,
+  rejectedAt: null,
   joinedAt,
+});
+
+// The one-month rule (Owner decision, issue #317): decided on 10 Sep 2026 at noon UTC.
+const DECIDED = "2026-09-10T12:00:00.000Z";
+const at = (iso: string) => new Date(iso);
+
+test("an application still being decided is shown however old it is (issue #317)", () => {
+  for (const status of ["received", "pending", "interview"] as const) {
+    assert.equal(isShownAt(sent(status), at("2030-01-01T00:00:00.000Z")), true, status);
+  }
+});
+
+test("a decided application is shown until one month after its decision, that moment included, and hidden after (issue #317)", () => {
+  const decided: readonly StoredApplication[] = [
+    { ...sent("accepted"), acceptedAt: DECIDED },
+    { ...sent("rejected"), rejectedAt: DECIDED },
+    { ...sent("accepted_by_another_team"), rejectedAt: DECIDED },
+    { ...sent("joined"), joinedAt: DECIDED },
+    { ...sent("received"), withdrawnAt: DECIDED },
+  ];
+  for (const application of decided) {
+    assert.equal(isShownAt(application, at("2026-10-10T12:00:00.000Z")), true, application.status);
+    assert.equal(isShownAt(application, at("2026-10-10T12:00:00.001Z")), false, application.status);
+  }
+});
+
+test("a month after the 31st ends on the next month's last day", () => {
+  assert.equal(oneMonthAfter("2026-01-31T08:00:00.000Z").toISOString(), "2026-02-28T08:00:00.000Z");
+  assert.equal(oneMonthAfter("2026-12-15T08:00:00.000Z").toISOString(), "2027-01-15T08:00:00.000Z");
+});
+
+test("after an accept, the join is the latest decision the month counts from (issue #317)", () => {
+  const joined: StoredApplication = { ...sent("joined"), acceptedAt: "2026-08-01T12:00:00.000Z", joinedAt: DECIDED };
+  assert.equal(isShownAt(joined, at("2026-09-20T12:00:00.000Z")), true);
+  assert.equal(isShownAt(joined, at("2026-10-11T12:00:00.000Z")), false);
+});
+
+test("a decided application with no decision time on record is past the month (issue #317)", () => {
+  for (const status of ["accepted", "rejected", "accepted_by_another_team", "joined"] as const) {
+    assert.equal(isShownAt(sent(status), at("2026-03-02T09:00:01.000Z")), false, status);
+  }
 });
 
 test("a member's confirmed join is over as joined, and their other accepted application stays active (#187)", () => {

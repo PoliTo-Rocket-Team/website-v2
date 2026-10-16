@@ -1,13 +1,12 @@
-import type { ApplyListing } from "@/lib/apply/positions";
-import { unitName, type ActiveApplication, type MyApplications, type PastApplication } from "./my-applications";
-import { divisionShortName, type Link } from "./overview";
+import { hasNoneShown, unitName, type ActiveApplication, type MyApplications, type PastApplication } from "./my-applications";
+import type { Link } from "./overview";
 
-// The Overview of a non-member who has applied (boards 50e and 50e-m, issue
-// #211): who they are, what waits on them, their applications and the open
-// positions. Built from what My applications reads (./my-applications.ts)
-// and from the listing /apply shows (lib/apply/positions.ts), so neither is
-// read a second way. Types and rules only; components/dashboard/overview.tsx
-// renders it.
+// The Overview of a non-member (boards 50e and 50f, issues #211 and #317):
+// who they are, what waits on them, and their applications, or, with none
+// shown, the panel that says so. Built from what My applications reads
+// (./my-applications.ts), so an application the one-month rule hides there
+// is hidden here too. It lists no open positions (Owner decision, issue
+// #317). Types and rules only; components/dashboard/overview.tsx renders it.
 
 /** The five pills an applicant's own row shows (board 50e). */
 export type ApplicantPill = "received" | "in-review" | "interview" | "accepted" | "not-selected";
@@ -38,43 +37,28 @@ export type NextStep = {
   readonly action: Link;
 };
 
-export type OpenRole = {
-  readonly key: string;
-  readonly title: string;
-  readonly unit: string;
-  readonly href: string;
-};
-
-export type OpenPositions = {
-  /** "12 roles open across 8 divisions"; a role with no division counts in no division. */
-  readonly summary: string;
-  /** The first few roles, in /apply's order. */
-  readonly roles: readonly OpenRole[];
-};
-
 /**
- * The "Your applications" panel: the rows with "3 open · 1 past", or, for
- * someone whose only applications are withdrawn, one line in their place
- * (issue #227). Withdrawn applications are never rows here; they stay under
- * Past on My applications.
+ * The applications panel: the rows with "3 open · 1 past", or, when no row
+ * is left to list, board 50f's "No applications right now". Withdrawn
+ * applications are never rows here; they stay under Past on My applications
+ * (issue #227).
  */
 export type ApplicantApplications =
   | { readonly kind: "rows"; readonly summary: string; readonly rows: readonly [ApplicantRow, ...ApplicantRow[]] }
-  | { readonly kind: "empty"; readonly line: string };
+  | { readonly kind: "none" };
 
-/** What the panel says when every application is withdrawn. */
-export const NO_OPEN_APPLICATIONS = "No open applications.";
+/** Board 50f's panel; the one-month rule goes under it (`SHOWN_FOR_A_MONTH`, ./my-applications.ts). */
+export const NO_APPLICATIONS = {
+  title: "No applications right now",
+  detail: "Apply for an open position and follow it here.",
+} as const;
 
 export type ApplicantOverview = {
   readonly shape: "applicant";
   readonly person: { readonly name: string; readonly line: string };
   readonly nextStep: NextStep | null;
   readonly applications: ApplicantApplications;
-  readonly openPositions: OpenPositions;
 };
-
-/** How many open roles the Overview lists (board 50e; phones show one less, board 50e-m). */
-export const OPEN_ROLES_SHOWN = 4;
 
 /** One application opened on My applications: its card carries this anchor. */
 export function myApplicationHref(applicationId: number): string {
@@ -129,45 +113,26 @@ function applicationsSummary(open: number, past: number): string {
   return [open > 0 ? `${open} open` : null, past > 0 ? `${past} past` : null].filter(Boolean).join(" · ");
 }
 
-export function openPositionsOf(listing: ApplyListing): OpenPositions {
-  const groups = listing.kind === "none" ? [] : listing.open;
-  const roles = groups.flatMap((group) =>
-    group.roles.map((role) => ({
-      key: role.key,
-      title: role.title,
-      unit: role.division === "" ? group.department : divisionShortName(role.division),
-      href: role.status === "open" ? role.href : "/apply",
-    })),
-  );
-  // A department-only role shows its department as its unit, but it is not a division.
-  const divisions = new Set(groups.flatMap((group) => group.roles.map((role) => role.division)).filter((d) => d !== "")).size;
-  const open = plural(roles.length, "role", "roles");
-  return {
-    summary:
-      roles.length === 0
-        ? "No roles open right now"
-        : divisions === 0
-          ? `${open} open`
-          : `${open} open across ${plural(divisions, "division", "divisions")}`,
-    roles: roles.slice(0, OPEN_ROLES_SHOWN),
-  };
-}
-
-function applicationsOf(mine: MyApplications): ApplicantApplications {
+/** The panel's rows from the shown applications, open first; none when nothing is left to list. */
+export function applicantApplicationsOf(mine: MyApplications): ApplicantApplications {
   const open = mine.active.map(activeRow);
   const past = mine.past.flatMap((p) => pastRow(p) ?? []);
   const [first, ...rest] = [...open, ...past];
   return first === undefined
-    ? { kind: "empty", line: NO_OPEN_APPLICATIONS }
+    ? { kind: "none" }
     : { kind: "rows", summary: applicationsSummary(open.length, past.length), rows: [first, ...rest] };
 }
 
-export function applicantOverview(name: string, mine: MyApplications, listing: ApplyListing): ApplicantOverview {
+/**
+ * A non-member's Overview. While one of their applications is shown they
+ * read as an applicant (board 50e); with none shown, by their sign-in
+ * address alone (board 50f).
+ */
+export function applicantOverview(name: string, mine: MyApplications): ApplicantOverview {
   return {
     shape: "applicant",
-    person: { name, line: `Applicant · ${mine.email}` },
+    person: { name, line: hasNoneShown(mine) ? mine.email : `Applicant · ${mine.email}` },
     nextStep: nextStepOf(mine.active),
-    applications: applicationsOf(mine),
-    openPositions: openPositionsOf(listing),
+    applications: applicantApplicationsOf(mine),
   };
 }
