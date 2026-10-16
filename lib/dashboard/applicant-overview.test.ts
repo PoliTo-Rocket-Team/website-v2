@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ApplyListing, Role } from "@/lib/apply/positions";
 import { applicantOverview } from "./applicant-overview";
 import type { ActiveApplication, ActiveStage, MyApplications, PastApplication, PastOutcome } from "./my-applications";
 
@@ -28,18 +27,17 @@ function mine(a: readonly ActiveApplication[], p: readonly PastApplication[] = [
   return { firstName: "Chiara", email: "chiara@example.com", active: a, past: p };
 }
 
-const none: ApplyListing = { kind: "none", placeholders: [] };
 const interview = (chosen: typeof slot | null, slots = [slot]): ActiveStage => ({
   kind: "interview",
   interview: { lead: "Marco Bianchi", slots, chosen },
 });
 
 test("the Next step card waits only on an interview with offered times and none picked", () => {
-  assert.equal(applicantOverview("Chiara", mine([active(1, { kind: "in-review" })]), none).nextStep, null);
-  assert.equal(applicantOverview("Chiara", mine([active(1, interview(slot))]), none).nextStep, null);
-  assert.equal(applicantOverview("Chiara", mine([active(1, interview(null, []))]), none).nextStep, null);
+  assert.equal(applicantOverview("Chiara", mine([active(1, { kind: "in-review" })])).nextStep, null);
+  assert.equal(applicantOverview("Chiara", mine([active(1, interview(slot))])).nextStep, null);
+  assert.equal(applicantOverview("Chiara", mine([active(1, interview(null, []))])).nextStep, null);
 
-  const step = applicantOverview("Chiara", mine([active(1, { kind: "received" }), active(2, interview(null))]), none).nextStep;
+  const step = applicantOverview("Chiara", mine([active(1, { kind: "received" }), active(2, interview(null))])).nextStep;
   assert.deepEqual(step, {
     title: "Pick an interview time for Role 2",
     detail: "The Mission Analysis lead offered 1 time. Pick the one that suits you.",
@@ -54,7 +52,6 @@ test("rows read open then past, each with its pill and its My applications ancho
       [active(1, interview(null)), active(2, { kind: "in-review" }), active(3, { kind: "received" }), active(4, { kind: "accepted" })],
       [past(5, { kind: "not-selected" }), past(6, { kind: "withdrawn" })],
     ),
-    none,
   );
   assert.equal(overview.applications.kind, "rows");
   if (overview.applications.kind !== "rows") return;
@@ -72,57 +69,13 @@ test("rows read open then past, each with its pill and its My applications ancho
   assert.equal(overview.person.line, "Applicant · chiara@example.com");
 });
 
-test("someone whose only applications are withdrawn gets the panel's one-line empty state, not an empty list", () => {
-  const overview = applicantOverview("Chiara", mine([], [past(5, { kind: "withdrawn" }), past(6, { kind: "withdrawn" })]), none);
-  assert.deepEqual(overview.applications, { kind: "empty", line: "No open applications." });
+test("someone whose only applications are withdrawn gets the No applications panel, not an empty list", () => {
+  const overview = applicantOverview("Chiara", mine([], [past(5, { kind: "withdrawn" }), past(6, { kind: "withdrawn" })]));
+  assert.deepEqual(overview.applications, { kind: "none" });
+  assert.equal(overview.person.line, "Applicant · chiara@example.com");
 });
 
-test("open positions count every open role and division of /apply's listing and list the first four", () => {
-  const role = (n: number, division: string): Role => ({
-    key: `position-${n}`,
-    title: `Role ${n}`,
-    division,
-    code: "",
-    description: "",
-    required: [],
-    desirable: [],
-    status: "open",
-    href: `/apply/${n}-role-${n}`,
-  });
-  const listing: ApplyListing = {
-    kind: "many",
-    open: [
-      { department: "Aerospace", roles: [role(1, "Avionics Division"), role(2, "Avionics Division"), role(3, "Propulsion Division")] },
-      { department: "Operations", roles: [role(4, ""), role(5, "")] },
-    ],
-  };
-  const { openPositions } = applicantOverview("Chiara", mine([active(1, { kind: "received" })]), listing);
-  // Operations' two roles have no division, so they add none.
-  assert.equal(openPositions.summary, "5 roles open across 2 divisions");
-  assert.deepEqual(
-    openPositions.roles.map((r) => [r.title, r.unit, r.href]),
-    [
-      ["Role 1", "Avionics", "/apply/1-role-1"],
-      ["Role 2", "Avionics", "/apply/2-role-2"],
-      ["Role 3", "Propulsion", "/apply/3-role-3"],
-      ["Role 4", "Operations", "/apply/4-role-4"],
-    ],
-  );
-});
-
-test("a listing of department-only roles counts no division", () => {
-  const role = (n: number): Role => ({
-    key: `position-${n}`,
-    title: `Role ${n}`,
-    division: "",
-    code: "",
-    description: "",
-    required: [],
-    desirable: [],
-    status: "open",
-    href: `/apply/${n}-role-${n}`,
-  });
-  const listing: ApplyListing = { kind: "many", open: [{ department: "Operations", roles: [role(1), role(2)] }] };
-  const { openPositions } = applicantOverview("Chiara", mine([active(1, { kind: "received" })]), listing);
-  assert.equal(openPositions.summary, "2 roles open");
+test("with no application shown, the Overview names the person by their address alone and says there are none (board 50f, issue #317)", () => {
+  const overview = applicantOverview("Chiara", mine([]));
+  assert.deepEqual(overview, { shape: "applicant", person: { name: "Chiara", line: "chiara@example.com" }, nextStep: null, applications: { kind: "none" } });
 });

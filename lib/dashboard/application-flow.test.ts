@@ -319,6 +319,6 @@ test("a time offered more than 4 weeks ahead passes the offer and reaches the ap
 
   // The applicant's side (board 50c): the stored offer comes back as their interview stage.
   const interview: Interview = { lead: "Marco Bianchi", slots: [{ id: 1, start: farAhead.start, end: farAhead.end }], chosen: null };
-  const place = placeOf({ status: "interview", appliedAt: "2026-10-01T09:00:00.000Z", withdrawnAt: null, joinedAt: null }, interview, null);
+  const place = placeOf({ status: "interview", appliedAt: "2026-10-01T09:00:00.000Z", withdrawnAt: null, acceptedAt: null, rejectedAt: null, joinedAt: null }, interview, null);
   assert.deepEqual(place, { kind: "active", stage: { kind: "interview", interview } });
 });

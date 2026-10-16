@@ -31,6 +31,7 @@ const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   applications: Inbox,
   members: Users,
   alumni: GraduationCap,
+  "my-alumni": GraduationCap,
   partners: Handshake,
   faq: CircleHelp,
   orders: ShoppingCart,

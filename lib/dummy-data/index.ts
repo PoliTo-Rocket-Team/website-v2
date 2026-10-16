@@ -1,6 +1,10 @@
 import { positionCode, type Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
-import { landingAfterLeaving, type NavCounts } from "@/lib/dashboard/access";
+import { LANDING_AFTER_LEAVING, type NavCounts } from "@/lib/dashboard/access";
+import type { AlumnusKey } from "@/lib/about/alumni-record";
+import { hasNoneShown } from "@/lib/dashboard/my-applications";
+import { myAlumniOf } from "@/lib/dashboard/my-alumni";
+import { dummyAlumni } from "./alumni";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { formatEuro, waitingOrders, type ApproveOrdersChange } from "@/lib/dashboard/orders";
 import { partnerEditor } from "@/lib/partners-editor";
@@ -44,7 +48,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
-import { kindOfTestViewer, testDeveloperStanding, type DashboardViewer, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { departmentCode, divisionLabel, positionText } from "./apply";
@@ -71,7 +75,7 @@ import {
 } from "./orders";
 import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
-import { leaveReason, type LeaveState } from "@/lib/dashboard/self";
+import { checkPhoto, HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
@@ -94,6 +98,7 @@ import {
   departments,
   divisions,
   DUMMY_NOW,
+  formerMember,
   people,
   personFor,
   positions as basePositions,
@@ -103,7 +108,8 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
+import { dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, dummyTeamPeople, editedAlumniRecord, editedRoster } from "./team-pages";
+import { closingLapsedHandOvers } from "./hand-overs";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -253,6 +259,9 @@ export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersH
   if (viewer === "non-member") {
     return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", session: "test-developer" };
   }
+  if (viewer === "alumni") {
+    return { ...testDeveloperStanding(viewer), name: formerMember.name, role: VIEWER_KIND_LABELS.alumni, session: "test-developer" };
+  }
   const person = personFor[viewer];
   const approveOrders = holders.some((h) => h.personId === person.id);
   return { ...testDeveloperStanding(viewer, approveOrders), name: person.name, role: person.title, session: "test-developer" };
@@ -261,6 +270,8 @@ export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersH
 /** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
 export function dummyNavViewer(viewer: TestViewer): NavViewer {
   if (viewer === "non-member") return { name: applicant.name, email: applicant.email, photoUrl: null, session: "test-developer" };
+  // Off the team, the alumnus has no team address any more: their sign-in one (issue #317).
+  if (viewer === "alumni") return { name: formerMember.name, email: formerMember.email, photoUrl: null, session: "test-developer" };
   const person = personFor[viewer];
   return { name: person.name, email: teamEmailOf(person), photoUrl: null, session: "test-developer" };
 }
@@ -372,7 +383,7 @@ function attentionFor(kind: ViewerKind, team: Team, dummyNotices: DummyNotices):
   return [...fresh, ...quiet, ...unassigned, ...(noPhoto ? [noPhoto] : []), ...notices];
 }
 
-function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">, me: DummyPerson = personFor[kind]): ActivityItem[] {
+function activityFor(kind: Exclude<ViewerKind, OffTeamKind | "member">, me: DummyPerson = personFor[kind]): ActivityItem[] {
   const events =
     kind === "operations-lead"
       ? activity
@@ -574,7 +585,7 @@ function rosterPreview(me: DummyPerson): RosterPerson[] {
   }));
 }
 
-function memberOverview(): PersonalOverview {
+function memberOverview(notices: DummyNotices): PersonalOverview {
   const me = personFor.member;
   const division = divisionOf(myDivisionId("member"));
   const department = departmentOf(division.id);
@@ -597,6 +608,7 @@ function memberOverview(): PersonalOverview {
   const size = people.filter((p) => isIn(p.placement, division.id)).length;
   return {
     shape: "personal",
+    attention: dummyNoticeAttention(me, notices, NOW),
     person: {
       name: me.name,
       line: `${me.title} · ${division.name} · ${department.name}`,
@@ -627,9 +639,10 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamS
     case "division-lead":
       return divisionOverview(team, notices);
     case "member":
-      return memberOverview();
+      return memberOverview(notices);
     case "non-member":
-      throw new DashboardRefused("a non-member's Overview is built from My applications");
+    case "alumni":
+      throw new DashboardRefused("an Overview off the team is built from My applications");
   }
 }
 
@@ -787,33 +800,86 @@ function applicationsPage(kind: ViewerKind, team: Team, onTeam: readonly RosterE
   };
 }
 
-/** The person the viewer is on the team; null for the applicant. */
+/** The person the viewer is on the team; null off it (the applicant, the alumnus). */
 function teamPersonFor(viewer: TestViewer): DummyPerson | null {
-  return viewer === "non-member" ? null : personFor[viewer];
+  return viewer === "non-member" || viewer === "alumni" ? null : personFor[viewer];
+}
+
+/** Who a viewer off the team signs in as: the applicant, or the former member (issue #317). */
+function offTeamPersonFor(viewer: OffTeamKind): { readonly firstName: string; readonly name: string; readonly email: string } {
+  return viewer === "alumni" ? formerMember : applicant;
 }
 
 const notOnTeam = "This page is for team members.";
 const noOrders = "You do not have access to Orders.";
+const notAnAlumnus = "This page is for former members on the Alumni page.";
+
+type OwnAlumni = Pick<DashboardData, "myAlumni" | "setMyAlumniShown" | "setMyAlumniPhoto">;
+
+/** Anyone but an alumnus: no Alumni entry of their own to read or change. */
+const NO_OWN_ALUMNI: OwnAlumni = {
+  myAlumni: async () => null,
+  setMyAlumniShown: async () => refused(notAnAlumnus),
+  setMyAlumniPhoto: async () => refused(notAnAlumnus),
+};
+
+/**
+ * An alumnus's own entry in the test developer's Alumni record (boards 56
+ * and 56b, issue #317). The switch keeps their own request to be left off
+ * the page in the team edits, as the leave-time box does (#257); a photo is
+ * checked as the database side checks it, and, as on board 78b, a preview
+ * keeps none.
+ */
+function dummyOwnAlumni(memberId: number, teamEdits: TeamEditsStore): OwnAlumni {
+  const key: AlumnusKey = `m${memberId}`;
+  const mine = () => dummyAlumni(editedAlumniRecord(teamEdits.current)).find((a) => a.key === key) ?? null;
+  return {
+    async myAlumni() {
+      const alumnus = mine();
+      return alumnus === null ? null : myAlumniOf(alumnus);
+    },
+    async setMyAlumniShown(shown) {
+      if (typeof shown !== "boolean") return refused("Check the switch.");
+      if (mine() === null) return refused(notAnAlumnus);
+      const { alumni } = teamEdits.current;
+      await teamEdits.save({
+        ...teamEdits.current,
+        alumni: { ...alumni, entries: { ...alumni.entries, [key]: { ...alumni.entries[key], removed: !shown } } },
+      });
+      return written(null);
+    },
+    async setMyAlumniPhoto(photo) {
+      if (mine() === null) return refused(notAnAlumnus);
+      const error = photo === null ? null : checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
+      return error === null ? written(null) : refused(error);
+    },
+  };
+}
 
 /**
  * The dashboard of a team member the test developer signed in as after they
- * left or were moved to alumni: like the database side (issue #201), a member
- * with no active role gets the applicant's pages, as themselves, with no
- * applications sent. Their details stay the ones they had on the team.
+ * left or were moved to alumni: like the database side (issues #201, #317),
+ * a member with no active role whom the Alumni record knows gets the
+ * alumnus's pages, as themselves, with no applications sent. Their details
+ * stay the ones they had on the team.
  */
 function leftTeamDashboard(
-  kind: Exclude<TestViewer, "non-member">,
+  kind: Exclude<TestViewer, OffTeamKind>,
   self: DummyPerson,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
   teamEdits: TeamEditsStore,
   own: OwnChangesStore,
 ): DashboardData {
-  const applicantPages = dummyDashboardData("non-member", recruitment, changes, teamEdits, own, "none");
+  const ownAlumni = dummyOwnAlumni(self.id, teamEdits);
+  const onRecord = dummyAlumni(editedAlumniRecord(teamEdits.current)).some((a) => a.key === `m${self.id}`);
+  const offTeam: OffTeamKind = onRecord ? "alumni" : "non-member";
+  const offTeamPages = dummyDashboardData(offTeam, recruitment, changes, teamEdits, own, "none");
   return {
-    ...applicantPages,
-    viewer: { ...applicantPages.viewer, name: self.name },
-    myAccount: async () => ({ ...dummyMyAccount(self, own.current, "none"), details: dummyDetails(kind, own.current) }),
+    ...offTeamPages,
+    ...(onRecord ? ownAlumni : NO_OWN_ALUMNI),
+    viewer: { ...offTeamPages.viewer, name: self.name },
+    myAccount: async () => ({ ...dummyMyAccount(offTeam, self, own.current, "none"), details: dummyDetails(kind, own.current) }),
     async saveDetails(input) {
       const result = dummySaveDetails(input, "applicant", dummyDetails(kind, own.current));
       if (result.ok) await own.save({ ...own.current, details: { ...own.current.details, [kind]: result.value } });
@@ -826,7 +892,7 @@ function leftTeamDashboard(
  * The dashboard as the test developer sees it, looking as `viewer`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
- * their Team page edits in `teamEdits` (./edits.ts), and the changes on their
+ * their Team page edits in `teamEditsStore` (./edits.ts), and the changes on their
  * own pages in `own` (./own.ts), starting from the own applications
  * `ownStart` names. Other writes check what was sent as the database side
  * does, store nothing, and answer what the page shows next. The team leader
@@ -839,19 +905,22 @@ export function dummyDashboardData(
   viewer: TestViewer,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
-  teamEdits: TeamEditsStore = NO_TEAM_EDITS,
+  teamEditsStore: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
   partnerEdits: DummyPartnerEditsStore = NO_PARTNER_EDITS_STORE,
   faqEdits: DummyFaqEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
-  if (viewer !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
-    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEdits, own);
+  if (viewer !== "alumni" && viewer !== "non-member" && teamEditsStore.current.movedToAlumni[personFor[viewer].id] !== undefined) {
+    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEditsStore, own);
   }
-  const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEdits.current);
-  const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(viewer);
+  const offTeam: OffTeamKind | null = viewer === "alumni" || viewer === "non-member" ? viewer : null;
+  const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEditsStore.current);
+  // Every save that changes a sender's roles closes their waiting hand-over, as the database's trigger does (issue #262).
+  const teamEdits = closingLapsedHandOvers(teamEditsStore, (edits) => dummyTeamPeople(edits, team.applications));
+  const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;
   // A member reaches Orders only by holding "Approve orders" (issue #270): their scope is then deciding alone.
   const ordersKind: OrdersViewerKind | null = accessKind ?? (kind === "member" ? kind : null);
@@ -866,9 +935,15 @@ export function dummyDashboardData(
   // Closing a division removes the access given in it (#232).
   const closedIds = new Set(dummyOrg(teamEdits.current).closed.map((d) => d.id));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
-  const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
+  const me = person === null ? offTeamPersonFor(offTeam ?? "non-member") : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(viewer, me, own.current, ownStart);
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [viewer]: details } });
+  // Hand over your role from My profile, and its answer on the next level up's Overview (issue #262).
+  const handOvers = dummyHandOverPages(viewer, teamEdits.current, teamEdits.save, team.applications);
+  const shapeOfOverview = (): TeamSideOverview =>
+    viewer === "team-leader"
+      ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
+      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current));
 
   // One move for both pages: the Applications panel and the Members page's
   // Confirm join (board 59) run it, so the application is the one record of
@@ -891,11 +966,19 @@ export function dummyDashboardData(
   return {
     viewer: dummyViewer(viewer, holders),
     navCounts: async () => navCountsFor(kind, team),
-    hasOwnApplications: async () => ownApplicationsOf(viewer, ownStart).length > 0,
-    overview: async () =>
-      viewer === "team-leader"
-        ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
-        : overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
+    hasShownApplications: async () => {
+      const mine = myApplications();
+      return mine !== null && !hasNoneShown(mine);
+    },
+    ...(viewer === "alumni" ? dummyOwnAlumni(formerMember.id, teamEdits) : NO_OWN_ALUMNI),
+    // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c).
+    overview: async () => {
+      const overview = shapeOfOverview();
+      const answering = handOvers.attention(NOW);
+      return answering.length === 0 ? overview : { ...overview, attention: [...answering, ...overview.attention] };
+    },
+    sendHandOver: handOvers.sendHandOver,
+    answerHandOver: handOvers.answerHandOver,
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {
@@ -1005,7 +1088,7 @@ export function dummyDashboardData(
     // Seen from the dummy team's moment, so a question saved here reads "Today".
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
 
-    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
+    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {
       if (person === null) return refused(notOnTeam);
       const result = dummySaveLinkedin(text);
@@ -1017,6 +1100,8 @@ export function dummyDashboardData(
     async leaveTeam(reason, removeFromAlumni) {
       if (person === null) return refused(notOnTeam);
       if (leaveStateOf(person) === "left") return refused("You already left the team.");
+      // A lead or head leaves through "Hand over your role", which the next level up confirms (issue #262).
+      if (handOvers.offer() !== null) return refused(HAND_OVER_FIRST);
       // The reason is checked as the database side checks it; a preview keeps none.
       leaveReason(reason);
       const year = new Date(DUMMY_NOW).getUTCFullYear();
@@ -1032,11 +1117,10 @@ export function dummyDashboardData(
           alumni: { ...alumni, entries: { ...alumni.entries, [`m${person.id}`]: { ...alumni.entries[`m${person.id}`], removed: true } } },
         }),
       });
-      // Off the team they have no applications sent (leftTeamDashboard).
-      return written(landingAfterLeaving(false));
+      return written(LANDING_AFTER_LEAVING);
     },
 
-    myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current, ownStart) : null),
+    myAccount: async () => (offTeam === null ? null : dummyMyAccount(offTeam, offTeamPersonFor(offTeam), own.current, ownStart)),
     async saveDetails(input) {
       const result = dummySaveDetails(input, person === null ? "applicant" : "member", dummyDetails(viewer, own.current));
       if (result.ok) await saveOwnDetails(result.value);

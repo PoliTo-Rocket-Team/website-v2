@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
-  OPEN_ROLES_SHOWN,
+  NO_APPLICATIONS,
+  type ApplicantApplications as ApplicantApplicationsPanel,
   type ApplicantOverview,
   type ApplicantPill,
   type NextStep,
-  type OpenPositions,
 } from "@/lib/dashboard/applicant-overview";
-import { sentLabel } from "@/lib/dashboard/my-applications";
+import type { AlumniCard, AlumniOverview } from "@/lib/dashboard/my-alumni";
+import { sentLabel, SHOWN_FOR_A_MONTH } from "@/lib/dashboard/my-applications";
 import {
   checklistCount,
   departmentLine,
@@ -25,6 +26,7 @@ import {
   interviewSummary,
   rosterSize,
   type ActivityItem,
+  isAnswerHandOver,
   isDismissNotice,
   type AttentionAction,
   type AttentionItem,
@@ -37,14 +39,16 @@ import {
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { Avatar } from "./avatar";
+import { AnswerHandOver } from "./answer-hand-over";
 import { DismissNotice } from "./dismiss-notice";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
 
 // The Overview page: board 40 for the operations lead, 72 for the team
-// leader, 62 for a department head, 56 for a division
-// lead, 52 for a member, 50e for a non-member who has applied. Props in, nothing fetched: the page hands over what
-// the dashboard data interface answered.
+// leader, 62 for a department head, 56 for a division lead, 52 for a member,
+// 50e and 50f for a non-member, and issue #317's board 56 for an alumnus.
+// Props in, nothing fetched: the page hands over what the dashboard data
+// interface answered.
 export function OverviewView({ overview }: { overview: Overview }) {
   switch (overview.shape) {
     case "team":
@@ -93,18 +97,15 @@ export function OverviewView({ overview }: { overview: Overview }) {
       return <PersonalView overview={overview} />;
     case "applicant":
       return <ApplicantView overview={overview} />;
+    case "alumni":
+      return <AlumniView overview={overview} />;
   }
 }
 
 const GRID = "mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]";
 
-/**
- * The applicant's grid (board 50e): Open positions is 400px at 1440 and
- * narrows with the window down to 300px, so the Next step line keeps the
- * one line board 50e gives it at 1280 (issue #227).
- */
-const APPLICANT_GRID =
-  "mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_clamp(300px,100vw-1040px,400px)]";
+/** Off the team the panels stack, full width, under the person (boards 50e, 50f, 56). */
+const STACK = "mt-6 flex min-w-0 flex-col gap-4";
 
 /**
  * How the lead's Overview reads on phones: board 40m keeps everything; board
@@ -186,18 +187,24 @@ function LeadView({
 }
 
 // On board 56m each row is its own card, with no icon tile, the shorter
-// title and a small filled pill.
+// title and a small filled pill. A hand-over waiting for the viewer (board
+// 62c, issue #262) is the top row, on an accent tint with an accent icon
+// tile, and answers with Decline and Confirm.
 function AttentionPanel({ attention, compact }: { attention: readonly AttentionItem[]; compact: boolean }) {
   return (
     <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`} phoneCards={compact}>
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.kind];
+        const handOver = item.kind === "hand-over";
         return (
-          <li key={attentionKey(item)} className="flex items-center gap-4 px-4 py-3.5 md:px-5">
+          <li
+            key={attentionKey(item)}
+            className={`flex items-center gap-4 px-4 py-3.5 md:px-5 ${handOver ? "bg-accent/[0.05] md:last:rounded-b-xl" : ""}`}
+          >
             <span
-              className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-hairline bg-white-5 text-text-2 ${
-                compact ? "hidden md:flex" : "flex"
-              }`}
+              className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+                handOver ? "border-accent/30 bg-accent-soft text-accent" : "border-hairline bg-white-5 text-text-2"
+              } ${compact ? "hidden md:flex" : "flex"}`}
             >
               <Icon aria-hidden className="h-4 w-4" strokeWidth={1.75} />
             </span>
@@ -365,6 +372,7 @@ function plural(n: number, one: string, many: string): string {
 
 /** A link to the page that handles the row, or Dismiss on a stored notice. */
 function AttentionButton({ action, chip = false }: { action: AttentionAction; chip?: boolean }) {
+  if (isAnswerHandOver(action)) return <AnswerHandOver requestId={action.answerHandOver} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -372,8 +380,9 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
   );
 }
 
-/** A notice by its id: two notices may read alike. */
+/** A notice or a hand-over by its id: two of them may read alike. */
 function attentionKey(item: AttentionItem): string {
+  if (isAnswerHandOver(item.action)) return `hand-over-${item.action.answerHandOver}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -385,6 +394,7 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   notice: UserMinus,
   "orders-to-decide": ShoppingCart,
   "approved-orders": Package,
+  "hand-over": ArrowRightLeft,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
@@ -405,11 +415,19 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
 // Board 52m: the person sits on the page with no frame and no edit button
 // (My profile is in the user menu), each panel's count moves beside its title,
 // and the hint is left out.
+// Board 52. A member's stored notices, when they have any (the answer to a
+// hand-over they sent, issue #262), sit above it as the leads' "Needs your
+// attention" panel, so board 52 itself is unchanged when there are none.
 function PersonalView({ overview }: { overview: PersonalOverview }) {
-  const { person, checklist, roster, hint } = overview;
+  const { attention, person, checklist, roster, hint } = overview;
   const main = checklist ? <ChecklistPanel checklist={checklist} /> : null;
   return (
     <>
+      {attention.length > 0 && (
+        <div className="mb-5 md:mb-6">
+          <AttentionPanel attention={attention} compact />
+        </div>
+      )}
       <section className={PERSON_FRAME}>
         <PersonLines name={person.name} line={person.line} since={person.since} />
         {person.edit && (
@@ -513,25 +531,60 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 const ROW_LINK = `flex items-center gap-4 px-4 py-3.5 transition-colors duration-300 ease-out hover:bg-white-5 md:px-5 ${FOCUS} focus-visible:-outline-offset-2`;
 const ARROW = "opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:translate-x-1.5 group-hover:opacity-100";
 
-// Board 50e: the applicant, then what waits on them and their applications
-// beside the open positions. Board 50e-m: the person on the page, the panels
-// stacked, the Next step button full width under its text, "Open My
-// applications" at the foot of its panel, and one open role fewer.
+// Board 50e: the applicant, then what waits on them and their applications,
+// full width, with no open positions (issue #317). Board 50f: with nothing
+// shown, the panel that says so and how long an application stays. Board
+// 50e-m: the person on the page, the Next step button full width under its
+// text, and "Open My applications" at the foot of its panel.
 function ApplicantView({ overview }: { overview: ApplicantOverview }) {
-  const { person, nextStep, applications, openPositions } = overview;
+  const { person, nextStep, applications } = overview;
   return (
     <>
       <section className={PERSON_FRAME}>
         <PersonLines name={person.name} line={person.line} since={null} />
       </section>
-      <div className={APPLICANT_GRID}>
-        <div className="flex min-w-0 flex-col gap-4">
-          {nextStep && <NextStepCard step={nextStep} />}
-          <ApplicantApplications applications={applications} />
-        </div>
-        <OpenPositionsPanel positions={openPositions} />
+      <div className={STACK}>
+        {nextStep && <NextStepCard step={nextStep} />}
+        {applications.kind === "rows" ? <ApplicantApplications applications={applications} /> : <NoApplicationsPanel />}
       </div>
     </>
+  );
+}
+
+function NoApplicationsPanel() {
+  return (
+    <Panel title={NO_APPLICATIONS.title} detail={NO_APPLICATIONS.detail}>
+      <li className="px-4 py-3.5 text-[13px] text-prt-muted md:px-5">{SHOWN_FOR_A_MONTH}</li>
+    </Panel>
+  );
+}
+
+// Issue #317's board 56: who the alumnus was on the team, then whether the
+// Alumni page lists them, with the way to My alumni. While one of their
+// applications is shown it follows, as on an applicant's Overview.
+function AlumniView({ overview }: { overview: AlumniOverview }) {
+  const { person, card, nextStep, applications } = overview;
+  return (
+    <>
+      <section className={PERSON_FRAME}>
+        <PersonLines name={person.name} line={person.line} since={null} />
+      </section>
+      <div className={STACK}>
+        <AlumniCardPanel card={card} />
+        {nextStep && <NextStepCard step={nextStep} />}
+        {applications && <ApplicantApplications applications={applications} />}
+      </div>
+    </>
+  );
+}
+
+function AlumniCardPanel({ card }: { card: AlumniCard }) {
+  return (
+    <Panel title={card.title} detail={card.detail}>
+      <li>
+        <FootLink {...card.link} />
+      </li>
+    </Panel>
   );
 }
 
@@ -567,12 +620,12 @@ const PILL_TONES: Readonly<Record<ApplicantPill, string>> = {
   "not-selected": "bg-white-5 text-prt-muted",
 };
 
-function ApplicantApplications({ applications }: { applications: ApplicantOverview["applications"] }) {
+function ApplicantApplications({ applications }: { applications: Extract<ApplicantApplicationsPanel, { kind: "rows" }> }) {
   const all = { label: "Open My applications", href: "/dashboard/my-applications" };
   return (
     <Panel
       title="Your applications"
-      detail={applications.kind === "rows" ? applications.summary : undefined}
+      detail={applications.summary}
       meta={
         <Link href={all.href} className={`group hidden items-center gap-1.5 text-text-2 transition-colors duration-300 ease-out hover:text-accent md:inline-flex ${FOCUS}`}>
           {all.label}
@@ -580,8 +633,7 @@ function ApplicantApplications({ applications }: { applications: ApplicantOvervi
         </Link>
       }
     >
-      {applications.kind === "empty" && <li className="px-4 py-3.5 text-[13px] text-prt-muted md:px-5">{applications.line}</li>}
-      {applications.kind === "rows" && applications.rows.map((row) => (
+      {applications.rows.map((row) => (
         <li key={row.id}>
           <Link href={row.href} className={ROW_LINK}>
             <span className="min-w-0 flex-1">
@@ -600,27 +652,6 @@ function ApplicantApplications({ applications }: { applications: ApplicantOvervi
       ))}
       <li className="md:hidden">
         <FootLink {...all} />
-      </li>
-    </Panel>
-  );
-}
-
-function OpenPositionsPanel({ positions }: { positions: OpenPositions }) {
-  return (
-    <Panel title="Open positions" detail={positions.summary}>
-      {positions.roles.map((role, index) => (
-        <li key={role.key} className={index === OPEN_ROLES_SHOWN - 1 ? "max-md:hidden" : ""}>
-          <Link href={role.href} className={ROW_LINK}>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[15px] font-medium md:text-[14px]">{role.title}</span>
-              <span className="block truncate text-[13px] text-prt-muted">{role.unit}</span>
-            </span>
-            <ArrowUpRight aria-hidden className="h-4 w-4 shrink-0 text-text-2" strokeWidth={1.75} />
-          </Link>
-        </li>
-      ))}
-      <li>
-        <FootLink label="See all open positions" href="/apply" />
       </li>
     </Panel>
   );
