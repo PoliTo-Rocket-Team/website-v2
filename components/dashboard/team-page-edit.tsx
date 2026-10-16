@@ -2,13 +2,49 @@
 
 import { useCallback, useMemo, useState, useTransition, type ReactNode } from "react";
 import Image from "next/image";
-import { Check, Eye, RotateCcw, X } from "lucide-react";
+import { Check, Eye, Plus, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { resetTeamPageLayer, saveTeamPageLayer } from "@/app/dashboard/actions";
 import { PAGE_INTRO } from "@/components/about/page-header";
 import { TeamPageView, type TeamPageFrames } from "@/components/about/team-page";
 import { CURRENT_ACADEMIC_YEAR } from "@/lib/about/academic-year-copy";
-import { resetLayer, TEAM_PAGE_INTRO_MAX, type ArcSpot, type GroupPhoto, type TeamPageLayer } from "@/lib/about/team-layer";
+import {
+  nextAddedId,
+  resetLayer,
+  TEAM_PAGE_INTRO_MAX,
+  type AddedRef,
+  type ArcSpot,
+  type GroupPhoto,
+  type HeadSpot,
+  type TeamBuild,
+  type TeamPageLayer,
+} from "@/lib/about/team-layer";
+import {
+  arcHasRoom,
+  hasHeadErrors,
+  headBackToRecord,
+  headFieldErrors,
+  headFieldsOf,
+  headRecord,
+  hideHead,
+  isHeadEdited,
+  layerWithHead,
+  layerWithLeader,
+  leaderFieldErrors,
+  leaderFieldsOf,
+  leaderGaps,
+  newDepartmentFields,
+  newLeaderFields,
+  teamByName,
+  withHeadPerson,
+  withLeaderPerson,
+  withNewLead,
+  withoutAddedLeader,
+  type HeadFields,
+  type HeadRef,
+  type LeaderFields,
+} from "@/lib/about/team-page-add";
+import type { TeamPerson } from "@/lib/about/team-person";
 import {
   backToTeamRecord,
   editCount,
@@ -39,42 +75,85 @@ import { statusOf, type ContentStatus, type PublishStep } from "@/lib/content/ve
 import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { BarButton, EditableBlock, EditShell } from "./edit-shell";
+import { TeamHeadPanel } from "./team-head-panel";
+import { TeamLeaderPanel } from "./team-leader-panel";
 import { TeamPersonPanel } from "./team-person-panel";
 
-// The Team page editor (boards 80, 80b and 80h, issue #284): the real Team
-// page under the shared edit shell, with the "Visual changes only" tag and
-// Reset to team on the bar. Hovering the team leader or a leader on the arc
-// outlines them with where they come from and an Edit person chip, which
-// opens the Edit person panel; the intro text and the group photo are edited
-// in place. The core members list and "In numbers" have no affordance. The
-// editor holds the working layer and lays it on the roles build as it
-// changes; Save draft and Publish send it whole to the layer actions, which
-// check it again and write nothing but the layer.
+// The Team page editor (boards 80 to 80h, issues #284 and #285): the real
+// Team page under the shared edit shell, with the "Visual changes only" tag
+// and Reset to team on the bar. Hovering a person on the org chart or a head
+// block outlines it with where it comes from and an Edit chip, which opens
+// its panel; the intro text and the group photo are edited in place. Board
+// 80e's add affordances sit on the page while no panel is open: a "+" at each
+// place on the arc (gone at eight leaders), "+ Add department" beside each
+// slide's heading, and "+ Add division lead" on a hovered head block, under a
+// note that added items show only on the Team page. The core members list and
+// "In numbers" have no affordance. The editor holds the working layer and lays
+// it on the roles build as it changes; Save draft and Publish send it whole
+// to the layer actions, which check it again and write nothing but the layer.
 
-/** What an Edit chip opens: the intro or the group photo in place, or the Edit person panel for a spot. */
-type Section = "intro" | "group-photo" | PersonSpot;
+/** What an Edit chip opens: the intro or the group photo in place, or a panel: a person's spot, a leader the editor added, a head block, a department the editor added. */
+type Section = "intro" | "group-photo" | PersonSpot | `leader:${number}` | HeadSpot | `department:${number}`;
+
+/** The panel open beside the page, with its fields as the editor fills them. */
+type Panel =
+  | { readonly kind: "person"; readonly spot: PersonSpot; readonly fields: PersonFields }
+  /** `id` null: a leader the "+" is adding. */
+  | { readonly kind: "leader"; readonly id: number | null; readonly fields: LeaderFields }
+  /** `at` null: a department "+ Add department" is adding. */
+  | { readonly kind: "head"; readonly at: HeadRef | null; readonly fields: HeadFields };
 
 const isArcSpot = (at: string): at is ArcSpot => at.startsWith("arc:");
+const isAddedRef = (at: string): at is AddedRef => at.startsWith("added:");
+const addedId = (at: AddedRef) => Number(at.slice("added:".length));
 
 const PLACE = "Org chart";
+
+/** The layer with the open panel's edit laid on: the page shows it as the editor types, and Cancel drops it. */
+function previewOf(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null): TeamPageLayer {
+  if (panel === null) return layer;
+  if (panel.kind === "person") return withSpotEdit(layer, panel.spot, editOfFields(build, panel.spot, panel.fields));
+  if (panel.kind === "leader") return layerWithLeader(build, layer, panel.id, panel.fields);
+  return layerWithHead(build, layer, panel.at, panel.fields);
+}
+
+/** What the open panel refuses before it keeps its edit, as one message; null when nothing is refused. */
+function panelRefusal(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null): string | null {
+  if (panel === null) return null;
+  if (panel.kind === "person") return hasErrors(personFieldErrors(panel.fields)) ? "Fix the highlighted fields first." : null;
+  if (panel.kind === "leader") {
+    const errors = leaderFieldErrors(build, layer, panel.id, panel.fields);
+    return errors.arc ?? (Object.keys(errors).length > 0 ? "Fix the highlighted fields first." : null);
+  }
+  return hasHeadErrors(headFieldErrors(panel.at, panel.fields)) ? "Fix the highlighted fields first." : null;
+}
+
+/** The block the open panel edits, which the page keeps outlined; a thing being added takes the next added id. */
+function selectedOf(layer: TeamPageLayer, panel: Panel | null): string | undefined {
+  if (panel === null) return undefined;
+  if (panel.kind === "person") return panel.spot;
+  if (panel.kind === "leader") return `added:${panel.id ?? nextAddedId(layer)}`;
+  return panel.at ?? `added:${nextAddedId(layer)}`;
+}
 
 export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpening; academicYear: number }) {
   const { build, base } = opening;
   const [layer, setLayer] = useState<TeamPageLayer>(opening.layer);
   // Nothing saved yet reads as a draft, as board 80 shows the bar.
   const [status, setStatus] = useState<ContentStatus>(opening.status ?? "draft");
-  const [panel, setPanel] = useState<{ readonly spot: PersonSpot; readonly fields: PersonFields } | null>(null);
+  const [panel, setPanel] = useState<Panel | null>(null);
   const [inPlace, setInPlace] = useState<"intro" | "group-photo" | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  // The page shows the panel's edit as the editor types; Cancel drops it.
-  const preview = panel === null ? layer : withSpotEdit(layer, panel.spot, editOfFields(build, panel.spot, panel.fields));
+  const preview = previewOf(build, layer, panel);
   const { page, shown } = useMemo(() => editedTeamPage(build, base, preview), [build, base, preview]);
-  const errors = panel === null ? {} : personFieldErrors(panel.fields);
   const edits = editCount(preview);
   const personPhotos = useMemo(() => personPhotoChoices(build, base), [build, base]);
   const groupPhotos = useMemo(() => groupPhotoChoices(build, base), [build, base]);
+  const people = useMemo(() => teamByName(build), [build]);
+  /** Every head block in the order the departments' slides draw them. */
+  const heads = useMemo(() => (shown?.departments ?? []).flatMap((d) => d.heads.map((h) => h.at)), [shown]);
 
   const blocks = useMemo(() => {
     const person = (spot: PersonSpot, role: string) => ({
@@ -87,9 +166,27 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
       ["group-photo", { name: "Group photo", section: "group-photo", chip: "Replace photo" }],
     ];
     if (shown !== null && shown.leader !== null) entries.push(["leader", person("leader", shown.leader.role)]);
-    for (const l of shown?.leaders ?? []) if (isArcSpot(l.at)) entries.push([l.at, person(l.at, l.shown.role)]);
+    for (const l of shown?.leaders ?? []) {
+      if (isArcSpot(l.at)) entries.push([l.at, person(l.at, l.shown.role)]);
+      else entries.push([l.at, { name: `${l.shown.role} · Added`, section: `leader:${addedId(l.at)}`, chip: "Edit person" }]);
+    }
+    for (const at of heads) {
+      const added = isAddedRef(at);
+      const from = added ? "Added" : isHeadEdited(build, preview, at) ? "Edited" : "From roles";
+      entries.push([at, { name: `Head · ${from}`, section: added ? `department:${addedId(at)}` : at }]);
+    }
     return Object.fromEntries(entries) as EditBlocks<string, Section>;
-  }, [shown, preview]);
+  }, [shown, preview, heads, build]);
+
+  const openHead = useCallback(
+    (at: HeadRef, addLead = false) => {
+      const fields = headFieldsOf(build, layer, at);
+      if (fields === null) return;
+      setInPlace(null);
+      setPanel({ kind: "head", at, fields: addLead ? withNewLead(build, fields) : fields });
+    },
+    [build, layer],
+  );
 
   const openSection = useCallback(
     (section: Section) => {
@@ -98,13 +195,40 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
         setInPlace(section);
         return;
       }
-      const fields = personFieldsOf(build, layer, section);
+      if (section.startsWith("leader:")) {
+        const id = Number(section.slice("leader:".length));
+        const fields = leaderFieldsOf(build, layer, id);
+        if (fields === null) return;
+        setInPlace(null);
+        setPanel({ kind: "leader", id, fields });
+        return;
+      }
+      if (section.startsWith("department:")) return openHead(`added:${Number(section.slice("department:".length))}`);
+      if (section.startsWith("head:")) return openHead(section as HeadSpot);
+      const spot = section as PersonSpot;
+      const fields = personFieldsOf(build, layer, spot);
       if (fields === null) return;
       setInPlace(null);
-      setPanel({ spot: section, fields });
+      setPanel({ kind: "person", spot, fields });
     },
-    [build, layer],
+    [build, layer, openHead],
   );
+
+  const addLeader = (gap: number) => {
+    const fields = newLeaderFields(build, layer, gap);
+    if (fields === null) return;
+    setInPlace(null);
+    setPanel({ kind: "leader", id: null, fields });
+  };
+
+  const addDepartment = () => {
+    const fields = newDepartmentFields(build);
+    if (fields === null) return;
+    setInPlace(null);
+    setPanel({ kind: "head", at: null, fields });
+  };
+
+  const adding = panel === null && shown !== null;
 
   const frames: TeamPageFrames = {
     intro: (node) =>
@@ -121,13 +245,33 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
     leader: (slot, node) => {
       if (shown === null) return node;
       const at = slot === "leader" ? "leader" : shown.leaders[slot]?.at;
-      if (at === undefined || (at !== "leader" && !isArcSpot(at))) return node;
+      if (at === undefined) return node;
       return (
         <EditableBlock id={at} narrow>
           {node}
         </EditableBlock>
       );
     },
+    addLeader: adding && arcHasRoom(build, layer) ? addLeader : null,
+    departments: {
+      member: (index, node) => {
+        const at = heads[index];
+        if (at === undefined) return node;
+        return (
+          <EditableBlock id={at}>
+            {node}
+            {adding && <AddLeadButton onClick={() => openHead(at, true)} />}
+          </EditableBlock>
+        );
+      },
+      heading: (node) => (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 lg:justify-center">
+          {node}
+          {adding && <AddDepartmentButton onClick={addDepartment} />}
+        </div>
+      ),
+    },
+    note: adding ? <AddedItemsNote /> : null,
     groupPhoto: (node) => (
       <>
         <EditableBlock id="group-photo">{node}</EditableBlock>
@@ -146,12 +290,26 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
 
   /** The working layer with the panel's edit kept; null while the panel's fields are refused. */
   const keptLayer = (): TeamPageLayer | null => {
-    if (panel === null) return layer;
-    if (hasErrors(errors)) {
-      toast.error("Fix the highlighted fields first.");
+    const refusal = panelRefusal(build, layer, panel);
+    if (refusal !== null) {
+      toast.error(refusal);
       return null;
     }
     return preview;
+  };
+
+  /** The panel's edit kept in the working layer, and the panel closed. */
+  const keep = () => {
+    const next = keptLayer();
+    if (next === null) return;
+    setLayer(next);
+    setPanel(null);
+  };
+
+  /** A change the panel's footer makes to the working layer at once, closing the panel. */
+  const closeWith = (change: (layer: TeamPageLayer) => TeamPageLayer) => {
+    setLayer(change);
+    setPanel(null);
   };
 
   const save = (step: PublishStep) => {
@@ -208,28 +366,49 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
         onSaveDraft={pending ? null : () => save("save-draft")}
         onPublish={pending ? null : () => save("publish")}
         blocks={blocks}
-        selected={panel?.spot}
+        selected={selectedOf(layer, panel)}
         onEdit={openSection}
         panel={
-          panel !== null && (
+          panel === null ? null : panel.kind === "person" ? (
             <PersonPanel
               panel={panel}
               opening={opening}
               layer={layer}
-              errors={errors}
+              errors={personFieldErrors(panel.fields)}
               photoChoices={personPhotos}
-              onChange={(fields) => setPanel({ spot: panel.spot, fields })}
-              onSave={() => {
-                const next = keptLayer();
-                if (next === null) return;
-                setLayer(next);
-                setPanel(null);
-              }}
+              onChange={(fields) => setPanel({ ...panel, fields })}
+              onSave={keep}
               onCancel={() => setPanel(null)}
-              onBack={() => {
-                setLayer((l) => backToTeamRecord(l, panel.spot));
-                setPanel(null);
-              }}
+              onBack={() => closeWith((l) => backToTeamRecord(l, panel.spot))}
+            />
+          ) : panel.kind === "leader" ? (
+            <TeamLeaderPanel
+              key={panel.id ?? "new"}
+              adding={panel.id === null}
+              fields={panel.fields}
+              gaps={leaderGaps(build, layer, panel.id)}
+              people={people}
+              errors={leaderFieldErrors(build, layer, panel.id, panel.fields)}
+              photoChoices={personPhotos}
+              onChange={(fields) => setPanel({ ...panel, fields })}
+              onPerson={(id) => setPanel({ ...panel, fields: withLeaderPerson(build, panel.fields, id) })}
+              onSubmit={keep}
+              onCancel={() => setPanel(null)}
+              onRemove={panel.id === null ? null : () => closeWith((l) => withoutAddedLeader(l, panel.id!))}
+            />
+          ) : (
+            <HeadPanel
+              key={panel.at ?? "new"}
+              panel={panel}
+              build={build}
+              layer={layer}
+              people={people}
+              photoChoices={personPhotos}
+              onChange={(fields) => setPanel({ ...panel, fields })}
+              onDone={keep}
+              onCancel={() => setPanel(null)}
+              onHide={(at) => closeWith((l) => hideHead(l, at))}
+              onBack={(at) => closeWith((l) => headBackToRecord(build, l, at))}
             />
           )
         }
@@ -267,6 +446,97 @@ function VisualOnlyTag() {
       <Eye aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
       Visual changes only
     </span>
+  );
+}
+
+/** Board 80e's note over the page while the add affordances show: what is added is the Team page's alone. */
+function AddedItemsNote() {
+  return (
+    <div
+      role="note"
+      className="fixed right-6 top-[88px] z-30 hidden max-w-[468px] overflow-hidden rounded-xl border border-warning/40 bg-panel shadow-lg md:block"
+    >
+      <div className="flex gap-3 bg-warning-soft px-4 py-3">
+        <TriangleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-warning" strokeWidth={1.75} />
+        <p className="text-[12px] leading-relaxed text-text-2">
+          Added leaders, departments and leads appear only on the Team page. They do not create roles, departments or divisions in the team. Use
+          Team tree for that.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const ADD_PILL = `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-accent/70 bg-ground font-semibold text-accent transition-colors duration-300 ease-out hover:border-accent hover:bg-accent/10 ${CONTENT_FOCUS}`;
+
+/** "+ Add department" beside a slide's heading (board 80e). */
+function AddDepartmentButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={`${ADD_PILL} h-8 px-3.5 text-[13px]`}>
+      <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+      Add department
+    </button>
+  );
+}
+
+/** "+ Add division lead" on a hovered head block (board 80e): it sits on the block's outline, at its foot. */
+function AddLeadButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${ADD_PILL} absolute -bottom-3 left-1 z-10 h-6 translate-y-1/2 px-2.5 text-[12px] opacity-0 group-focus-within/block:opacity-100 group-hover/block:opacity-100 focus-visible:opacity-100 md:-bottom-[22px] md:left-0`}
+    >
+      <Plus aria-hidden className="h-3 w-3" strokeWidth={2} />
+      Add division lead
+    </button>
+  );
+}
+
+/** The Edit a head block panel for the open head block, with its errors, Team record and footer actions. */
+function HeadPanel({
+  panel,
+  build,
+  layer,
+  people,
+  photoChoices,
+  onChange,
+  onDone,
+  onCancel,
+  onHide,
+  onBack,
+}: {
+  panel: { readonly at: HeadRef | null; readonly fields: HeadFields };
+  build: TeamBuild;
+  layer: TeamPageLayer;
+  people: readonly TeamPerson[];
+  photoChoices: readonly PhotoChoice[];
+  onChange: (fields: HeadFields) => void;
+  onDone: () => void;
+  onCancel: () => void;
+  onHide: (at: HeadRef) => void;
+  onBack: (at: HeadSpot) => void;
+}) {
+  const { at, fields } = panel;
+  const record = at === null ? null : headRecord(build, at);
+  const roles = at !== null && !isAddedRef(at) ? at : null;
+  const edited = roles !== null && (isHeadEdited(build, layer, roles) || isHeadEdited(build, layerWithHead(build, layer, roles, fields), roles));
+  return (
+    <TeamHeadPanel
+      kind={at === null ? "new" : roles === null ? "added" : "roles"}
+      fields={fields}
+      record={record?.person ?? null}
+      people={people}
+      errors={headFieldErrors(at, fields)}
+      photoChoices={photoChoices}
+      onChange={onChange}
+      onPerson={(id) => onChange(withHeadPerson(build, fields, id))}
+      onAddLead={() => onChange(withNewLead(build, fields))}
+      onDone={onDone}
+      onCancel={onCancel}
+      onHide={at === null ? null : () => onHide(at)}
+      onBack={roles !== null && edited ? () => onBack(roles) : null}
+    />
   );
 }
 

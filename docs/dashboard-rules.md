@@ -745,3 +745,15 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   person panel; the intro text and the group photo are edited in place. A field put back as the
   team record has it is no edit. The core members list and "In numbers" have no edit affordance.
   Replace photo picks a photo the site already holds; the layer takes no upload yet.
+- Adding on the page (boards 80e, 80f and 80g, #285): while no panel is open, a "+" sits at each
+  place on the arc a leader may be added, both ends and between each pair of neighbours, and the
+  stacked chart (below xl and on phones) has one "Add leader" after the last leader. They go at
+  eight leaders. The new leader is drawn inline at that place on the arc and in the phone grid,
+  keeping the arc's ordering logic (`lib/about/arc-order.ts`); the Add leader panel's Place field
+  moves them, and a leader added before opens the same panel with Remove from page. "+ Add
+  department" sits beside each departments slide's heading, and "+ Add division lead" on a hovered
+  head block. Edit a head block changes the person, role and department name on the page, the
+  division leads shown (drag to reorder, edit, remove, add), the photo and LinkedIn; Hide from
+  page hides the block (an added department is removed), and Back to the team record puts the
+  head, the department's name and its leads back as the roles have them. None of it creates a
+  role, department or division.
