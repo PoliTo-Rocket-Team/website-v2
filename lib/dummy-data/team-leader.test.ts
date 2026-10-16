@@ -36,7 +36,7 @@ test("the team leader's Overview and Members are boards 72 and 73; the operation
   assert.equal(leaderOverview.people, leaderMembers.people.length);
   assert.deepEqual(
     leaderOverview.attention.map((item) => item.kind).filter((kind) => kind !== "notice"),
-    ["orders-to-decide", "approved-orders", "closing-position"],
+    ["orders-to-decide", "approved-orders"],
   );
   // No figure on the Overview names a price.
   assert.ok(leaderOverview.stats.every((stat) => !stat.value.includes("€") && !stat.detail.includes("€")));

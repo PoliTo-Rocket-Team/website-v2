@@ -331,9 +331,8 @@ async function teamOverview(identity: Identity): Promise<TeamOverview> {
 
 /**
  * Board 72 (issue #252): the team leader's figures, what waits for their
- * decision, and the Departments panel, across the team. Positions keep no
- * closing day in the database, so no position reads as closing soon here;
- * the database holds no activity feed, so that reads empty.
+ * decision, and the Departments panel, across the team. The database holds
+ * no activity feed, so that reads empty.
  */
 async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
   const [positions, snapshot, notices] = await Promise.all([
@@ -355,7 +354,7 @@ async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
       people: records.length,
       departments: snapshot.org.departments.length,
     }),
-    attention: [...leaderAttention({ orders, positions: [], now: new Date() }), ...notices],
+    attention: [...leaderAttention({ orders, now: new Date() }), ...notices],
     departments: departmentSummaries(records, snapshot.org, positions),
     people: records.length,
     activity: [],
