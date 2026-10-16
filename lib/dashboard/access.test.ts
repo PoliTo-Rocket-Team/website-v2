@@ -57,12 +57,29 @@ test("the team leader, the operations lead and the IT lead reach every page of t
   for (const seat of FULL_ACCESS_SEATS) {
     for (const key of teamPages) assert.equal(canReach(fullAccess(seat), key), true, `${seat} ${key}`);
   }
+});
+
+test("the team leader's sidebar is board 72's: Team holds Members, Access and Orders, and Content holds Partners and Alumni (issues #252, #256)", () => {
   assert.deepEqual(shape(fullAccess("team-leader"), withoutApplications), [
     [null, ["Overview", "Team tree"]],
     ["Recruitment", ["Positions", "Applications"]],
     ["Team", ["Members", "Access", "Orders"]],
     ["Content", ["Partners", "Alumni"]],
   ]);
+});
+
+test("the operations lead's and the IT lead's sidebars keep Partners and Alumni under Team, with no Content group (issues #252, #256)", () => {
+  for (const seat of ["operations-lead", "it-lead", null] as const) {
+    assert.deepEqual(
+      shape(fullAccess(seat), withoutApplications),
+      [
+        [null, ["Overview", "Team tree"]],
+        ["Recruitment", ["Positions", "Applications"]],
+        ["Team", ["Members", "Partners", "Alumni", "Access", "Orders"]],
+      ],
+      String(seat),
+    );
+  }
 });
 
 test("full access from an admin or org scope row reaches every page of the team too (issue #238)", () => {
@@ -96,7 +113,7 @@ test("the Alumni page is for full admins and site-content access, never from a l
   }
   assert.deepEqual(shape({ kind: "member", siteContent: true }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
-    ["Content", ["Partners", "Alumni"]],
+    ["Team", ["Partners", "Alumni"]],
   ]);
 });
 

@@ -5,6 +5,7 @@ import {
   canEditOrder,
   checkApproveOrdersChange,
   checkDecision,
+  checkMarkOrdered,
   checkNewOrder,
   checkOrderDivision,
   decideRightOf,
@@ -31,6 +32,7 @@ import {
   type Order,
   type OrdersScope,
   type OrderState,
+  type OrderStatus,
   type OrderUnit,
   type OrgDepartmentUnits,
 } from "./orders";
@@ -65,6 +67,19 @@ function order(state: OrderState, requestedOn = "2026-10-01", unit: OrderUnit | 
 }
 
 const sentBack: OrderState = { status: "changes-requested", changes: { reason: "Add a second quote.", by: "Alessandro Greco", on: "2026-10-05" } };
+const answer = { by: "Alessandro Greco", byYou: true, on: "2026-10-05" };
+const approved: OrderState = { status: "approved", answer };
+const ordered: OrderState = { status: "ordered", answer };
+const rejected: OrderState = { status: "rejected", answer, reason: null };
+
+/** A request in each state the page shows. */
+const STATES: Readonly<Record<OrderStatus, OrderState>> = {
+  waiting: { status: "waiting" },
+  approved,
+  ordered,
+  "changes-requested": sentBack,
+  rejected,
+};
 
 /** A division lead with Orders at Can edit in Mission Analysis (board 61). */
 const lead: OrdersScope = { edits: [{ kind: "division", division: missionAnalysis }], decides: null };
@@ -74,7 +89,7 @@ const head: OrdersScope = { edits: [{ kind: "department", department: aerodynami
 const viewer: OrdersScope = { edits: [], decides: null };
 
 test("anyone with any Orders access sees every order in the team, in every department; no access is no page", () => {
-  const all = [order({ status: "waiting" }), order({ status: "approved" }, "2026-10-02", inOptimization), order({ status: "rejected" }, "2026-10-03", inHardware)];
+  const all = [order({ status: "waiting" }), order(approved, "2026-10-02", inOptimization), order(rejected, "2026-10-03", inHardware)];
   for (const scope of [lead, head, viewer, { edits: [], decides: "approve-orders" } satisfies OrdersScope]) {
     const page = ordersPageFor(scope, org, all);
     assert.deepEqual(
@@ -96,26 +111,81 @@ test("a lead edits only their own division's orders, a head only their departmen
   assert.deepEqual([mine, sameDepartment, elsewhere, noDivision].map((o) => canEditOrder(viewer, o)), [false, false, false, false]);
 });
 
+const NOTHING = { cancel: false, edit: null, decide: false, markOrdered: false };
+
 test("an order outside the viewer's scope opens read-only, whatever its state", () => {
   for (const status of ORDER_STATUSES) {
-    const state: OrderState = status === "changes-requested" ? sentBack : { status };
-    assert.deepEqual(orderActions(lead, order(state, "2026-10-01", inHardware)), { cancel: false, edit: null });
-    assert.deepEqual(orderActions(viewer, order(state)), { cancel: false, edit: null });
+    const state = STATES[status];
+    assert.deepEqual(orderActions(lead, order(state, "2026-10-01", inHardware)), NOTHING);
+    assert.deepEqual(orderActions(viewer, order(state)), NOTHING);
   }
 });
 
 test("in scope, only a waiting request can be cancelled; one sent back can only be edited and sent again", () => {
-  assert.deepEqual(orderActions(lead, order({ status: "waiting" })), { cancel: true, edit: "edit" });
-  assert.deepEqual(orderActions(lead, order(sentBack)), { cancel: false, edit: "edit-and-resend" });
-  assert.deepEqual(orderActions(lead, order({ status: "approved" })), { cancel: false, edit: null });
-  assert.deepEqual(orderActions(head, order({ status: "rejected" }, "2026-10-01", inOptimization)), { cancel: false, edit: null });
+  assert.deepEqual(orderActions(lead, order({ status: "waiting" })), { ...NOTHING, cancel: true, edit: "edit" });
+  assert.deepEqual(orderActions(lead, order(sentBack)), { ...NOTHING, edit: "edit-and-resend" });
+  assert.deepEqual(orderActions(lead, order(approved)), NOTHING);
+  assert.deepEqual(orderActions(lead, order(ordered)), NOTHING);
+  assert.deepEqual(orderActions(head, order(rejected, "2026-10-01", inOptimization)), NOTHING);
 });
 
 test("an edit sends the request back to the team leader, and an answered one cannot be edited", () => {
   assert.deepEqual(stateAfterEdit("changes-requested"), { status: "waiting" });
   assert.deepEqual(stateAfterEdit("waiting"), { status: "waiting" });
   assert.equal(stateAfterEdit("approved"), null);
+  assert.equal(stateAfterEdit("ordered"), null);
   assert.equal(stateAfterEdit("rejected"), null);
+});
+
+test("a rejected request cannot be edited or sent again, even by the team leader who edits every order (board 70e)", () => {
+  const teamLeader: OrdersScope = { edits: [WHOLE_TEAM], decides: "team-leader" };
+  for (const scope of [lead, head, teamLeader]) assert.deepEqual(orderActions(scope, order(rejected)), NOTHING);
+});
+
+/** Board 70: the team leader holds full access and decides. */
+const teamLeaderScope: OrdersScope = { edits: [WHOLE_TEAM], decides: "team-leader" };
+/** A member the team leader gave "Approve orders", with Orders at Can view (board 71). */
+const holderScope: OrdersScope = { edits: [], decides: "approve-orders" };
+/** The operations lead: full access, but no "Approve orders" (issue #238). */
+const operationsLeadScope: OrdersScope = { edits: [WHOLE_TEAM], decides: null };
+
+test("Reject, Ask for changes and Approve show on a waiting order only to the team leader and holders of Approve orders (board 70b)", () => {
+  const waiting = order({ status: "waiting" });
+  assert.equal(orderActions(teamLeaderScope, waiting).decide, true);
+  assert.equal(orderActions(holderScope, waiting).decide, true);
+  assert.equal(orderActions(operationsLeadScope, waiting).decide, false);
+  assert.equal(orderActions(lead, waiting).decide, false);
+  // Deciding needs no edit scope: the holder edits nothing, yet decides an order in any division.
+  assert.deepEqual(orderActions(holderScope, order({ status: "waiting" }, "2026-10-01", inHardware)), { ...NOTHING, decide: true });
+  // Nobody decides a request that is no longer waiting.
+  for (const status of ["approved", "ordered", "changes-requested", "rejected"] as const) {
+    assert.equal(orderActions(teamLeaderScope, order(STATES[status])).decide, false, status);
+  }
+});
+
+test("Mark as ordered shows on an approved order only to the people who decide orders (board 70c)", () => {
+  for (const status of ORDER_STATUSES) {
+    const actions = orderActions(teamLeaderScope, order(STATES[status]));
+    assert.equal(actions.markOrdered, status === "approved", status);
+  }
+  assert.equal(orderActions(holderScope, order(approved)).markOrdered, true);
+  assert.equal(orderActions(operationsLeadScope, order(approved)).markOrdered, false);
+  assert.equal(orderActions(lead, order(approved)).markOrdered, false);
+});
+
+test("an order moves from Approved to Ordered only through Mark as ordered, and only from Approved", () => {
+  assert.deepEqual(checkMarkOrdered("team-leader", approved), { ok: true, value: ordered });
+  assert.deepEqual(checkMarkOrdered("approve-orders", approved), { ok: true, value: ordered });
+  for (const status of ["waiting", "ordered", "changes-requested", "rejected"] as const) {
+    assert.equal(checkMarkOrdered("team-leader", STATES[status]).ok, false, status);
+  }
+  assert.equal(checkMarkOrdered(null, approved).ok, false);
+  // No decision reaches Ordered, and no edit leaves it.
+  for (const decision of [{ kind: "approve" }, { kind: "reject", reason: null }, { kind: "ask-for-changes", reason: "x" }] as const) {
+    assert.notEqual(stateAfterDecision(decision, answer).status, "ordered");
+  }
+  assert.equal(checkDecision("team-leader", "ordered", { kind: "approve" }).ok, false);
+  assert.equal(stateAfterEdit("ordered"), null);
 });
 
 test("by default only the team leader decides; Approve orders lets someone else decide too", () => {
@@ -127,12 +197,12 @@ test("by default only the team leader decides; Approve orders lets someone else 
 test("a decision is refused to anyone without the right, and on a request that is not waiting", () => {
   for (const right of ["team-leader", "approve-orders"] as const) {
     assert.deepEqual(checkDecision(right, "waiting", { kind: "approve" }), { ok: true, value: { kind: "approve" } });
-    assert.deepEqual(checkDecision(right, "waiting", { kind: "reject" }), { ok: true, value: { kind: "reject" } });
+    assert.deepEqual(checkDecision(right, "waiting", { kind: "reject" }), { ok: true, value: { kind: "reject", reason: null } });
   }
   // A lead or head of the order's own unit has no right to decide it.
   assert.equal(checkDecision(head.decides, "waiting", { kind: "approve" }).ok, false);
   assert.equal(checkDecision(lead.decides, "waiting", { kind: "reject" }).ok, false);
-  for (const status of ["approved", "rejected", "changes-requested"] as const) {
+  for (const status of ["approved", "ordered", "rejected", "changes-requested"] as const) {
     assert.equal(checkDecision("team-leader", status, { kind: "approve" }).ok, false, status);
   }
   assert.equal(checkDecision("team-leader", "waiting", { kind: "cancel" }).ok, false);
@@ -143,9 +213,25 @@ test("asking for changes says what to change, and the reason shows on Changes re
   const asked = checkDecision("approve-orders", "waiting", { kind: "ask-for-changes", reason: " Add a second quote. " });
   assert.deepEqual(asked, { ok: true, value: { kind: "ask-for-changes", reason: "Add a second quote." } });
   if (!asked.ok) return;
-  assert.deepEqual(stateAfterDecision(asked.value, "Alessandro Greco", "2026-10-05"), sentBack);
-  assert.deepEqual(stateAfterDecision({ kind: "approve" }, "Alessandro Greco", "2026-10-05"), { status: "approved" });
-  assert.deepEqual(stateAfterDecision({ kind: "reject" }, "Alessandro Greco", "2026-10-05"), { status: "rejected" });
+  assert.deepEqual(stateAfterDecision(asked.value, answer), sentBack);
+  assert.deepEqual(stateAfterDecision({ kind: "approve" }, answer), approved);
+});
+
+test("Ask for changes cannot be sent without a note (board 70d)", () => {
+  for (const reason of ["", "   ", "\n"]) {
+    assert.deepEqual(checkDecision("team-leader", "waiting", { kind: "ask-for-changes", reason }), { ok: false, error: "Say what to change." });
+  }
+  assert.equal(checkDecision("team-leader", "waiting", { kind: "ask-for-changes" }).ok, false);
+});
+
+test("Reject sends with a reason or without one, and the requester reads the reason (board 70e)", () => {
+  assert.deepEqual(checkDecision("team-leader", "waiting", { kind: "reject" }), { ok: true, value: { kind: "reject", reason: null } });
+  assert.deepEqual(checkDecision("team-leader", "waiting", { kind: "reject", reason: "  " }), { ok: true, value: { kind: "reject", reason: null } });
+  const why = checkDecision("approve-orders", "waiting", { kind: "reject", reason: " Logistics already booked a van. " });
+  assert.deepEqual(why, { ok: true, value: { kind: "reject", reason: "Logistics already booked a van." } });
+  if (!why.ok) return;
+  assert.deepEqual(stateAfterDecision(why.value, answer), { status: "rejected", answer, reason: "Logistics already booked a van." });
+  assert.equal(checkDecision("team-leader", "waiting", { kind: "reject", reason: "x".repeat(501) }).ok, false);
 });
 
 const teamLeader = 14;
@@ -193,8 +279,8 @@ test("the pager shows the first, the last and the pages around the current one (
 
 test("orders sort newest first, whatever their state", () => {
   const sorted = sortOrders([
-    order({ status: "rejected" }, "2026-10-09"),
-    order({ status: "approved" }, "2026-10-08"),
+    order(rejected, "2026-10-09"),
+    order(approved, "2026-10-08"),
     order({ status: "waiting" }, "2026-10-01"),
     order(sentBack, "2026-10-02"),
     order({ status: "waiting" }, "2026-10-05"),
@@ -207,7 +293,7 @@ test("orders sort newest first, whatever their state", () => {
 
 test("the department and status filters return the right orders, and together both must hold", () => {
   const a = order({ status: "waiting" }, "2026-10-01", inMissionAnalysis);
-  const b = order({ status: "approved" }, "2026-10-01", inOptimization);
+  const b = order(approved, "2026-10-01", inOptimization);
   const c = order({ status: "waiting" }, "2026-10-01", inHardware);
   const d = order(sentBack, "2026-10-01", inHardware);
   const none = order({ status: "waiting" }, "2026-10-01", null);

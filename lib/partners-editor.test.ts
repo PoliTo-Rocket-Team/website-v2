@@ -66,8 +66,8 @@ test("the import carries every partner of the record, in its order, with its tie
   for (const partner of record) assert.deepEqual(partnerFromColumns(partnerColumns(partner)), partner);
 });
 
-test("migration 0020 holds exactly the import's SQL", () => {
-  const migration = readFileSync(join(__dirname, "..", "drizzle", "0020_partners_audit_and_import.sql"), "utf8");
+test("migration 0023 holds exactly the import's SQL", () => {
+  const migration = readFileSync(join(__dirname, "..", "drizzle", "0023_partners_audit_and_import.sql"), "utf8");
   assert.ok(migration.trimEnd().endsWith(partnerImportSql()), "regenerate the migration's import from partnerImportSql()");
   assert.equal(partnerImportSql().split("--> statement-breakpoint").length, record.length);
 });

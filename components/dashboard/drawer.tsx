@@ -7,11 +7,20 @@ import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
+const FOOTER_LAYOUT = {
+  pair: "grid grid-cols-2",
+  row: "flex",
+  spread: "flex items-center justify-between",
+} as const;
+
 /** The outlined footer button: Cancel, Cancel request. */
 export const PANEL_GHOST_BUTTON = `inline-flex h-11 items-center justify-center rounded-full border border-white-10 px-4 text-[14px] font-semibold transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline-offset-2 ${FOCUS}`;
 
 /** The paper footer button: the panel's main action. */
 export const PANEL_PRIMARY_BUTTON = `inline-flex h-11 items-center justify-center rounded-full bg-prt-text px-4 text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-70 ${FOCUS}`;
+
+/** The red filled footer button: Reject order, the last step of a rejection (board 70e). */
+export const PANEL_DANGER_FILLED_BUTTON = `inline-flex h-11 items-center justify-center rounded-full bg-danger px-4 text-[14px] font-semibold text-prt-text transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60 ${FOCUS}`;
 
 /** The red outlined footer button: Cancel request (board 61c). */
 export const PANEL_DANGER_BUTTON = `inline-flex h-11 items-center justify-center rounded-full border border-danger/50 px-4 text-[14px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60 ${FOCUS}`;
@@ -32,6 +41,7 @@ export function SidePanel({
   detail,
   leading,
   below,
+  action,
   footer,
   footerLayout = "pair",
   wide = false,
@@ -45,10 +55,16 @@ export function SidePanel({
   leading?: ReactNode;
   /** Under the title, in place of `detail`: a status pill and a line (board 76b). */
   below?: ReactNode;
+  /** A small action beside the close button: Edit on an order whose footer is busy deciding (board 70b). */
+  action?: ReactNode;
   /** The pinned actions; none for a panel that only shows. */
   footer?: ReactNode;
-  /** Two equal buttons, or one action on the left and the rest on the right (board 76b: Remove, then Save draft and Publish). */
-  footerLayout?: "pair" | "spread";
+  /**
+   * Two buttons of equal width; a row where each button sizes itself (board
+   * 70b: Reject, Ask for changes, Approve); or one action on the left and the
+   * rest on the right (board 76b: Remove, then Save draft and Publish).
+   */
+  footerLayout?: "pair" | "row" | "spread";
   /** The 520px panel of board 76b, for a form with fields side by side. */
   wide?: boolean;
   children: ReactNode;
@@ -76,6 +92,7 @@ export function SidePanel({
                 {below}
               </div>
             </div>
+            {action}
             <DialogClose
               aria-label="Close"
               className={`-mr-2 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text md:flex ${FOCUS}`}
@@ -86,7 +103,7 @@ export function SidePanel({
           {children}
           {footer && (
             <footer
-              className={`shrink-0 gap-3 border-t ${footerLayout === "pair" ? "grid grid-cols-2" : "flex items-center justify-between"} border-hairline px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-7`}
+              className={`${FOOTER_LAYOUT[footerLayout]} shrink-0 gap-3 border-t border-hairline px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-7`}
             >
               {footer}
             </footer>

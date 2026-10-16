@@ -3,6 +3,7 @@ import {
   canEditOrder,
   checkApproveOrdersChange,
   checkDecision,
+  checkMarkOrdered,
   checkNewOrder,
   checkOrderDivision,
   checkQuote,
@@ -14,6 +15,7 @@ import {
   stateAfterDecision,
   stateAfterEdit,
   WHOLE_TEAM,
+  type Answer,
   type EditUnit,
   type NewOrder,
   type Order,
@@ -27,20 +29,28 @@ import {
 import { heldLevel } from "@/lib/dashboard/division-access";
 import { ledDivisionOf } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { heldAccess, type AccessViewerKind } from "./division";
+import { approveOrdersHolders, heldAccess, TEAM_LEADER_ID, type AccessViewerKind } from "./division";
 import { departments, divisions, people, type DummyPerson } from "./team";
 
 // The Orders page for the test developer (boards 61 to 61d, issue #172;
-// boards 61m, 67, 67b and 67m, issue #233): every order in the team, from
-// more than one department, six pages of them. The division lead (Marco
-// Bianchi) edits Mission Analysis orders; the department head (Chiara
-// Rinaldi) edits every Aerodynamics order; the operations lead (Giulia Rossi)
-// has full access and edits every order (issue #238). None is the team leader
-// and none holds "Approve orders", so all are refused a decision, as the
-// database side refuses them. Writes check what was sent as the database
-// side does, store nothing, and answer what the page shows next.
+// boards 61m, 67, 67b and 67m, issue #233; boards 70 to 70e, issue #247):
+// every order in the team, from more than one department, six pages of them.
+// The division lead (Marco Bianchi) edits Mission Analysis orders; the
+// department head (Chiara Rinaldi) edits every Aerodynamics order; the
+// operations lead (Giulia Rossi) has full access and edits every order (issue
+// #238). The team leader (Alessandro Greco) edits every order too, and decides:
+// every answer on the page is theirs. None of the others is the team leader or
+// holds "Approve orders", so they are refused a decision, as the database
+// side refuses them. Writes check what was sent as the database side does,
+// store nothing, and answer what the page shows next.
 
-export type DummyOrder = OrderState & {
+/** Where a stored request stands. Every answer is the team leader's, the day after the request was sent. */
+type DummyState =
+  | { readonly status: "waiting" | "approved" | "ordered" }
+  | { readonly status: "rejected"; readonly rejectReason?: string }
+  | Extract<OrderState, { status: "changes-requested" }>;
+
+export type DummyOrder = DummyState & {
   readonly id: number;
   readonly divisionId: number;
   readonly requesterId: number;
@@ -55,7 +65,7 @@ export type DummyOrder = OrderState & {
   readonly quote: OrderQuote | null;
 };
 
-const sentBack: OrderState = {
+const sentBack: DummyState = {
   status: "changes-requested",
   changes: {
     reason: "Amazon is over our limit for this item. Add a quote from a second shop, then send it again.",
@@ -75,11 +85,11 @@ const recent: readonly DummyOrder[] = [
   { id: 4, divisionId: 9, requesterId: 68, item: "LiPo batteries, 2S", reason: "Flight computer bench", link: null, unitPrice: 2945, quantity: 2, shipping: null, status: "waiting", requestedOn: "2026-10-07", quote: null },
   { id: 5, divisionId: 1, requesterId: 2, item: "Loctite", reason: "Launch rail screws", link: null, unitPrice: 1180, quantity: 3, shipping: null, status: "approved", requestedOn: "2026-10-06", quote: null },
   { id: 6, divisionId: 2, requesterId: 33, item: "Pitot tube", reason: "Wind tunnel checks", link: null, unitPrice: 7450, quantity: 1, shipping: null, status: "approved", requestedOn: "2026-10-06", quote: null },
-  { id: 7, divisionId: 3, requesterId: 38, item: "Carbon fibre sheet", reason: "Fin can layup", link: null, unitPrice: 7100, quantity: 2, shipping: null, status: "approved", requestedOn: "2026-10-05", quote: null },
-  { id: 8, divisionId: 12, requesterId: 83, item: "Van rental, 2 days", reason: "Roccaraso launch trip", link: null, unitPrice: 10500, quantity: 2, shipping: null, status: "rejected", requestedOn: "2026-10-05", quote: null },
+  { id: 7, divisionId: 3, requesterId: 38, item: "Carbon fibre sheet", reason: "Fin can layup", link: null, unitPrice: 7100, quantity: 2, shipping: null, status: "ordered", requestedOn: "2026-10-05", quote: null },
+  { id: 8, divisionId: 12, requesterId: 83, item: "Van rental, 2 days", reason: "Roccaraso launch trip", link: null, unitPrice: 10500, quantity: 2, shipping: null, status: "rejected", rejectReason: "Logistics already booked a van for that weekend.", requestedOn: "2026-10-05", quote: null },
   { id: 9, divisionId: 6, requesterId: 53, item: "Shock cord, 10 m", reason: "Drogue harness", link: null, unitPrice: 246, quantity: 10, shipping: null, status: "waiting", requestedOn: "2026-10-04", quote: null },
   { id: 10, divisionId: 1, requesterId: 6, item: "Pressure sensor", reason: "Nose cone ports", link: null, unitPrice: 4290, quantity: 1, shipping: null, status: "approved", requestedOn: "2026-10-04", quote: null },
-  { id: 11, divisionId: 9, requesterId: 68, item: "Antenna cable, SMA", reason: "Ground station", link: null, unitPrice: 920, quantity: 2, shipping: null, status: "approved", requestedOn: "2026-10-03", quote: null },
+  { id: 11, divisionId: 9, requesterId: 68, item: "Antenna cable, SMA", reason: "Ground station", link: null, unitPrice: 920, quantity: 2, shipping: null, status: "ordered", requestedOn: "2026-10-03", quote: null },
   { id: 12, divisionId: 2, requesterId: 32, item: "Balsa sheets", reason: "Fin flutter mock-ups", link: null, unitPrice: 630, quantity: 5, shipping: null, status: "rejected", requestedOn: "2026-10-03", quote: null },
   { id: 13, divisionId: 1, requesterId: 3, item: "Mini 3-ring system", reason: "Recovery bay mock-up", link: null, unitPrice: 15000, quantity: 1, shipping: 1330, status: "waiting", requestedOn: "2026-10-02", quote: null },
   { id: 14, divisionId: 5, requesterId: 48, item: "Ripstop nylon, 5 m", reason: "Main chute canopy", link: null, unitPrice: 1720, quantity: 5, shipping: null, status: "waiting", requestedOn: "2026-10-02", quote: null },
@@ -122,11 +132,11 @@ function daysBefore(days: number): string {
   return new Date(Date.UTC(2026, 8, 29 - days)).toISOString().slice(0, 10);
 }
 
-/** Older requests: each template twice, a day apart, almost all of them answered. */
+/** Older requests: each template twice, a day apart, almost all of them answered, many of them already ordered. */
 const older: readonly DummyOrder[] = [0, 1].flatMap((round) =>
   OLDER.map(([item, reason, divisionId, requesterId, unitPrice, quantity], i): DummyOrder => {
     const n = round * OLDER.length + i;
-    const status = n % 9 === 4 ? "waiting" : n % 5 === 2 ? "rejected" : "approved";
+    const status = n % 9 === 4 ? "waiting" : n % 5 === 2 ? "rejected" : n % 3 === 0 ? "approved" : "ordered";
     return {
       id: 100 + n,
       divisionId,
@@ -147,8 +157,10 @@ const older: readonly DummyOrder[] = [0, 1].flatMap((round) =>
 /** Every request in the team: 68, so the table runs to six pages of 12. */
 export const orders: readonly DummyOrder[] = [...recent, ...older];
 
-/** Who the team leader gave "Approve orders": nobody on the test developer's team. */
-export const approveOrdersHolders: readonly number[] = [];
+/** Who answers the requests: the team leader. */
+const DECIDER = TEAM_LEADER_ID;
+
+const holderIds = approveOrdersHolders.map((h) => h.personId);
 
 function personOf(id: number): DummyPerson {
   return people.find((p) => p.id === id)!;
@@ -182,10 +194,11 @@ function unitOfDivision(divisionId: number): OrderUnit {
 function scopeOf(kind: AccessViewerKind, viewer: DummyPerson): OrdersScope | null {
   const decides = decideRightOf({
     teamLeader: viewer.placement.role === "team-leader",
-    approveOrders: approveOrdersHolders.includes(viewer.id),
+    approveOrders: holderIds.includes(viewer.id),
   });
   const placement = viewer.placement;
   // Full access edits every order in the team (issue #238); deciding still needs the team leader's role or the grant.
+  // The team leader holds full access too (issue #238).
   if (kind === "operations-lead") return { edits: [WHOLE_TEAM], decides };
   if (kind === "department-head") {
     if (placement.role !== "head") return null;
@@ -202,9 +215,30 @@ function scopeOf(kind: AccessViewerKind, viewer: DummyPerson): OrdersScope | nul
   return { edits, decides };
 }
 
-function orderOf(o: DummyOrder): Order {
+/** The day after an ISO date. */
+function dayAfter(iso: string): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
+/** A stored request's state as `viewerId` reads it: the team leader's answers read "by you" to the team leader. */
+function stateOf(o: DummyOrder, viewerId: number | null): OrderState {
+  const answer: Answer = { by: personOf(DECIDER).name, byYou: viewerId === DECIDER, on: dayAfter(o.requestedOn) };
+  switch (o.status) {
+    case "waiting":
+      return { status: o.status };
+    case "approved":
+    case "ordered":
+      return { status: o.status, answer };
+    case "rejected":
+      return { status: o.status, answer, reason: o.rejectReason ?? null };
+    case "changes-requested":
+      return { status: o.status, changes: o.changes };
+  }
+}
+
+function orderOf(o: DummyOrder, viewerId: number | null): Order {
   return {
-    ...(o.status === "changes-requested" ? { status: o.status, changes: o.changes } : { status: o.status }),
+    ...stateOf(o, viewerId),
     id: o.id,
     item: o.item,
     reason: o.reason,
@@ -221,12 +255,12 @@ function orderOf(o: DummyOrder): Order {
 
 /** Every request made for the given divisions: a division lead's and a department head's Overview count the waiting ones (boards 56 and 62). */
 export function dummyOrdersIn(divisionIds: readonly number[]): Order[] {
-  return orders.filter((o) => divisionIds.includes(o.divisionId)).map(orderOf);
+  return orders.filter((o) => divisionIds.includes(o.divisionId)).map((o) => orderOf(o, null));
 }
 
 /** Boards 61 to 67b: every order in the team for someone with Orders access; null for anyone else. */
 export function dummyOrdersPage(kind: AccessViewerKind, viewer: DummyPerson): OrdersPage | null {
-  return ordersPageFor(scopeOf(kind, viewer), orgUnits(), orders.map(orderOf));
+  return ordersPageFor(scopeOf(kind, viewer), orgUnits(), orders.map((o) => orderOf(o, viewer.id)));
 }
 
 /** The New order or Edit order fields, checked as the database side checks them. */
@@ -342,7 +376,28 @@ export function dummyDecideOrder(kind: AccessViewerKind, viewer: DummyPerson, or
   if (stored === undefined) return refused("That request is no longer on the page.");
   const checked = checkDecision(page.scope.decides, stored.status, input);
   if (!checked.ok) return refused(checked.error);
-  return written({ ...stored, ...stateAfterDecision(checked.value, viewer.name, today()) });
+  return written({ ...stored, ...stateAfterDecision(checked.value, { by: viewer.name, byYou: true, on: today() }) });
+}
+
+/**
+ * Checks Mark as ordered as the database side does (`checkMarkOrdered`). A
+ * request approved on the page lives only in the page's state, so the stored
+ * one is still waiting: `approvedNow` says the page shows it approved by the
+ * viewer, and the check runs on that.
+ */
+export function dummyMarkOrdered(kind: AccessViewerKind, viewer: DummyPerson, orderId: number): WriteResult<Order> {
+  const page = dummyOrdersPage(kind, viewer);
+  if (page === null) return refused(NO_ACCESS);
+  const stored = page.orders.find((o) => o.id === orderId);
+  if (stored === undefined) return refused("That request is no longer on the page.");
+  // Approved on the page this session: the stored request is still waiting.
+  const shown: Order =
+    stored.status === "waiting" && page.scope.decides !== null
+      ? { ...stored, status: "approved", answer: { by: viewer.name, byYou: true, on: today() } }
+      : stored;
+  const checked = checkMarkOrdered(page.scope.decides, shown);
+  if (!checked.ok) return refused(checked.error);
+  return written({ ...shown, ...checked.value });
 }
 
 /** Checks a give or remove of "Approve orders" as the database side does; nothing is stored. */
@@ -352,7 +407,7 @@ export function dummySetApproveOrders(viewer: DummyPerson, onTeam: readonly numb
       byTeamLeader: viewer.placement.role === "team-leader",
       team: onTeam,
       teamLeaders: people.filter((p) => p.placement.role === "team-leader").map((p) => p.id),
-      holders: approveOrdersHolders,
+      holders: holderIds,
     },
     input,
   );

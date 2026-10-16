@@ -20,10 +20,10 @@ import { NavMenu, type NavLink } from "./nav-menu";
 // About pages (nav-hover-menu.tsx); the other links have none (Projects has
 // its own page).
 //
-// Signed in, Sign in gives way to the viewer's initials and name, linking to
-// the dashboard (HANDOFF "Logged in: Apply + name+avatar", issue #157). The
-// bar asks who is signed in from the browser (nav-account.tsx), so every
-// page that carries it stays prerendered.
+// Signed in, Sign in gives way to the viewer's 38px avatar, at every width
+// (on phones beside the menu icon), which opens a menu with Dashboard and
+// Log out (board 01b, issue #261). The bar asks who is signed in from the
+// browser (nav-account.tsx), so every page that carries it stays prerendered.
 const links: NavLink[] = [
   { href: "/projects", label: "Projects" },
   {
@@ -69,7 +69,7 @@ export function LandingNavbar() {
           <NavLinks links={links} />
         </nav>
 
-        <div className="relative z-10 flex items-center md:gap-3">
+        <div className="relative z-10 flex items-center gap-2 md:gap-3">
           <NavAccount />
           <NavMenu links={links} className="-mr-2 lg:hidden" />
         </div>

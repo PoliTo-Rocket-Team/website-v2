@@ -14,7 +14,6 @@ import {
   membershipsIn,
   membershipsOfRoles,
   roleBeyondDivisions,
-  type AlumnusRow,
   type BoardSeat,
   type OrgChart,
   type Placement,
@@ -26,8 +25,8 @@ import {
 // The database side of the Team pages (issue #143). One cached snapshot of
 // every role, the open org chart and every scope (ADR 0003: full-directory
 // reads are cached, tagged, never per view); ./database.ts filters it by
-// the viewer after the cache hit. The schema keeps no "shown on the site"
-// flag for alumni, so alumni read from here carry none.
+// the viewer after the cache hit. The Alumni pages read their own record
+// (./database-alumni.ts).
 
 /** Tag for the snapshot; a write that changes who is on the team invalidates it. */
 export const TEAM_ROSTER_CACHE_TAG = "team-roster";
@@ -245,34 +244,6 @@ export function rosterOf(snapshot: TeamSnapshot): RosterEntry[] {
         access: snapshot.scopes
           .filter((s) => s.member_id === memberId)
           .map((s) => `${TARGET_LABELS[s.target] ?? s.target} · ${s.access_level}`),
-      },
-    ];
-  });
-}
-
-/** Everyone whose roles have all ended, by their last one. */
-export function alumniOf(snapshot: TeamSnapshot): AlumnusRow[] {
-  const people = new Map(snapshot.people.map((p) => [p.member_id, p]));
-  const { org } = snapshot;
-  return [...rolesByMember(snapshot)].flatMap(([memberId, memberRoles]): AlumnusRow[] => {
-    const person = people.get(memberId);
-    const named = nameOf(person);
-    if (!named || memberRoles.length === 0 || memberRoles.some((r) => r.leaved_at === null)) return [];
-    const last = [...memberRoles].sort((a, b) => (b.leaved_at ?? "").localeCompare(a.leaved_at ?? ""))[0];
-    const division = org.divisions.find((d) => d.id === last.division_id);
-    const departmentId = last.dept_id ?? division?.departmentId ?? null;
-    const department = org.departments.find((d) => d.id === departmentId)?.name ?? "Board";
-    return [
-      {
-        id: memberId,
-        name: named.name,
-        lastRole: last.title,
-        unit: division?.name ?? department,
-        department,
-        // The years the lead gave on Move to alumni, else the roles' own dates.
-        from: person?.team_from ?? Math.min(...memberRoles.map((r) => yearOf(r.started_at))),
-        to: person?.team_to ?? Math.max(...memberRoles.map((r) => yearOf(r.leaved_at!))),
-        shownOnSite: null,
       },
     ];
   });

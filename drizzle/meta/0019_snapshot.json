@@ -1,5 +1,5 @@
 {
-  "id": "6202d020-e11e-458b-af1c-af798a3390bd",
+  "id": "13ec5d0f-cafc-444c-9450-287e215da057",
   "prevId": "af39cade-2cb4-4bed-a4cd-ad7511a03d93",
   "version": "7",
   "dialect": "postgresql",
@@ -1121,168 +1121,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.partner_versions": {
-      "name": "partner_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "partner_id": {
-          "name": "partner_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "content_version",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tier": {
-          "name": "tier",
-          "type": "partner_tier",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "logo_url": {
-          "name": "logo_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "logo_width": {
-          "name": "logo_width",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "logo_height": {
-          "name": "logo_height",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "logo_kind": {
-          "name": "logo_kind",
-          "type": "partner_logo_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "logo_dark": {
-          "name": "logo_dark",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "website": {
-          "name": "website",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "one_liner": {
-          "name": "one_liner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "about": {
-          "name": "about",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "support": {
-          "name": "support",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "partner_versions_partner_id_partners_id_fk": {
-          "name": "partner_versions_partner_id_partners_id_fk",
-          "tableFrom": "partner_versions",
-          "tableTo": "partners",
-          "columnsFrom": [
-            "partner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "partner_versions_partner_version_unique": {
-          "name": "partner_versions_partner_version_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "partner_id",
-            "version"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.partners": {
-      "name": "partners",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "site_order": {
-          "name": "site_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.recruitment_setting": {
       "name": "recruitment_setting",
       "schema": "",
@@ -2328,14 +2166,6 @@
         "joined"
       ]
     },
-    "public.content_version": {
-      "name": "content_version",
-      "schema": "public",
-      "values": [
-        "published",
-        "draft"
-      ]
-    },
     "public.full_access_seat": {
       "name": "full_access_seat",
       "schema": "public",
@@ -2352,23 +2182,8 @@
         "accepted",
         "rejected",
         "changes_requested",
-        "cancelled"
-      ]
-    },
-    "public.partner_logo_kind": {
-      "name": "partner_logo_kind",
-      "schema": "public",
-      "values": [
-        "wordmark",
-        "mark"
-      ]
-    },
-    "public.partner_tier": {
-      "name": "partner_tier",
-      "schema": "public",
-      "values": [
-        "main",
-        "media"
+        "cancelled",
+        "ordered"
       ]
     },
     "public.position_type": {

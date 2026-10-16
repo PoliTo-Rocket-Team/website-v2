@@ -16,7 +16,7 @@ import {
 } from "@/lib/dashboard/self";
 import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
-import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog } from "./account-parts";
+import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Drawer } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
@@ -29,8 +29,8 @@ type Actions = {
   uploadPhoto: (form: FormData) => Promise<WriteResult<null>>;
   removePhoto: () => Promise<WriteResult<null>>;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
-  leaveTeam: (reason: string) => Promise<WriteResult<DashboardLanding>>;
-  deleteAccount: (withdrawOpenApplications: boolean) => Promise<WriteResult<null>>;
+  leaveTeam: (reason: string, removeFromAlumni: boolean) => Promise<WriteResult<DashboardLanding>>;
+  deleteAccount: (withdrawOpenApplications: boolean, removeFromAlumni: boolean) => Promise<WriteResult<null>>;
 };
 
 // Board 55 (55m on phones): a team member's own profile. The photo at the two
@@ -470,6 +470,7 @@ function LeaveDialog({
 }) {
   const router = useRouter();
   const [reason, setReason] = useState("");
+  const [removeFromAlumni, setRemoveFromAlumni] = useState(false);
   const [leaving, startLeaving] = useTransition();
   const reasonId = useId();
 
@@ -480,7 +481,7 @@ function LeaveDialog({
   // page loads over the dashboard's loading fallback, never an empty main area.
   const confirm = () =>
     startLeaving(async () => {
-      const result = await leaveTeam(reason);
+      const result = await leaveTeam(reason, removeFromAlumni);
       if (!result.ok) {
         toast.error("Could not leave the team", { description: result.error });
         return;
@@ -494,7 +495,10 @@ function LeaveDialog({
     <ConfirmDialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setReason("");
+        if (!next) {
+          setReason("");
+          setRemoveFromAlumni(false);
+        }
         onOpenChange(next);
       }}
       icon={<LogOut className="h-[18px] w-[18px]" strokeWidth={1.75} />}
@@ -525,6 +529,7 @@ function LeaveDialog({
         rows={3}
         className={`${inputClass()} mt-2 h-auto resize-none py-2.5`}
       />
+      <RemoveFromAlumniBox checked={removeFromAlumni} onChange={setRemoveFromAlumni} />
     </ConfirmDialog>
   );
 }

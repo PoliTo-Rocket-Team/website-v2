@@ -11,6 +11,7 @@ import { startingDivisionId } from "@/lib/dashboard/new-position";
 import {
   departmentLabel,
   departmentsOf,
+  divisionsOf,
   filterPositions,
   POSITION_TABS,
   positionTabCounts,
@@ -56,14 +57,18 @@ export function PositionsView({
   page,
   recruitment,
   initialDivision = null,
+  divisionSelect = false,
 }: {
   page: PositionsPage;
   recruitment: RecruitmentControl;
   /** The division tab a link from the Overview opens; null is All divisions, where the page starts (board 63, issue #230). */
   initialDivision?: DivisionTab;
+  /** The team leader's "All divisions" select beside "All departments" (boards 63 and 64 with whole-team selects, issue #252). */
+  divisionSelect?: boolean;
 }) {
   const [tab, setTab] = useState<PositionTab>("all");
   const [department, setDepartment] = useState<string | null>(null);
+  const [division, setDivision] = useState<string | null>(null);
   const [divisionTab, setDivisionTab] = useState<DivisionTab>(initialDivision);
   const [search, setSearch] = useState("");
   const [drawer, setDrawer] = useState<PositionDrawer>(CLOSED);
@@ -78,7 +83,10 @@ export function PositionsView({
       : null;
   const inTab = page.positions.filter((p) => inDivisionTab(p.division, divisionTab));
   const counts = positionTabCounts(inTab);
-  const rows = filterPositions(inTab, { tab, department, search });
+  const divisionNames = team && divisionSelect ? divisionsOf(page.positions, department) : [];
+  // A division left chosen from another department reads as all divisions.
+  const shownDivision = division !== null && divisionNames.includes(division) ? division : null;
+  const rows = filterPositions(inTab, { tab, department, division: shownDivision, search });
   const canCreate = page.newPosition.divisions.length > 0;
 
   return (
@@ -140,6 +148,14 @@ export function PositionsView({
               value={department}
               onChange={setDepartment}
               options={departmentsOf(page.positions).map((d) => ({ value: d, label: d }))}
+            />
+          )}
+          {team && divisionSelect && (
+            <FilterMenu
+              allLabel="All divisions"
+              value={shownDivision}
+              onChange={setDivision}
+              options={divisionNames.map((d) => ({ value: d, label: d }))}
             />
           )}
         </div>

@@ -8,10 +8,12 @@ import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } fro
 // `seat` is reached by that full-access seat alone (issue #238). The
 // `operations-lead` kind is full access: the team leader, the operations lead
 // and the IT lead, or an admin or org scope row (./viewer.ts), so it reaches
-// every page of the team. The Content group holds the pages that change the
-// public site (issue #256); its gate is lib/content/gate.ts, the same rule.
+// every page of the team. A row's `seatPlace` moves a page to another group
+// for one full-access seat: the team leader's sidebar has a Content group
+// (board 72, issue #252), where Alumni sits, and each content page adds its
+// own row there.
 
-export const NAV_GROUPS = ["main", "recruitment", "team", "my-department", "my-division", "content"] as const;
+export const NAV_GROUPS = ["main", "recruitment", "team", "content", "my-department", "my-division"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
 /** The small heading over each group; the main group has none. */
@@ -19,9 +21,9 @@ export const NAV_GROUP_LABELS: Readonly<Record<NavGroup, string | null>> = {
   main: null,
   recruitment: "Recruitment",
   team: "Team",
+  content: "Content",
   "my-department": "My department",
   "my-division": "My division",
-  content: "Content",
 };
 
 /**
@@ -45,6 +47,8 @@ type PageRow = {
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
   /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
   readonly seat?: FullAccessSeat;
+  /** Where the page shows for a full-access seat whose sidebar places it apart from the rest of full access. */
+  readonly seatPlace?: Readonly<Partial<Record<FullAccessSeat, NavPlace>>>;
 };
 
 /** Rows in sidebar order within each group. */
@@ -98,6 +102,29 @@ export const DASHBOARD_PAGES = [
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
   },
   {
+    key: "partners",
+    label: "Partners",
+    href: "/dashboard/partners",
+    // Boards 76 and 76b (issue #256): the Alumni rule (maySiteContent,
+    // lib/content/gate.ts), placed as Alumni is: under Content for the team
+    // leader, ahead of Alumni as board 76 lists them.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    seatPlace: { "team-leader": "content" },
+  },
+  {
+    key: "alumni",
+    label: "Alumni",
+    href: "/dashboard/alumni",
+    // Owner decision on #234: full access (the team leader, the operations
+    // lead and the IT lead, issue #238) and anyone given site-content access.
+    // A division lead or department head gets nothing from their role here.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    // The team leader's sidebar groups it under Content (board 72, issue #252).
+    seatPlace: { "team-leader": "content" },
+  },
+  {
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",
@@ -111,26 +138,6 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/orders",
     // Every order in the team, for anyone with Orders access (issue #233).
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
-  },
-  {
-    key: "partners",
-    label: "Partners",
-    href: "/dashboard/partners",
-    // Boards 76 and 76b (issue #256): the site-content rule, as Alumni reads
-    // it (maySiteContent, lib/content/gate.ts).
-    reach: { "operations-lead": "content" },
-    siteContent: "content",
-  },
-  {
-    key: "alumni",
-    label: "Alumni",
-    href: "/dashboard/alumni",
-    // Owner decision on #234: full access (the team leader, the operations
-    // lead and the IT lead, issue #238) and anyone given site-content access.
-    // A division lead or department head gets nothing from their role here.
-    // It sits in the Content group with the other site pages (board 76).
-    reach: { "operations-lead": "content" },
-    siteContent: "content",
   },
   {
     key: "activity-log",
@@ -189,8 +196,11 @@ export type MenuPage = {
 
 /** Where `page` shows for `viewer`; undefined when the viewer does not reach it. */
 function placeOf(page: PageRow, viewer: ViewerStanding): NavPlace | undefined {
-  if (page.seat !== undefined && seatOf(viewer) !== page.seat) return undefined;
-  return page.reach[viewer.kind] ?? (viewer.siteContent ? page.siteContent : undefined);
+  const seat = seatOf(viewer);
+  if (page.seat !== undefined && seat !== page.seat) return undefined;
+  const reached = page.reach[viewer.kind];
+  if (reached === undefined) return viewer.siteContent ? page.siteContent : undefined;
+  return (seat === null ? undefined : page.seatPlace?.[seat]) ?? reached;
 }
 
 function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean {

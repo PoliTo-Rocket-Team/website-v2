@@ -1,79 +1,53 @@
-import type { Photo } from "./types";
-
-// The Alumni page (/about/alumni) as data: one record, drawn by
-// components/about/alumni/. A dashboard will edit it, so every field is a
-// plain value a form can fill. A fact a person does not have is an absent
-// key, never an empty string.
+// The Alumni page (/about/alumni): its copy, and the shapes
+// components/about/alumni/ draws. What the page lists is built from the team
+// record (./alumni-record.ts), never typed here (issue #257).
 
 /** One or more items of T, in order. */
 export type NonEmpty<T> = readonly [T, ...T[]];
 
-/** Someone in an academic year's list, with the role they held that year. */
-export type Alum = { name: string; role: string };
+/** The founder mark on an alumni entry: the Team has one founder; the others are co-founders. */
+export type FounderMark = "founder" | "co-founder";
 
-/** A group of one academic year as the team's old site lists it: a heading and its people. */
-export type RoleGroup = { name: string; people: NonEmpty<Alum> };
-
-/** The departments, in the order the page draws them (issue #95). */
-export const departments = [
-  "Propulsion",
-  "Structures",
-  "Aerodynamics",
-  "Recovery",
-  "Controls and Systems",
-  "Electronics",
-  "Operations",
-] as const;
-
-export type Department = (typeof departments)[number];
-
-/**
- * Someone in a department in an academic year grouped by department. A head
- * leads the department; a lead leads one of its divisions, which is what the
- * page prints as their role; a member has their own role.
- */
-export type DepartmentMember =
-  | { rank: "head"; name: string; role: string; department: Department }
-  | { rank: "lead"; name: string; division: string; department: Department }
-  | { rank: "member"; name: string; role: string; department: Department };
-
-type YearBase = {
-  /** The calendar year the academic year starts in: 2022 is 2022–23. */
-  start: number;
-  /** Stand-in data, to be replaced by the real list. The page never says so. */
-  placeholder?: true;
-};
-
-/** An academic year listed by the old site's own groups (2021–22 to 2023–24). */
-export type GroupedYear = YearBase & { kind: "groups"; groups: NonEmpty<RoleGroup> };
-
-/** An academic year grouped by department (from 2024–25): leadership, the departments, then the advisors. */
-export type DepartmentYear = YearBase & {
-  kind: "departments";
-  leadership: NonEmpty<Alum>;
-  members: NonEmpty<DepartmentMember>;
-  advisors: readonly Alum[];
-};
-
-export type AcademicYear = GroupedYear | DepartmentYear;
-
-/** A founder of the Team. The Team has one founder; the others are co-founders. */
+/** A founder as "The founders" draws them. */
 export type Founder = {
   name: string;
-  title: "founder" | "co-founder";
-  /** What they did, under the name: "Avionics". */
+  title: FounderMark;
+  /** What they did, under the name: their role in their first year on the page. */
   role: string;
-  photo?: Photo;
+  /** A photo in public/team/, or a public store URL. */
+  photo?: string;
 };
 
-export type AlumniPage = {
+/** The small tag beside a name: a founder's, or a department head's or division lead's. */
+export type Tag = "FOUNDER" | "CO-FOUNDER" | "HEAD" | "LEAD";
+
+/** One row of a group's list. A lead's role is printed in accent. */
+export type Entry = { name: string; role: string; lead: boolean; tag?: Tag };
+
+/** A group as the page draws it: a heading, its rows, and how many rows show before "Show all". */
+export type ShownGroup = {
+  name: string;
+  entries: NonEmpty<Entry>;
+  /** Department groups print their head count beside the heading. */
+  counted: boolean;
+  /** Department groups and Advisors fold after 2 rows, the others after 3 (issue #95, board 28b). */
+  firstRows: 2 | 3;
+};
+
+/** One academic year on the page: `start` is the calendar year it starts in (2022 is 2022–23). */
+export type AcademicYear = { start: number; groups: NonEmpty<ShownGroup> };
+
+/** The page's own words: everything on it that is not the team's people. */
+export type AlumniCopy = {
   description: string;
   header: { eyebrow: string; title: string; intro: string };
-  founders: { eyebrow: string; title: string; intro: string; people: NonEmpty<Founder> };
-  years: {
-    eyebrow: string;
-    title: string;
-    /** In any order: the page sorts them newest first. */
-    list: NonEmpty<AcademicYear>;
-  };
+  founders: { eyebrow: string; title: string };
+  years: { eyebrow: string; title: string };
+};
+
+/** What the page shows, built from the record by `alumniPageData` (./alumni-data.ts). */
+export type AlumniPageData = {
+  founders: readonly Founder[];
+  /** Newest first. */
+  years: readonly AcademicYear[];
 };

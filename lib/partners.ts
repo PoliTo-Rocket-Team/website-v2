@@ -3,7 +3,7 @@
 // and the landing page's logo strip read the published ones in site order
 // (lib/partners-public.ts). This file keeps their shape, the text limits the
 // dashboard enforces, and the record below: the partners as they were before
-// the switch, carried into the database by migration 0020
+// the switch, carried into the database by migration 0023
 // (lib/partners-import.ts) and served where there is no database (previews).
 // A fact a partner does not have is an absent key: no website (Magicar), no
 // text of their own (JEToP).

@@ -190,7 +190,7 @@ test("a member who leaves shows in Alumni and comes back as an applicant, still 
   const { open } = browser();
   const me = (await open("member").myProfile())!;
   // The write names the page their dashboard now opens on, the one /dashboard would redirect to (issue #227).
-  assert.deepEqual(await open("member").leaveTeam("Graduating this term."), { ok: true, value: "/dashboard/my-applications" });
+  assert.deepEqual(await open("member").leaveTeam("Graduating this term.", false), { ok: true, value: "/dashboard/my-applications" });
 
   const { rows } = await open("operations-lead").alumni();
   assert.ok(rows.some((r) => r.name === me.name));
@@ -202,7 +202,15 @@ test("a member who leaves shows in Alumni and comes back as an applicant, still 
   const account = (await after.myAccount())!;
   assert.deepEqual([account.name, account.signIn.email], [me.name, me.signIn.email]);
   assert.equal(await after.hasOwnApplications(), false);
-  assert.equal((await after.leaveTeam("")).ok, false);
+  assert.equal((await after.leaveTeam("", false)).ok, false);
+});
+
+test("a member who ticks Remove my name from the Alumni page is not on it after leaving (issue #257)", async () => {
+  const { open } = browser();
+  const me = (await open("member").myProfile())!;
+  assert.equal((await open("member").leaveTeam("", true)).ok, true);
+  const { rows } = await open("operations-lead").alumni();
+  assert.ok(!rows.some((r) => r.name === me.name));
 });
 
 test("someone the lead moves to alumni also comes back as an applicant", async () => {

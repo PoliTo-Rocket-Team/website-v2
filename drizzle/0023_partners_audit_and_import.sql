@@ -1,5 +1,5 @@
 -- The audit trigger 0002 attached to every table that existed then, on the
--- two tables 0019 creates (issue #256): a table created later gets none unless
+-- two tables 0022 creates (issue #256): a table created later gets none unless
 -- its migration adds it, and who edited, published, reordered or removed a
 -- partner must be logged.
 DROP TRIGGER IF EXISTS audit_row_changes ON public.partners;

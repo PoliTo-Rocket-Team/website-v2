@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { AcademicYear, Founder, NonEmpty } from "@/lib/about/alumni-types";
-import { groupsOf, yearLabel, yearSlug, type Entry, type ShownGroup } from "@/lib/about/alumni-year";
+import type { AcademicYear, Entry, NonEmpty, ShownGroup } from "@/lib/about/alumni-types";
+import { yearLabel, yearSlug } from "@/lib/about/alumni-year";
 import { SectionHead } from "../section-head";
 
 // Boards 28, 28b and 28c, "Year by year": a row of academic-year pills,
@@ -208,14 +208,12 @@ export function YearByYear({
   eyebrow,
   title,
   years,
-  founders,
   initial,
 }: {
   eyebrow: string;
   title: string;
   /** Newest first. */
   years: NonEmpty<AcademicYear>;
-  founders: readonly Founder[];
   /** The slug of the year selected when the page loads. */
   initial: string;
 }) {
@@ -236,7 +234,7 @@ export function YearByYear({
           <YearSwitch years={years} />
           {years.map((y) => (
             <TabsContent key={y.start} value={yearSlug(y)}>
-              {groupsOf(y, founders).map((g) => (
+              {y.groups.map((g) => (
                 <Group key={g.name} group={g} />
               ))}
             </TabsContent>

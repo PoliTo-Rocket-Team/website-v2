@@ -138,15 +138,36 @@
     {
       "idx": 19,
       "version": "7",
-      "when": 1792110554160,
-      "tag": "0019_partners",
+      "when": 1792110340191,
+      "tag": "0019_orders_ordered_status",
       "breakpoints": true
     },
     {
       "idx": 20,
       "version": "7",
-      "when": 1792110555160,
-      "tag": "0020_partners_audit_and_import",
+      "when": 1792113428894,
+      "tag": "0020_alumni_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792113437673,
+      "tag": "0021_alumni_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792141606144,
+      "tag": "0022_partners",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792141610346,
+      "tag": "0023_partners_audit_and_import",
       "breakpoints": true
     }
   ]

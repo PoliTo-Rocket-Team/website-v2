@@ -85,6 +85,23 @@ export async function cancelOrder(orderId: number): Promise<WriteResult<null>> {
   return write("orders", (data) => data.cancelOrder(orderId));
 }
 
+/**
+ * Approve, Reject or Ask for changes (boards 70b, 70d and 70e), after the
+ * page asked "are you sure". The data interface checks the decision with
+ * `checkDecision` (lib/dashboard/orders.ts): the right to decide, a waiting
+ * request, a note on Ask for changes.
+ */
+export async function decideOrder(orderId: number, decision: unknown): Promise<WriteResult<Order>> {
+  if (!Number.isSafeInteger(orderId)) return refused("Unknown request.");
+  return write("orders", (data) => data.decideOrder(orderId, decision));
+}
+
+/** Mark as ordered (board 70c), after the page asked "are you sure"; checked with `checkMarkOrdered`. */
+export async function markOrdered(orderId: number): Promise<WriteResult<Order>> {
+  if (!Number.isSafeInteger(orderId)) return refused("Unknown request.");
+  return write("orders", (data) => data.markOrdered(orderId));
+}
+
 // The Partners page (boards 76 and 76b, issue #256). Each write also passes
 // the site-content gate inside the data interface (lib/content/gate.ts).
 
@@ -142,8 +159,8 @@ export async function removePhoto(): Promise<WriteResult<null>> {
   return write("my-profile", (data) => data.setPhoto(null));
 }
 
-export async function leaveTeam(reason: string): Promise<WriteResult<DashboardLanding>> {
-  const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? "")));
+export async function leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>> {
+  const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? ""), removeFromAlumni === true));
   // Off the team, the sidebar and every page change to the applicant's (issue #201).
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -166,6 +183,8 @@ export async function saveDetails(input: unknown): Promise<WriteResult<YourDetai
   return write(OWN_PAGES, (data) => data.saveDetails(input));
 }
 
-export async function deleteAccount(withdrawOpenApplications: boolean): Promise<WriteResult<null>> {
-  return write(OWN_PAGES, (data) => data.deleteAccount({ withdrawOpenApplications: withdrawOpenApplications === true }));
+export async function deleteAccount(withdrawOpenApplications: boolean, removeFromAlumni: boolean): Promise<WriteResult<null>> {
+  return write(OWN_PAGES, (data) =>
+    data.deleteAccount({ withdrawOpenApplications: withdrawOpenApplications === true, removeFromAlumni: removeFromAlumni === true }),
+  );
 }

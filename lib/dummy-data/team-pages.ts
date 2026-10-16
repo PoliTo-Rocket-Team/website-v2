@@ -26,8 +26,10 @@ import {
   type TeamCandidate,
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
+import type { AlumniRecord, AlumnusKey, EntryChange } from "@/lib/about/alumni-record";
+import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix } from "@/lib/dashboard/alumni";
+import { checkPhoto } from "@/lib/dashboard/self";
 import {
-  alumniDirectory,
   buildTeamTree,
   DIVISION_ROLE_OF,
   homeDivision,
@@ -47,7 +49,6 @@ import {
   teamDirectory,
   withJoined,
   withoutDivision,
-  type AlumnusRow,
   type DivisionRole,
   type Joining,
   type OrgChart,
@@ -56,8 +57,10 @@ import {
   type RosterEntry,
   type TeamActor,
 } from "@/lib/dashboard/team";
-import { testDeveloperStanding, type ViewerKind } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, detailsKey, type MemberChange, type TeamEdits } from "./edits";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
@@ -94,7 +97,8 @@ export function dummyOrg(edits: TeamEdits): { readonly org: OrgChart; readonly c
 }
 
 /** The person each viewer signs in as; the applicant is not on the team. */
-const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
+const SELF_ID: Readonly<Record<TestViewer, number | null>> = {
+  "team-leader": 14,
   "operations-lead": 1,
   "department-head": 15,
   "division-lead": 2,
@@ -104,6 +108,8 @@ const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
 
 /** The day the dummy team's writes happen on: the dummy team is seen from DUMMY_NOW. */
 const TODAY = DUMMY_NOW.slice(0, 10);
+
+const NOT_ON_ALUMNI = "They are not on the Alumni page.";
 
 /**
  * The placement with each saved change: roles set, divisions joined and left;
@@ -270,27 +276,41 @@ function entryWithChanges(entry: RosterEntry, change: MemberChange | undefined):
   return { ...entry, placement: placementWith(entry.placement, change) };
 }
 
-/** The alumni, those the test developer moved included, with their switches as flipped. */
-export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
-  const moved = people.flatMap((p): AlumnusRow[] => {
+/** People off the team: the ./team.ts alumni, and those the test developer moved with the place they held. */
+export function editedFormer(edits: TeamEdits): DummyFormer[] {
+  const moved = people.flatMap((p): DummyFormer[] => {
     const departure = edits.movedToAlumni[p.id];
     if (departure === undefined) return [];
-    const row = memberRowOf(entryOf(p, edits.members[p.id]), dummyOrg(edits).org);
+    const entry = entryOf(p, edits.members[p.id]);
+    const row = memberRowOf(entry, dummyOrg(edits).org);
     const unit = row.department ?? "Board";
-    return [{ id: p.id, name: p.name, lastRole: row.roleLabel, unit, department: unit, from: departure.from, to: departure.to, shownOnSite: true }];
+    const alumnus = { id: p.id, name: p.name, lastRole: row.roleLabel, unit, department: unit, from: departure.from, to: departure.to, shownOnSite: true };
+    return [{ row: alumnus, placement: entry.placement }];
   });
-  return [...alumni, ...moved].map((a) => ({ ...a, shownOnSite: edits.shownOnSite[a.id] ?? a.shownOnSite }));
+  return [...alumni.map((row) => ({ row, placement: null })), ...moved];
+}
+
+/** The Alumni record as the test developer left it (issue #257): the team, the people who left, the import and their fixes. */
+export function editedAlumniRecord(edits: TeamEdits, joiners: readonly DummyJoiner[] = []): AlumniRecord {
+  const { org, closed } = dummyOrg(edits);
+  return dummyAlumniRecord({
+    team: editedRoster(edits, joiners),
+    former: editedFormer(edits),
+    org,
+    closed: closed.map(({ id, name, code, departmentId }) => ({ id, name, code, departmentId })),
+    edits: edits.alumni,
+  });
 }
 
 /** The division a division lead leads; null for every other viewer. */
-function myDivision(kind: ViewerKind): number | null {
+function myDivision(kind: TestViewer): number | null {
   if (kind !== "division-lead") return null;
   const mine = people.find((p) => p.id === SELF_ID[kind]);
   return mine ? homeDivisionOf(mine.placement) : null;
 }
 
 /** The department the department head heads; null for every other viewer. */
-function myDepartment(kind: ViewerKind): number | null {
+function myDepartment(kind: TestViewer): number | null {
   if (kind !== "department-head") return null;
   const mine = people.find((p) => p.id === SELF_ID[kind]);
   return mine?.placement.role === "head" ? mine.placement.departmentId : null;
@@ -301,9 +321,9 @@ function myDepartment(kind: ViewerKind): number | null {
  * team, a department head their department (issue #235), a division lead
  * their division; nobody else acts there.
  */
-function actorOf(kind: ViewerKind): TeamActor | null {
+function actorOf(kind: TestViewer): TeamActor | null {
   if (!canReach(testDeveloperStanding(kind), "members")) return null;
-  if (kind === "operations-lead") return { kind: "team" };
+  if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
   if (department !== null) return { kind: "head", departmentIds: [department] };
   const division = myDivision(kind);
@@ -311,15 +331,15 @@ function actorOf(kind: ViewerKind): TeamActor | null {
 }
 
 /** Whether `kind` may change this person from the Members page: the whole team, or the lead's own division; never themselves. */
-function mayEdit(kind: ViewerKind, entry: RosterEntry): boolean {
+function mayEdit(kind: TestViewer, entry: RosterEntry): boolean {
   if (!canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
-  if (kind === "operations-lead") return true;
+  if (kindOfTestViewer(kind) === "operations-lead") return true;
   const division = myDivision(kind);
   return division !== null && isIn(entry.placement, division);
 }
 
 /** The division a drawer's role change is about: the lead's own, or the person's home division for the operations lead. */
-function drawerDivision(kind: ViewerKind, entry: RosterEntry): number | null {
+function drawerDivision(kind: TestViewer, entry: RosterEntry): number | null {
   return kind === "division-lead" ? myDivision(kind) : homeDivisionOf(entry.placement);
 }
 
@@ -351,6 +371,11 @@ function recordOf(entry: RosterEntry, edits: TeamEdits): PersonRecord {
     details: savedDetails ?? addedDetails ?? (person ? dummyMemberDetails(person) : NO_MEMBER_DETAILS),
     nda: person ? dummyNda(person) : confirmation ? { signedOn: confirmation.on, confirmedBy: confirmer } : null,
   };
+}
+
+/** Everyone on the team as the test developer left it, as the Members pages read them: the team leader's Overview counts these. */
+export function dummyRecords(edits: TeamEdits, joiners: readonly DummyJoiner[]): PersonRecord[] {
+  return editedRoster(edits, joiners).map((entry) => recordOf(entry, edits));
 }
 
 /** The people added by email to `divisionId` and not confirmed yet. */
@@ -388,7 +413,7 @@ export type DummyMove = (applicationId: number, move: LeadMove) => Promise<Write
 const NO_MOVE: DummyMove = async () => ({ ok: false, error: "Nothing to move." });
 
 function writesFor(
-  kind: ViewerKind,
+  kind: TestViewer,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   joiners: readonly DummyJoiner[],
@@ -407,6 +432,13 @@ function writesFor(
     if (!entry || actor === null || entry.id === SELF_ID[kind] || !reachesDivision(actor, divisionId, org)) return null;
     return isIn(entry.placement, divisionId) ? entry : null;
   };
+  /** Someone the Alumni page lists, for a viewer who reaches it (#257); never someone who asked to be removed. */
+  const alumnus = (key: AlumnusKey) => {
+    if (!canReach(testDeveloperStanding(kind), "alumni")) return null;
+    return dummyAlumni(editedAlumniRecord(edits, joiners)).find((a) => a.key === key && !a.removed) ?? null;
+  };
+  const saveAlumniEntry = (key: AlumnusKey, change: Omit<EntryChange, "photo">) =>
+    save({ ...edits, alumni: { ...edits.alumni, entries: { ...edits.alumni.entries, [key]: { ...edits.alumni.entries[key], ...change } } } });
 
   /**
    * A checked division save (#232), laid over the edits in one save: the
@@ -499,10 +531,33 @@ function writesFor(
       });
       return written(null);
     },
-    async setShownOnSite(alumnusId, shown) {
-      if (!canReach(testDeveloperStanding(kind), "alumni") || !editedAlumni(edits).some((a) => a.id === alumnusId)) return false;
-      await save({ ...edits, shownOnSite: { ...edits.shownOnSite, [alumnusId]: shown } });
+    async setAlumnusShown(key, shown) {
+      if (alumnus(key) === null) return false;
+      await saveAlumniEntry(key, { shown });
       return true;
+    },
+    async fixAlumnus(key, input) {
+      const person = alumnus(key);
+      if (person === null) return refused(NOT_ON_ALUMNI);
+      const fix = checkAlumnusFix(input, alumnusRow(person));
+      if (!fix.ok) return fix;
+      await saveAlumniEntry(key, fix.value);
+      return written(null);
+    },
+    async setAlumnusPhoto(key, photo) {
+      if (alumnus(key) === null) return refused(NOT_ON_ALUMNI);
+      // A preview keeps no photos: the check runs as the database side runs it, and nothing is stored.
+      const error = photo === null ? null : checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
+      return error === null ? written(null) : refused(error);
+    },
+    async addAdvisor(input, photo) {
+      if (!canReach(testDeveloperStanding(kind), "alumni")) return refused("You cannot edit the Alumni page.");
+      const advisor = checkAdvisor(input, DUMMY_ALUMNI_YEAR);
+      if (!advisor.ok) return advisor;
+      const error = photo === null ? null : checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
+      if (error !== null) return refused(error);
+      await save({ ...edits, alumni: { ...edits.alumni, advisors: [...edits.alumni.advisors, advisor.value] } });
+      return written(null);
     },
     async saveMember(personId, edit) {
       const entry = find(personId);
@@ -657,7 +712,7 @@ function writesFor(
  * Applications page's move, which Confirm join runs.
  */
 export function dummyTeamPages(
-  kind: ViewerKind,
+  kind: TestViewer,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   current: readonly DummyApplication[] = baseApplications,
@@ -678,6 +733,8 @@ export function dummyTeamPages(
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
+      // The team leader's page lists every member field (boards 73 to 73c, issue #252).
+      if (kind === "team-leader") return { scope: "whole-team", ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }) };
       if (kind === "operations-lead") return teamDirectory(team, org, self);
       if (actor?.kind === "head") {
         const [departmentId] = actor.departmentIds;
@@ -719,7 +776,11 @@ export function dummyTeamPages(
       if (actor === null || actor.kind === "lead") return { kind: "none" };
       return searchTeam(query, teamPeople(editedRoster(edits, joiners), edits), org);
     },
-    alumni: async () => alumniDirectory(canReach(testDeveloperStanding(kind), "alumni") ? editedAlumni(edits) : []),
+    alumni: async () =>
+      alumniDirectory(
+        canReach(testDeveloperStanding(kind), "alumni") ? dummyAlumni(editedAlumniRecord(edits, joiners)) : [],
+        DUMMY_ALUMNI_YEAR,
+      ),
     teamTree: async () =>
       buildTeamTree(canReach(testDeveloperStanding(kind), "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
     teamWrites: writesFor(kind, edits, save, joiners, move),

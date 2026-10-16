@@ -18,7 +18,7 @@ import { written } from "./write";
 // The database side of the partners (issue #256): the editor's store, the
 // public read /partners and the home logo strip share, and the logo files in
 // the public Blob store. Writes go through runAuditQuery or runAuditBatch, so
-// the audit triggers of migration 0020 log who made them, then refresh the
+// the audit triggers of migration 0023 log who made them, then refresh the
 // public read (.patterns/audited-mutations.md).
 
 export const PARTNERS_CACHE_TAG = "partners";
