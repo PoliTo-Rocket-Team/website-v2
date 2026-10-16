@@ -56,7 +56,7 @@ import {
   type RosterEntry,
   type TeamActor,
 } from "@/lib/dashboard/team";
-import { kindOfView, testDeveloperStanding, type TestView } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { applications as baseApplications, type DummyApplication } from "./applications";
@@ -95,7 +95,7 @@ export function dummyOrg(edits: TeamEdits): { readonly org: OrgChart; readonly c
 }
 
 /** The person each viewer signs in as; the applicant is not on the team. */
-const SELF_ID: Readonly<Record<TestView, number | null>> = {
+const SELF_ID: Readonly<Record<TestViewer, number | null>> = {
   "team-leader": 14,
   "operations-lead": 1,
   "department-head": 15,
@@ -285,14 +285,14 @@ export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
 }
 
 /** The division a division lead leads; null for every other viewer. */
-function myDivision(kind: TestView): number | null {
+function myDivision(kind: TestViewer): number | null {
   if (kind !== "division-lead") return null;
   const mine = people.find((p) => p.id === SELF_ID[kind]);
   return mine ? homeDivisionOf(mine.placement) : null;
 }
 
 /** The department the department head heads; null for every other viewer. */
-function myDepartment(kind: TestView): number | null {
+function myDepartment(kind: TestViewer): number | null {
   if (kind !== "department-head") return null;
   const mine = people.find((p) => p.id === SELF_ID[kind]);
   return mine?.placement.role === "head" ? mine.placement.departmentId : null;
@@ -303,9 +303,9 @@ function myDepartment(kind: TestView): number | null {
  * team, a department head their department (issue #235), a division lead
  * their division; nobody else acts there.
  */
-function actorOf(kind: TestView): TeamActor | null {
+function actorOf(kind: TestViewer): TeamActor | null {
   if (!canReach(testDeveloperStanding(kind), "members")) return null;
-  if (kindOfView(kind) === "operations-lead") return { kind: "team" };
+  if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
   if (department !== null) return { kind: "head", departmentIds: [department] };
   const division = myDivision(kind);
@@ -313,15 +313,15 @@ function actorOf(kind: TestView): TeamActor | null {
 }
 
 /** Whether `kind` may change this person from the Members page: the whole team, or the lead's own division; never themselves. */
-function mayEdit(kind: TestView, entry: RosterEntry): boolean {
+function mayEdit(kind: TestViewer, entry: RosterEntry): boolean {
   if (!canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
-  if (kindOfView(kind) === "operations-lead") return true;
+  if (kindOfTestViewer(kind) === "operations-lead") return true;
   const division = myDivision(kind);
   return division !== null && isIn(entry.placement, division);
 }
 
 /** The division a drawer's role change is about: the lead's own, or the person's home division for the operations lead. */
-function drawerDivision(kind: TestView, entry: RosterEntry): number | null {
+function drawerDivision(kind: TestViewer, entry: RosterEntry): number | null {
   return kind === "division-lead" ? myDivision(kind) : homeDivisionOf(entry.placement);
 }
 
@@ -395,7 +395,7 @@ export type DummyMove = (applicationId: number, move: LeadMove) => Promise<Write
 const NO_MOVE: DummyMove = async () => ({ ok: false, error: "Nothing to move." });
 
 function writesFor(
-  kind: TestView,
+  kind: TestViewer,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   joiners: readonly DummyJoiner[],
@@ -664,7 +664,7 @@ function writesFor(
  * Applications page's move, which Confirm join runs.
  */
 export function dummyTeamPages(
-  kind: TestView,
+  kind: TestViewer,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   current: readonly DummyApplication[] = baseApplications,

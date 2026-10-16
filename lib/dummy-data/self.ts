@@ -26,7 +26,7 @@ import {
   type MyProfile,
 } from "@/lib/dashboard/self";
 import { homeDivisionOf, membershipsIn, roleIn } from "@/lib/dashboard/team";
-import { testDeveloperStanding, type TestView } from "@/lib/dashboard/viewer";
+import { testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
 import { dummyDetails, isOpenOwn, isWithdrawn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
@@ -62,7 +62,7 @@ export function teamEmailOf(person: DummyPerson): string {
   return signInOf(person).teamEmail;
 }
 
-export function dummyMyProfile(kind: TestView, person: DummyPerson, changes: OwnChanges, leave: LeaveState): MyProfile {
+export function dummyMyProfile(kind: TestViewer, person: DummyPerson, changes: OwnChanges, leave: LeaveState): MyProfile {
   // My profile names one division, their home one, until #231 lists them all.
   const division = divisions.find((d) => d.id === homeDivisionOf(person.placement));
   const login = signInOf(person);
@@ -190,7 +190,7 @@ function pastOf(application: DummyOwnApplication, withdrawn: boolean): PastAppli
  * table keeps off My applications.
  */
 export function dummyMyApplications(
-  kind: TestView,
+  kind: TestViewer,
   me: { firstName: string; email: string },
   changes: OwnChanges,
   start: OwnApplicationsStart,

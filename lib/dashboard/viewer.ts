@@ -57,6 +57,12 @@ export type FullAccessSeat = (typeof FULL_ACCESS_SEATS)[number];
  */
 export type FlaggedSeat = Exclude<FullAccessSeat, "team-leader">;
 
+/** The seat each `roles.full_access` value flags. */
+export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead", FlaggedSeat>> = {
+  operations_lead: "operations-lead",
+  it_lead: "it-lead",
+};
+
 /**
  * What decides the dashboard pages a viewer reaches: their kind, and whether
  * they hold site-content access (a `website` scope row) on top of it. Someone
@@ -70,43 +76,46 @@ export type ViewerStanding =
   | { readonly kind: Exclude<ViewerKind, "non-member" | "operations-lead">; readonly siteContent: boolean };
 
 /**
- * Who a test developer looks as (lib/test-developer.ts): one of the viewer
- * kinds, or the team leader, the one full-access seat whose pages differ from
- * the operations lead's (boards 72 to 73c, issue #252).
+ * Who a test developer looks as (issue #141): one of the five viewer kinds,
+ * or the team leader (issue #247), who has full access like the operations
+ * lead but sits in the team leader's seat, so decides orders and gives
+ * "Approve orders".
  */
-export const TEST_VIEWS = ["team-leader", ...VIEWER_KINDS] as const;
+export const TEST_VIEWERS = ["team-leader", ...VIEWER_KINDS] as const;
+export type TestViewer = (typeof TEST_VIEWERS)[number];
 
-export type TestView = (typeof TEST_VIEWS)[number];
+export const TEST_VIEWER_LABELS: Readonly<Record<TestViewer, string>> = { "team-leader": "Team leader", ...VIEWER_KIND_LABELS };
 
-export const TEST_VIEW_LABELS: Readonly<Record<TestView, string>> = {
-  "team-leader": "Team leader",
-  ...VIEWER_KIND_LABELS,
-};
-
-export function isTestView(value: unknown): value is TestView {
-  return typeof value === "string" && (TEST_VIEWS as readonly string[]).includes(value);
+export function isTestViewer(value: unknown): value is TestViewer {
+  return typeof value === "string" && (TEST_VIEWERS as readonly string[]).includes(value);
 }
 
-/** The viewer kind a test view is: the team leader is full access, the `operations-lead` kind. */
-export function kindOfView(view: TestView): ViewerKind {
-  return view === "team-leader" ? "operations-lead" : view;
+/** The viewer kind a test viewer is: the team leader is full access, the `operations-lead` kind. */
+export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
+  return viewer === "team-leader" ? "operations-lead" : viewer;
 }
 
 /**
- * A test developer holds no scope rows, so their standing is their view
- * alone: the operations-lead test developer sits in the operations lead's
+ * A test developer holds no scope rows, so their standing is who they look
+ * as alone: the operations-lead test developer sits in the operations lead's
  * seat, the team-leader one in the team leader's.
  */
-export function testDeveloperStanding(view: TestView): ViewerStanding {
-  switch (view) {
+export function testDeveloperStanding(viewer: TestViewer): ViewerStanding {
+  switch (viewer) {
     case "non-member":
-      return { kind: view, siteContent: false };
-    case "operations-lead":
+      return { kind: viewer, siteContent: false };
     case "team-leader":
-      return { kind: "operations-lead", seat: view, siteContent: false };
+      return { kind: "operations-lead", seat: "team-leader", siteContent: false };
+    case "operations-lead":
+      return { kind: viewer, seat: "operations-lead", siteContent: false };
     default:
-      return { kind: view, siteContent: false };
+      return { kind: viewer, siteContent: false };
   }
+}
+
+/** The test viewer a standing shows as in View as: the team leader's seat is its own entry. */
+export function testViewerOf(viewer: ViewerStanding): TestViewer {
+  return seatOf(viewer) === "team-leader" ? "team-leader" : viewer.kind;
 }
 
 /** The standing alone, out of anything that carries one (an identity, a viewer). */
@@ -129,11 +138,6 @@ export function seatOf(viewer: ViewerStanding): FullAccessSeat | null {
 /** Whether the viewer is the team leader: the one who decides orders by default (`decideRightOf`, ./orders.ts). */
 export function isTeamLeader(viewer: ViewerStanding): boolean {
   return seatOf(viewer) === "team-leader";
-}
-
-/** The test view a standing reads as: the team leader's seat, else the kind. "View as" ticks it. */
-export function testViewOf(viewer: ViewerStanding): TestView {
-  return isTeamLeader(viewer) ? "team-leader" : viewer.kind;
 }
 
 export type DashboardViewer = ViewerStanding & {
@@ -239,6 +243,24 @@ export type ScopeUnitRow = {
   readonly divisionId: number | null;
   readonly deptId: number | null;
 };
+
+/**
+ * The scope rows as the units they open (issue #247). A `team` row on an
+ * area is a grant across the whole team, so it stands for a `department` row
+ * in every open department: it opens that area's pages there, and in any
+ * department opened later. The other `team` row, "Approve orders", opens no
+ * page and stays as it is; so does every other row.
+ */
+export function unitRowsOf(
+  rows: readonly (ScopeUnitRow & { readonly target: string })[],
+  openDepartmentIds: readonly number[],
+): ScopeUnitRow[] {
+  return rows.flatMap((row): ScopeUnitRow[] =>
+    row.scope === "team" && row.target !== "approve_orders"
+      ? openDepartmentIds.map((deptId) => ({ scope: "department", divisionId: null, deptId }))
+      : [{ scope: row.scope, divisionId: row.divisionId, deptId: row.deptId }],
+  );
+}
 
 /** An active role as `readIdentity` reads it: its type, its division, and its department. */
 export type ScopedRole = {

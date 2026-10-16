@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TestView } from "@/lib/dashboard/viewer";
+import type { TestViewer } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
 import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
@@ -8,7 +8,7 @@ import { EMPTY_DUMMY_STATE } from "./state";
 // The team leader's test developer (issue #252): their own Overview and
 // Members (boards 72 and 73), while the operations lead keeps boards 40 and 46.
 
-function dashboard(view: TestView) {
+function dashboard(view: TestViewer) {
   return dummyDashboardData(view, { current: dummyRecruitmentOf(undefined), save: async () => {} }, { current: EMPTY_DUMMY_STATE, save: async () => {} });
 }
 

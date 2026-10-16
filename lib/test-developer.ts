@@ -1,5 +1,5 @@
 import { callbackPath } from "@/lib/auth-callback";
-import { isTestView, type TestView } from "@/lib/dashboard/viewer";
+import { isTestViewer, type TestViewer } from "@/lib/dashboard/viewer";
 import { ownApplicationsStartOf, type OwnApplicationsStart } from "@/lib/dummy-data/own";
 
 // Test developer sign-in (issue #141). On previews and under `next dev`, a
@@ -57,9 +57,9 @@ export const TEST_DEVELOPER_APPLICATIONS_COOKIE = "prt_test_developer_applicatio
 export function testDeveloperViewer(
   cookieValue: string | null | undefined,
   env: GateEnv = processGateEnv(),
-): TestView | null {
+): TestViewer | null {
   if (!testDeveloperOn(env)) return null;
-  return isTestView(cookieValue) ? cookieValue : null;
+  return isTestViewer(cookieValue) ? cookieValue : null;
 }
 
 /**
@@ -69,7 +69,7 @@ export function testDeveloperViewer(
  * passes it, so switching viewer brings the sample set back.
  */
 export function testDeveloperSignInHref(
-  viewer: TestView,
+  viewer: TestViewer,
   cb?: string | null,
   applications: OwnApplicationsStart = "sample",
 ): string {
@@ -100,12 +100,12 @@ function redirect(to: string, url: URL, ...cookies: string[]): Response {
  * GET /api/test-developer/sign-in?viewer=<kind>[&applications=none|withdrawn][&cb=<path>]:
  * sets the cookie and goes to `cb`, else the dashboard. `applications=none`
  * starts the viewer with no own applications, `applications=withdrawn` with
- * only withdrawn ones; without it the sample set is back. 404 when the gate is off, 400 for a viewer that is not a test view.
+ * only withdrawn ones; without it the sample set is back. 404 when the gate is off, 400 for a viewer that is not one of TEST_VIEWERS.
  */
 export function testDeveloperSignIn(url: URL, env: GateEnv = processGateEnv()): Response {
   if (!testDeveloperOn(env)) return notFound();
   const viewer = url.searchParams.get("viewer");
-  if (!isTestView(viewer)) return new Response("Unknown viewer", { status: 400 });
+  if (!isTestViewer(viewer)) return new Response("Unknown viewer", { status: 400 });
   const start = ownApplicationsStartOf(url.searchParams.get("applications"));
   return redirect(
     callbackPath(url.searchParams.get("cb")),

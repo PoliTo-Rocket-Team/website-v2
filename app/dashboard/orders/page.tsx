@@ -5,13 +5,13 @@ import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { OrdersView } from "@/components/dashboard/division-orders";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
-import { cancelOrder, editOrder, placeOrder } from "../actions";
+import { cancelOrder, decideOrder, editOrder, markOrdered, placeOrder } from "../actions";
 
 export const metadata: Metadata = {
   title: "Orders · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 61 to 61d, 61m, 67, 67b and 67m: every order in the team (issue
+// Boards 61 to 61d, 61m, 67, 67b, 67m and 70 to 70e: every order in the team (issue
 // #233). Full access (issue #238), a division lead or a department head reaches it
 // (lib/dashboard/access.ts), and only with Orders access somewhere; anyone else
 // gets the dashboard's not found.
@@ -31,5 +31,5 @@ async function LiveOrders() {
   if (!canReach(data.viewer, "orders")) notFound();
   const orders = await data.orders();
   if (orders === null) notFound();
-  return <OrdersView data={orders} writes={{ placeOrder, editOrder, cancelOrder }} />;
+  return <OrdersView data={orders} writes={{ placeOrder, editOrder, cancelOrder, decideOrder, markOrdered }} />;
 }

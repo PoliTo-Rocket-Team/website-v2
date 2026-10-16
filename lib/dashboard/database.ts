@@ -57,7 +57,7 @@ import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers } from 
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
-import { isTeamLeader, standingOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
+import { SEAT_OF_FLAG, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -77,10 +77,6 @@ type ActiveRole = {
   fullAccess: FlaggedSeat | null;
 };
 
-const SEAT_OF_FLAG: Readonly<Record<NonNullable<(typeof roles.$inferSelect)["fullAccess"]>, FlaggedSeat>> = {
-  operations_lead: "operations-lead",
-  it_lead: "it-lead",
-};
 
 type Identity = {
   userId: string;
@@ -136,7 +132,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
 
   const [scopeRows, roleRows] = await Promise.all([
     db
-      .select({ scope: scopes.scope, division_id: scopes.divisionId, dept_id: scopes.deptId })
+      .select({ scope: scopes.scope, target: scopes.target, division_id: scopes.divisionId, dept_id: scopes.deptId })
       .from(scopes)
       .where(eq(scopes.memberId, user.member_id)),
     db
@@ -159,16 +155,22 @@ async function readIdentity(userId: string): Promise<Identity | null> {
   ]);
   const activeRoles: ActiveRole[] = roleRows.map((r) => ({ ...r, fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] }));
 
-  const access = { scopes: scopeRows.map((s) => s.scope), activeRoles };
+  // A grant across the whole team stands for every open department (issue #247).
+  const wholeTeam = scopeRows.some((s) => s.scope === "team" && s.target !== "approve_orders");
+  const openDepartmentIds = wholeTeam
+    ? (await db.select({ id: departments.id }).from(departments).where(isNull(departments.closedAt))).map((d) => d.id)
+    : [];
+  const unitRows = unitRowsOf(
+    scopeRows.map((s) => ({ scope: s.scope, target: s.target, divisionId: s.division_id, deptId: s.dept_id })),
+    openDepartmentIds,
+  );
+  const access = { scopes: unitRows.map((s) => s.scope), activeRoles };
   const standing = viewerStandingOf(access);
   // Someone with no active role left the team: scope rows that outlived it reach nothing.
   if (standing.kind === "non-member") return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...standing };
 
   // Every division they lead and the department they head, plus the units their scopes name.
-  const units = viewerUnitsOf(
-    scopeRows.map((s) => ({ scope: s.scope, divisionId: s.division_id, deptId: s.dept_id })),
-    activeRoles,
-  );
+  const units = viewerUnitsOf(unitRows, activeRoles);
   return {
     ...base,
     role: primaryRole(activeRoles),

@@ -305,7 +305,7 @@ function personById(id: number): DummyPerson {
   return people.find((p) => p.id === id)!;
 }
 
-/** The team member each other test view signs in as (`TestView`, lib/dashboard/viewer.ts). */
+/** The team member each other test view signs in as (`TestViewer`, lib/dashboard/viewer.ts). */
 export const personFor = {
   "team-leader": personById(14),
   "operations-lead": personById(1),

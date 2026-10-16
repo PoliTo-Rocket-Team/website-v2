@@ -39,7 +39,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
-import { kindOfView, testDeveloperStanding, type DashboardViewer, type TestView, type ViewerKind } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, testDeveloperStanding, type DashboardViewer, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { departmentCode, divisionLabel, positionText } from "./apply";
@@ -50,6 +50,7 @@ import {
   dummyCancelOrder,
   dummyDecideOrder,
   dummyEditOrder,
+  dummyMarkOrdered,
   dummyOrdersIn,
   dummyOrdersPage,
   dummyPlaceOrder,
@@ -228,19 +229,19 @@ function headDepartment() {
   return { ...department, divisions: own, divisionIds: own.map((d) => d.id) as number[] };
 }
 
-/** Who a test developer signed in as `view` is: the dashboard's user card and the navbar show this name. */
-export function dummyViewer(view: TestView): DashboardViewer {
-  if (view === "non-member") {
-    return { ...testDeveloperStanding(view), name: applicant.name, role: "Applicant", session: "test-developer" };
+/** Who a test developer signed in as `viewer` is: the dashboard's user card and the navbar show this name. */
+export function dummyViewer(viewer: TestViewer): DashboardViewer {
+  if (viewer === "non-member") {
+    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", session: "test-developer" };
   }
-  const person = personFor[view];
-  return { ...testDeveloperStanding(view), name: person.name, role: person.title, session: "test-developer" };
+  const person = personFor[viewer];
+  return { ...testDeveloperStanding(viewer), name: person.name, role: person.title, session: "test-developer" };
 }
 
 /** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
-export function dummyNavViewer(view: TestView): NavViewer {
-  if (view === "non-member") return { name: applicant.name, email: applicant.email, photoUrl: null, session: "test-developer" };
-  const person = personFor[view];
+export function dummyNavViewer(viewer: TestViewer): NavViewer {
+  if (viewer === "non-member") return { name: applicant.name, email: applicant.email, photoUrl: null, session: "test-developer" };
+  const person = personFor[viewer];
   return { name: person.name, email: teamEmailOf(person), photoUrl: null, session: "test-developer" };
 }
 
@@ -777,6 +778,11 @@ function applicationsPage(kind: ViewerKind, team: Team, onTeam: readonly RosterE
   };
 }
 
+/** The person the viewer is on the team; null for the applicant. */
+function teamPersonFor(viewer: TestViewer): DummyPerson | null {
+  return viewer === "non-member" ? null : personFor[viewer];
+}
+
 const notOnTeam = "This page is for team members.";
 const noOrders = "You do not have access to Orders.";
 
@@ -787,7 +793,7 @@ const noOrders = "You do not have access to Orders.";
  * applications sent. Their details stay the ones they had on the team.
  */
 function leftTeamDashboard(
-  kind: Exclude<TestView, "non-member">,
+  kind: Exclude<TestViewer, "non-member">,
   self: DummyPerson,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
@@ -808,30 +814,33 @@ function leftTeamDashboard(
 }
 
 /**
- * The dashboard as the test developer sees it, looking as `view`, with the
+ * The dashboard as the test developer sees it, looking as `viewer`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
  * their Team page edits in `teamEdits` (./edits.ts), and the changes on their
  * own pages in `own` (./own.ts), starting from the own applications
  * `ownStart` names. Other writes check what was sent as the database side
- * does, store nothing, and answer what the page shows next.
+ * does, store nothing, and answer what the page shows next. The team leader
+ * is full access, the `operations-lead` kind, so the other pages read as the
+ * operations lead's. On Access and Orders they are themselves, the one who
+ * decides orders and gives "Approve orders" (issue #247), and they have
+ * their own Overview, Members and own pages (boards 72 to 73c, issue #252).
  */
 export function dummyDashboardData(
-  view: TestView,
+  viewer: TestViewer,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
   teamEdits: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
 ): DashboardData {
-  if (view !== "non-member" && teamEdits.current.movedToAlumni[personFor[view].id] !== undefined) {
-    return leftTeamDashboard(view, personFor[view], recruitment, changes, teamEdits, own);
+  const kind = kindOfTestViewer(viewer);
+  if (viewer !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
+    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEdits, own);
   }
-  // The team leader is full access, so every page reads the operations lead's kind; their own pages read the view.
-  const kind = kindOfView(view);
   const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEdits.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
-  const person = view === "non-member" ? null : personFor[view];
+  const person = teamPersonFor(viewer);
   const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
@@ -840,8 +849,8 @@ export function dummyDashboardData(
   const closedIds = new Set(dummyOrg(teamEdits.current).closed.map((d) => d.id));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
-  const myApplications = () => dummyMyApplications(view, me, own.current, ownStart);
-  const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [view]: details } });
+  const myApplications = () => dummyMyApplications(viewer, me, own.current, ownStart);
+  const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [viewer]: details } });
 
   // One move for both pages: the Applications panel and the Members page's
   // Confirm join (board 59) run it, so the application is the one record of
@@ -862,11 +871,11 @@ export function dummyDashboardData(
   }
 
   return {
-    viewer: dummyViewer(view),
+    viewer: dummyViewer(viewer),
     navCounts: async () => navCountsFor(kind, team),
-    hasOwnApplications: async () => ownApplicationsOf(view, ownStart).length > 0,
+    hasOwnApplications: async () => ownApplicationsOf(viewer, ownStart).length > 0,
     overview: async () =>
-      view === "team-leader"
+      viewer === "team-leader"
         ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
         : overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
     async dismissNotice(noticeId) {
@@ -881,7 +890,7 @@ export function dummyDashboardData(
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
-    ...dummyTeamPages(view, teamEdits.current, teamEdits.save, team.applications, moveApplication, (divisionId) =>
+    ...dummyTeamPages(viewer, teamEdits.current, teamEdits.save, team.applications, moveApplication, (divisionId) =>
       team.positions.filter((p) => p.divisionId === divisionId && p.open).length,
     ),
     positions: async () => positionsPage(kind, team),
@@ -951,15 +960,16 @@ export function dummyDashboardData(
     cancelOrder: async (id) => (accessKind === null || person === null ? refused(noOrders) : dummyCancelOrder(accessKind, person, id)),
     decideOrder: async (id, input) =>
       accessKind === null || person === null ? refused(noOrders) : dummyDecideOrder(accessKind, person, id, input),
+    markOrdered: async (id) => (accessKind === null || person === null ? refused(noOrders) : dummyMarkOrdered(accessKind, person, id)),
     setApproveOrders: async (input) =>
       person === null ? refused(notOnTeam) : dummySetApproveOrders(person, teamRoster.map((e) => e.id), input),
 
-    myProfile: async () => (person === null ? null : dummyMyProfile(view, person, own.current, leaveStateOf(person))),
+    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {
       if (person === null) return refused(notOnTeam);
       const result = dummySaveLinkedin(text);
       // LinkedIn is one of the details, as on the database side (`users.linkedin`).
-      if (result.ok) await saveOwnDetails({ ...dummyDetails(view, own.current), linkedin: result.value ?? "" });
+      if (result.ok) await saveOwnDetails({ ...dummyDetails(viewer, own.current), linkedin: result.value ?? "" });
       return result;
     },
     setPhoto: async (photo) => (person === null ? refused(notOnTeam) : dummySetPhoto(photo)),
@@ -979,7 +989,7 @@ export function dummyDashboardData(
 
     myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current, ownStart) : null),
     async saveDetails(input) {
-      const result = dummySaveDetails(input, person === null ? "applicant" : "member", dummyDetails(view, own.current));
+      const result = dummySaveDetails(input, person === null ? "applicant" : "member", dummyDetails(viewer, own.current));
       if (result.ok) await saveOwnDetails(result.value);
       return result;
     },
