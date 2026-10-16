@@ -51,7 +51,7 @@ An admin column comes later. **Planned**, no issue yet.
   and until one month after its latest decision: accept, reject, another team taking the person,
   join, or withdraw. After an accept, the join is the latest decision. Then it leaves the Overview
   and My applications, for everyone; the data stays (Owner decision, #317). A decision from before
-  its time was stored (`rejected_at`, migration 0027) counts as past the month.
+  its time was stored (`rejected_at`, migration 0030) counts as past the month.
 - **My applications** shows for everyone, but only while one of their applications is shown.
   With none shown, its address opens the Overview.
 - **Every viewer lands on the Overview** (#317). A non-member with nothing shown sees their name,
