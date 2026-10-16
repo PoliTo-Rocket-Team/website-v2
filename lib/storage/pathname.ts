@@ -5,8 +5,8 @@
 /** Files served only after an access check: the private store. */
 export type PrivateFileKind = "application" | "order";
 
-/** Files shown on public pages: the public store. Partner logos joined photos with issue #256. */
-export type PublicFileKind = "photo" | "logo";
+/** Files shown on public pages: the public store. Partner logos joined photos with issue #256, Outreach post photos with #291. */
+export type PublicFileKind = "photo" | "logo" | "post-photo";
 
 const PRIVATE_FOLDER: Record<PrivateFileKind, string> = {
   application: "applications/",
@@ -16,6 +16,7 @@ const PRIVATE_FOLDER: Record<PrivateFileKind, string> = {
 const PUBLIC_FOLDER: Record<PublicFileKind, string> = {
   photo: "photos/",
   logo: "logos/",
+  "post-photo": "post-photos/",
 };
 
 declare const privateBrand: unique symbol;
@@ -68,4 +69,32 @@ export function parsePrivatePathname(stored: string): PrivatePathname | null {
 /** A pathname read back from the database, when it names a file in the public store; else null. */
 export function parsePublicPathname(stored: string): PublicPathname | null {
   return parseIn<PublicPathname>(PUBLIC_FOLDER, stored);
+}
+
+declare const hostBrand: unique symbol;
+
+/** The host one public Blob store serves its files from. Made only by `publicStoreHost`. */
+export type PublicStoreHost = string & { readonly [hostBrand]: true };
+
+/**
+ * The host the public store with this id serves its files from, the way the
+ * Blob SDK builds a file's URL: the id without its `store_` prefix, then
+ * `.public.blob.vercel-storage.com`. Hosts are compared in lower case.
+ */
+export function publicStoreHost(storeId: string): PublicStoreHost {
+  const id = storeId.trim().replace(/^store_/, "");
+  if (!/^[A-Za-z0-9]+$/.test(id)) throw new Error(`Not a Blob store id: ${JSON.stringify(storeId)}`);
+  return `${id.toLowerCase()}.public.blob.vercel-storage.com` as PublicStoreHost;
+}
+
+/** The public-store pathname a file URL names, when the URL is on `host` and plain; else null. */
+export function publicPathnameOfUrl(url: string, host: PublicStoreHost): PublicPathname | null {
+  if (!url.startsWith("https://")) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== host || parsed.port !== "" || parsed.username !== "" || parsed.search !== "" || parsed.hash !== "") return null;
+    return parsePublicPathname(parsed.pathname.slice(1));
+  } catch {
+    return null;
+  }
 }

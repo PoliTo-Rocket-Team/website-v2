@@ -1,5 +1,6 @@
 import { refused, type WriteResult } from "@/lib/dashboard/write";
 import type { NonEmpty } from "./about/alumni-types";
+import { isPhotoSrc } from "./outreach-photos";
 import { isIsoDate, withMainChannel } from "./outreach-rows";
 import {
   CHANNEL_LABELS,
@@ -9,6 +10,7 @@ import {
   type ChannelName,
   type OutreachPost,
   type OutreachTag,
+  type PhotoSrc,
   type PostView,
 } from "./outreach-types";
 import type { Copy } from "./projects";
@@ -17,8 +19,8 @@ import type { Copy } from "./projects";
 // as the editor types it, the page it draws while they type, and the rules a
 // Save draft or a Publish must pass. The panel keeps the fields; only a post
 // that passes every rule reaches the store, on either button: a draft is a
-// whole post too. Photos are edited in a later slice, so a saved post keeps
-// the photos it opened with.
+// whole post too. Photos (issue #291) are uploaded as they are picked, so the
+// fields hold each one's src and its alt text, in the order the panel shows.
 
 /** One original post as the panel edits it: the link and the first line. `account` is kept as it was. */
 export type ChannelFields = {
@@ -27,6 +29,9 @@ export type ChannelFields = {
   readonly caption: string;
   readonly account?: string;
 };
+
+/** One photo as the panel edits it: the file, uploaded already, and its alt text, empty until written. */
+export type PhotoFields = { readonly src: PhotoSrc; readonly alt: string };
 
 /** Everything the panel edits, as typed: text may be empty and lists may be too, until a save checks them. */
 export type PostFields = {
@@ -39,12 +44,14 @@ export type PostFields = {
   readonly lead: string;
   readonly summary: string;
   readonly body: readonly BodyBlock[];
+  /** In order: the first is the cover and the card photo. */
+  readonly photos: readonly PhotoFields[];
   /** In the order the panel lists them; one entry per channel. */
   readonly channels: readonly ChannelFields[];
 };
 
 /** The panel's sections that a rule can refuse. */
-export type PostField = "title" | "date" | "tags" | "lead" | "summary" | "body" | "channels";
+export type PostField = "title" | "date" | "tags" | "lead" | "summary" | "body" | "photos" | "channels";
 
 export type PostFieldErrors = Partial<Record<PostField, string>>;
 
@@ -63,6 +70,7 @@ export function postFieldsOf(post: OutreachPost): PostFields {
     lead: post.lead,
     summary: post.summary.text,
     body: [...post.body],
+    photos: post.photos.map((p) => ({ src: p.src, alt: p.alt })),
     channels: CHANNEL_NAMES.flatMap((name) => {
       const channel = post.channels[name];
       return channel === undefined ? [] : [{ name, ...channel }];
@@ -88,8 +96,8 @@ function channelRecord(channels: readonly ChannelFields[]): Partial<Record<Chann
 }
 
 /**
- * The page as the editor sees it while typing: every field as typed, the
- * opened post's date while the date is cleared, and its photos.
+ * The page as the editor sees it while typing: every field as typed, and the
+ * opened post's date while the date is cleared and its photos while none is left.
  */
 export function postViewOf(fields: PostFields, opened: OutreachPost): PostView {
   const place = fields.place.trim();
@@ -101,7 +109,7 @@ export function postViewOf(fields: PostFields, opened: OutreachPost): PostView {
     summary: summaryOf(fields.summary.trim(), opened.summary),
     lead: fields.lead,
     body: fields.body,
-    photos: opened.photos,
+    photos: nonEmpty(fields.photos) ?? opened.photos,
     channels: channelRecord(fields.channels),
   };
 }
@@ -126,6 +134,12 @@ function channelsError(channels: readonly ChannelFields[]): string | undefined {
   return undefined;
 }
 
+function photosError(photos: readonly PhotoFields[]): string | undefined {
+  if (photos.length === 0) return "Add at least one photo.";
+  const missing = photos.findIndex((p) => p.alt.trim() === "");
+  return missing === -1 ? undefined : `Photo ${missing + 1} has no description. Click it to add one.`;
+}
+
 function tagsError(picked: readonly string[], tags: readonly OutreachTag[]): string | undefined {
   if (picked.length === 0) return "Pick at least one tag.";
   const known = new Set(tags.map((t) => t.name));
@@ -136,8 +150,9 @@ function tagsError(picked: readonly string[], tags: readonly OutreachTag[]): str
 /**
  * The fields as a post, or what each section still needs: a title, a date,
  * at least one tag from the tag list, a lead, a card summary, at least one
- * text block with its text, and the Instagram or LinkedIn post with a link
- * and a first line on every channel. The post keeps the photos it opened with.
+ * text block with its text, at least one photo and alt text on every photo,
+ * and the Instagram or LinkedIn post with a link and a first line on every
+ * channel. The first photo is the post's cover and its card photo.
  */
 export function checkPostFields(fields: PostFields, opened: OutreachPost, tags: readonly OutreachTag[]): PostCheck {
   const errors: PostFieldErrors = {
@@ -149,15 +164,18 @@ export function checkPostFields(fields: PostFields, opened: OutreachPost, tags: 
   const tagError = tagsError(fields.tags, tags);
   const textError = bodyError(fields.body);
   const channelError = channelsError(fields.channels);
+  const photoError = photosError(fields.photos);
   if (tagError !== undefined) errors.tags = tagError;
   if (textError !== undefined) errors.body = textError;
+  if (photoError !== undefined) errors.photos = photoError;
   if (channelError !== undefined) errors.channels = channelError;
 
   const picked = nonEmpty(fields.tags);
   const body = nonEmpty(fields.body.map(trimmedBlock));
+  const photos = nonEmpty(fields.photos.map((p) => ({ src: p.src, alt: p.alt.trim() })));
   const channels = withMainChannel(channelRecord(fields.channels));
   const { date } = fields;
-  if (Object.keys(errors).length > 0 || picked === null || body === null || channels === null || !isIsoDate(date)) {
+  if (Object.keys(errors).length > 0 || picked === null || body === null || photos === null || channels === null || !isIsoDate(date)) {
     return { ok: false, errors };
   }
   const place = fields.place.trim();
@@ -171,7 +189,7 @@ export function checkPostFields(fields: PostFields, opened: OutreachPost, tags: 
       summary: summaryOf(fields.summary.trim(), opened.summary),
       lead: fields.lead.trim(),
       body,
-      photos: opened.photos,
+      photos,
       channels,
     },
   };
@@ -189,7 +207,7 @@ function trimmedBlock(block: BodyBlock): BodyBlock {
 }
 
 /** The fields in the order the panel shows them. */
-const FIELD_ORDER: readonly PostField[] = ["title", "date", "tags", "lead", "summary", "body", "channels"];
+const FIELD_ORDER: readonly PostField[] = ["title", "date", "tags", "lead", "summary", "body", "photos", "channels"];
 
 /** The first field, in panel order, that still needs work, and what it needs. */
 export function firstPostError(errors: PostFieldErrors): { field: PostField; error: string } | undefined {
@@ -233,6 +251,11 @@ function blockFieldsOf(value: unknown): BodyBlock | null {
   return null;
 }
 
+function photoFieldsOf(value: unknown): PhotoFields | null {
+  if (!isShape(value) || !isPhotoSrc(value.src) || !isString(value.alt)) return null;
+  return { src: value.src, alt: value.alt };
+}
+
 const isChannelName = (value: unknown): value is ChannelName => (CHANNEL_NAMES as readonly unknown[]).includes(value);
 
 function channelFieldsOf(value: unknown): ChannelFields | null {
@@ -252,16 +275,18 @@ function listOf<T>(value: unknown, read: (item: unknown) => T | null): T[] | nul
   return items.some((item) => item === null) ? null : (items as T[]);
 }
 
-/** `value` as the panel's fields: every key in its shape, no channel twice; null otherwise. */
+/** `value` as the panel's fields: every key in its shape, no channel or photo twice; null otherwise. */
 export function readPostFields(value: unknown): PostFields | null {
   if (!isShape(value)) return null;
   const { title, date, place, lead, summary } = value;
   if (![title, date, place, lead, summary].every(isString)) return null;
   const tags = listOf(value.tags, (tag) => (isString(tag) ? tag : null));
   const body = listOf(value.body, blockFieldsOf);
+  const photos = listOf(value.photos, photoFieldsOf);
   const channels = listOf(value.channels, channelFieldsOf);
-  if (tags === null || body === null || channels === null) return null;
+  if (tags === null || body === null || photos === null || channels === null) return null;
   if (new Set(channels.map((c) => c.name)).size !== channels.length || new Set(tags).size !== tags.length) return null;
+  if (new Set(photos.map((p) => p.src)).size !== photos.length) return null;
   return {
     title: title as string,
     date: date as string,
@@ -270,6 +295,7 @@ export function readPostFields(value: unknown): PostFields | null {
     lead: lead as string,
     summary: summary as string,
     body,
+    photos,
     channels,
   };
 }

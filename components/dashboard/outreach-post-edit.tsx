@@ -140,7 +140,6 @@ export function OutreachPostEdit({
             onChange={setFields}
             tags={tags}
             onAddTag={addTag}
-            photos={opened.photos}
             errors={errors}
             expanded={expanded}
             onExpandedChange={setExpanded}

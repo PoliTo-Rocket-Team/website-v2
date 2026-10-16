@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
+import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
 import { awardPosts, outreachRecord, outreachStats, postBySlug, slugOf, trackRecord } from "./outreach";
 import { outreachEditor, publicOutreach, type StoredOutreach } from "./outreach-editor";
 import { importedOutreach, outreachImportSql } from "./outreach-import";
@@ -88,7 +88,7 @@ test("a row whose JSON is not a post's is refused, never shown", () => {
 test("/outreach and the post pages show only published posts: a draft-only post is not listed and its page is not found", async () => {
   const stored = importedOutreach();
   const posts = memoryContentStore(stored.posts);
-  const editor = outreachEditor(admin, { ...dummyOutreachStore(cookie()), posts });
+  const editor = outreachEditor(admin, { ...dummyOutreachStore(cookie()), posts }, dummyPhotoFiles);
   const draftOnly: OutreachPost = { ...outreachRecord.posts[0], title: "A post still in draft", date: "2026-10-01" };
   const created = await editor.posts.save(null, "save-draft", async () => ({ ok: true, value: draftOnly }));
   assert.ok(created.ok);
@@ -151,7 +151,7 @@ test("tags are data: a post tagged Award counts toward the award figure, and the
 
 test("the editor keeps a post's tags to the list, adds a tag inline, and lets only site-content editors in", async () => {
   const jar = cookie();
-  const editor = outreachEditor(admin, dummyOutreachStore(jar));
+  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
   const unknown = await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...current!, tags: ["Workshop"] } }));
   assert.deepEqual(unknown, { ok: false, error: "Workshop is not a tag. Add it to the tag list first." });
 
@@ -161,7 +161,7 @@ test("the editor keeps a post's tags to the list, adds a tag inline, and lets on
   assert.ok((await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...current!, tags: ["Workshop"] } }))).ok);
   assert.deepEqual((await editor.tags())?.at(-1), { name: "Workshop", award: false });
 
-  const refused = outreachEditor(member, dummyOutreachStore(cookie()));
+  const refused = outreachEditor(member, dummyOutreachStore(cookie()), dummyPhotoFiles);
   assert.equal(await refused.posts.list(), null);
   assert.equal(await refused.summit(), null);
   assert.equal(await refused.tags(), null);
@@ -170,7 +170,7 @@ test("the editor keeps a post's tags to the list, adds a tag inline, and lets on
 });
 
 test("the summit keeps its published version under a draft until Publish", async () => {
-  const editor = outreachEditor(admin, dummyOutreachStore(cookie()));
+  const editor = outreachEditor(admin, dummyOutreachStore(cookie()), dummyPhotoFiles);
   const drafted = await editor.saveSummit("save-draft", async (current) => ({ ok: true, value: { ...current, title: "IRESS, drafted" } }));
   assert.ok(drafted.ok);
   assert.equal(drafted.value.published.title, outreachRecord.feature.title);

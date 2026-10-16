@@ -1,10 +1,11 @@
 import { memoryContentStore } from "@/lib/content/memory";
-import type { ContentItem } from "@/lib/content/versioned";
+import type { ContentItem, Versioned } from "@/lib/content/versioned";
 import { refused, written } from "@/lib/dashboard/write";
 import { checkNewTag, type OutreachStore, type StoredOutreach, type SummitVersions } from "@/lib/outreach-editor";
 import { importedOutreach } from "@/lib/outreach-import";
+import type { PhotoFiles } from "@/lib/outreach-photos";
 import { outreachFeatureOf, outreachPostOf } from "@/lib/outreach-rows";
-import type { OutreachFeature, OutreachPost, OutreachTag } from "@/lib/outreach-types";
+import type { OutreachFeature, OutreachPhoto, OutreachPost, OutreachTag } from "@/lib/outreach-types";
 import { contentEditsOf, NO_CONTENT_EDITS, parseContentEdits, PREVIEW_FULL, withContentEdits, type ContentEdits } from "./content-edits";
 import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 
@@ -18,6 +19,10 @@ import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 // A post is long, so a whole one or two fill the cookie. The cookie keeps a
 // version of a seeded post or of the summit as the fields that differ from
 // the seed's published version; a new post is kept whole.
+//
+// A photo a test developer uploads is stored nowhere (issue #291): the
+// answer carries it as a data URL, so the panel and the page show it until
+// the next load, and the cookie keeps the board's warm stand-in in its place.
 
 /** What a test developer changed on the Outreach content. */
 export type DummyOutreachEdits = {
@@ -145,6 +150,31 @@ export function parseOutreachEdits(value: string | undefined): DummyOutreachEdit
  * store that keeps each write in their cookie, and refuses one the cookie
  * cannot hold. A refused write changes nothing.
  */
+/** What an uploaded photo shows once the page loads again: a preview keeps no file. */
+export const PREVIEW_PHOTO_SRC = "/outreach/preview-upload.webp";
+
+function keptPhoto(photo: OutreachPhoto): OutreachPhoto {
+  return photo.src.startsWith("data:") ? { src: PREVIEW_PHOTO_SRC, alt: photo.alt } : photo;
+}
+
+/** A version the cookie can hold: an uploaded photo (a data URL) is not kept. */
+function keptVersion(version: Versioned<OutreachPost>): Versioned<OutreachPost> {
+  const keep = (post: OutreachPost): OutreachPost => {
+    const [cover, ...more] = post.photos;
+    return { ...post, photos: [keptPhoto(cover), ...more.map(keptPhoto)] };
+  };
+  return version.state === "draft"
+    ? { state: "draft", draft: keep(version.draft) }
+    : { state: "published", published: keep(version.published), draft: version.draft === null ? null : keep(version.draft) };
+}
+
+/** A preview stores no files: an uploaded photo comes back as a data URL, and nothing is written to Blob. */
+export const dummyPhotoFiles: PhotoFiles = {
+  put: async (photo) => `data:${photo.contentType};base64,${Buffer.from(photo.bytes).toString("base64")}`,
+  owns: (src): src is `data:image/${string}` => src.startsWith("data:image/"),
+  drop: async () => {},
+};
+
 export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStore {
   let current = edits.current;
 
@@ -157,7 +187,7 @@ export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStor
 
   return {
     posts: memoryContentStore(withContentEdits(SEED.posts, current.posts), (items: readonly ContentItem<OutreachPost>[]) =>
-      keep({ ...current, posts: contentEditsOf(SEED.posts, items) }),
+      keep({ ...current, posts: contentEditsOf(SEED.posts, items, keptVersion) }),
     ),
 
     summit: async () => current.summit ?? SEED.summit,

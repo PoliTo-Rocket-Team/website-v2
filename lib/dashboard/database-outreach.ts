@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -8,14 +9,18 @@ import type { ContentStore } from "@/lib/content/editor";
 import { versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { publicOutreach, type OutreachStore, type StoredOutreach, type SummitVersions } from "@/lib/outreach-editor";
+import { publicStorePhotoFiles, type PhotoFiles } from "@/lib/outreach-photos";
 import { postColumns, postFromColumns, summitColumns, summitFromColumns } from "@/lib/outreach-rows";
 import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag } from "@/lib/outreach-types";
+import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
 import { written } from "./write";
 
 // The database side of the Outreach content (issue #287): the editor's store
 // and the public read /outreach and its post pages make. Writes go through
 // runAuditQuery or runAuditBatch, so the audit triggers of migration 0028 log
 // who made them, then refresh the public read (.patterns/audited-mutations.md).
+// Uploaded post photos live in the public Blob store (issue #291); the
+// editor frees the files no post shows any more (lib/outreach-photos.ts).
 
 export const OUTREACH_CACHE_TAG = "outreach";
 
@@ -198,3 +203,8 @@ export const databaseOutreachStore: OutreachStore = {
     return written({ name, award: false });
   },
 };
+
+/** Uploaded post photos in this deployment's public Blob store, under `post-photos/`, each under a new name. */
+export function blobPhotoFiles(): PhotoFiles {
+  return publicStorePhotoFiles(ownPublicStoreHost(), { upload: uploadPublicFile, remove: deletePublicFile }, randomUUID);
+}

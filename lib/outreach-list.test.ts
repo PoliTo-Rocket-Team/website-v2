@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { publicVersion } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
+import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
 import { outreachRecord, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachStore } from "./outreach-editor";
 import { filterRows, newestRowsFirst, outreachRow } from "./outreach-list";
@@ -36,7 +36,7 @@ async function site(store: OutreachStore) {
 
 test("Unpublish keeps the post in the list as a draft and takes it off /outreach and its page; Delete removes it from both", async () => {
   const store = freshStore();
-  const editor = outreachEditor(admin, store);
+  const editor = outreachEditor(admin, store, dummyPhotoFiles);
   const items = (await editor.posts.list())!;
   const [first, second] = items;
   const firstSlug = slugOf(publicVersion(first.version)!);
@@ -68,8 +68,8 @@ test("Unpublish keeps the post in the list as a draft and takes it off /outreach
 
 test("only the site-content gate's viewers unpublish or delete", async () => {
   const store = freshStore();
-  const id = (await outreachEditor(admin, store).posts.list())![0].id;
-  const refused = outreachEditor(member, store);
+  const id = (await outreachEditor(admin, store, dummyPhotoFiles).posts.list())![0].id;
+  const refused = outreachEditor(member, store, dummyPhotoFiles);
   assert.equal((await refused.posts.unpublish(id)).ok, false);
   assert.equal((await refused.posts.remove(id)).ok, false);
   assert.equal((await site(store)).posts.length, outreachRecord.posts.length);
@@ -77,7 +77,7 @@ test("only the site-content gate's viewers unpublish or delete", async () => {
 
 test("the summit's Save draft leaves /outreach as it was, and Publish puts the edited summit on it", async () => {
   const store = freshStore();
-  const editor = outreachEditor(admin, store);
+  const editor = outreachEditor(admin, store, dummyPhotoFiles);
   const fields = summitFieldsOf(outreachRecord.feature);
   const edited = {
     ...fields,
@@ -113,7 +113,7 @@ test("the summit is refused without a title, an edition, or with one year twice"
 
 test("the list is newest first, and the Status filter reads a post with draft changes as Draft, as its pill does", async () => {
   const store = freshStore();
-  const editor = outreachEditor(admin, store);
+  const editor = outreachEditor(admin, store, dummyPhotoFiles);
   const [newest] = (await editor.posts.list())!;
   assert.ok((await editor.posts.save(newest.id, "save-draft", async (current) => ({ ok: true, value: { ...current!, lead: "Changed" } }))).ok);
   const rows = newestRowsFirst((await editor.posts.list())!.map((item) => outreachRow(item, String(item.id))));

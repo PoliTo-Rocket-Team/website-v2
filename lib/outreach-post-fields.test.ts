@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { editorVersion, type ContentItem } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
+import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
 import { awardPosts, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachEditor } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
@@ -28,7 +28,7 @@ function editorOverCookie(): { editor: OutreachEditor; shown: () => Promise<Retu
     },
   };
   const store = dummyOutreachStore(jar);
-  const editor = outreachEditor(admin, store);
+  const editor = outreachEditor(admin, store, dummyPhotoFiles);
   const shown = async () => publicOutreach({ ...importedOutreach(), posts: await store.posts.list(), tags: await store.tags() });
   return { editor, shown };
 }
