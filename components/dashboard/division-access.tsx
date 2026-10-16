@@ -263,22 +263,24 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
 
       {/* A team page: who to show, and in which department (board 71). */}
       {unit.kind === "team" && (
-        <div className="mt-5 flex flex-wrap items-center gap-2">
+        <div className="mt-5 flex">
           <Segmented
             label="Show people"
             value={accessTab}
             onChange={setAccessTab}
             options={ACCESS_TABS.map((tab) => ({ value: tab, label: ACCESS_TAB_LABELS[tab], count: inDepartment.filter((row) => inAccessTab(row, tab)).length }))}
-          />
-          {divisionOptions && (
-            <FilterMenu
-              label="Department"
-              allLabel={ALL_DEPARTMENTS_LABEL}
-              value={divisionTab}
-              onChange={setDivisionTab}
-              options={divisionOptions.flatMap((o) => (o.division === null ? [] : [{ value: o.division, label: o.label }]))}
-            />
-          )}
+          >
+            {divisionOptions && (
+              <FilterMenu
+                look="inset"
+                label="Department"
+                allLabel={ALL_DEPARTMENTS_LABEL}
+                value={divisionTab}
+                onChange={setDivisionTab}
+                options={divisionOptions.flatMap((o) => (o.division === null ? [] : [{ value: o.division, label: o.label }]))}
+              />
+            )}
+          </Segmented>
         </div>
       )}
 
