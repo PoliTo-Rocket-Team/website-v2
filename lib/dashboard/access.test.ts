@@ -49,7 +49,7 @@ test("the operations lead sees My applications only once they have applied, and 
 });
 
 /** Full access from each seat, with no scope row and no site-content access (issue #238). */
-const fullAccess = (seat: FullAccessSeat | null): ViewerStanding => ({ kind: "operations-lead", seat, siteContent: false });
+const fullAccess = (seat: FullAccessSeat | null): ViewerStanding => ({ kind: "operations-lead", seat, siteContent: false, approveOrders: false });
 
 test("the team leader, the operations lead and the IT lead reach every page of the team (issue #238)", () => {
   // My account is the applicant's page, and the Activity log is the IT lead's alone (below).
@@ -99,21 +99,46 @@ test("only the IT lead reaches the Activity log, and no sidebar lists it until t
 
 test("the Alumni page is for full admins and site-content access, never from a lead's role (issue #234)", () => {
   const reaches: readonly [ViewerStanding, boolean][] = [
-    [{ kind: "operations-lead", seat: "operations-lead", siteContent: false }, true],
-    [{ kind: "division-lead", siteContent: false }, false],
-    [{ kind: "division-lead", siteContent: true }, true],
-    [{ kind: "member", siteContent: false }, false],
-    [{ kind: "member", siteContent: true }, true],
-    [{ kind: "non-member", siteContent: false }, false],
+    [{ kind: "operations-lead", seat: "operations-lead", siteContent: false, approveOrders: false }, true],
+    [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
+    [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", siteContent: false, approveOrders: false }, false],
+    [{ kind: "member", siteContent: true, approveOrders: false }, true],
+    [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, reached] of reaches) {
     const listed = sidebarFor(viewer, withoutApplications).some((section) => section.items.some((item) => item.key === "alumni"));
     assert.equal(canReach(viewer, "alumni"), reached, JSON.stringify(viewer));
     assert.equal(listed, reached, JSON.stringify(viewer));
   }
-  assert.deepEqual(shape({ kind: "member", siteContent: true }, withoutApplications), [
+  assert.deepEqual(shape({ kind: "member", siteContent: true, approveOrders: false }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
     ["Team", ["Alumni"]],
+  ]);
+});
+
+test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue #270)", () => {
+  const holder: ViewerStanding = { kind: "member", siteContent: false, approveOrders: true };
+  assert.equal(canReach(holder, "orders"), true);
+  assert.deepEqual(shape(holder, withoutApplications), [
+    [null, ["Overview", "Team tree"]],
+    ["Team", ["Orders"]],
+  ]);
+  for (const key of ["positions", "applications", "members", "division-access", "alumni", "activity-log"] as const) {
+    assert.equal(canReach(holder, key), false, key);
+  }
+});
+
+test("a member with no \"Approve orders\" and no Orders access does not reach Orders (issue #270)", () => {
+  assert.equal(canReach(kindOnly("member"), "orders"), false);
+  assert.equal(canReach({ kind: "member", siteContent: true, approveOrders: false }, "orders"), false);
+  assert.equal(canReach(kindOnly("non-member"), "orders"), false);
+});
+
+test("a lead who also holds \"Approve orders\" keeps Orders where their role puts it (issue #270)", () => {
+  assert.deepEqual(shape({ kind: "division-lead", siteContent: false, approveOrders: true }, withoutApplications).at(-1), [
+    "My division",
+    ["Members", "Access", "Orders"],
   ]);
 });
 

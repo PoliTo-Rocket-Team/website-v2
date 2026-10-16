@@ -1,7 +1,8 @@
 // Who is looking at the dashboard (issue #141). Every page and the sidebar
 // decide what to show from the viewer's standing: their kind, plus the
-// site-content access the Alumni page reads (issue #234), plus, for full
-// access, which full-access seat they hold (issue #238). The access table in
+// site-content access the Alumni page reads (issue #234), plus the "Approve
+// orders" grant the Orders page reads (issue #270), plus, for full access,
+// which full-access seat they hold (issue #238). The access table in
 // ./access.ts says which standing reaches which page.
 
 import { divisionRoleOf, type DivisionRole, type RoleType } from "./team";
@@ -65,15 +66,21 @@ export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead", Flagge
 
 /**
  * What decides the dashboard pages a viewer reaches: their kind, and whether
- * they hold site-content access (a `website` scope row) on top of it. Someone
- * off the team holds none, whatever scope rows remain (issue #201). Full
+ * they hold site-content access (a `website` scope row) or "Approve orders"
+ * (the `team` row on `approve_orders`, issue #270) on top of it. Someone off
+ * the team holds neither, whatever scope rows remain (issue #201). Full
  * access is the `operations-lead` kind, and it says which seat gives it:
  * null when an `admin` or `org` scope row gives it and no seat does.
  */
 export type ViewerStanding =
-  | { readonly kind: "non-member"; readonly siteContent: false }
-  | { readonly kind: "operations-lead"; readonly seat: FullAccessSeat | null; readonly siteContent: boolean }
-  | { readonly kind: Exclude<ViewerKind, "non-member" | "operations-lead">; readonly siteContent: boolean };
+  | { readonly kind: "non-member"; readonly siteContent: false; readonly approveOrders: false }
+  | {
+      readonly kind: "operations-lead";
+      readonly seat: FullAccessSeat | null;
+      readonly siteContent: boolean;
+      readonly approveOrders: boolean;
+    }
+  | { readonly kind: Exclude<ViewerKind, "non-member" | "operations-lead">; readonly siteContent: boolean; readonly approveOrders: boolean };
 
 /**
  * Who a test developer looks as (issue #141): one of the five viewer kinds,
@@ -103,13 +110,13 @@ export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
 export function testDeveloperStanding(viewer: TestViewer): ViewerStanding {
   switch (viewer) {
     case "non-member":
-      return { kind: viewer, siteContent: false };
+      return { kind: viewer, siteContent: false, approveOrders: false };
     case "team-leader":
-      return { kind: "operations-lead", seat: "team-leader", siteContent: false };
+      return { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
     case "operations-lead":
-      return { kind: viewer, seat: "operations-lead", siteContent: false };
+      return { kind: viewer, seat: "operations-lead", siteContent: false, approveOrders: false };
     default:
-      return { kind: viewer, siteContent: false };
+      return { kind: viewer, siteContent: false, approveOrders: false };
   }
 }
 
@@ -122,11 +129,11 @@ export function testViewerOf(viewer: ViewerStanding): TestViewer {
 export function standingOf(viewer: ViewerStanding): ViewerStanding {
   switch (viewer.kind) {
     case "non-member":
-      return { kind: viewer.kind, siteContent: false };
+      return { kind: viewer.kind, siteContent: false, approveOrders: false };
     case "operations-lead":
-      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent };
+      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
     default:
-      return { kind: viewer.kind, siteContent: viewer.siteContent };
+      return { kind: viewer.kind, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
   }
 }
 
@@ -155,7 +162,11 @@ export function initialsOf(name: string): string {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
-/** `scopes.scope`. A `team` row is "Approve orders" (issue #233): it opens no page and changes no viewer kind. */
+/**
+ * `scopes.scope`. Once `unitRowsOf` has read the rows, a `team` row left is
+ * "Approve orders" (issue #233): it changes no viewer kind and opens the
+ * Orders page alone (issue #270).
+ */
 export type ScopeKind = "admin" | "org" | "department" | "division" | "website" | "team";
 
 /** One of a member's active roles, as the viewer reads it. */
@@ -228,13 +239,18 @@ export function ledDivisionIds(access: MemberAccess): number[] {
   return [...new Set(ids)];
 }
 
-/** A real account's standing: its viewer kind, its full-access seat, and site-content access from a `website` scope row. */
+/**
+ * A real account's standing: its viewer kind, its full-access seat,
+ * site-content access from a `website` scope row, and "Approve orders" from a
+ * `team` one (`unitRowsOf` leaves no other `team` row).
+ */
 export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const kind = viewerKindOf(access);
-  if (access === null || kind === "non-member") return { kind: "non-member", siteContent: false };
+  if (access === null || kind === "non-member") return { kind: "non-member", siteContent: false, approveOrders: false };
   const siteContent = access.scopes.includes("website");
-  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent };
-  return { kind, siteContent };
+  const approveOrders = access.scopes.includes("team");
+  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, approveOrders };
+  return { kind, siteContent, approveOrders };
 }
 
 /** A scope row as `readIdentity` reads it: which unit it opens. */
@@ -248,8 +264,9 @@ export type ScopeUnitRow = {
  * The scope rows as the units they open (issue #247). A `team` row on an
  * area is a grant across the whole team, so it stands for a `department` row
  * in every open department: it opens that area's pages there, and in any
- * department opened later. The other `team` row, "Approve orders", opens no
- * page and stays as it is; so does every other row.
+ * department opened later. The other `team` row, "Approve orders", is in no
+ * unit and stays as it is (it opens the Orders page, issue #270); so does
+ * every other row.
  */
 export function unitRowsOf(
   rows: readonly (ScopeUnitRow & { readonly target: string })[],

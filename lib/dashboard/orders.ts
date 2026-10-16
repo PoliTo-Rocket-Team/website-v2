@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ScopeKind } from "./viewer";
 
 // The Orders page (Dashboard v2 boards 61 to 61d, issue #172; boards 61m, 67,
 // 67b and 67m, issue #233): every purchase request in the team, what state
@@ -186,6 +187,68 @@ export function ordersPageFor(
   orders: readonly Order[],
 ): OrdersPage | null {
   return scope === null ? null : { scope, departments, orders };
+}
+
+/** One of the viewer's scope rows, as their Orders scope reads it. */
+export type OrdersScopeRow = {
+  readonly scope: ScopeKind;
+  readonly target: string;
+  readonly level: "view" | "edit";
+  readonly divisionId: number | null;
+  readonly deptId: number | null;
+};
+
+/** What a team member's Orders scope reads beside their scope rows. */
+export type OrdersViewer = {
+  /** Full access, the `operations-lead` kind (issue #238). */
+  readonly fullAccess: boolean;
+  readonly teamLeader: boolean;
+  /** The department a head's role holds at Can edit (board 65); null for anyone else. */
+  readonly headDepartment: OrderDepartment | null;
+};
+
+/**
+ * A team member's Orders scope (issue #233), or null when they hold no
+ * Orders access anywhere. Full access edits every order in the team (issue
+ * #238). A `division` or `department` row on `orders` (or on `all`) is access
+ * there, at its level; a head's role is Can edit across their department
+ * (board 65), and a `team` row on `orders` is access across the whole team
+ * (issue #247). Deciding comes from being the team leader, or from the `team`
+ * row on `approve_orders`, which is Orders access on its own (issue #270): it
+ * opens the page with no edits. Full access alone does not decide.
+ */
+export function ordersScopeOf(
+  viewer: OrdersViewer,
+  rows: readonly OrdersScopeRow[],
+  org: readonly OrgDepartmentUnits[],
+): OrdersScope | null {
+  const ordersRows = rows.filter((r) => (r.scope === "division" || r.scope === "department") && (r.target === "orders" || r.target === "all"));
+  const teamOrders = rows.filter((r) => r.scope === "team" && r.target === "orders");
+  const decides = decideRightOf({
+    teamLeader: viewer.teamLeader,
+    approveOrders: rows.some((r) => r.scope === "team" && r.target === "approve_orders"),
+  });
+  if (viewer.fullAccess || teamOrders.some((r) => r.level === "edit")) return { edits: [WHOLE_TEAM], decides };
+
+  type UnitEdit = Exclude<EditUnit, { kind: "team" }>;
+  const edits: UnitEdit[] = [];
+  const add = (unit: UnitEdit) => {
+    const key = (u: UnitEdit) => (u.kind === "division" ? `v${u.division.id}` : `d${u.department.id}`);
+    if (!edits.some((e) => key(e) === key(unit))) edits.push(unit);
+  };
+  if (viewer.headDepartment !== null) add({ kind: "department", department: viewer.headDepartment });
+  for (const r of ordersRows) {
+    if (r.level !== "edit") continue;
+    if (r.scope === "department") {
+      const department = org.find((d) => d.id === r.deptId);
+      if (department) add({ kind: "department", department: { id: department.id, name: department.name } });
+    } else {
+      const division = org.flatMap((d) => d.divisions).find((d) => d.id === r.divisionId);
+      if (division) add({ kind: "division", division });
+    }
+  }
+  if (viewer.headDepartment === null && ordersRows.length === 0 && teamOrders.length === 0 && decides === null) return null;
+  return { edits, decides };
 }
 
 /** Whether the viewer may edit or cancel this order: it belongs to a division or department they edit in. */
