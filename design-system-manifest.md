@@ -52,8 +52,9 @@ and code that cannot take a class (the `<html>` paint in `app/layout.tsx`, the h
 Rules:
 
 - Orange `accent` is the one brand colour. Use it for section eyebrows, hover text, the
-  Launch tag and the apply band. Do not add a second accent. The navbar has no Apply
-  pill any more: Apply is a link like the others (issue #119).
+  Launch tag, the award tag on the home Track record cards and the apply band. Do not add a
+  second accent. The navbar has no Apply pill any more: Apply is a link like the others
+  (issue #119).
 - Tags and status pills pair a `-soft` fill with the solid text colour: Launch = accent,
   Competition = warning, Outreach = success, Team = `white-10` with `prt-text` (HANDOFF
   board 05). Outreach tags are data, so the home Track record cards (`latest.tsx`) give the
@@ -170,8 +171,9 @@ Rules:
   use `prt-logo-white.svg`; never recolour or stretch the logo. Project cards use
   `project-cavour.webp`, `project-ves.webp`, `project-efesto.webp`; the apply band uses
   `apply-band.webp`; the footer uses the page sky tile. The navbar on phones and the menu use
-  `prt-mark-white.svg`. Photos use `next/image` with
-  `placeholder="blur"` from `news-blur.ts`.
+  `prt-mark-white.svg`. Photos use `next/image` with `placeholder="blur"` from the blur map
+  beside their component: Outreach photos, the home Track record ones included, go through
+  `components/outreach/photo.tsx` and `outreach-blur.ts`.
 - Reach for an existing `components/ui/` primitive before writing a new control. Toasts go
   through `sonner` (`app/layout.tsx`).
 - Dialogs on redesigned pages use the repo's Radix dialog (`components/ui/dialog`) for
