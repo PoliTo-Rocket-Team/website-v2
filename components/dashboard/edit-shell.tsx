@@ -100,6 +100,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   startHere,
   selected,
   onEdit,
+  onDeviceChange,
   tag,
   actions,
   children,
@@ -134,6 +135,8 @@ export function EditShell<Id extends string, Section extends string, Page extend
   /** The block the content type's panel is editing: outlined, with no chips (board 80b). */
   selected?: Id;
   onEdit: (section: Section) => void;
+  /** Told when Desktop | Phone changes, for a panel that edits the phone's copy in Phone (board 75c). */
+  onDeviceChange?: (device: EditDevice) => void;
   /** After the state pill: a tag the content type's whole editor carries (board 80: "Visual changes only"). */
   tag?: ReactNode;
   /** Before Save draft: the content type's own bar actions, each a BarButton (board 80: "Reset to team"). */
@@ -149,7 +152,11 @@ export function EditShell<Id extends string, Section extends string, Page extend
     [blocks, onEdit, startHere, selected],
   );
   const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
-  const devices = <DeviceToggle device={device} onChange={setDevice} />;
+  const changeDevice = (next: EditDevice) => {
+    setDevice(next);
+    onDeviceChange?.(next);
+  };
+  const devices = <DeviceToggle device={device} onChange={changeDevice} />;
   const phone = device === "phone";
   const ready = checklistDone(publishChecklist);
   const checklistId = useId();
@@ -395,31 +402,67 @@ export function EditableBlock({
 }
 
 /**
+ * The room a card in place keeps above it when it is scrolled into view: the
+ * pages the switch shows sit under the site's fixed navbar (64px, 72px from
+ * md, navbar.tsx), and the Edit card chip rises 20px above the card's top, so
+ * the card clears both and 12px more (board 75d draws the chip in full). It
+ * is a scroll margin, so the frame's own width picks the md value: Phone
+ * draws the phone navbar.
+ */
+const CARD_CLEARANCE = "scroll-mt-24 md:scroll-mt-[104px]";
+
+/**
+ * Scrolls the page in the frame so the edited card sits in the room under
+ * its clearance: centred there when it fits, its top at the clearance when it
+ * is taller. Centring it in the whole window put a tall card's top edge, and
+ * its chip, under the navbar. A card in a swipe row (Home below md) is
+ * brought in sideways first, to where the row snaps it. Only the frame's page
+ * and that row move: scrollIntoView would also scroll the dashboard around
+ * the frame, which in Phone hides the frame's top, chip and all.
+ */
+function bringIntoView(card: HTMLElement) {
+  const view = card.ownerDocument.defaultView;
+  if (view === null) return;
+  const row = card.parentElement;
+  if (row !== null && row.scrollWidth > row.clientWidth) {
+    const edge = row.getBoundingClientRect().left + (parseFloat(view.getComputedStyle(row).scrollPaddingLeft) || 0);
+    row.scrollLeft += card.getBoundingClientRect().left - edge;
+  }
+  const clearance = parseFloat(view.getComputedStyle(card).scrollMarginTop) || 0;
+  const slack = Math.max(0, (view.innerHeight - clearance - card.offsetHeight) / 2);
+  view.scrollTo({ top: view.scrollY + card.getBoundingClientRect().top - clearance - slack });
+}
+
+/**
  * One card on a page the switch shows (board 75d). The edited item's card is
  * outlined, with an "Edit card" chip that hands back to the content type, and
- * is scrolled into view when the page opens; every other card is dimmed.
- * `className` lays the card out where the page puts it; the card fills it.
+ * is scrolled into view below the page's navbar when the page opens; every
+ * other card is dimmed. `className` lays the card out where the page puts it;
+ * the card fills it. `outline` rounds the outline, 6px outside the card's own
+ * corners.
  */
 export function CardInPlace({
   edited,
   onEdit,
   className = "",
+  outline = "rounded-[18px]",
   children,
 }: {
   edited: boolean;
   onEdit: () => void;
   className?: string;
+  outline?: string;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (edited) ref.current?.scrollIntoView({ block: "center" });
+    if (edited && ref.current !== null) bringIntoView(ref.current);
   }, [edited]);
   if (!edited) return <div className={`opacity-40 ${className}`}>{children}</div>;
   return (
-    <div ref={ref} className={`relative ${className}`}>
+    <div ref={ref} className={`relative ${CARD_CLEARANCE} ${className}`}>
       {children}
-      <div aria-hidden className="pointer-events-none absolute -inset-1.5 z-10 rounded-[18px] border-2 border-accent" />
+      <div aria-hidden className={`pointer-events-none absolute -inset-1.5 z-10 border-2 border-accent ${outline}`} />
       <button
         type="button"
         onClick={onEdit}

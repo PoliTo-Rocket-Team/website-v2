@@ -1,34 +1,12 @@
-import { pageSlugs, projects, type PageSlug, type Project } from "@/lib/projects";
-import { cavour } from "./cavour";
-import { efesto } from "./efesto";
+// How the project page template (components/project-page/) reads a page
+// record: the numbered sections and the lists in order. The records
+// themselves are read off the projects' stored records
+// (lib/project-content/record.ts, issue #295).
+
 import type { GallerySection, LaunchLog, Plan, PlanStep, ProjectPageRecord, Reasons, Version, Versions } from "./types";
-import { ves } from "./ves";
 
 export type * from "./types";
 export { specRows } from "./types";
-
-const records = { cavour, ves, efesto } satisfies Record<PageSlug, ProjectPageRecord>;
-
-export function pageRecord(slug: PageSlug): ProjectPageRecord {
-  return records[slug];
-}
-
-/** The project's /projects entry: its name, index, texture. */
-export function projectOf(slug: PageSlug): Project {
-  const project = projects.find((p) => p.slug === slug);
-  if (!project) throw new Error(`No /projects entry for ${slug}`);
-  return project;
-}
-
-/** The project after this one; the last loops back to the first (Cavour → VES → Efesto → Cavour). */
-export function nextOf(slug: PageSlug): Project {
-  const at = pageSlugs.indexOf(slug);
-  return projectOf(pageSlugs[(at + 1) % pageSlugs.length]);
-}
-
-export function teaserOf(slug: PageSlug): string {
-  return records[slug].teaser;
-}
 
 /** A section after the name and design, with the number it shows. */
 export type NumberedSection = { num: string } & (

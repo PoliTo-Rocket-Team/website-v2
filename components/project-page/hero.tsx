@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { Hero } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
+import { stageStillOf, type OwnRocket } from "@/lib/rocket-model";
 import { CopyText, Pill } from "./parts";
 
 // Boards 23, 24 and 25 hero (1440): breadcrumb, the 128px name, intro left
@@ -23,7 +24,27 @@ const factLayout = (facts: Hero["facts"]) =>
     ? { grid: "md:grid-cols-3 md:gap-y-6 xl:grid-cols-6 xl:gap-y-0", size: "text-[17px]" }
     : { grid: "md:grid-cols-6", size: "text-[20px]" };
 
-export function ProjectHero({ project, hero }: { project: Project; hero: Hero }) {
+/**
+ * The panel's rocket slot: a still of the project's own model, or of the
+ * shared placeholder when it has none (lib/rocket-model.ts). The still is
+ * rendered for the desktop box; contain keeps the rocket whole and centred on
+ * a phone's shorter, narrower panel (cavour-assets.ts).
+ */
+function RocketStill({ own }: { own: OwnRocket | undefined }) {
+  const still = stageStillOf(own);
+  return (
+    <Image
+      src={still.src}
+      alt={still.alt}
+      fill
+      priority
+      sizes="(min-width: 768px) 1312px, 100vw"
+      className="object-contain"
+    />
+  );
+}
+
+export function ProjectHero({ project, hero }: { project: Pick<Project, "index" | "name" | "texture">; hero: Hero }) {
   const facts = factLayout(hero.facts);
   return (
     <section className="px-5 pt-[88px] md:px-16 md:pt-[164px]">
@@ -64,19 +85,7 @@ export function ProjectHero({ project, hero }: { project: Project; hero: Hero })
               sizes="(min-width: 768px) 1312px, 100vw"
               className="object-cover"
             />
-            {/* A still is rendered for the desktop box; contain keeps the
-                rocket whole and centred on a phone's shorter, narrower panel
-                (cavour-assets.ts). */}
-            {hero.visual.still && (
-              <Image
-                src={hero.visual.still.src}
-                alt={hero.visual.still.alt}
-                fill
-                priority
-                sizes="(min-width: 768px) 1312px, 100vw"
-                className="object-contain"
-              />
-            )}
+            {hero.visual.rocket && <RocketStill own={hero.visual.rocket.own} />}
             <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
               {hero.visual.caption}
             </p>

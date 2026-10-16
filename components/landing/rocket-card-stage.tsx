@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
-import { CAVOUR_CARD_POSTER } from "./cavour-assets";
+import { cardPosterOf, type RocketModel } from "@/lib/rocket-model";
 import { queueCardSetup, type SetupDone } from "./scene-schedule";
 import { webglSupported } from "./webgl";
 
@@ -60,11 +60,13 @@ function step(stage: Stage, e: StageEvent): Stage {
 const FADE_MS = 300;
 
 // The poster's drawn width: it fills the canvas box's height (1048px from md,
-// 593px below) at its own 480 x 1048 shape. See CAVOUR_CARD_POSTER.
+// 593px below) at its own 480 x 1048 shape. See CAVOUR_CARD_POSTER; every
+// model's card poster has the same box.
 const POSTER_SIZES = "(min-width: 768px) 480px, 272px";
 
 /**
- * Where a project card's rocket mounts, and when.
+ * Where a project card's rocket mounts, and when. `model` names the vehicle:
+ * the project's own, or the shared placeholder (lib/rocket-model.ts).
  *
  * From the first paint the card shows a poster: a still of the canvas's
  * finished frame, so a reader who scrolls down early never meets an empty
@@ -79,7 +81,7 @@ const POSTER_SIZES = "(min-width: 768px) 480px, 272px";
  * hidden canvas's context on purpose. Coming back starts from the poster and
  * queues a new canvas (issue #75).
  */
-export function RocketCardStage() {
+export function RocketCardStage({ model }: { model: RocketModel }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [stage, dispatch] = useReducer(step, POSTER);
   const [tuning, setTuning] = useState(false);
@@ -165,11 +167,12 @@ export function RocketCardStage() {
       }`}
     >
       {stage.kind !== "live" && (
-        <Image src={CAVOUR_CARD_POSTER} alt="" fill sizes={POSTER_SIZES} className="object-cover" />
+        <Image src={cardPosterOf(model)} alt="" fill sizes={POSTER_SIZES} className="object-cover" />
       )}
       {canvas !== null && (
         <RocketCard3D
           key={canvas}
+          model={model}
           tuning={tuning}
           onReadout={setReadout}
           onReady={() => {

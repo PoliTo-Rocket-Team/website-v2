@@ -37,6 +37,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Projects | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it first under Content |
 | Partners | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Alumni | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | FAQ | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
@@ -76,7 +77,7 @@ An admin column comes later. **Planned**, no issue yet.
   IT lead keep boards 40 and 46.
   - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
     (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
-    is Partners, Alumni, then FAQ. Each content page adds its own row there.
+    is Projects, Outreach, Partners, Alumni, FAQ, then Team page. Each content page adds its own row there.
   - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
     the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
     the orders waiting for a decision (one row, naming the oldest, with Review) and the approved
@@ -143,10 +144,10 @@ An admin column comes later. **Planned**, no issue yet.
   the page read one rule, and the page answers "not found" to everyone else.
   - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
     `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni, Partners and FAQ pages.
+    the Alumni, Projects, Outreach, Partners, FAQ and Team page pages.
 - **Content** is the team leader's sidebar group of the pages that change the public site:
-  Partners, Alumni, then FAQ (boards 72, 76 and 79). Everyone else who reaches them sees them under
-  Team. Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
+  Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80). Everyone else who
+  reaches them sees them under Team. Projects, Outreach, Partners, FAQ and Team page follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
   may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
   `lib/content/gate.ts`). See "6. Site content".
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
@@ -718,6 +719,95 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's question changes stay in their own cookie
   until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
   shows the questions as they were before the switch.
+
+### Projects page (#297, board 75)
+
+- The Projects page shows every stored project as its home card, drawn as Home draws it, at about
+  0.85 scale and three per row from 1024px, in site order. A draft shows its draft.
+- Over each card: a drag grip, the status (Published, Draft or Draft changes) and the "edited by"
+  line: when the project's versions were last saved and by whom ("Edited 12 Sep by Giulia
+  Rossi"). While its draft changes one part of the page only, the line names it ("Launch history
+  edited today by Marco Bianchi"). The database side reads it from the audit log; an anonymized
+  account names no one. Moving a card is not an edit.
+- Under each card: Edit page opens the project on its page (board 75b); View on site opens the
+  public page in a new tab, and only a published project has one.
+- Dragging a card, or the arrow keys on its grip, sets the site order. It is saved at once, and
+  the home Projects section, /projects and each page's next-project card follow it.
+- New project (#301), in the page header, asks for the name, the address and whether it is a
+  rocket or an engine. The name is at most 40 characters. The address follows the name until it
+  is typed in itself; it is lower-case letters and digits joined by single hyphens, at most 40
+  characters, and no other project may hold it in its published version or its draft. The server
+  refuses the same.
+- Create draft stores the project as a draft at the end of the site order and opens it in the
+  editor (board 75b). The draft has a line of starting copy in every section, a brand texture
+  picked by its address, and the placeholder rocket on its card and page. No public page shows
+  it, and its address has no page, until it is published.
+- Only the full admins and holders of site-content access reach the page or use New project;
+  everyone else gets the dashboard's not found.
+- Previews never touch a database: a test developer's new order and new projects stay in their
+  own cookie until they sign out, and their saves read as edited today by the person they signed
+  in as.
+
+### Project pages (#298 and #299, boards 75b and 75c)
+
+- A project opens on its real page under the shared edit bar ("Projects / Editing <project>"
+  and its state, Desktop | Phone, Save draft, Publish). Hovering a block outlines it with its name
+  and an Edit chip; the chip opens the "Edit <project>" panel with that section open.
+- The page switch (#300, board 75d) on the edit bar: Project page, Home and Projects list. Home
+  shows the home Projects section and the Projects list shows /projects, each with this project's
+  card drawn from the panel's fields in its place in the site order among the published projects,
+  outlined, with an "Edit card" chip; the other cards are dimmed. Edit card opens the panel's Card
+  section: the project's name (on the card, the page and the Projects list), the card's year,
+  status pill (its text, or for a rocket its flight count, and dark or light), description and
+  three specs. The card's number is its place in the site order and is changed only by dragging on
+  the Projects page. Save draft and Publish work as for the page: a published card change is on
+  Home and /projects. The /projects entry's own copy (years, description, six specs) is not edited
+  here.
+- The panel's sections: Top of the page (intro, status, dates, the visual's caption, one to six
+  key facts), Name story, Design story (with its parts, drawn top to bottom and numbered from the
+  bottom), Versions, Launch history (a rocket's only), Plan, Why (one to three reasons), Gallery
+  and the Next-project card line, which the previous project's page shows. The page redraws as
+  the editor types.
+- Versions: each version's name, phone tab, what it was for and its spec rows (an empty spec shows
+  a dash). Exactly one is highlighted; removing it is refused until another one is.
+- Launch history: one card per launch, opened one at a time: name, date, place, version, motor,
+  outcome, what happened, four numbers, the line and result the Projects list shows, the country
+  (a flight's), an optional award and up to two photos. On a flight the first two numbers are its
+  apogee and max speed. The phone card keeps three numbers: a flight keeps its apogee and max
+  speed, and Phone picks which other number it leaves out and edits the shorter labels. A shown
+  history keeps one launch at least; removing the last one is refused.
+- A launch published from here is on the project page, in the /projects log and in the header
+  counts (flights, countries, awards), and Cavour's home card counts its flights ("FLOWN ×3"),
+  with no code change.
+- Plan: each step's status (Done, Under way, Next, Later), an optional date, title and text. The
+  page orders them by status. One step is always under way: marking another under way marks the
+  old one done, and taking the status off the step under way, or removing it, is refused.
+- Gallery: the carousel's photos in order, each with its description for screen readers and an
+  optional caption; a placeholder slot stays until it is removed. A shown gallery keeps one photo
+  at least.
+- Launch and gallery photos upload the moment they are picked, as Outreach photos do: behind the
+  site-content gate, to the public store under `project-photos/`. A save refuses a photo this side
+  did not upload. A file is deleted once no version of any project shows it and the open editor
+  holds it no more: removing a photo or a whole launch deletes its file unless a saved version
+  shows it, and a save with Launch history or Gallery off keeps the files of the photos still in
+  the panel, so switching the section back on brings them back. Leaving the editor with photos
+  that are only in the panel (a section that is off, or an upload not yet saved) leaves their
+  files in the store, as Outreach does.
+- Desktop edits the desktop text. Phone edits the phone text of the fields that have one; an empty
+  phone field shows the desktop text, except the story texts, which always have their own.
+- An optional section (Versions, Launch history, Plan, Why, Gallery) has a show-on-page switch in its header. Off, the section
+  leaves the page and the numbers of the sections after it close up. Its text stays in the panel
+  while the editor is open, Save draft and Publish included, and switching it back on brings it
+  back. The saved page keeps no text for a section that is off, so closing or reloading the
+  editor loses it. A section that is off does not stop a save.
+- Save draft and Publish refuse an empty field and open its section. Save draft leaves the
+  published page as it is; Publish puts the changes on the public page.
+- Only the full admins and holders of site-content access open the editor or save; everyone else
+  gets the dashboard's not found.
+- Previews never touch a database: a test developer's project changes stay in their own cookie
+  until they sign out. The public pages there show the projects as they were before the switch.
+  A photo uploaded there is shown on the page while the editor is open, but the cookie holds
+  only a few kilobytes, so a save with a real photo is refused with the preview's "full" message.
 
 ### Team page visual layer (#283, epic #259)
 

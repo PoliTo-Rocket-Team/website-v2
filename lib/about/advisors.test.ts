@@ -60,12 +60,13 @@ test("the store starts with today's advisors, published, in today's order and st
   );
 });
 
-test("migration 0035 imports exactly the seed and is numbered after the trunk's latest, 0033, and the epic's 0034", () => {
+test("migration 0035 imports exactly the seed and is numbered right after the team page layer's 0034", () => {
   const migration = readFileSync(new URL("../../drizzle/0035_team_page_advisors.sql", import.meta.url), "utf8");
   assert.ok(migration.trimEnd().endsWith(advisorImportSql()), "regenerate the migration's import from advisorImportSql()");
   const journal = JSON.parse(readFileSync(new URL("../../drizzle/meta/_journal.json", import.meta.url), "utf8")) as { entries: { idx: number; tag: string }[] };
-  const last = journal.entries.at(-1)!;
-  assert.deepEqual(last, { ...last, idx: 35, tag: "0035_team_page_advisors" });
+  const at = journal.entries.findIndex((e) => e.tag === "0035_team_page_advisors");
+  assert.deepEqual(journal.entries[at], { ...journal.entries[at], idx: 35 });
+  assert.equal(journal.entries[at - 1]?.tag, "0034_team_page_layer");
 });
 
 test("add, edit, reorder and Principal / Specialist changes are drafts: the public page changes only on Publish", async () => {

@@ -18,6 +18,8 @@ import { advisorEditor } from "@/lib/about/advisors";
 import { dummyAdvisorStore, dummyTeamPageLayerStore, dummyTeamRoles, type DummyAdvisorEditsStore, type DummyTeamPageLayerEditsStore } from "./team-page";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { dummyOutreachStore, dummyPhotoFiles, NO_OUTREACH_EDITS_STORE, type DummyOutreachEditsStore } from "./outreach";
+import { projectEditor } from "@/lib/project-content/editor";
+import { dummyProjectHistory, dummyProjectStore, type DummyProjectEditsStore } from "./projects";
 import {
   checklistProgress,
   divisionShortName,
@@ -919,6 +921,7 @@ export function dummyDashboardData(
   outreachEdits: DummyOutreachEditsStore = NO_OUTREACH_EDITS_STORE,
   teamPageEdits: DummyTeamPageLayerEditsStore = NO_CONTENT_EDITS_STORE,
   advisorEdits: DummyAdvisorEditsStore = NO_CONTENT_EDITS_STORE,
+  projectEdits: DummyProjectEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
   if (viewer !== "alumni" && viewer !== "non-member" && teamEditsStore.current.movedToAlumni[personFor[viewer].id] !== undefined) {
@@ -1101,6 +1104,8 @@ export function dummyDashboardData(
     // The advisors live in their own cookie; End advising adds to the Alumni edits, on the dummy clock's year.
     teamAdvisors: advisorEditor(dummyViewer(viewer, holders), dummyAdvisorStore(advisorEdits, teamEdits), async () => DUMMY_ALUMNI_YEAR),
     outreach: outreachEditor(dummyViewer(viewer, holders), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
+    // Seen from the dummy team's moment; the test developer's saves are edits by the person they sign in as.
+    projects: projectEditor(dummyViewer(viewer, holders), dummyProjectStore(projectEdits), dummyProjectHistory(projectEdits, person?.name ?? null), dummyPhotoFiles),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {

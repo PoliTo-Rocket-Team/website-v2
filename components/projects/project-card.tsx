@@ -54,7 +54,7 @@ function TexturePanel({ project }: { project: Project }) {
         />
         {project.slug === "cavour" && (
           <div className="pointer-events-none absolute left-[calc(50%-16px)] top-[calc(50%+12px)] h-[1048px] w-[420px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[53deg] scale-[0.62] md:left-1/2 md:top-1/2 md:scale-100">
-            <RocketCardStage />
+            <RocketCardStage model="cavour" />
           </div>
         )}
       </div>
@@ -73,18 +73,14 @@ function Facts({ project }: { project: Project }) {
         <StatusPill status={statusOf(project)} />
       </div>
       <h2 id={`project-${project.slug}`} className="mt-3 text-[30px] font-extrabold leading-none tracking-[-0.02em] md:mt-5 md:text-[48px]">
-        {project.href ? (
-          // Stretched link: its ::after covers the whole card, so the card is
-          // the target while the name stays the link's only text.
-          <Link
-            href={project.href}
-            className="outline-none after:absolute after:inset-0 after:rounded-[inherit] focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-4 focus-visible:after:outline-accent"
-          >
-            {project.name}
-          </Link>
-        ) : (
-          project.name
-        )}
+        {/* Stretched link: its ::after covers the whole card, so the card is
+            the target while the name stays the link's only text. */}
+        <Link
+          href={project.href}
+          className="outline-none after:absolute after:inset-0 after:rounded-[inherit] focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-4 focus-visible:after:outline-accent"
+        >
+          {project.name}
+        </Link>
       </h2>
       <p className="mt-3 text-[13px] leading-[20px] text-text-2 md:mt-4 md:text-[16px] md:leading-[24px]">
         <Text copy={project.description} />
@@ -132,7 +128,7 @@ export function ProjectCard({ project }: { project: Project }) {
   return (
     <article
       aria-labelledby={`project-${project.slug}`}
-      className={`glass-info relative rounded-3xl ${project.href ? "glass-linked" : ""}`}
+      className="glass-info glass-linked relative rounded-3xl"
     >
       <div className="p-3.5 md:p-12 lg:grid lg:grid-cols-[559fr_606fr] lg:items-center lg:gap-12">
         <TexturePanel project={project} />

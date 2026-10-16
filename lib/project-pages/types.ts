@@ -1,8 +1,11 @@
 import type { FilledGallery } from "@/components/gallery/items";
+import type { PhotoSrc } from "@/lib/outreach-types";
 import type { Award, Copy } from "@/lib/projects";
+import type { OwnRocket } from "@/lib/rocket-model";
 
 // One project page as data: every /projects/<slug> page is one of these
-// records drawn by the same components (components/project-page/). A section
+// records drawn by the same components (components/project-page/), read off
+// the project's stored record (lib/project-content/record.ts). A section
 // the project has no data for is an absent key, never an empty value, so the
 // page leaves it out; the section numbers follow the sections that are there.
 
@@ -32,10 +35,12 @@ export type Hero = {
   status: string;
   dates: string;
   /**
-   * The panel on the project's texture. Without a `still` it shows the
-   * texture alone; a project with no visual at all leaves the panel out.
+   * The panel on the project's texture. Its rocket slot draws a still of the
+   * project's `own` model, or of the shared placeholder when it has none
+   * (lib/rocket-model.ts). Without a `rocket` it shows the texture alone; a
+   * project with no visual at all leaves the panel out.
    */
-  visual?: { caption: string; still?: { src: string; alt: string } };
+  visual?: { caption: string; rocket?: { own?: OwnRocket } };
   facts: KeyFacts;
 };
 
@@ -98,6 +103,12 @@ export type Versions = {
 
 export type Outcome = "nominal" | "recovery-failed" | "did-not-fly";
 
+/** A photo of a campaign: a file uploaded from the dashboard (lib/outreach-photos.ts) and what it shows, for assistive tech. */
+export type LaunchPhoto = { src: PhotoSrc; alt: string };
+
+/** A launch card draws two photo slots, so it holds one or two photos; with none the key is absent and the slots show the texture. */
+export type LaunchPhotos = readonly [LaunchPhoto] | readonly [LaunchPhoto, LaunchPhoto];
+
 /** One campaign on the launch history, as the page draws it. */
 export type LogEntry = {
   date: string;
@@ -111,6 +122,7 @@ export type LogEntry = {
   stats: readonly [Stat, Stat, Stat, Stat];
   /** The phone card keeps three numbers, with shorter labels. */
   phoneStats: readonly [Stat, Stat, Stat];
+  photos?: LaunchPhotos;
 };
 
 export type LaunchLog = { title: string; entries: readonly [LogEntry, ...LogEntry[]] };
@@ -138,7 +150,7 @@ export type Reasons = {
 
 export type GallerySection = { title: string; items: FilledGallery };
 
-/** One project's page. The registry (index.ts) keys it by the slug of its /projects entry. */
+/** One project's page, as `pageRecordOf` (lib/project-content/record.ts) reads it off the stored record. */
 export type ProjectPageRecord = {
   /** The page's meta description. */
   description: string;

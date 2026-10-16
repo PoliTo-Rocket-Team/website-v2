@@ -61,6 +61,9 @@ export const TEST_DEVELOPER_ADVISORS_COOKIE = "prt_test_developer_advisors";
 /** What a test developer changed on the Outreach posts, summit and tags (lib/dummy-data/outreach.ts); cleared on sign out. Its own cookie, as the questions have. */
 export const TEST_DEVELOPER_OUTREACH_COOKIE = "prt_test_developer_outreach";
 
+/** What a test developer changed on the projects (lib/dummy-data/projects.ts); cleared on sign out. Its own cookie, as the questions have. */
+export const TEST_DEVELOPER_PROJECTS_COOKIE = "prt_test_developer_projects";
+
 /**
  * Which own applications the test developer starts with (lib/dummy-data/own.ts):
  * "none" or "withdrawn" after a sign-in with that `applications` value, absent otherwise.
@@ -150,5 +153,6 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url, TEST_DEVELOPER_TEAM_PAGE_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_ADVISORS_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_OUTREACH_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_PROJECTS_COOKIE),
   );
 }
