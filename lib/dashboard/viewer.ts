@@ -57,6 +57,12 @@ export type FullAccessSeat = (typeof FULL_ACCESS_SEATS)[number];
  */
 export type FlaggedSeat = Exclude<FullAccessSeat, "team-leader">;
 
+/** The seat each `roles.full_access` value flags. */
+export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead", FlaggedSeat>> = {
+  operations_lead: "operations-lead",
+  it_lead: "it-lead",
+};
+
 /**
  * What decides the dashboard pages a viewer reaches: their kind, and whether
  * they hold site-content access (a `website` scope row) on top of it. Someone
@@ -70,18 +76,46 @@ export type ViewerStanding =
   | { readonly kind: Exclude<ViewerKind, "non-member" | "operations-lead">; readonly siteContent: boolean };
 
 /**
- * A test developer holds no scope rows, so their standing is their kind
- * alone; the operations-lead test developer sits in the operations lead's seat.
+ * Who a test developer looks as (issue #141): one of the five viewer kinds,
+ * or the team leader (issue #247), who has full access like the operations
+ * lead but sits in the team leader's seat, so decides orders and gives
+ * "Approve orders".
  */
-export function testDeveloperStanding(kind: ViewerKind): ViewerStanding {
-  switch (kind) {
+export const TEST_VIEWERS = ["team-leader", ...VIEWER_KINDS] as const;
+export type TestViewer = (typeof TEST_VIEWERS)[number];
+
+export const TEST_VIEWER_LABELS: Readonly<Record<TestViewer, string>> = { "team-leader": "Team leader", ...VIEWER_KIND_LABELS };
+
+export function isTestViewer(value: unknown): value is TestViewer {
+  return typeof value === "string" && (TEST_VIEWERS as readonly string[]).includes(value);
+}
+
+/** The viewer kind a test viewer is: the team leader is full access, the `operations-lead` kind. */
+export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
+  return viewer === "team-leader" ? "operations-lead" : viewer;
+}
+
+/**
+ * A test developer holds no scope rows, so their standing is who they look
+ * as alone: the operations-lead test developer sits in the operations lead's
+ * seat, the team-leader one in the team leader's.
+ */
+export function testDeveloperStanding(viewer: TestViewer): ViewerStanding {
+  switch (viewer) {
     case "non-member":
-      return { kind, siteContent: false };
+      return { kind: viewer, siteContent: false };
+    case "team-leader":
+      return { kind: "operations-lead", seat: "team-leader", siteContent: false };
     case "operations-lead":
-      return { kind, seat: "operations-lead", siteContent: false };
+      return { kind: viewer, seat: "operations-lead", siteContent: false };
     default:
-      return { kind, siteContent: false };
+      return { kind: viewer, siteContent: false };
   }
+}
+
+/** The test viewer a standing shows as in View as: the team leader's seat is its own entry. */
+export function testViewerOf(viewer: ViewerStanding): TestViewer {
+  return seatOf(viewer) === "team-leader" ? "team-leader" : viewer.kind;
 }
 
 /** The standing alone, out of anything that carries one (an identity, a viewer). */
@@ -209,6 +243,24 @@ export type ScopeUnitRow = {
   readonly divisionId: number | null;
   readonly deptId: number | null;
 };
+
+/**
+ * The scope rows as the units they open (issue #247). A `team` row on an
+ * area is a grant across the whole team, so it stands for a `department` row
+ * in every open department: it opens that area's pages there, and in any
+ * department opened later. The other `team` row, "Approve orders", opens no
+ * page and stays as it is; so does every other row.
+ */
+export function unitRowsOf(
+  rows: readonly (ScopeUnitRow & { readonly target: string })[],
+  openDepartmentIds: readonly number[],
+): ScopeUnitRow[] {
+  return rows.flatMap((row): ScopeUnitRow[] =>
+    row.scope === "team" && row.target !== "approve_orders"
+      ? openDepartmentIds.map((deptId) => ({ scope: "department", divisionId: null, deptId }))
+      : [{ scope: row.scope, divisionId: row.divisionId, deptId: row.deptId }],
+  );
+}
 
 /** An active role as `readIdentity` reads it: its type, its division, and its department. */
 export type ScopedRole = {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { VIEWER_KINDS } from "@/lib/dashboard/viewer";
+import { TEST_VIEWERS } from "@/lib/dashboard/viewer";
 import { dummyNavViewer } from "@/lib/dummy-data";
 import { parseNavViewer, type NavViewer } from "./nav-viewer-shape";
 
@@ -48,7 +48,7 @@ test("nobody signed in, or an answer that is not a whole viewer, gives null", ()
 });
 
 test("every test developer's answer survives the trip through /api/viewer", () => {
-  for (const kind of VIEWER_KINDS) {
+  for (const kind of TEST_VIEWERS) {
     const viewer = dummyNavViewer(kind);
     assert.deepEqual(parseNavViewer(JSON.parse(JSON.stringify({ viewer }))), viewer, kind);
     assert.equal(viewer.session, "test-developer", kind);

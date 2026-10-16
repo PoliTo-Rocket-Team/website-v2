@@ -1,4 +1,4 @@
-import { VIEWER_KINDS, VIEWER_KIND_LABELS, type ViewerKind } from "@/lib/dashboard/viewer";
+import { TEST_VIEWER_LABELS, TEST_VIEWERS, type TestViewer } from "@/lib/dashboard/viewer";
 import { testDeveloperOn, testDeveloperSignInHref } from "@/lib/test-developer";
 
 // The "Sign in as test developer" entry on /login (issue #141): one ghost
@@ -24,7 +24,7 @@ export function TestDeveloperSignInSpace() {
 const PILL =
   "flex h-9 items-center justify-center rounded-full border border-white-10 px-3 text-[13px] text-text-2 transition-colors duration-300 ease-out hover:border-border-strong hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-function Entry({ viewerHref }: { viewerHref: ((kind: ViewerKind) => string) | null }) {
+function Entry({ viewerHref }: { viewerHref: ((kind: TestViewer) => string) | null }) {
   const space = viewerHref === null;
   return (
     <section
@@ -41,13 +41,13 @@ function Entry({ viewerHref }: { viewerHref: ((kind: ViewerKind) => string) | nu
         Sign in as test developer
       </h2>
       <ul className="mt-3 grid grid-cols-2 gap-2">
-        {VIEWER_KINDS.map((kind) => (
+        {TEST_VIEWERS.map((kind) => (
           <li key={kind}>
             {space ? (
-              <span className={PILL}>{VIEWER_KIND_LABELS[kind]}</span>
+              <span className={PILL}>{TEST_VIEWER_LABELS[kind]}</span>
             ) : (
               <a href={viewerHref(kind)} className={PILL}>
-                {VIEWER_KIND_LABELS[kind]}
+                {TEST_VIEWER_LABELS[kind]}
               </a>
             )}
           </li>

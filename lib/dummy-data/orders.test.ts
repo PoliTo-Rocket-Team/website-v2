@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import type { TestViewer } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
 import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
@@ -9,7 +9,7 @@ import { orders } from "./orders";
 // The Orders page on a preview (issue #233): who sees which orders, and the
 // writes the server refuses, checked through the data interface the pages use.
 
-function data(kind: ViewerKind) {
+function data(kind: TestViewer) {
   return dummyDashboardData(
     kind,
     { current: dummyRecruitmentOf(undefined), save: async () => {} },
@@ -68,4 +68,31 @@ test("the server refuses a decision from a lead or a head, and Approve orders fr
     assert.equal((await data(kind).decideOrder(waitingIn(1).id, { kind: "approve" })).ok, false, kind);
     assert.equal((await data(kind).setApproveOrders({ personId: 6, holds: true })).ok, false, kind);
   }
+});
+
+test("on a preview the team leader decides a waiting order and marks an approved one as ordered (boards 70b and 70c)", async () => {
+  const leader = data("team-leader");
+  const page = (await leader.orders())!;
+  assert.equal(page.scope.decides, "team-leader");
+  const approved = await leader.decideOrder(waitingIn(1).id, { kind: "approve" });
+  assert.ok(approved.ok && approved.value.status === "approved" && approved.value.answer.byYou);
+  const stored = orders.find((o) => o.status === "approved")!;
+  const marked = await leader.markOrdered(stored.id);
+  assert.ok(marked.ok && marked.value.status === "ordered");
+  // Only from Approved: an ordered or rejected one stays as it is.
+  assert.equal((await leader.markOrdered(orders.find((o) => o.status === "ordered")!.id)).ok, false);
+  assert.equal((await leader.markOrdered(orders.find((o) => o.status === "rejected")!.id)).ok, false);
+  // The operations lead has full access but does not decide.
+  assert.equal((await data("operations-lead").markOrdered(stored.id)).ok, false);
+});
+
+test("on a preview the team leader's Access page gives Approve orders, and the operations lead's does not", async () => {
+  const leader = (await data("team-leader").divisionAccess())!;
+  assert.equal(leader.approveOrders.canGive, true);
+  assert.ok(leader.approveOrders.holders.length > 0);
+  assert.ok(leader.roleAccess.some((r) => r.place.kind === "team"));
+  const operations = (await data("operations-lead").divisionAccess())!;
+  assert.equal(operations.approveOrders.canGive, false);
+  assert.equal((await data("operations-lead").saveAccess({ personId: 5, where: "team", areas: {}, approveOrders: true })).ok, false);
+  assert.equal((await data("team-leader").saveAccess({ personId: 5, where: "team", areas: {}, approveOrders: true })).ok, true);
 });
