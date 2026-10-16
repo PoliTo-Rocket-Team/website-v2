@@ -28,6 +28,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Partners | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
@@ -58,7 +59,7 @@ An admin column comes later. **Planned**, no issue yet.
   IT lead keep boards 40 and 46.
   - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
     (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
-    is Alumni. Each content page adds its own row there.
+    is Partners, then Alumni. Each content page adds its own row there.
   - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
     the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
     the orders waiting for a decision (one row, naming the oldest, with Review), the approved
@@ -121,7 +122,12 @@ An admin column comes later. **Planned**, no issue yet.
   the page read one rule, and the page answers "not found" to everyone else.
   - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
     `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni page.
+    the Alumni and Partners pages.
+- **Content** is the team leader's sidebar group of the pages that change the public site:
+  Partners, then Alumni (boards 72 and 76). Everyone else who reaches them sees them under Team.
+  Partners follows the Alumni rule: the full admins, and anyone with site-content access. Whoever
+  may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
+  `lib/content/gate.ts`). See "6. Site content".
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -494,3 +500,29 @@ and 67m).
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and
   tables become stacked cards.
+
+## 6. Site content
+
+These rules come from #256 (boards 76 and 76b). Partners is the first content editor; Outreach,
+Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
+
+- Every content item keeps the version the public site shows and, beside it, an optional working
+  draft. "Save draft" never reaches the public site; "Publish" makes the draft the public version.
+  A new item saved as a draft is not on the site at all.
+- The list shows Published or Draft. The panel says "Draft changes" for a published item with a
+  draft.
+- Partners are grouped Main, then Media, each with its count. Dragging a row, or Move up and Move
+  down in its menu, sets its place within its tier; /partners and the home logo strip follow that
+  order.
+- While a side panel is open on a screen 1280px or wider, the website column and the drag grip
+  are hidden and the logo box narrows, so names and one lines keep their room (#244). A row still
+  drags by itself, and its menu still moves it.
+- The panel enforces the text limits of `PARTNER_TEXT_LIMITS` (one line 80, about 220, support
+  160, counted as characters, so "ò" is one) with a live counter, and the server refuses a text
+  over its limit.
+- A logo is an 8-bit PNG of at most 1 MB. It is measured on upload: one too dark for the page is
+  saved with the dark flag, and the panel and the public pages draw it white.
+- Remove asks "are you sure" first. It removes the partner and its draft at once.
+- Previews never touch a database: a test developer's partner changes stay in a cookie in their
+  own browser until they sign out, and a logo they upload is not kept. The public pages there show
+  the partners as they were before the switch.

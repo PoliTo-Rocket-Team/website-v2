@@ -4,7 +4,8 @@ import type { PartnerLogo as Logo } from "@/lib/partners";
 // A partner's logo at a fixed drawn height, in full colour. A logo the
 // luminance check measured too dark for the page (`darkLogo`) is drawn all
 // white by a filter: no plate behind it and no recoloured file (Huey, issue
-// #107).
+// #107). A logo uploaded in the dashboard (issue #256) is a public Blob URL,
+// served as it is: next/image would need every store host configured.
 
 /** Drawn heights in px for each logo kind: [phone, from md]. */
 export type LogoHeights = Record<Logo["kind"], readonly [number, number]>;
@@ -37,6 +38,7 @@ export function PartnerLogo({
       width={logo.width}
       height={logo.height}
       sizes={logoSizes(logo, heights, maxWidth)}
+      unoptimized={!logo.src.startsWith("/")}
       className={`w-auto object-contain ${logo.darkLogo ? "brightness-0 invert" : ""} ${className}`}
     />
   );

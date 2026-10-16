@@ -13,8 +13,10 @@ import {
   type DummyRecruitmentStore,
 } from "@/lib/dummy-data/recruitment";
 import { parseDummyState, serializeDummyState, type DummyStateStore } from "@/lib/dummy-data/state";
+import { parsePartnerEdits, serializePartnerEdits, type DummyPartnerEditsStore } from "@/lib/dummy-data/partners";
 import {
   TEST_DEVELOPER_APPLICATIONS_COOKIE,
+  TEST_DEVELOPER_CONTENT_COOKIE,
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_COOKIE_MAX_AGE_S,
   TEST_DEVELOPER_EDITS_COOKIE,
@@ -45,6 +47,7 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
         dummyTeamEditsIn(jar),
         dummyOwnIn(jar),
         ownApplicationsStartOf(jar.get(TEST_DEVELOPER_APPLICATIONS_COOKIE)?.value),
+        dummyPartnerEditsIn(jar),
       ),
       true,
     );
@@ -93,6 +96,14 @@ function dummyTeamEditsIn(jar: Jar): TeamEditsStore {
   return {
     current: parseEdits(jar.get(TEST_DEVELOPER_EDITS_COOKIE)?.value),
     save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_EDITS_COOKIE, serializeEdits(next)),
+  };
+}
+
+/** Changes to the partners (issue #256, lib/dummy-data/partners.ts); the public pages never read them. */
+function dummyPartnerEditsIn(jar: Jar): DummyPartnerEditsStore {
+  return {
+    current: parsePartnerEdits(jar.get(TEST_DEVELOPER_CONTENT_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_CONTENT_COOKIE, serializePartnerEdits(next)),
   };
 }
 

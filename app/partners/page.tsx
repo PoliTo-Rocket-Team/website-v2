@@ -6,6 +6,7 @@ import { PageSky } from "@/components/landing/page-sky";
 import { BecomePartner } from "@/components/partners/become-partner";
 import { PartnerCard } from "@/components/partners/partner-card";
 import { partnerStats, partnersOf, partnersPage, type Partner } from "@/lib/partners";
+import { publishedPartners } from "@/lib/partners-public";
 
 export const metadata: Metadata = {
   title: "Partners · PoliTo Rocket Team",
@@ -14,18 +15,20 @@ export const metadata: Metadata = {
 
 // Boards 31 (desktop), 31b (the card at rest and on hover) and 31m (phone):
 // the header and its figures (2 x 2 on phones), the main partners in three
-// columns, the media partners, then "Become a partner". Every partner comes
-// from lib/partners.ts, the record the landing logo strip reads too. No
-// apply band on this page (issue #107): the footer sits in the sky.
-export default function PartnersPage() {
+// columns, the media partners, then "Become a partner". The partners are the
+// published ones, in the site order the dashboard sets (issue #256), as the
+// landing logo strip reads them. No apply band on this page (issue #107): the
+// footer sits in the sky.
+export default async function PartnersPage() {
+  const partners = await publishedPartners();
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
         <main className="pb-section pt-16 md:pt-[72px]">
-          <PageHeader {...partnersPage.header} stats={partnerStats()} statsOnPhone="two-by-two" />
-          <PartnerGroup title={partnersPage.mainTitle} partners={partnersOf("main")} />
-          <PartnerGroup title={partnersPage.mediaTitle} partners={partnersOf("media")} />
+          <PageHeader {...partnersPage.header} stats={partnerStats(partners)} statsOnPhone="two-by-two" />
+          <PartnerGroup title={partnersPage.mainTitle} partners={partnersOf(partners, "main")} />
+          <PartnerGroup title={partnersPage.mediaTitle} partners={partnersOf(partners, "media")} />
           <BecomePartner />
         </main>
         <LandingFooter inSky />

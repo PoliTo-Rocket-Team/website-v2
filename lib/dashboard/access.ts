@@ -102,6 +102,17 @@ export const DASHBOARD_PAGES = [
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
   },
   {
+    key: "partners",
+    label: "Partners",
+    href: "/dashboard/partners",
+    // Boards 76 and 76b (issue #256): the Alumni rule (maySiteContent,
+    // lib/content/gate.ts), placed as Alumni is: under Content for the team
+    // leader, ahead of Alumni as board 76 lists them.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    seatPlace: { "team-leader": "content" },
+  },
+  {
     key: "alumni",
     label: "Alumni",
     href: "/dashboard/alumni",

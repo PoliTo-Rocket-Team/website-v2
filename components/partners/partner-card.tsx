@@ -41,7 +41,7 @@ const swap = "transition-opacity duration-300 ease-out motion-reduce:transition-
 function Story({ story }: { story: PartnerStory }) {
   return (
     <div className="space-y-2 text-[14px] leading-[1.55]">
-      <p className="text-text-2">{story.about}</p>
+      {story.about !== undefined && <p className="text-text-2">{story.about}</p>}
       {story.support !== undefined && <p className="text-prt-text">{story.support}</p>}
     </div>
   );

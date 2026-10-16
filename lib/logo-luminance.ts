@@ -22,11 +22,13 @@ const MIN_CONTRAST = 3;
  */
 export const DARK_LOGO_THRESHOLD = MIN_CONTRAST * (hexLuminance(brand.ground) + 0.05) - 0.05;
 
-export type LogoLuminance = { luminance: number; dark: boolean };
+/** The measurement, with the file's own pixel size read on the way. */
+export type LogoLuminance = { luminance: number; dark: boolean; width: number; height: number };
 
 export function measureLogo(png: Uint8Array): LogoLuminance {
-  const luminance = alphaWeightedLuminance(decodePng(png));
-  return { luminance, dark: luminance < DARK_LOGO_THRESHOLD };
+  const pixels = decodePng(png);
+  const luminance = alphaWeightedLuminance(pixels);
+  return { luminance, dark: luminance < DARK_LOGO_THRESHOLD, width: pixels.width, height: pixels.height };
 }
 
 function relativeLuminance(r: number, g: number, b: number): number {
