@@ -97,6 +97,12 @@ export type TeamEdits = {
   readonly divisions: Readonly<Record<number, DummyDivisionEdit>>;
   /** Departments created, edited or closed (issue #251), by id. */
   readonly departments: Readonly<Record<number, DummyDepartmentEdit>>;
+  /**
+   * People a closed department's "Become an advisor" made advisors (Owner
+   * decision, 2026-10-16): each holds one Advisor role in no department and
+   * no division, as the database starts it.
+   */
+  readonly advisorRoles: readonly number[];
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -111,6 +117,7 @@ export const NO_EDITS: TeamEdits = {
   details: {},
   divisions: {},
   departments: {},
+  advisorRoles: [],
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -313,6 +320,9 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     details: readDetails(raw.details),
     divisions: entriesOf(raw.divisions, readDivision),
     departments: entriesOf(raw.departments, readDepartment),
+    advisorRoles: Array.isArray(raw.advisorRoles)
+      ? raw.advisorRoles.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)
+      : [],
   };
 }
 

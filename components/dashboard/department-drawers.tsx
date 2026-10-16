@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Building2, ChevronDown, Info, Lock, Pencil, Undo2 } from "lucide-react";
+import { Building2, ChevronDown, Lock, Pencil, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { closeDepartment, createDepartment, saveDepartment } from "@/app/dashboard/team-actions";
 import {
@@ -11,10 +11,12 @@ import {
   planDepartmentClose,
   storedDepartmentName,
   type DivisionFate,
+  type HeadOutcome,
 } from "@/lib/dashboard/department-edit";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { divisionLabel, type OrgChart } from "@/lib/dashboard/team";
 import type { StructureDepartment, StructureDivision, TeamStructure } from "@/lib/dashboard/team-structure";
+import { initialsOf } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PeoplePicker } from "./division-drawer";
@@ -453,6 +455,13 @@ function DivisionRow({ division, open, onToggle }: { division: StructureDivision
 /** A division's choice on Close department: move (to a department, once picked) or close. */
 type Fate = { readonly action: "move"; readonly to: number | null } | { readonly action: "close" };
 
+/** One option of a two-way choice on Close department (board 77f): the picked one filled, the other plain. */
+function choiceClass(current: boolean): string {
+  return `flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
+    current ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 enabled:hover:text-prt-text"
+  } disabled:cursor-not-allowed disabled:text-dim`;
+}
+
 /** Everyone in the division, those waiting for their NDA included: a division with anyone in it can only move. */
 function inDivision(division: StructureDivision): number {
   return division.size + (division.page?.waiting.length ?? 0);
@@ -460,8 +469,9 @@ function inDivision(division: StructureDivision): number {
 
 /**
  * Board 77f: each division moves to another department or, when empty,
- * closes; Close department stays disabled until every division has a
- * choice. The head stays on the team.
+ * closes, and the head becomes an advisor or leaves the team, with neither
+ * picked at first (Owner decision, 2026-10-16). Close department stays
+ * disabled until every division and the head have a choice.
  */
 function CloseDepartment({
   open,
@@ -477,9 +487,11 @@ function CloseDepartment({
   const [fates, setFates] = useState<Readonly<Record<number, Fate>>>(() =>
     Object.fromEntries(department.divisions.flatMap((d) => (inDivision(d) > 0 ? [[d.id, { action: "move", to: null } satisfies Fate]] : []))),
   );
+  const [headOutcome, setHeadOutcome] = useState<HeadOutcome | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const others = structure.departments.filter((d) => d.id !== department.id);
+  const { head } = department;
 
   const sent: DivisionFate[] = department.divisions.flatMap((d): DivisionFate[] => {
     const fate = fates[d.id];
@@ -491,13 +503,14 @@ function CloseDepartment({
     actor: { kind: "team" },
     org: orgOf(structure),
     departmentId: department.id,
-    close: { divisions: sent },
+    close: { divisions: sent, head: headOutcome },
     inIt: Object.fromEntries(department.divisions.map((d) => [d.id, inDivision(d)])),
+    headIds: head ? [head.id] : [],
   });
 
   const confirm = () =>
     startTransition(async () => {
-      const result = await closeDepartment(department.id, { divisions: sent });
+      const result = await closeDepartment(department.id, { divisions: sent, head: headOutcome });
       if (!result.ok) {
         toast.error("Could not close the department", { description: result.error });
         return;
@@ -512,7 +525,8 @@ function CloseDepartment({
     const label = divisionLabel(department.divisions.find((d) => d.id === f.divisionId)?.name ?? "");
     return f.action === "move" ? `${label} moves to ${nameOf(f.to)}, with its people, leads and open positions.` : `${label} closes, and its open positions close.`;
   });
-  if (department.head) lines.push(`${department.head.name} stops being Head of ${department.name} and stays on the team.`);
+  if (head && headOutcome === "advisor") lines.push(`${head.name} stops being Head of ${department.name} and stays on the team as an Advisor, in no department or division, keeping their access.`);
+  if (head && headOutcome === "leave") lines.push(`${head.name} leaves the team: every role they hold ends and they move to Alumni.`);
 
   return (
     <SidePanel
@@ -532,7 +546,9 @@ function CloseDepartment({
       }
     >
       <PanelBody>
-        <p className="text-[14px] leading-relaxed text-prt-text">Choose what happens to each division. A division with people in it can only move.</p>
+        <p className="text-[14px] leading-relaxed text-prt-text">
+          {head ? "Choose what happens to each division and to the head." : "Choose what happens to each division."} A division with people in it can only move.
+        </p>
         {department.divisions.length > 0 && (
           <section className="mt-6">
             <h3 className={SECTION_LABEL}>
@@ -552,11 +568,34 @@ function CloseDepartment({
             </ul>
           </section>
         )}
-        {department.head && (
-          <p className="mt-6 flex gap-3 rounded-xl border border-warning/40 bg-warning/[0.06] px-4 py-3.5 text-[14px] leading-relaxed text-prt-text">
-            <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-warning" strokeWidth={1.75} />
-            {department.head.name} stops being Head of {department.name}. They stay in the team and keep their divisions.
-          </p>
+        {head && (
+          <section className="mt-6">
+            <h3 className={SECTION_LABEL}>
+              Head
+              <span className="ml-1.5 text-prt-muted">1</span>
+            </h3>
+            <div className="mt-2.5 rounded-xl border border-hairline p-3.5">
+              <div className="flex items-center gap-3">
+                <span aria-hidden className={CODE_BOX}>
+                  {initialsOf(head.name)}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{head.name}</span>
+                <span className="shrink-0 text-[13px] text-prt-muted">Head of {department.name}</span>
+              </div>
+              <div role="group" aria-label={`What happens to ${head.name}`} className="mt-3 flex rounded-lg border border-hairline bg-panel/60 p-0.5">
+                <button type="button" aria-pressed={headOutcome === "advisor"} onClick={() => setHeadOutcome("advisor")} className={choiceClass(headOutcome === "advisor")}>
+                  Become an advisor
+                </button>
+                <button type="button" aria-pressed={headOutcome === "leave"} onClick={() => setHeadOutcome("leave")} className={choiceClass(headOutcome === "leave")}>
+                  Leave the team
+                </button>
+              </div>
+              <p className="mt-2.5 text-[12px] leading-relaxed text-prt-muted">
+                Pick one before you close. Become an advisor: stays in the team with the Advisor role, in no department or division, and keeps their access. Leave the
+                team: moves to Alumni.
+              </p>
+            </div>
+          </section>
         )}
       </PanelBody>
       <ConfirmDialog
@@ -600,10 +639,6 @@ function FateCard({
 }) {
   const count = inDivision(division);
   const full = count > 0;
-  const choice = (current: boolean) =>
-    `flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
-      current ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 enabled:hover:text-prt-text"
-    } disabled:cursor-not-allowed disabled:text-dim`;
   const help = full
     ? `${peopleLine(count)} in it, so it can't close. Its people, leads and open positions move with it.`
     : fate?.action === "close"
@@ -619,10 +654,10 @@ function FateCard({
         <span className="shrink-0 text-[13px] text-prt-muted">{full ? peopleLine(count) : "Empty"}</span>
       </div>
       <div role="group" aria-label={`What happens to ${division.name}`} className="mt-3 flex rounded-lg border border-hairline bg-panel/60 p-0.5">
-        <button type="button" aria-pressed={fate?.action === "move"} onClick={() => onChange({ action: "move", to: fate?.action === "move" ? fate.to : null })} className={choice(fate?.action === "move")}>
+        <button type="button" aria-pressed={fate?.action === "move"} onClick={() => onChange({ action: "move", to: fate?.action === "move" ? fate.to : null })} className={choiceClass(fate?.action === "move")}>
           Move to another department
         </button>
-        <button type="button" aria-pressed={fate?.action === "close"} disabled={full} onClick={() => onChange({ action: "close" })} className={choice(fate?.action === "close")}>
+        <button type="button" aria-pressed={fate?.action === "close"} disabled={full} onClick={() => onChange({ action: "close" })} className={choiceClass(fate?.action === "close")}>
           {full && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
           Close it
         </button>

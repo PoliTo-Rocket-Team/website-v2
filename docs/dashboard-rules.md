@@ -341,16 +341,23 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   #253.
 - **Close department** (board 77f), from Edit department's footer:
   - Each open division gets a choice: move it to another open department, or close it. A division
-    with anyone in it (people waiting for their NDA included) can only move. Close department
-    stays disabled until every division has a choice.
+    with anyone in it (people waiting for their NDA included) can only move.
+  - The head gets a choice too, in the drawer's "Head" block, with neither option picked at first
+    (Owner decision, 2026-10-16). Nobody gets a role automatically.
+    - **Become an advisor:** the head role ends and one active role with the Advisor title starts,
+      in no department and no division. They keep their access rows, the department ones
+      included; the team leader changes them in Access.
+    - **Leave the team:** every role they hold ends and their access goes, as Leaves the team
+      does, so they appear on Alumni.
+  - Close department stays disabled until every division and the head have a choice. The server
+    refuses a close that picks nothing for the head of a department that has one.
   - A division that moves takes its people, its leads and its open positions with it. Every role
     and access row that names the old department for that division follows it. A seat row kept on
     the division (a head's, the team leader's) does not move.
   - A division that closes closes as Close division closes it: its open positions close and its
     division access goes.
-  - The department closes (`closed_at` is set) and its department access goes. Its head stops
-    being its head and stays on the team: they are not moved to Alumni and keep every other role.
-    Someone whose only role was that head seat stays on the team as a member in no division yet.
+  - The department closes (`closed_at` is set) and its department access goes, except the access
+    rows of a head who becomes an advisor.
   - It asks "are you sure" first, listing what happens to each division and to the head. A closed
     department cannot be reopened.
 

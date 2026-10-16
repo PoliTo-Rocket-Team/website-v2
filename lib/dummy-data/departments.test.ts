@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import type { TestViewer } from "@/lib/dashboard/viewer";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
 import { dummyTeamPages } from "./team-pages";
 
@@ -9,7 +9,7 @@ import { dummyTeamPages } from "./team-pages";
 // themselves are lib/dashboard/department-edit.test.ts's.
 
 /** `kind`'s pages over `edits`, with each save kept after a round trip through the cookie. */
-function pages(kind: ViewerKind, edits: TeamEdits = NO_EDITS) {
+function pages(kind: TestViewer, edits: TeamEdits = NO_EDITS) {
   let kept = edits;
   const view = dummyTeamPages(kind, edits, async (next) => {
     kept = parseEdits(serializeEdits(next));
@@ -68,35 +68,34 @@ test("a department head's division writes outside their own department are refus
   assert.equal(head.kept(), NO_EDITS, "nothing is saved");
 });
 
-test("Close department moves each division with its people and closes the empty ones; the head stays on the team", async () => {
+/** Aerodynamics with an empty division beside its two full ones, ready for Close department. */
+async function aerodynamicsToClose() {
   const ops = pages("operations-lead");
   // A new division in Aerodynamics, then its only lead taken out, leaves one empty division to close.
   const created = await ops.writes.createDivision(AERODYNAMICS, { name: "Flight Dynamics", code: "FD", newLeads: [13], oldLeads: [], members: [], emails: [] });
   assert.ok(created.ok);
   const emptied = pages("operations-lead", ops.kept());
   assert.equal(await emptied.writes.removeFromDivision(13, created.value), true);
+  const divisions = [
+    { divisionId: MISSION_ANALYSIS, action: "move", to: STRUCTURES },
+    { divisionId: OPTIMIZATION, action: "move", to: STRUCTURES },
+    { divisionId: created.value, action: "close" },
+  ];
+  return { edits: emptied.kept(), emptyDivision: created.value, divisions };
+}
 
-  const before = await structureOf(emptied.kept());
+test("Close department moves each division with its people and closes the empty ones", async () => {
+  const { edits, emptyDivision, divisions } = await aerodynamicsToClose();
+  const before = await structureOf(edits);
   const missionBefore = before.departments.find((d) => d.id === AERODYNAMICS)!.divisions.find((d) => d.id === MISSION_ANALYSIS)!;
-  const closer = pages("operations-lead", emptied.kept());
+  const closer = pages("operations-lead", edits);
   const refused = await closer.writes.closeDepartment(AERODYNAMICS, {
-    divisions: [
-      { divisionId: MISSION_ANALYSIS, action: "close" },
-      { divisionId: OPTIMIZATION, action: "move", to: STRUCTURES },
-      { divisionId: created.value, action: "close" },
-    ],
+    divisions: [{ divisionId: MISSION_ANALYSIS, action: "close" }, ...divisions.slice(1)],
+    head: "advisor",
   });
   assert.equal(refused.ok, false, "a division with people in it can only move");
 
-  const closed = await closer.writes.closeDepartment(AERODYNAMICS, {
-    divisions: [
-      { divisionId: MISSION_ANALYSIS, action: "move", to: STRUCTURES },
-      { divisionId: OPTIMIZATION, action: "move", to: STRUCTURES },
-      { divisionId: created.value, action: "close" },
-    ],
-  });
-  assert.deepEqual(closed, { ok: true, value: null });
-
+  assert.deepEqual(await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" }), { ok: true, value: null });
   const after = await structureOf(closer.kept());
   assert.ok(!after.departments.some((d) => d.id === AERODYNAMICS), "the department is closed");
   const structures = after.departments.find((d) => d.id === STRUCTURES)!;
@@ -107,10 +106,34 @@ test("Close department moves each division with its people and closes the empty 
     "its people and leads moved with it",
   );
   assert.ok(structures.divisions.some((d) => d.id === OPTIMIZATION));
-  assert.ok(!after.departments.flatMap((d) => d.divisions).some((d) => d.id === created.value), "the empty division is closed");
+  assert.ok(!after.departments.flatMap((d) => d.divisions).some((d) => d.id === emptyDivision), "the empty division is closed");
+});
 
+test("Close department is refused while nothing is picked for the head, and nothing is saved", async () => {
+  const { edits, divisions } = await aerodynamicsToClose();
+  const closer = pages("operations-lead", edits);
+  const refused = await closer.writes.closeDepartment(AERODYNAMICS, { divisions });
+  assert.deepEqual(refused, { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
+  assert.equal(closer.kept(), edits);
+});
+
+test("Become an advisor: the head of a closed department stays on the team with the Advisor role, off Alumni", async () => {
+  const { edits, divisions } = await aerodynamicsToClose();
+  const closer = pages("operations-lead", edits);
+  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" })).ok);
+  const members = await pages("team-leader", closer.kept()).view.members();
+  assert.ok(members.scope === "whole-team");
+  const chiara = members.people.find((p) => p.id === CHIARA);
+  assert.deepEqual([chiara?.roleLabel, chiara?.departmentIds, chiara?.divisionIds], ["Advisor", [], []], "in no department and no division");
+  assert.ok(!(await pages("operations-lead", closer.kept()).view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "not on Alumni");
+});
+
+test("Leave the team: the head of a closed department leaves the team and appears on Alumni", async () => {
+  const { edits, divisions } = await aerodynamicsToClose();
+  const closer = pages("operations-lead", edits);
+  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "leave" })).ok);
   const view = pages("operations-lead", closer.kept()).view;
-  assert.ok(!(await view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "the head is not moved to Alumni");
   const members = await view.members();
-  assert.ok(members.scope === "team" && members.rows.some((r) => r.id === CHIARA), "and stays on the team");
+  assert.ok(members.scope === "team" && !members.rows.some((r) => r.id === CHIARA), "off the team");
+  assert.ok((await view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "on Alumni");
 });

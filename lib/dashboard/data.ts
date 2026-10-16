@@ -287,8 +287,9 @@ export interface TeamWrites {
   /**
    * Close department (board 77f): each open division moves to another
    * department with its people, leads and open positions, or closes when it
-   * is empty; then the department closes and its head stops being its head,
-   * staying on the team. Checked by `planDepartmentClose`.
+   * is empty; then the department closes, and its head becomes an advisor or
+   * leaves the team, as the closer picked (refused when nothing was picked).
+   * Checked by `planDepartmentClose`.
    */
   closeDepartment(departmentId: number, input: unknown): Promise<WriteResult<null>>;
 }

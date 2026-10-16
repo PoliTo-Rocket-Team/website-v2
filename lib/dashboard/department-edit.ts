@@ -67,8 +67,25 @@ export type DivisionFate =
   | { readonly divisionId: number; readonly action: "move"; readonly to: number }
   | { readonly divisionId: number; readonly action: "close" };
 
-/** What Close department sends: a fate for each of its open divisions. */
-export type DepartmentClose = { readonly divisions: readonly DivisionFate[] };
+/**
+ * What becomes of the head of a department that closes (board 77f, Owner
+ * decision 2026-10-16): no role is given automatically, the closer picks one.
+ * "advisor" ends the head role and starts one Advisor role in no department
+ * and no division, keeping their access; "leave" ends every role they hold,
+ * so they appear on Alumni.
+ */
+export const HEAD_OUTCOMES = ["advisor", "leave"] as const;
+export type HeadOutcome = (typeof HEAD_OUTCOMES)[number];
+
+/** The title of the role "Become an advisor" starts. */
+export const ADVISOR_TITLE = "Advisor";
+
+/**
+ * What Close department sends: a fate for each of its open divisions, and
+ * what becomes of its head. `head` is null only when nothing was picked; the
+ * rules refuse that while the department has a head.
+ */
+export type DepartmentClose = { readonly divisions: readonly DivisionFate[]; readonly head: HeadOutcome | null };
 
 export type Checked<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
@@ -95,6 +112,7 @@ const closeSchema = z.object({
       ]),
     )
     .max(60),
+  head: z.enum(HEAD_OUTCOMES).nullable().default(null),
 });
 
 function parsed<T>(result: z.ZodSafeParseResult<T>): Checked<T> {
@@ -179,10 +197,15 @@ export function planDepartmentSave(input: {
   });
 }
 
-/** A checked Close department: the divisions that move, each to its new department, and the empty ones that close. */
+/**
+ * A checked Close department: the divisions that move, each to its new
+ * department, the empty ones that close, and what becomes of the people who
+ * head it (null when nobody does).
+ */
 export type DepartmentClosePlan = {
   readonly move: readonly { readonly divisionId: number; readonly to: number }[];
   readonly close: readonly number[];
+  readonly head: { readonly outcome: HeadOutcome; readonly personIds: readonly number[] } | null;
 };
 
 /**
@@ -191,8 +214,8 @@ export type DepartmentClosePlan = {
  * department has exactly one fate; a division moves to another open
  * department, with its people, leads and open positions; a division closes
  * only when nobody is in it (`inIt`, the people and the people waiting for
- * their NDA, by division id). The head is not moved anywhere: they stop being
- * its head and stay on the team.
+ * their NDA, by division id); while anyone heads it (`headIds`), the closer
+ * picks what becomes of them (`HeadOutcome`), and nothing is picked for them.
  */
 export function planDepartmentClose(input: {
   readonly actor: TeamActor | null;
@@ -200,6 +223,7 @@ export function planDepartmentClose(input: {
   readonly departmentId: number;
   readonly close: DepartmentClose;
   readonly inIt: Readonly<Record<number, number>>;
+  readonly headIds: readonly number[];
 }): Checked<DepartmentClosePlan> {
   const { actor, org, departmentId, close, inIt } = input;
   if (!mayManageDepartments(actor)) return no(ONLY_TEAM);
@@ -222,5 +246,8 @@ export function planDepartmentClose(input: {
       shut.push(division.id);
     }
   }
-  return yes({ move, close: shut });
+  const personIds = [...new Set(input.headIds)];
+  if (personIds.length === 0) return yes({ move, close: shut, head: null });
+  if (close.head === null) return no("Choose what happens to the head: Become an advisor or Leave the team.");
+  return yes({ move, close: shut, head: { outcome: close.head, personIds } });
 }
