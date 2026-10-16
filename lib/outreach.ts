@@ -1,14 +1,26 @@
 import type { HeaderStats } from "./about/types";
-import type { BodyBlock, ChannelName, Channel, IsoDate, OutreachPage, OutreachPost } from "./outreach-types";
+import type { NonEmpty } from "./about/alumni-types";
+import type {
+  BodyBlock,
+  ChannelName,
+  Channel,
+  IsoDate,
+  OutreachContent,
+  OutreachCopy,
+  OutreachPost,
+  OutreachTag,
+} from "./outreach-types";
 
 // Boards 32/32m (the Outreach page) and 33/33m (a post page). The posts are
 // the team's live Outreach page: each body is the live post's own text, and
 // the title, summary and lead say the same in fewer words, as the boards do.
 // Each post has one photo and one channel today, the "See more" link on the
-// live page. Adding a post is one entry here plus its photo in
-// public/outreach/.
+// live page. The summit, the posts and the tags below are the record the
+// import carries into the database (lib/outreach-import.ts, issue #287). The
+// pages read the published ones from there (lib/outreach-public.ts), and this
+// record only where there is no database or no outreach tables yet.
 
-export const outreach: OutreachPage = {
+export const outreachCopy: OutreachCopy = {
   description:
     "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
 
@@ -18,6 +30,26 @@ export const outreach: OutreachPage = {
     intro:
       "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
   },
+
+  postsTitle: "Where we’ve been",
+};
+
+/** The record's tags, in the order the editor lists them. Award is the one the header counts. */
+const recordTags: NonEmpty<OutreachTag> = [
+  { name: "Award", award: true },
+  { name: "Charity run", award: false },
+  { name: "Congress", award: false },
+  { name: "Expo", award: false },
+  { name: "Fair", award: false },
+  { name: "Hackathon", award: false },
+  { name: "School", award: false },
+  { name: "Summit", award: false },
+  { name: "Talk", award: false },
+  { name: "Visit", award: false },
+];
+
+export const outreachRecord: OutreachContent & { readonly posts: NonEmpty<OutreachPost> } = {
+  tags: recordTags,
 
   feature: {
     eyebrow: "STARTED BY US · 2023",
@@ -37,8 +69,6 @@ export const outreach: OutreachPage = {
       { year: 2025, place: "Rome" },
     ],
   },
-
-  postsTitle: "Where we’ve been",
 
   posts: [
     {
@@ -411,31 +441,41 @@ export function slugOf(post: Pick<OutreachPost, "title">): string {
 }
 
 /** The posts newest first, as the page lists them. */
-export const postsNewestFirst: readonly OutreachPost[] = [...outreach.posts].sort((a, b) => b.date.localeCompare(a.date));
-
-{
-  // Two posts with one address would hide one of them.
-  const seen = new Set<string>();
-  for (const post of postsNewestFirst) {
-    const slug = slugOf(post);
-    if (seen.has(slug)) throw new Error(`Two outreach posts share the address /outreach/${slug}`);
-    seen.add(slug);
-  }
+export function newestFirst(posts: readonly OutreachPost[]): OutreachPost[] {
+  return [...posts].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-export function postBySlug(slug: string): OutreachPost | undefined {
-  return postsNewestFirst.find((p) => slugOf(p) === slug);
+/** The first address two posts share, or null. Two posts with one address would hide one of them. */
+export function sharedSlug(posts: readonly OutreachPost[]): string | null {
+  const seen = new Set<string>();
+  for (const post of posts) {
+    const slug = slugOf(post);
+    if (seen.has(slug)) return slug;
+    seen.add(slug);
+  }
+  return null;
+}
+
+{
+  const shared = sharedSlug(outreachRecord.posts);
+  if (shared !== null) throw new Error(`Two outreach posts share the address /outreach/${shared}`);
+}
+
+/** The post at an address, or undefined. Where two share it, the newest wins. */
+export function postBySlug(posts: readonly OutreachPost[], slug: string): OutreachPost | undefined {
+  return newestFirst(posts).find((p) => slugOf(p) === slug);
 }
 
 /** The posts either side of one: the next older and the next newer, where there is one. */
-export function neighboursOf(post: OutreachPost): { older?: OutreachPost; newer?: OutreachPost } {
-  const i = postsNewestFirst.indexOf(post);
-  return { older: postsNewestFirst[i + 1], newer: i > 0 ? postsNewestFirst[i - 1] : undefined };
+export function neighboursOf(posts: readonly OutreachPost[], post: OutreachPost): { older?: OutreachPost; newer?: OutreachPost } {
+  const sorted = newestFirst(posts);
+  const i = sorted.findIndex((p) => slugOf(p) === slugOf(post));
+  return { older: sorted[i + 1], newer: i > 0 ? sorted[i - 1] : undefined };
 }
 
 /** The years that have posts, newest first: the year filter's pills after All. */
-export function postYears(): number[] {
-  return [...new Set(postsNewestFirst.map((p) => yearOf(p.date)))];
+export function postYears(posts: readonly OutreachPost[]): number[] {
+  return [...new Set(newestFirst(posts).map((p) => yearOf(p.date)))];
 }
 
 export function yearOf(date: IsoDate): number {
@@ -462,14 +502,23 @@ export function channelsOf(post: OutreachPost): { name: ChannelName; channel: Ch
   return out;
 }
 
-/** The header's four figures, counted from the posts and the feature. */
-export function outreachStats(page: OutreachPage = outreach): HeaderStats {
-  const first = Math.min(...page.posts.map((p) => yearOf(p.date)));
-  const awards = page.posts.filter((p) => p.tags.includes("Award")).length;
+/** The posts the header counts as awards: those carrying the tag the tag list marks as the award one. */
+export function awardPosts(content: Pick<OutreachContent, "posts" | "tags">): OutreachPost[] {
+  const award = new Set(content.tags.filter((t) => t.award).map((t) => t.name));
+  return content.posts.filter((p) => p.tags.some((name) => award.has(name)));
+}
+
+/** The header's four figures, counted from the posts, the tags and the feature. */
+export function outreachStats(content: OutreachContent): HeaderStats {
+  const years = content.posts.map((p) => yearOf(p.date));
+  const awards = awardPosts(content).length;
   return [
-    { value: String(page.posts.length), label: { text: `EVENTS SINCE ${first}` } },
-    { value: String(page.feature.editions.length), label: { text: "IRESS EDITIONS" } },
-    { value: String(page.feature.editions[0].year), label: { text: "WE STARTED IRESS" } },
+    {
+      value: String(content.posts.length),
+      label: { text: years.length === 0 ? "EVENTS" : `EVENTS SINCE ${Math.min(...years)}` },
+    },
+    { value: String(content.feature.editions.length), label: { text: "IRESS EDITIONS" } },
+    { value: String(content.feature.editions[0].year), label: { text: "WE STARTED IRESS" } },
     { value: String(awards), label: { text: awards === 1 ? "AWARD" : "AWARDS" } },
   ];
 }

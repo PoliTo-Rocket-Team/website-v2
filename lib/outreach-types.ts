@@ -2,9 +2,9 @@ import type { NonEmpty } from "./about/alumni-types";
 import type { Copy } from "./projects";
 
 // The Outreach page (/outreach) and its post pages (/outreach/<slug>) as
-// data: one record, drawn by components/outreach/. A dashboard will edit it,
-// so every field is a plain value a form can fill. A fact a post does not
-// have is an absent key, never an empty string.
+// data, drawn by components/outreach/. The dashboard edits the summit, the
+// posts and the tags (issue #287), so every field is a plain value a form can
+// fill. A fact a post does not have is an absent key, never an empty string.
 
 /** A day, written YYYY-MM-DD. */
 export type IsoDate = `${number}-${number}-${number}`;
@@ -12,18 +12,12 @@ export type IsoDate = `${number}-${number}-${number}`;
 /** A photo in public/outreach/, given as its path from the site root. */
 export type OutreachPhoto = { src: `/outreach/${string}`; alt: string };
 
-/** What kind of event a post is about. Award also feeds the header's award count. */
-export type OutreachTag =
-  | "Award"
-  | "Charity run"
-  | "Congress"
-  | "Expo"
-  | "Fair"
-  | "Hackathon"
-  | "School"
-  | "Summit"
-  | "Talk"
-  | "Visit";
+/**
+ * One tag in the tag list: what kind of event a post is about. Tags are data
+ * (issue #287), so the editor can add one. A post carries its tags by name.
+ * `award` marks the one tag whose posts the header counts as awards (Award).
+ */
+export type OutreachTag = { readonly name: string; readonly award: boolean };
 
 /**
  * Where the post was first shared. The caption is the start of the post's
@@ -52,7 +46,8 @@ export type OutreachPost = {
   date: IsoDate;
   /** City and country, when the post says where. */
   place?: string;
-  tags: NonEmpty<OutreachTag>;
+  /** Names from the tag list, in the order the post shows them. */
+  tags: NonEmpty<string>;
   /** One or two lines on the post's card; the phone text may be shorter. */
   summary: Copy;
   /** The line under the title on the post page. */
@@ -77,12 +72,24 @@ export type OutreachFeature = {
   editions: NonEmpty<Edition>;
 };
 
-export type OutreachPage = {
+/**
+ * The page's own words. They stay in code: the editor changes the summit and
+ * the posts, never the header or the intro.
+ */
+export type OutreachCopy = {
   description: string;
   header: { eyebrow: string; title: string; intro: string };
-  feature: OutreachFeature;
   /** Section title over the year filter and the post cards. */
   postsTitle: string;
+};
+
+/**
+ * What the store keeps and the editor changes (issue #287): the summit, the
+ * posts and the tag list. The public pages read the published versions.
+ */
+export type OutreachContent = {
+  feature: OutreachFeature;
   /** In any order; the page shows them newest first. */
-  posts: NonEmpty<OutreachPost>;
+  posts: readonly OutreachPost[];
+  tags: readonly OutreachTag[];
 };
