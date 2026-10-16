@@ -81,6 +81,20 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type TeamEdits } from "./edits";
+import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver, withLapsedHandOvers } from "./hand-overs";
+import { withDummyNotices } from "./notices";
+import {
+  answerNoticeOf,
+  checkHandOverSend,
+  handOverAttentionFor,
+  handOverOfferOf,
+  hasLapsed,
+  planHandOverAnswer,
+  planHandOverSend,
+  type HandOverAnswerPlan,
+  type HandOverOffer,
+} from "@/lib/dashboard/hand-over-request";
+import type { AttentionItem } from "@/lib/dashboard/overview";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
 import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, formerMember, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
 
@@ -382,6 +396,19 @@ function withAdvisor(edits: TeamEdits, personId: number, step: Extract<SteppingD
   return { ...edits, advisors: { ...edits.advisors, [personId]: advisor } };
 }
 
+/**
+ * Someone who leaves the team from a structure edit or a hand-over (an old
+ * lead's or a closed department's head's "Leave the team"): moved to Alumni
+ * with their years, or why the preview cannot.
+ */
+function leftTeamEdits(next: TeamEdits, id: number, name: string | undefined): TeamEdits | string {
+  const person = people.find((p) => p.id === id);
+  // Only people on the dummy roster have an Alumni row to move to, as in Leaves the team.
+  if (!person) return `${name ?? "They"} cannot be moved to Alumni in this preview.`;
+  const departure = { from: Number(person.since.slice(0, 4)), to: Number(TODAY.slice(0, 4)), reason: null };
+  return { ...next, movedToAlumni: { ...next.movedToAlumni, [id]: departure } };
+}
+
 /** People off the team: the ./team.ts alumni, and those the test developer moved with the place they held. */
 export function editedFormer(edits: TeamEdits): DummyFormer[] {
   const moved = people.flatMap((p): DummyFormer[] => {
@@ -512,6 +539,11 @@ function teamPeople(team: readonly RosterEntry[], edits: TeamEdits): TeamPerson[
   });
 }
 
+/** Everyone on the team `edits` make, as the hand-over rules read them (lib/dashboard/hand-over-request.ts). */
+export function dummyTeamPeople(edits: TeamEdits, current: readonly DummyApplication[] = baseApplications): TeamPerson[] {
+  return teamPeople(editedRoster(edits, dummyJoiners(current)), edits);
+}
+
 /** The Applications page's move, as the dummy dashboard runs it: Confirm join on the Members page is that move. */
 export type DummyMove = (applicationId: number, move: LeadMove) => Promise<WriteResult<null>>;
 
@@ -595,18 +627,7 @@ function writesFor(
     return written(null);
   };
 
-  /**
-   * Someone who leaves the team from a structure edit (an old lead's or a
-   * closed department's head's "Leave the team"): moved to Alumni with their
-   * years, or why the preview cannot.
-   */
-  const leftTeam = (next: TeamEdits, id: number): TeamEdits | string => {
-    const person = people.find((p) => p.id === id);
-    // Only people on the dummy roster have an Alumni row to move to, as in Leaves the team.
-    if (!person) return `${find(id)?.name ?? "They"} cannot be moved to Alumni in this preview.`;
-    const departure = { from: Number(person.since.slice(0, 4)), to: Number(TODAY.slice(0, 4)), reason: null };
-    return { ...next, movedToAlumni: { ...next.movedToAlumni, [id]: departure } };
-  };
+  const leftTeam = (next: TeamEdits, id: number): TeamEdits | string => leftTeamEdits(next, id, find(id)?.name);
 
   /** The division a save is about: open on the chart. A closed one is none, so no save opens it again (#251). */
   const subjectOf = (divisionId: number): Exclude<DivisionSubject, { kind: "new" }> | null => {
@@ -1009,5 +1030,104 @@ export function dummyTeamPages(
       });
     },
     teamWrites: writesFor(kind, edits, save, joiners, move),
+  };
+}
+
+/**
+ * Confirm on a hand-over sent from My profile (board 62c, issue #262), laid
+ * over the edits as the database writes it: a lead's successor leads the
+ * division, a head's successor heads the department (keeping their
+ * divisions), and the sender steps down as they chose, an advisor in their
+ * unit whose access ends or off to Alumni (`steppingDown`).
+ */
+function confirmedHandOverEdits(
+  edits: TeamEdits,
+  plan: Extract<HandOverAnswerPlan, { answer: "confirm" }>,
+  roster: readonly RosterEntry[],
+  org: OrgChart,
+): TeamEdits | string {
+  const { request, steppingDown: step } = plan;
+  const { fromId, toId, role } = request;
+  const change = (next: TeamEdits, id: number, edit: (c: MemberChange) => MemberChange): TeamEdits => {
+    const base = next.members[id] ?? { pageTitle: roster.find((e) => e.id === id)?.pageTitle ?? null, roles: {} };
+    return { ...next, members: { ...next.members, [id]: edit(base) } };
+  };
+  let next = edits;
+  if (role.kind === "lead") {
+    const divisionId = role.divisionId;
+    next = change(next, toId, (c) => ({ ...c, roles: { ...c.roles, [divisionId]: "lead" } }));
+    if (step.kind === "advisor") {
+      next = change(next, fromId, (c) => ({ ...c, roles: { ...c.roles, [divisionId]: "member" }, titles: { ...c.titles, [divisionId]: ADVISOR_TITLE } }));
+      next = withAdvisor(next, fromId, step);
+    }
+  } else {
+    const department = org.departments.find((d) => d.id === role.departmentId);
+    const before = next.departments[role.departmentId] ?? { name: department?.name ?? "", code: department?.code ?? null, closedOn: null, headId: null };
+    next = { ...next, departments: { ...next.departments, [role.departmentId]: { ...before, headId: toId } } };
+    if (step.kind === "advisor") next = withAdvisor(next, fromId, step);
+  }
+  return step.kind === "leave" ? leftTeamEdits(next, fromId, roster.find((e) => e.id === fromId)?.name) : next;
+}
+
+/**
+ * Hand over your role from My profile (issue #262, boards 55d and 62c) as the
+ * test developer runs it, with `edits` laid over the arrays: My profile's
+ * offer, the approver's rows, "Send for confirmation", and Confirm and
+ * Decline. ./hand-over-request.ts decides each as the database side does;
+ * the requests and their answers live in the edits cookie (./hand-overs.ts).
+ */
+export function dummyHandOverPages(
+  kind: TestViewer,
+  edits: TeamEdits,
+  save: (next: TeamEdits) => Promise<void>,
+  current: readonly DummyApplication[] = baseApplications,
+): {
+  /** My profile's "Hand over your role", or null for a viewer who holds no role to hand over from there. */
+  readonly offer: () => HandOverOffer | null;
+  /** The hand-overs the viewer answers, as their top attention rows. */
+  readonly attention: (now: Date) => AttentionItem[];
+} & Pick<DashboardData, "sendHandOver" | "answerHandOver"> {
+  const self = SELF_ID[kind];
+  const roster = editedRoster(edits, dummyJoiners(current));
+  const team = teamPeople(roster, edits);
+  const { org } = dummyOrg(edits);
+  const all = dummyHandOversOf(edits);
+  const waiting = waitingHandOvers(all);
+  const mine = waiting.find((h) => h.fromId === self && !hasLapsed(h, team)) ?? null;
+  return {
+    offer: () => {
+      const person = team.find((p) => p.id === self);
+      return person ? handOverOfferOf(person, team, org, mine) : null;
+    },
+    attention: (now) => handOverAttentionFor(self, waiting, team, org, now),
+    async sendHandOver(input) {
+      if (self === null) return refused("This page is for team members.");
+      const checked = checkHandOverSend(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planHandOverSend({ senderId: self, send: checked.value, team, org, waiting });
+      if (!planned.ok) return refused(planned.error);
+      const { send, lapsed } = planned.value;
+      // The dummy team is seen from DUMMY_NOW, so a request is sent then too.
+      const request = { id: nextHandOverId(all), fromId: self, role: send.role, toId: send.to, outcome: send.outcome, sentAt: DUMMY_NOW, answered: null };
+      await save(withDummyHandOver(withLapsedHandOvers(edits, lapsed), request));
+      return written(null);
+    },
+    async answerHandOver(requestId, answer) {
+      const request = all.find((h) => h.id === requestId && h.answered === null);
+      if (!request || self === null) return refused("This hand-over was already answered.");
+      const planned = planHandOverAnswer({ viewerId: self, request, answer, team, org });
+      if (!planned.ok) return refused(planned.error);
+      const plan = planned.value;
+      let next = withDummyHandOver(edits, { ...request, answered: { answer: plan.answer === "confirm" ? "confirmed" : "declined", by: self } });
+      if (plan.answer === "confirm") {
+        const after = confirmedHandOverEdits(next, plan, roster, org);
+        if (typeof after === "string") return refused(after);
+        next = after;
+      }
+      const approver = team.find((p) => p.id === self)?.name ?? "";
+      next = { ...next, notices: withDummyNotices(next.notices, [answerNoticeOf(plan, team, org)], approver, DUMMY_NOW) };
+      await save(next);
+      return written(null);
+    },
   };
 }

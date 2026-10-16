@@ -89,7 +89,7 @@ export type StoredApplication = {
   readonly appliedAt: string;
   readonly withdrawnAt: string | null;
   readonly acceptedAt: string | null;
-  /** When it was rejected or another team took the person (`rejected_at`, drizzle/0027). */
+  /** When it was rejected or another team took the person (`rejected_at`, drizzle/0030). */
   readonly rejectedAt: string | null;
   readonly joinedAt: string | null;
 };

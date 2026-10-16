@@ -5,6 +5,7 @@ import { canReach, type DashboardLanding, type DashboardPageKey } from "@/lib/da
 import type { DashboardData } from "@/lib/dashboard/data";
 import type { YourDetails } from "@/lib/dashboard/details";
 import type { AccessGrant } from "@/lib/dashboard/division-access";
+import { isHandOverAnswer } from "@/lib/dashboard/hand-over-request";
 import type { InterviewSlot } from "@/lib/dashboard/my-applications";
 import { openDashboard } from "@/lib/dashboard/open";
 import type { Order } from "@/lib/dashboard/orders";
@@ -216,6 +217,22 @@ export async function uploadMyAlumniPhoto(form: FormData): Promise<WriteResult<n
 
 export async function removeMyAlumniPhoto(): Promise<WriteResult<null>> {
   return write("my-alumni", (data) => data.setMyAlumniPhoto(null));
+}
+
+/** "Send for confirmation" on My profile (board 55d, issue #262): the hand-over waits; no role changes. */
+export async function sendHandOver(input: unknown): Promise<WriteResult<null>> {
+  const result = await write("my-profile", (data) => data.sendHandOver(input));
+  if (result.ok) revalidatePath("/dashboard/profile");
+  return result;
+}
+
+/** Decline or Confirm on the Overview (board 62c): Confirm hands the role over, so every page reads again. */
+export async function answerHandOver(requestId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown hand-over.");
+  if (!isHandOverAnswer(answer)) return refused("Choose Decline or Confirm.");
+  const result = await write("overview", (data) => data.answerHandOver(requestId, answer));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
 }
 
 export async function withdrawApplication(applicationId: number): Promise<WriteResult<null>> {

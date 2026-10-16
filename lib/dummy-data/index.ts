@@ -75,7 +75,7 @@ import {
 } from "./orders";
 import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
-import { checkPhoto, leaveReason, type LeaveState } from "@/lib/dashboard/self";
+import { checkPhoto, HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
@@ -108,7 +108,8 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, editedAlumniRecord, editedRoster } from "./team-pages";
+import { dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, dummyTeamPeople, editedAlumniRecord, editedRoster } from "./team-pages";
+import { closingLapsedHandOvers } from "./hand-overs";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -584,7 +585,7 @@ function rosterPreview(me: DummyPerson): RosterPerson[] {
   }));
 }
 
-function memberOverview(): PersonalOverview {
+function memberOverview(notices: DummyNotices): PersonalOverview {
   const me = personFor.member;
   const division = divisionOf(myDivisionId("member"));
   const department = departmentOf(division.id);
@@ -607,6 +608,7 @@ function memberOverview(): PersonalOverview {
   const size = people.filter((p) => isIn(p.placement, division.id)).length;
   return {
     shape: "personal",
+    attention: dummyNoticeAttention(me, notices, NOW),
     person: {
       name: me.name,
       line: `${me.title} · ${division.name} · ${department.name}`,
@@ -637,7 +639,7 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamS
     case "division-lead":
       return divisionOverview(team, notices);
     case "member":
-      return memberOverview();
+      return memberOverview(notices);
     case "non-member":
     case "alumni":
       throw new DashboardRefused("an Overview off the team is built from My applications");
@@ -890,7 +892,7 @@ function leftTeamDashboard(
  * The dashboard as the test developer sees it, looking as `viewer`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
- * their Team page edits in `teamEdits` (./edits.ts), and the changes on their
+ * their Team page edits in `teamEditsStore` (./edits.ts), and the changes on their
  * own pages in `own` (./own.ts), starting from the own applications
  * `ownStart` names. Other writes check what was sent as the database side
  * does, store nothing, and answer what the page shows next. The team leader
@@ -903,19 +905,21 @@ export function dummyDashboardData(
   viewer: TestViewer,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
-  teamEdits: TeamEditsStore = NO_TEAM_EDITS,
+  teamEditsStore: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
   partnerEdits: DummyPartnerEditsStore = NO_PARTNER_EDITS_STORE,
   faqEdits: DummyFaqEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
-  if (viewer !== "alumni" && viewer !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
-    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEdits, own);
+  if (viewer !== "alumni" && viewer !== "non-member" && teamEditsStore.current.movedToAlumni[personFor[viewer].id] !== undefined) {
+    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEditsStore, own);
   }
   const person = teamPersonFor(viewer);
   const offTeam: OffTeamKind | null = viewer === "alumni" || viewer === "non-member" ? viewer : null;
-  const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEdits.current);
+  const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEditsStore.current);
+  // Every save that changes a sender's roles closes their waiting hand-over, as the database's trigger does (issue #262).
+  const teamEdits = closingLapsedHandOvers(teamEditsStore, (edits) => dummyTeamPeople(edits, team.applications));
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;
   // A member reaches Orders only by holding "Approve orders" (issue #270): their scope is then deciding alone.
@@ -934,6 +938,12 @@ export function dummyDashboardData(
   const me = person === null ? offTeamPersonFor(offTeam ?? "non-member") : { firstName: person.name.split(" ")[0], email: person.email };
   const myApplications = () => dummyMyApplications(viewer, me, own.current, ownStart);
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [viewer]: details } });
+  // Hand over your role from My profile, and its answer on the next level up's Overview (issue #262).
+  const handOvers = dummyHandOverPages(viewer, teamEdits.current, teamEdits.save, team.applications);
+  const shapeOfOverview = (): TeamSideOverview =>
+    viewer === "team-leader"
+      ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
+      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current));
 
   // One move for both pages: the Applications panel and the Members page's
   // Confirm join (board 59) run it, so the application is the one record of
@@ -961,10 +971,14 @@ export function dummyDashboardData(
       return mine !== null && !hasNoneShown(mine);
     },
     ...(viewer === "alumni" ? dummyOwnAlumni(formerMember.id, teamEdits) : NO_OWN_ALUMNI),
-    overview: async () =>
-      viewer === "team-leader"
-        ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
-        : overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
+    // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c).
+    overview: async () => {
+      const overview = shapeOfOverview();
+      const answering = handOvers.attention(NOW);
+      return answering.length === 0 ? overview : { ...overview, attention: [...answering, ...overview.attention] };
+    },
+    sendHandOver: handOvers.sendHandOver,
+    answerHandOver: handOvers.answerHandOver,
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {
@@ -1074,7 +1088,7 @@ export function dummyDashboardData(
     // Seen from the dummy team's moment, so a question saved here reads "Today".
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
 
-    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
+    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {
       if (person === null) return refused(notOnTeam);
       const result = dummySaveLinkedin(text);
@@ -1086,6 +1100,8 @@ export function dummyDashboardData(
     async leaveTeam(reason, removeFromAlumni) {
       if (person === null) return refused(notOnTeam);
       if (leaveStateOf(person) === "left") return refused("You already left the team.");
+      // A lead or head leaves through "Hand over your role", which the next level up confirms (issue #262).
+      if (handOvers.offer() !== null) return refused(HAND_OVER_FIRST);
       // The reason is checked as the database side checks it; a preview keeps none.
       leaveReason(reason);
       const year = new Date(DUMMY_NOW).getUTCFullYear();
