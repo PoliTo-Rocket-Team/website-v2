@@ -52,8 +52,10 @@ client component as props.
    client components import them from
    [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the
    arguments and writes through the dashboard data interface
-   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): a test developer's write changes only a
-   cookie, an account's goes through `runAuditQuery` in
+   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): where no database is configured, a test
+   developer's write changes only a cookie; where one is (a preview reads the seeded `preview`
+   branch), the test developer is read as the viewer's seeded person and `runAuditQuery` refuses
+   the write. An account's write goes through `runAuditQuery` in
    [lib/dashboard/database.ts](../lib/dashboard/database.ts) after a scope check. The client shows
    the change at once (`useOptimistic`) and a toast when the write is refused (see
    [client-form-submit.md](./client-form-submit.md)).
