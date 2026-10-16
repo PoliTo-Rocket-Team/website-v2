@@ -4,11 +4,14 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { getApplicant, hasApplied } from "@/app/actions/get-applicant";
 import { getPositionWithRecruitment, getPublicPositions } from "@/app/actions/get-apply-positions";
+import { isDatabaseConfigured } from "@/db/client";
 import { applicationFiles, applications, users } from "@/db/schema";
+import { cachedPublishedFaqs } from "@/lib/dashboard/database-faqs";
 import { getCurrentUserId } from "@/lib/current-user";
 import { runAuditBatch } from "@/lib/db-audit";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import type { ApplyData } from "./data";
+import { faqs as faqRecord } from "./page";
 import type { NewApplication } from "./submit";
 
 // The database side of the apply data interface (./data.ts): the reads and
@@ -20,6 +23,9 @@ export const databaseApplyData: ApplyData = {
     const read = await getPublicPositions();
     return read.status === "available" ? read.positions : [];
   },
+  // The cached read every question write refreshes; the record where there is
+  // no database or no FAQ tables yet.
+  faqs: async () => (isDatabaseConfigured() ? ((await cachedPublishedFaqs()) ?? faqRecord) : faqRecord),
   position: async (id) => {
     const read = await getPositionWithRecruitment(id);
     return read.status === "found" ? { position: read.position, recruitment: read.recruitment } : null;

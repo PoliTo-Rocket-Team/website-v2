@@ -583,6 +583,50 @@ export const partnerVersions = pgTable(
   }),
 );
 
+// The questions at the bottom of /apply (issue #258, boards 79 and 79b). A
+// question is its place in the site order; what it says lives in its
+// versions, as a partner's does: a published one, a draft, or both. Removing
+// a question removes its versions.
+export const faqs = pgTable("faqs", {
+  id: serial("id").primaryKey(),
+  siteOrder: integer("site_order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+export const faqVersions = pgTable(
+  "faq_versions",
+  {
+    id: serial("id").primaryKey(),
+    faqId: integer("faq_id")
+      .references(() => faqs.id, { onDelete: "cascade" })
+      .notNull(),
+    version: contentVersionEnum("version").notNull(),
+    question: text("question").notNull(),
+    /** One string per paragraph, at least one. */
+    answer: text("answer").array().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneOfEachVersion: unique("faq_versions_faq_version_unique").on(
+      table.faqId,
+      table.version,
+    ),
+    // The panel's limit (lib/faq/faq.ts, FAQ_QUESTION_MAX), counted as characters.
+    questionLength: check(
+      "faq_versions_question_length",
+      sql`char_length(${table.question}) between 1 and 120`,
+    ),
+    answered: check(
+      "faq_versions_answered",
+      sql`cardinality(${table.answer}) >= 1`,
+    ),
+  }),
+);
+
 export const logs = pgTable("logs", {
   id: serial("id").primaryKey(),
   schemaName: text("schema_name").notNull(),

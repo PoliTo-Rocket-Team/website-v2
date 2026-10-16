@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BriefcaseBusiness,
+  CircleHelp,
   CircleUserRound,
   GraduationCap,
   Handshake,
@@ -31,6 +32,7 @@ const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   members: Users,
   alumni: GraduationCap,
   partners: Handshake,
+  faq: CircleHelp,
   orders: ShoppingCart,
   "division-access": KeyRound,
   "activity-log": History,

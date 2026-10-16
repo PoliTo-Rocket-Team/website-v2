@@ -57,6 +57,8 @@ import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers } from 
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
+import { faqEditor } from "@/lib/faq/editor";
+import { databaseFaqStore } from "./database-faqs";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
@@ -743,6 +745,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
+    faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
     ...self,
     // Their applications stay theirs, so they say where the dashboard opens next (#227).
     async leaveTeam(reason, removeFromAlumni) {

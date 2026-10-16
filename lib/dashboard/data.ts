@@ -1,5 +1,6 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
+import type { FaqEditor } from "@/lib/faq/editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
 import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, AccessPage } from "./division-access";
@@ -169,6 +170,14 @@ export interface DashboardData {
    * the database, or a test developer's cookie over the dummy partners.
    */
   readonly partners: PartnerEditor;
+
+  /**
+   * Boards 79 and 79b (issue #258): the questions on /apply and their writes,
+   * behind the same gate. Each side brings its own store and clock: the
+   * database and the time now, or a test developer's cookie over the dummy
+   * questions, seen from the dummy team's moment.
+   */
+  readonly faqs: FaqEditor;
 
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;

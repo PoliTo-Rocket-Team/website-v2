@@ -1,11 +1,20 @@
 import type { ContentStore } from "@/lib/content/editor";
-import { memoryContentStore } from "@/lib/content/memory";
 import type { ContentItem, Versioned } from "@/lib/content/versioned";
 import type { LogoFiles } from "@/lib/partners-editor";
 import { checkPartnerFields, fieldsOf } from "@/lib/partners-fields";
 import { importedPartners } from "@/lib/partners-import";
 import type { Partner, PartnerLogo } from "@/lib/partners";
-import { DUMMY_STATE_COOKIE_BYTES } from "./state";
+import {
+  contentEditsOf,
+  dummyContentStore,
+  NO_CONTENT_EDITS,
+  NO_CONTENT_EDITS_STORE,
+  parseContentEdits,
+  PREVIEW_FULL,
+  serializeContentEdits,
+  type ContentEdits,
+  type ContentEditsStore,
+} from "./content-edits";
 
 // The partners on previews and in test-developer sessions (issue #256),
 // which never touch a database. The dashboard starts from the partners the
@@ -32,31 +41,16 @@ export function dummyPartnerSeed(): ContentItem<Partner>[] {
 /** A logo src the preview did not keep: the logo box shows the partner's name instead. */
 export const UNKEPT_LOGO_SRC = "";
 
-/** What a test developer changed: items saved or created, ids removed, and new places in the site order. */
-export type DummyPartnerEdits = {
-  readonly saved: readonly ContentItem<Partner>[];
-  readonly removed: readonly number[];
-  readonly order: readonly (readonly [number, number])[];
-};
+/** What a test developer changed (./content-edits.ts). */
+export type DummyPartnerEdits = ContentEdits<Partner>;
 
-export const NO_PARTNER_EDITS: DummyPartnerEdits = { saved: [], removed: [], order: [] };
+export const NO_PARTNER_EDITS: DummyPartnerEdits = NO_CONTENT_EDITS;
 
-export type DummyPartnerEditsStore = {
-  readonly current: DummyPartnerEdits;
-  save(next: DummyPartnerEdits): Promise<void>;
-};
+export type DummyPartnerEditsStore = ContentEditsStore<Partner>;
 
-export const NO_PARTNER_EDITS_STORE: DummyPartnerEditsStore = { current: NO_PARTNER_EDITS, save: async () => {} };
+export const NO_PARTNER_EDITS_STORE: DummyPartnerEditsStore = NO_CONTENT_EDITS_STORE;
 
-/** The seed with the edits laid over it. */
-export function withPartnerEdits(seed: readonly ContentItem<Partner>[], edits: DummyPartnerEdits): ContentItem<Partner>[] {
-  const saved = new Map(edits.saved.map((item) => [item.id, item]));
-  const order = new Map(edits.order);
-  const removed = new Set(edits.removed);
-  const fromSeed = seed.filter((item) => !removed.has(item.id)).map((item) => saved.get(item.id) ?? item);
-  const created = edits.saved.filter((item) => !seed.some((s) => s.id === item.id));
-  return [...fromSeed, ...created].map((item) => ({ ...item, siteOrder: order.get(item.id) ?? item.siteOrder }));
-}
+export { PREVIEW_FULL };
 
 /** A logo the cookie can hold: an uploaded one (a data URL) is not kept. */
 function keptLogo(logo: PartnerLogo): PartnerLogo {
@@ -72,23 +66,10 @@ function keptVersion(version: Versioned<Partner>): Versioned<Partner> {
 
 /** The edits that turn `seed` into `items`: what the cookie keeps. */
 export function partnerEditsOf(seed: readonly ContentItem<Partner>[], items: readonly ContentItem<Partner>[]): DummyPartnerEdits {
-  const bySeed = new Map(seed.map((item) => [item.id, item]));
-  const saved = items
-    .filter((item) => {
-      const was = bySeed.get(item.id);
-      return was === undefined || JSON.stringify(was.version) !== JSON.stringify(item.version);
-    })
-    .map((item) => ({ ...item, version: keptVersion(item.version) }));
-  const order = items.flatMap((item): (readonly [number, number])[] =>
-    bySeed.get(item.id)?.siteOrder === item.siteOrder ? [] : [[item.id, item.siteOrder]],
-  );
-  const removed = seed.filter((s) => !items.some((item) => item.id === s.id)).map((s) => s.id);
-  return { saved, removed, order };
+  return contentEditsOf(seed, items, keptVersion);
 }
 
-export function serializePartnerEdits(edits: DummyPartnerEdits): string {
-  return encodeURIComponent(JSON.stringify(edits));
-}
+export const serializePartnerEdits = serializeContentEdits<Partner>;
 
 const isId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
 
@@ -108,48 +89,17 @@ function isPartner(value: unknown): value is Partner {
   );
 }
 
-function isVersioned(value: unknown): value is Versioned<Partner> {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Versioned<Partner>;
-  if (v.state === "draft") return isPartner(v.draft);
-  return v.state === "published" && isPartner(v.published) && (v.draft === null || isPartner(v.draft));
-}
-
 /** The edits in the cookie; none when it is absent or not one this code wrote. */
 export function parsePartnerEdits(value: string | undefined): DummyPartnerEdits {
-  if (!value) return NO_PARTNER_EDITS;
-  try {
-    const wire = JSON.parse(decodeURIComponent(value)) as DummyPartnerEdits;
-    const saved = Array.isArray(wire.saved) ? wire.saved : [];
-    const removed = Array.isArray(wire.removed) ? wire.removed : [];
-    const order = Array.isArray(wire.order) ? wire.order : [];
-    if (
-      !saved.every((item) => isId(item?.id) && Number.isSafeInteger(item.siteOrder) && isVersioned(item.version)) ||
-      !removed.every(isId) ||
-      !order.every((o) => Array.isArray(o) && o.length === 2 && isId(o[0]) && Number.isSafeInteger(o[1]))
-    ) {
-      return NO_PARTNER_EDITS;
-    }
-    return { saved, removed, order };
-  } catch {
-    return NO_PARTNER_EDITS;
-  }
+  return parseContentEdits(value, isPartner);
 }
-
-export const PREVIEW_FULL = "This preview keeps only a few changes. Sign out to start over.";
 
 /**
  * The test developer's partners: the seed with their edits, in a store that
  * keeps each write in their cookie, and refuses one the cookie cannot hold.
  */
 export function dummyPartnerStore(edits: DummyPartnerEditsStore): ContentStore<Partner> {
-  const seed = dummyPartnerSeed();
-  return memoryContentStore(withPartnerEdits(seed, edits.current), async (items) => {
-    const next = partnerEditsOf(seed, items);
-    if (serializePartnerEdits(next).length > DUMMY_STATE_COOKIE_BYTES) return PREVIEW_FULL;
-    await edits.save(next);
-    return null;
-  });
+  return dummyContentStore(dummyPartnerSeed(), edits, keptVersion);
 }
 
 /** A preview stores no files: an uploaded logo comes back as a data URL the page shows until the next load. */

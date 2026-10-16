@@ -59,23 +59,23 @@ test("the team leader, the operations lead and the IT lead reach every page of t
   }
 });
 
-test("the team leader's sidebar is board 72's: Team holds Members, Access and Orders, and Content holds Partners and Alumni (issues #252, #256)", () => {
+test("the team leader's sidebar is board 72's: Team holds Members, Access and Orders, and Content holds Partners, Alumni and FAQ (issues #252, #256, #258)", () => {
   assert.deepEqual(shape(fullAccess("team-leader"), withoutApplications), [
     [null, ["Overview", "Team tree"]],
     ["Recruitment", ["Positions", "Applications"]],
     ["Team", ["Members", "Access", "Orders"]],
-    ["Content", ["Partners", "Alumni"]],
+    ["Content", ["Partners", "Alumni", "FAQ"]],
   ]);
 });
 
-test("the operations lead's and the IT lead's sidebars keep Partners and Alumni under Team, with no Content group (issues #252, #256)", () => {
+test("the operations lead's and the IT lead's sidebars keep Partners, Alumni and FAQ under Team, with no Content group (issues #252, #256, #258)", () => {
   for (const seat of ["operations-lead", "it-lead", null] as const) {
     assert.deepEqual(
       shape(fullAccess(seat), withoutApplications),
       [
         [null, ["Overview", "Team tree"]],
         ["Recruitment", ["Positions", "Applications"]],
-        ["Team", ["Members", "Partners", "Alumni", "Access", "Orders"]],
+        ["Team", ["Members", "Partners", "Alumni", "FAQ", "Access", "Orders"]],
       ],
       String(seat),
     );
@@ -113,7 +113,7 @@ test("the Alumni page is for full admins and site-content access, never from a l
   }
   assert.deepEqual(shape({ kind: "member", siteContent: true }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
-    ["Team", ["Partners", "Alumni"]],
+    ["Team", ["Partners", "Alumni", "FAQ"]],
   ]);
 });
 

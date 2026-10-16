@@ -169,6 +169,20 @@
       "when": 1792141610346,
       "tag": "0023_partners_audit_and_import",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792143457713,
+      "tag": "0024_faqs",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792143462924,
+      "tag": "0025_faqs_audit_and_import",
+      "breakpoints": true
     }
   ]
 }

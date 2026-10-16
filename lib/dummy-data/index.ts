@@ -5,6 +5,9 @@ import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { formatEuro, waitingOrders } from "@/lib/dashboard/orders";
 import { partnerEditor } from "@/lib/partners-editor";
 import { dummyLogoFiles, dummyPartnerStore, NO_PARTNER_EDITS_STORE, type DummyPartnerEditsStore } from "./partners";
+import { faqEditor } from "@/lib/faq/editor";
+import { NO_CONTENT_EDITS_STORE } from "./content-edits";
+import { dummyFaqNow, dummyFaqStore, type DummyFaqEditsStore } from "./faqs";
 import {
   checklistProgress,
   divisionShortName,
@@ -825,6 +828,7 @@ export function dummyDashboardData(
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
   partnerEdits: DummyPartnerEditsStore = NO_PARTNER_EDITS_STORE,
+  faqEdits: DummyFaqEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
   if (viewer !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
@@ -958,6 +962,8 @@ export function dummyDashboardData(
 
     // Behind the same site-content gate as the database side; changes live in the test developer's cookie.
     partners: partnerEditor(dummyViewer(viewer), dummyPartnerStore(partnerEdits), dummyLogoFiles),
+    // Seen from the dummy team's moment, so a question saved here reads "Today".
+    faqs: faqEditor(dummyViewer(viewer), dummyFaqStore(faqEdits), dummyFaqNow),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {

@@ -1,19 +1,17 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition, type DragEvent, type ReactNode } from "react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { ArrowDown, ArrowUp, GripVertical, MoreHorizontal, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
+import { GripVertical, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { measurePartnerLogo, removePartner, reorderPartners, savePartner } from "@/app/dashboard/actions";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { moveTo } from "@/lib/content/order";
-import { CONTENT_STATUS_LABELS, editorVersion, statusOf, type ContentItem, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
-import { PARTNER_TEXT_LIMITS, textLength, type Partner, type PartnerLogo, type PartnerTier } from "@/lib/partners";
+import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import { PARTNER_TEXT_LIMITS, type Partner, type PartnerLogo, type PartnerTier } from "@/lib/partners";
 import { fieldsOf, partnerFieldErrors, websiteLabel, type PartnerFieldErrors, type PartnerFields } from "@/lib/partners-fields";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { ConfirmDialog } from "./confirm-dialog";
-import { DrawerPage, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
-import { inputClass } from "./field";
+import { CONTENT_FOCUS as FOCUS, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { DrawerPage, PanelBody, SidePanel } from "./drawer";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
 
@@ -23,8 +21,6 @@ import { PANEL } from "./panel";
 // they are and whose Publish puts the partner on them. The page keeps the
 // list it was sent and each answer from the server; every write is checked
 // there again, behind the site-content gate.
-
-const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 const TIERS: readonly { tier: PartnerTier; title: string; label: string }[] = [
   { tier: "main", title: "Main partners", label: "Main partner" },
@@ -127,22 +123,10 @@ function TierGroup({
   onRemoved: (id: number) => void;
 }) {
   const ids = items.map((item) => item.id);
-  const [dragging, setDragging] = useState<{ id: number; order: number[] } | null>(null);
+  const drag = useDragOrder(ids, onReorder);
   // Outside the rows: a click in the dialog would otherwise reach the row and open the panel.
   const [removing, setRemoving] = useState<ContentItem<Partner> | null>(null);
-  const shown = dragging === null ? items : dragging.order.map((id) => items.find((item) => item.id === id)!).filter(Boolean);
-
-  const over = (index: number) => (event: DragEvent) => {
-    if (dragging === null) return;
-    event.preventDefault();
-    const order = moveTo(dragging.order, dragging.id, index);
-    if (order.join() !== dragging.order.join()) setDragging({ ...dragging, order });
-  };
-  // A drag ends on the dragged row, dropped or not: the order it shows then is the one saved.
-  const end = () => {
-    if (dragging !== null && dragging.order.join() !== ids.join()) onReorder(dragging.order);
-    setDragging(null);
-  };
+  const shown = drag.order.map((id) => items.find((item) => item.id === id)!).filter(Boolean);
 
   return (
     <section className={`${PANEL} overflow-hidden`}>
@@ -153,26 +137,15 @@ function TierGroup({
       {items.length === 0 ? (
         <p className="px-5 py-5 text-[14px] text-prt-muted">No partners here yet.</p>
       ) : (
-        <ul
-          className="divide-y divide-hairline"
-          onDragOver={(e) => dragging !== null && e.preventDefault()}
-          onDrop={(e) => dragging !== null && e.preventDefault()}
-        >
+        <ul className="divide-y divide-hairline" {...drag.list}>
           {shown.map((item, index) => (
             <PartnerRow
               key={item.id}
               item={item}
               selected={item.id === selectedId}
               panelOpen={panelOpen}
-              dragged={dragging?.id === item.id}
+              drag={drag.row(item.id, index)}
               onOpen={() => onOpen(item.id)}
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", String(item.id));
-                setDragging({ id: item.id, order: ids });
-              }}
-              onDragOver={over(index)}
-              onDragEnd={end}
               onMove={index === 0 && index === items.length - 1 ? null : (to) => onReorder(moveTo(ids, item.id, to))}
               index={index}
               last={items.length - 1}
@@ -192,11 +165,8 @@ function PartnerRow({
   item,
   selected,
   panelOpen,
-  dragged,
+  drag,
   onOpen,
-  onDragStart,
-  onDragOver,
-  onDragEnd,
   onMove,
   index,
   last,
@@ -205,11 +175,8 @@ function PartnerRow({
   item: ContentItem<Partner>;
   selected: boolean;
   panelOpen: boolean;
-  dragged: boolean;
+  drag: DragRow;
   onOpen: () => void;
-  onDragStart: (event: DragEvent) => void;
-  onDragOver: (event: DragEvent) => void;
-  onDragEnd: () => void;
   onMove: ((to: number) => void) | null;
   index: number;
   last: number;
@@ -223,13 +190,13 @@ function PartnerRow({
   return (
     <li
       draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragEnd={onDragEnd}
+      onDragStart={drag.onDragStart}
+      onDragOver={drag.onDragOver}
+      onDragEnd={drag.onDragEnd}
       onClick={onOpen}
       className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors duration-300 ease-out md:gap-4 md:px-5 ${
         selected ? "bg-accent/[0.08]" : "hover:bg-white-5"
-      } ${dragged ? "opacity-50" : ""}`}
+      } ${drag.dragged ? "opacity-50" : ""}`}
     >
       <GripVertical aria-hidden className={`hidden h-4 w-4 shrink-0 cursor-grab text-dim md:block ${squeezed}`} strokeWidth={1.75} />
       <LogoBox logo={partner.logo} name={partner.name} size={panelOpen ? "row-narrow" : "row"} />
@@ -251,84 +218,6 @@ function PartnerRow({
         onRemove={onRemove}
       />
     </li>
-  );
-}
-
-const MENU_ITEM =
-  "flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[disabled]:cursor-default data-[disabled]:opacity-40 data-[highlighted]:bg-white-5 data-[highlighted]:text-prt-text";
-
-function RowMenu({
-  name,
-  onEdit,
-  onUp,
-  onDown,
-  onRemove,
-}: {
-  name: string;
-  onEdit: () => void;
-  onUp: (() => void) | null;
-  onDown: (() => void) | null;
-  onRemove: () => void;
-}) {
-  return (
-    <span onClick={(e) => e.stopPropagation()} className="shrink-0">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={`More for ${name}`}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text data-[state=open]:bg-white-5 ${FOCUS}`}
-        >
-          <MoreHorizontal aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-        </DropdownMenuTrigger>
-        <DropdownMenuPortal>
-          <DropdownMenuPrimitive.Content
-            align="end"
-            sideOffset={6}
-            className="z-50 min-w-[180px] rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
-          >
-            <DropdownMenuPrimitive.Item onSelect={onEdit} className={MENU_ITEM}>
-              <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Edit
-            </DropdownMenuPrimitive.Item>
-            <DropdownMenuPrimitive.Item disabled={onUp === null} onSelect={() => onUp?.()} className={MENU_ITEM}>
-              <ArrowUp aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Move up
-            </DropdownMenuPrimitive.Item>
-            <DropdownMenuPrimitive.Item disabled={onDown === null} onSelect={() => onDown?.()} className={MENU_ITEM}>
-              <ArrowDown aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Move down
-            </DropdownMenuPrimitive.Item>
-            <DropdownMenuPrimitive.Separator className="-mx-1.5 my-1 h-px bg-hairline" />
-            <DropdownMenuPrimitive.Item onSelect={onRemove} className={`${MENU_ITEM} text-danger data-[highlighted]:text-danger`}>
-              <Trash2 aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Remove
-            </DropdownMenuPrimitive.Item>
-          </DropdownMenuPrimitive.Content>
-        </DropdownMenuPortal>
-      </DropdownMenu>
-    </span>
-  );
-}
-
-const STATUS_TONE: Readonly<Record<ContentStatus, string>> = {
-  published: "bg-success-soft text-success",
-  draft: "bg-warning-soft text-warning",
-  "draft-changes": "bg-warning-soft text-warning",
-};
-
-const STATUS_DOT: Readonly<Record<ContentStatus, string>> = {
-  published: "bg-success",
-  draft: "bg-warning",
-  "draft-changes": "bg-warning",
-};
-
-/** Published, or Draft (board 76); the panel says "Draft changes" for a published partner with a draft (76b). */
-function StatusPill({ status, short = false }: { status: ContentStatus; short?: boolean }) {
-  const label = short && status === "draft-changes" ? CONTENT_STATUS_LABELS.draft : CONTENT_STATUS_LABELS[status];
-  return (
-    <span className={`inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-full px-2 text-[12px] font-medium ${STATUS_TONE[status]}`}>
-      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status]}`} />
-      {label}
-    </span>
   );
 }
 
@@ -507,30 +396,7 @@ function PartnerPanel({
         )
       }
       footerLayout="spread"
-      footer={
-        <>
-          {item === null ? (
-            <span />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className={`inline-flex h-11 items-center gap-2 rounded-full px-2 text-[14px] font-semibold text-danger transition-opacity duration-300 ease-out hover:opacity-80 ${FOCUS}`}
-            >
-              <Trash2 aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-              Remove
-            </button>
-          )}
-          <span className="flex gap-3">
-            <button type="button" disabled={pending} onClick={() => submit("save-draft")} className={PANEL_GHOST_BUTTON}>
-              Save draft
-            </button>
-            <button type="button" disabled={pending} onClick={() => submit("publish")} className={PANEL_PRIMARY_BUTTON}>
-              Publish
-            </button>
-          </span>
-        </>
-      }
+      footer={<PublishFooter onRemove={item === null ? null : () => setConfirming(true)} pending={pending} onSubmit={submit} />}
     >
       <form id={formId} noValidate onSubmit={(e) => e.preventDefault()} className="flex min-h-0 flex-1 flex-col">
         <PanelBody className="flex flex-col gap-5">
@@ -609,67 +475,6 @@ function PartnerPanel({
       </form>
       {item !== null && <RemoveDialog open={confirming} onOpenChange={setConfirming} item={item} onRemoved={() => onRemoved(item.id)} />}
     </SidePanel>
-  );
-}
-
-/** A labelled input or textarea, with a live counter on the right when the text has a limit (board 76b: "52 / 80"). */
-function TextField({
-  label,
-  hint,
-  value,
-  error,
-  limit,
-  rows,
-  placeholder,
-  type = "text",
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  value: string;
-  error?: string;
-  limit?: number;
-  rows?: number;
-  placeholder?: string;
-  type?: "text" | "url";
-  onChange: (value: string) => void;
-}) {
-  const id = useId();
-  const errorId = `${id}-error`;
-  const length = textLength(value.trim());
-  const over = limit !== undefined && length > limit;
-  const control = {
-    id,
-    value,
-    placeholder,
-    "aria-invalid": error !== undefined || over,
-    "aria-describedby": error === undefined ? undefined : errorId,
-    onChange: (e: { target: { value: string } }) => onChange(e.target.value),
-  };
-  return (
-    <div className="min-w-0">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <label htmlFor={id} className="text-[13px] leading-snug text-prt-text">
-          {label}
-          {hint && <span className="ml-1.5 text-prt-muted">{hint}</span>}
-        </label>
-        {limit !== undefined && (
-          <span aria-live="polite" className={`font-mono text-[11px] ${over ? "text-danger" : "text-prt-muted"}`}>
-            {length} / {limit}
-          </span>
-        )}
-      </div>
-      {rows === undefined ? (
-        <input type={type} {...control} className={inputClass(error ?? (over ? "" : undefined))} />
-      ) : (
-        <textarea rows={rows} {...control} className={`${inputClass(error ?? (over ? "" : undefined))} h-auto resize-none py-2.5 leading-relaxed`} />
-      )}
-      {error !== undefined && (
-        <p id={errorId} className="mt-1.5 text-[12px] text-danger">
-          {error}
-        </p>
-      )}
-    </div>
   );
 }
 

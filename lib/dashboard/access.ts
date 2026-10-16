@@ -125,6 +125,17 @@ export const DASHBOARD_PAGES = [
     seatPlace: { "team-leader": "content" },
   },
   {
+    key: "faq",
+    label: "FAQ",
+    href: "/dashboard/faq",
+    // Boards 79 and 79b (issue #258): the site-content rule Partners and
+    // Alumni follow (maySiteContent, lib/content/gate.ts), placed after
+    // Alumni, under Content for the team leader, as board 79 lists them.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    seatPlace: { "team-leader": "content" },
+  },
+  {
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",
