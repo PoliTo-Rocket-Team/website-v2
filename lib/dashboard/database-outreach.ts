@@ -5,13 +5,12 @@ import { asc, eq, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { outreachPosts, outreachPostTags, outreachPostVersions, outreachSummitVersions, outreachTags } from "@/db/schema";
-import type { ContentStore } from "@/lib/content/editor";
-import { versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
+import { versionedFromRows, versionRows, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { publicOutreach, type OutreachStore, type StoredOutreach, type SummitVersions } from "@/lib/outreach-editor";
 import { publicStorePhotoFiles, type PhotoFiles } from "@/lib/outreach-photos";
-import { postColumns, postFromColumns, summitColumns, summitFromColumns } from "@/lib/outreach-rows";
-import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag } from "@/lib/outreach-types";
+import { draftFromColumns, postColumns, postFromColumns, summitColumns, summitFromColumns } from "@/lib/outreach-rows";
+import type { OutreachContent, OutreachDraft, OutreachFeature, OutreachTag, PostItem, PostStore, PostVersions } from "@/lib/outreach-types";
 import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
 import { written } from "./write";
 
@@ -53,15 +52,28 @@ export async function readStoredOutreach(): Promise<StoredOutreach> {
     const key = `${row.postId}:${row.version}`;
     tagsOf.set(key, [...(tagsOf.get(key) ?? []), row.tagName]);
   }
-  const byId = new Map<number, { siteOrder: number; rows: { kind: VersionKind; content: OutreachPost }[] }>();
+  type Row = (typeof versionRowsRead)[number]["version"];
+  const byId = new Map<number, { siteOrder: number; rows: Row[] }>();
   for (const row of versionRowsRead) {
     const entry = byId.get(row.id) ?? { siteOrder: row.siteOrder, rows: [] };
-    const tags = tagsOf.get(`${row.id}:${row.version.version}`) ?? [];
-    entry.rows.push({ kind: row.version.version, content: postFromColumns(row.version, tags) });
+    entry.rows.push(row.version);
     byId.set(row.id, entry);
   }
-  const posts = [...byId].flatMap(([id, entry]): ContentItem<OutreachPost>[] => {
-    const version = versionedFromRows(entry.rows);
+  const posts = [...byId].flatMap(([id, entry]): PostItem[] => {
+    const tags = (row: Row) => tagsOf.get(`${id}:${row.version}`) ?? [];
+    const published = entry.rows.find((row) => row.version === "published");
+    const draft = entry.rows.find((row) => row.version === "draft");
+    // A live post's draft is whole; only a post never published keeps a draft that is not (`PostVersions`).
+    const version: PostVersions | null =
+      published !== undefined
+        ? {
+            state: "published",
+            published: postFromColumns(published, tags(published)),
+            draft: draft === undefined ? null : postFromColumns(draft, tags(draft)),
+          }
+        : draft === undefined
+          ? null
+          : { state: "draft", draft: draftFromColumns(draft, tags(draft)) };
     return version === null ? [] : [{ id, siteOrder: entry.siteOrder, version }];
   });
 
@@ -94,7 +106,7 @@ export async function cachedPublishedOutreach(): Promise<OutreachContent | null>
 const json = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`;
 
 /** A version's row and its tag rows, for a post whose id is known. */
-function versionValues(postId: number, kind: VersionKind, post: OutreachPost) {
+function versionValues(postId: number, kind: VersionKind, post: OutreachDraft) {
   const c = postColumns(post);
   return {
     version: { postId, version: kind, ...c, body: [...c.body], photos: [...c.photos] },
@@ -102,12 +114,12 @@ function versionValues(postId: number, kind: VersionKind, post: OutreachPost) {
   };
 }
 
-function versionsValues(postId: number, version: Versioned<OutreachPost>) {
+function versionsValues(postId: number, version: PostVersions) {
   const all = versionRows(version).map((row) => versionValues(postId, row.kind, row.content));
   return { versions: all.map((v) => v.version), tags: all.flatMap((v) => v.tags) };
 }
 
-const databasePostStore: ContentStore<OutreachPost> = {
+const databasePostStore: PostStore = {
   list: async () => (await readStoredOutreach()).posts,
 
   async create(version, siteOrder) {
@@ -115,12 +127,7 @@ const databasePostStore: ContentStore<OutreachPost> = {
     // A new item holds one version: a draft, or what was published at once.
     if (more.length > 0) throw new Error("a new outreach post holds one version");
     const c = postColumns(only.content);
-    const tags = sql.join(
-      only.content.tags.map((name, i) => sql`(${name}, ${i + 1}::integer)`),
-      sql`, `,
-    );
-    const created = await runAuditQuery((db) =>
-      db.execute<{ post_id: number }>(sql`
+    const insertPost = sql`
         WITH "post" AS (INSERT INTO ${outreachPosts} ("site_order") VALUES (${siteOrder}) RETURNING "id"),
         "version" AS (
           INSERT INTO ${outreachPostVersions} ("post_id", "version", "title", "date", "place", "summary", "summary_phone", "lead", "body", "photos", "channels")
@@ -128,11 +135,19 @@ const databasePostStore: ContentStore<OutreachPost> = {
             ${json(c.body)}, ${json(c.photos)}, ${json(c.channels)}
           FROM "post"
           RETURNING "post_id"
-        )
+        )`;
+    // A new post's draft may have no tag yet (board 74f).
+    const tagRows = only.content.tags.map((name, i) => sql`(${name}, ${i + 1}::integer)`);
+    const created = await runAuditQuery((db) =>
+      db.execute<{ post_id: number }>(
+        tagRows.length === 0
+          ? sql`${insertPost} SELECT "post_id" FROM "version"`
+          : sql`${insertPost}
         INSERT INTO ${outreachPostTags} ("post_id", "version", "tag_name", "position")
         SELECT "post_id", ${only.kind}::content_version, "tag"."name", "tag"."position"
-        FROM "version", (VALUES ${tags}) AS "tag" ("name", "position")
-        RETURNING "post_id"`),
+        FROM "version", (VALUES ${sql.join(tagRows, sql`, `)}) AS "tag" ("name", "position")
+        RETURNING "post_id"`,
+      ),
     );
     updateTag(OUTREACH_CACHE_TAG);
     return written({ id: Number(created.rows[0].post_id), siteOrder, version });
@@ -141,11 +156,11 @@ const databasePostStore: ContentStore<OutreachPost> = {
   async update(id, version) {
     const before = (await readStoredOutreach()).posts.find((item) => item.id === id) ?? null;
     const { versions, tags } = versionsValues(id, version);
-    // The old versions' tags go with them (ON DELETE CASCADE).
+    // The old versions' tags go with them (ON DELETE CASCADE). A draft may have no tag yet.
     await runAuditBatch((db) => [
       db.delete(outreachPostVersions).where(eq(outreachPostVersions.postId, id)),
       db.insert(outreachPostVersions).values(versions),
-      db.insert(outreachPostTags).values(tags),
+      ...(tags.length === 0 ? [] : [db.insert(outreachPostTags).values(tags)]),
     ]);
     updateTag(OUTREACH_CACHE_TAG);
     return written({ id, siteOrder: before?.siteOrder ?? 0, version });

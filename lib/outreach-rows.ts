@@ -7,6 +7,7 @@ import {
   type Channels,
   type Edition,
   type IsoDate,
+  type OutreachDraft,
   type OutreachFeature,
   type OutreachPhoto,
   type OutreachPost,
@@ -31,7 +32,7 @@ export type OutreachPostColumns = {
   lead: string;
   body: readonly BodyBlock[];
   photos: readonly OutreachPhoto[];
-  channels: Channels;
+  channels: Partial<Record<ChannelName, Channel>>;
 };
 
 /** The summit version's columns in `outreach_summit_versions`. */
@@ -45,7 +46,7 @@ export type OutreachSummitColumns = {
   editions: readonly Edition[];
 };
 
-export function postColumns(post: OutreachPost): OutreachPostColumns {
+export function postColumns(post: OutreachDraft): OutreachPostColumns {
   return {
     title: post.title,
     date: post.date,
@@ -59,9 +60,8 @@ export function postColumns(post: OutreachPost): OutreachPostColumns {
   };
 }
 
-/** A stored post version and its tags as a post; throws on a row whose JSON is not a post's. */
-export function postFromColumns(row: Record<keyof OutreachPostColumns, unknown>, tags: readonly string[]): OutreachPost {
-  const post = outreachPostOf({
+function fromColumns(row: Record<keyof OutreachPostColumns, unknown>, tags: readonly string[]): unknown {
+  return {
     title: row.title,
     date: row.date,
     ...(row.place !== null && { place: row.place }),
@@ -71,9 +71,21 @@ export function postFromColumns(row: Record<keyof OutreachPostColumns, unknown>,
     body: row.body,
     photos: row.photos,
     channels: row.channels,
-  });
+  };
+}
+
+/** A stored post version and its tags as a post; throws on a row whose JSON is not a post's. */
+export function postFromColumns(row: Record<keyof OutreachPostColumns, unknown>, tags: readonly string[]): OutreachPost {
+  const post = outreachPostOf(fromColumns(row, tags));
   if (post === null) throw new Error(`an outreach post version titled ${JSON.stringify(row.title)} is not a post`);
   return post;
+}
+
+/** The stored draft of a post never published, and its tags; throws on a row whose JSON is not a draft's. */
+export function draftFromColumns(row: Record<keyof OutreachPostColumns, unknown>, tags: readonly string[]): OutreachDraft {
+  const draft = outreachDraftOf(fromColumns(row, tags));
+  if (draft === null) throw new Error(`an outreach draft titled ${JSON.stringify(row.title)} is not a draft`);
+  return draft;
 }
 
 export function summitColumns(feature: OutreachFeature): OutreachSummitColumns {
@@ -199,6 +211,65 @@ export function outreachPostOf(value: unknown): OutreachPost | null {
     ...(value.place !== undefined && { place: value.place }),
     tags,
     summary,
+    lead: value.lead,
+    body,
+    photos,
+    channels,
+  };
+}
+
+// A draft's readers take what the panel may leave blank: an empty title,
+// lead, summary, text block, alt text or channel link, and lists with no
+// item yet. Every key must still have its type.
+
+const isString = (value: unknown): value is string => typeof value === "string";
+
+function listOf<T>(value: unknown, read: (item: unknown) => T | null): T[] | null {
+  if (!Array.isArray(value)) return null;
+  const items = value.map(read);
+  return items.some((item) => item === null) ? null : (items as T[]);
+}
+
+function draftBlockOf(value: unknown): BodyBlock | null {
+  if (!isShape(value) || !isString(value.text)) return null;
+  if (value.kind === "paragraph" || value.kind === "heading") return { kind: value.kind, text: value.text };
+  if (value.kind === "highlight" && isString(value.label)) return { kind: "highlight", label: value.label, text: value.text };
+  return null;
+}
+
+function draftPhotoOf(value: unknown): OutreachPhoto | null {
+  if (!isShape(value) || !isStoredPhotoSrc(value.src) || !isString(value.alt)) return null;
+  return { src: value.src, alt: value.alt };
+}
+
+function draftChannelsOf(value: unknown): Partial<Record<ChannelName, Channel>> | null {
+  if (!isShape(value)) return null;
+  const read: Partial<Record<ChannelName, Channel>> = {};
+  for (const name of CHANNEL_NAMES) {
+    const channel = value[name];
+    if (channel === undefined) continue;
+    if (!isShape(channel) || !isString(channel.url) || !isString(channel.caption) || !optionalText(channel.account)) return null;
+    read[name] = { url: channel.url, caption: channel.caption, ...(channel.account !== undefined && { account: channel.account }) };
+  }
+  return read;
+}
+
+/** `value` as a draft of a post (`OutreachDraft`): each key in its shape, blanks allowed; null otherwise. */
+export function outreachDraftOf(value: unknown): OutreachDraft | null {
+  if (!isShape(value) || !isString(value.title) || !isIsoDate(value.date) || !optionalText(value.place) || !isString(value.lead)) return null;
+  const { summary } = value;
+  if (!isShape(summary) || !isString(summary.text) || !optionalText(summary.phone)) return null;
+  const tags = listOf(value.tags, (tag) => (isText(tag) ? tag : null));
+  const body = listOf(value.body, draftBlockOf);
+  const photos = listOf(value.photos, draftPhotoOf);
+  const channels = draftChannelsOf(value.channels);
+  if (tags === null || body === null || photos === null || channels === null) return null;
+  return {
+    title: value.title,
+    date: value.date,
+    ...(value.place !== undefined && { place: value.place }),
+    tags,
+    summary: { text: summary.text, ...(summary.phone !== undefined && { phone: summary.phone }) },
     lead: value.lead,
     body,
     photos,

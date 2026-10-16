@@ -5,10 +5,10 @@ import { canReach } from "@/lib/dashboard/access";
 import type { DashboardData } from "@/lib/dashboard/data";
 import { openDashboard } from "@/lib/dashboard/open";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
-import { isPublishStep, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import { isPublishStep, type PublishStep } from "@/lib/content/versioned";
 import type { SummitVersions } from "@/lib/outreach-editor";
 import { checkSummitFields, parseSummitFields } from "@/lib/outreach-summit-fields";
-import type { OutreachPost } from "@/lib/outreach-types";
+import type { PostItem } from "@/lib/outreach-types";
 
 // The Outreach list's writes (board 74, issue #289). Each opens the dashboard
 // as the page did and checks the viewer reaches the Outreach page; the
@@ -26,7 +26,7 @@ async function onOutreach<T>(run: (data: DashboardData) => Promise<WriteResult<T
 }
 
 /** Unpublish: the post leaves /outreach and stays in the list as a draft. */
-export async function unpublishOutreachPost(postId: number): Promise<WriteResult<ContentItem<OutreachPost>>> {
+export async function unpublishOutreachPost(postId: number): Promise<WriteResult<PostItem>> {
   if (!Number.isSafeInteger(postId)) return refused("Unknown post.");
   return onOutreach((data) => data.outreach.posts.unpublish(postId));
 }

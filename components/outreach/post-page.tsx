@@ -2,7 +2,7 @@ import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import type { Neighbouring } from "@/lib/outreach";
-import type { PostView } from "@/lib/outreach-types";
+import type { OutreachDraft } from "@/lib/outreach-types";
 import { Neighbours, PostBody, PostHeader, type PostFrame } from "./post";
 
 // Boards 33 (desktop) and 33m (phone): one outreach post's whole page, as
@@ -14,10 +14,13 @@ export function PostPage({
   post,
   neighbours,
   frame,
+  hints,
 }: {
-  post: PostView;
+  post: OutreachDraft;
   neighbours: Neighbouring;
   frame?: PostFrame;
+  /** The editor's page: a blank part says what goes there (board 74f). */
+  hints?: boolean;
 }) {
   return (
     <div className="relative bg-ground">
@@ -25,8 +28,8 @@ export function PostPage({
       <PageSky>
         <main className="px-5 pb-section pt-16 md:px-16 md:pt-[72px]">
           <div className="pt-8 md:pt-16">
-            <PostHeader post={post} frame={frame} />
-            <PostBody post={post} frame={frame} />
+            <PostHeader post={post} frame={frame} hints={hints} />
+            <PostBody post={post} frame={frame} hints={hints} />
             <Neighbours {...neighbours} />
           </div>
         </main>

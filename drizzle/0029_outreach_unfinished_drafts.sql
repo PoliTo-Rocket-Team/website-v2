@@ -1,0 +1,8 @@
+ALTER TABLE "outreach_post_versions" DROP CONSTRAINT "outreach_post_versions_titled";--> statement-breakpoint
+ALTER TABLE "outreach_post_versions" DROP CONSTRAINT "outreach_post_versions_body";--> statement-breakpoint
+ALTER TABLE "outreach_post_versions" DROP CONSTRAINT "outreach_post_versions_photos";--> statement-breakpoint
+ALTER TABLE "outreach_post_versions" DROP CONSTRAINT "outreach_post_versions_channels";--> statement-breakpoint
+ALTER TABLE "outreach_post_versions" ADD CONSTRAINT "outreach_post_versions_titled" CHECK ("outreach_post_versions"."version" = 'draft' or char_length("outreach_post_versions"."title") >= 1);--> statement-breakpoint
+ALTER TABLE "outreach_post_versions" ADD CONSTRAINT "outreach_post_versions_body" CHECK (jsonb_typeof("outreach_post_versions"."body") = 'array' and ("outreach_post_versions"."version" = 'draft' or jsonb_array_length("outreach_post_versions"."body") >= 1));--> statement-breakpoint
+ALTER TABLE "outreach_post_versions" ADD CONSTRAINT "outreach_post_versions_photos" CHECK (jsonb_typeof("outreach_post_versions"."photos") = 'array' and ("outreach_post_versions"."version" = 'draft' or jsonb_array_length("outreach_post_versions"."photos") >= 1));--> statement-breakpoint
+ALTER TABLE "outreach_post_versions" ADD CONSTRAINT "outreach_post_versions_channels" CHECK (jsonb_typeof("outreach_post_versions"."channels") = 'object' and ("outreach_post_versions"."version" = 'draft' or "outreach_post_versions"."channels" ? 'instagram' or "outreach_post_versions"."channels" ? 'linkedin'));

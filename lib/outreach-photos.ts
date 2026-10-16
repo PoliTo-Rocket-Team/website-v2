@@ -1,8 +1,7 @@
-import { versionRows, type ContentItem, type Versioned } from "@/lib/content/versioned";
+import { versionRows } from "@/lib/content/versioned";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import type { ContentStore } from "@/lib/content/editor";
 import { publicPathname, publicPathnameOfUrl, type PublicPathname, type PublicStoreHost } from "@/lib/storage/pathname";
-import type { OutreachPost, PhotoSrc } from "./outreach-types";
+import type { OutreachDraft, PhotoSrc, PostItem, PostStore, PostVersions } from "./outreach-types";
 
 // A post's photos as files (issue #291). The Edit post panel uploads a photo
 // the moment it is picked, through the outreach editor, so only once the
@@ -103,7 +102,7 @@ export function publicStorePhotoFiles(host: PublicStoreHost | null, writes: Publ
  * or a delete lands, each photo the post had before goes to `files.drop` when
  * no version of any post shows it any more (`photosNoLongerShown`).
  */
-export function freeingPhotoFiles(store: ContentStore<OutreachPost>, files: Pick<PhotoFiles, "drop">): ContentStore<OutreachPost> {
+export function freeingPhotoFiles(store: PostStore, files: Pick<PhotoFiles, "drop">): PostStore {
   async function thenFree<R>(id: number, write: () => Promise<WriteResult<R>>): Promise<WriteResult<R>> {
     const before = (await store.list()).find((item) => item.id === id) ?? null;
     const result = await write();
@@ -118,7 +117,7 @@ export function freeingPhotoFiles(store: ContentStore<OutreachPost>, files: Pick
 }
 
 /** Every photo any version of these posts shows. */
-function photosShown(posts: readonly ContentItem<OutreachPost>[]): Set<string> {
+function photosShown(posts: readonly PostItem[]): Set<string> {
   return new Set(posts.flatMap((item) => versionRows(item.version).flatMap((row) => row.content.photos.map((p) => p.src))));
 }
 
@@ -128,23 +127,23 @@ function photosShown(posts: readonly ContentItem<OutreachPost>[]): Set<string> {
  * two posts share stays while either one shows it. Save, Delete and Remove
  * photo all free files through this one check.
  */
-export function photosNoLongerShown(candidates: Iterable<PhotoSrc>, posts: readonly ContentItem<OutreachPost>[]): PhotoSrc[] {
+export function photosNoLongerShown(candidates: Iterable<PhotoSrc>, posts: readonly PostItem[]): PhotoSrc[] {
   const shown = photosShown(posts);
   return [...new Set(candidates)].filter((src) => !shown.has(src));
 }
 
 /** Every photo a post's versions show: the files a write to that post may free. */
-export function photosOf(version: Versioned<OutreachPost> | null): PhotoSrc[] {
+export function photosOf(version: PostVersions | null): PhotoSrc[] {
   return version === null ? [] : versionRows(version).flatMap((row) => row.content.photos.map((p) => p.src));
 }
 
 /**
- * The post, or why not: each photo is one the version the panel opened on
- * had, or a file this side stored. A save cannot point a post at a file
- * somewhere else.
+ * The post or draft, or why not: each photo is one the version the panel
+ * opened on had (none for a new post), or a file this side stored. A save
+ * cannot point a post at a file somewhere else.
  */
-export function checkPhotoSources(post: OutreachPost, had: OutreachPost, files: Pick<PhotoFiles, "owns">): WriteResult<OutreachPost> {
-  const known = new Set(had.photos.map((p) => p.src));
+export function checkPhotoSources<P extends OutreachDraft>(post: P, had: OutreachDraft | null, files: Pick<PhotoFiles, "owns">): WriteResult<P> {
+  const known = new Set((had?.photos ?? []).map((p) => p.src));
   const stray = post.photos.find((p) => !known.has(p.src) && !files.owns(p.src));
   return stray === undefined ? written(post) : refused("A photo was not uploaded. Add it again.");
 }

@@ -1,3 +1,4 @@
+import type { PublishCheck } from "@/lib/content/edit-shell";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
 import type { NonEmpty } from "./about/alumni-types";
 import { isPhotoSrc } from "./outreach-photos";
@@ -8,18 +9,21 @@ import {
   type BodyBlock,
   type Channel,
   type ChannelName,
+  type IsoDate,
   type OutreachPost,
   type OutreachTag,
   type PhotoSrc,
-  type PostView,
+  type OutreachDraft,
 } from "./outreach-types";
 import type { Copy } from "./projects";
 
 // The Edit post panel's fields (boards 74c, 74d and 74h, issue #290): a post
 // as the editor types it, the page it draws while they type, and the rules a
-// Save draft or a Publish must pass. The panel keeps the fields; only a post
-// that passes every rule reaches the store, on either button: a draft is a
-// whole post too. Photos (issue #291) are uploaded as they are picked, so the
+// Save draft or a Publish must pass. The panel keeps the fields. Publish
+// takes only a post that passes every rule, and so does Save draft on a
+// published post, whose draft must be whole. A post never published is
+// saved as a draft at any point, blanks and all (board 74f, issue #292), and
+// its Publish waits on the checklist. Photos (issue #291) are uploaded as they are picked, so the
 // fields hold each one's src and its alt text, in the order the panel shows.
 
 /** One original post as the panel edits it: the link and the first line. `account` is kept as it was. */
@@ -60,8 +64,8 @@ export type PostCheck =
   | { readonly ok: true; readonly value: OutreachPost }
   | { readonly ok: false; readonly errors: PostFieldErrors };
 
-/** The panel's fields for a post, as it opens. */
-export function postFieldsOf(post: OutreachPost): PostFields {
+/** The panel's fields for a post or a draft, as it opens. */
+export function postFieldsOf(post: OutreachDraft): PostFields {
   return {
     title: post.title,
     date: post.date,
@@ -95,11 +99,21 @@ function channelRecord(channels: readonly ChannelFields[]): Partial<Record<Chann
   return Object.fromEntries(channels.map((c) => [c.name, channelOf(c)]));
 }
 
-/**
- * The page as the editor sees it while typing: every field as typed, and the
- * opened post's date while the date is cleared and its photos while none is left.
- */
-export function postViewOf(fields: PostFields, opened: OutreachPost): PostView {
+/** The post the panel opened on, as far as the fields need it: its date while the date is cleared, and its phone summary. */
+export type OpenedPost = Pick<OutreachDraft, "date" | "summary">;
+
+/** A new post's fields (board 74f): everything blank but the date, which is `today`. */
+export function blankPostFields(today: IsoDate): PostFields {
+  return { title: "", date: today, place: "", tags: [], lead: "", summary: "", body: [], photos: [], channels: [] };
+}
+
+/** What a new post opened on: nothing yet but its date. */
+export function blankPost(today: IsoDate): OutreachDraft {
+  return { title: "", date: today, tags: [], summary: { text: "" }, lead: "", body: [], photos: [], channels: {} };
+}
+
+/** The page as the editor sees it while typing: every field as typed, and the opened post's date while the date is cleared. */
+export function postViewOf(fields: PostFields, opened: OpenedPost): OutreachDraft {
   const place = fields.place.trim();
   return {
     title: fields.title,
@@ -109,9 +123,56 @@ export function postViewOf(fields: PostFields, opened: OutreachPost): PostView {
     summary: summaryOf(fields.summary.trim(), opened.summary),
     lead: fields.lead,
     body: fields.body,
-    photos: nonEmpty(fields.photos) ?? opened.photos,
+    photos: fields.photos,
     channels: channelRecord(fields.channels),
   };
+}
+
+/**
+ * The fields as the draft of a post never published (Save draft works at any
+ * point, board 74f): each text trimmed, blanks kept, the opened date while
+ * the date is cleared. Refused only for a tag off the tag list, which the
+ * store cannot hold.
+ */
+export function draftOfFields(fields: PostFields, opened: OpenedPost, tags: readonly OutreachTag[]): WriteResult<OutreachDraft> {
+  const known = new Set(tags.map((t) => t.name));
+  const unknown = fields.tags.find((name) => !known.has(name));
+  if (unknown !== undefined) return refused(`${unknown} is not a tag. Add it to the tag list first.`);
+  const place = fields.place.trim();
+  return {
+    ok: true,
+    value: {
+      title: fields.title.trim(),
+      date: isIsoDate(fields.date) ? fields.date : opened.date,
+      ...(place !== "" && { place }),
+      tags: [...fields.tags],
+      summary: summaryOf(fields.summary.trim(), opened.summary),
+      lead: fields.lead.trim(),
+      body: fields.body.map(trimmedBlock),
+      photos: fields.photos.map((p) => ({ src: p.src, alt: p.alt.trim() })),
+      channels: Object.fromEntries(fields.channels.map((c) => [c.name, channelOf(c)])),
+    },
+  };
+}
+
+/**
+ * The checklist under Publish (board 74f), in the board's order: Publish
+ * stays off until every line is done. A publish runs the whole of
+ * `checkPostFields` as well, which asks for more (a lead, a card summary, alt
+ * text on every photo), and says which section still needs it.
+ */
+export function publishChecklist(fields: PostFields): readonly PublishCheck[] {
+  return [
+    { label: "Title", done: fields.title.trim() !== "" },
+    { label: "At least 1 tag", done: fields.tags.length > 0 },
+    { label: "Cover photo", done: fields.photos.length > 0 },
+    { label: "Some text", done: fields.body.some((b) => b.text.trim() !== "") },
+    {
+      label: "An Instagram or LinkedIn link",
+      done: fields.channels.some((c) => (c.name === "instagram" || c.name === "linkedin") && c.url.trim() !== ""),
+    },
+    { label: "Date", done: isIsoDate(fields.date) },
+  ];
 }
 
 const isWebLink = (url: string) => /^https?:\/\/\S+\.\S+$/.test(url);
@@ -154,7 +215,7 @@ function tagsError(picked: readonly string[], tags: readonly OutreachTag[]): str
  * and the Instagram or LinkedIn post with a link and a first line on every
  * channel. The first photo is the post's cover and its card photo.
  */
-export function checkPostFields(fields: PostFields, opened: OutreachPost, tags: readonly OutreachTag[]): PostCheck {
+export function checkPostFields(fields: PostFields, opened: OpenedPost, tags: readonly OutreachTag[]): PostCheck {
   const errors: PostFieldErrors = {
     ...(fields.title.trim() === "" && { title: "Write the title." }),
     ...(!isIsoDate(fields.date) && { date: "Pick the date." }),

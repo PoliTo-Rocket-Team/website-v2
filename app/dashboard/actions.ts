@@ -15,7 +15,7 @@ import type { MeasuredLogo } from "@/lib/partners-editor";
 import { PARTNER_FIELDS, type PartnerFields } from "@/lib/partners-fields";
 import type { FaqFields, FaqVersion } from "@/lib/faq/faq";
 import { readPostFields } from "@/lib/outreach-post-fields";
-import type { OutreachPost, OutreachTag, PhotoSrc } from "@/lib/outreach-types";
+import type { OutreachTag, PhotoSrc, PostItem } from "@/lib/outreach-types";
 
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
@@ -192,9 +192,9 @@ function refreshPublicOutreach(): void {
   revalidatePath("/");
 }
 
-/** Save draft or Publish on a post, with the panel's fields. */
-export async function saveOutreachPost(postId: number, step: PublishStep, input: unknown): Promise<WriteResult<ContentItem<OutreachPost>>> {
-  if (!Number.isSafeInteger(postId)) return refused("Unknown post.");
+/** Save draft or Publish on a post, or on a new one (`postId` null, board 74f), with the panel's fields. */
+export async function saveOutreachPost(postId: number | null, step: PublishStep, input: unknown): Promise<WriteResult<PostItem>> {
+  if (postId !== null && !Number.isSafeInteger(postId)) return refused("Unknown post.");
   if (!isPublishStep(step)) return refused("Save a draft or publish.");
   const fields = readPostFields(input);
   if (fields === null) return refused("Reload the page and try again.");

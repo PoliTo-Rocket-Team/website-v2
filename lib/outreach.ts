@@ -2,6 +2,7 @@ import type { HeaderStats } from "./about/types";
 import type { NonEmpty } from "./about/alumni-types";
 import {
   CHANNEL_NAMES,
+  UNTITLED_POST,
   type BodyBlock,
   type ChannelName,
   type Channel,
@@ -10,7 +11,7 @@ import {
   type OutreachCopy,
   type OutreachPost,
   type OutreachTag,
-  type PostView,
+  type OutreachDraft,
 } from "./outreach-types";
 
 // Boards 32/32m (the Outreach page) and 33/33m (a post page). The posts are
@@ -434,12 +435,24 @@ export const outreachRecord: OutreachContent & { readonly posts: NonEmpty<Outrea
 // What the pages read from the record. Every count and order is worked out
 // here, so the record holds each fact once.
 
-/** A post's address: its title in lower case, with every run of other characters as one hyphen. */
+/** Today in Torino, where the team is: the date a new post starts on (board 74f). */
+export function todayInRome(now: Date = new Date()): IsoDate {
+  // en-CA writes a date as YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(now) as IsoDate;
+}
+
+/**
+ * A post's address: its title in lower case, with every run of other
+ * characters as one hyphen. A title with no letter or digit (a new draft's
+ * empty one) gives the address of "Untitled post".
+ */
 export function slugOf(post: Pick<OutreachPost, "title">): string {
-  return post.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  const slug = (title: string) =>
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+  return slug(post.title) || slug(UNTITLED_POST);
 }
 
 /** The posts newest first, as the page lists them. */
@@ -551,7 +564,7 @@ export function readingMinutes(body: readonly BodyBlock[]): number {
 }
 
 /** The channels a post has, in `CHANNEL_NAMES` order (Instagram first), each with its name. */
-export function channelsOf(post: Pick<PostView, "channels">): { name: ChannelName; channel: Channel }[] {
+export function channelsOf(post: Pick<OutreachDraft, "channels">): { name: ChannelName; channel: Channel }[] {
   return CHANNEL_NAMES.flatMap((name) => {
     const channel = post.channels[name];
     return channel === undefined ? [] : [{ name, channel }];

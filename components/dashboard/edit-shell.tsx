@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, Monitor, Pencil, Smartphone } from "lucide-react";
+import { ArrowLeft, Circle, CircleCheck, Monitor, Pencil, Smartphone } from "lucide-react";
 import {
+  checklistDone,
   editChips,
   PHONE_FRAME_WIDTH,
   showsPageSwitch,
@@ -11,6 +12,7 @@ import {
   type EditChip,
   type EditDevice,
   type PageTarget,
+  type PublishCheck,
 } from "@/lib/content/edit-shell";
 import { CONTENT_STATUS_LABELS, type ContentStatus } from "@/lib/content/versioned";
 import { CONTENT_FOCUS } from "./content-parts";
@@ -30,8 +32,12 @@ import { EditFrame } from "./edit-frame";
 // other than the item's own, the content type marks its item's card with
 // CardInPlace (75d): the card outlined with an Edit card chip, the other
 // cards dimmed.
+//
+// A new item (74f): the bar reads "<Section> / New post", Publish waits on
+// the content type's checklist, which hangs under it, and the block to fill
+// first is outlined with a "Start here" chip.
 
-const ChipContext = createContext<((id: string) => EditChip) | null>(null);
+const ChipContext = createContext<{ readonly chipOf: (id: string) => EditChip; readonly startHere: string | null } | null>(null);
 
 const STATE_TONE: Readonly<Record<ContentStatus, { pill: string; dot: string }>> = {
   draft: { pill: "bg-white-5 text-text-2", dot: "bg-prt-muted" },
@@ -50,21 +56,23 @@ export type PageSwitch<Page extends string> = {
 
 export function EditShell<Id extends string, Section extends string, Page extends string = never>({
   section,
-  item,
+  heading,
   status,
   saved,
   onSaveDraft,
   onPublish,
+  publishChecklist = [],
   pages,
   blocks,
+  startHere,
   onEdit,
   children,
   panel,
 }: {
   /** The dashboard page this item belongs to, as the breadcrumb's first step. */
   section: { readonly label: string; readonly href: string };
-  /** The item's name: "Editing <item>". */
-  item: string;
+  /** The breadcrumb's second step: "Editing <item>" (74b), or "New post" for an item not saved yet (74f). */
+  heading: string;
   status: ContentStatus;
   /**
    * A short line before Save draft: when the draft was last saved ("Saved 2
@@ -75,9 +83,18 @@ export function EditShell<Id extends string, Section extends string, Page extend
   /** Null shows the button but leaves it off, as on a page that cannot be edited yet. */
   onSaveDraft: (() => void) | null;
   onPublish: (() => void) | null;
+  /**
+   * What the item still needs before it can go on the site (board 74f).
+   * While a line is not done, Publish is off and the checklist hangs under
+   * it: always while the edit panel is closed, and on hover or focus while
+   * the panel is open, so it never covers the panel.
+   */
+  publishChecklist?: readonly PublishCheck[];
   /** The page switch; with fewer than two pages the bar shows none. */
   pages?: PageSwitch<Page>;
   blocks: EditBlocks<Id, Section>;
+  /** A block outlined from the start with a "Start here" chip, as a new item opens (board 74f). */
+  startHere?: Id;
   onEdit: (section: Section) => void;
   /** The page, its blocks marked with EditableBlock. */
   children: ReactNode;
@@ -85,10 +102,12 @@ export function EditShell<Id extends string, Section extends string, Page extend
   panel?: ReactNode;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
-  const chipOf = useMemo(() => editChips(blocks, onEdit), [blocks, onEdit]);
+  const chips = useMemo(() => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null }), [blocks, onEdit, startHere]);
   const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
   const devices = <DeviceToggle device={device} onChange={setDevice} />;
   const phone = device === "phone";
+  const ready = checklistDone(publishChecklist);
+  const checklistId = useId();
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-ground text-prt-text">
       <header className="relative flex h-[60px] shrink-0 items-center gap-4 border-b border-hairline bg-panel px-4 md:px-6">
@@ -104,7 +123,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
           <span aria-hidden className="hidden text-dim sm:inline">
             /
           </span>
-          <h1 className="min-w-0 truncate font-semibold">Editing {item}</h1>
+          <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
           <StatePill status={status} />
         </div>
 
@@ -123,14 +142,23 @@ export function EditShell<Id extends string, Section extends string, Page extend
           >
             Save draft
           </button>
-          <button
-            type="button"
-            disabled={onPublish === null}
-            onClick={() => onPublish?.()}
-            className={`${BAR_BUTTON} bg-prt-text text-ground transition-opacity duration-300 ease-out hover:opacity-90`}
-          >
-            Publish
-          </button>
+          {/* Publish stays focusable while the checklist is not done, so a
+              keyboard reaches it and hears what is missing. */}
+          <div className="group/publish">
+            <button
+              type="button"
+              disabled={onPublish === null}
+              aria-disabled={ready ? undefined : true}
+              aria-describedby={ready ? undefined : checklistId}
+              onClick={() => {
+                if (ready) onPublish?.();
+              }}
+              className={`${BAR_BUTTON} bg-prt-text text-ground transition-opacity duration-300 ease-out ${ready ? "hover:opacity-90" : "cursor-not-allowed opacity-50"}`}
+            >
+              Publish
+            </button>
+            {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={!panel} />}
+          </div>
         </div>
       </header>
 
@@ -140,16 +168,46 @@ export function EditShell<Id extends string, Section extends string, Page extend
       <div className="flex min-h-0 flex-1">
         <div className={`min-h-0 min-w-0 flex-1 overflow-auto ${phone ? "md:flex md:justify-center md:py-7" : ""}`}>
           <EditFrame
-            title={`Page preview: ${item}`}
+            title={`Page preview: ${heading}`}
             page={switcher?.current}
             className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
             style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
           >
-            <ChipContext.Provider value={chipOf as (id: string) => EditChip}>{children}</ChipContext.Provider>
+            <ChipContext.Provider value={chips}>{children}</ChipContext.Provider>
           </EditFrame>
         </div>
         {panel}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The checklist under Publish (board 74f): "To publish, add:" and a line per
+ * need, an open ring while it is missing and a check once it is there.
+ */
+function PublishChecklist({ id, checks, pinned }: { id: string; checks: readonly PublishCheck[]; pinned: boolean }) {
+  return (
+    <div
+      id={id}
+      className={`absolute right-4 top-full z-50 mt-2 w-[244px] rounded-xl border border-hairline bg-panel p-3.5 shadow-lg ${
+        pinned ? "block" : "hidden group-focus-within/publish:block group-hover/publish:block"
+      }`}
+    >
+      <p className="text-[12px] font-semibold text-prt-text">To publish, add:</p>
+      <ul className="mt-2 space-y-[5px]">
+        {checks.map((check) => (
+          <li key={check.label} className={`flex items-center gap-2 text-[12px] ${check.done ? "text-dim" : "text-text-2"}`}>
+            {check.done ? (
+              <CircleCheck aria-hidden className="h-[13px] w-[13px] shrink-0 text-success" strokeWidth={1.75} />
+            ) : (
+              <Circle aria-hidden className="h-[13px] w-[13px] shrink-0 text-prt-muted" strokeWidth={1.75} />
+            )}
+            {check.label}
+            <span className="sr-only">{check.done ? ": done" : ": missing"}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -217,13 +275,18 @@ function PageSwitcher<Page extends string>({ targets, current, onSelect }: PageS
 /**
  * One named block of the page in the shell. Hovered, or with focus inside,
  * it shows an accent outline with its name and an Edit chip that hands the
- * block's section to the shell's `onEdit` (board 74b).
+ * block's section to the shell's `onEdit` (board 74b). The shell's
+ * `startHere` block shows its outline from the start, with a "Start here"
+ * chip in place of Edit (board 74f).
  */
 export function EditableBlock({ id, className = "", children }: { id: string; className?: string; children: ReactNode }) {
-  const chipOf = useContext(ChipContext);
-  if (chipOf === null) throw new Error("EditableBlock is drawn outside an EditShell.");
-  const chip = chipOf(id);
-  const shown = "opacity-0 group-hover/block:opacity-100 group-focus-within/block:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
+  const chips = useContext(ChipContext);
+  if (chips === null) throw new Error("EditableBlock is drawn outside an EditShell.");
+  const start = chips.startHere === id;
+  const chip = start ? { ...chips.chipOf(id), label: "Start here" } : chips.chipOf(id);
+  const shown = start
+    ? "opacity-100"
+    : "opacity-0 group-hover/block:opacity-100 group-focus-within/block:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
   return (
     <div className={`group/block relative ${className}`}>
       {children}

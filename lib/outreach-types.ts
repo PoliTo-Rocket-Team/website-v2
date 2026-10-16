@@ -1,4 +1,6 @@
 import type { NonEmpty } from "./about/alumni-types";
+import type { ContentStore } from "./content/editor";
+import type { ContentItem, Versioned } from "./content/versioned";
 import type { Copy } from "./projects";
 
 // The Outreach page (/outreach) and its post pages (/outreach/<slug>) as
@@ -90,15 +92,36 @@ export type OutreachPost = {
 };
 
 /**
- * A post as its page draws it. The edit panel (board 74c) shows the page as
- * the editor types, so for a moment the post may have no tag, no text block
- * or no channel; it is stored only once it is a whole `OutreachPost`.
+ * A post that may not be whole yet: the page the editor sees as they type
+ * (boards 74c and 74f), and a new post saved before it is published, since
+ * Save draft works at any point (board 74f, issue #292). Its title, lead and
+ * summary may be empty; it may have no tag, text block, photo or channel
+ * yet; a text block, a photo's alt text or a channel's link may be blank.
+ * Every `OutreachPost` is one too. Only a whole `OutreachPost` is published.
  */
-export type PostView = Omit<OutreachPost, "tags" | "body" | "channels"> & {
+export type OutreachDraft = Omit<OutreachPost, "tags" | "body" | "photos" | "channels"> & {
   tags: readonly string[];
   body: readonly BodyBlock[];
+  photos: readonly OutreachPhoto[];
   channels: Partial<Record<ChannelName, Channel>>;
 };
+
+/** What a draft with no title yet is called on its page, in the list and in its address (board 74f). */
+export const UNTITLED_POST = "Untitled post";
+
+/** The title a post goes by: "Untitled post" while a draft has none. */
+export function titleOf(post: Pick<OutreachDraft, "title">): string {
+  return post.title.trim() || UNTITLED_POST;
+}
+
+/** A post's versions: a whole published post with optional whole draft changes, or a never-published draft that may not be whole. */
+export type PostVersions = Versioned<OutreachPost, OutreachDraft>;
+
+/** A stored post with its id and place in the site order. */
+export type PostItem = ContentItem<OutreachPost, OutreachDraft>;
+
+/** Where the posts are kept: the database, or the dummy data on previews. */
+export type PostStore = ContentStore<OutreachPost, OutreachDraft>;
 
 /** One edition of the featured summit. */
 export type Edition = { year: number; place: string };

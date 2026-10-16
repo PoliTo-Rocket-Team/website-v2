@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Award } from "lucide-react";
+import { ArrowUpRight, Award, ImagePlus } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import { CopyText } from "@/components/project-page/parts";
 import {
@@ -13,12 +13,13 @@ import {
 } from "@/lib/outreach";
 import {
   CHANNEL_LABELS,
+  UNTITLED_POST,
   type BodyBlock,
   type Channel,
   type ChannelName,
   type OutreachPhoto,
   type OutreachPost,
-  type PostView,
+  type OutreachDraft,
 } from "@/lib/outreach-types";
 import { CHANNEL_ICONS } from "./channel-icons";
 import { Photo } from "./photo";
@@ -43,9 +44,21 @@ export type PostFrame = (part: PostPart, node: ReactNode) => ReactNode;
 
 const bare: PostFrame = (_, node) => node;
 
-export function PostHeader({ post, frame = bare }: { post: PostView; frame?: PostFrame }) {
+/**
+ * The editor's page (`hints`) says what goes in a part that is still blank,
+ * as a new post opens (board 74f): "ADD A PLACE", "Untitled post", the lead's
+ * hint and an empty cover box. The public page only ever draws whole posts.
+ */
+type PostPartsProps = { post: OutreachDraft; frame?: PostFrame; hints?: boolean };
+
+const LEAD_HINT = "Add a lead: one or two sentences under the title.";
+
+export function PostHeader({ post, frame = bare, hints = false }: PostPartsProps) {
   const date = longDate(post.date);
   const minutes = readingMinutes(post.body);
+  const hasText = post.body.some((b) => b.text.trim() !== "");
+  const title = post.title.trim();
+  const lead = post.lead.trim();
   const dot = <span aria-hidden className="text-dim">·</span>;
   const details = (
     <>
@@ -60,30 +73,50 @@ export function PostHeader({ post, frame = bare }: { post: PostView; frame?: Pos
         <time dateTime={post.date} className="text-accent">
           <CopyText copy={date} />
         </time>
-        {post.place !== undefined && (
+        {post.place !== undefined ? (
           <>
             {dot}
             <span>
               <CopyText copy={{ text: post.place.toUpperCase(), phone: post.place.split(",")[0].toUpperCase() }} />
             </span>
           </>
+        ) : (
+          hints && (
+            <>
+              {dot}
+              <span className="text-dim">ADD A PLACE</span>
+            </>
+          )
         )}
-        {dot}
-        <span>{minutes} MIN READ</span>
-        <ul className="flex basis-full gap-2 font-display tracking-normal md:ml-1 md:basis-auto">
-          {post.tags.map((t) => (
-            <li key={t} className="rounded-full border border-white-10 px-3 py-1 text-[11px] leading-none text-text-2">
-              {t}
-            </li>
-          ))}
-        </ul>
+        {hasText && (
+          <>
+            {dot}
+            <span>{minutes} MIN READ</span>
+          </>
+        )}
+        {post.tags.length > 0 && (
+          <ul className="flex basis-full gap-2 font-display tracking-normal md:ml-1 md:basis-auto">
+            {post.tags.map((t) => (
+              <li key={t} className="rounded-full border border-white-10 px-3 py-1 text-[11px] leading-none text-text-2">
+                {t}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-      <h1 className="mt-4 text-[30px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-5 md:text-[56px] md:leading-[1.05]">
-        {post.title}
+      <h1
+        className={`mt-4 text-[30px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-5 md:text-[56px] md:leading-[1.05] ${title === "" ? "text-dim" : ""}`}
+      >
+        {title === "" ? UNTITLED_POST : post.title}
       </h1>
-      <p className="mt-4 max-w-[760px] text-[16px] leading-[1.55] text-text-2 md:mt-5 md:text-[20px]">{post.lead}</p>
+      {(lead !== "" || hints) && (
+        <p className={`mt-4 max-w-[760px] text-[16px] leading-[1.55] md:mt-5 md:text-[20px] ${lead === "" ? "text-dim" : "text-text-2"}`}>
+          {lead === "" ? LEAD_HINT : post.lead}
+        </p>
+      )}
     </>
   );
+  const cover = post.photos[0];
   return (
     <header className={width}>
       {frame("details", details)}
@@ -91,11 +124,22 @@ export function PostHeader({ post, frame = bare }: { post: PostView; frame?: Pos
         {frame(
           "cover",
           <div className="relative aspect-[3/2] overflow-hidden rounded-xl md:aspect-[9/5]">
-            <Photo photo={post.photos[0]} sizes="(min-width: 1246px) 1116px, 100vw" priority />
+            {cover === undefined ? <NoCover /> : <Photo photo={cover} sizes="(min-width: 1246px) 1116px, 100vw" priority />}
           </div>,
         )}
       </div>
     </header>
+  );
+}
+
+/** The cover's place while a draft has no photo yet (board 74f). */
+function NoCover() {
+  return (
+    <div className="glass-card flex h-full flex-col items-center justify-center rounded-xl px-6 text-center">
+      <ImagePlus aria-hidden className="h-7 w-7 text-text-2" strokeWidth={1.5} />
+      <p className="mt-3 text-[15px] font-semibold text-prt-text">Add a cover photo</p>
+      <p className="mt-1 text-[12px] text-prt-muted">The first photo is also the card photo on the Outreach list</p>
+    </div>
   );
 }
 
@@ -146,7 +190,7 @@ function initialsOf(name: string): string {
  * account, the platform, the photo on Instagram, the caption's start and a
  * link out.
  */
-function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Channel; post: PostView }) {
+function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Channel; post: OutreachDraft }) {
   const { label, link } = platformOf(name);
   const Icon = CHANNEL_ICONS[name];
   const account = ourAccount(name);
@@ -171,7 +215,7 @@ function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Chan
         </div>
         <Icon aria-hidden className="h-4 w-4 shrink-0 text-text-2" strokeWidth={1.75} />
       </div>
-      {name === "instagram" && (
+      {name === "instagram" && post.photos.length > 0 && (
         <div className="relative h-[200px] lg:h-[220px]">
           <Photo photo={post.photos[0]} sizes="(min-width: 1024px) 300px, 100vw" />
         </div>
@@ -213,7 +257,7 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
   );
 }
 
-export function PostBody({ post, frame = bare }: { post: PostView; frame?: PostFrame }) {
+export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) {
   const channels = channelsOf(post);
   const more = post.photos.slice(1);
   return (
@@ -225,6 +269,7 @@ export function PostBody({ post, frame = bare }: { post: PostView; frame?: PostF
             {post.body.map((b, i) => (
               <Block key={i} block={b} />
             ))}
+            {hints && post.body.length === 0 && <p className="text-dim">Add the post&apos;s text: paragraphs, headings and highlights.</p>}
           </article>,
         )}
       </div>
@@ -245,6 +290,7 @@ export function PostBody({ post, frame = bare }: { post: PostView; frame?: PostF
               {channels.map(({ name, channel }) => (
                 <ChannelCard key={name} name={name} channel={channel} post={post} />
               ))}
+              {hints && channels.length === 0 && <p className="text-[13px] leading-[1.5] text-dim">Add the Instagram or LinkedIn post.</p>}
             </div>,
           )}
         </div>
