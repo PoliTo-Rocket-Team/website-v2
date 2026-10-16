@@ -32,7 +32,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | FAQ | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
-| Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
+| Orders | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | The IT lead only |
 | My account | User menu only | No | No | No | No |
 | My profile | No | User menu only | User menu only | User menu only | User menu only |
@@ -497,7 +497,10 @@ and 67m).
   an approved one; the server refuses it from anyone else and from any other status. Ordered is
   final: nobody edits, decides or cancels it. Its pill is grey.
 - **Who sees.** Anyone with any Orders access sees every order in the team, in every
-  department. A person with no Orders access does not see the page.
+  department. Holding **"Approve orders"** also opens the page, with no other Orders access
+  (#270): a member who holds only that grant sees Orders under TEAM in their sidebar, decides
+  waiting orders and marks approved ones as ordered, and edits, cancels and requests nothing.
+  A person with no Orders access and no "Approve orders" does not see the page.
   - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
     Orders access; a lead with no Orders access gets "not found" on the page. Tracked in #160.
 - **Who edits.** A division lead edits the orders of their own division, from any requester in
@@ -542,7 +545,9 @@ and 67m).
   developer" switch, with six people: team leader, operations lead, department head, division
   lead, member and non-member. The operations lead there sits in the operations lead's seat, so
   they have full access and do not decide orders; the team leader decides orders and gives
-  "Approve orders" (#247), and sees boards 72 to 73c (#252).
+  "Approve orders" (#247), and sees boards 72 to 73c (#252). "Approve orders" given or removed
+  there is kept until sign out, so after switching to the member it went to, that member reaches
+  Orders and decides there (#270).
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and

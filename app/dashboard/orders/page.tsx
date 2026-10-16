@@ -12,9 +12,9 @@ export const metadata: Metadata = {
 };
 
 // Boards 61 to 61d, 61m, 67, 67b, 67m and 70 to 70e: every order in the team (issue
-// #233). Full access (issue #238), a division lead or a department head reaches it
-// (lib/dashboard/access.ts), and only with Orders access somewhere; anyone else
-// gets the dashboard's not found.
+// #233). Full access (issue #238), a division lead, a department head or a holder of
+// "Approve orders" (issue #270) reaches it (lib/dashboard/access.ts), and only with
+// Orders access somewhere; anyone else gets the dashboard's not found.
 export default function OrdersPage() {
   return (
     <Suspense fallback={<DashboardPageFallback />}>

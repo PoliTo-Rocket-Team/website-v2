@@ -40,7 +40,7 @@ function cookie(): DummyPartnerEditsStore & { value: string | undefined } {
   return jar;
 }
 
-const admin = { kind: "operations-lead", seat: "operations-lead", siteContent: false } as const;
+const admin = { kind: "operations-lead", seat: "operations-lead", siteContent: false, approveOrders: false } as const;
 const tinyPng = { name: "logo.png", contentType: "image/png", bytes: new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64")) };
 
 test("the test developer's dashboard lists the dummy partners, with EvoMisure holding draft changes as on board 76", async () => {

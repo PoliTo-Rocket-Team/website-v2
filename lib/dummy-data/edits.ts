@@ -74,6 +74,14 @@ export type DummyAlumniEdits = {
 
 export const NO_ALUMNI_EDITS: DummyAlumniEdits = { entries: {}, advisors: [] };
 
+/**
+ * "Approve orders" the team leader gave or took away on the Access page
+ * (issue #270): given on a day, or removed. It is laid over the holders
+ * ./division.ts starts with, so the grant is still there when the test
+ * developer switches to the person who holds it.
+ */
+export type DummyApproveOrders = { readonly holds: true; readonly givenOn: string } | { readonly holds: false };
+
 export type TeamEdits = {
   /** The Alumni page's fixes and added advisors. */
   readonly alumni: DummyAlumniEdits;
@@ -95,6 +103,8 @@ export type TeamEdits = {
   readonly details: Readonly<Record<string, MemberDetails>>;
   /** Divisions created, edited, closed or moved (issues #232, #251), by id. */
   readonly divisions: Readonly<Record<number, DummyDivisionEdit>>;
+  /** "Approve orders" given or removed (issue #270), by person id. */
+  readonly approveOrders: Readonly<Record<number, DummyApproveOrders>>;
   /** Departments created, edited or closed (issue #251), by id. */
   readonly departments: Readonly<Record<number, DummyDepartmentEdit>>;
   /**
@@ -116,6 +126,7 @@ export const NO_EDITS: TeamEdits = {
   cancelled: [],
   details: {},
   divisions: {},
+  approveOrders: {},
   departments: {},
   advisorRoles: [],
 };
@@ -214,6 +225,12 @@ function readAdded(value: unknown): DummyWaiting | null {
 function readConfirmation(value: unknown): DummyConfirmation | null {
   if (!isRecord(value) || !isDay(value.on) || !Number.isInteger(value.by)) return null;
   return { on: value.on, by: value.by as number };
+}
+
+function readApproveOrders(value: unknown): DummyApproveOrders | null {
+  if (!isRecord(value)) return null;
+  if (value.holds === false) return { holds: false };
+  return value.holds === true && isDay(value.givenOn) ? { holds: true, givenOn: value.givenOn } : null;
 }
 
 function readDivision(value: unknown): DummyDivisionEdit | null {
@@ -319,6 +336,7 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
       : [],
     details: readDetails(raw.details),
     divisions: entriesOf(raw.divisions, readDivision),
+    approveOrders: entriesOf(raw.approveOrders, readApproveOrders),
     departments: entriesOf(raw.departments, readDepartment),
     advisorRoles: Array.isArray(raw.advisorRoles)
       ? raw.advisorRoles.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)

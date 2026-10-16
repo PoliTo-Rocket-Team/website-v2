@@ -16,7 +16,7 @@ import { logoKindOf, partners as record, type Partner } from "./partners";
 // The Partners page's rules (issue #256) over an in-memory store: the same
 // editor both sides of the dashboard data interface build.
 
-const admin: ViewerStanding = { kind: "operations-lead", seat: "operations-lead", siteContent: false };
+const admin: ViewerStanding = { kind: "operations-lead", seat: "operations-lead", siteContent: false, approveOrders: false };
 
 /** Logo files kept in a list, so a test can see what was stored. */
 function files(): LogoFiles & { stored: Upload[] } {
@@ -158,10 +158,10 @@ test("dragging a tier's rows sets its site order, the public pages follow it, an
 
 test("only full access and site-content access reach the partners and their writes", async () => {
   const refusedFor: readonly ViewerStanding[] = [
-    { kind: "department-head", siteContent: false },
-    { kind: "division-lead", siteContent: false },
-    { kind: "member", siteContent: false },
-    { kind: "non-member", siteContent: false },
+    { kind: "department-head", siteContent: false, approveOrders: false },
+    { kind: "division-lead", siteContent: false, approveOrders: false },
+    { kind: "member", siteContent: false, approveOrders: false },
+    { kind: "non-member", siteContent: false, approveOrders: false },
   ];
   for (const viewer of refusedFor) {
     const { store, editor, logos } = editorOver(importedPartners(), viewer);
@@ -173,6 +173,6 @@ test("only full access and site-content access reach the partners and their writ
     assert.equal(logos.stored.length, 0);
     assert.deepEqual(publicItems(await store.list()), record);
   }
-  const member: ViewerStanding = { kind: "member", siteContent: true };
+  const member: ViewerStanding = { kind: "member", siteContent: true, approveOrders: false };
   assert.ok((await editorOver(importedPartners(), member).editor.list()) !== null);
 });

@@ -17,7 +17,7 @@ import { EMPTY_DUMMY_STATE } from "./state";
 
 const recruitment = { current: dummyRecruitmentOf(undefined), save: async () => {} };
 const changes = { current: EMPTY_DUMMY_STATE, save: async () => {} };
-const admin = { kind: "operations-lead", seat: "team-leader", siteContent: false } as const;
+const admin = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false } as const;
 
 /** A cookie that keeps what was saved, as the browser does between requests. */
 function cookie(): DummyFaqEditsStore & { value: string | undefined } {

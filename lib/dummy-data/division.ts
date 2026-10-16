@@ -26,7 +26,9 @@ import {
 } from "@/lib/dashboard/division-access";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 import { homeFirst, ledDivisionOf, membershipsIn, type DivisionMembership, type RosterEntry } from "@/lib/dashboard/team";
+import type { ApproveOrdersChange } from "@/lib/dashboard/orders";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import type { TeamEdits } from "./edits";
 import { departments, divisions, people, personFor, type DummyPerson } from "./team";
 
 // The Access pages for the test developer (boards 60 to 60m, issues #145 and
@@ -84,11 +86,40 @@ export const accessGrants = [
   { id: 9, personId: 3, place: { wholeTeam: true }, target: "alumni", level: "edit", givenById: 1, givenOn: "2026-10-03" },
 ] as const satisfies readonly DummyGrant[];
 
+/** Someone holding "Approve orders", and the day the team leader gave it. */
+export type ApproveOrdersHolding = { readonly personId: number; readonly givenOn: string };
+
 /**
  * Who the team leader gave "Approve orders" (board 71): Sara Conti, a member
- * of Mission Analysis. None of the test developer's other viewers holds it.
+ * of Mission Analysis. None of the test developer's viewers holds it until
+ * the team leader gives it on the Access page (`approveOrdersHoldersOf`).
  */
-export const approveOrdersHolders: readonly { readonly personId: number; readonly givenOn: string }[] = [{ personId: 7, givenOn: "2026-10-06" }];
+export const approveOrdersHolders: readonly ApproveOrdersHolding[] = [{ personId: 7, givenOn: "2026-10-06" }];
+
+/**
+ * Who holds "Approve orders" once what the team leader gave and removed on
+ * the Access page (issue #270) is laid over board 71's holders. Every page
+ * reads this one list, so someone given it is a holder on Access, decides on
+ * Orders, and carries it in their standing when the test developer switches
+ * to them (`dummyViewer`, ./index.ts).
+ */
+export function approveOrdersHoldersOf(edits: Pick<TeamEdits, "approveOrders">): ApproveOrdersHolding[] {
+  const kept = approveOrdersHolders.filter((h) => edits.approveOrders[h.personId] === undefined);
+  const given = Object.entries(edits.approveOrders).flatMap(([id, e]) => (e.holds ? [{ personId: Number(id), givenOn: e.givenOn }] : []));
+  return [...kept, ...given];
+}
+
+/**
+ * The edits after the team leader gave "Approve orders" today, or removed
+ * it. Removing it from someone board 71 never gave it to leaves nothing to
+ * keep.
+ */
+export function withApproveOrdersChange(edits: TeamEdits, change: ApproveOrdersChange): TeamEdits {
+  const { [change.personId]: _dropped, ...others } = edits.approveOrders;
+  if (change.holds) return { ...edits, approveOrders: { ...others, [change.personId]: { holds: true, givenOn: today() } } };
+  const heldAtStart = approveOrdersHolders.some((h) => h.personId === change.personId);
+  return { ...edits, approveOrders: heldAtStart ? { ...others, [change.personId]: { holds: false } } : others };
+}
 
 /** The team leader: they decide orders and give "Approve orders". */
 export const TEAM_LEADER_ID = personFor["team-leader"].id;
@@ -213,13 +244,18 @@ function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
 }
 
 /** "Approve orders" on a team page: who holds it, and whether the viewer gives it; nothing on a lead's or head's. */
-function approveOrdersOf(viewer: DummyPerson, unit: AccessUnit, onTeam: ReadonlyMap<number, AccessPerson>): ApproveOrdersAccess {
+function approveOrdersOf(
+  viewer: DummyPerson,
+  unit: AccessUnit,
+  onTeam: ReadonlyMap<number, AccessPerson>,
+  holders: readonly ApproveOrdersHolding[],
+): ApproveOrdersAccess {
   if (unit.kind !== "team") return NO_APPROVE_ORDERS;
   const canGive = canGiveApproveOrders(seatOfPerson(viewer));
   return {
     canGive,
-    yours: canGive || approveOrdersHolders.some((h) => h.personId === viewer.id),
-    holders: approveOrdersHolders.flatMap((h) => {
+    yours: canGive || holders.some((h) => h.personId === viewer.id),
+    holders: holders.flatMap((h) => {
       const person = onTeam.get(h.personId);
       if (person === undefined) return [];
       return [{ person, givenBy: viewer.id === TEAM_LEADER_ID ? "You" : personOf(TEAM_LEADER_ID).name, givenOn: h.givenOn }];
@@ -238,6 +274,7 @@ export function dummyAccessPage(
   viewer: DummyPerson,
   roster: readonly RosterEntry[],
   closed: ReadonlySet<number> = new Set(),
+  holders: readonly ApproveOrdersHolding[] = approveOrdersHolders,
 ): AccessPage | null {
   const unit = unitOf(kind, viewer, closed);
   if (unit === null) return null;
@@ -280,16 +317,26 @@ export function dummyAccessPage(
     roleAccess: ordered,
     grants,
     people: [...onTeam.values()],
-    approveOrders: approveOrdersOf(viewer, unit, onTeam),
+    approveOrders: approveOrdersOf(viewer, unit, onTeam, holders),
   };
 }
 
 /**
+ * A checked Save: the person's grants as they would read, and the "Approve
+ * orders" change it carries, which the caller keeps (issue #270).
+ */
+export type DummyAccessSave = {
+  readonly grants: readonly AccessGrant[];
+  readonly approveOrders: ApproveOrdersChange | null;
+};
+
+/**
  * Checks a Give access or Edit access Save as the database side does and
- * answers the person's grants as they would read; nothing is stored. An area
- * left as it was keeps its grant; a new or changed one is given by "You"
- * today. A grant given on the page lives only in the page's state, so the
- * check runs against the stored grants alone.
+ * answers the person's grants as they would read. An area left as it was
+ * keeps its grant; a new or changed one is given by "You" today. A grant
+ * given on the page lives only in the page's state, so the check runs
+ * against the stored grants alone; only "Approve orders" is handed back to
+ * be kept, since the person's own pages read it.
  */
 export function dummySaveAccess(
   kind: AccessViewerKind,
@@ -297,12 +344,13 @@ export function dummySaveAccess(
   roster: readonly RosterEntry[],
   input: unknown,
   closed: ReadonlySet<number> = new Set(),
-): WriteResult<readonly AccessGrant[]> {
-  const access = dummyAccessPage(kind, viewer, roster, closed);
+  holders: readonly ApproveOrdersHolding[] = approveOrdersHolders,
+): WriteResult<DummyAccessSave> {
+  const access = dummyAccessPage(kind, viewer, roster, closed, holders);
   if (access === null) return refused("Only a division lead or a department head gives access here.");
   const checked = checkSaveAccess(access, input);
   if (!checked.ok) return refused(checked.error);
-  const { personId, place, changes } = checked.value;
+  const { personId, place, changes, approveOrders } = checked.value;
   const person = access.people.find((p) => p.id === personId)!;
   const kept = access.grants.filter(
     (g) => g.person.id === personId && !(samePlace(g.place, place) && changes.some((c) => c.target === g.target)),
@@ -313,20 +361,25 @@ export function dummySaveAccess(
   const given = changes
     .flatMap((c) => (c.kind === "remove" ? [] : [c]))
     .map((c, i): AccessGrant => ({ id: first + i, person, place, target: c.target, level: c.to, givenBy: "You", givenOn }));
-  return written([...kept, ...given]);
+  return written({ grants: [...kept, ...given], approveOrders });
 }
 
-/** Checks Remove all access as the database side does; nothing is stored. */
+/**
+ * Checks Remove all access as the database side does. It answers the
+ * "Approve orders" removal it carries for the caller to keep, or null.
+ */
 export function dummyRemoveAllAccess(
   kind: AccessViewerKind,
   viewer: DummyPerson,
   roster: readonly RosterEntry[],
   personId: number,
   closed: ReadonlySet<number> = new Set(),
-): WriteResult<null> {
-  const access = dummyAccessPage(kind, viewer, roster, closed);
+  holders: readonly ApproveOrdersHolding[] = approveOrdersHolders,
+): WriteResult<ApproveOrdersChange | null> {
+  const access = dummyAccessPage(kind, viewer, roster, closed, holders);
   if (access === null) return refused("Only a division lead or a department head removes access here.");
   const checked = checkRemoveAllAccess(access, personId);
-  return checked.ok ? written(null) : refused(checked.error);
+  if (!checked.ok) return refused(checked.error);
+  return written(checked.value.find((w) => w.approveOrders !== null)?.approveOrders ?? null);
 }
 
