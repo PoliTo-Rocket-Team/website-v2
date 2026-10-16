@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { TestViewer } from "@/lib/dashboard/viewer";
+import { dummyAccessPage } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
-import { dummyTeamPages } from "./team-pages";
+import { personFor } from "./team";
+import { dummyTeamPages, editedRoster } from "./team-pages";
 
 // New department, Edit department and Close department on a preview (#251):
 // what each save does to the team the test developer sees next. The rules
@@ -126,6 +128,19 @@ test("Become an advisor: the head of a closed department stays on the team with 
   const chiara = members.people.find((p) => p.id === CHIARA);
   assert.deepEqual([chiara?.roleLabel, chiara?.departmentIds, chiara?.divisionIds], ["Advisor", [], []], "in no department and no division");
   assert.ok(!(await pages("operations-lead", closer.kept()).view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "not on Alumni");
+});
+
+test("Become an advisor removes every access row the head held", async () => {
+  const { edits, divisions } = await aerodynamicsToClose();
+  const holds = (team: TeamEdits) => {
+    const access = dummyAccessPage("operations-lead", personFor["operations-lead"], editedRoster(team))!;
+    return [...access.roleAccess, ...access.grants].some((a) => a.person.id === CHIARA);
+  };
+  assert.ok(holds(edits), "the head holds their department's access before the close");
+  const closer = pages("operations-lead", edits);
+  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" })).ok);
+  assert.equal(holds(closer.kept()), false, "no access is left");
+  assert.deepEqual(editedRoster(closer.kept()).find((e) => e.id === CHIARA)?.access, []);
 });
 
 test("Leave the team: the head of a closed department leaves the team and appears on Alumni", async () => {

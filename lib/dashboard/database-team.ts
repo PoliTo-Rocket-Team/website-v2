@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -1018,11 +1018,10 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
  * - each empty division that closes closes as Close division closes it;
  * - the department closes and its department access goes;
  * - its head gets the outcome the closer picked, never one by default (Owner
- *   decision, 2026-10-16): "advisor" ends the head row and starts one Advisor
- *   role in no department and no division, and their access rows stay, the
- *   department ones included, for the team leader to change in Access;
- *   "leave" ends every role and access row they hold, as Leaves the team
- *   does, so they appear on Alumni.
+ *   decision, 2026-10-16): "advisor" ends the head row, starts one Advisor
+ *   role in no department and no division, and removes every access row they
+ *   hold; "leave" ends every role and access row they hold, as Leaves the
+ *   team does, so they appear on Alumni.
  * A seat kept on a moving division's row (a head's or the team leader's) is
  * not a lead or member row, so it stays where it is.
  */
@@ -1056,7 +1055,6 @@ async function closeDepartment(identity: DashboardIdentity, departmentId: number
   const advisors = head?.outcome === "advisor" ? heads : [];
   const leavers = head?.outcome === "leave" ? heads : [];
   const endHeads = advisors.flatMap((h) => h.active.filter(isHeadRow).map((r) => r.id));
-  const keptAccess = advisors.map((h) => h.memberId);
   const isDivisionRow = or(isNull(roles.type), inArray(roles.type, ["lead", "core"]));
 
   await runAuditBatch((tx) => [
@@ -1080,9 +1078,9 @@ async function closeDepartment(identity: DashboardIdentity, departmentId: number
           eq(scopes.scope, "department"),
           eq(scopes.deptId, departmentId),
           isNull(scopes.divisionId),
-          ...(keptAccess.length === 0 ? [] : [or(isNull(scopes.memberId), notInArray(scopes.memberId, keptAccess))]),
         ),
       ),
+    ...(advisors.length === 0 ? [] : [tx.delete(scopes).where(inArray(scopes.memberId, advisors.map((h) => h.memberId)))]),
     ...(endHeads.length === 0 ? [] : [tx.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, endHeads), isNull(roles.leavedAt)))]),
     ...advisors.map(({ memberId }) => tx.insert(roles).values({ memberId, deptId: null, divisionId: null, title: ADVISOR_TITLE, type: "core", startedAt: on })),
     ...leavers.flatMap((leaver) => leaveTeamWrites(tx, leaver, on)),

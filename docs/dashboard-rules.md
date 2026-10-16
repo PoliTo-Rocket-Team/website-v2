@@ -345,8 +345,8 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   - The head gets a choice too, in the drawer's "Head" block, with neither option picked at first
     (Owner decision, 2026-10-16). Nobody gets a role automatically.
     - **Become an advisor:** the head role ends and one active role with the Advisor title starts,
-      in no department and no division. They keep their access rows, the department ones
-      included; the team leader changes them in Access.
+      in no department and no division. Every access row they hold is removed (Owner decision,
+      2026-10-16).
     - **Leave the team:** every role they hold ends and their access goes, as Leaves the team
       does, so they appear on Alumni.
   - Close department stays disabled until every division and the head have a choice. The server
@@ -356,8 +356,7 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
     the division (a head's, the team leader's) does not move.
   - A division that closes closes as Close division closes it: its open positions close and its
     division access goes.
-  - The department closes (`closed_at` is set) and its department access goes, except the access
-    rows of a head who becomes an advisor.
+  - The department closes (`closed_at` is set) and its department access goes.
   - It asks "are you sure" first, listing what happens to each division and to the head. A closed
     department cannot be reopened.
 

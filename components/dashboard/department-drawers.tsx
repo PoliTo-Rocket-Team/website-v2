@@ -525,7 +525,7 @@ function CloseDepartment({
     const label = divisionLabel(department.divisions.find((d) => d.id === f.divisionId)?.name ?? "");
     return f.action === "move" ? `${label} moves to ${nameOf(f.to)}, with its people, leads and open positions.` : `${label} closes, and its open positions close.`;
   });
-  if (head && headOutcome === "advisor") lines.push(`${head.name} stops being Head of ${department.name} and stays on the team as an Advisor, in no department or division, keeping their access.`);
+  if (head && headOutcome === "advisor") lines.push(`${head.name} stops being Head of ${department.name} and stays on the team as an Advisor, in no department or division; their access ends.`);
   if (head && headOutcome === "leave") lines.push(`${head.name} leaves the team: every role they hold ends and they move to Alumni.`);
 
   return (
@@ -591,7 +591,7 @@ function CloseDepartment({
                 </button>
               </div>
               <p className="mt-2.5 text-[12px] leading-relaxed text-prt-muted">
-                Pick one before you close. Become an advisor: stays in the team with the Advisor role, in no department or division, and keeps their access. Leave the
+                Pick one before you close. Become an advisor: stays in the team with the Advisor role, in no department or division; their access ends. Leave the
                 team: moves to Alumni.
               </p>
             </div>

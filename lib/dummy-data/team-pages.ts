@@ -306,7 +306,15 @@ export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] =
     const confirmation = edits.confirmed[a.joinId];
     return confirmation ? [entryWithChanges(confirmedEntry(a, confirmation.on), edits.members[ADDED_ID_BASE + a.joinId])] : [];
   });
-  return [...joinedTeam, ...added, ...confirmed].filter((e) => edits.movedToAlumni[e.id] === undefined).map((e) => withDepartmentSeat(e, edits));
+  return [...joinedTeam, ...added, ...confirmed].filter((e) => edits.movedToAlumni[e.id] === undefined).map((e) => withoutAdvisorAccess(withDepartmentSeat(e, edits), edits));
+}
+
+/**
+ * A closed department's "Become an advisor" removes every access row the
+ * person holds (Owner decision, 2026-10-16), as the database deletes them.
+ */
+function withoutAdvisorAccess(entry: RosterEntry, edits: TeamEdits): RosterEntry {
+  return edits.advisorRoles.includes(entry.id) ? { ...entry, access: [] } : entry;
 }
 
 function entryWithChanges(entry: RosterEntry, change: MemberChange | undefined): RosterEntry {

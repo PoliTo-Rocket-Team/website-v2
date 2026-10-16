@@ -71,7 +71,7 @@ export type DivisionFate =
  * What becomes of the head of a department that closes (board 77f, Owner
  * decision 2026-10-16): no role is given automatically, the closer picks one.
  * "advisor" ends the head role and starts one Advisor role in no department
- * and no division, keeping their access; "leave" ends every role they hold,
+ * and no division, and removes their access; "leave" ends every role they hold,
  * so they appear on Alumni.
  */
 export const HEAD_OUTCOMES = ["advisor", "leave"] as const;
