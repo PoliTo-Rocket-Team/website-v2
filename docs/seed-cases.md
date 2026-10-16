@@ -71,8 +71,10 @@ Each row is one seeded case. An area slice that adds a seed module adds its rows
 | partners | A published partner with a dark logo, drawn white | `partner_versions.logo_dark`, partners 11 and 12 | [#256](https://github.com/PoliTo-Rocket-Team/website-v2/issues/256) |
 | faq | Published questions on /apply | `faq_versions` version `published` | [#258](https://github.com/PoliTo-Rocket-Team/website-v2/issues/258) |
 | faq | A published question with a draft change that /apply does not show | `faq_versions` of question 3 | [#258](https://github.com/PoliTo-Rocket-Team/website-v2/issues/258) |
+| hand-overs | A division lead's hand-over waiting for the head of their department, on the department-head test viewer's Overview | `hand_over_requests` 2, member 20 to member 29 | [#262](https://github.com/PoliTo-Rocket-Team/website-v2/issues/262) |
+| hand-overs | A confirmed hand-over: the lead became an advisor in the division and their access ended | `hand_over_requests` 1, member 43 to member 16 | [#253](https://github.com/PoliTo-Rocket-Team/website-v2/issues/253), [#262](https://github.com/PoliTo-Rocket-Team/website-v2/issues/262) |
 
-The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The draft partner borrows the Team's own mark as a stand-in logo, since the seed uploads no file. The `audit` module runs last and leaves `logs` empty.
+The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The draft partner borrows the Team's own mark as a stand-in logo, since the seed uploads no file. The `hand-overs` module runs after `people`, so no role it writes closes the waiting hand-over. The `audit` module runs last and leaves `logs` empty.
 
 ## Connect previews to the preview database branch
 

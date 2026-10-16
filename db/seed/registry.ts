@@ -8,6 +8,7 @@ import { access } from "./access";
 import { alumni } from "./alumni";
 import { audit } from "./audit";
 import { faqSeed } from "./faq";
+import { handOversSeed } from "./hand-overs";
 import { ordersSeed } from "./orders";
 import { partnersSeed } from "./partners";
 import { people } from "./people";
@@ -24,5 +25,7 @@ export const SEED_MODULES: readonly SeedModule<SeedTx>[] = [
   recruitmentSeed,
   partnersSeed,
   faqSeed,
+  // After people: its rows go in after every role, so no role insert closes the waiting one.
+  handOversSeed,
   audit,
 ];

@@ -14,15 +14,21 @@ import { ANONYMIZED_KEPT_NAME } from "../../db/seed/alumni";
 import {
   alumniOfSeed,
   caseDocRow,
+  confirmedAsWritten,
   faqItemsOf,
   isActive,
+  memberOfUser,
+  orgOf,
   partnerItemsOf,
   resolvesTo,
   SEED_AREAS,
   SEED_CASES,
   SEED_DATA,
   stageOf,
+  teamOf,
+  waitingHandOversOf,
 } from "../../db/seed/cases";
+import { handOverAttentionFor } from "../dashboard/hand-over-request";
 import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, TEST_VIEWER_PEOPLE } from "../../db/seed/people";
 
 const data = SEED_DATA;
@@ -39,6 +45,30 @@ test("docs/seed-cases.md lists every case, with the issue it exercises, and no o
   const areaRow = new RegExp(`^\\| (${SEED_AREAS.join("|")}) \\|`);
   const rows = cases.split("\n").filter((line) => areaRow.test(line));
   assert.deepEqual(rows, SEED_CASES.map(caseDocRow));
+});
+
+// Hand-overs (issue #308).
+
+test("the seed holds one waiting and one confirmed hand-over, and the department-head test viewer answers the waiting one", () => {
+  assert.deepEqual(
+    data.handOvers.map((r) => r.decision ?? null),
+    ["confirmed", null],
+  );
+  const [waiting] = waitingHandOversOf(data);
+  const head = memberOfUser(data, TEST_VIEWER_PEOPLE["department-head"]);
+  const [row] = handOverAttentionFor(head, [waiting], teamOf(data), orgOf(data), new Date("2026-10-16T12:00:00Z"));
+  assert.equal(row?.title, "Tommaso Ferrari wants to hand over Optimization and Analysis lead to Chiara Santoro");
+  assert.deepEqual(row?.action, { answerHandOver: waiting.id });
+  for (const viewer of ["team-leader", "division-lead", "member"] as const) {
+    assert.deepEqual(handOverAttentionFor(memberOfUser(data, TEST_VIEWER_PEOPLE[viewer]), [waiting], teamOf(data), orgOf(data), new Date()), [], viewer);
+  }
+});
+
+test("the confirmed hand-over's rows read as Confirm writes them, and a moved day breaks it", () => {
+  const [confirmed] = data.handOvers;
+  assert.ok(confirmedAsWritten(data, confirmed));
+  assert.ok(!confirmedAsWritten(data, { ...confirmed, decidedAt: "2022-10-05 10:00:00+00" }));
+  assert.ok(!confirmedAsWritten(data, { ...confirmed, decidedBy: confirmed.toId }));
 });
 
 // Invariants (issue #304).
