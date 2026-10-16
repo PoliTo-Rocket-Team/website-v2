@@ -4,15 +4,19 @@ import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { addOutreachTag, saveOutreachPost } from "@/app/dashboard/actions";
-import { EditableBlock } from "@/components/dashboard/edit-shell";
+import { Latest } from "@/components/landing/latest";
+import { LandingNavbar } from "@/components/landing/navbar";
+import { PageSky } from "@/components/landing/page-sky";
+import { OutreachListPage } from "@/components/outreach/list-page";
 import type { PostFrame, PostPart } from "@/components/outreach/post";
+import { postCardOf } from "@/components/outreach/post-card";
 import { PostPage } from "@/components/outreach/post-page";
-import type { EditBlocks } from "@/lib/content/edit-shell";
-import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
-import { slugOf, type Neighbouring } from "@/lib/outreach";
+import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
+import { editorVersion, publicVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import { newestFirst, outreachStats, postYears, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
 import { checkPostFields, firstPostError, postFieldsOf, postViewOf, standingErrors, type PostFieldErrors, type PostFields } from "@/lib/outreach-post-fields";
-import type { OutreachPost, OutreachTag } from "@/lib/outreach-types";
-import { EditShell } from "./edit-shell";
+import type { OutreachContent, OutreachPost, OutreachTag, PostView } from "@/lib/outreach-types";
+import { CardInPlace, EditableBlock, EditShell } from "./edit-shell";
 import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post-panel";
 
 // An Outreach post under the edit shell (boards 74b to 74h, issues #288 and
@@ -32,14 +36,28 @@ const POST_BLOCKS: EditBlocks<PostPart, PostSection> = {
 
 const outlined: PostFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
 
+// The page switch (issue #294, the board 75d pattern): the post's own page,
+// then the two pages its card shows on, each with the card drawn from the
+// fields being edited, in place among the published posts.
+type PostPageId = "post" | "list" | "home";
+
+const PAGE_TARGETS: readonly PageTarget<PostPageId>[] = [
+  { id: "post", label: "Post page" },
+  { id: "list", label: "Outreach list" },
+  { id: "home", label: "Home" },
+];
+
 export function OutreachPostEdit({
   item: initial,
   tags: initialTags,
   neighbours,
+  published,
 }: {
   item: ContentItem<OutreachPost>;
   tags: readonly OutreachTag[];
   neighbours: Neighbouring;
+  /** What the public pages show, for the list and home targets. */
+  published: OutreachContent;
 }) {
   const router = useRouter();
   const [item, setItem] = useState(initial);
@@ -53,10 +71,12 @@ export function OutreachPostEdit({
   const [expanded, setExpanded] = useState<PostSection[]>([]);
   const [scrollTo, setScrollTo] = useState<{ section: PostSection } | null>(null);
   const [pending, startTransition] = useTransition();
+  const [page, setPage] = useState<PostPageId>("post");
 
   const opened = editorVersion(item.version);
   const view = postViewOf(fields, opened);
   const errors = standingErrors(failed, fields);
+  const live = publicVersion(item.version);
 
   const openSection = useCallback((section: PostSection) => {
     setPanelOpen(true);
@@ -109,6 +129,7 @@ export function OutreachPostEdit({
       saved={panelOpen ? "Changes show on the page as you type" : undefined}
       onSaveDraft={pending ? null : () => save("save-draft")}
       onPublish={pending ? null : () => save("publish")}
+      pages={{ targets: PAGE_TARGETS, current: page, onSelect: setPage }}
       blocks={POST_BLOCKS}
       onEdit={openSection}
       panel={
@@ -129,7 +150,72 @@ export function OutreachPostEdit({
         )
       }
     >
-      <PostPage post={view} neighbours={neighbours} frame={outlined} />
+      {page === "post" ? (
+        <PostPage post={view} neighbours={neighbours} frame={outlined} />
+      ) : (
+        <CardPage
+          page={page}
+          view={view}
+          published={published}
+          publishedSlug={live === null ? null : slugOf(live)}
+          onEditCard={() => openSection("details")}
+        />
+      )}
     </EditShell>
+  );
+}
+
+/**
+ * The Outreach list or the home page, with the post's card in place, outlined
+ * with an Edit card chip that opens Title and details, where the card summary
+ * lives; the other cards are dimmed.
+ */
+function CardPage({
+  page,
+  view,
+  published,
+  publishedSlug,
+  onEditCard,
+}: {
+  page: Exclude<PostPageId, "post">;
+  view: PostView;
+  published: OutreachContent;
+  publishedSlug: string | null;
+  onEditCard: () => void;
+}) {
+  const posts = withEdited(published.posts, publishedSlug, view);
+  if (page === "list") {
+    const cards = newestFirst(posts).map((p) => ({ post: p, card: postCardOf(p) }));
+    const edited = cards.find((c) => c.post === view)?.card;
+    return (
+      <OutreachListPage
+        stats={outreachStats(published)}
+        feature={published.feature}
+        cards={cards.map((c) => c.card)}
+        years={postYears(posts)}
+        keepInView={edited}
+        frame={(card, node, layout) => (
+          <CardInPlace edited={card === edited} onEdit={onEditCard} className={layout}>
+            {node}
+          </CardInPlace>
+        )}
+      />
+    );
+  }
+  return (
+    <div className="relative bg-ground">
+      <LandingNavbar />
+      <PageSky className="pt-16 md:pt-[72px]">
+        <Latest
+          cards={trackRecordShowing(posts, view)}
+          tags={published.tags}
+          frame={(post, node, layout) => (
+            <CardInPlace edited={post === view} onEdit={onEditCard} className={layout}>
+              {node}
+            </CardInPlace>
+          )}
+        />
+      </PageSky>
+    </div>
   );
 }

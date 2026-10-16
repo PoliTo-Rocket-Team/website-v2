@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Monitor, Pencil, Smartphone } from "lucide-react";
 import {
@@ -26,7 +26,10 @@ import { EditFrame } from "./edit-frame";
 // The bar: "<Section> / Editing <item>" and the state on the left; Save draft
 // and Publish on the right. Desktop | Phone sits in the middle (74b), unless
 // the shell has pages to switch between: then the page switch takes the
-// middle and Desktop | Phone moves beside Save draft (75b, 75d).
+// middle and Desktop | Phone moves beside Save draft (75b, 75d). On a page
+// other than the item's own, the content type marks its item's card with
+// CardInPlace (75d): the card outlined with an Edit card chip, the other
+// cards dimmed.
 
 const ChipContext = createContext<((id: string) => EditChip) | null>(null);
 
@@ -138,6 +141,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
         <div className={`min-h-0 min-w-0 flex-1 overflow-auto ${phone ? "md:flex md:justify-center md:py-7" : ""}`}>
           <EditFrame
             title={`Page preview: ${item}`}
+            page={switcher?.current}
             className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
             style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
           >
@@ -239,6 +243,44 @@ export function EditableBlock({ id, className = "", children }: { id: string; cl
       >
         <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
         {chip.label}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * One card on a page the switch shows (board 75d). The edited item's card is
+ * outlined, with an "Edit card" chip that hands back to the content type, and
+ * is scrolled into view when the page opens; every other card is dimmed.
+ * `className` lays the card out where the page puts it; the card fills it.
+ */
+export function CardInPlace({
+  edited,
+  onEdit,
+  className = "",
+  children,
+}: {
+  edited: boolean;
+  onEdit: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (edited) ref.current?.scrollIntoView({ block: "center" });
+  }, [edited]);
+  if (!edited) return <div className={`opacity-40 ${className}`}>{children}</div>;
+  return (
+    <div ref={ref} className={`relative ${className}`}>
+      {children}
+      <div aria-hidden className="pointer-events-none absolute -inset-1.5 z-10 rounded-[18px] border-2 border-accent" />
+      <button
+        type="button"
+        onClick={onEdit}
+        className={`absolute -top-1.5 right-6 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent transition-colors duration-300 ease-out hover:bg-accent-hover ${CONTENT_FOCUS}`}
+      >
+        <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+        Edit card
       </button>
     </div>
   );
