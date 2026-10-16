@@ -15,12 +15,22 @@ import {
 import { parseDummyState, serializeDummyState, type DummyStateStore } from "@/lib/dummy-data/state";
 import { parsePartnerEdits, serializePartnerEdits, type DummyPartnerEditsStore } from "@/lib/dummy-data/partners";
 import { parseFaqEdits, serializeFaqEdits, type DummyFaqEditsStore } from "@/lib/dummy-data/faqs";
+import {
+  parseAdvisorEdits,
+  parseTeamPageLayerEdits,
+  serializeAdvisorEdits,
+  serializeTeamPageLayerEdits,
+  type DummyAdvisorEditsStore,
+  type DummyTeamPageLayerEditsStore,
+} from "@/lib/dummy-data/team-page";
 import { parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEditsStore } from "@/lib/dummy-data/outreach";
 import {
   TEST_DEVELOPER_APPLICATIONS_COOKIE,
   TEST_DEVELOPER_CONTENT_COOKIE,
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_FAQ_COOKIE,
+  TEST_DEVELOPER_TEAM_PAGE_COOKIE,
+  TEST_DEVELOPER_ADVISORS_COOKIE,
   TEST_DEVELOPER_OUTREACH_COOKIE,
   TEST_DEVELOPER_COOKIE_MAX_AGE_S,
   TEST_DEVELOPER_EDITS_COOKIE,
@@ -54,6 +64,8 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
         dummyPartnerEditsIn(jar),
         dummyFaqEditsIn(jar),
         dummyOutreachEditsIn(jar),
+        dummyTeamPageEditsIn(jar),
+        dummyAdvisorEditsIn(jar),
       ),
       true,
     );
@@ -118,6 +130,22 @@ function dummyFaqEditsIn(jar: Jar): DummyFaqEditsStore {
   return {
     current: parseFaqEdits(jar.get(TEST_DEVELOPER_FAQ_COOKIE)?.value),
     save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_FAQ_COOKIE, serializeFaqEdits(next)),
+  };
+}
+
+/** Changes to the Team page's visual layer (issue #283, lib/dummy-data/team-page.ts); the public Team page never reads them. */
+function dummyTeamPageEditsIn(jar: Jar): DummyTeamPageLayerEditsStore {
+  return {
+    current: parseTeamPageLayerEdits(jar.get(TEST_DEVELOPER_TEAM_PAGE_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_TEAM_PAGE_COOKIE, serializeTeamPageLayerEdits(next)),
+  };
+}
+
+/** Changes to the Team page's advisors (issue #286, lib/dummy-data/team-page.ts); the public Team page never reads them. */
+function dummyAdvisorEditsIn(jar: Jar): DummyAdvisorEditsStore {
+  return {
+    current: parseAdvisorEdits(jar.get(TEST_DEVELOPER_ADVISORS_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_ADVISORS_COOKIE, serializeAdvisorEdits(next)),
   };
 }
 

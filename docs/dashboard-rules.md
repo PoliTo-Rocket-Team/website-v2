@@ -354,8 +354,9 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
   lead's Promote or lead change.
 
-- The role on the operations lead's member panel is the person's title on the Team page.
-  - **Gap:** the title saved on the panel never reaches the public Team page. Tracked in #189.
+- The role on the operations lead's member panel is the person's title on the Team page. The
+  public Team page is built from the team's roles, so a saved title shows there once the
+  `team-roster` cache refreshes (ADR 0015).
 - Promote changes a division's leads, so it is the department head's (#231). It is confirmed, with
   "lead together" or "hand over the division"; "hand over the division" is a hand-over, so the
   old lead becomes an advisor in the division or leaves the team (#253). Each head of the division's department gets a
@@ -717,3 +718,56 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's question changes stay in their own cookie
   until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
   shows the questions as they were before the switch.
+
+### Team page visual layer (#283, epic #259)
+
+- The Team page's edits are one visual layer laid on the page the team's roles build (ADR 0015):
+  who a spot shows, the name, role, photo and LinkedIn on the page, hidden people, added leaders,
+  department names, hidden and added departments, division leads added, removed or reordered, the
+  intro text and the group photo. The team email is never edited.
+- An edit is kept to a spot (the team leader, a place on the arc, a head block, a division lead
+  row), never to a person or a role. When the real team changes and a spot is gone, its edit stays
+  in the layer and the page skips it; it shows again if the spot comes back. Only the editor or
+  Reset to team removes an edit.
+- An added leader sits at either end of the arc or right after a neighbour, in `OrgChart.leaders`
+  reading order. The arc holds at most eight; adding a ninth is refused.
+- The layer has a published version and an optional draft. Save draft and Reset to team change
+  only the draft; Publish changes what `/about/the-team` shows. Reset to team removes every edit
+  except the intro text and the group photo.
+- Writes follow the site-content rule, and none writes a role, division, department, scope or
+  member.
+- Previews never touch a database: a test developer's layer stays in their own cookie until they
+  sign out, laid on the dummy team in the editor. The public Team page there shows the dummy team
+  with no layer.
+- The editor (boards 80, 80b and 80h, #284) is "Team page" under Content, at
+  `/dashboard/team-page`: the real page under the shared edit shell, with the "Visual changes
+  only" tag and Reset to team on the bar. The team leader and each leader on the arc open the Edit
+  person panel; the intro text and the group photo are edited in place. A field put back as the
+  team record has it is no edit. The core members list and "In numbers" have no edit affordance.
+  Replace photo picks a photo the site already holds; the layer takes no upload yet.
+- Adding on the page (boards 80e, 80f and 80g, #285): while no panel is open, a "+" sits at each
+  place on the arc a leader may be added, both ends and between each pair of neighbours, and the
+  stacked chart (below xl and on phones) has one "Add leader" after the last leader. They go at
+  eight leaders. The new leader is drawn inline at that place on the arc and in the phone grid,
+  keeping the arc's ordering logic (`lib/about/arc-order.ts`); the Add leader panel's Place field
+  moves them, and a leader added before opens the same panel with Remove from page. "+ Add
+  department" sits beside each departments slide's heading, and "+ Add division lead" on a hovered
+  head block. Edit a head block changes the person, role and department name on the page, the
+  division leads shown (drag to reorder, edit, remove, add), the photo and LinkedIn; Hide from
+  page hides the block (an added department is removed), and Back to the team record puts the
+  head, the department's name and its leads back as the roles have them. None of it creates a
+  role, department or division.
+- Advisors (boards 80c and 80d, #286): faculty and specialists outside the student team, added by
+  hand and never built from roles. Each is a content item with a published version and an
+  optional draft. On the page the Advisors section is one block, "Advisors · Added by hand", whose
+  "Edit advisors" opens the Advisors panel: principal advisors, then specialists, each group
+  dragged into its order, and one advisor open at a time (full name, role on the page, Principal
+  / Specialist, LinkedIn, email, photo). Add advisor adds one. Add, edit, reorder and Principal /
+  Specialist changes are drafts that the edit bar's Save draft keeps and Publish puts on
+  `/about/the-team`. Replace photo picks a photo the site already holds.
+- End advising is the one advisor change made at once, after the editor picks the academic years
+  they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
+  their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
+  row, never a role, division, department, scope or member. Reset to team never changes the
+  advisors. Previews keep a test developer's advisors in their own cookie over today's advisors;
+  End advising there adds to their Alumni changes.
