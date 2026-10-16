@@ -1,4 +1,3 @@
-import { CAVOUR_STAGE_POSTER } from "@/components/landing/cavour-assets";
 import { cavourLaunches } from "@/lib/projects";
 import { launchLog } from "./launch-log";
 import { n, placeholderGallery } from "./text";
@@ -73,7 +72,7 @@ export const cavour: ProjectPageRecord = {
     dates: "JUN 2022 – OCT 2023",
     visual: {
       caption: "CVR 100-75-3 · FLIGHT CONFIGURATION",
-      still: { src: CAVOUR_STAGE_POSTER, alt: "Cavour in its flight configuration, side-on, nose right" },
+      rocket: { own: { model: "cavour", alt: "Cavour in its flight configuration, side-on, nose right" } },
     },
     facts: [
       { value: "104 mm", label: { text: "DIAMETER" } },

@@ -1,11 +1,22 @@
 "use client";
 
-import { useLayoutEffect } from "react";
-import { useThree } from "@react-three/fiber";
 import { useEnvironment, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { applyWeathering, PROFILES, type WeatherFor, type WeatherUniforms } from "./hero-weathering";
 import { CAVOUR_DECAL, CAVOUR_HDRI, CAVOUR_LIVERY } from "./cavour-assets";
+import {
+  DEG,
+  FIN_THICKNESS_OF_SPAN,
+  finGeometry,
+  hullMaterials,
+  hullPatch,
+  lathe,
+  nozzleGeometry,
+  paintMaterial,
+  useCanvasWeather,
+  weatherFor,
+  type HullMaterials,
+} from "./rocket-parts";
 
 // Cavour built from code instead of the 1.7 MB GLB. Every number below was
 // measured off design/cavour.glb (see the rocket-surface skill), in
@@ -16,6 +27,7 @@ import { CAVOUR_DECAL, CAVOUR_HDRI, CAVOUR_LIVERY } from "./cavour-assets";
 // Livery stays a texture (the GLB's own wrap, 53 KB) because the white wave
 // between orange and black is hand-drawn; the "CAVOUR" letters are drawn
 // into a canvas at load. The decal strip (logo + flags) is the GLB's PNG.
+// The lathe, patches, fin plate and materials are shared (rocket-parts.ts).
 
 const R = 0.05; // body radius
 const TIP = 0.85; // nose tip
@@ -39,7 +51,7 @@ const FIN_OUTLINE: [number, number][] = [
   [0.1117, 0.0187],
   [0.1117, -0.0357],
 ];
-const FIN_THICKNESS = 0.026 * 0.1675; // FIN_THICKNESS_OF_SPAN × span, as the GLB path
+const FIN_THICKNESS = FIN_THICKNESS_OF_SPAN * 0.1675; // × span, as the GLB path
 
 const SEAM_Y = [0.14025, 0.53975]; // body joint rings
 const SEAM_R = 0.0504;
@@ -57,94 +69,6 @@ const TEXT_CAP = 0.021; // letter height across the hull
 const BBOX_MIN = -0.0357;
 const BBOX_LEN = TIP - BBOX_MIN;
 export const CAVOUR_BUILT_LENGTH_UNITS = BBOX_LEN;
-
-// UV convention copied from the GLB so its livery wraps identically:
-//   u = 0.5 − angle/2π   (angle = atan2(z, x); camera side, +Z, is u=0.25)
-//   v = 1 − y/TIP        (v=0 at the nose = top of the image, flipY off)
-const DEG = Math.PI / 180;
-
-// Revolve a (y, r) profile around +Y. UVs by the rule above, so a straight
-// section costs one ring and the nose spline gets its 53. Normals come from
-// the profile tangent, not vertex averaging, so the seam column is invisible.
-function lathe(profile: [number, number][], segments: number): THREE.BufferGeometry {
-  const rows = profile.length;
-  const pos: number[] = [];
-  const nor: number[] = [];
-  const uv: number[] = [];
-  for (let i = 0; i < rows; i++) {
-    const [y, r] = profile[i];
-    const [yPrev, rPrev] = profile[Math.max(i - 1, 0)];
-    const [yNext, rNext] = profile[Math.min(i + 1, rows - 1)];
-    // tangent (dr, dy) → outward normal (dy, -dr)
-    let nr = yNext - yPrev;
-    let ny = -(rNext - rPrev);
-    const len = Math.hypot(nr, ny) || 1;
-    nr /= len;
-    ny /= len;
-    for (let j = 0; j <= segments; j++) {
-      const u = j / segments;
-      const ang = (0.5 - u) * Math.PI * 2;
-      const c = Math.cos(ang);
-      const s = Math.sin(ang);
-      pos.push(r * c, y, r * s);
-      nor.push(nr * c, ny, nr * s);
-      uv.push(u, 1 - y / TIP);
-    }
-  }
-  const idx: number[] = [];
-  const cols = segments + 1;
-  for (let i = 0; i < rows - 1; i++) {
-    for (let j = 0; j < segments; j++) {
-      const a = i * cols + j;
-      const b = a + 1;
-      const c = a + cols;
-      const d = c + 1;
-      idx.push(a, b, c, b, d, c);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  return g;
-}
-
-// A curved patch on the hull: angles in degrees, u runs from angHi to angLo
-// (the GLB's decal plane orientation), v from y1 (nose side) to y0.
-function hullPatch(p: { y0: number; y1: number; angLo: number; angHi: number; r: number }, segments = 24) {
-  const pos: number[] = [];
-  const nor: number[] = [];
-  const uv: number[] = [];
-  for (let i = 0; i <= 1; i++) {
-    const y = i === 0 ? p.y0 : p.y1;
-    for (let j = 0; j <= segments; j++) {
-      const u = j / segments;
-      const ang = (p.angHi - (p.angHi - p.angLo) * u) * DEG;
-      const c = Math.cos(ang);
-      const s = Math.sin(ang);
-      pos.push(p.r * c, y, p.r * s);
-      nor.push(c, 0, s);
-      uv.push(u, (p.y1 - y) / (p.y1 - p.y0));
-    }
-  }
-  const idx: number[] = [];
-  const cols = segments + 1;
-  for (let j = 0; j < segments; j++) idx.push(j, j + 1, j + cols, j + 1, j + cols + 1, j + cols);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  return g;
-}
-
-function finGeometry(): THREE.BufferGeometry {
-  const shape = new THREE.Shape(FIN_OUTLINE.map(([r, y]) => new THREE.Vector2(r, y)));
-  const g = new THREE.ExtrudeGeometry(shape, { depth: FIN_THICKNESS, bevelEnabled: false });
-  g.translate(0, 0, -FIN_THICKNESS / 2);
-  return g;
-}
 
 // "CAVOUR" stacked along the hull, each letter upright with its top toward
 // the nose — the GLB's extruded text, flattened to paint.
@@ -173,13 +97,10 @@ function letteringTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-type Mats = {
+type Mats = HullMaterials & {
   livery: THREE.MeshPhysicalMaterial;
   decal: THREE.MeshPhysicalMaterial;
   text: THREE.MeshPhysicalMaterial;
-  aluminium: THREE.MeshStandardMaterial;
-  titanium: THREE.MeshStandardMaterial;
-  seam: THREE.MeshStandardMaterial;
 };
 
 // Same numbers as the GLB branch in hero-rocket-3d.tsx: that file is the
@@ -191,23 +112,6 @@ function makeMaterials(livery: THREE.Texture, decal: THREE.Texture, weather: Wea
     t.anisotropy = 8;
     t.needsUpdate = true;
   }
-  const paint = (map: THREE.Texture, specular: number, transparent: boolean) => {
-    const m = new THREE.MeshPhysicalMaterial({
-      map,
-      roughness: 0.62,
-      metalness: 0,
-      clearcoat: 0.12,
-      clearcoatRoughness: 0.65,
-      envMapIntensity: 0.28,
-      specularIntensity: specular,
-      transparent,
-      depthWrite: !transparent,
-      polygonOffset: transparent,
-      polygonOffsetFactor: -1,
-    });
-    applyWeathering(m, PROFILES.paint, weather);
-    return m;
-  };
   const text = new THREE.MeshPhysicalMaterial({
     map: letteringTexture(),
     color: new THREE.Color().setRGB(0.87, 0.87, 0.86),
@@ -220,60 +124,24 @@ function makeMaterials(livery: THREE.Texture, decal: THREE.Texture, weather: Wea
     polygonOffsetFactor: -2,
   });
   applyWeathering(text, PROFILES.paint, weather);
-  // Fins: the GLB path's numbers are 0.14/0.145/0.155, but there the fin
-  // plates shadowed themselves (inverted normals from the sheet extrusion)
-  // and never saw the sun. That dark, dull look is the one that was signed
-  // off, so the built fins get a darker base to land on the same tone.
-  const aluminium = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setRGB(0.065, 0.067, 0.072),
-    metalness: 0.6,
-    roughness: 0.72,
-    envMapIntensity: 0.3,
-  });
-  applyWeathering(aluminium, PROFILES.metal, weather);
-  const titanium = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setRGB(0.16, 0.165, 0.17),
-    metalness: 0.6,
-    roughness: 0.7,
-    envMapIntensity: 0.35,
-    side: THREE.DoubleSide,
-  });
-  applyWeathering(titanium, PROFILES.metal, weather);
-  const seam = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setRGB(0.035, 0.035, 0.04),
-    metalness: 0,
-    roughness: 0.7,
-    envMapIntensity: 0.5,
-    side: THREE.DoubleSide,
-  });
-  applyWeathering(seam, PROFILES.trim, weather);
-  return { livery: paint(livery, 0.6, false), decal: paint(decal, 0.4, true), text, aluminium, titanium, seam };
+  return {
+    livery: paintMaterial(livery, 0.6, false, weather),
+    decal: paintMaterial(decal, 0.4, true, weather),
+    text,
+    ...hullMaterials(weather),
+  };
 }
-
-// Each canvas draws the vehicle from its own view, so each has its own weather
-// uniforms (where the hull sits, the belly light, the wear dials). The
-// materials are shared, so they look the uniforms up by renderer: three
-// compiles a material once per WebGL context and hands the renderer to that
-// compile (hero-weathering.ts). One canvas holds one vehicle.
-const weatherByRenderer = new WeakMap<THREE.WebGLRenderer, WeatherUniforms>();
-const weatherFor: WeatherFor = (renderer) => {
-  const weather = weatherByRenderer.get(renderer);
-  if (!weather) throw new Error("A Cavour material compiled on a canvas with no CavourBuilt in it.");
-  return weather;
-};
 
 function buildGeometry() {
   const body: [number, number][] = [[0, R], [NOSE_START, R]];
   NOSE_R.forEach((r, i) => body.push([NOSE_START + i * NOSE_STEP, r]));
   body[body.length - 1][0] = TIP;
   return {
-    body: lathe(body, 128),
-    seam: lathe([[-SEAM_H / 2, SEAM_R], [SEAM_H / 2, SEAM_R]], 96),
-    ring: lathe([[-0.0036, 0.036], [0, 0.036]], 64),
-    throat: lathe([[-0.016, 0.015], [0.004, 0.015]], 48),
-    bell: lathe([[-0.027, 0.027], [-0.021, 0.024], [-0.014, 0.02], [-0.008, 0.017]], 64),
+    body: lathe(body, 128, TIP),
+    seam: lathe([[-SEAM_H / 2, SEAM_R], [SEAM_H / 2, SEAM_R]], 96, TIP),
+    ...nozzleGeometry(TIP),
     tail: new THREE.CircleGeometry(R, 96),
-    fin: finGeometry(),
+    fin: finGeometry(FIN_OUTLINE, FIN_THICKNESS),
     decal: hullPatch(DECAL),
     text: hullPatch(TEXT),
   };
@@ -293,15 +161,7 @@ function cavourParts(livery: THREE.Texture, decal: THREE.Texture) {
 export default function CavourBuilt({ weather, length }: { weather: WeatherUniforms; length: number }) {
   const [livery, decal] = useTexture([CAVOUR_LIVERY, CAVOUR_DECAL]);
   const { geo, mats } = cavourParts(livery, decal);
-  const gl = useThree((s) => s.gl);
-  // Registered before the scene's first compile: layout effects run before
-  // WarmUp's compile and before the canvas draws its first frame.
-  useLayoutEffect(() => {
-    weatherByRenderer.set(gl, weather);
-    return () => {
-      weatherByRenderer.delete(gl);
-    };
-  }, [gl, weather]);
+  useCanvasWeather(weather);
 
   const scale = length / BBOX_LEN;
   const shadow = { castShadow: true, receiveShadow: true };
