@@ -12,7 +12,7 @@ CREATE TRIGGER audit_row_changes AFTER INSERT OR UPDATE OR DELETE ON public.part
 --> statement-breakpoint
 -- The partners of lib/partners.ts, carried into the store as they were, each
 -- published, in their order. Written by `partnerImportSql`
--- (lib/partners-import.ts); lib/partners-import.test.ts checks this file holds
+-- (lib/partners-import.ts); lib/partners-editor.test.ts checks this file holds
 -- exactly its output.
 WITH "partner" AS (INSERT INTO "partners" ("site_order") VALUES (1) RETURNING "id")
 INSERT INTO "partner_versions" ("partner_id", "version", "name", "tier", "logo_url", "logo_width", "logo_height", "logo_kind", "logo_dark", "website", "one_liner", "about", "support")

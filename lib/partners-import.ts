@@ -5,7 +5,7 @@ import { partnerColumns, type PartnerColumns } from "./partners-rows";
 // Carrying the partners of lib/partners.ts into the database (issue #256):
 // each one published, in the record's order, with its tier, texts and logo.
 // Migration drizzle/0020_partners_audit_and_import.sql holds exactly the SQL
-// `partnerImportSql` writes, which partners-import.test.ts checks, and the
+// `partnerImportSql` writes, which partners-editor.test.ts checks, and the
 // dummy data (previews) starts from the same items.
 
 /** The record's partners as stored items: ids and site order from 1, each published with no draft. */
