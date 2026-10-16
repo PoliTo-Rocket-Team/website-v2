@@ -25,13 +25,15 @@ export const positionTypeEnum = pgEnum("position_type", [
 ]);
 
 // Dashboard v2 orders (issue #172, drizzle/0010): the team leader can send a
-// request back for changes, and the lead can cancel one.
+// request back for changes, and the lead can cancel one. An approved request
+// is marked `ordered` once it is placed with the shop (issue #247, drizzle/0019).
 export const orderStatusEnum = pgEnum("status", [
   "pending",
   "accepted",
   "rejected",
   "changes_requested",
   "cancelled",
+  "ordered",
 ]);
 
 export const applicationStatusEnum = pgEnum("application_status", [
@@ -52,7 +54,8 @@ export const scopeTypeEnum = pgEnum("scope_type", [
   "department",
   "division",
   "website",
-  // A team-wide grant in no unit: "Approve orders" (issue #233, drizzle/0017).
+  // A team-wide grant in no unit: "Approve orders" (issue #233, drizzle/0017),
+  // or an area given across the whole team (issue #247, drizzle/0019).
   "team",
 ]);
 

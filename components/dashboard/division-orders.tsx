@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState, useTransition, type DragEvent, type FormEvent, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
   ExternalLink,
   FileText,
   Link2,
@@ -14,6 +15,7 @@ import {
   Lock,
   MessageSquareText,
   Minus,
+  PackageCheck,
   Plus,
   Search,
   Upload,
@@ -23,10 +25,14 @@ import {
 import { toast } from "sonner";
 import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
+  answeredLine,
   appliedSelection,
+  approvedNote,
   canEditOrder,
+  checkDecision,
   checkNewOrder,
   checkQuote,
+  dayMonthYear,
   departmentTick,
   divisionShort,
   filterOrders,
@@ -47,6 +53,7 @@ import {
   unitLine,
   type NewOrderErrors,
   type Order,
+  type OrderDecision,
   type OrderDivision,
   type OrderFilters,
   type OrdersPage,
@@ -57,7 +64,16 @@ import {
 import { fileSize } from "@/lib/dashboard/recruitment";
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
 import { ConfirmDialog, SHEET_FRAME, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
-import { Drawer, DrawerPage, PANEL_DANGER_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
+import {
+  Drawer,
+  DrawerPage,
+  PANEL_DANGER_BUTTON,
+  PANEL_DANGER_FILLED_BUTTON,
+  PANEL_GHOST_BUTTON,
+  PANEL_PRIMARY_BUTTON,
+  PanelBody,
+  SidePanel,
+} from "./drawer";
 import { Field, inputClass } from "./field";
 import { DivisionMenu } from "./new-position-drawer";
 import { PANEL } from "./panel";
@@ -67,6 +83,8 @@ export type OrderWrites = {
   placeOrder: (form: FormData) => Promise<WriteResult<Order>>;
   editOrder: (orderId: number, form: FormData) => Promise<WriteResult<Order>>;
   cancelOrder: (orderId: number) => Promise<WriteResult<null>>;
+  decideOrder: (orderId: number, decision: OrderDecision) => Promise<WriteResult<Order>>;
+  markOrdered: (orderId: number) => Promise<WriteResult<Order>>;
 };
 
 /** What the page has open on the right: nothing, a request, a new request, or an edit of one. */
@@ -80,12 +98,14 @@ const CLOSED: Open = { kind: "none" };
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
-// Boards 61 to 61d, 61m, 67, 67b and 67m (issues #172 and #233): every order
-// in the team, newest first, 12 to a page. The Department · Division and
+// Boards 61 to 61d, 61m, 67, 67b and 67m (issues #172 and #233), and the
+// team leader's 70 to 70e (issue #247): every order in the team, newest first,
+// 12 to a page. The Department · Division and
 // Status column headers each have a filter; rows outside the viewer's scope
 // carry a lock and open read-only. The request panel has Cancel request and
-// Edit order where the viewer may use them, and New order sends a request for
-// one of the viewer's divisions. While a side panel is open the Department
+// Edit order where the viewer may use them, Reject, Ask for changes and
+// Approve, or Mark as ordered, for the people who decide, and New order sends
+// a request for one of the viewer's divisions. While a side panel is open the Department
 // column is hidden (board 61b), and Requested by too from xl to 1439px wide
 // (rowGrid). Props in, nothing fetched; the list lives in
 // this page's state, so a sent, edited or cancelled request shows at once. On a
@@ -245,11 +265,12 @@ export function OrdersView({ data, writes }: { data: OrdersPage; writes: OrderWr
         scope={data.scope}
         onClose={() => setOpen(CLOSED)}
         onEdit={(order) => setOpen({ kind: "edit", id: order.id })}
-        cancelOrder={writes.cancelOrder}
+        writes={writes}
         onCancelled={(order) => {
           setOrders((all) => all.filter((o) => o.id !== order.id));
           setOpen(CLOSED);
         }}
+        onChanged={replace}
       />
 
       <OrderFormDrawer
@@ -307,11 +328,12 @@ function ReadOnlyLock() {
 }
 
 // Board 61: Waiting is the neutral pill, Approved green, Changes requested
-// amber, Rejected red. The desktop table marks each with a dot; the phone
-// cards (61m) show the pill alone.
+// amber, Rejected red; board 70 adds Ordered, grey. The desktop table marks
+// each with a dot; the phone cards (61m) show the pill alone.
 const STATUS_STYLES: Readonly<Record<OrderStatus, { pill: string; dot: string }>> = {
   waiting: { pill: "bg-white-10 text-text-2", dot: "bg-warning" },
   approved: { pill: "bg-success-soft text-success", dot: "bg-success" },
+  ordered: { pill: "bg-white-5 text-text-2", dot: "bg-prt-muted" },
   "changes-requested": { pill: "bg-warning-soft text-warning", dot: "bg-warning" },
   rejected: { pill: "bg-danger-soft text-danger", dot: "bg-danger" },
 };
@@ -639,77 +661,213 @@ function StatusFilter({
 
 const SPEC_LABEL = "whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.2em] text-dim";
 
+/** What the decide footer is doing (boards 70b, 70d, 70e): showing its three buttons, or writing a note to send back or reject with. */
+type Deciding = "choose" | "ask-for-changes" | "reject";
+
+/** The step "are you sure" asks about: a decision with its note, or Mark as ordered. */
+type Asking =
+  | { readonly kind: "cancel" }
+  | { readonly kind: "decide"; readonly decision: OrderDecision }
+  | { readonly kind: "mark-ordered" };
+
 /**
- * Boards 61c and 61d: one request, with the team leader's reason when they
- * sent it back. What the viewer may still do with it is the domain's answer
- * (orderActions): an order outside their scope, or one approved or rejected,
- * opens read-only.
+ * Boards 61c, 61d and 70 to 70e: one request, with the team leader's answer
+ * when there is one. What the viewer may do with it is the domain's answer
+ * (orderActions): an order outside their scope, or one already answered, opens
+ * read-only for editing; the team leader and holders of "Approve orders"
+ * decide a waiting one (Reject, Ask for changes, Approve) and mark an approved
+ * one as ordered. While they decide, Edit moves to the panel's head (board
+ * 70b). Every action asks "are you sure" first.
  */
 function OrderPanel({
   order,
   scope,
   onClose,
   onEdit,
-  cancelOrder,
+  writes,
   onCancelled,
+  onChanged,
 }: {
   order: Order | null;
   scope: OrdersScope;
   onClose: () => void;
   onEdit: (order: Order) => void;
-  cancelOrder: OrderWrites["cancelOrder"];
+  writes: Pick<OrderWrites, "cancelOrder" | "decideOrder" | "markOrdered">;
   onCancelled: (order: Order) => void;
+  onChanged: (order: Order) => void;
 }) {
   // The panel keeps showing the last request while it closes.
   const [shown, setShown] = useState<Order | null>(order);
-  if (order !== null && order !== shown) setShown(order);
-  const [asking, setAsking] = useState(false);
+  const [deciding, setDeciding] = useState<Deciding>("choose");
+  const [note, setNote] = useState("");
+  const [noteError, setNoteError] = useState<string>();
+  const [asking, setAsking] = useState<Asking | null>(null);
   const [pending, startTransition] = useTransition();
+  const noteId = useId();
+  if (order !== null && order !== shown) {
+    // Another request opened: start its footer afresh.
+    if (order.id !== shown?.id) {
+      setDeciding("choose");
+      setNote("");
+      setNoteError(undefined);
+    }
+    setShown(order);
+  }
   const current = order ?? shown;
   if (current === null) return null;
   const actions = orderActions(scope, current);
   const total = orderTotal(current);
+  const requester = current.requestedBy || "The requester";
+  // Board 70b's head: where the order belongs and what it costs, for the people who decide across the team.
+  const detail =
+    scope.decides !== null && current.unit !== null
+      ? [divisionShort(current.unit.division.name), current.unit.department?.name, formatEuro(total)]
+      : [current.reason, formatEuro(total)];
+  const writingNote = actions.decide && deciding !== "choose";
 
-  const cancel = () =>
+  const startNote = (kind: Exclude<Deciding, "choose">) => {
+    setDeciding(kind);
+    setNote("");
+    setNoteError(undefined);
+  };
+  /** The decision as the server will check it (`checkDecision`); a note it refuses shows under the box. */
+  const askToSend = (input: { kind: "ask-for-changes" | "reject"; reason: string }) => {
+    const checked = checkDecision(scope.decides, current.status, input);
+    if (!checked.ok) return setNoteError(checked.error);
+    setNoteError(undefined);
+    setAsking({ kind: "decide", decision: checked.value });
+  };
+
+  const run = (step: Asking) =>
     startTransition(async () => {
-      const result = await cancelOrder(current.id);
-      if (!result.ok) {
-        toast.error("Could not cancel the request", { description: result.error });
-        return;
+      switch (step.kind) {
+        case "cancel": {
+          const result = await writes.cancelOrder(current.id);
+          if (!result.ok) return void toast.error("Could not cancel the request", { description: result.error });
+          setAsking(null);
+          onCancelled(current);
+          toast.success(`Cancelled the request for ${current.item}`);
+          return;
+        }
+        case "decide": {
+          const result = await writes.decideOrder(current.id, step.decision);
+          if (!result.ok) return void toast.error("Could not answer the request", { description: result.error });
+          setAsking(null);
+          setDeciding("choose");
+          onChanged(result.value);
+          toast.success(DECIDED[step.decision.kind](current.item));
+          return;
+        }
+        case "mark-ordered": {
+          const result = await writes.markOrdered(current.id);
+          if (!result.ok) return void toast.error("Could not mark it as ordered", { description: result.error });
+          setAsking(null);
+          onChanged(result.value);
+          toast.success(`Marked ${current.item} as ordered`);
+          return;
+        }
       }
-      setAsking(false);
-      onCancelled(current);
-      toast.success(`Cancelled the request for ${current.item}`);
     });
+
+  const footer = writingNote ? (
+    <>
+      <button type="button" onClick={() => setDeciding("choose")} className={`${PANEL_GHOST_BUTTON} flex-1`}>
+        Cancel
+      </button>
+      {deciding === "ask-for-changes" ? (
+        <button type="button" onClick={() => askToSend({ kind: "ask-for-changes", reason: note })} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
+          Ask for changes
+        </button>
+      ) : (
+        <button type="button" onClick={() => askToSend({ kind: "reject", reason: note })} className={`${PANEL_DANGER_FILLED_BUTTON} flex-1`}>
+          Reject order
+        </button>
+      )}
+    </>
+  ) : actions.decide ? (
+    <>
+      <button type="button" onClick={() => startNote("reject")} className={PANEL_DANGER_BUTTON}>
+        Reject
+      </button>
+      <button type="button" onClick={() => startNote("ask-for-changes")} className={PANEL_GHOST_BUTTON}>
+        Ask for changes
+      </button>
+      <button type="button" onClick={() => setAsking({ kind: "decide", decision: { kind: "approve" } })} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
+        Approve
+      </button>
+    </>
+  ) : actions.markOrdered ? (
+    <button type="button" onClick={() => setAsking({ kind: "mark-ordered" })} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
+      Mark as ordered
+    </button>
+  ) : actions.cancel || actions.edit ? (
+    <>
+      {actions.cancel && (
+        <button type="button" onClick={() => setAsking({ kind: "cancel" })} className={`${PANEL_DANGER_BUTTON} flex-1`}>
+          Cancel request
+        </button>
+      )}
+      {actions.edit && (
+        <button type="button" onClick={() => onEdit(current)} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
+          {actions.edit === "edit-and-resend" ? "Edit and send again" : "Edit order"}
+        </button>
+      )}
+    </>
+  ) : undefined;
 
   return (
     <SidePanel
       open={order !== null}
       onOpenChange={(next) => !next && onClose()}
       title={current.item}
-      detail={[current.reason, formatEuro(total)].filter(Boolean).join(" · ")}
-      footer={
-        actions.cancel || actions.edit ? (
-          <>
-            {actions.cancel && (
-              <button type="button" onClick={() => setAsking(true)} className={PANEL_DANGER_BUTTON}>
-                Cancel request
-              </button>
-            )}
-            {actions.edit && (
-              <button
-                type="button"
-                onClick={() => onEdit(current)}
-                className={`${PANEL_PRIMARY_BUTTON} ${actions.cancel ? "" : "col-span-2"}`}
-              >
-                {actions.edit === "edit-and-resend" ? "Edit and send again" : "Edit order"}
-              </button>
-            )}
-          </>
+      detail={detail.filter(Boolean).join(" · ")}
+      // The footer is deciding, so Edit sits at the head (board 70b).
+      action={
+        actions.edit && (actions.decide || actions.markOrdered) ? (
+          <button
+            type="button"
+            onClick={() => onEdit(current)}
+            className={`rounded-md px-1.5 text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+          >
+            Edit
+          </button>
         ) : undefined
       }
+      footer={footer}
+      footerLayout="row"
     >
       <PanelBody className="flex flex-col gap-6">
+        {scope.decides !== null && (
+          <div className="grid grid-cols-3 gap-3">
+            <Spec label="Requested by">{current.requestedBy || "–"}</Spec>
+            <Spec label="Sent">{dayMonthYear(current.requestedOn)}</Spec>
+            <div className="min-w-0">
+              <p className={SPEC_LABEL}>Status</p>
+              <div className="mt-1.5">
+                <StatusPill status={current.status} dot />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(current.status === "approved" || current.status === "ordered") && (
+          <p className="flex items-start gap-3 rounded-xl border border-success/40 bg-success/[0.06] px-4 py-3.5 text-[13px] leading-relaxed text-prt-text">
+            <CircleCheck aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-success" strokeWidth={1.75} />
+            {approvedNote(current, actions.markOrdered)}
+          </p>
+        )}
+
+        {current.status === "rejected" && (
+          <section className="rounded-xl border border-danger/40 bg-danger/[0.06] p-4">
+            <h3 className="flex items-center gap-2 text-[14px] font-semibold text-danger">
+              <XCircle aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              Rejected
+            </h3>
+            {current.reason && <p className="mt-2 text-[13px] leading-relaxed text-prt-text">“{current.reason}”</p>}
+            <p className="mt-2 text-[12px] text-prt-muted">{answeredLine(current.answer)}</p>
+          </section>
+        )}
+
         {current.status === "changes-requested" && (
           <section className="rounded-xl border border-warning/40 bg-warning/[0.06] p-4">
             <h3 className="flex items-center gap-2 text-[14px] font-semibold text-warning">
@@ -721,6 +879,37 @@ function OrderPanel({
               {current.changes.by}, team leader · {shortDate(current.changes.on)}
             </p>
           </section>
+        )}
+
+        {writingNote && (
+          <div>
+            <label htmlFor={noteId} className={SPEC_LABEL}>
+              {deciding === "ask-for-changes" ? "What should change" : "Why (optional)"}
+            </label>
+            <textarea
+              id={noteId}
+              autoFocus
+              value={note}
+              onChange={(e) => {
+                setNote(e.target.value);
+                setNoteError(undefined);
+              }}
+              rows={4}
+              aria-invalid={noteError !== undefined}
+              aria-describedby={`${noteId}-hint`}
+              className={`${inputClass(noteError)} mt-2 block h-auto min-h-[110px] resize-none py-3 leading-[1.6] ${deciding === "ask-for-changes" ? "border-accent/70" : ""}`}
+            />
+            {noteError && (
+              <p role="alert" className="mt-2 text-[13px] text-danger">
+                {noteError}
+              </p>
+            )}
+            <p id={`${noteId}-hint`} className="mt-2 text-[12px] leading-relaxed text-prt-muted">
+              {deciding === "ask-for-changes"
+                ? `${requester} sees this note on the order. They can edit it and send it again.`
+                : `${requester} sees the reason on the order. A rejected order can't be sent again; they make a new one.`}
+            </p>
+          </div>
         )}
 
         <Spec label="Item">{current.item}</Spec>
@@ -750,19 +939,76 @@ function OrderPanel({
       </PanelBody>
 
       <ConfirmDialog
-        open={asking}
-        onOpenChange={setAsking}
-        icon={<XCircle className="h-5 w-5" strokeWidth={1.75} />}
-        title="Cancel this request?"
-        description={`The request for ${current.item} leaves the orders, and the team leader no longer sees it.`}
-        confirmLabel="Cancel request"
-        cancelLabel="Keep it"
-        danger
+        open={asking !== null}
+        onOpenChange={(next) => !next && setAsking(null)}
+        {...confirmCopy(asking, current, requester)}
         pending={pending}
-        onConfirm={cancel}
+        onConfirm={() => asking && run(asking)}
       />
     </SidePanel>
   );
+}
+
+/** The toast after a decision. */
+const DECIDED: Readonly<Record<OrderDecision["kind"], (item: string) => string>> = {
+  approve: (item) => `Approved ${item}`,
+  reject: (item) => `Rejected ${item}`,
+  "ask-for-changes": (item) => `Sent ${item} back for changes`,
+};
+
+/** What "are you sure" says before each step (docs/dashboard-rules.md, "4. Orders"). */
+function confirmCopy(asking: Asking | null, order: Order, requester: string) {
+  const first = requester.split(" ")[0];
+  switch (asking?.kind) {
+    case undefined:
+    case "cancel":
+      return {
+        icon: <XCircle className="h-5 w-5" strokeWidth={1.75} />,
+        title: "Cancel this request?",
+        description: `The request for ${order.item} leaves the orders, and the team leader no longer sees it.`,
+        confirmLabel: "Cancel request",
+        cancelLabel: "Keep it",
+        danger: true,
+      };
+    case "mark-ordered":
+      return {
+        icon: <PackageCheck className="h-5 w-5" strokeWidth={1.75} />,
+        title: "Mark this request as ordered?",
+        description: `Do this once you have placed the order for ${order.item}. It can't be undone.`,
+        confirmLabel: "Mark as ordered",
+        cancelLabel: "Not yet",
+        tone: "success" as const,
+      };
+    case "decide":
+      switch (asking.decision.kind) {
+        case "approve":
+          return {
+            icon: <CircleCheck className="h-5 w-5" strokeWidth={1.75} />,
+            title: "Approve this request?",
+            description: `${order.item} for ${formatEuro(orderTotal(order))}. ${first} sees it approved, and it can be marked as ordered once it is placed.`,
+            confirmLabel: "Approve",
+            cancelLabel: "Not yet",
+            tone: "success" as const,
+          };
+        case "ask-for-changes":
+          return {
+            icon: <MessageSquareText className="h-5 w-5" strokeWidth={1.75} />,
+            title: "Send this request back?",
+            description: `${first} sees your note and can edit the request and send it again.`,
+            confirmLabel: "Ask for changes",
+            cancelLabel: "Keep writing",
+          };
+        case "reject":
+          return {
+            icon: <XCircle className="h-5 w-5" strokeWidth={1.75} />,
+            title: "Reject this request?",
+            description: `${first} sees it rejected${asking.decision.reason ? " with your reason" : ""}. A rejected request can't be sent again.`,
+            confirmLabel: "Reject order",
+            cancelLabel: "Keep it",
+            danger: true,
+          };
+      }
+  }
 }
 
 function Spec({ label, children }: { label: string; children: React.ReactNode }) {

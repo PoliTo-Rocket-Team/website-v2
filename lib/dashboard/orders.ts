@@ -5,13 +5,18 @@ import { z } from "zod";
 // each is in, and what the viewer may still do with it. Money is whole euro
 // cents everywhere, so totals never pick up float error.
 
-/** The states a request shows: waiting for the team leader, or their answer. */
-export const ORDER_STATUSES = ["waiting", "approved", "changes-requested", "rejected"] as const;
+/**
+ * The states a request shows: waiting for the team leader, their answer, and
+ * Ordered once an approved request was placed with the shop (board 70c, issue
+ * #247). Ordered follows Approved and nothing else.
+ */
+export const ORDER_STATUSES = ["waiting", "approved", "ordered", "changes-requested", "rejected"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
   waiting: "Waiting",
   approved: "Approved",
+  ordered: "Ordered",
   "changes-requested": "Changes requested",
   rejected: "Rejected",
 };
@@ -34,9 +39,25 @@ export type ChangeRequest = {
   readonly on: string;
 };
 
-/** Where a request stands. Only a request sent back carries the team leader's reason. */
+/** Who approved or rejected a request, and when (boards 70c and 70e). */
+export type Answer = {
+  /** Their name: "Alessandro Greco". */
+  readonly by: string;
+  /** Whether the viewer gave the answer: the note then reads "Approved by you". */
+  readonly byYou: boolean;
+  /** ISO date. */
+  readonly on: string;
+};
+
+/**
+ * Where a request stands. An approved or ordered request carries who approved
+ * it; a rejected one who rejected it and the reason, when they gave one; a
+ * request sent back carries what to change.
+ */
 export type OrderState =
-  | { readonly status: "waiting" | "approved" | "rejected" }
+  | { readonly status: "waiting" }
+  | { readonly status: "approved" | "ordered"; readonly answer: Answer }
+  | { readonly status: "rejected"; readonly answer: Answer; readonly reason: string | null }
   | { readonly status: "changes-requested"; readonly changes: ChangeRequest };
 
 export type OrderQuote = {
@@ -228,8 +249,9 @@ function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-/** The line under the title (boards 61 and 67): what the viewer edits, and that the rest is read-only. */
+/** The line under the title (boards 61, 67 and 70): what the viewer decides, else what they edit and that the rest is read-only. */
 export function ordersIntro(scope: OrdersScope): string {
+  if (scope.decides !== null) return "Every order in the team. Open a waiting order to approve it, reject it or ask for changes.";
   if (scope.edits.length === 0) return "Every order in the team. You can view them; none are yours to edit.";
   if (scope.edits.some((e) => e.kind === "team")) return "Every order in the team. You can edit all of them.";
   const units = scope.edits.flatMap((e) => (e.kind === "team" ? [] : [editUnitName(e)]));
@@ -273,60 +295,75 @@ export function orderBreakdown(order: Pick<Order, "unitPrice" | "quantity" | "sh
 }
 
 /**
- * What the viewer may still do with a request (boards 61c and 61d). Only an
- * order in their scope (`canEditOrder`) can be changed at all; any other opens
- * read-only. A request the team leader has not answered can be cancelled or
- * edited; one sent back can only be edited and sent again, which puts it back
- * to waiting. A request is cancelled only while it is waiting
- * (docs/dashboard-rules.md). An approved or rejected request is the team
- * leader's answer: nothing is left to do with it.
+ * What the viewer may still do with a request (boards 61c, 61d, 70b and 70c).
+ * Editing and deciding are apart. Only an order in the viewer's scope
+ * (`canEditOrder`) can be changed: a request the team leader has not answered
+ * can be cancelled or edited; one sent back can only be edited and sent again,
+ * which puts it back to waiting. A request is cancelled only while it is
+ * waiting. Approved, Ordered and Rejected are answers: nobody edits them, and
+ * a rejected request is never sent again (the requester makes a new one).
+ * Deciding needs the right to decide (`decideRightOf`), not an edit scope: a
+ * waiting request can be approved, rejected or sent back, and an approved one
+ * marked as ordered, by the same people (issue #247).
  */
 export type OrderActions = {
   readonly cancel: boolean;
   readonly edit: "edit" | "edit-and-resend" | null;
+  /** Reject, Ask for changes and Approve (board 70b). */
+  readonly decide: boolean;
+  /** Mark as ordered (board 70c). */
+  readonly markOrdered: boolean;
 };
 
-const NO_ACTIONS: OrderActions = { cancel: false, edit: null };
+type EditActions = Pick<OrderActions, "cancel" | "edit">;
+
+const NO_EDITS: EditActions = { cancel: false, edit: null };
 
 /** What a request in `status` allows to someone who may edit it. */
-function actionsFor(status: OrderStatus): OrderActions {
+function editsFor(status: OrderStatus): EditActions {
   switch (status) {
     case "waiting":
       return { cancel: true, edit: "edit" };
     case "changes-requested":
       return { cancel: false, edit: "edit-and-resend" };
     case "approved":
+    case "ordered":
     case "rejected":
-      return NO_ACTIONS;
+      return NO_EDITS;
   }
 }
 
-/** What the viewer may do with this order: nothing outside their scope. */
+/** What the viewer may do with this order: edits only inside their scope, decisions only with the right to decide. */
 export function orderActions(scope: OrdersScope, order: Pick<Order, "status" | "unit">): OrderActions {
-  return canEditOrder(scope, order) ? actionsFor(order.status) : NO_ACTIONS;
+  const edits = canEditOrder(scope, order) ? editsFor(order.status) : NO_EDITS;
+  const decides = scope.decides !== null;
+  return { ...edits, decide: decides && order.status === "waiting", markOrdered: decides && order.status === "approved" };
 }
 
 /** The state an edited request is in afterwards: an edit always goes back to the team leader. */
 export function stateAfterEdit(status: OrderStatus): OrderState | null {
-  return actionsFor(status).edit === null ? null : { status: "waiting" };
+  return editsFor(status).edit === null ? null : { status: "waiting" };
 }
 
 /** What the team leader, or someone they gave "Approve orders", answers a waiting request with. */
 export type OrderDecision =
   | { readonly kind: "approve" }
-  | { readonly kind: "reject" }
+  | { readonly kind: "reject"; readonly reason: string | null }
   | { readonly kind: "ask-for-changes"; readonly reason: string };
 
 const decisionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("approve") }),
-  z.object({ kind: z.literal("reject") }),
+  z.object({ kind: z.literal("reject"), reason: z.string().optional() }),
   z.object({ kind: z.literal("ask-for-changes"), reason: z.string() }),
 ]);
+
+const MAX_REASON = 500;
 
 /**
  * Checks a decision on a request, on the server, for every write: only the
  * team leader or a holder of "Approve orders" decides, only a waiting
- * request is decided, and asking for changes says what to change.
+ * request is decided, asking for changes says what to change (board 70d),
+ * and a rejection gives a reason or none (board 70e).
  */
 export function checkDecision(
   decides: DecideRight | null,
@@ -337,23 +374,74 @@ export function checkDecision(
   if (status !== "waiting") return { ok: false, error: "This request is not waiting for an answer." };
   const parsed = decisionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose approve, reject or ask for changes." };
-  if (parsed.data.kind !== "ask-for-changes") return { ok: true, value: parsed.data };
-  const reason = parsed.data.reason.trim();
-  if (reason === "") return { ok: false, error: "Say what to change." };
-  if (reason.length > 500) return { ok: false, error: "Keep the reason under 500 characters." };
-  return { ok: true, value: { kind: "ask-for-changes", reason } };
-}
-
-/** The state a decision leaves the request in; `by` is the decider's name, `on` the ISO date. */
-export function stateAfterDecision(decision: OrderDecision, by: string, on: string): OrderState {
+  const decision = parsed.data;
   switch (decision.kind) {
     case "approve":
-      return { status: "approved" };
-    case "reject":
-      return { status: "rejected" };
-    case "ask-for-changes":
-      return { status: "changes-requested", changes: { reason: decision.reason, by, on } };
+      return { ok: true, value: { kind: "approve" } };
+    case "reject": {
+      const reason = (decision.reason ?? "").trim();
+      if (reason.length > MAX_REASON) return { ok: false, error: "Keep the reason under 500 characters." };
+      return { ok: true, value: { kind: "reject", reason: reason === "" ? null : reason } };
+    }
+    case "ask-for-changes": {
+      const reason = decision.reason.trim();
+      if (reason === "") return { ok: false, error: "Say what to change." };
+      if (reason.length > MAX_REASON) return { ok: false, error: "Keep the reason under 500 characters." };
+      return { ok: true, value: { kind: "ask-for-changes", reason } };
+    }
   }
+}
+
+/** The state a decision leaves the request in; `answer` says who decided and when. */
+export function stateAfterDecision(decision: OrderDecision, answer: Answer): OrderState {
+  switch (decision.kind) {
+    case "approve":
+      return { status: "approved", answer };
+    case "reject":
+      return { status: "rejected", answer, reason: decision.reason };
+    case "ask-for-changes":
+      return { status: "changes-requested", changes: { reason: decision.reason, by: answer.by, on: answer.on } };
+  }
+}
+
+/**
+ * Mark as ordered (board 70c, issue #247): an approved request becomes
+ * Ordered and keeps who approved it. The people who decide orders mark them
+ * (the boards show only the team leader's view; #247's triage reads it as the
+ * same set as `decideRightOf`), and only from Approved: no other state reaches
+ * Ordered, and Ordered goes nowhere.
+ */
+export function checkMarkOrdered(
+  decides: DecideRight | null,
+  state: OrderState,
+): { ok: true; value: OrderState } | { ok: false; error: string } {
+  if (decides === null) return { ok: false, error: "Only the team leader, or someone they gave Approve orders, marks orders as ordered." };
+  if (state.status !== "approved") return { ok: false, error: "Only an approved request can be marked as ordered." };
+  return { ok: true, value: { status: "ordered", answer: state.answer } };
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** "5 Oct 2026" from an ISO date, in UTC. */
+export function dayMonthYear(iso: string): string {
+  const date = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+/**
+ * The note on an approved or ordered request (board 70c): "Approved by you on
+ * 5 Oct 2026. Mark it as ordered once you have placed it." The second sentence
+ * shows only to someone who may mark it.
+ */
+export function approvedNote(state: Extract<OrderState, { status: "approved" | "ordered" }>, canMark: boolean): string {
+  const approved = `Approved by ${state.answer.byYou ? "you" : state.answer.by} on ${dayMonthYear(state.answer.on)}.`;
+  if (state.status === "ordered") return `${approved} It has been ordered.`;
+  return canMark ? `${approved} Mark it as ordered once you have placed it.` : approved;
+}
+
+/** Who rejected a request and when, under its reason: "Alessandro Greco · 5 Oct 2026". */
+export function answeredLine(answer: Answer): string {
+  return `${answer.byYou ? "You" : answer.by} · ${dayMonthYear(answer.on)}`;
 }
 
 /**

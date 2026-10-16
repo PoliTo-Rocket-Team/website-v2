@@ -9,10 +9,15 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import {
-  ACCESS_TARGETS,
+  canGiveApproveOrders,
   checkRemoveAllAccess,
   checkSaveAccess,
+  FULL_HELD_ACCESS,
+  grantRowOf,
+  NO_APPROVE_ORDERS,
   ROLE_HELD_ACCESS,
+  UNIT_TARGETS,
+  WHOLE_TEAM_PLACE,
   type AccessDepartment,
   type AccessDepartmentUnit,
   type AccessDivision,
@@ -24,14 +29,17 @@ import {
   type AccessTarget,
   type AccessUnit,
   type AccessWrite,
+  type ApproveOrdersHolder,
   type HeldAccess,
   type RoleAccess,
+  type UnitTarget,
 } from "./division-access";
-import { headDivisionsOf, isTeamLeader } from "./viewer";
+import { fullAccessSeatOf, headDivisionsOf, isTeamLeader, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
   checkApproveOrdersChange,
   checkDecision,
+  checkMarkOrdered,
   checkNewOrder,
   checkOrderDivision,
   checkQuote,
@@ -43,6 +51,7 @@ import {
   parseEuros,
   stateAfterEdit,
   WHOLE_TEAM,
+  type Answer,
   type EditUnit,
   type NewOrder,
   type Order,
@@ -86,8 +95,8 @@ async function leadDivision(identity: DashboardIdentity): Promise<{ id: number; 
   return row ?? null;
 }
 
-function isTarget(value: string): value is AccessTarget {
-  return (ACCESS_TARGETS as readonly string[]).includes(value);
+function isUnitTarget(value: string): value is UnitTarget {
+  return (UNIT_TARGETS as readonly string[]).includes(value);
 }
 
 /** What the member holds in the division, area by area: "all" on a division scope covers each area. */
@@ -96,7 +105,7 @@ async function readHeld(memberId: number, divisionId: number): Promise<HeldAcces
     .select({ target: scopes.target, level: scopes.accessLevel })
     .from(scopes)
     .where(and(eq(scopes.memberId, memberId), eq(scopes.scope, "division"), eq(scopes.divisionId, divisionId)));
-  return ACCESS_TARGETS.flatMap((target) => {
+  return UNIT_TARGETS.flatMap((target) => {
     const levels = mine.filter((m) => m.target === target || m.target === "all").map((m) => m.level);
     if (levels.length === 0) return [];
     return [{ target, level: levels.includes("edit") ? ("edit" as const) : ("view" as const) }];
@@ -132,8 +141,8 @@ async function readTeamUnit(): Promise<AccessUnit> {
 /** The unit the viewer's Access page is about, and what they hold there; null for anyone with no such page. */
 async function accessUnitOf(identity: DashboardIdentity): Promise<{ unit: AccessUnit; held: readonly HeldAccess[] } | null> {
   if (identity.memberId === null) return null;
-  // Full access holds every area at Can edit across the team (issue #238).
-  if (identity.kind === "operations-lead") return { unit: await readTeamUnit(), held: ROLE_HELD_ACCESS };
+  // Full access holds every area at Can edit across the team (issue #238), Alumni included (#247).
+  if (identity.kind === "operations-lead") return { unit: await readTeamUnit(), held: FULL_HELD_ACCESS };
   if (identity.kind === "division-lead") {
     const division = await leadDivision(identity);
     if (division === null) return null;
@@ -183,9 +192,13 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const divisionIds = unitDivisions.map((d) => d.id);
   const departmentIds = unitDepartments.map((d) => d.department.id);
   const departmentById = (id: number | null) => unitDepartments.find((d) => d.department.id === id)?.department ?? null;
-  const inUnitDivisions = and(eq(scopes.scope, "division"), inArray(scopes.divisionId, divisionIds.length ? divisionIds : [-1]));
+  const unitTarget = inArray(scopes.target, [...UNIT_TARGETS]);
+  const inUnitDivisions = and(eq(scopes.scope, "division"), inArray(scopes.divisionId, divisionIds.length ? divisionIds : [-1]), unitTarget);
+  const inUnitDepartments = and(eq(scopes.scope, "department"), inArray(scopes.deptId, departmentIds.length ? departmentIds : [-1]), unitTarget);
+  // A team page also holds the grants across the whole team, Alumni (a `website` row) and "Approve orders" (issue #247).
+  const acrossTeam = or(and(eq(scopes.scope, "team"), or(unitTarget, eq(scopes.target, "approve_orders"))), eq(scopes.scope, "website"));
 
-  const [rows, team] = await Promise.all([
+  const [rows, team, mineApproves] = await Promise.all([
     db
       .select({
         id: scopes.id,
@@ -206,20 +219,13 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .from(scopes)
       .innerJoin(users, eq(users.member, scopes.memberId))
       .leftJoin(giver, eq(giver.member, scopes.givenBy))
-      .where(
-        and(
-          departmentIds.length === 0
-            ? inUnitDivisions
-            : or(inUnitDivisions, and(eq(scopes.scope, "department"), inArray(scopes.deptId, departmentIds))),
-          ne(scopes.memberId, me),
-          inArray(scopes.target, [...ACCESS_TARGETS]),
-        ),
-      )
+      .where(and(unit.kind === "team" ? or(inUnitDivisions, inUnitDepartments, acrossTeam) : or(inUnitDivisions, inUnitDepartments), ne(scopes.memberId, me)))
       .orderBy(desc(scopes.id)),
     db
       .select({
         member_id: roles.memberId,
         type: roles.type,
+        full_access: roles.fullAccess,
         division_id: roles.divisionId,
         dept_id: roles.deptId,
         first_name: users.firstName,
@@ -239,7 +245,28 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
               : or(inArray(roles.divisionId, divisionIds.length ? divisionIds : [-1]), and(inArray(roles.deptId, departmentIds), eq(roles.type, "head"))),
         ),
       ),
+    // Whether the viewer decides orders: "Your access" on a team page carries the chip (board 71).
+    unit.kind === "team"
+      ? db
+          .select({ id: scopes.id })
+          .from(scopes)
+          .where(and(eq(scopes.memberId, me), eq(scopes.scope, "team"), eq(scopes.target, "approve_orders")))
+          .limit(1)
+      : Promise.resolve([]),
   ]);
+
+  // The full-access seat each member holds (issue #238): only a team page shows them, each across the whole team.
+  const seatByMember = new Map<number, FullAccessSeat>();
+  if (unit.kind === "team") {
+    for (const id of new Set(team.flatMap((t) => (t.member_id === null ? [] : [t.member_id])))) {
+      const seat = fullAccessSeatOf(
+        team
+          .filter((t) => t.member_id === id)
+          .map((t) => ({ type: t.type, divisionId: t.division_id, fullAccess: t.full_access === null ? null : SEAT_OF_FLAG[t.full_access] })),
+      );
+      if (seat !== null) seatByMember.set(id, seat);
+    }
+  }
 
   // One person per member: a lead in any of their roles stands as a lead, placed in that role's division.
   const byMember = new Map<number, AccessPerson>();
@@ -249,7 +276,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
     if (t.member_id === null) continue;
     const headed = t.type === "head" && t.division_id === null ? departmentById(t.dept_id) : null;
     if (headed !== null && !headOf.has(t.member_id)) headOf.set(t.member_id, headed);
-    const lead = isLeadRole(t.type);
+    const lead = isLeadRole(t.type) || seatByMember.has(t.member_id);
     const division = unitDivisions.find((d) => d.id === t.division_id) ?? null;
     const known = byMember.get(t.member_id);
     if (known !== undefined && (known.standing === "lead" || !lead)) continue;
@@ -258,12 +285,17 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
   const personOf = (memberId: number, row: { first_name: string | null; last_name: string | null; email: string }): AccessPerson =>
     byMember.get(memberId) ?? { id: memberId, name: nameOf(row), standing: "member", division: null };
 
-  const roleAccess = [...byMember.values()].flatMap((person): RoleAccess[] => {
-    if (person.id === me || person.standing !== "lead") return [];
-    if (person.division !== null) return [{ person, place: { kind: "division", division: person.division } }];
-    const headed = headOf.get(person.id);
-    return headed === undefined ? [] : [{ person, place: { kind: "department", department: headed } }];
-  });
+  const roleAccess = [...byMember.values()]
+    .flatMap((person): RoleAccess[] => {
+      if (person.id === me || person.standing !== "lead") return [];
+      const seat = seatByMember.get(person.id);
+      if (seat !== undefined) return [{ person, place: WHOLE_TEAM_PLACE, seat }];
+      if (person.division !== null) return [{ person, place: { kind: "division", division: person.division } }];
+      const headed = headOf.get(person.id);
+      return headed === undefined ? [] : [{ person, place: { kind: "department", department: headed } }];
+    })
+    // Full access first (board 71), then the heads and the leads.
+    .sort((a, b) => Number(b.place.kind === "team") - Number(a.place.kind === "team"));
 
   const ids = rows.map((r) => String(r.id));
   const given =
@@ -275,81 +307,103 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
           .where(and(eq(logs.tableName, "scopes"), eq(logs.operation, "INSERT"), inArray(logs.recordId, ids)));
   const givenOn = new Map(given.map((g) => [g.record_id, g.changed_at.slice(0, 10)]));
 
+  const giverOf = (r: (typeof rows)[number]): string | null =>
+    r.given_by === null
+      ? null
+      : r.given_by === me
+        ? "You"
+        : r.giver_email === null
+          ? null
+          : nameOf({ first_name: r.giver_first_name, last_name: r.giver_last_name, email: r.giver_email });
+
+  const holders = rows.flatMap((r): ApproveOrdersHolder[] =>
+    r.member_id === null || r.scope !== "team" || r.target !== "approve_orders"
+      ? []
+      : [{ person: personOf(r.member_id, r), givenBy: giverOf(r), givenOn: givenOn.get(String(r.id)) ?? null }],
+  );
+
   const grants = rows.flatMap((r): AccessGrant[] => {
-    if (r.member_id === null || !isTarget(r.target)) return [];
+    if (r.member_id === null) return [];
     const person = personOf(r.member_id, r);
     // A lead's access comes with the role: their row is in `roleAccess`.
     if (person.standing === "lead") return [];
+    // Site-content access is the Alumni area, across the whole team (#234, #247).
+    const target = r.scope === "website" ? ("alumni" as const) : isUnitTarget(r.target) ? r.target : null;
+    if (target === null) return [];
     const division = unitDivisions.find((d) => d.id === r.division_id);
     const department = r.scope === "department" ? departmentById(r.dept_id) : null;
     const place: AccessPlace | null =
-      department !== null ? { kind: "department", department } : division === undefined ? null : { kind: "division", division };
-    if (place === null) return [];
-    const givenBy =
-      r.given_by === null
-        ? null
-        : r.given_by === me
-          ? "You"
-          : r.giver_email === null
+      r.scope === "team" || r.scope === "website"
+        ? WHOLE_TEAM_PLACE
+        : department !== null
+          ? { kind: "department", department }
+          : division === undefined
             ? null
-            : nameOf({ first_name: r.giver_first_name, last_name: r.giver_last_name, email: r.giver_email });
-    return [{ id: r.id, person, place, target: r.target, level: r.level, givenBy, givenOn: givenOn.get(String(r.id)) ?? null }];
+            : { kind: "division", division };
+    if (place === null) return [];
+    return [{ id: r.id, person, place, target, level: r.level, givenBy: giverOf(r), givenOn: givenOn.get(String(r.id)) ?? null }];
   });
 
   const people = [...byMember.values()].filter((p) => p.id !== me).sort((a, b) => a.name.localeCompare(b.name));
+  const approveOrders =
+    unit.kind === "team"
+      ? { canGive: canGiveApproveOrders(seatOf(identity)), yours: isTeamLeader(identity) || mineApproves.length > 0, holders }
+      : NO_APPROVE_ORDERS;
 
-  return { unit, held, roleAccess, grants, people };
+  return { unit, held, roleAccess, grants, people, approveOrders };
 }
 
-/** The `scopes` rows one place holds: a division's, or a department's own (only `dept_id` set). */
-function placeColumns(place: AccessPlace) {
-  return place.kind === "division"
-    ? { scope: "division" as const, deptId: null, divisionId: place.division.id }
-    : { scope: "department" as const, deptId: place.department.id, divisionId: null };
+/**
+ * The stored grant one area in one place is (`grantRowOf`): an Alumni grant
+ * is the person's `website` row, whatever its target; any other is the row of
+ * that scope, place and area.
+ */
+function grantWhere(personId: number, place: AccessPlace, target: AccessTarget) {
+  const row = grantRowOf(place, target);
+  const mine = eq(scopes.memberId, personId);
+  switch (row.scope) {
+    case "website":
+      return and(mine, eq(scopes.scope, "website"));
+    case "team":
+      return and(mine, eq(scopes.scope, "team"), eq(scopes.target, row.target), isNull(scopes.deptId), isNull(scopes.divisionId));
+    case "department":
+      return and(mine, eq(scopes.scope, "department"), eq(scopes.target, row.target), eq(scopes.deptId, row.deptId!), isNull(scopes.divisionId));
+    case "division":
+      return and(mine, eq(scopes.scope, "division"), eq(scopes.target, row.target), eq(scopes.divisionId, row.divisionId!));
+  }
 }
 
 /**
  * Writes checked changes to one person's access in one audited batch: one
  * grant per person, area and place, so a level change replaces the old grant
- * and a removal deletes it. Answers the person's grants as they now read.
+ * and a removal deletes it; "Approve orders" is given or removed in the same
+ * batch. Answers the person's grants as they now read.
  */
 async function writeAccess(identity: DashboardIdentity, personId: number, writes: readonly AccessWrite[]): Promise<WriteResult<readonly AccessGrant[]>> {
   if (identity.memberId === null) return refused("Only a division lead or a department head gives access here.");
   const givenBy = identity.memberId;
-  const statements = writes.filter((w) => w.changes.length > 0);
+  const touched = writes.filter((w) => w.changes.length > 0 || w.approveOrders !== null);
 
-  if (statements.length > 0) {
+  if (touched.length > 0) {
     await runAuditBatch((db) => {
-      const [first, ...rest] = statements.flatMap(({ place, changes }) => {
-        const columns = placeColumns(place);
+      const [first, ...rest] = touched.flatMap(({ place, changes, approveOrders }) => [
         // An added area has no grant yet, so clearing every changed area deletes
         // only the grants a level change or a removal replaces.
-        const touched = changes.map((c) => c.target);
-        const given = changes.flatMap((c) => (c.kind === "remove" ? [] : [{ target: c.target, level: c.to }]));
-        const where =
-          columns.scope === "division"
-            ? and(eq(scopes.scope, "division"), eq(scopes.divisionId, columns.divisionId))
-            : and(eq(scopes.scope, "department"), eq(scopes.deptId, columns.deptId), isNull(scopes.divisionId));
-        return [
-          db.delete(scopes).where(and(eq(scopes.memberId, personId), where, inArray(scopes.target, touched))),
-          ...(given.length === 0
-            ? []
-            : [
-                db.insert(scopes).values(
-                  given.map(({ target, level }) => ({
-                    memberId: personId,
-                    givenBy,
-                    scope: columns.scope,
-                    target,
-                    accessLevel: level satisfies AccessLevel,
-                    deptId: columns.deptId,
-                    divisionId: columns.divisionId,
-                  })),
-                ),
-              ]),
-        ];
-      });
-      // Every write with a change deletes first, so the batch is never empty.
+        ...changes.map((c) => db.delete(scopes).where(grantWhere(personId, place, c.target))),
+        ...changes.flatMap((c) => {
+          if (c.kind === "remove") return [];
+          const row = grantRowOf(place, c.target);
+          return [db.insert(scopes).values({ memberId: personId, givenBy, ...row, accessLevel: c.to satisfies AccessLevel })];
+        }),
+        ...(approveOrders === null
+          ? []
+          : [
+              approveOrders.holds
+                ? db.insert(scopes).values({ memberId: personId, givenBy, scope: "team", target: "approve_orders", accessLevel: "edit" })
+                : db.delete(scopes).where(and(eq(scopes.memberId, personId), eq(scopes.scope, "team"), eq(scopes.target, "approve_orders"))),
+            ]),
+      ]);
+      // Every touched write changes an area or "Approve orders", so the batch is never empty.
       return [first!, ...rest];
     });
   }
@@ -392,7 +446,8 @@ async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
  * access anywhere. Full access edits every order in the team (issue #238). A
  * `division` or `department` scope row on `orders` (or on `all`) is access
  * there, at its level; a head's role is Can edit across their department
- * (board 65). Deciding comes from being the team leader (`isTeamLeader`,
+ * (board 65), and a `team` row on `orders` is access across the whole team
+ * (issue #247). Deciding comes from being the team leader (`isTeamLeader`,
  * ./viewer.ts), or from a `team` row on `approve_orders`: full access alone
  * does not decide.
  */
@@ -406,11 +461,14 @@ async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDep
     readHeadDepartment(identity),
   ]);
   const ordersRows = rows.filter((r) => (r.scope === "division" || r.scope === "department") && (r.target === "orders" || r.target === "all"));
+  // Orders given across the whole team (issue #247): at Can edit every order is theirs to edit.
+  const teamOrders = rows.filter((r) => r.scope === "team" && r.target === "orders");
   const decides = decideRightOf({
     teamLeader: isTeamLeader(identity),
     approveOrders: rows.some((r) => r.scope === "team" && r.target === "approve_orders"),
   });
   if (identity.kind === "operations-lead") return { edits: [WHOLE_TEAM], decides };
+  if (teamOrders.some((r) => r.level === "edit")) return { edits: [WHOLE_TEAM], decides };
 
   type UnitEdit = Exclude<EditUnit, { kind: "team" }>;
   const edits: UnitEdit[] = [];
@@ -429,7 +487,7 @@ async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDep
       if (division) add({ kind: "division", division });
     }
   }
-  if (headDepartment === null && ordersRows.length === 0 && decides === null) return null;
+  if (headDepartment === null && ordersRows.length === 0 && teamOrders.length === 0 && decides === null) return null;
   return { edits, decides };
 }
 
@@ -438,6 +496,7 @@ type DbOrderStatus = (typeof orders.$inferSelect)["status"];
 const statusOf: Readonly<Record<DbOrderStatus, StoredOrderStatus>> = {
   pending: "waiting",
   accepted: "approved",
+  ordered: "ordered",
   rejected: "rejected",
   changes_requested: "changes-requested",
   cancelled: "cancelled",
@@ -454,6 +513,7 @@ type OrderRow = {
   created_at: string;
   quote_name: string | null;
   review_note: string | null;
+  reviewed_by: number | null;
   reviewed_at: string | null;
   division_id: number | null;
   division_name: string | null;
@@ -467,13 +527,28 @@ type OrderRow = {
   reviewer_email: string | null;
 };
 
-/** A stored request's state on the page; null for a cancelled one, which the page does not list. */
-function stateOf(r: OrderRow): OrderState | null {
+/**
+ * A stored request's state on the page, as `viewer` (a member id) reads it;
+ * null for a cancelled one, which the page does not list. An answer with no
+ * one on record reads as the team leader's, on the day the request was sent.
+ */
+function stateOf(r: OrderRow, viewer: number | null): OrderState | null {
   const status = statusOf[r.status];
-  if (status === "cancelled") return null;
-  if (status !== "changes-requested") return { status };
   const by = r.reviewer_email === null ? "The team leader" : nameOf({ first_name: r.reviewer_first_name, last_name: r.reviewer_last_name, email: r.reviewer_email });
-  return { status, changes: { reason: r.review_note ?? "", by, on: (r.reviewed_at ?? r.created_at).slice(0, 10) } };
+  const answer: Answer = { by, byYou: viewer !== null && r.reviewed_by === viewer, on: (r.reviewed_at ?? r.created_at).slice(0, 10) };
+  switch (status) {
+    case "cancelled":
+      return null;
+    case "waiting":
+      return { status };
+    case "approved":
+    case "ordered":
+      return { status, answer };
+    case "rejected":
+      return { status, answer, reason: r.review_note };
+    case "changes-requested":
+      return { status, changes: { reason: r.review_note ?? "", by: answer.by, on: answer.on } };
+  }
 }
 
 function unitOf(r: OrderRow): OrderUnit | null {
@@ -487,8 +562,8 @@ function unitOf(r: OrderRow): OrderUnit | null {
 // `orders.description` holds the shop link; `orders.price` the price of one,
 // without IVA; `orders.quote_name` the quote's pathname in the private store,
 // which no route serves yet, so the quote shows by name only.
-function orderOf(r: OrderRow): Order[] {
-  const state = stateOf(r);
+function orderOf(r: OrderRow, viewer: number | null): Order[] {
+  const state = stateOf(r, viewer);
   if (state === null) return [];
   return [
     {
@@ -522,6 +597,7 @@ function orderColumns() {
     created_at: orders.createdAt,
     quote_name: orders.quoteName,
     review_note: orders.reviewNote,
+    reviewed_by: orders.reviewedBy,
     reviewed_at: orders.reviewedAt,
     division_id: divisions.id,
     division_name: divisions.name,
@@ -556,7 +632,7 @@ async function readOrderRows(where: { divisionIds?: readonly number[]; orderId?:
 
 /** Every request made for the given divisions: a division lead's and a department head's Overview count the waiting ones (boards 56 and 62). */
 export async function readOrdersIn(divisionIds: readonly number[]): Promise<Order[]> {
-  return (await readOrderRows({ divisionIds })).flatMap(orderOf);
+  return (await readOrderRows({ divisionIds })).flatMap((r) => orderOf(r, null));
 }
 
 /** The Orders page (issue #233): every order in the team, for anyone with Orders access; null for anyone else. */
@@ -564,14 +640,14 @@ async function readOrdersPage(identity: DashboardIdentity): Promise<OrdersPage |
   const org = await readOrgUnits();
   const scope = await readOrdersScope(identity, org);
   if (scope === null) return null;
-  return ordersPageFor(scope, org, (await readOrderRows()).flatMap(orderOf));
+  return ordersPageFor(scope, org, (await readOrderRows()).flatMap((r) => orderOf(r, identity.memberId)));
 }
 
 /** The viewer's scope and one stored request, or why there is nothing to act on. */
 async function scopedOrder(identity: DashboardIdentity, orderId: number): Promise<{ scope: OrdersScope; order: Order } | string> {
   const scope = await readOrdersScope(identity, await readOrgUnits());
   if (scope === null) return "You do not have access to Orders.";
-  const [order] = (await readOrderRows({ orderId })).flatMap(orderOf);
+  const [order] = (await readOrderRows({ orderId })).flatMap((r) => orderOf(r, identity.memberId));
   return order === undefined ? "That request is no longer on the page." : { scope, order };
 }
 
@@ -633,7 +709,7 @@ async function placeOrder(
         })
         .returning({ id: orders.id }),
     );
-    const [placed] = (await readOrderRows({ orderId: row.id })).flatMap(orderOf);
+    const [placed] = (await readOrderRows({ orderId: row.id })).flatMap((r) => orderOf(r, identity.memberId));
     return written(placed);
   } catch (error) {
     if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
@@ -691,7 +767,7 @@ async function editOrder(
     if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
     return refused(ORDER_CHANGED);
   }
-  const [edited] = (await readOrderRows({ orderId })).flatMap(orderOf);
+  const [edited] = (await readOrderRows({ orderId })).flatMap((r) => orderOf(r, identity.memberId));
   return edited === undefined ? refused("The team leader has answered this request.") : written(edited);
 }
 
@@ -730,7 +806,8 @@ async function decideOrder(identity: DashboardIdentity, orderId: number, input: 
       .update(orders)
       .set({
         status: DB_STATUS_AFTER[decision.kind],
-        reviewNote: decision.kind === "ask-for-changes" ? decision.reason : null,
+        // The note the requester reads: what to change, or why it was rejected (boards 70d and 70e).
+        reviewNote: decision.kind === "approve" ? null : decision.reason,
         reviewedBy,
         reviewedAt: new Date().toISOString(),
       })
@@ -738,8 +815,27 @@ async function decideOrder(identity: DashboardIdentity, orderId: number, input: 
       .returning({ id: orders.id }),
   );
   if (changed.length === 0) return refused(ORDER_CHANGED);
-  const [decided] = (await readOrderRows({ orderId })).flatMap(orderOf);
+  const [decided] = (await readOrderRows({ orderId })).flatMap((r) => orderOf(r, identity.memberId));
   return decided === undefined ? refused(ORDER_CHANGED) : written(decided);
+}
+
+/** Mark as ordered (board 70c), checked on the server (`checkMarkOrdered`): only from Approved, by someone who decides. */
+async function markOrdered(identity: DashboardIdentity, orderId: number): Promise<WriteResult<Order>> {
+  const found = await scopedOrder(identity, orderId);
+  if (typeof found === "string") return refused(found);
+  const checked = checkMarkOrdered(found.scope.decides, found.order);
+  if (!checked.ok) return refused(checked.error);
+  // Who approved it stays on the row; the activity log records who marked it.
+  const changed = await runAuditQuery((db) =>
+    db
+      .update(orders)
+      .set({ status: "ordered" })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "accepted")))
+      .returning({ id: orders.id }),
+  );
+  if (changed.length === 0) return refused(ORDER_CHANGED);
+  const [marked] = (await readOrderRows({ orderId })).flatMap((r) => orderOf(r, identity.memberId));
+  return marked === undefined ? refused(ORDER_CHANGED) : written(marked);
 }
 
 /** Give or remove "Approve orders": only the team leader, any number of holders (`checkApproveOrdersChange`). */
@@ -786,6 +882,7 @@ export function databaseDivisionPages(identity: DashboardIdentity) {
       editOrder(identity, orderId, fields, quote),
     cancelOrder: (orderId: number) => cancelOrder(identity, orderId),
     decideOrder: (orderId: number, input: unknown) => decideOrder(identity, orderId, input),
+    markOrdered: (orderId: number) => markOrdered(identity, orderId),
     setApproveOrders: (input: unknown) => setApproveOrders(identity, input),
   };
 }
