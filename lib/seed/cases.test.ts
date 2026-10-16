@@ -2,13 +2,28 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
+import { publicItems, versionRows, type ContentItem } from "../content/versioned";
 import { ANONYMIZED_EMAIL, CLEARED_MEMBER } from "../dashboard/anonymize";
+import { APPLICATION_STAGES } from "../dashboard/application-flow";
 import { TEST_VIEWERS } from "../dashboard/viewer";
 import { TESTERS } from "../dev-tester";
+import { checkFaqFields, fieldsOf as faqFields } from "../faq/faq";
+import { checkPartnerFields, fieldsOf as partnerFields } from "../partners-fields";
+import { orderStatusEnum } from "../../db/schema";
 import { ANONYMIZED_KEPT_NAME } from "../../db/seed/alumni";
-import { caseDocRow, isActive, resolvesTo, SEED_CASES, SEED_DATA, alumniOfSeed } from "../../db/seed/cases";
+import {
+  alumniOfSeed,
+  caseDocRow,
+  faqItemsOf,
+  isActive,
+  partnerItemsOf,
+  resolvesTo,
+  SEED_AREAS,
+  SEED_CASES,
+  SEED_DATA,
+  stageOf,
+} from "../../db/seed/cases";
 import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, TEST_VIEWER_PEOPLE } from "../../db/seed/people";
-import { BASELINE_SQL_PATH } from "../../db/seed/baseline";
 
 const data = SEED_DATA;
 
@@ -21,7 +36,8 @@ for (const seedCase of SEED_CASES) {
 test("docs/seed-cases.md lists every case, with the issue it exercises, and no other", () => {
   const doc = readFileSync(resolve(process.cwd(), "docs/seed-cases.md"), "utf8");
   const cases = doc.slice(doc.indexOf("## Cases"), doc.indexOf("\n## ", doc.indexOf("## Cases") + 1));
-  const rows = cases.split("\n").filter((line) => /^\| (structure|people|alumni|access) \|/.test(line));
+  const areaRow = new RegExp(`^\\| (${SEED_AREAS.join("|")}) \\|`);
+  const rows = cases.split("\n").filter((line) => areaRow.test(line));
   assert.deepEqual(rows, SEED_CASES.map(caseDocRow));
 });
 
@@ -132,23 +148,157 @@ test("every reference the seed makes resolves to a seeded row", () => {
   }
 });
 
-test("the orders and applications db/seed.sql still holds name seeded people", () => {
-  const sql = readFileSync(BASELINE_SQL_PATH, "utf8").replace(/--.*$/gm, "");
-  const orders = sql.slice(sql.indexOf("INSERT INTO orders"), sql.indexOf("INSERT INTO apply_positions"));
-  const requesters = [...orders.matchAll(/^\('[a-z_]+', (\d+),/gm)].map((m) => Number(m[1]));
-  assert.ok(requesters.length > 0);
-  for (const id of requesters) assert.ok(data.members.some((m) => m.memberId === id), `order requester ${id}`);
+// Orders, recruitment, partners and FAQ (issue #305).
 
-  const positions = sql.slice(sql.indexOf("INSERT INTO apply_positions"), sql.indexOf("INSERT INTO applications"));
-  const positionDivisions = [...positions.matchAll(/^\('(?:true|false)', (\d+),/gm)].map((m) => Number(m[1]));
-  assert.ok(positionDivisions.length > 0);
-  for (const id of positionDivisions) {
-    const division = data.divisions.find((d) => d.id === id);
-    assert.ok(division && division.closedAt == null, `position in division ${id}`);
+const day = (at: string) => new Date(at).toISOString().slice(0, 10);
+
+test("invariant: every order status is present", () => {
+  for (const status of orderStatusEnum.enumValues) assert.ok(data.orders.some((o) => o.status === status), status);
+});
+
+test("each order is made by a member who holds a role in its division, and only answered ones carry an answer", () => {
+  const answered = new Set(["changes_requested", "rejected", "accepted", "ordered"]);
+  for (const order of data.orders) {
+    assert.ok(
+      data.roles.some(
+        (r) => r.memberId === order.requester && r.divisionId === order.divisionId && isActive(r) && r.startedAt! <= day(order.createdAt!),
+      ),
+      `order ${order.id}: requester ${order.requester} holds no role in division ${order.divisionId}`,
+    );
+    if (answered.has(order.status!)) {
+      assert.ok(data.members.some((m) => m.memberId === order.reviewedBy), `order ${order.id} has no answer on record`);
+      assert.ok(Date.parse(order.reviewedAt!) > Date.parse(order.createdAt!), `order ${order.id} is answered before it was sent`);
+    } else {
+      assert.equal(order.reviewedBy ?? null, null, `order ${order.id}`);
+      assert.equal(order.reviewedAt ?? null, null, `order ${order.id}`);
+    }
+    const noted = order.status === "changes_requested" || order.status === "rejected";
+    assert.equal(order.reviewNote != null, noted, `order ${order.id}: a note goes with changes requested and rejected alone`);
   }
+});
 
-  const applications = sql.slice(sql.indexOf("INSERT INTO applications"));
-  const applicants = [...applications.matchAll(/^\(\d+, '([0-9a-f-]{36})'/gm)].map((m) => m[1]);
-  assert.ok(applicants.length > 0);
-  for (const id of applicants) assert.ok(data.users.some((u) => u.id === id && u.member == null), `applicant ${id}`);
+test("invariant: every application stage is present", () => {
+  for (const stage of APPLICATION_STAGES) assert.ok(data.applications.some((a) => stageOf(data, a) === stage), stage);
+});
+
+test("every position sits in an open division, and every application in a seeded position, after it opened", () => {
+  for (const position of data.positions) {
+    const division = data.divisions.find((d) => d.id === position.divisionId);
+    assert.ok(division && division.closedAt == null, `position ${position.id} is in division ${position.divisionId}`);
+  }
+  for (const application of data.applications) {
+    const position = data.positions.find((p) => p.id === application.applyPositionId);
+    assert.ok(position, `application ${application.id}`);
+    assert.ok(Date.parse(application.appliedAt!) > Date.parse(position.createdAt!), `application ${application.id} predates its position`);
+    const questions = position.customQuestions ?? [];
+    assert.deepEqual(
+      (application.customAnswers as { question: string }[]).map((a) => a.question),
+      questions,
+      `application ${application.id} answers other questions than its position asks`,
+    );
+  }
+});
+
+test("each application is by a seeded applicant, once per position, and its dates follow its stage", () => {
+  const live = data.applications.filter((a) => a.withdrawnAt == null).map((a) => `${a.userId}/${a.applyPositionId}`);
+  assert.equal(new Set(live).size, live.length, "a person holds two live applications to one position");
+  for (const a of data.applications) {
+    const user = data.users.find((u) => u.id === a.userId);
+    assert.ok(user, `application ${a.id}`);
+    const stage = stageOf(data, a);
+    assert.equal(user.member != null, stage === "joined", `application ${a.id}: only the joined applicant is a member`);
+    assert.equal(a.acceptedAt != null, stage === "accepted" || stage === "joined", `application ${a.id} accepted_at`);
+    assert.equal(a.joinedAt != null, stage === "joined", `application ${a.id} joined_at`);
+    assert.equal(a.rejectedAt != null, stage === "rejected", `application ${a.id} rejected_at`);
+    const times = [a.appliedAt, a.acceptedAt, a.ndaArrivedAt, a.joinedAt].flatMap((t) => (t == null ? [] : [Date.parse(t)]));
+    assert.deepEqual(times, [...times].sort((x, y) => x - y), `application ${a.id}: its dates run out of order`);
+  }
+});
+
+test("the joined applicant holds a role in the position's division from the day they joined", () => {
+  const joined = data.applications.filter((a) => stageOf(data, a) === "joined");
+  assert.ok(joined.length > 0);
+  for (const a of joined) {
+    const memberId = data.users.find((u) => u.id === a.userId)?.member;
+    const divisionId = data.positions.find((p) => p.id === a.applyPositionId)?.divisionId;
+    assert.ok(
+      data.roles.some((r) => r.memberId === memberId && r.divisionId === divisionId && r.startedAt === day(a.joinedAt!)),
+      `application ${a.id}`,
+    );
+  }
+});
+
+test("interview times sit on interview applications only, with at most one booked", () => {
+  for (const slot of data.interviewSlots) {
+    const application = data.applications.find((a) => a.id === slot.applicationId);
+    assert.equal(application?.status, "interview", `slot ${slot.id}`);
+    assert.ok(Date.parse(slot.endsAt) > Date.parse(slot.startsAt), `slot ${slot.id} ends before it starts`);
+    assert.equal(slot.chosenAt != null, slot.chosen === true, `slot ${slot.id}: chosen_at goes with chosen`);
+  }
+  for (const a of data.applications.filter((x) => x.status === "interview")) {
+    const slots = data.interviewSlots.filter((s) => s.applicationId === a.id);
+    assert.ok(slots.length > 0, `application ${a.id} is at interview with no time offered`);
+    assert.ok(slots.filter((s) => s.chosen).length <= 1, `application ${a.id} has two times booked`);
+  }
+});
+
+/** Every item with a draft holds the published version beside it, or was never published and is off the public site. */
+function draftsAccountedFor<T>(items: readonly ContentItem<T>[], key: (content: T) => string): void {
+  const shown = new Set(publicItems(items).map(key));
+  for (const item of items) {
+    const version = item.version;
+    if (version.state === "published") continue;
+    assert.ok(!shown.has(key(version.draft)), `item ${item.id} is a draft yet shown on the site`);
+  }
+}
+
+test("invariant: each draft partner or FAQ item has a published counterpart or is clearly unpublished", () => {
+  const partnerItems = partnerItemsOf(data);
+  const faqItems = faqItemsOf(data);
+  assert.equal(partnerItems.length, data.partners.length, "a partner has no version");
+  assert.equal(faqItems.length, data.faqs.length, "a question has no version");
+  for (const [kind, rows] of [
+    ["partner", data.partnerVersions.map((v) => [v.partnerId, v.version] as const)],
+    ["question", data.faqVersions.map((v) => [v.faqId, v.version] as const)],
+  ] as const) {
+    const keys = rows.map(([id, version]) => `${id}/${version}`);
+    assert.equal(new Set(keys).size, keys.length, `a ${kind} holds two versions of one kind`);
+  }
+  // Rows with a draft: each item either keeps its published row, or is a draft only and not public.
+  assert.ok(partnerItems.some((i) => i.version.state === "published" && i.version.draft !== null));
+  assert.ok(partnerItems.some((i) => i.version.state === "draft"));
+  draftsAccountedFor(partnerItems, (p) => p.name);
+  draftsAccountedFor(faqItems, (f) => f.question);
+});
+
+test("every seeded partner and question version passes the editor's own checks", () => {
+  for (const item of partnerItemsOf(data)) {
+    for (const { content } of versionRows(item.version)) {
+      const checked = checkPartnerFields(partnerFields(content));
+      assert.ok(checked.ok, `partner ${item.id}: ${JSON.stringify(checked)}`);
+    }
+  }
+  for (const item of faqItemsOf(data)) {
+    for (const { content } of versionRows(item.version)) {
+      const checked = checkFaqFields(faqFields(content));
+      assert.ok(checked.ok, `question ${item.id}: ${JSON.stringify(checked)}`);
+    }
+  }
+});
+
+test("every order, application and slot names seeded rows", () => {
+  const memberIds = new Set(data.members.map((m) => m.memberId));
+  for (const o of data.orders) {
+    assert.ok(memberIds.has(o.requester ?? undefined), `order ${o.id} requester`);
+    assert.ok(data.divisions.some((d) => d.id === o.divisionId), `order ${o.id} division`);
+  }
+  for (const s of data.interviewSlots) assert.ok(data.applications.some((a) => a.id === s.applicationId), `slot ${s.id}`);
+  for (const v of data.partnerVersions) assert.ok(data.partners.some((p) => p.id === v.partnerId), `partner version of ${v.partnerId}`);
+  for (const v of data.faqVersions) assert.ok(data.faqs.some((f) => f.id === v.faqId), `question version of ${v.faqId}`);
+  unique(data.orders.map((o) => o.id), "an order id");
+  unique(data.positions.map((p) => p.id), "a position id");
+  unique(data.applications.map((a) => a.id), "an application id");
+  unique(data.interviewSlots.map((s) => s.id), "a slot id");
+  unique(data.partners.map((p) => p.id), "a partner id");
+  unique(data.faqs.map((f) => f.id), "a question id");
 });

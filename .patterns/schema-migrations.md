@@ -44,7 +44,7 @@ express (functions, triggers, data fixes) goes in hand-written migration files i
    ([db/seed.ts](../db/seed.ts)) then checks the target with the guard in
    [lib/seed/target.ts](../lib/seed/target.ts) and runs the modules in
    [db/seed/registry.ts](../db/seed/registry.ts) in one transaction: every reset, then every insert.
-   The area modules write typed rows ([db/seed/rows.ts](../db/seed/rows.ts)); the `baseline` module still runs [db/seed.sql](../db/seed.sql) as raw SQL.
+   Every area module writes typed rows ([db/seed/rows.ts](../db/seed/rows.ts)).
 
 6. **Derived types.** [db/types.ts](../db/types.ts) builds the shared UI types from
    `InferSelectModel<typeof table>`, so a column change flows into the types `tsc` checks.
