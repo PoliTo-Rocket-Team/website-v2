@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Check, Pencil, Plus } from "lucide-react";
 import type { DivisionHeader, DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
@@ -151,6 +151,7 @@ function StructureCanvas({
   onAddDivision: (departmentId: number) => void;
 }) {
   const frame = useRef<HTMLElement>(null);
+  const row = useRef<HTMLDivElement>(null);
   const { leader } = structure;
   const columns: { key: string; node: ReactNode }[] = structure.departments.map((d) => ({
     key: `d${d.id}`,
@@ -168,6 +169,25 @@ function StructureCanvas({
     });
   }
 
+  // A row wider than the frame shrinks to fit it, so Add department always shows at the end of the row (77b).
+  // A scroller would hide it: a scroll offset does not survive every relayout.
+  useLayoutEffect(() => {
+    const outer = frame.current;
+    const inner = row.current;
+    if (!outer || !inner) return;
+    const fit = () => {
+      inner.style.zoom = "";
+      const { paddingLeft, paddingRight } = getComputedStyle(outer);
+      const room = outer.clientWidth - parseFloat(paddingLeft) - parseFloat(paddingRight);
+      const zoom = Math.min(1, room / inner.getBoundingClientRect().width);
+      inner.style.zoom = zoom < 1 ? String(zoom) : "";
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(outer);
+    return () => observer.disconnect();
+  }, [columns.length]);
+
   // "Find someone" brings the first box it marks into view.
   useEffect(() => {
     if (query.trim() === "") return;
@@ -177,8 +197,7 @@ function StructureCanvas({
 
   return (
     <section ref={frame} aria-label="Team structure" className="mt-6 overflow-x-auto rounded-xl border border-hairline px-4 py-6 md:px-8 md:py-8">
-      {/* Columns share the frame's width, so the whole row, Add department included, fits without scrolling (77b); past the narrowest column it scrolls. */}
-      <div className="md:min-w-min">
+      <div ref={row} className="md:mx-auto md:w-max">
         {leader && (
           <div className="flex flex-col items-center">
             <div className="flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border border-accent/70 bg-accent/[0.06] px-3 text-center">
@@ -189,9 +208,9 @@ function StructureCanvas({
             <span aria-hidden className="hidden h-4 border-l border-border-strong md:block" />
           </div>
         )}
-        <ol className="mt-4 flex flex-col gap-6 md:mt-0 md:flex-row md:justify-center md:gap-2.5">
+        <ol className="mt-4 flex flex-col gap-6 md:mt-0 md:flex-row md:gap-2.5">
           {columns.map((column, i) => (
-            <li key={column.key} className="relative md:min-w-[112px] md:max-w-[150px] md:flex-1 md:basis-0 md:pt-4">
+            <li key={column.key} className="relative md:w-[150px] md:shrink-0 md:pt-4">
               {/* The bus under the leader, and the tick down to this column. */}
               {leader && (
                 <span aria-hidden className="hidden md:block">
