@@ -4,7 +4,8 @@ import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import * as THREE from "three";
-import CavourBuilt from "./rocket-cavour";
+import type { RocketModel } from "@/lib/rocket-model";
+import { builtRockets } from "./rocket-built";
 import type { WeatherUniforms } from "./hero-weathering";
 import { CAVOUR_HDRI } from "./cavour-assets";
 import { SceneErrorBoundary, WarmUp } from "./scene-ready";
@@ -15,7 +16,8 @@ import { SceneErrorBoundary, WarmUp } from "./scene-ready";
 // and saves its finished frame. It shows the code-built Cavour side-on, nose
 // right, parked (no drift, no idle plume). Same model, HDRI and lights as the
 // homepage hero (hero-rocket-3d.tsx), so the two read as one vehicle; only
-// the framing is this panel's own.
+// the framing is this panel's own. The same scene renders the placeholder's
+// still (`model`), for a project page with no model of its own.
 const LENGTH = 32;
 const HALF = LENGTH / 2;
 
@@ -28,7 +30,8 @@ const FOV = 14;
 const WIDTH_SHARE = 0.76;
 const RIGHT_SHIFT = 0.07; // share of the panel width
 
-function Vehicle() {
+function Vehicle({ model }: { model: RocketModel }) {
+  const Built = builtRockets[model];
   const group = useRef<THREE.Group>(null!);
   const weather = useMemo<WeatherUniforms>(
     () => ({
@@ -52,7 +55,7 @@ function Vehicle() {
 
   return (
     <group ref={group}>
-      <CavourBuilt weather={weather} length={LENGTH} />
+      <Built weather={weather} length={LENGTH} />
     </group>
   );
 }
@@ -75,13 +78,15 @@ function FitCamera() {
 }
 
 type Props = {
+  /** The vehicle to draw. */
+  model: RocketModel;
   /** The vehicle is loaded, compiled and drawn: the canvas holds the finished frame. */
   onReady: () => void;
   /** The scene failed to load. */
   onFailed: () => void;
 };
 
-export default function CavourStage3D({ onReady, onFailed }: Props) {
+export default function CavourStage3D({ model, onReady, onFailed }: Props) {
   return (
     <Canvas
       frameloop="demand"
@@ -99,7 +104,7 @@ export default function CavourStage3D({ onReady, onFailed }: Props) {
       <SceneErrorBoundary onError={onFailed}>
         <Suspense fallback={null}>
           <Environment files={CAVOUR_HDRI} environmentIntensity={0.45} environmentRotation={[-Math.PI / 2, 0, 0]} />
-          <Vehicle />
+          <Vehicle model={model} />
           <WarmUp onWarm={onReady} />
         </Suspense>
       </SceneErrorBoundary>

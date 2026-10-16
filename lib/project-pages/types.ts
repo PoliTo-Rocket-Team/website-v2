@@ -1,5 +1,6 @@
 import type { FilledGallery } from "@/components/gallery/items";
 import type { Award, Copy } from "@/lib/projects";
+import type { OwnRocket } from "@/lib/rocket-model";
 
 // One project page as data: every /projects/<slug> page is one of these
 // records drawn by the same components (components/project-page/). A section
@@ -32,10 +33,12 @@ export type Hero = {
   status: string;
   dates: string;
   /**
-   * The panel on the project's texture. Without a `still` it shows the
-   * texture alone; a project with no visual at all leaves the panel out.
+   * The panel on the project's texture. Its rocket slot draws a still of the
+   * project's `own` model, or of the shared placeholder when it has none
+   * (lib/rocket-model.ts). Without a `rocket` it shows the texture alone; a
+   * project with no visual at all leaves the panel out.
    */
-  visual?: { caption: string; still?: { src: string; alt: string } };
+  visual?: { caption: string; rocket?: { own?: OwnRocket } };
   facts: KeyFacts;
 };
 

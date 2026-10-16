@@ -54,7 +54,7 @@ function TexturePanel({ project }: { project: Project }) {
         />
         {project.slug === "cavour" && (
           <div className="pointer-events-none absolute left-[calc(50%-16px)] top-[calc(50%+12px)] h-[1048px] w-[420px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[53deg] scale-[0.62] md:left-1/2 md:top-1/2 md:scale-100">
-            <RocketCardStage />
+            <RocketCardStage model="cavour" />
           </div>
         )}
       </div>

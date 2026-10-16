@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { rocketModelOf, type OwnRocketModel } from "@/lib/rocket-model";
 import { RocketCardStage } from "./rocket-card-stage";
 import { RocketArrow } from "./rocket-arrow";
 import { SwipeRow } from "./swipe-row";
@@ -33,7 +34,14 @@ type Project = {
   texture: string;
   /** Efesto's texture is bright grey, so its info box is tinted darker. */
   infoTint?: number;
+  /**
+   * The rocket the card draws. A card with none draws the shared placeholder
+   * (lib/rocket-model.ts). All three cards draw Cavour, as board 21 does.
+   */
+  rocket?: OwnRocketModel;
 };
+
+export type { Project as HomeCardProject };
 
 const darkPill = "bg-ground/70 text-prt-text";
 const lightPill = "bg-prt-text text-ground";
@@ -52,6 +60,7 @@ const projects: Project[] = [
       { label: { text: "SPEED" }, value: { text: "295 m/s" } },
     ],
     texture: "/textures/project-cavour.webp",
+    rocket: "cavour",
   },
   {
     num: "02",
@@ -69,6 +78,7 @@ const projects: Project[] = [
       { label: { text: "VERSIONS", phone: "MARKS" }, value: { text: "Mk I · II", phone: "Mk I–II" } },
     ],
     texture: "/textures/project-ves.webp",
+    rocket: "cavour",
   },
   {
     num: "03",
@@ -91,6 +101,7 @@ const projects: Project[] = [
     ],
     texture: "/textures/project-efesto.webp",
     infoTint: 0.82,
+    rocket: "cavour",
   },
 ];
 
@@ -104,7 +115,7 @@ function Text<T extends ReactNode>({ copy }: { copy: Copy<T> }) {
   );
 }
 
-function ProjectCard({ project }: { project: Project }) {
+export function HomeProjectCard({ project }: { project: Project }) {
   return (
     // isolate: the card is its own stacking context, so the z-indexes below
     // order its own layers and never reach a neighbouring card.
@@ -139,7 +150,7 @@ function ProjectCard({ project }: { project: Project }) {
           and the hover does not stutter while the canvas draws frames. */}
       <div className="pointer-events-none absolute inset-0 z-[2] [clip-path:inset(-400px_0_0_0_round_16px)]">
         <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
-          <RocketCardStage />
+          <RocketCardStage model={rocketModelOf(project.rocket)} />
         </div>
       </div>
 
@@ -216,7 +227,7 @@ export function Projects() {
           className="mt-6 md:mt-14 md:grid md:gap-8 lg:grid-cols-3 lg:gap-4"
         >
           {projects.map((p) => (
-            <ProjectCard key={p.name} project={p} />
+            <HomeProjectCard key={p.name} project={p} />
           ))}
         </SwipeRow>
       </div>
