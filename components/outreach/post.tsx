@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Award, Instagram, Linkedin } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
@@ -22,12 +23,23 @@ import { Photo } from "./photo";
 
 const width = "mx-auto max-w-[1116px]";
 
-export function PostHeader({ post }: { post: OutreachPost }) {
+/** The parts of a post page an editor outlines as blocks (board 74b). */
+export type PostPart = "details" | "cover" | "text" | "photos" | "channels";
+
+/**
+ * Wraps each part of the page, as the dashboard's edit shell does to outline
+ * it; the public page passes none and draws the parts as they are.
+ */
+export type PostFrame = (part: PostPart, node: ReactNode) => ReactNode;
+
+const bare: PostFrame = (_, node) => node;
+
+export function PostHeader({ post, frame = bare }: { post: OutreachPost; frame?: PostFrame }) {
   const date = longDate(post.date);
   const minutes = readingMinutes(post.body);
   const dot = <span aria-hidden className="text-dim">·</span>;
-  return (
-    <header className={width}>
+  const details = (
+    <>
       <Link
         href="/outreach"
         className="group inline-flex items-center gap-2 text-[14px] text-text-2 transition-colors duration-300 ease-out hover:text-accent"
@@ -61,8 +73,18 @@ export function PostHeader({ post }: { post: OutreachPost }) {
         {post.title}
       </h1>
       <p className="mt-4 max-w-[760px] text-[16px] leading-[1.55] text-text-2 md:mt-5 md:text-[20px]">{post.lead}</p>
-      <div className="relative mt-8 aspect-[3/2] overflow-hidden rounded-xl md:mt-12 md:aspect-[9/5]">
-        <Photo photo={post.photos[0]} sizes="(min-width: 1246px) 1116px, 100vw" priority />
+    </>
+  );
+  return (
+    <header className={width}>
+      {frame("details", details)}
+      <div className="mt-8 md:mt-12">
+        {frame(
+          "cover",
+          <div className="relative aspect-[3/2] overflow-hidden rounded-xl md:aspect-[9/5]">
+            <Photo photo={post.photos[0]} sizes="(min-width: 1246px) 1116px, 100vw" priority />
+          </div>,
+        )}
       </div>
     </header>
   );
@@ -175,30 +197,40 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
   );
 }
 
-export function PostBody({ post }: { post: OutreachPost }) {
+export function PostBody({ post, frame = bare }: { post: OutreachPost; frame?: PostFrame }) {
   const channels = channelsOf(post);
   const more = post.photos.slice(1);
   return (
     <div className={`${width} mt-10 grid gap-y-14 md:mt-14 lg:grid-cols-[minmax(0,760px)_300px] lg:gap-x-14 lg:gap-y-24`}>
-      <article className="space-y-5 text-[16px] leading-[1.75] text-text-2 md:text-[17px] md:leading-[1.8] lg:col-start-1 lg:row-start-1">
-        {post.body.map((b, i) => (
-          <Block key={i} block={b} />
-        ))}
-      </article>
+      <div className="lg:col-start-1 lg:row-start-1">
+        {frame(
+          "text",
+          <article className="space-y-5 text-[16px] leading-[1.75] text-text-2 md:text-[17px] md:leading-[1.8]">
+            {post.body.map((b, i) => (
+              <Block key={i} block={b} />
+            ))}
+          </article>,
+        )}
+      </div>
 
       {more.length > 0 && (
         <div className="lg:col-span-2 lg:row-start-2">
           <h2 className="sr-only">Photos</h2>
-          <PhotoGrid photos={more} />
+          {frame("photos", <PhotoGrid photos={more} />)}
         </div>
       )}
 
       <aside aria-label="Original posts" className="lg:col-start-2 lg:row-start-1">
-        <div className="space-y-3 lg:sticky lg:top-[96px]">
-          <p className="font-mono text-[10px] tracking-[0.2em] text-dim">ORIGINAL POSTS</p>
-          {channels.map(({ name, channel }) => (
-            <ChannelCard key={name} name={name} channel={channel} post={post} />
-          ))}
+        <div className="lg:sticky lg:top-[96px]">
+          {frame(
+            "channels",
+            <div className="space-y-3">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-dim">ORIGINAL POSTS</p>
+              {channels.map(({ name, channel }) => (
+                <ChannelCard key={name} name={name} channel={channel} post={post} />
+              ))}
+            </div>,
+          )}
         </div>
       </aside>
     </div>
