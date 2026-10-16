@@ -30,6 +30,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Members | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
 | Partners | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| FAQ | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | The IT lead only |
@@ -59,7 +60,7 @@ An admin column comes later. **Planned**, no issue yet.
   IT lead keep boards 40 and 46.
   - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
     (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
-    is Partners, then Alumni. Each content page adds its own row there.
+    is Partners, Alumni, then FAQ. Each content page adds its own row there.
   - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
     the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
     the orders waiting for a decision (one row, naming the oldest, with Review) and the approved
@@ -119,10 +120,10 @@ An admin column comes later. **Planned**, no issue yet.
   the page read one rule, and the page answers "not found" to everyone else.
   - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
     `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni and Partners pages.
+    the Alumni, Partners and FAQ pages.
 - **Content** is the team leader's sidebar group of the pages that change the public site:
-  Partners, then Alumni (boards 72 and 76). Everyone else who reaches them sees them under Team.
-  Partners follows the Alumni rule: the full admins, and anyone with site-content access. Whoever
+  Partners, Alumni, then FAQ (boards 72, 76 and 79). Everyone else who reaches them sees them under
+  Team. Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
   may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
   `lib/content/gate.ts`). See "6. Site content".
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
@@ -523,3 +524,26 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's partner changes stay in a cookie in their
   own browser until they sign out, and a logo they upload is not kept. The public pages there show
   the partners as they were before the switch.
+
+### FAQ (#258, boards 79 and 79b)
+
+- The FAQ page lists the questions at the bottom of /apply in site order, under the columns
+  Question (with the answer's first paragraph under it), Updated and Status. Updated says "Today"
+  for a version written that day in Turin, else the day ("12 Sep"). Status says Published, Draft
+  or Draft changes.
+- Dragging a row, or Move up and Move down in its menu, sets its place. The order is saved at
+  once, and /apply follows it for every published question; a draft takes its place there when
+  it is published.
+- While a side panel is open on a screen 1280px or wider, the Updated column is hidden.
+- The edit panel shows the status and, for a question on /apply, its place there ("3 of 11 on the
+  Apply page"). The question is at most 120 characters, with a live counter. The answer is one box
+  per paragraph: a box drags by its grip (or moves with the arrow keys on it), × removes it, and
+  Add paragraph adds one. A blank box is left out; an answer with no paragraph is refused. The
+  server refuses the same, and a paragraph over 1,500 characters.
+- "On the Apply page" shows the open question as the /apply accordion draws it opened, as it is
+  being typed.
+- Remove asks "are you sure" first, and removes the question and its draft at once.
+- Every write renders /apply again (it is prerendered whole, #163).
+- Previews never touch a database: a test developer's question changes stay in their own cookie
+  until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
+  shows the questions as they were before the switch.

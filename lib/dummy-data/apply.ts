@@ -5,6 +5,8 @@ import type { ApplyData } from "@/lib/apply/data";
 import { isPublic, type Recruitment } from "@/lib/apply/positions";
 import { applyFormDefaults } from "@/lib/dashboard/details";
 import type { TestViewer } from "@/lib/dashboard/viewer";
+import { publicFaqs } from "@/lib/faq/faq";
+import { dummyFaqSeed } from "./faqs";
 import { NO_OWN_CHANGES, type OwnApplicationsStart, type OwnChanges } from "./own";
 import { dummyDetails, isWithdrawn, ownApplicationsOf } from "./own-applications";
 import { applicant as nonMember, departments, divisions, personFor, positions, type DummyPosition } from "./team";
@@ -218,6 +220,8 @@ export function dummyApplyData(
       const open = all.filter((p) => isPublic(p, recruitment));
       return limit === null ? open : open.slice(0, limit);
     },
+    // The dummy questions' published versions; a test developer's edits stay on their dashboard.
+    faqs: async () => publicFaqs(dummyFaqSeed()),
     position: async (id) => {
       const position = all.find((p) => p.id === id);
       return position === undefined ? null : { position, recruitment };

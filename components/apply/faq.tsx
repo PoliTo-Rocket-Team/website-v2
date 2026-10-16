@@ -2,15 +2,16 @@
 
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { Minus, Plus } from "lucide-react";
-import { applyPage, faqs, RECRUITMENT_EMAIL } from "@/lib/apply/page";
+import { applyPage, RECRUITMENT_EMAIL, type Faq as FaqItem } from "@/lib/apply/page";
 
-// Board 34's questions: the title and the contact line on the left, from lg;
+// Board 34's questions, the published ones in site order (issue #258: the
+// dashboard's FAQ page edits them): the title and the contact line on the left, from lg;
 // the questions on the right, each over a hairline, with a plus that turns to
 // a minus when open. Every answer starts closed, as every accordion on /apply
 // does (issue #157); the board draws one open only to show the open look. Phones
 // (34m) stack the two. It is the repo's Radix accordion, one answer open at a
 // time, opening and closing at once.
-export function Faq() {
+export function Faq({ faqs }: { faqs: readonly FaqItem[] }) {
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto grid max-w-[1312px] gap-6 lg:grid-cols-[296px_1fr] lg:gap-[60px]">
@@ -41,8 +42,8 @@ export function Faq() {
               {/* No display class on Content itself: it would beat the hidden attribute Radix sets on a closed answer. */}
               <AccordionPrimitive.Content className="-mt-1 pb-6 text-[14px] leading-[1.7] text-text-2 md:text-[15px]">
                 <div className="flex flex-col gap-3">
-                  {faq.answer.map((paragraph) => (
-                    <p key={paragraph}>{paragraph}</p>
+                  {faq.answer.map((paragraph, i) => (
+                    <p key={i}>{paragraph}</p>
                   ))}
                 </div>
               </AccordionPrimitive.Content>

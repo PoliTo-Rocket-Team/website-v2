@@ -14,10 +14,12 @@ import {
 } from "@/lib/dummy-data/recruitment";
 import { parseDummyState, serializeDummyState, type DummyStateStore } from "@/lib/dummy-data/state";
 import { parsePartnerEdits, serializePartnerEdits, type DummyPartnerEditsStore } from "@/lib/dummy-data/partners";
+import { parseFaqEdits, serializeFaqEdits, type DummyFaqEditsStore } from "@/lib/dummy-data/faqs";
 import {
   TEST_DEVELOPER_APPLICATIONS_COOKIE,
   TEST_DEVELOPER_CONTENT_COOKIE,
   TEST_DEVELOPER_COOKIE,
+  TEST_DEVELOPER_FAQ_COOKIE,
   TEST_DEVELOPER_COOKIE_MAX_AGE_S,
   TEST_DEVELOPER_EDITS_COOKIE,
   TEST_DEVELOPER_OWN_COOKIE,
@@ -48,6 +50,7 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
         dummyOwnIn(jar),
         ownApplicationsStartOf(jar.get(TEST_DEVELOPER_APPLICATIONS_COOKIE)?.value),
         dummyPartnerEditsIn(jar),
+        dummyFaqEditsIn(jar),
       ),
       true,
     );
@@ -104,6 +107,14 @@ function dummyPartnerEditsIn(jar: Jar): DummyPartnerEditsStore {
   return {
     current: parsePartnerEdits(jar.get(TEST_DEVELOPER_CONTENT_COOKIE)?.value),
     save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_CONTENT_COOKIE, serializePartnerEdits(next)),
+  };
+}
+
+/** Changes to the questions on /apply (issue #258, lib/dummy-data/faqs.ts); /apply never reads them. */
+function dummyFaqEditsIn(jar: Jar): DummyFaqEditsStore {
+  return {
+    current: parseFaqEdits(jar.get(TEST_DEVELOPER_FAQ_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_FAQ_COOKIE, serializeFaqEdits(next)),
   };
 }
 

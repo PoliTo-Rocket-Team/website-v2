@@ -46,9 +46,19 @@ export function applyStats(listing: ApplyListing): HeaderStats {
   ];
 }
 
-export type Faq = { question: string; answer: readonly [string, ...string[]] };
+/** An answer: one string per paragraph, at least one. */
+export type FaqAnswer = readonly [string, ...string[]];
 
-/** Board 34's eleven questions, with the old site's answers, one string per paragraph. */
+export type Faq = { readonly question: string; readonly answer: FaqAnswer };
+
+/**
+ * Board 34's eleven questions, with the old site's answers, one string per
+ * paragraph. Since issue #258 they live in the database and the dashboard
+ * edits them (boards 79 and 79b); /apply reads the published ones in site
+ * order (lib/faq/). This record is what migration 0025 carries into the
+ * database (lib/faq/import.ts) and what /apply shows where there is no
+ * database (previews).
+ */
 export const faqs: readonly Faq[] = [
   {
     question: "How can I join the Team?",

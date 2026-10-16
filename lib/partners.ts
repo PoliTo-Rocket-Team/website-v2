@@ -15,6 +15,7 @@
 
 import type { HeaderStats } from "./about/types";
 import { university } from "./about/university";
+import { textLength } from "./content/text";
 
 /** A logo file in public/design/sponsors/, given as its path from the site root: the record's logos. */
 export type LogoSrc = `/design/sponsors/${string}.png`;
@@ -86,10 +87,8 @@ export type TextOverLimit = {
   limit: number;
 };
 
-/** The length a limit counts: code points, so "ò" is one character. */
-export function textLength(text: string): number {
-  return [...text].length;
-}
+// The length a limit counts is shared by every content editor (lib/content/text.ts).
+export { textLength };
 
 /** Every text of this partner that is over its limit; empty when all fit. */
 export function textsOverLimit(partner: Partner): TextOverLimit[] {

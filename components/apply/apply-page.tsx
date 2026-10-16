@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/about/page-header";
-import { Faq } from "@/components/apply/faq";
+import { Faq as FaqSection } from "@/components/apply/faq";
 import { Positions } from "@/components/apply/positions";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
-import { applyPage, applyStats } from "@/lib/apply/page";
+import { applyPage, applyStats, type Faq } from "@/lib/apply/page";
 import type { ApplyListing } from "@/lib/apply/positions";
 
 // Boards 34 (5+ positions open), 34c (1 to 4) and 34b (none), with 34m and
@@ -27,13 +27,13 @@ export function ApplyFrame({ children }: { children: ReactNode }) {
   );
 }
 
-/** The header and its figures, the positions and the questions, from one listing. */
-export function ApplyContent({ listing }: { listing: ApplyListing }) {
+/** The header and its figures and the positions, from one listing, then the published questions. */
+export function ApplyContent({ listing, faqs }: { listing: ApplyListing; faqs: readonly Faq[] }) {
   return (
     <>
       <PageHeader {...applyPage.header} stats={applyStats(listing)} statsOnPhone="two-by-two" />
       <Positions listing={listing} />
-      <Faq />
+      <FaqSection faqs={faqs} />
     </>
   );
 }

@@ -13,6 +13,7 @@ import { isPublishStep, type ContentItem, type PublishStep } from "@/lib/content
 import type { Partner, PartnerTier } from "@/lib/partners";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { PARTNER_FIELDS, type PartnerFields } from "@/lib/partners-fields";
+import type { FaqFields, FaqVersion } from "@/lib/faq/faq";
 
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
@@ -143,6 +144,35 @@ export async function reorderPartners(tier: PartnerTier, partnerIds: readonly nu
 function refreshPublicPartners(): void {
   revalidatePath("/partners");
   revalidatePath("/");
+}
+
+// The FAQ page (boards 79 and 79b, issue #258), behind the same site-content
+// gate. /apply is prerendered whole (issue #163), so each write renders it
+// again; the write itself refreshes the cached read of the questions.
+
+/** Save draft or Publish on a question; `faqId` null is New question. The answer is one `answer` field per paragraph box. */
+export async function saveFaq(faqId: number | null, step: PublishStep, form: FormData): Promise<WriteResult<ContentItem<FaqVersion>>> {
+  if (faqId !== null && !Number.isSafeInteger(faqId)) return refused("Unknown question.");
+  if (!isPublishStep(step)) return refused("Save a draft or publish.");
+  const fields: FaqFields = { question: String(form.get("question") ?? ""), answer: form.getAll("answer").map(String) };
+  const result = await write("faq", (data) => data.faqs.save(faqId, step, fields));
+  if (result.ok) revalidatePath("/apply");
+  return result;
+}
+
+export async function removeFaq(faqId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(faqId)) return refused("Unknown question.");
+  const result = await write("faq", (data) => data.faqs.remove(faqId));
+  if (result.ok) revalidatePath("/apply");
+  return result;
+}
+
+/** Every question in its new order, as dragged. */
+export async function reorderFaqs(faqIds: readonly number[]): Promise<WriteResult<null>> {
+  if (!Array.isArray(faqIds) || !faqIds.every(Number.isSafeInteger)) return refused("Unknown questions.");
+  const result = await write("faq", (data) => data.faqs.reorder(faqIds));
+  if (result.ok) revalidatePath("/apply");
+  return result;
 }
 
 export async function saveLinkedin(text: string): Promise<WriteResult<string | null>> {
