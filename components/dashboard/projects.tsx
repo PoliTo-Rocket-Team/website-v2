@@ -2,15 +2,17 @@
 
 import { useState, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { ExternalLink, GripVertical, Pencil } from "lucide-react";
+import { ExternalLink, GripVertical, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { reorderProjects } from "@/app/dashboard/project-actions";
 import { HomeProjectCard } from "@/components/landing/project-card";
 import { moveTo } from "@/lib/content/order";
 import { editorVersion, publicVersion, statusOf, type ContentItem } from "@/lib/content/versioned";
+import { takenSlugs } from "@/lib/project-content/new-project";
 import { homeCardOf, type ProjectRecord } from "@/lib/project-content/record";
 import { CONTENT_FOCUS as FOCUS, StatusPill, useDragOrder, type DragRow } from "./content-parts";
-import { PageHeader } from "./page-header";
+import { NewProjectDialog } from "./new-project-dialog";
+import { PageHeader, PRIMARY_PILL } from "./page-header";
 
 // The dashboard Projects page (board 75, issue #297): every stored project as
 // its home card, as Home draws it, at about 0.85 scale and three per row from
@@ -18,8 +20,8 @@ import { PageHeader } from "./page-header";
 // under it: Edit page (the project on its page, board 75b) and View on site.
 // Dragging a card, or the arrow keys on its grip, sets the site order Home
 // and /projects follow; the server checks the move again behind the
-// site-content gate, and a refused one puts the cards back. New project comes
-// with its own slice (issue #301).
+// site-content gate, and a refused one puts the cards back. New project in
+// the header stores a draft and opens it in the editor (issue #301).
 
 const EDIT_PAGE =
   "inline-flex h-[30px] flex-1 items-center justify-center gap-2 rounded-full bg-prt-text px-3 text-[13px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90";
@@ -34,6 +36,7 @@ export function ProjectsView({
   edited: Readonly<Record<number, string>>;
 }) {
   const [items, setItems] = useState<readonly ContentItem<ProjectRecord>[]>(initial);
+  const [creating, setCreating] = useState(false);
   const ordered = [...items].sort((a, b) => a.siteOrder - b.siteOrder);
   const ids = ordered.map((item) => item.id);
 
@@ -56,7 +59,17 @@ export function ProjectsView({
 
   return (
     <>
-      <PageHeader title="Projects" intro="The rockets on the Projects page, in site order. Drag to reorder." />
+      <PageHeader
+        title="Projects"
+        intro="The rockets on the Projects page, in site order. Drag to reorder."
+        action={
+          <button type="button" onClick={() => setCreating(true)} className={PRIMARY_PILL}>
+            <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
+            New project
+          </button>
+        }
+      />
+      <NewProjectDialog open={creating} onOpenChange={setCreating} taken={takenSlugs(items)} />
       {shown.length === 0 ? (
         <p className="mt-6 text-[14px] text-prt-muted">No projects yet.</p>
       ) : (

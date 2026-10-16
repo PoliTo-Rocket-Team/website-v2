@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isPublishStep, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import { editorVersion, isPublishStep, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import { uploadOf } from "@/lib/dashboard/form-upload";
 import { openDashboard } from "@/lib/dashboard/open";
-import { refused, type WriteResult } from "@/lib/dashboard/write";
+import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { readProjectFields } from "@/lib/project-content/fields";
+import { readNewProject } from "@/lib/project-content/new-project";
 import type { ProjectRecord } from "@/lib/project-content/record";
 
 // The project editor's writes (boards 75 and 75c, issues #297 and #298). Each opens the
@@ -32,6 +33,20 @@ export async function saveProject(projectId: number, step: PublishStep, input: u
   const result = await opening.data.projects.saveFields(projectId, step, fields);
   if (result.ok) refreshPublicProjects();
   return result;
+}
+
+/**
+ * New project on the Projects page (issue #301): a draft project with the
+ * name, address and kind given, answered with the address its editor opens
+ * at. A draft shows on no public page, so none is refreshed.
+ */
+export async function createProject(input: unknown): Promise<WriteResult<{ slug: string }>> {
+  const project = readNewProject(input);
+  if (project === null) return refused("Reload the page and try again.");
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return refused("Sign in again to make changes.");
+  const result = await opening.data.projects.create(project);
+  return result.ok ? written({ slug: editorVersion(result.value.version).slug }) : result;
 }
 
 /** The cards dragged into a new order on the Projects page (board 75, issue #297): the site order Home and /projects follow. */

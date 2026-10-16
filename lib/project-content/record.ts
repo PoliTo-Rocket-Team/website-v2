@@ -12,7 +12,7 @@ import type {
   Stat,
   Versions,
 } from "@/lib/project-pages/types";
-import { isPageSlug, type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
+import { type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
 import { editorVersion, publicVersion, type ContentItem } from "@/lib/content/versioned";
 import type { OwnRocketModel } from "@/lib/rocket-model";
 
@@ -239,17 +239,35 @@ export function pageRecordOf(record: ProjectRecord): ProjectPageRecord {
   };
 }
 
-/** The project's page, when one is served for its slug: the card links there. */
-export function pageOf(slug: string): ProjectPage | undefined {
-  return isPageSlug(slug) ? `/projects/${slug}` : undefined;
+/** The project's page: every published project has one at its slug (issue #301). The card links there. */
+export function pageOf(slug: string): ProjectPage {
+  return `/projects/${slug}`;
+}
+
+/**
+ * What /projects/<slug> draws, read off the published projects in site
+ * order: the project, its place, and the project its next-project card shows
+ * (the last loops back to the first). Null for a slug no published project
+ * has, a project with only a draft included: that address is not found.
+ */
+export type PublishedPage = {
+  readonly record: ProjectRecord;
+  readonly position: number;
+  readonly next: { readonly record: ProjectRecord; readonly position: number };
+};
+
+export function publishedPageOf(published: readonly ProjectRecord[], slug: string): PublishedPage | null {
+  const position = published.findIndex((r) => r.slug === slug);
+  if (position === -1) return null;
+  const next = (position + 1) % published.length;
+  return { record: published[position], position, next: { record: published[next], position: next } };
 }
 
 /** The /projects entry of the project at `position` (from 0) in the site order: its number is its place. */
 export function listingOf(record: ProjectRecord, position: number): Project {
-  const href = pageOf(record.slug);
   const base = {
     slug: record.slug,
-    ...(href && { href }),
+    href: pageOf(record.slug),
     index: pad(position + 1),
     years: record.listing.years,
     name: record.name,

@@ -31,22 +31,16 @@ export type Launch = {
 
 export type WorkLine = { code: string; name: string };
 
-/** The projects served at a fixed route under app/projects/. */
-export const pageSlugs = ["cavour", "ves", "efesto"] as const;
-
-export type PageSlug = (typeof pageSlugs)[number];
-
-export function isPageSlug(slug: string): slug is PageSlug {
-  return (pageSlugs as readonly string[]).includes(slug);
-}
-
-/** A project page that exists. */
-export type ProjectPage = `/projects/${PageSlug}`;
+/**
+ * A project's page. Every published project has one, served by the one
+ * dynamic route app/projects/[slug] (issue #301).
+ */
+export type ProjectPage = `/projects/${string}`;
 
 type ProjectBase = {
   slug: string;
-  /** Its own page, when it has one: the card links there. No page, no link. */
-  href?: ProjectPage;
+  /** Its own page: the card links there. */
+  href: ProjectPage;
   index: string;
   years: string;
   name: string;
