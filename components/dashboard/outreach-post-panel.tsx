@@ -7,7 +7,7 @@ import { ChevronDown, GripVertical, Plus, X } from "lucide-react";
 import { CHANNEL_ICONS } from "@/components/outreach/channel-icons";
 import { Photo } from "@/components/outreach/photo";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { dayMonthYear } from "@/lib/outreach";
+import { shortDayMonthYear } from "@/lib/outreach";
 import type { ChannelFields, PostFieldErrors, PostFields } from "@/lib/outreach-post-fields";
 import { isIsoDate } from "@/lib/outreach-rows";
 import {
@@ -153,7 +153,7 @@ function joinedNames(names: readonly string[]): string {
 }
 
 function detailsSummary(fields: PostFields): string {
-  return [fields.title.trim() || "No title", isIsoDate(fields.date) ? dayMonthYear(fields.date) : "No date", fields.tags.join(", ")]
+  return [fields.title.trim() || "No title", isIsoDate(fields.date) ? shortDayMonthYear(fields.date) : "No date", fields.tags.join(", ")]
     .filter(Boolean)
     .join(" · ");
 }

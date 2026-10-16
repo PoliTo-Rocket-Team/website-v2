@@ -582,7 +582,7 @@ export function shortMonthYear(date: IsoDate): string {
 }
 
 /** "14 Oct 2024" in the Edit post panel's Title and details line (board 74d). */
-export function dayMonthYear(date: IsoDate): string {
+export function shortDayMonthYear(date: IsoDate): string {
   const { year, month, day } = parts(date);
   return `${day} ${month.slice(0, 3)} ${year}`;
 }
