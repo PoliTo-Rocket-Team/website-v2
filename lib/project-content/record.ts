@@ -317,7 +317,18 @@ export type ProjectPlace = {
   readonly position: number;
   readonly next: { readonly record: ProjectRecord; readonly position: number };
   readonly previous: ProjectRecord;
+  /**
+   * The published projects before and after it in the site order: Home and
+   * the Projects list as the page switch draws them, with this project's
+   * card between the two (board 75d, `lineupWith`).
+   */
+  readonly lineup: { readonly before: readonly ProjectRecord[]; readonly after: readonly ProjectRecord[] };
 };
+
+/** Every project Home and the Projects list show, in site order, with `edited` in its place. */
+export function lineupWith(place: ProjectPlace, edited: ProjectRecord): readonly ProjectRecord[] {
+  return [...place.lineup.before, edited, ...place.lineup.after];
+}
 
 export function placeOf(items: readonly ContentItem<ProjectRecord>[], id: number): ProjectPlace | null {
   const item = items.find((i) => i.id === id);
@@ -329,5 +340,11 @@ export function placeOf(items: readonly ContentItem<ProjectRecord>[], id: number
     const found = shown[(p + shown.length) % shown.length];
     return found.id === id ? editorVersion(found.version) : publicVersion(found.version)!;
   };
-  return { position, next: { record: at(position + 1), position: (position + 1) % shown.length }, previous: at(position - 1) };
+  const published = (from: number, to?: number) => shown.slice(from, to).map((i) => publicVersion(i.version)!);
+  return {
+    position,
+    next: { record: at(position + 1), position: (position + 1) % shown.length },
+    previous: at(position - 1),
+    lineup: { before: published(0, position), after: published(position + 1) },
+  };
 }

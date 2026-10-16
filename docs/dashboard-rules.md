@@ -742,6 +742,16 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - A project opens on its real page under the shared edit bar ("Projects / Editing <project>"
   and its state, Desktop | Phone, Save draft, Publish). Hovering a block outlines it with its name
   and an Edit chip; the chip opens the "Edit <project>" panel with that section open.
+- The page switch (#300, board 75d) on the edit bar: Project page, Home and Projects list. Home
+  shows the home Projects section and the Projects list shows /projects, each with this project's
+  card drawn from the panel's fields in its place in the site order among the published projects,
+  outlined, with an "Edit card" chip; the other cards are dimmed. Edit card opens the panel's Card
+  section: the project's name (on the card, the page and the Projects list), the card's year,
+  status pill (its text, or for a rocket its flight count, and dark or light), description and
+  three specs. The card's number is its place in the site order and is changed only by dragging on
+  the Projects page. Save draft and Publish work as for the page: a published card change is on
+  Home and /projects. The /projects entry's own copy (years, description, six specs) is not edited
+  here.
 - The panel's sections: Top of the page (intro, status, dates, the visual's caption, one to six
   key facts), Name story, Design story (with its parts, drawn top to bottom and numbered from the
   bottom), Versions, Launch history (a rocket's only), Plan, Why (one to three reasons), Gallery

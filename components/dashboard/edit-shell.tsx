@@ -333,16 +333,19 @@ export function EditableBlock({ id, className = "", children }: { id: string; cl
  * outlined, with an "Edit card" chip that hands back to the content type, and
  * is scrolled into view when the page opens; every other card is dimmed.
  * `className` lays the card out where the page puts it; the card fills it.
+ * `outline` rounds the outline, 6px outside the card's own corners.
  */
 export function CardInPlace({
   edited,
   onEdit,
   className = "",
+  outline = "rounded-[18px]",
   children,
 }: {
   edited: boolean;
   onEdit: () => void;
   className?: string;
+  outline?: string;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -353,7 +356,7 @@ export function CardInPlace({
   return (
     <div ref={ref} className={`relative ${className}`}>
       {children}
-      <div aria-hidden className="pointer-events-none absolute -inset-1.5 z-10 rounded-[18px] border-2 border-accent" />
+      <div aria-hidden className={`pointer-events-none absolute -inset-1.5 z-10 border-2 border-accent ${outline}`} />
       <button
         type="button"
         onClick={onEdit}
