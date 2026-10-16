@@ -443,22 +443,58 @@ export function slugOf(post: Pick<OutreachPost, "title">): string {
 }
 
 /** The posts newest first, as the page lists them. */
-export function newestFirst(posts: readonly OutreachPost[]): OutreachPost[] {
+export function newestFirst<P extends Pick<OutreachPost, "date">>(posts: readonly P[]): P[] {
   return [...posts].sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /**
  * The home page's Track record section (board 21, issue #293): the newest
- * post as the featured card and the next three as the news cards.
+ * post as the featured card and the next three as the news cards. The edit
+ * shell's page switch fills it with the post being edited among the
+ * published ones (`trackRecordShowing`), so a card may be a draft's view.
  */
-export type TrackRecord = { featured: OutreachPost; news: OutreachPost[] };
+export type TrackRecord<P extends Pick<OutreachPost, "date"> = OutreachPost> = { featured: P; news: P[] };
 
 const TRACK_RECORD_NEWS = 3;
 
 /** The Track record cards from the published posts, or null when none is published. */
-export function trackRecord(posts: readonly OutreachPost[]): TrackRecord | null {
+export function trackRecord<P extends Pick<OutreachPost, "date">>(posts: readonly P[]): TrackRecord<P> | null {
   const [featured, ...older] = newestFirst(posts);
   return featured === undefined ? null : { featured, news: older.slice(0, TRACK_RECORD_NEWS) };
+}
+
+/**
+ * The published posts with the one being edited in place (issue #294): its
+ * published version, the post at `publishedSlug`, gives way to the version
+ * the editor works on. A post never published has none to replace.
+ */
+export function withEdited<P extends Pick<OutreachPost, "date">>(
+  published: readonly OutreachPost[],
+  publishedSlug: string | null,
+  edited: P,
+): (OutreachPost | P)[] {
+  return [...published.filter((p) => slugOf(p) !== publishedSlug), edited];
+}
+
+/**
+ * The Track record the page switch shows (issue #294): the cards from
+ * `posts`, which hold `edited`, and when it is not among the four newest, it
+ * takes the last news card's place, so the editor still sees its card.
+ */
+export function trackRecordShowing<P extends Pick<OutreachPost, "date">>(posts: readonly P[], edited: P): TrackRecord<P> {
+  const cards = trackRecord(posts);
+  if (cards === null) return { featured: edited, news: [] };
+  if (cards.featured === edited || cards.news.includes(edited)) return cards;
+  return { featured: cards.featured, news: [...cards.news.slice(0, -1), edited] };
+}
+
+/**
+ * The one news card a phone shows (board 24): the first. The page switch
+ * names the edited post's card instead when it is a news card (issue #294),
+ * so the editor still sees it in Phone mode; the public page names none.
+ */
+export function phoneNewsCard<P extends Pick<OutreachPost, "date">>(cards: TrackRecord<P>, edited?: P): P | undefined {
+  return edited !== undefined && cards.news.includes(edited) ? edited : cards.news[0];
 }
 
 /** The first address two posts share, or null. Two posts with one address would hide one of them. */
@@ -494,7 +530,7 @@ export function neighboursOf(posts: readonly OutreachPost[], post: Pick<Outreach
 }
 
 /** The years that have posts, newest first: the year filter's pills after All. */
-export function postYears(posts: readonly OutreachPost[]): number[] {
+export function postYears(posts: readonly Pick<OutreachPost, "date">[]): number[] {
   return [...new Set(newestFirst(posts).map((p) => yearOf(p.date)))];
 }
 

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { editChips, type EditBlocks } from "./edit-shell";
 
@@ -27,4 +29,14 @@ test("a chip shows its block's name and says Edit unless the block names its wor
   const chipOf = editChips(blocks, () => {});
   assert.deepEqual([chipOf("title").name, chipOf("title").label], ["Title and details", "Edit"]);
   assert.equal(chipOf("grid").label, "Edit photos");
+});
+
+test("the shell's files import nothing of a content type: pages, blocks and switch targets arrive as props", () => {
+  const files = ["components/dashboard/edit-shell.tsx", "components/dashboard/edit-frame.tsx", "lib/content/edit-shell.ts"];
+  for (const file of files) {
+    const source = readFileSync(join(process.cwd(), file), "utf8");
+    const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
+    const typed = imports.filter((path) => /outreach|project|team|partner/i.test(path));
+    assert.deepEqual(typed, [], `${file} imports a content type`);
+  }
 });

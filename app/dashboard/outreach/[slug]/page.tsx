@@ -48,8 +48,9 @@ async function LivePost({ params }: Params) {
     });
   if (item === undefined) notFound();
   // The posts either side are the public page's: the published ones.
-  const { posts } = await publishedOutreach();
+  // The published content also fills the page switch's list and home pages.
+  const content = await publishedOutreach();
   const published = publicVersion(item.version);
-  const neighbours = published === null ? {} : neighboursOf(posts, published);
-  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} />;
+  const neighbours = published === null ? {} : neighboursOf(content.posts, published);
+  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} published={content} />;
 }

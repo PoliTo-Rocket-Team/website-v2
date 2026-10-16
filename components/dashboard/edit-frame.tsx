@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 // The page under the edit bar (boards 74b, 74e) is drawn in a same-origin
@@ -69,17 +69,26 @@ function stayOnPage(event: MouseEvent<HTMLDivElement>) {
 
 export function EditFrame({
   title,
+  page,
   className,
   style,
   children,
 }: {
   title: string;
+  /** The page in view, where the shell switches pages: another one opens at its top. */
+  page?: string;
   className: string;
   style?: CSSProperties;
   children: ReactNode;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [body, setBody] = useState<HTMLElement | null>(null);
+
+  // A layout effect, so it runs before the new page's own effects, such as a
+  // card scrolling itself into view (CardInPlace in edit-shell.tsx).
+  useLayoutEffect(() => {
+    frameRef.current?.contentWindow?.scrollTo(0, 0);
+  }, [page]);
 
   useEffect(() => {
     const frame = frameRef.current;
