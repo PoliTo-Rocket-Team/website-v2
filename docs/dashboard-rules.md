@@ -737,18 +737,44 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's new order stays in their own cookie until
   they sign out, and their saves read as edited today by the person they signed in as.
 
-### Project pages (#298, boards 75b and 75c)
+### Project pages (#298 and #299, boards 75b and 75c)
 
 - A project opens on its real page under the shared edit bar ("Projects / Editing <project>"
   and its state, Desktop | Phone, Save draft, Publish). Hovering a block outlines it with its name
   and an Edit chip; the chip opens the "Edit <project>" panel with that section open.
-- The panel's sections so far: Top of the page (intro, status, dates, the visual's caption, one to
-  six key facts), Name story, Design story (with its parts, drawn top to bottom and numbered from
-  the bottom), Why (one to three reasons) and the Next-project card line, which the previous
-  project's page shows. The page redraws as the editor types.
+- The panel's sections: Top of the page (intro, status, dates, the visual's caption, one to six
+  key facts), Name story, Design story (with its parts, drawn top to bottom and numbered from the
+  bottom), Versions, Launch history (a rocket's only), Plan, Why (one to three reasons), Gallery
+  and the Next-project card line, which the previous project's page shows. The page redraws as
+  the editor types.
+- Versions: each version's name, phone tab, what it was for and its spec rows (an empty spec shows
+  a dash). Exactly one is highlighted; removing it is refused until another one is.
+- Launch history: one card per launch, opened one at a time: name, date, place, version, motor,
+  outcome, what happened, four numbers, the line and result the Projects list shows, the country
+  (a flight's), an optional award and up to two photos. On a flight the first two numbers are its
+  apogee and max speed. The phone card keeps three numbers: a flight keeps its apogee and max
+  speed, and Phone picks which other number it leaves out and edits the shorter labels. A shown
+  history keeps one launch at least; removing the last one is refused.
+- A launch published from here is on the project page, in the /projects log and in the header
+  counts (flights, countries, awards), and Cavour's home card counts its flights ("FLOWN ×3"),
+  with no code change.
+- Plan: each step's status (Done, Under way, Next, Later), an optional date, title and text. The
+  page orders them by status. One step is always under way: marking another under way marks the
+  old one done, and taking the status off the step under way, or removing it, is refused.
+- Gallery: the carousel's photos in order, each with its description for screen readers and an
+  optional caption; a placeholder slot stays until it is removed. A shown gallery keeps one photo
+  at least.
+- Launch and gallery photos upload the moment they are picked, as Outreach photos do: behind the
+  site-content gate, to the public store under `project-photos/`. A save refuses a photo this side
+  did not upload. A file is deleted once no version of any project shows it and the open editor
+  holds it no more: removing a photo or a whole launch deletes its file unless a saved version
+  shows it, and a save with Launch history or Gallery off keeps the files of the photos still in
+  the panel, so switching the section back on brings them back. Leaving the editor with photos
+  that are only in the panel (a section that is off, or an upload not yet saved) leaves their
+  files in the store, as Outreach does.
 - Desktop edits the desktop text. Phone edits the phone text of the fields that have one; an empty
   phone field shows the desktop text, except the story texts, which always have their own.
-- An optional section (Why, today) has a show-on-page switch in its header. Off, the section
+- An optional section (Versions, Launch history, Plan, Why, Gallery) has a show-on-page switch in its header. Off, the section
   leaves the page and the numbers of the sections after it close up. Its text stays in the panel
   while the editor is open, Save draft and Publish included, and switching it back on brings it
   back. The saved page keeps no text for a section that is off, so closing or reloading the
@@ -759,3 +785,5 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   gets the dashboard's not found.
 - Previews never touch a database: a test developer's project changes stay in their own cookie
   until they sign out. The public pages there show the projects as they were before the switch.
+  A photo uploaded there is shown on the page while the editor is open, but the cookie holds
+  only a few kilobytes, so a save with a real photo is refused with the preview's "full" message.

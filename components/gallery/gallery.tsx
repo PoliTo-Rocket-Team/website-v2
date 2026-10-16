@@ -44,6 +44,8 @@ function ItemView({ item, sizes, fit, large }: { item: GalleryItem; sizes: strin
         alt={item.alt}
         fill
         sizes={sizes}
+        // A photo uploaded from the dashboard (the public store, or a preview's data URL) is served as it is (issue #299).
+        unoptimized={!item.src.startsWith("/")}
         className={fit === "cover" ? "object-cover" : "object-contain"}
       />
     </div>

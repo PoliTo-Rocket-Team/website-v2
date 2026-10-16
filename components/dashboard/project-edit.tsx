@@ -15,23 +15,23 @@ import { ProjectEditPanel, type FieldErrors } from "./project-edit-panel";
 // issue #298). The page is drawn from the panel's fields, so it changes as
 // the editor types; Save draft and Publish on the bar send the fields to the
 // projects editor, which checks them again. Save draft leaves the published
-// page live. The blocks this slice outlines are the story sections; the
-// versions, launch history, plan and gallery come with the next slice, and
-// the page switch (Home, Projects list) after it.
+// page live. Every part of the page is a block with its Edit chip (issues
+// #298 and #299); the page switch (Home, Projects list) comes with the next
+// slice.
 
-type Outlined = Extract<ProjectPart, "hero" | "name" | "design" | "reasons" | "next">;
-
-const PROJECT_BLOCKS: EditBlocks<Outlined, PanelSection> = {
+const PROJECT_BLOCKS: EditBlocks<ProjectPart, PanelSection> = {
   hero: { name: "Top of the page", section: "top", chip: "Edit top of the page" },
   name: { name: "Name story", section: "name", chip: "Edit name story" },
   design: { name: "Design story", section: "design", chip: "Edit design story" },
+  versions: { name: "Versions", section: "versions", chip: "Edit versions" },
+  launches: { name: "Launch history", section: "launches", chip: "Edit launch history" },
+  plan: { name: "Plan", section: "plan", chip: "Edit plan" },
   reasons: { name: "Why", section: "reasons", chip: "Edit Why" },
+  gallery: { name: "Gallery", section: "gallery", chip: "Edit gallery" },
   next: { name: "Next-project card", section: "teaser", chip: "Edit card line" },
 };
 
-const isOutlined = (part: ProjectPart): part is Outlined => part in PROJECT_BLOCKS;
-
-const outlined: ProjectFrame = (part, node) => (isOutlined(part) ? <EditableBlock id={part}>{node}</EditableBlock> : node);
+const outlined: ProjectFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
 
 /** Each field's error, once a save was refused; fixing a field drops its error. */
 function errorsOf(fields: ProjectFields): FieldErrors {

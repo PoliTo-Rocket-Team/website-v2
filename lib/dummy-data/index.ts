@@ -1095,7 +1095,7 @@ export function dummyDashboardData(
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
     outreach: outreachEditor(dummyViewer(viewer, holders), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
     // Seen from the dummy team's moment; the test developer's saves are edits by the person they sign in as.
-    projects: projectEditor(dummyViewer(viewer, holders), dummyProjectStore(projectEdits), dummyProjectHistory(projectEdits, person?.name ?? null)),
+    projects: projectEditor(dummyViewer(viewer, holders), dummyProjectStore(projectEdits), dummyProjectHistory(projectEdits, person?.name ?? null), dummyPhotoFiles),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {
