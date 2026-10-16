@@ -778,5 +778,7 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
   their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
   row, never a role, division, department, scope or member. Reset to team never changes the
-  advisors. Previews keep a test developer's advisors in their own cookie over today's advisors;
-  End advising there adds to their Alumni changes.
+  advisors. On a preview with the seeded `preview` branch, a test developer's advisor changes and
+  End advising are refused before they reach the database (ADR 0016). Only a preview with no
+  database keeps a test developer's advisors in their own cookie over today's advisors; End
+  advising there adds to their Alumni changes.
