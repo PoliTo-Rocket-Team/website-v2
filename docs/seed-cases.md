@@ -71,8 +71,16 @@ Each row is one seeded case. An area slice that adds a seed module adds its rows
 | partners | A published partner with a dark logo, drawn white | `partner_versions.logo_dark`, partners 11 and 12 | [#256](https://github.com/PoliTo-Rocket-Team/website-v2/issues/256) |
 | faq | Published questions on /apply | `faq_versions` version `published` | [#258](https://github.com/PoliTo-Rocket-Team/website-v2/issues/258) |
 | faq | A published question with a draft change that /apply does not show | `faq_versions` of question 3 | [#258](https://github.com/PoliTo-Rocket-Team/website-v2/issues/258) |
+| outreach | Every tag in the tag list on at least one published post, Award the one award tag | `outreach_tags`, `outreach_post_tags.tag_name` | [#287](https://github.com/PoliTo-Rocket-Team/website-v2/issues/287), [#290](https://github.com/PoliTo-Rocket-Team/website-v2/issues/290) |
+| outreach | Every channel type on a published post: Instagram, LinkedIn, YouTube, Facebook, X, TikTok and Other link | `outreach_post_versions.channels` of post 14 | [#290](https://github.com/PoliTo-Rocket-Team/website-v2/issues/290), [#278](https://github.com/PoliTo-Rocket-Team/website-v2/issues/278) |
+| outreach | A post first shared by another account | `outreach_post_versions.channels` `account`, posts 3, 5 and 14 | [#290](https://github.com/PoliTo-Rocket-Team/website-v2/issues/290) |
+| outreach | Published posts enough for the home Track record's featured card and three news cards | `outreach_post_versions` version `published` | [#293](https://github.com/PoliTo-Rocket-Team/website-v2/issues/293), [#289](https://github.com/PoliTo-Rocket-Team/website-v2/issues/289) |
+| outreach | Every photo with alt text, and a post with several photos for the photo grid | `outreach_post_versions.photos`, post 14 | [#291](https://github.com/PoliTo-Rocket-Team/website-v2/issues/291) |
+| outreach | A published post with draft changes that the public pages do not show | `outreach_post_versions` of post 4 (IAC 2024, Milan) | [#287](https://github.com/PoliTo-Rocket-Team/website-v2/issues/287), [#290](https://github.com/PoliTo-Rocket-Team/website-v2/issues/290) |
+| outreach | A new post saved as a draft before it is whole, never published, so the public pages do not show it | `outreach_post_versions` of post 15 | [#292](https://github.com/PoliTo-Rocket-Team/website-v2/issues/292) |
+| outreach | The featured summit, published, with its editions | `outreach_summit_versions` version `published` | [#287](https://github.com/PoliTo-Rocket-Team/website-v2/issues/287), [#289](https://github.com/PoliTo-Rocket-Team/website-v2/issues/289) |
 
-The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The draft partner borrows the Team's own mark as a stand-in logo, since the seed uploads no file. The `audit` module runs last and leaves `logs` empty.
+The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The draft partner borrows the Team's own mark as a stand-in logo, since the seed uploads no file. The Outreach seed starts from the posts, tags and summit the import migration carries in; post 14 is a seeded post whose channel links point at `example.com`, with the warm stand-in photo a preview shows for an upload as its cover. The `audit` module runs last and leaves `logs` empty.
 
 ## Connect previews to the preview database branch
 

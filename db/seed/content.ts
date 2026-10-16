@@ -8,6 +8,6 @@ import { versionRows, type ContentItem, type VersionKind } from "@/lib/content/v
 /** One stored version of one item. */
 export type ContentVersionRow<T> = { readonly itemId: number; readonly kind: VersionKind; readonly content: T };
 
-export function contentVersionRows<T>(items: readonly ContentItem<T>[]): ContentVersionRow<T>[] {
+export function contentVersionRows<T extends D, D = T>(items: readonly ContentItem<T, D>[]): ContentVersionRow<D>[] {
   return items.flatMap((item) => versionRows(item.version).map(({ kind, content }) => ({ itemId: item.id, kind, content })));
 }
