@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Award, Instagram, Linkedin } from "lucide-react";
+import { ArrowUpRight, Award } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import { CopyText } from "@/components/project-page/parts";
 import {
@@ -11,7 +11,16 @@ import {
   shortMonthYear,
   slugOf,
 } from "@/lib/outreach";
-import type { BodyBlock, Channel, ChannelName, OutreachPhoto, OutreachPost } from "@/lib/outreach-types";
+import {
+  CHANNEL_LABELS,
+  type BodyBlock,
+  type Channel,
+  type ChannelName,
+  type OutreachPhoto,
+  type OutreachPost,
+  type PostView,
+} from "@/lib/outreach-types";
+import { CHANNEL_ICONS } from "./channel-icons";
 import { Photo } from "./photo";
 
 // Boards 33 and 33m: one outreach post, Medium-style. Everything shares one
@@ -34,7 +43,7 @@ export type PostFrame = (part: PostPart, node: ReactNode) => ReactNode;
 
 const bare: PostFrame = (_, node) => node;
 
-export function PostHeader({ post, frame = bare }: { post: OutreachPost; frame?: PostFrame }) {
+export function PostHeader({ post, frame = bare }: { post: PostView; frame?: PostFrame }) {
   const date = longDate(post.date);
   const minutes = readingMinutes(post.body);
   const dot = <span aria-hidden className="text-dim">·</span>;
@@ -113,10 +122,15 @@ function Block({ block }: { block: BodyBlock }) {
   }
 }
 
-const platform: Record<ChannelName, { label: string; Icon: typeof Instagram; account: string }> = {
-  instagram: { label: "Instagram", Icon: Instagram, account: "politorocketteam" },
-  linkedin: { label: "LinkedIn", Icon: Linkedin, account: "PoliTo Rocket Team" },
-};
+/** Our account's name on each channel: the Instagram handle, the team's name elsewhere. */
+const ourAccount = (name: ChannelName) => (name === "instagram" ? "politorocketteam" : "PoliTo Rocket Team");
+
+/** What the card calls the channel, and its link out ("View on Instagram"; a plain link has no platform). */
+function platformOf(name: ChannelName): { label: string; link: string } {
+  return name === "other"
+    ? { label: "Link", link: "Open the original" }
+    : { label: CHANNEL_LABELS[name], link: `View on ${CHANNEL_LABELS[name]}` };
+}
 
 function initialsOf(name: string): string {
   return name
@@ -132,8 +146,10 @@ function initialsOf(name: string): string {
  * account, the platform, the photo on Instagram, the caption's start and a
  * link out.
  */
-function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Channel; post: OutreachPost }) {
-  const { label, Icon, account } = platform[name];
+function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Channel; post: PostView }) {
+  const { label, link } = platformOf(name);
+  const Icon = CHANNEL_ICONS[name];
+  const account = ourAccount(name);
   const ours = channel.account === undefined;
   return (
     <article className="glass-card overflow-hidden rounded-xl">
@@ -168,7 +184,7 @@ function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Chan
           rel="noopener noreferrer"
           className="group mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-prt-text transition-colors duration-300 ease-out hover:text-accent"
         >
-          View on {label}
+          {link}
           <ArrowUpRight aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
         </a>
       </div>
@@ -197,7 +213,7 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
   );
 }
 
-export function PostBody({ post, frame = bare }: { post: OutreachPost; frame?: PostFrame }) {
+export function PostBody({ post, frame = bare }: { post: PostView; frame?: PostFrame }) {
   const channels = channelsOf(post);
   const more = post.photos.slice(1);
   return (

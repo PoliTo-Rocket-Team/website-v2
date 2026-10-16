@@ -14,6 +14,8 @@ import type { Partner, PartnerTier } from "@/lib/partners";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { PARTNER_FIELDS, type PartnerFields } from "@/lib/partners-fields";
 import type { FaqFields, FaqVersion } from "@/lib/faq/faq";
+import { readPostFields } from "@/lib/outreach-post-fields";
+import type { OutreachPost, OutreachTag } from "@/lib/outreach-types";
 
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
@@ -172,6 +174,39 @@ export async function reorderFaqs(faqIds: readonly number[]): Promise<WriteResul
   if (!Array.isArray(faqIds) || !faqIds.every(Number.isSafeInteger)) return refused("Unknown questions.");
   const result = await write("faq", (data) => data.faqs.reorder(faqIds));
   if (result.ok) revalidatePath("/apply");
+  return result;
+}
+
+// The Edit post panel (boards 74c, 74d and 74h, issue #290). The site-content
+// gate inside the outreach editor (lib/outreach-editor.ts) decides who may
+// write, as it decides who opens the post page. The writes refresh the cached
+// published read themselves; the pages that show posts render again.
+
+async function contentWrite<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
+  const opening = await openDashboard();
+  return opening.kind === "open" ? run(opening.data) : refused("Sign in again to make changes.");
+}
+
+function refreshPublicOutreach(): void {
+  revalidatePath("/outreach", "layout");
+  revalidatePath("/");
+}
+
+/** Save draft or Publish on a post, with the panel's fields. */
+export async function saveOutreachPost(postId: number, step: PublishStep, input: unknown): Promise<WriteResult<ContentItem<OutreachPost>>> {
+  if (!Number.isSafeInteger(postId)) return refused("Unknown post.");
+  if (!isPublishStep(step)) return refused("Save a draft or publish.");
+  const fields = readPostFields(input);
+  if (fields === null) return refused("Reload the page and try again.");
+  const result = await contentWrite((data) => data.outreach.savePost(postId, step, fields));
+  if (result.ok) refreshPublicOutreach();
+  return result;
+}
+
+/** A tag typed at the end of the tag list (Enter adds it); every post can pick it from then on. */
+export async function addOutreachTag(name: string): Promise<WriteResult<OutreachTag>> {
+  const result = await contentWrite((data) => data.outreach.addTag(String(name ?? "")));
+  if (result.ok) refreshPublicOutreach();
   return result;
 }
 

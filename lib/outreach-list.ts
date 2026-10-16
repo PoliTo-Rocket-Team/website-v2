@@ -1,5 +1,5 @@
 import { editorVersion, statusOf, type ContentItem, type ContentStatus } from "./content/versioned";
-import type { ChannelName, IsoDate, OutreachPost } from "./outreach-types";
+import type { IsoDate, MainChannelName, OutreachPost } from "./outreach-types";
 
 // The dashboard's Outreach list (board 74, issue #289): every post, newest
 // first, as the editor shows it (its draft when it has one), with the tag and
@@ -56,7 +56,7 @@ export function isLive(status: ContentStatus): boolean {
 }
 
 /** The channels the post was shared on, Instagram first (the table's "Shared on"). */
-export function sharedOn(post: OutreachPost): ChannelName[] {
+export function sharedOn(post: OutreachPost): MainChannelName[] {
   return (["instagram", "linkedin"] as const).filter((name) => post.channels[name] !== undefined);
 }
 

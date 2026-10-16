@@ -29,7 +29,7 @@ import {
   type SummitFieldErrors,
   type SummitFields,
 } from "@/lib/outreach-summit-fields";
-import type { ChannelName, OutreachPhoto, OutreachTag } from "@/lib/outreach-types";
+import type { MainChannelName, OutreachPhoto, OutreachTag } from "@/lib/outreach-types";
 import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS as FOCUS, PublishFooter, StatusPill, TextField } from "./content-parts";
 import { ColumnFilterMenu, FilterMenu } from "./controls";
@@ -181,7 +181,7 @@ function SummitCard({ summit, onEdit }: { summit: SummitVersions; onEdit: () => 
   );
 }
 
-const CHANNEL_ICONS: Readonly<Record<ChannelName, { Icon: typeof Instagram; label: string }>> = {
+const CHANNEL_ICONS: Readonly<Record<MainChannelName, { Icon: typeof Instagram; label: string }>> = {
   instagram: { Icon: Instagram, label: "Instagram" },
   linkedin: { Icon: Linkedin, label: "LinkedIn" },
 };
