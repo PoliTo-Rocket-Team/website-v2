@@ -25,10 +25,10 @@ An admin column comes later. **Planned**, no issue yet.
 | My applications | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application |
 | Overview | Yes, only with at least one application | Yes | Yes | Yes | Yes |
 | Team tree | No | Yes | Yes | Yes | Yes |
-| Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch |
-| Applications | No | No | Own divisions | All divisions in the department, under division tabs | All |
-| Members | No | No | Their divisions | Their divisions | The whole team |
-| Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
+| Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
+| Applications | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
+| Members | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | The IT lead only |
@@ -53,6 +53,38 @@ An admin column comes later. **Planned**, no issue yet.
     "4. Orders").
   - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
     the page itself is **Planned**, so no sidebar lists it yet.
+- **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
+  the operations lead and the IT lead, but some of their pages differ. The operations lead and the
+  IT lead keep boards 40 and 46.
+  - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
+    (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
+    is Alumni. Each content page adds its own row there.
+  - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
+    the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
+    the orders waiting for a decision (one row, naming the oldest, with Review), the approved
+    orders not ordered yet (one row, naming up to three items, with Open), and each open position
+    that closes within 7 days, soonest first. Stored notices follow. The orders rows show counts
+    and items, never a price. A Departments panel lists each department with its head, its
+    divisions and people, and its new applications and open positions. Recent activity has no
+    Activity log link.
+  - **Gap:** positions keep no closing day in the database, so no position reads as closing soon
+    there. Only the dummy data sets one.
+  - **Members, List view (board 73):** the whole team, with an "All departments" select, an
+    "All divisions" select (the chosen department's divisions), and a search over name, email and
+    phone. Heads and leads come first: the team leader, the board seats, department heads,
+    division leads, then members, by name within each. Each row shows the member, their division
+    codes (a head shows the codes of their department's divisions) and their role. There is no
+    Phone or Discord column; those stay in the member panel, which opens read only from a row.
+    There is no New division, New department or Closed divisions control here. Pages of eight.
+  - **Members, Table view (boards 73b, 73c):** every member field: name, divisions, role, PRT
+    email, phone, Discord, PoliTo ID, program, level, from, date of birth, gender and NDA. The
+    name column stays pinned; the table fills the screen and scrolls both ways, with no pages.
+    Phone, date of birth and gender stay blurred until hover. Divisions, Role, Program, Level,
+    From, Gender and NDA each have a filter: a search, a tick and a count per value, Clear, and
+    "N selected". Within a column any ticked value matches; across columns all must.
+  - **Positions and Applications:** as the operations lead's, with "All departments" and "All
+    divisions" selects, as on the department head's boards 63 and 64. New position lists every
+    division of the team.
 - **Overview** is for members, division leads, department heads and the operations lead, and for
   a non-member with at least one application, withdrawn ones included (boards 50e and 50e-m,
   #211). A non-member whose only applications are withdrawn stays on the Overview: the "Your
@@ -424,9 +456,10 @@ and 67m).
 ## 5. Data and testing
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
-  developer" switch, with five people: non-member, member, division lead, department head and
-  operations lead. The operations lead there sits in the operations lead's seat, so they have
-  full access and do not decide orders.
+  developer" switch, with six people: non-member, member, division lead, department head,
+  operations lead and team leader. The operations lead there sits in the operations lead's seat,
+  so they have full access and do not decide orders. The team leader sits in the team leader's
+  seat and sees boards 72 to 73c (#252).
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and

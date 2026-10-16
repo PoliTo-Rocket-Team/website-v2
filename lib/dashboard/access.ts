@@ -8,9 +8,12 @@ import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } fro
 // `seat` is reached by that full-access seat alone (issue #238). The
 // `operations-lead` kind is full access: the team leader, the operations lead
 // and the IT lead, or an admin or org scope row (./viewer.ts), so it reaches
-// every page of the team. Site content is not designed yet, so it has no row.
+// every page of the team. A row's `seatPlace` moves a page to another group
+// for one full-access seat: the team leader's sidebar has a Content group
+// (board 72, issue #252), where Alumni sits, and each content page adds its
+// own row there.
 
-export const NAV_GROUPS = ["main", "recruitment", "team", "my-department", "my-division"] as const;
+export const NAV_GROUPS = ["main", "recruitment", "team", "content", "my-department", "my-division"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
 /** The small heading over each group; the main group has none. */
@@ -18,6 +21,7 @@ export const NAV_GROUP_LABELS: Readonly<Record<NavGroup, string | null>> = {
   main: null,
   recruitment: "Recruitment",
   team: "Team",
+  content: "Content",
   "my-department": "My department",
   "my-division": "My division",
 };
@@ -43,6 +47,8 @@ type PageRow = {
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
   /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
   readonly seat?: FullAccessSeat;
+  /** Where the page shows for a full-access seat whose sidebar places it apart from the rest of full access. */
+  readonly seatPlace?: Readonly<Partial<Record<FullAccessSeat, NavPlace>>>;
 };
 
 /** Rows in sidebar order within each group. */
@@ -104,6 +110,8 @@ export const DASHBOARD_PAGES = [
     // A division lead or department head gets nothing from their role here.
     reach: { "operations-lead": "team" },
     siteContent: "team",
+    // The team leader's sidebar groups it under Content (board 72, issue #252).
+    seatPlace: { "team-leader": "content" },
   },
   {
     key: "division-access",
@@ -177,8 +185,11 @@ export type MenuPage = {
 
 /** Where `page` shows for `viewer`; undefined when the viewer does not reach it. */
 function placeOf(page: PageRow, viewer: ViewerStanding): NavPlace | undefined {
-  if (page.seat !== undefined && seatOf(viewer) !== page.seat) return undefined;
-  return page.reach[viewer.kind] ?? (viewer.siteContent ? page.siteContent : undefined);
+  const seat = seatOf(viewer);
+  if (page.seat !== undefined && seat !== page.seat) return undefined;
+  const reached = page.reach[viewer.kind];
+  if (reached === undefined) return viewer.siteContent ? page.siteContent : undefined;
+  return (seat === null ? undefined : page.seatPlace?.[seat]) ?? reached;
 }
 
 function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean {

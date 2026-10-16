@@ -1,7 +1,7 @@
 import { dummyDataOn, type DummyModeEnv } from "@/lib/dummy-data/mode";
 import { NO_OWN_CHANGES, ownApplicationsStartOf, parseOwnChanges, type OwnApplicationsStart, type OwnChanges } from "@/lib/dummy-data/own";
 import { dummyRecruitmentOf } from "@/lib/dummy-data/recruitment";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import type { TestView } from "@/lib/dashboard/viewer";
 import { testDeveloperViewer } from "@/lib/test-developer";
 import type { ApplyData } from "./data";
 import type { Recruitment } from "./positions";
@@ -24,7 +24,7 @@ export type ApplyRequest = {
 export type ApplySides = {
   database(): ApplyData;
   dummy(
-    viewer: ViewerKind | null,
+    viewer: TestView | null,
     openSelector: string | null,
     recruitment: Recruitment,
     own: OwnChanges,

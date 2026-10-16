@@ -240,7 +240,7 @@ export function headcountLine(page: Pick<DivisionMembers, "people" | "waiting">)
 }
 
 /** The page's search (board 61e: "Search name, email, phone"): every word in the name, an email or the phone. */
-export function matchesPerson(person: DivisionPerson, query: string): boolean {
+export function matchesPerson(person: Pick<DivisionPerson, "name" | "signInEmail" | "details">, query: string): boolean {
   const digits = person.details.phone.replace(/\D/g, "");
   const typed = query.replace(/\D/g, "");
   if (typed.length >= 3 && digits.includes(typed)) return true;

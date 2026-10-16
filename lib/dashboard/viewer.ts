@@ -65,17 +65,42 @@ export type ViewerStanding =
   | { readonly kind: Exclude<ViewerKind, "non-member" | "operations-lead">; readonly siteContent: boolean };
 
 /**
- * A test developer holds no scope rows, so their standing is their kind
- * alone; the operations-lead test developer sits in the operations lead's seat.
+ * Who a test developer looks as (lib/test-developer.ts): one of the viewer
+ * kinds, or the team leader, the one full-access seat whose pages differ from
+ * the operations lead's (boards 72 to 73c, issue #252).
  */
-export function testDeveloperStanding(kind: ViewerKind): ViewerStanding {
-  switch (kind) {
+export const TEST_VIEWS = ["team-leader", ...VIEWER_KINDS] as const;
+
+export type TestView = (typeof TEST_VIEWS)[number];
+
+export const TEST_VIEW_LABELS: Readonly<Record<TestView, string>> = {
+  "team-leader": "Team leader",
+  ...VIEWER_KIND_LABELS,
+};
+
+export function isTestView(value: unknown): value is TestView {
+  return typeof value === "string" && (TEST_VIEWS as readonly string[]).includes(value);
+}
+
+/** The viewer kind a test view is: the team leader is full access, the `operations-lead` kind. */
+export function kindOfView(view: TestView): ViewerKind {
+  return view === "team-leader" ? "operations-lead" : view;
+}
+
+/**
+ * A test developer holds no scope rows, so their standing is their view
+ * alone: the operations-lead test developer sits in the operations lead's
+ * seat, the team-leader one in the team leader's.
+ */
+export function testDeveloperStanding(view: TestView): ViewerStanding {
+  switch (view) {
     case "non-member":
-      return { kind, siteContent: false };
+      return { kind: view, siteContent: false };
     case "operations-lead":
-      return { kind, seat: "operations-lead", siteContent: false };
+    case "team-leader":
+      return { kind: "operations-lead", seat: view, siteContent: false };
     default:
-      return { kind, siteContent: false };
+      return { kind: view, siteContent: false };
   }
 }
 
@@ -99,6 +124,11 @@ export function seatOf(viewer: ViewerStanding): FullAccessSeat | null {
 /** Whether the viewer is the team leader: the one who decides orders by default (`decideRightOf`, ./orders.ts). */
 export function isTeamLeader(viewer: ViewerStanding): boolean {
   return seatOf(viewer) === "team-leader";
+}
+
+/** The test view a standing reads as: the team leader's seat, else the kind. "View as" ticks it. */
+export function testViewOf(viewer: ViewerStanding): TestView {
+  return isTeamLeader(viewer) ? "team-leader" : viewer.kind;
 }
 
 export type DashboardViewer = ViewerStanding & {

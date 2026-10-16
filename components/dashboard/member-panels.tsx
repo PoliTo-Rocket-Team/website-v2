@@ -118,17 +118,20 @@ function Fact({
   );
 }
 
+/** What the member panel shows of someone: a division page's person, or one on the team leader's whole-team page (issue #252). */
+export type PanelPerson = Pick<DivisionPerson, "name" | "signInEmail" | "photoUrl" | "since" | "divisions" | "details" | "nda" | "self">;
+
 /** The member panel (board 61f): divisions, contact, studies, personal and the NDA. Close, and Edit details. */
-export function PersonDrawer({
+export function PersonDrawer<P extends PanelPerson>({
   person,
   editable,
   onClose,
   onEdit,
 }: {
-  person: DivisionPerson | null;
+  person: P | null;
   editable: boolean;
   onClose: () => void;
-  onEdit: (person: DivisionPerson) => void;
+  onEdit: (person: P) => void;
 }) {
   // The panel keeps showing the last person while it closes.
   const [shown, setShown] = useState(person);

@@ -1,6 +1,6 @@
 import { NO_DETAILS, type YourDetails } from "@/lib/dashboard/details";
 import type { InterviewSlot } from "@/lib/dashboard/my-applications";
-import type { ViewerKind } from "@/lib/dashboard/viewer";
+import type { TestView } from "@/lib/dashboard/viewer";
 import type { OwnApplicationsStart, OwnChanges } from "./own";
 import { applicant, personFor } from "./team";
 
@@ -24,7 +24,7 @@ export type DummyOwnStatus =
 
 export type DummyOwnApplication = {
   readonly id: number;
-  readonly viewer: ViewerKind;
+  readonly viewer: TestView;
   readonly positionId: number;
   readonly sent: string;
   readonly status: DummyOwnStatus;
@@ -138,7 +138,7 @@ function isOpenStatus(status: DummyOwnStatus): boolean {
  * start is the sample set's open applications, each already withdrawn: the
  * viewer has applied, and nothing they sent is still open (issue #227).
  */
-export function ownApplicationsOf(viewer: ViewerKind, start: OwnApplicationsStart): readonly DummyOwnApplication[] {
+export function ownApplicationsOf(viewer: TestView, start: OwnApplicationsStart): readonly DummyOwnApplication[] {
   const sample: readonly DummyOwnApplication[] = ownApplications.filter((a) => a.viewer === viewer);
   switch (start) {
     case "sample":
@@ -161,7 +161,7 @@ export function isOpenOwn(application: DummyOwnApplication, changes: OwnChanges)
 }
 
 /** The details each viewer starts with, before they save any. */
-const startingDetails: Readonly<Record<ViewerKind, YourDetails>> = {
+const startingDetails: Readonly<Record<TestView, YourDetails>> = {
   "non-member": {
     firstName: applicant.firstName,
     lastName: applicant.lastName,
@@ -187,9 +187,10 @@ const startingDetails: Readonly<Record<ViewerKind, YourDetails>> = {
   "department-head": { ...NO_DETAILS, firstName: "Chiara", lastName: "Rinaldi" },
   "division-lead": { ...NO_DETAILS, firstName: "Marco", lastName: "Bianchi" },
   "operations-lead": { ...NO_DETAILS, firstName: "Giulia", lastName: "Rossi" },
+  "team-leader": { ...NO_DETAILS, firstName: "Alessandro", lastName: "Greco" },
 };
 
 /** The viewer's details: as saved, else as they start. */
-export function dummyDetails(viewer: ViewerKind, changes: OwnChanges): YourDetails {
+export function dummyDetails(viewer: TestView, changes: OwnChanges): YourDetails {
   return changes.details[viewer] ?? startingDetails[viewer];
 }
