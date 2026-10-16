@@ -66,6 +66,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   blocks,
   startHere,
   onEdit,
+  onDeviceChange,
   children,
   panel,
 }: {
@@ -96,6 +97,8 @@ export function EditShell<Id extends string, Section extends string, Page extend
   /** A block outlined from the start with a "Start here" chip, as a new item opens (board 74f). */
   startHere?: Id;
   onEdit: (section: Section) => void;
+  /** Told when Desktop | Phone changes, for a panel that edits the phone's copy in Phone (board 75c). */
+  onDeviceChange?: (device: EditDevice) => void;
   /** The page, its blocks marked with EditableBlock. */
   children: ReactNode;
   /** The content type's edit panel, drawn right of the page below the bar while open (board 74c); it sets its own width. */
@@ -104,7 +107,11 @@ export function EditShell<Id extends string, Section extends string, Page extend
   const [device, setDevice] = useState<EditDevice>("desktop");
   const chips = useMemo(() => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null }), [blocks, onEdit, startHere]);
   const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
-  const devices = <DeviceToggle device={device} onChange={setDevice} />;
+  const changeDevice = (next: EditDevice) => {
+    setDevice(next);
+    onDeviceChange?.(next);
+  };
+  const devices = <DeviceToggle device={device} onChange={changeDevice} />;
   const phone = device === "phone";
   const ready = checklistDone(publishChecklist);
   const checklistId = useId();

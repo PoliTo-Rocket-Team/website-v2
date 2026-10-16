@@ -14,6 +14,8 @@ import { NO_CONTENT_EDITS_STORE } from "./content-edits";
 import { dummyFaqNow, dummyFaqStore, type DummyFaqEditsStore } from "./faqs";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { dummyOutreachStore, dummyPhotoFiles, NO_OUTREACH_EDITS_STORE, type DummyOutreachEditsStore } from "./outreach";
+import { projectEditor } from "@/lib/project-content/editor";
+import { dummyProjectStore, type DummyProjectEditsStore } from "./projects";
 import {
   checklistProgress,
   divisionShortName,
@@ -913,6 +915,7 @@ export function dummyDashboardData(
   partnerEdits: DummyPartnerEditsStore = NO_PARTNER_EDITS_STORE,
   faqEdits: DummyFaqEditsStore = NO_CONTENT_EDITS_STORE,
   outreachEdits: DummyOutreachEditsStore = NO_OUTREACH_EDITS_STORE,
+  projectEdits: DummyProjectEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
   if (viewer !== "alumni" && viewer !== "non-member" && teamEditsStore.current.movedToAlumni[personFor[viewer].id] !== undefined) {
@@ -1091,6 +1094,7 @@ export function dummyDashboardData(
     // Seen from the dummy team's moment, so a question saved here reads "Today".
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
     outreach: outreachEditor(dummyViewer(viewer, holders), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
+    projects: projectEditor(dummyViewer(viewer, holders), dummyProjectStore(projectEdits)),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {

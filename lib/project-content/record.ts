@@ -12,6 +12,7 @@ import type {
   Versions,
 } from "@/lib/project-pages/types";
 import { isPageSlug, type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
+import { editorVersion, publicVersion, type ContentItem } from "@/lib/content/versioned";
 import type { OwnRocketModel } from "@/lib/rocket-model";
 
 // One project as the content store keeps it (issue #295): everything the
@@ -259,4 +260,30 @@ export type HomeCardView = HomeCard & { num: string; name: string; texture: stri
 
 export function homeCardOf(record: ProjectRecord, position: number): HomeCardView {
   return { ...record.card, num: pad(position + 1), name: record.name, texture: record.texture };
+}
+
+/**
+ * Where a stored project sits among the published ones, as its page draws
+ * it: its number, the project its next-project card shows (the last loops
+ * back to the first), and the project whose card shows it. A project not
+ * published yet is counted at its place in the site order, as it will show
+ * once published.
+ */
+export type ProjectPlace = {
+  readonly position: number;
+  readonly next: { readonly record: ProjectRecord; readonly position: number };
+  readonly previous: ProjectRecord;
+};
+
+export function placeOf(items: readonly ContentItem<ProjectRecord>[], id: number): ProjectPlace | null {
+  const item = items.find((i) => i.id === id);
+  if (item === undefined) return null;
+  const ordered = [...items].sort((a, b) => a.siteOrder - b.siteOrder);
+  const shown = ordered.filter((i) => publicVersion(i.version) !== null || i.id === id);
+  const position = shown.findIndex((i) => i.id === id);
+  const at = (p: number) => {
+    const found = shown[(p + shown.length) % shown.length];
+    return found.id === id ? editorVersion(found.version) : publicVersion(found.version)!;
+  };
+  return { position, next: { record: at(position + 1), position: (position + 1) % shown.length }, previous: at(position - 1) };
 }

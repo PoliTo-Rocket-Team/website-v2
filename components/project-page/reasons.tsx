@@ -10,7 +10,7 @@ export function ProjectReasons({ num, reasons }: { num: string; reasons: Reasons
         <SectionHead num={num} label={reasons.eyebrow} title={reasons.title} />
         <ol className="mt-6 md:mt-12 md:grid md:grid-cols-3 md:gap-12">
           {reasons.items.map((r, i) => (
-            <li key={r.title} className="border-t border-hairline py-5 md:pb-0 md:pt-6">
+            <li key={i} className="border-t border-hairline py-5 md:pb-0 md:pt-6">
               <h3 className="flex items-baseline gap-3 text-[18px] font-bold tracking-[-0.01em] md:block md:text-[24px]">
                 <span className="font-mono text-[10px] font-normal tracking-normal text-accent md:block md:text-[11px]">
                   {twoDigits(i + 1)}
