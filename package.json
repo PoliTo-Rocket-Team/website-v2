@@ -4,7 +4,7 @@
     "prepare": "sh tools/install-git-hooks.sh",
     "dev": "next dev --webpack",
     "dev:turbo": "next dev --turbopack",
-    "build": "next build --webpack",
+    "build": "tsx db/preview-build.ts && next build --webpack",
     "build:turbo": "next build",
     "start": "next start",
     "preview": "next build && next start",

@@ -13,9 +13,13 @@ test("production never reads dummy data, with or without a database", () => {
   assert.equal(dummyDataOn({ NODE_ENV: "production", DATABASE_URL: DB }), false, "local production build, database");
 });
 
-test("previews always read dummy data; next dev only with no database", () => {
+test("a preview with its seeded database reads the database; a preview with none reads dummy data", () => {
+  assert.equal(dummyDataOn({ NODE_ENV: "production", VERCEL_ENV: "preview", DATABASE_URL: DB }), false);
   assert.equal(dummyDataOn({ NODE_ENV: "production", VERCEL_ENV: "preview" }), true);
-  assert.equal(dummyDataOn({ NODE_ENV: "production", VERCEL_ENV: "preview", DATABASE_URL: DB }), true);
+  assert.equal(dummyDataOn({ NODE_ENV: "production", VERCEL_ENV: "preview", DATABASE_URL: "" }), true);
+});
+
+test("next dev reads dummy data only with no database", () => {
   assert.equal(dummyDataOn({ NODE_ENV: "development" }), true);
   assert.equal(dummyDataOn({ NODE_ENV: "development", DATABASE_URL: DB }), false);
   assert.equal(dummyDataOn({ NODE_ENV: "development", VERCEL_ENV: "development" }), false);

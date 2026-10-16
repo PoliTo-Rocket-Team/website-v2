@@ -2,22 +2,11 @@
 // `pnpm db:seed --check` runs the guard alone and writes nothing.
 
 import "dotenv/config";
-import postgres from "postgres";
 import { neonBranchLookup } from "@/lib/seed/neon-branch";
-import { runSeed, type SeedConnection } from "@/lib/seed/runner";
+import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
+import { seedConnection } from "./seed/connection";
 import { SEED_MODULES } from "./seed/registry";
-import type { SeedTx } from "./seed/tx";
-
-function connect(connectionString: string): SeedConnection<SeedTx> {
-  const client = postgres(connectionString, { max: 1 });
-  return {
-    async transaction(work) {
-      await client.begin(work);
-    },
-    close: () => client.end(),
-  };
-}
 
 async function main() {
   const verdict = await guardSeedTarget(process.env.DATABASE_URL, neonBranchLookup({
@@ -35,7 +24,7 @@ async function main() {
     console.log(`Seed target allowed: ${kind} ${label}`);
     return;
   }
-  const report = await runSeed(verdict.target, SEED_MODULES, connect);
+  const report = await runSeed(verdict.target, SEED_MODULES, seedConnection);
   console.log(`Seeded ${kind} ${label}: ${report.modules.join(", ")}`);
 }
 

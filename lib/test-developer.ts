@@ -1,13 +1,17 @@
 import { callbackPath } from "@/lib/auth-callback";
-import { isTestViewer, type TestViewer } from "@/lib/dashboard/viewer";
+import { isTestViewer, type TestViewer, type ViewerSession } from "@/lib/dashboard/viewer";
+import { dummyDataOn, processDummyModeEnv, type DummyModeEnv } from "@/lib/dummy-data/mode";
 import { ownApplicationsStartOf, type OwnApplicationsStart } from "@/lib/dummy-data/own";
+import { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
 
 // Test developer sign-in (issue #141). On previews and under `next dev`, a
 // person or an agent can sign in as a test developer: no Google, no account
 // and no database session, only a cookie naming which viewer they look as
 // (team leader, operations lead, department head, division lead, member,
-// alumni, non-member). The dashboard then reads the dummy data in
-// lib/dummy-data/ instead of the database.
+// alumni, non-member). Where the pages read the dummy arrays
+// (lib/dummy-data/mode.ts), the dashboard reads them too. Where they read a
+// database, as on a preview with its seeded database (issue #307), the
+// test developer is read as that viewer's seeded person and may not write.
 //
 // Production never offers it and never accepts it: every path asks
 // `testDeveloperOn()` first, at request time, so a cookie set elsewhere is
@@ -69,6 +73,49 @@ export function testDeveloperViewer(
 ): TestViewer | null {
   if (!testDeveloperOn(env)) return null;
   return isTestViewer(cookieValue) ? cookieValue : null;
+}
+
+/** What the stand-in gate reads: the test developer gate's variables and the database the pages read. */
+export type StandInEnv = GateEnv & DummyModeEnv;
+
+function processStandInEnv(): StandInEnv {
+  return processDummyModeEnv();
+}
+
+/**
+ * Who a test developer is read as where the pages read a database (issue
+ * #307, ADR 0016): the seeded person of the viewer the cookie names
+ * (lib/test-viewer-people.ts). Null where the gate is off, where the pages
+ * read the dummy arrays (the dummy dashboard serves the viewer there), or
+ * when the cookie names no viewer. A stand-in reads; it never writes
+ * (lib/db-audit.ts refuses its writes).
+ */
+export function testDeveloperStandIn(
+  cookieValue: string | null | undefined,
+  env: StandInEnv = processStandInEnv(),
+): { readonly viewer: TestViewer; readonly userId: string } | null {
+  if (dummyDataOn(env)) return null;
+  const viewer = testDeveloperViewer(cookieValue, env);
+  return viewer === null ? null : { viewer, userId: TEST_VIEWER_PEOPLE[viewer] };
+}
+
+/** A write a test developer tried on a database: refused, because their changes never reach one (ADR 0016). */
+export class TestDeveloperWriteRefused extends Error {
+  constructor() {
+    super("A test developer's changes never reach the database; sign in with an account to change it.");
+    this.name = "TestDeveloperWriteRefused";
+  }
+}
+
+/**
+ * The user id an audited write is logged under (lib/db-audit.ts): the
+ * account's, or none when nobody is signed in. A test developer read as a
+ * seeded person is refused before any write is sent.
+ */
+export function auditWriterOf(user: { readonly session: ViewerSession; readonly id: string } | null): string | null {
+  if (user === null) return null;
+  if (user.session === "test-developer") throw new TestDeveloperWriteRefused();
+  return user.id;
 }
 
 /**

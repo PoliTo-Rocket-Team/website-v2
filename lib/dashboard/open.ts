@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { getSessionCookie } from "better-auth/cookies";
 import { dummyDashboardData } from "@/lib/dummy-data";
+import { dummyDataOn } from "@/lib/dummy-data/mode";
 import { parseEdits, serializeEdits, type TeamEditsStore } from "@/lib/dummy-data/edits";
 import { ownApplicationsStartOf, parseOwnChanges, serializeOwnChanges, type OwnChangesStore } from "@/lib/dummy-data/own";
 import {
@@ -32,17 +33,18 @@ import { openDatabaseDashboard } from "./database";
 import { dashboardOpening, type DashboardOpening } from "./opening";
 
 /**
- * How this request opens the dashboard: the dummy arrays for a test
- * developer (previews and `next dev` only), with the recruitment switch and
- * the changes they made laid over them, else the signed-in account's
- * database rows, else signed out or an account that did not resolve
- * (./opening.ts). Cached per request, so the layout and the page share one
- * answer.
+ * How this request opens the dashboard: where the pages read the dummy
+ * arrays, a test developer (previews and `next dev` only) gets those, with
+ * the recruitment switch and the changes they made laid over them. Else the
+ * signed-in person's database rows: an account's, or the seeded person a test
+ * developer is read as (issue #307, lib/current-user.ts). Else signed out or
+ * an account that did not resolve (./opening.ts). Cached per request, so the
+ * layout and the page share one answer.
  */
 export const openDashboard = cache(async (): Promise<DashboardOpening> => {
   const jar = await cookies();
   const viewer = testDeveloperViewer(jar.get(TEST_DEVELOPER_COOKIE)?.value);
-  if (viewer !== null) {
+  if (viewer !== null && dummyDataOn()) {
     return dashboardOpening(
       dummyDashboardData(
         viewer,
@@ -58,8 +60,10 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
       true,
     );
   }
-  // A plain Headers: getSessionCookie cannot read Next's request headers.
-  const holdsSessionToken = getSessionCookie(new Headers(await headers())) !== null;
+  // A plain Headers: getSessionCookie cannot read Next's request headers. A
+  // test developer counts as holding one, so a seeded person who did not
+  // resolve is not sent to /login, which the proxy would send back.
+  const holdsSessionToken = viewer !== null || getSessionCookie(new Headers(await headers())) !== null;
   return dashboardOpening(await openDatabaseDashboard(), holdsSessionToken);
 });
 

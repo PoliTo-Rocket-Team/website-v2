@@ -96,6 +96,29 @@ test("a Neon target is refused unless its branch is read and is a preview branch
   );
 });
 
+test("the shared branch named preview passes only on a Vercel preview build", async () => {
+  const shared = { name: "preview", isDefault: false, isProtected: false };
+  const verdict = await guardSeedTarget(PREVIEW_URL, lookupOf(shared), { VERCEL_ENV: "preview" });
+  assert.ok(verdict.ok);
+  assert.equal(verdict.target.kind, "preview");
+  assert.equal(verdict.target.label, "preview");
+  for (const VERCEL_ENV of [undefined, "", "development"]) {
+    assert.equal(await refusal(PREVIEW_URL, lookupOf(shared), { VERCEL_ENV }), "unproven-preview", String(VERCEL_ENV));
+  }
+  assert.equal(await refusal(PREVIEW_URL, lookupOf(shared), { VERCEL_ENV: "production" }), "production");
+  // A name that only starts like it is not the shared branch.
+  assert.equal(
+    await refusal(PREVIEW_URL, lookupOf({ name: "preview-old", isDefault: false, isProtected: false }), { VERCEL_ENV: "preview" }),
+    "unproven-preview",
+  );
+});
+
+test("a shared branch that is production is refused even on a preview build", async () => {
+  const env = { VERCEL_ENV: "preview" };
+  assert.equal(await refusal(PREVIEW_URL, lookupOf({ name: "preview", isDefault: true, isProtected: false }), env), "production");
+  assert.equal(await refusal(PREVIEW_URL, lookupOf({ name: "preview", isDefault: false, isProtected: true }), env), "production");
+});
+
 test("no environment flag turns a refusal into a pass", async () => {
   for (const VERCEL_ENV of ["preview", "development", ""]) {
     assert.equal(await refusal("postgres://app@db.example.com/prt", neverLooked, { VERCEL_ENV }), "unclassifiable");

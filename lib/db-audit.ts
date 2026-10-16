@@ -1,9 +1,19 @@
 import { sql } from "drizzle-orm";
 import type { BatchItem, BatchResponse } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
-import { getCurrentUserId } from "@/lib/current-user";
+import { getCurrentUser } from "@/lib/current-user";
+import { auditWriterOf } from "@/lib/test-developer";
 
 export { getCurrentUserId } from "@/lib/current-user";
+
+/**
+ * Who the next write is logged under. Every signed-in write goes through
+ * this file, so this is where a test developer's write is refused before it
+ * is sent (lib/test-developer.ts, ADR 0016).
+ */
+async function writerId(): Promise<string | null> {
+  return auditWriterOf(await getCurrentUser());
+}
 
 type AuditDb = ReturnType<typeof getDb>;
 type AuditQuery<TResult> = BatchItem<"pg"> & Promise<TResult>;
@@ -17,8 +27,8 @@ function buildAuditSetupQuery(db: AuditDb, userId: string) {
 export async function runAuditQuery<TResult>(
   buildQuery: (db: AuditDb) => AuditQuery<TResult>,
 ): Promise<TResult> {
+  const userId = await writerId();
   const db = getDb();
-  const userId = await getCurrentUserId();
   const query = buildQuery(db);
 
   if (!userId) {
@@ -46,8 +56,8 @@ type AuditBatch = [BatchItem<"pg">, ...BatchItem<"pg">[]];
 export async function runAuditBatch<TBatch extends AuditBatch>(
   buildQueries: (db: AuditDb) => TBatch,
 ): Promise<BatchResponse<TBatch>> {
+  const userId = await writerId();
   const db = getDb();
-  const userId = await getCurrentUserId();
   if (!userId) {
     throw new Error("runAuditBatch needs a signed-in user");
   }

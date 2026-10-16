@@ -28,8 +28,20 @@ export type SeedRefusal =
   | { readonly reason: "unclassifiable"; readonly detail: string }
   | { readonly reason: "unproven-preview"; readonly detail: string };
 
-/** Neon's preview branches, as the Neon integration for Vercel names them. */
+/** Neon's per-deployment preview branches, as the Neon integration for Vercel names them. */
 export const PREVIEW_BRANCH_PREFIX = "preview/";
+
+/**
+ * The one schema-only branch every preview deployment shares (ADR 0016,
+ * issue #307). Only a preview build may seed it, since every preview reads it.
+ */
+export const SHARED_PREVIEW_BRANCH = "preview";
+
+/** Whether the guard may treat `name` as a preview branch, given the build it runs in. */
+function isPreviewBranch(name: string, env: GuardEnv): boolean {
+  if (name === SHARED_PREVIEW_BRANCH) return env.VERCEL_ENV === "preview";
+  return name.startsWith(PREVIEW_BRANCH_PREFIX);
+}
 
 const LOCAL_HOSTS = new Set(["localhost", "::1", "[::1]"]);
 // ep-<words>-<digits>[-pooler].<region>.<cloud>.neon.tech
@@ -93,7 +105,8 @@ function refuse(reason: SeedRefusal["reason"], detail: string): GuardVerdict {
 /**
  * Decides whether the seed may write to `connectionString`. A local host
  * passes. A Neon host passes only when Neon says its branch is not the
- * default branch, not protected, and is named `preview/…`. Everything else,
+ * default branch, not protected, and is named `preview/…`, or is the shared
+ * branch named `preview` and this is a Vercel preview build. Everything else,
  * including a branch that cannot be read, is refused.
  */
 export async function guardSeedTarget(
@@ -126,8 +139,11 @@ export async function guardSeedTarget(
       if (branch.isProtected) {
         return refuse("production", `${parsed.endpointId} is on the protected branch "${branch.name}"`);
       }
-      if (!branch.name.startsWith(PREVIEW_BRANCH_PREFIX)) {
-        return refuse("unproven-preview", `branch "${branch.name}" is not a ${PREVIEW_BRANCH_PREFIX}… branch`);
+      if (branch.name === SHARED_PREVIEW_BRANCH && !isPreviewBranch(branch.name, env)) {
+        return refuse("unproven-preview", `branch "${branch.name}" is seeded only by a Vercel preview build`);
+      }
+      if (!isPreviewBranch(branch.name, env)) {
+        return refuse("unproven-preview", `branch "${branch.name}" is neither "${SHARED_PREVIEW_BRANCH}" nor a ${PREVIEW_BRANCH_PREFIX}… branch`);
       }
       return { ok: true, target: ApprovedSeedTarget[approved](connectionString!, "preview", branch.name) };
     }

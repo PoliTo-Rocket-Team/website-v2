@@ -13,8 +13,8 @@
 
 import { betterAuthUsers, members, roles, users } from "@/db/schema";
 import { clearedUser, CLEARED_MEMBER } from "@/lib/dashboard/anonymize";
-import type { TestViewer } from "@/lib/dashboard/viewer";
 import { TESTERS } from "@/lib/dev-tester";
+import { SEEDED_RENAMED_ALUMNUS, SEEDED_TEAM_LEADER, seedUserId } from "@/lib/test-viewer-people";
 import { rowsOf, tableSeedModule, type SeedStatement } from "./rows";
 import { DEPARTMENT, DIVISION } from "./structure";
 
@@ -65,13 +65,8 @@ function applicant(userId: string, first: string, last: string, level: Level, pr
   return { userId, memberId: null, first, last, level, program, joined };
 }
 
-/** A user id made for this seed: `5eed0000-…-0000000000NN`, NN the member id. */
-function seedUserId(memberId: number): string {
-  return `5eed0000-0000-4000-8000-${String(memberId).padStart(12, "0")}`;
-}
-
 /** The team leader since 2025–26. */
-export const TEAM_LEADER = 1;
+export const TEAM_LEADER = SEEDED_TEAM_LEADER;
 /** Team leader 2023–24 and 2024–25, then an advisor of the whole team. */
 export const FORMER_TEAM_LEADER = 40;
 /** Founder and team leader 2021–22 and 2022–23. */
@@ -87,7 +82,7 @@ export const ANONYMIZED_ALUMNUS = 48;
 /** Left in 2025–26 and asked to be removed from the Alumni page. */
 export const REMOVED_ALUMNUS = 49;
 /** Left in 2024–25; an editor fixed the name the Alumni page shows. */
-export const RENAMED_ALUMNUS = 50;
+export const RENAMED_ALUMNUS = SEEDED_RENAMED_ALUMNUS;
 /** A member of two divisions at once. */
 export const TWO_DIVISION_MEMBER = 15;
 /** The IT lead's seat (issue #238). */
@@ -393,21 +388,8 @@ export const TESTER_UPDATED_AT_FIX: SeedStatement = {
   params: [],
 };
 
-/**
- * The seeded person each test viewer (lib/dashboard/viewer.ts) is, by user
- * id: the team leader, the alumnus whose name was fixed for the Alumni page
- * (every role ended, an Alumni entry kept; issue #317), and the local tester
- * of each other kind.
- */
-export const TEST_VIEWER_PEOPLE: Readonly<Record<TestViewer, string>> = {
-  "team-leader": seedUserId(TEAM_LEADER),
-  "operations-lead": TESTERS["operations-lead"].id,
-  "department-head": TESTERS["department-head"].id,
-  "division-lead": TESTERS["division-lead"].id,
-  member: TESTERS.member.id,
-  alumni: seedUserId(RENAMED_ALUMNUS),
-  "non-member": TESTERS.applicant.id,
-};
+/** The seeded person each test viewer is (lib/test-viewer-people.ts), which the app reads too. */
+export { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
 
 export const people = tableSeedModule({
   name: "people",
