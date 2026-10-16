@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { NavMenuAccount, useNavViewer } from "./nav-account";
+import { NavMenuSignIn, useNavViewer } from "./nav-account";
 import { RocketArrow } from "./rocket-arrow";
 
 export type NavPage = { href: string; label: string };
@@ -39,8 +39,9 @@ export function isCurrentNavLink(pathname: string | null, link: NavLink): boolea
 // the PRT mark and a close icon. Then the links at 28px with a RocketArrow,
 // the current page in accent. A link with pages under it (About) lists them
 // below it, indented, at 17px in grey. Apply is the last link (issue #119).
-// At the foot: the outlined "Sign in", with no email, or once signed in the
-// viewer's initials and name, linking to the dashboard (issue #157). It is the repo's Radix dialog
+// At the foot: the outlined "Sign in", with no email (issue #157). Signed in
+// there is no foot: the avatar beside the menu icon carries the account
+// (board 01b, issue #261). It is the repo's Radix dialog
 // (components/ui/dialog), so focus, Escape and scroll lock come with it; the
 // content is the primitive itself because the shadcn DialogContent is a
 // centred modal. It slides in and goes at once on close, so Radix unmounts it
@@ -127,11 +128,13 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
             </ul>
           </nav>
 
-          <div className="mt-auto">
-            <DialogClose asChild>
-              <NavMenuAccount viewer={viewer} />
-            </DialogClose>
-          </div>
+          {viewer === null && (
+            <div className="mt-auto">
+              <DialogClose asChild>
+                <NavMenuSignIn />
+              </DialogClose>
+            </div>
+          )}
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
