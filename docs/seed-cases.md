@@ -1,6 +1,6 @@
 # Seed cases
 
-The dummy set that `pnpm db:seed` loads into a local database and into each preview's own database branch ([ADR 0016](../.decisions/0016-previews-read-their-own-seeded-branch.md)). This page lists every case the set holds and the board or issue that case exercises, so a reviewer knows where to look and a maintainer knows what a change to the seed may break.
+The dummy set that `pnpm db:seed` loads into a local database and into the one Neon branch every preview reads, named `preview` ([ADR 0016](../.decisions/0016-previews-read-their-own-seeded-branch.md)). This page lists every case the set holds and the board or issue that case exercises, so a reviewer knows where to look and a maintainer knows what a change to the seed may break.
 
 ## How the seed runs
 
@@ -44,6 +44,7 @@ Each row is one seeded case. An area slice that adds a seed module adds its rows
 | alumni | An alumnus whose account is deleted and anonymized, with the Alumni entry kept | `users` and `members` 48, `alumni_entries` member 48 | [#191](https://github.com/PoliTo-Rocket-Team/website-v2/issues/191), [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
 | alumni | An alumnus who asked to be removed from the Alumni page | `alumni_entries` member 49, `removed_at` set | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
 | alumni | A name fixed for the Alumni page | `alumni_entries` member 50, `name` set | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| alumni | A former member read as the alumni test viewer: every role ended, an Alumni entry kept | `TEST_VIEWER_PEOPLE` alumni, member 50 | [#317](https://github.com/PoliTo-Rocket-Team/website-v2/issues/317) |
 | access | Grants across the whole team | `scopes` scope `team`, members 7 and 9 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
 | access | Grants in one department | `scopes` scope `department`, members 14 and 30 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
 | access | Grants in one division | `scopes` scope `division`, members 28 and 22 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
@@ -53,12 +54,13 @@ Each row is one seeded case. An area slice that adds a seed module adds its rows
 
 The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The `baseline` module still holds the orders and recruitment rows of [db/seed.sql](../db/seed.sql); they are listed as cases when an area slice moves them into a typed module. The `audit` module runs last and leaves `logs` empty.
 
-## Connect previews to their own database branch
+## Connect previews to the preview database branch
 
-This is a one-time owner action. The build does not change any Vercel, Neon or repository setting; until these steps are done, previews keep reading the dummy arrays in `lib/dummy-data/`.
+This is an owner action. Agents never change a Vercel, Neon or repository setting or an environment variable; the build only documents the setup. The owner finished it on 2026-10-16 (recorded on [#306](https://github.com/PoliTo-Rocket-Team/website-v2/issues/306)), in this shape:
 
-1. **Make a schema-only parent branch.** In the Neon console, open the project, go to **Branches**, and create a branch named `preview-base` from the production branch with the **Schema only** option. It holds the tables and no rows, so no preview ever starts from production data.
-2. **Point the preview branches at it.** In the Neon integration for Vercel, keep **Create a branch for each preview deployment** on and set its parent branch to `preview-base`. Each preview then gets a branch named `preview/<git branch>`. If the integration offers no choice of parent branch, stop here and say so on the setup issue: a preview branch must never be a copy of production.
-3. **Add the guard's two variables to Preview only.** In Vercel, **Project → Settings → Environment Variables**, add `NEON_PROJECT_ID` (the project id from the Neon console) and `NEON_API_KEY` (a project-scoped API key), with only the **Preview** environment ticked. Never tick **Production**.
-4. **Keep production out of Preview.** Check that the Preview `DATABASE_URL` is the one the integration sets for each preview branch, and that no production connection string is set for the Preview environment.
-5. **Check it.** On the next preview deployment, `pnpm db:seed --check` in its build should print `Seed target allowed: preview preview/<git branch>`. Wiring migrate and seed into the preview build is a later slice of epic #260.
+1. **Preview branching is off on the integration.** The Neon integration for Vercel does not create a branch for each preview deployment. Its connection to website-v2 covers **Production** and **Development** only. The integration cannot choose a parent branch for previews, so it is not used for them.
+2. **One schema-only branch named `preview`.** In the Neon console, in the same project, a branch named `preview` was created from `main` with the **Schema only** option. It holds the tables and no rows, so it never holds production data.
+3. **Preview-only connection strings.** In Vercel, **Project → Settings → Environment Variables**, `DATABASE_URL` (the pooled string) and `DATABASE_URL_UNPOOLED` (the direct string) point at the `preview` branch, with only the **Preview** environment ticked. No production connection string is set for Preview.
+4. **The guard's two variables, Preview only.** The seed's target check reads `NEON_PROJECT_ID` (the project id from the Neon console) and `NEON_API_KEY` (a project-scoped API key), set with only **Preview** ticked and never **Production**. The 2026-10-16 setup record does not say whether these two are set.
+
+Every preview deployment shares the `preview` branch. Each preview build migrates it and re-seeds it, so it holds only the dummy set, never production rows, and the last preview build's seed is what every preview reads. Wiring migrate and seed into the preview build, and letting the target check accept the branch named `preview`, is the preview-switch slice, [#307](https://github.com/PoliTo-Rocket-Team/website-v2/issues/307). Today the check accepts only branches named `preview/…`, and previews keep reading the dummy arrays in `lib/dummy-data/` until that slice lands.

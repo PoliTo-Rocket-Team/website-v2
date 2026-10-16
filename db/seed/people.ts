@@ -395,7 +395,9 @@ export const TESTER_UPDATED_AT_FIX: SeedStatement = {
 
 /**
  * The seeded person each test viewer (lib/dashboard/viewer.ts) is, by user
- * id: the team leader, and the local tester of each other kind.
+ * id: the team leader, the alumnus whose name was fixed for the Alumni page
+ * (every role ended, an Alumni entry kept; issue #317), and the local tester
+ * of each other kind.
  */
 export const TEST_VIEWER_PEOPLE: Readonly<Record<TestViewer, string>> = {
   "team-leader": seedUserId(TEAM_LEADER),
@@ -403,6 +405,7 @@ export const TEST_VIEWER_PEOPLE: Readonly<Record<TestViewer, string>> = {
   "department-head": TESTERS["department-head"].id,
   "division-lead": TESTERS["division-lead"].id,
   member: TESTERS.member.id,
+  alumni: seedUserId(RENAMED_ALUMNUS),
   "non-member": TESTERS.applicant.id,
 };
 
