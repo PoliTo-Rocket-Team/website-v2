@@ -54,13 +54,14 @@ import {
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
-import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
+import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
 import { faqEditor } from "@/lib/faq/editor";
 import { databaseFaqStore } from "./database-faqs";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
+import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
 import { written } from "./write";
@@ -640,6 +641,7 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
 
   return {
     shape: "personal",
+    attention: await readNoticeAttention(identity, new Date()),
     person: {
       name: identity.name,
       line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
@@ -656,7 +658,17 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
   };
 }
 
-function overviewOf(identity: Identity): Promise<TeamSideOverview> {
+/**
+ * The viewer's Overview, with the hand-overs they answer as its top
+ * attention rows (board 62c, issue #262): a head of the sender's department
+ * or the team leader, whatever their Overview's shape.
+ */
+async function overviewOf(identity: Identity): Promise<TeamSideOverview> {
+  const [overview, handOvers] = await Promise.all([overviewShapeOf(identity), readHandOverAttention(identity, new Date())]);
+  return handOvers.length === 0 ? overview : { ...overview, attention: [...handOvers, ...overview.attention] };
+}
+
+function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
   switch (identity.kind) {
     case "operations-lead":
       return isTeamLeader(identity) ? leaderOverview(identity) : teamOverview(identity);
@@ -736,6 +748,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     teamStructure: () => readTeamStructure(identity),
     teamWrites: { ...databaseTeamWrites(identity), ...databaseAlumniWrites(identity) },
     dismissNotice: (noticeId) => dismissNotice(identity, noticeId),
+    sendHandOver: (input) => sendHandOver(identity, input),
+    answerHandOver: (requestId, answer) => answerHandOver(identity, requestId, answer),
     recruitment: getRecruitmentControl,
     setRecruitment: (next) =>
       switchRecruitment(next, {

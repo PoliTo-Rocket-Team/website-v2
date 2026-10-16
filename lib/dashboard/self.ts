@@ -1,4 +1,5 @@
 import type { YourDetails } from "./details";
+import type { HandOverOffer } from "./hand-over-request";
 
 // The viewer's own pages (issue #145, folded from #146; Dashboard v2 in issue
 // #169): My profile for a team member (board 55) and My account for an
@@ -26,6 +27,11 @@ export type MyProfile = {
   readonly signIn: SignIn;
   readonly leave: LeaveState;
   readonly details: YourDetails;
+  /**
+   * A division lead's or a department head's "Hand over your role" (board
+   * 55d, issue #262), in place of "Leave the team"; null for everyone else.
+   */
+  readonly handOver: HandOverOffer | null;
 };
 
 export type MyAccount = {
@@ -69,6 +75,9 @@ export const DELETE_WORD = "DELETE";
 export function deleteConfirmed(typed: string): boolean {
   return typed.trim() === DELETE_WORD;
 }
+
+/** Leave the team, refused for a lead or a head: they hand their role over instead (board 55d, issue #262). */
+export const HAND_OVER_FIRST = "You hold a role: hand it over first, and choose Leave the team there.";
 
 /** The longest reason for leaving the page keeps. */
 export const MAX_LEAVE_REASON = 1000;

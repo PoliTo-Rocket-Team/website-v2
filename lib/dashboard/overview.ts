@@ -25,7 +25,8 @@ export type Stat = {
 
 /**
  * "notice": a stored dashboard notice (./notices.ts), whatever its own kind.
- * The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
+ * "hand-over": a hand-over waiting for the viewer's answer (board 62c,
+ * ./hand-over-request.ts), always the top row. The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
  * their decision, approved orders not ordered yet, and positions closing soon.
  */
 export type AttentionKind =
@@ -35,16 +36,24 @@ export type AttentionKind =
   | "no-photo"
   | "notice"
   | "orders-to-decide"
-  | "approved-orders";
+  | "approved-orders"
+  | "hand-over";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
 
-/** Where a row's button goes, or the notice it dismisses. */
-export type AttentionAction = Link | DismissNotice;
+/** A row's Decline and Confirm on a hand-over waiting for the viewer (board 62c, ./hand-over-request.ts). */
+export type AnswerHandOver = { readonly answerHandOver: number };
+
+/** Where a row's button goes, the notice it dismisses, or the hand-over it answers. */
+export type AttentionAction = Link | DismissNotice | AnswerHandOver;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
+}
+
+export function isAnswerHandOver(action: AttentionAction): action is AnswerHandOver {
+  return "answerHandOver" in action;
 }
 
 export type AttentionItem = {
@@ -258,6 +267,12 @@ export function divisionRoster(
 
 export type PersonalOverview = {
   readonly shape: "personal";
+  /**
+   * The member's stored notices (./notices.ts), when they have any: the
+   * answer to a hand-over they sent (issue #262) reaches a sender who is now
+   * an advisor here.
+   */
+  readonly attention: readonly AttentionItem[];
   readonly person: PersonHeader;
   readonly checklist: Checklist | null;
   readonly roster: Roster | null;
