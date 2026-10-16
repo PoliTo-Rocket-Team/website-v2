@@ -104,7 +104,9 @@ export function dummyMyAccount(applicant: { name: string; email: string }, chang
 }
 
 export function dummyDeleteAccount(options: DeleteAccount): WriteResult<null> {
-  return typeof options.withdrawOpenApplications === "boolean" ? written(null) : refused("Check the form.");
+  return typeof options.withdrawOpenApplications === "boolean" && typeof options.removeFromAlumni === "boolean"
+    ? written(null)
+    : refused("Check the form.");
 }
 
 // My applications ---------------------------------------------------------

@@ -906,7 +906,7 @@ export function dummyDashboardData(
       return result;
     },
     setPhoto: async (photo) => (person === null ? refused(notOnTeam) : dummySetPhoto(photo)),
-    async leaveTeam(reason) {
+    async leaveTeam(reason, removeFromAlumni) {
       if (person === null) return refused(notOnTeam);
       if (leaveStateOf(person) === "left") return refused("You already left the team.");
       // The reason is checked as the database side checks it; a preview keeps none.
@@ -915,7 +915,15 @@ export function dummyDashboardData(
       // A departure as Move to alumni records it: the years on the team, and no
       // listed reason, since the leaver's own words are free text.
       const departure: Departure = { from: Math.min(Number(person.since.slice(0, 4)), year), to: year, reason: null };
-      await teamEdits.save({ ...teamEdits.current, movedToAlumni: { ...teamEdits.current.movedToAlumni, [person.id]: departure } });
+      const { alumni } = teamEdits.current;
+      await teamEdits.save({
+        ...teamEdits.current,
+        movedToAlumni: { ...teamEdits.current.movedToAlumni, [person.id]: departure },
+        // "Remove my name from the Alumni page" (board 55b, issue #257).
+        ...(removeFromAlumni === true && {
+          alumni: { ...alumni, entries: { ...alumni.entries, [`m${person.id}`]: { ...alumni.entries[`m${person.id}`], removed: true } } },
+        }),
+      });
       // Off the team they have no applications sent (leftTeamDashboard).
       return written(landingAfterLeaving(false));
     },

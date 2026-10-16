@@ -733,37 +733,6 @@ export function memberRowsFor(rows: readonly MemberRow[], filter: Omit<MemberFil
   );
 }
 
-// Alumni (board 46c)
-
-export type AlumnusRow = {
-  readonly id: number;
-  readonly name: string;
-  readonly lastRole: string;
-  /** The unit under the last role: "Propulsion", "Board". */
-  readonly unit: string;
-  /** The department the filter files them under. */
-  readonly department: string;
-  readonly from: number;
-  readonly to: number;
-  /**
-   * Whether the public Team page lists them. Null where the source keeps no
-   * such flag (the database has no column for it yet), and the page then
-   * shows no switch.
-   */
-  readonly shownOnSite: boolean | null;
-};
-
-export type AlumniDirectory = {
-  readonly rows: readonly AlumnusRow[];
-  readonly departments: readonly string[];
-};
-
-/** Most recent leavers first, then by name. */
-export function alumniDirectory(rows: readonly AlumnusRow[]): AlumniDirectory {
-  const sorted = [...rows].sort((a, b) => b.to - a.to || b.from - a.from || a.name.localeCompare(b.name));
-  return { rows: sorted, departments: [...new Set(sorted.map((r) => r.department))].sort() };
-}
-
 /** The team year a date falls in: a year runs from October, so 9 Oct 2026 gives "2026–27". */
 export function seasonAt(date: Date): string {
   const year = date.getUTCFullYear();
@@ -774,24 +743,6 @@ export function seasonAt(date: Date): string {
 /** The team year someone left in, by the year they left: 2025 gives "2024–25". */
 export function seasonOf(leftIn: number): string {
   return `${leftIn - 1}–${String(leftIn % 100).padStart(2, "0")}`;
-}
-
-/** The two latest years people left in, newest first: the tabs beside "All years". */
-export function recentSeasons(rows: readonly AlumnusRow[], count = 2): number[] {
-  return [...new Set(rows.map((r) => r.to))].sort((a, b) => b - a).slice(0, count);
-}
-
-export type AlumniFilter = {
-  /** A year people left in, or null for all years. */
-  readonly leftIn: number | null;
-  readonly department: string | null;
-  readonly query: string;
-};
-
-export function alumniRowsFor(rows: readonly AlumnusRow[], filter: Omit<AlumniFilter, "leftIn">): AlumnusRow[] {
-  return rows.filter(
-    (row) => (filter.department === null || row.department === filter.department) && matchesQuery([row.name], filter.query),
-  );
 }
 
 // Paging (boards 46 and 46c)

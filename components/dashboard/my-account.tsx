@@ -11,7 +11,7 @@ import { YourDetailsCard } from "./your-details";
 
 type Actions = {
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
-  deleteAccount: (withdrawOpenApplications: boolean) => Promise<WriteResult<null>>;
+  deleteAccount: (withdrawOpenApplications: boolean, removeFromAlumni: boolean) => Promise<WriteResult<null>>;
 };
 
 // Board 51 (51m on phones): an applicant's own account. How they sign in,

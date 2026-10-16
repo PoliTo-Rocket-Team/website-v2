@@ -39,7 +39,18 @@ export type MyAccount = {
 /** What Delete account does beyond closing the account: only what the person ticked. */
 export type DeleteAccount = {
   readonly withdrawOpenApplications: boolean;
+  /** A member ticked "Remove my name from the Alumni page" (board 55c). */
+  readonly removeFromAlumni: boolean;
 };
+
+/** The box on Leave the team and Delete account (boards 55b and 55c, issue #257). Unticked at first. */
+export const REMOVE_FROM_ALUMNI_LABEL = "Remove my name from the Alumni page";
+export const REMOVE_FROM_ALUMNI_HINT =
+  "If you leave it, your name and years stay as part of the team's history. You can also ask us later.";
+
+/** Delete account's body for a member (board 55c): their alumni entry stays unless they tick the box. */
+export const DELETE_MEMBER_DIALOG_COPY =
+  "You leave the team and can't sign in with this account again. Your private data is anonymized and kept only for statistics.";
 
 /**
  * The Delete account copy (boards 51, 51c and 55c). The data is kept a year,

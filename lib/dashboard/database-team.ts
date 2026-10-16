@@ -935,10 +935,10 @@ async function closeDivision(identity: DashboardIdentity, divisionId: number): P
 }
 
 /** The Members page's writes on the database. */
-export function databaseTeamWrites(identity: DashboardIdentity): TeamWrites {
+export function databaseTeamWrites(
+  identity: DashboardIdentity,
+): Omit<TeamWrites, "setAlumnusShown" | "fixAlumnus" | "setAlumnusPhoto" | "addAdvisor"> {
   return {
-    // The schema keeps no "shown on the site" flag for alumni yet.
-    setShownOnSite: async () => false,
     saveMember: (personId, edit) => saveMember(identity, personId, edit),
     promote: (personId, mode) => promote(identity, personId, mode),
     moveToAlumni: (personId, departure) => moveToAlumni(identity, personId, departure),

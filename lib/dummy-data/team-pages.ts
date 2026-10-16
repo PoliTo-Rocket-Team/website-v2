@@ -26,8 +26,10 @@ import {
   type TeamCandidate,
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
+import type { AlumniRecord, AlumnusKey, EntryChange } from "@/lib/about/alumni-record";
+import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix } from "@/lib/dashboard/alumni";
+import { checkPhoto } from "@/lib/dashboard/self";
 import {
-  alumniDirectory,
   buildTeamTree,
   DIVISION_ROLE_OF,
   homeDivision,
@@ -47,7 +49,6 @@ import {
   teamDirectory,
   withJoined,
   withoutDivision,
-  type AlumnusRow,
   type DivisionRole,
   type Joining,
   type OrgChart,
@@ -58,6 +59,7 @@ import {
 } from "@/lib/dashboard/team";
 import { testDeveloperStanding, type ViewerKind } from "@/lib/dashboard/viewer";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, detailsKey, type MemberChange, type TeamEdits } from "./edits";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
@@ -104,6 +106,8 @@ const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
 
 /** The day the dummy team's writes happen on: the dummy team is seen from DUMMY_NOW. */
 const TODAY = DUMMY_NOW.slice(0, 10);
+
+const NOT_ON_ALUMNI = "They are not on the Alumni page.";
 
 /**
  * The placement with each saved change: roles set, divisions joined and left;
@@ -270,16 +274,30 @@ function entryWithChanges(entry: RosterEntry, change: MemberChange | undefined):
   return { ...entry, placement: placementWith(entry.placement, change) };
 }
 
-/** The alumni, those the test developer moved included, with their switches as flipped. */
-export function editedAlumni(edits: TeamEdits): AlumnusRow[] {
-  const moved = people.flatMap((p): AlumnusRow[] => {
+/** People off the team: the ./team.ts alumni, and those the test developer moved with the place they held. */
+export function editedFormer(edits: TeamEdits): DummyFormer[] {
+  const moved = people.flatMap((p): DummyFormer[] => {
     const departure = edits.movedToAlumni[p.id];
     if (departure === undefined) return [];
-    const row = memberRowOf(entryOf(p, edits.members[p.id]), dummyOrg(edits).org);
+    const entry = entryOf(p, edits.members[p.id]);
+    const row = memberRowOf(entry, dummyOrg(edits).org);
     const unit = row.department ?? "Board";
-    return [{ id: p.id, name: p.name, lastRole: row.roleLabel, unit, department: unit, from: departure.from, to: departure.to, shownOnSite: true }];
+    const alumnus = { id: p.id, name: p.name, lastRole: row.roleLabel, unit, department: unit, from: departure.from, to: departure.to, shownOnSite: true };
+    return [{ row: alumnus, placement: entry.placement }];
   });
-  return [...alumni, ...moved].map((a) => ({ ...a, shownOnSite: edits.shownOnSite[a.id] ?? a.shownOnSite }));
+  return [...alumni.map((row) => ({ row, placement: null })), ...moved];
+}
+
+/** The Alumni record as the test developer left it (issue #257): the team, the people who left, the import and their fixes. */
+export function editedAlumniRecord(edits: TeamEdits, joiners: readonly DummyJoiner[] = []): AlumniRecord {
+  const { org, closed } = dummyOrg(edits);
+  return dummyAlumniRecord({
+    team: editedRoster(edits, joiners),
+    former: editedFormer(edits),
+    org,
+    closed: closed.map(({ id, name, code, departmentId }) => ({ id, name, code, departmentId })),
+    edits: edits.alumni,
+  });
 }
 
 /** The division a division lead leads; null for every other viewer. */
@@ -407,6 +425,13 @@ function writesFor(
     if (!entry || actor === null || entry.id === SELF_ID[kind] || !reachesDivision(actor, divisionId, org)) return null;
     return isIn(entry.placement, divisionId) ? entry : null;
   };
+  /** Someone the Alumni page lists, for a viewer who reaches it (#257); never someone who asked to be removed. */
+  const alumnus = (key: AlumnusKey) => {
+    if (!canReach(testDeveloperStanding(kind), "alumni")) return null;
+    return dummyAlumni(editedAlumniRecord(edits, joiners)).find((a) => a.key === key && !a.removed) ?? null;
+  };
+  const saveAlumniEntry = (key: AlumnusKey, change: Omit<EntryChange, "photo">) =>
+    save({ ...edits, alumni: { ...edits.alumni, entries: { ...edits.alumni.entries, [key]: { ...edits.alumni.entries[key], ...change } } } });
 
   /**
    * A checked division save (#232), laid over the edits in one save: the
@@ -499,10 +524,33 @@ function writesFor(
       });
       return written(null);
     },
-    async setShownOnSite(alumnusId, shown) {
-      if (!canReach(testDeveloperStanding(kind), "alumni") || !editedAlumni(edits).some((a) => a.id === alumnusId)) return false;
-      await save({ ...edits, shownOnSite: { ...edits.shownOnSite, [alumnusId]: shown } });
+    async setAlumnusShown(key, shown) {
+      if (alumnus(key) === null) return false;
+      await saveAlumniEntry(key, { shown });
       return true;
+    },
+    async fixAlumnus(key, input) {
+      const person = alumnus(key);
+      if (person === null) return refused(NOT_ON_ALUMNI);
+      const fix = checkAlumnusFix(input, alumnusRow(person));
+      if (!fix.ok) return fix;
+      await saveAlumniEntry(key, fix.value);
+      return written(null);
+    },
+    async setAlumnusPhoto(key, photo) {
+      if (alumnus(key) === null) return refused(NOT_ON_ALUMNI);
+      // A preview keeps no photos: the check runs as the database side runs it, and nothing is stored.
+      const error = photo === null ? null : checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
+      return error === null ? written(null) : refused(error);
+    },
+    async addAdvisor(input, photo) {
+      if (!canReach(testDeveloperStanding(kind), "alumni")) return refused("You cannot edit the Alumni page.");
+      const advisor = checkAdvisor(input, DUMMY_ALUMNI_YEAR);
+      if (!advisor.ok) return advisor;
+      const error = photo === null ? null : checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
+      if (error !== null) return refused(error);
+      await save({ ...edits, alumni: { ...edits.alumni, advisors: [...edits.alumni.advisors, advisor.value] } });
+      return written(null);
     },
     async saveMember(personId, edit) {
       const entry = find(personId);
@@ -719,7 +767,11 @@ export function dummyTeamPages(
       if (actor === null || actor.kind === "lead") return { kind: "none" };
       return searchTeam(query, teamPeople(editedRoster(edits, joiners), edits), org);
     },
-    alumni: async () => alumniDirectory(canReach(testDeveloperStanding(kind), "alumni") ? editedAlumni(edits) : []),
+    alumni: async () =>
+      alumniDirectory(
+        canReach(testDeveloperStanding(kind), "alumni") ? dummyAlumni(editedAlumniRecord(edits, joiners)) : [],
+        DUMMY_ALUMNI_YEAR,
+      ),
     teamTree: async () =>
       buildTeamTree(canReach(testDeveloperStanding(kind), "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
     teamWrites: writesFor(kind, edits, save, joiners, move),
