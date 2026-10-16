@@ -53,7 +53,7 @@ export const TEST_DEVELOPER_OWN_COOKIE = "prt_test_developer_own";
  */
 export const TEST_DEVELOPER_APPLICATIONS_COOKIE = "prt_test_developer_applications";
 
-/** The viewer a test developer cookie names, or null when the gate is off or the value is not a viewer. */
+/** The test view a test developer cookie names, or null when the gate is off or the value is not one. */
 export function testDeveloperViewer(
   cookieValue: string | null | undefined,
   env: GateEnv = processGateEnv(),

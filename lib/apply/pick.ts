@@ -1,7 +1,7 @@
 import { dummyDataOn, type DummyModeEnv } from "@/lib/dummy-data/mode";
 import { NO_OWN_CHANGES, ownApplicationsStartOf, parseOwnChanges, type OwnApplicationsStart, type OwnChanges } from "@/lib/dummy-data/own";
 import { dummyRecruitmentOf } from "@/lib/dummy-data/recruitment";
-import { kindOfTestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
+import type { TestViewer } from "@/lib/dashboard/viewer";
 import { testDeveloperViewer } from "@/lib/test-developer";
 import type { ApplyData } from "./data";
 import type { Recruitment } from "./positions";
@@ -24,7 +24,7 @@ export type ApplyRequest = {
 export type ApplySides = {
   database(): ApplyData;
   dummy(
-    viewer: ViewerKind | null,
+    viewer: TestViewer | null,
     openSelector: string | null,
     recruitment: Recruitment,
     own: OwnChanges,
@@ -39,9 +39,8 @@ export type ApplySides = {
  */
 export function pickApplyData(request: ApplyRequest, sides: ApplySides): ApplyData {
   if (!dummyDataOn(request.env)) return sides.database();
-  const viewer = testDeveloperViewer(request.viewerCookie, request.env);
   return sides.dummy(
-    viewer === null ? null : kindOfTestViewer(viewer),
+    testDeveloperViewer(request.viewerCookie, request.env),
     request.openSelector ?? null,
     dummyRecruitmentOf(request.recruitmentCookie),
     request.ownCookie == null ? NO_OWN_CHANGES : parseOwnChanges(request.ownCookie),

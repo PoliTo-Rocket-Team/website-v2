@@ -29,7 +29,9 @@ import {
   teamDirectory,
   type MemberDirectory,
 } from "./team";
-import { readTeamSnapshot, rosterOf } from "./team-database";
+import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
+import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
+import { wholeTeamMembers } from "./team-members";
 import { databaseAlumniWrites, readAlumniDirectory } from "./database-alumni";
 import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
@@ -44,6 +46,7 @@ import {
   type DivisionOverview,
   type DivisionSummary,
   type PersonalOverview,
+  type TeamLeaderOverview,
   type TeamOverview,
   type TeamSideOverview,
   type UpcomingInterview,
@@ -54,7 +57,7 @@ import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers } from 
 import { databaseSelfPages } from "./database-self";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
-import { SEAT_OF_FLAG, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
+import { SEAT_OF_FLAG, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -190,6 +193,7 @@ type ScopedPosition = {
   id: number;
   title: string;
   open: boolean;
+  divisionId: number;
   divisionName: string;
   departmentName: string;
   newApplications: number;
@@ -247,6 +251,7 @@ async function readPositions(identity: Identity): Promise<ScopedPosition[]> {
       id: r.id,
       title: r.title ?? "Untitled position",
       open: r.status,
+      divisionId: r.division_id,
       divisionName: r.division_name,
       departmentName: r.dept_name,
       newApplications: fresh?.n ?? 0,
@@ -320,6 +325,39 @@ async function teamOverview(identity: Identity): Promise<TeamOverview> {
       { label: "Team members", value: String(memberCount), detail: "On the team now" },
     ],
     attention,
+    activity: [],
+  };
+}
+
+/**
+ * Board 72 (issue #252): the team leader's figures, what waits for their
+ * decision, and the Departments panel, across the team. Positions keep no
+ * closing day in the database, so no position reads as closing soon here;
+ * the database holds no activity feed, so that reads empty.
+ */
+async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
+  const [positions, snapshot, notices] = await Promise.all([
+    readPositions(identity),
+    readTeamSnapshot(),
+    readNoticeAttention(identity, new Date()),
+  ]);
+  const records = recordsOf(snapshot);
+  const orders = await readOrdersIn(snapshot.org.divisions.map((d) => d.id));
+  const open = positions.filter((p) => p.open);
+  return {
+    shape: "leader",
+    stats: leaderStats({
+      newApplications: positions.reduce((sum, p) => sum + p.newApplications, 0),
+      newDetail: "Waiting for a first look",
+      openPositions: open.length,
+      openDepartments: new Set(open.map((p) => p.departmentName)).size,
+      ordersWaiting: waitingOrders(orders).count,
+      people: records.length,
+      departments: snapshot.org.departments.length,
+    }),
+    attention: [...leaderAttention({ orders, positions: [], now: new Date() }), ...notices],
+    departments: departmentSummaries(records, snapshot.org, positions),
+    people: records.length,
     activity: [],
   };
 }
@@ -617,7 +655,7 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
 function overviewOf(identity: Identity): Promise<TeamSideOverview> {
   switch (identity.kind) {
     case "operations-lead":
-      return teamOverview(identity);
+      return isTeamLeader(identity) ? leaderOverview(identity) : teamOverview(identity);
     case "department-head":
       return departmentOverview(identity);
     case "division-lead":
@@ -646,13 +684,17 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
 }
 
 /**
- * The Members page: the whole team for the operations lead; for a division
+ * The Members page: the whole team for the operations lead, and with every
+ * member field for the team leader (boards 73 to 73c); for a division
  * lead one of their divisions, with the people waiting for Confirm NDA and the
  * people joining it (./database-team.ts).
  */
 async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
   if (identity.kind === "operations-lead") {
     const snapshot = await readTeamSnapshot();
+    if (isTeamLeader(identity)) {
+      return { scope: "whole-team", ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }) };
+    }
     return teamDirectory(rosterOf(snapshot), snapshot.org, identity.memberId);
   }
   return readDivisionMembers(identity, divisionId);

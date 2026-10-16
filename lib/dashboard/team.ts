@@ -1,5 +1,6 @@
 import type { DepartmentMembers } from "./department-members";
 import type { DivisionMembers } from "./division-members";
+import type { WholeTeamMembers } from "./team-members";
 
 // The Team pages of the dashboard (issue #143): Members (boards 46, 46b),
 // Alumni (46c) and the Team tree (42, 42b). Both sides of the data
@@ -319,13 +320,15 @@ export type DepartmentHead = {
 
 /**
  * Who a viewer's Members page lists: the whole team for the operations lead
- * (board 46); one division for a division lead, with every division they are
+ * (board 46), and for the team leader with every member field (boards 73 to
+ * 73c, issue #252); one division for a division lead, with every division they are
  * in and what the lead may do to each (boards 61e to 61h2, issue #231); every
  * division of the department for its head (boards 69 to 69c, issue #235); and
  * nothing for anyone else.
  */
 export type MemberDirectory =
   | { readonly scope: "team"; readonly rows: readonly MemberRow[]; readonly departments: readonly string[] }
+  | ({ readonly scope: "whole-team" } & WholeTeamMembers)
   | ({ readonly scope: "division" } & DivisionMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
   | { readonly scope: "none" };

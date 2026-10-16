@@ -57,7 +57,8 @@ import {
   type RosterEntry,
   type TeamActor,
 } from "@/lib/dashboard/team";
-import { testDeveloperStanding, type ViewerKind } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
@@ -96,7 +97,8 @@ export function dummyOrg(edits: TeamEdits): { readonly org: OrgChart; readonly c
 }
 
 /** The person each viewer signs in as; the applicant is not on the team. */
-const SELF_ID: Readonly<Record<ViewerKind, number | null>> = {
+const SELF_ID: Readonly<Record<TestViewer, number | null>> = {
+  "team-leader": 14,
   "operations-lead": 1,
   "department-head": 15,
   "division-lead": 2,
@@ -301,14 +303,14 @@ export function editedAlumniRecord(edits: TeamEdits, joiners: readonly DummyJoin
 }
 
 /** The division a division lead leads; null for every other viewer. */
-function myDivision(kind: ViewerKind): number | null {
+function myDivision(kind: TestViewer): number | null {
   if (kind !== "division-lead") return null;
   const mine = people.find((p) => p.id === SELF_ID[kind]);
   return mine ? homeDivisionOf(mine.placement) : null;
 }
 
 /** The department the department head heads; null for every other viewer. */
-function myDepartment(kind: ViewerKind): number | null {
+function myDepartment(kind: TestViewer): number | null {
   if (kind !== "department-head") return null;
   const mine = people.find((p) => p.id === SELF_ID[kind]);
   return mine?.placement.role === "head" ? mine.placement.departmentId : null;
@@ -319,9 +321,9 @@ function myDepartment(kind: ViewerKind): number | null {
  * team, a department head their department (issue #235), a division lead
  * their division; nobody else acts there.
  */
-function actorOf(kind: ViewerKind): TeamActor | null {
+function actorOf(kind: TestViewer): TeamActor | null {
   if (!canReach(testDeveloperStanding(kind), "members")) return null;
-  if (kind === "operations-lead") return { kind: "team" };
+  if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
   if (department !== null) return { kind: "head", departmentIds: [department] };
   const division = myDivision(kind);
@@ -329,15 +331,15 @@ function actorOf(kind: ViewerKind): TeamActor | null {
 }
 
 /** Whether `kind` may change this person from the Members page: the whole team, or the lead's own division; never themselves. */
-function mayEdit(kind: ViewerKind, entry: RosterEntry): boolean {
+function mayEdit(kind: TestViewer, entry: RosterEntry): boolean {
   if (!canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
-  if (kind === "operations-lead") return true;
+  if (kindOfTestViewer(kind) === "operations-lead") return true;
   const division = myDivision(kind);
   return division !== null && isIn(entry.placement, division);
 }
 
 /** The division a drawer's role change is about: the lead's own, or the person's home division for the operations lead. */
-function drawerDivision(kind: ViewerKind, entry: RosterEntry): number | null {
+function drawerDivision(kind: TestViewer, entry: RosterEntry): number | null {
   return kind === "division-lead" ? myDivision(kind) : homeDivisionOf(entry.placement);
 }
 
@@ -369,6 +371,11 @@ function recordOf(entry: RosterEntry, edits: TeamEdits): PersonRecord {
     details: savedDetails ?? addedDetails ?? (person ? dummyMemberDetails(person) : NO_MEMBER_DETAILS),
     nda: person ? dummyNda(person) : confirmation ? { signedOn: confirmation.on, confirmedBy: confirmer } : null,
   };
+}
+
+/** Everyone on the team as the test developer left it, as the Members pages read them: the team leader's Overview counts these. */
+export function dummyRecords(edits: TeamEdits, joiners: readonly DummyJoiner[]): PersonRecord[] {
+  return editedRoster(edits, joiners).map((entry) => recordOf(entry, edits));
 }
 
 /** The people added by email to `divisionId` and not confirmed yet. */
@@ -406,7 +413,7 @@ export type DummyMove = (applicationId: number, move: LeadMove) => Promise<Write
 const NO_MOVE: DummyMove = async () => ({ ok: false, error: "Nothing to move." });
 
 function writesFor(
-  kind: ViewerKind,
+  kind: TestViewer,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   joiners: readonly DummyJoiner[],
@@ -705,7 +712,7 @@ function writesFor(
  * Applications page's move, which Confirm join runs.
  */
 export function dummyTeamPages(
-  kind: ViewerKind,
+  kind: TestViewer,
   edits: TeamEdits,
   save: (next: TeamEdits) => Promise<void>,
   current: readonly DummyApplication[] = baseApplications,
@@ -726,6 +733,8 @@ export function dummyTeamPages(
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
+      // The team leader's page lists every member field (boards 73 to 73c, issue #252).
+      if (kind === "team-leader") return { scope: "whole-team", ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }) };
       if (kind === "operations-lead") return teamDirectory(team, org, self);
       if (actor?.kind === "head") {
         const [departmentId] = actor.departmentIds;

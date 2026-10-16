@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Pencil, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
@@ -12,11 +12,14 @@ import {
 import { sentLabel } from "@/lib/dashboard/my-applications";
 import {
   checklistCount,
+  departmentLine,
+  departmentsMeta,
   divisionInitials,
   divisionShortName,
   divisionsMeta,
   interviewOrder,
   leadsLabel,
+  type DepartmentSummary,
   type DivisionSummary,
   interviewSlot,
   interviewSummary,
@@ -35,9 +38,11 @@ import {
 } from "@/lib/dashboard/overview";
 import { Avatar } from "./avatar";
 import { DismissNotice } from "./dismiss-notice";
+import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
 
-// The Overview page: board 40 for the operations lead, 56 for a division
+// The Overview page: board 40 for the operations lead, 72 for the team
+// leader, 62 for a department head, 56 for a division
 // lead, 52 for a member, 50e for a non-member who has applied. Props in, nothing fetched: the page hands over what
 // the dashboard data interface answered.
 export function OverviewView({ overview }: { overview: Overview }) {
@@ -47,6 +52,17 @@ export function OverviewView({ overview }: { overview: Overview }) {
         <LeadView
           stats={overview.stats}
           attention={overview.attention}
+          interviews={[]}
+          activity={overview.activity}
+          phone="full"
+        />
+      );
+    case "leader":
+      return (
+        <LeadView
+          stats={overview.stats}
+          attention={overview.attention}
+          departments={{ list: overview.departments, people: overview.people }}
           interviews={[]}
           activity={overview.activity}
           phone="full"
@@ -101,11 +117,13 @@ type LeadPhoneForm = "full" | "board-56m";
 // on 56, the upcoming interviews under it) beside the recent activity. Board
 // 62 (a department head, issue #230) puts the Divisions panel under the
 // attention rows; its phone board 62m keeps the interviews and drops the
-// activity, as 56m does, while board 62 shows no interviews.
+// activity, as 56m does, while board 62 shows no interviews. Board 72 (the
+// team leader, issue #252) puts the Departments panel there instead.
 function LeadView({
   stats,
   attention,
   divisions = null,
+  departments = null,
   interviews,
   activity,
   phone,
@@ -113,12 +131,17 @@ function LeadView({
   stats: readonly Stat[];
   attention: readonly AttentionItem[];
   divisions?: readonly DivisionSummary[] | null;
+  departments?: { readonly list: readonly DepartmentSummary[]; readonly people: number } | null;
   interviews: readonly UpcomingInterview[];
   activity: readonly ActivityItem[];
   phone: LeadPhoneForm;
 }) {
   const compact = phone === "board-56m";
-  const left = attention.length > 0 || interviews.length > 0 || (divisions !== null && divisions.length > 0);
+  const left =
+    attention.length > 0 ||
+    interviews.length > 0 ||
+    (divisions !== null && divisions.length > 0) ||
+    (departments !== null && departments.list.length > 0);
   return (
     <>
       <h1 className="sr-only">Overview</h1>
@@ -133,6 +156,9 @@ function LeadView({
             <div className="flex min-w-0 flex-col gap-4">
               {attention.length > 0 && <AttentionPanel attention={attention} compact={compact} />}
               {divisions !== null && divisions.length > 0 && <DivisionsPanel divisions={divisions} />}
+              {departments !== null && departments.list.length > 0 && (
+                <DepartmentsPanel departments={departments.list} people={departments.people} />
+              )}
               {interviews.length > 0 && (
                 <div className={divisions !== null ? "md:hidden" : undefined}>
                   <InterviewsPanel interviews={interviews} />
@@ -304,6 +330,35 @@ function DivisionsPanel({ divisions }: { divisions: readonly DivisionSummary[] }
   );
 }
 
+// Board 72: one row per department, its initials on an accent tile, who
+// heads it, its divisions and people, and what waits there on the right.
+function DepartmentsPanel({ departments, people }: { departments: readonly DepartmentSummary[]; people: number }) {
+  return (
+    <Panel title="Departments" meta={departmentsMeta(departments.length, people)} phoneMeta={String(departments.length)} phoneCards>
+      {departments.map((department) => (
+        <li key={department.id} className="flex items-center gap-4 px-4 py-3.5 md:px-5">
+          <span
+            aria-hidden
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-accent/30 bg-accent-soft text-[14px] font-semibold text-accent"
+          >
+            {divisionInitials(department.name)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px] font-semibold md:text-[14px] md:font-medium">{departmentLabel(department.name)}</span>
+            <span className="block truncate text-[13px] text-prt-muted">{departmentLine(department)}</span>
+            <span className="mt-0.5 block text-[13px] text-text-2 md:hidden">
+              {department.newApplications} new · {department.openPositions} open
+            </span>
+          </span>
+          <span className="hidden shrink-0 text-[13px] font-semibold tabular-nums md:block">
+            {department.newApplications} new · {department.openPositions} open
+          </span>
+        </li>
+      ))}
+    </Panel>
+  );
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -328,6 +383,9 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   unassigned: UserPlus,
   "no-photo": Timer,
   notice: UserMinus,
+  "orders-to-decide": ShoppingCart,
+  "approved-orders": Package,
+  "closing-position": Timer,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {

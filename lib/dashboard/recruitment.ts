@@ -98,13 +98,19 @@ export function positionTabCounts(positions: readonly PositionRow[]): Record<Pos
 /** The rows a tab, a department and a search leave; `department` null is every department. */
 export function filterPositions(
   positions: readonly PositionRow[],
-  { tab, department, search }: { tab: PositionTab; department: string | null; search: string },
+  {
+    tab,
+    department,
+    division = null,
+    search,
+  }: { tab: PositionTab; department: string | null; division?: string | null; search: string },
 ): PositionRow[] {
   const needle = search.trim().toLowerCase();
   return positions.filter(
     (p) =>
       (tab === "all" || p.open === (tab === "open")) &&
       (department === null || p.department === department) &&
+      (division === null || p.division === division) &&
       (needle === "" || `${p.title} ${p.division} ${p.department}`.toLowerCase().includes(needle)),
   );
 }
@@ -112,6 +118,17 @@ export function filterPositions(
 /** The departments the rows name, in first-seen order. */
 export function departmentsOf(positions: readonly PositionRow[]): string[] {
   return [...new Set(positions.map((p) => p.department))];
+}
+
+/**
+ * The team leader's "All divisions" select (boards 63 and 64 with whole-team
+ * selects, issue #252): the divisions the rows name in the chosen department,
+ * or across the team, by name.
+ */
+export function divisionsOf(rows: readonly { readonly division: string; readonly department: string }[], department: string | null): string[] {
+  return [...new Set(rows.filter((r) => department === null || r.department === department).map((r) => r.division))].sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
 // Applications ----------------------------------------------------------------
@@ -171,8 +188,8 @@ export type ApplicationsPage = {
   readonly scope: ApplicationsScope;
   /** The moment the page is seen from (ISO): the interview picker greys out what is past. */
   readonly now: string;
-  /** The positions the viewer reaches, for the position filter, with the division each sits in. */
-  readonly positions: readonly { readonly ref: PositionRef; readonly title: string; readonly division: string }[];
+  /** The positions the viewer reaches, for the position filter, with the division and department each sits in. */
+  readonly positions: readonly { readonly ref: PositionRef; readonly title: string; readonly division: string; readonly department: string }[];
   /** Newest first. */
   readonly applications: readonly ApplicationEntry[];
 };

@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   title: "Overview · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 40 (the operations lead), 56 (a division lead), 52 (a member) and
+// Board 40 (the operations lead), 72 (the team leader), 56 (a division lead), 52 (a member) and
 // 50e (a non-member who has applied). Every viewer reaches it
 // (lib/dashboard/access.ts); what it shows is the viewer's own overview. A
 // non-member who has not applied yet goes to My applications instead (issue

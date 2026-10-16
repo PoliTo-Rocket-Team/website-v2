@@ -17,6 +17,7 @@ import {
   type DivisionSummary,
   type PersonalOverview,
   type RosterPerson,
+  type TeamLeaderOverview,
   type TeamOverview,
   type TeamSideOverview,
   type UpcomingInterview,
@@ -39,6 +40,7 @@ import {
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
 import { kindOfTestViewer, testDeveloperStanding, type DashboardViewer, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
+import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { departmentCode, divisionLabel, positionText } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
@@ -88,7 +90,7 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyJoiners, dummyOrg, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
+import { dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -350,8 +352,7 @@ function attentionFor(kind: ViewerKind, team: Team, dummyNotices: DummyNotices):
   return [...fresh, ...quiet, ...unassigned, ...(noPhoto ? [noPhoto] : []), ...notices];
 }
 
-function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">): ActivityItem[] {
-  const me = personFor[kind];
+function activityFor(kind: Exclude<ViewerKind, "non-member" | "member">, me: DummyPerson = personFor[kind]): ActivityItem[] {
   const events =
     kind === "operations-lead"
       ? activity
@@ -391,6 +392,53 @@ function teamOverview(team: Team, notices: DummyNotices): TeamOverview {
     ],
     attention: attentionFor(kind, team, notices),
     activity: activityFor(kind),
+  };
+}
+
+/**
+ * Board 72 (issue #252): the team leader's figures, what waits for their
+ * decision, the Departments panel and the team's recent activity, over the
+ * team as the test developer left it.
+ */
+function leaderOverview(team: Team, edits: TeamEdits, notices: DummyNotices): TeamLeaderOverview {
+  const me = personFor["team-leader"];
+  const { org } = dummyOrg(edits);
+  const records = dummyRecords(edits, dummyJoiners(team.applications));
+  const open = team.positions.filter((p) => p.open);
+  const orders = dummyOrdersIn(org.divisions.map((d) => d.id));
+  return {
+    shape: "leader",
+    stats: leaderStats({
+      newApplications: newApplications(team.positions, team),
+      newDetail: sinceMonday(team.positions, team),
+      openPositions: open.length,
+      openDepartments: new Set(open.map((p) => departmentOf(p.divisionId).id)).size,
+      ordersWaiting: waitingOrders(orders).count,
+      people: records.length,
+      departments: org.departments.length,
+    }),
+    attention: [
+      ...leaderAttention({
+        orders,
+        positions: open.map((p) => ({
+          ref: p.slug,
+          title: p.title,
+          department: departmentOf(p.divisionId).name,
+          division: divisionOf(p.divisionId).name,
+          applications: applicationsTo([p], team).length,
+          closesOn: p.closesOn ?? null,
+        })),
+        now: NOW,
+      }),
+      ...dummyNoticeAttention(me, notices, NOW),
+    ],
+    departments: departmentSummaries(
+      records,
+      org,
+      team.positions.map((p) => ({ divisionId: p.divisionId, open: p.open, newApplications: newApplications([p], team) })),
+    ),
+    people: records.length,
+    activity: activityFor("operations-lead", me),
   };
 }
 
@@ -723,7 +771,7 @@ function applicationsPage(kind: ViewerKind, team: Team, onTeam: readonly RosterE
   return {
     scope: applicationsScope(kind),
     now: NOW.toISOString(),
-    positions: scoped.map((p) => ({ ref: p.slug, title: p.title, division: divisionOf(p.divisionId).name })),
+    positions: scoped.map((p) => ({ ref: p.slug, title: p.title, division: divisionOf(p.divisionId).name, department: departmentOf(p.divisionId).name })),
     applications: applicationsTo(scoped, team)
       .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
       .map((a) => applicationEntry(a, byId.get(a.positionId)!, team, onTeam)),
@@ -745,7 +793,7 @@ const noOrders = "You do not have access to Orders.";
  * applications sent. Their details stay the ones they had on the team.
  */
 function leftTeamDashboard(
-  kind: Exclude<ViewerKind, "non-member">,
+  kind: Exclude<TestViewer, "non-member">,
   self: DummyPerson,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
@@ -773,9 +821,10 @@ function leftTeamDashboard(
  * own pages in `own` (./own.ts), starting from the own applications
  * `ownStart` names. Other writes check what was sent as the database side
  * does, store nothing, and answer what the page shows next. The team leader
- * (issue #247) is full access, the `operations-lead` kind, so every page but
- * Access and Orders reads as the operations lead's; on those two they are
- * themselves: the one who decides orders and gives "Approve orders".
+ * is full access, the `operations-lead` kind, so the other pages read as the
+ * operations lead's. On Access and Orders they are themselves, the one who
+ * decides orders and gives "Approve orders" (issue #247), and they have
+ * their own Overview, Members and own pages (boards 72 to 73c, issue #252).
  */
 export function dummyDashboardData(
   viewer: TestViewer,
@@ -786,8 +835,8 @@ export function dummyDashboardData(
   ownStart: OwnApplicationsStart = "sample",
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
-  if (viewer !== "non-member" && kind !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
-    return leftTeamDashboard(kind, personFor[viewer], recruitment, changes, teamEdits, own);
+  if (viewer !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
+    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEdits, own);
   }
   const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEdits.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
@@ -800,8 +849,8 @@ export function dummyDashboardData(
   const closedIds = new Set(dummyOrg(teamEdits.current).closed.map((d) => d.id));
   const leaveStateOf = (p: DummyPerson): LeaveState => (teamEdits.current.movedToAlumni[p.id] === undefined ? "on-team" : "left");
   const me = person === null ? { firstName: applicant.firstName, email: applicant.email } : { firstName: person.name.split(" ")[0], email: person.email };
-  const myApplications = () => dummyMyApplications(kind, me, own.current, ownStart);
-  const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [kind]: details } });
+  const myApplications = () => dummyMyApplications(viewer, me, own.current, ownStart);
+  const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [viewer]: details } });
 
   // One move for both pages: the Applications panel and the Members page's
   // Confirm join (board 59) run it, so the application is the one record of
@@ -824,8 +873,11 @@ export function dummyDashboardData(
   return {
     viewer: dummyViewer(viewer),
     navCounts: async () => navCountsFor(kind, team),
-    hasOwnApplications: async () => ownApplicationsOf(kind, ownStart).length > 0,
-    overview: async () => overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
+    hasOwnApplications: async () => ownApplicationsOf(viewer, ownStart).length > 0,
+    overview: async () =>
+      viewer === "team-leader"
+        ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
+        : overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {
@@ -838,7 +890,7 @@ export function dummyDashboardData(
     // Nothing is cached in dummy mode: /apply reads the cookie on each request.
     setRecruitment: (next) =>
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
-    ...dummyTeamPages(kind, teamEdits.current, teamEdits.save, team.applications, moveApplication, (divisionId) =>
+    ...dummyTeamPages(viewer, teamEdits.current, teamEdits.save, team.applications, moveApplication, (divisionId) =>
       team.positions.filter((p) => p.divisionId === divisionId && p.open).length,
     ),
     positions: async () => positionsPage(kind, team),
@@ -912,12 +964,12 @@ export function dummyDashboardData(
     setApproveOrders: async (input) =>
       person === null ? refused(notOnTeam) : dummySetApproveOrders(person, teamRoster.map((e) => e.id), input),
 
-    myProfile: async () => (person === null ? null : dummyMyProfile(kind, person, own.current, leaveStateOf(person))),
+    myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {
       if (person === null) return refused(notOnTeam);
       const result = dummySaveLinkedin(text);
       // LinkedIn is one of the details, as on the database side (`users.linkedin`).
-      if (result.ok) await saveOwnDetails({ ...dummyDetails(kind, own.current), linkedin: result.value ?? "" });
+      if (result.ok) await saveOwnDetails({ ...dummyDetails(viewer, own.current), linkedin: result.value ?? "" });
       return result;
     },
     setPhoto: async (photo) => (person === null ? refused(notOnTeam) : dummySetPhoto(photo)),
@@ -945,7 +997,7 @@ export function dummyDashboardData(
 
     myAccount: async () => (person === null ? dummyMyAccount(applicant, own.current, ownStart) : null),
     async saveDetails(input) {
-      const result = dummySaveDetails(input, person === null ? "applicant" : "member", dummyDetails(kind, own.current));
+      const result = dummySaveDetails(input, person === null ? "applicant" : "member", dummyDetails(viewer, own.current));
       if (result.ok) await saveOwnDetails(result.value);
       return result;
     },

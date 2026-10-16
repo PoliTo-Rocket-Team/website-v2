@@ -5,13 +5,15 @@ import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { ApplicationsView } from "@/components/dashboard/applications";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
+import { isTeamLeader } from "@/lib/dashboard/viewer";
 
 export const metadata: Metadata = {
   title: "Applications · Dashboard · PoliTo Rocket Team",
 };
 
 // Board 41b: the applications to the positions the viewer leads, and the
-// detail panel of the chosen one. Replaces the legacy page here (issue #142).
+// detail panel of the chosen one. The team leader's has "All departments"
+// and "All divisions" selects (issue #252). Replaces the legacy page here (issue #142).
 // `?position=<ref>` opens it filtered to one position, as the Overview's
 // "Review" links do. Members and applicants do not reach it.
 export default function ApplicationsPage({ searchParams }: { searchParams: Promise<{ position?: string | string[] }> }) {
@@ -32,5 +34,5 @@ async function LiveApplications({ searchParams }: { searchParams: Promise<{ posi
   const [page, { position }] = await Promise.all([data.applications(), searchParams]);
   const asked = typeof position === "string" ? position : null;
   const initialPosition = page.positions.some((p) => p.ref === asked) ? asked : null;
-  return <ApplicationsView page={page} initialPosition={initialPosition} lead={data.viewer.name} />;
+  return <ApplicationsView page={page} initialPosition={initialPosition} lead={data.viewer.name} teamSelects={isTeamLeader(data.viewer)} />;
 }

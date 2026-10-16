@@ -431,7 +431,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
   return {
     scope,
     now: now.toISOString(),
-    positions: positions.map((p) => ({ ref: p.ref, title: p.title, division: p.division })),
+    positions: positions.map((p) => ({ ref: p.ref, title: p.title, division: p.division, department: p.department })),
     applications: rows.flatMap((r): ApplicationEntry[] => {
       const position = r.position_id === null ? undefined : byId.get(r.position_id);
       if (!position) return [];

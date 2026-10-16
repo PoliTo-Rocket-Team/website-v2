@@ -2,12 +2,12 @@ import { TEST_VIEWER_LABELS, TEST_VIEWERS, type TestViewer } from "@/lib/dashboa
 import { testDeveloperOn, testDeveloperSignInHref } from "@/lib/test-developer";
 
 // The "Sign in as test developer" entry on /login (issue #141): one ghost
-// pill per viewer, each a plain link to the sign-in route. A server
+// pill per test view, each a plain link to the sign-in route. A server
 // component with no client code, so a deploy where the gate is off sends
 // none of it, not even in a script.
 export function TestDeveloperSignIn({ cb }: { cb?: string | null }) {
   if (!testDeveloperOn()) return null;
-  return <Entry viewerHref={(kind) => testDeveloperSignInHref(kind, cb)} />;
+  return <Entry viewerHref={(view) => testDeveloperSignInHref(view, cb)} />;
 }
 
 /**

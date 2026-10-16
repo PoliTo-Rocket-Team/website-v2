@@ -1,5 +1,7 @@
 // What the Overview page shows. The operations lead sees the team shape
-// (board 40: figures, what needs attention, recent activity); a division lead
+// (board 40: figures, what needs attention, recent activity); the team leader
+// sees the leader shape (board 72, issue #252: the same across the team, with
+// what waits for their decision and a Departments panel); a division lead
 // sees the division shape (board 56: the same, scoped to their division, plus
 // upcoming interviews); a department head sees the department shape (board
 // 62, issue #230: the same across their department, plus a Divisions panel);
@@ -21,8 +23,20 @@ export type Stat = {
   readonly live?: boolean;
 };
 
-/** "notice": a stored dashboard notice (./notices.ts), whatever its own kind. */
-export type AttentionKind = "applications" | "quiet-position" | "unassigned" | "no-photo" | "notice";
+/**
+ * "notice": a stored dashboard notice (./notices.ts), whatever its own kind.
+ * The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
+ * their decision, approved orders not ordered yet, and positions closing soon.
+ */
+export type AttentionKind =
+  | "applications"
+  | "quiet-position"
+  | "unassigned"
+  | "no-photo"
+  | "notice"
+  | "orders-to-decide"
+  | "approved-orders"
+  | "closing-position";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -99,6 +113,47 @@ export type DepartmentOverview = {
   readonly interviews: readonly UpcomingInterview[];
   readonly activity: readonly ActivityItem[];
 };
+
+/** One department on the team leader's Overview (board 72): who heads it, how big it is, what waits. */
+export type DepartmentSummary = {
+  readonly id: number;
+  /** "Aerodynamics" */
+  readonly name: string;
+  readonly heads: readonly string[];
+  readonly divisions: number;
+  /** Everyone in its divisions and its heads, each once. */
+  readonly people: number;
+  readonly newApplications: number;
+  readonly openPositions: number;
+};
+
+/**
+ * Board 72 (issue #252): the team leader's figures across the team, what
+ * waits for them (./leader-overview.ts), a Departments panel with one row
+ * per department, and recent activity. The Activity log is the IT lead's
+ * alone, so the panel links to none.
+ */
+export type TeamLeaderOverview = {
+  readonly shape: "leader";
+  readonly stats: readonly Stat[];
+  readonly attention: readonly AttentionItem[];
+  readonly departments: readonly DepartmentSummary[];
+  /** Everyone on the team once: the panel's people count. */
+  readonly people: number;
+  readonly activity: readonly ActivityItem[];
+};
+
+/** "6 departments · 112 people", beside the Departments panel's title (board 72). */
+export function departmentsMeta(departments: number, people: number): string {
+  return `${departments} ${departments === 1 ? "department" : "departments"} · ${rosterSize(people)}`;
+}
+
+/** "Head Chiara Ferri · 2 divisions · 16 people" under a department's name (board 72). */
+export function departmentLine(department: DepartmentSummary): string {
+  const heads = department.heads.length === 0 ? "No head yet" : `Head ${department.heads.join(", ")}`;
+  const divisions = `${department.divisions} ${department.divisions === 1 ? "division" : "divisions"}`;
+  return `${heads} · ${divisions} · ${rosterSize(department.people)}`;
+}
 
 /** "2 divisions · 16 people", beside the Divisions panel's title (board 62). */
 export function divisionsMeta(divisions: readonly DivisionSummary[]): string {
@@ -212,7 +267,7 @@ export type PersonalOverview = {
 };
 
 /** What the dashboard data interface answers: the team's own Overviews. */
-export type TeamSideOverview = TeamOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
+export type TeamSideOverview = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
 
 export type Overview = TeamSideOverview | ApplicantOverview;
 

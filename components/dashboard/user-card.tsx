@@ -27,8 +27,8 @@ export type UserMenuForm = "dropdown" | "sheet";
 // The user card at the foot of the sidebar and the menu it opens (board 51b):
 // initials on the accent, name, role and an up-down chevron. The menu holds
 // the viewer's own page (My account for a non-member, My profile for the
-// team), then a red Sign out. A test developer also gets "View as", the four
-// viewers, each a sign-in link back to this page. From md it opens above the
+// team), then a red Sign out. A test developer also gets "View as", every
+// test view, each a sign-in link back to this page. From md it opens above the
 // card, as wide as it; on phones (inside the menu sheet) it is a bottom sheet,
 // like every popup there.
 export function UserCard({

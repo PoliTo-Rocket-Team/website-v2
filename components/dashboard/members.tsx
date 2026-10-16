@@ -19,11 +19,13 @@ import { Controls, DepartmentFilter, Pager, RolePill, SearchField, TH, Tabs } fr
 import { DivisionMembersView } from "./division-members";
 import { DrawerPage } from "./drawer";
 import { MemberDrawer } from "./member-drawer";
+import { WholeTeamMembersView } from "./team-members";
 import { PageHeader } from "./page-header";
 import { PANEL } from "./panel";
 
 // The Members page. The operations lead sees the whole team with the
-// department filter and pages of nine (board 46); a division lead sees one of
+// department filter and pages of nine (board 46); the team leader the whole
+// team with every member field (boards 73 to 73c, ./team-members.tsx); a division lead sees one of
 // their divisions (boards 61e to 61h2, ./division-members.tsx); a department
 // head every division of their department (boards 69 to 69c,
 // ./department-members.tsx).
@@ -31,6 +33,7 @@ export function MembersView({ directory, editable }: { directory: MemberDirector
   if (directory.scope === "division") return <DivisionMembersView page={directory} editable={editable} />;
   if (directory.scope === "department") return <DepartmentMembersView page={directory} editable={editable} />;
   if (directory.scope === "none") return <PageHeader title="Members" intro="" phone="bar" />;
+  if (directory.scope === "whole-team") return <WholeTeamMembersView page={directory} editable={editable} />;
   return <TeamMembersView rows={directory.rows} departments={directory.departments} editable={editable} />;
 }
 
