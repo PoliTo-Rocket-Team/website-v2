@@ -851,6 +851,37 @@ export const teamPageLayerVersions = pgTable("team_page_layer_versions", {
     .notNull(),
 });
 
+// The Team page's advisors (issue #286): faculty and specialists added by
+// hand, never from roles (lib/about/advisors.ts). One row per advisor with
+// its site order, and one version row each for what the page shows and an
+// optional draft, as `faqs` keeps its questions. Migration 0035 imports
+// today's advisors as published.
+export const teamPageAdvisors = pgTable("team_page_advisors", {
+  id: serial("id").primaryKey(),
+  siteOrder: integer("site_order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+export const teamPageAdvisorVersions = pgTable(
+  "team_page_advisor_versions",
+  {
+    id: serial("id").primaryKey(),
+    advisorId: integer("advisor_id")
+      .references(() => teamPageAdvisors.id, { onDelete: "cascade" })
+      .notNull(),
+    version: contentVersionEnum("version").notNull(),
+    advisor: jsonb("advisor").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneOfEachVersion: unique("team_page_advisor_versions_advisor_version_unique").on(table.advisorId, table.version),
+  }),
+);
+
 export const logs = pgTable("logs", {
   id: serial("id").primaryKey(),
   schemaName: text("schema_name").notNull(),

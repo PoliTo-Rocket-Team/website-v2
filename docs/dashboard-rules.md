@@ -757,3 +757,17 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   page hides the block (an added department is removed), and Back to the team record puts the
   head, the department's name and its leads back as the roles have them. None of it creates a
   role, department or division.
+- Advisors (boards 80c and 80d, #286): faculty and specialists outside the student team, added by
+  hand and never built from roles. Each is a content item with a published version and an
+  optional draft. On the page the Advisors section is one block, "Advisors · Added by hand", whose
+  "Edit advisors" opens the Advisors panel: principal advisors, then specialists, each group
+  dragged into its order, and one advisor open at a time (full name, role on the page, Principal
+  / Specialist, LinkedIn, email, photo). Add advisor adds one. Add, edit, reorder and Principal /
+  Specialist changes are drafts that the edit bar's Save draft keeps and Publish puts on
+  `/about/the-team`. Replace photo picks a photo the site already holds.
+- End advising is the one advisor change made at once, after the editor picks the academic years
+  they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
+  their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
+  row, never a role, division, department, scope or member. Reset to team never changes the
+  advisors. Previews keep a test developer's advisors in their own cookie over today's advisors;
+  End advising there adds to their Alumni changes.

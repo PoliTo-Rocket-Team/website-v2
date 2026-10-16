@@ -15,7 +15,14 @@ import {
 import { parseDummyState, serializeDummyState, type DummyStateStore } from "@/lib/dummy-data/state";
 import { parsePartnerEdits, serializePartnerEdits, type DummyPartnerEditsStore } from "@/lib/dummy-data/partners";
 import { parseFaqEdits, serializeFaqEdits, type DummyFaqEditsStore } from "@/lib/dummy-data/faqs";
-import { parseTeamPageLayerEdits, serializeTeamPageLayerEdits, type DummyTeamPageLayerEditsStore } from "@/lib/dummy-data/team-page";
+import {
+  parseAdvisorEdits,
+  parseTeamPageLayerEdits,
+  serializeAdvisorEdits,
+  serializeTeamPageLayerEdits,
+  type DummyAdvisorEditsStore,
+  type DummyTeamPageLayerEditsStore,
+} from "@/lib/dummy-data/team-page";
 import { parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEditsStore } from "@/lib/dummy-data/outreach";
 import {
   TEST_DEVELOPER_APPLICATIONS_COOKIE,
@@ -23,6 +30,7 @@ import {
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_FAQ_COOKIE,
   TEST_DEVELOPER_TEAM_PAGE_COOKIE,
+  TEST_DEVELOPER_ADVISORS_COOKIE,
   TEST_DEVELOPER_OUTREACH_COOKIE,
   TEST_DEVELOPER_COOKIE_MAX_AGE_S,
   TEST_DEVELOPER_EDITS_COOKIE,
@@ -57,6 +65,7 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
         dummyFaqEditsIn(jar),
         dummyOutreachEditsIn(jar),
         dummyTeamPageEditsIn(jar),
+        dummyAdvisorEditsIn(jar),
       ),
       true,
     );
@@ -129,6 +138,14 @@ function dummyTeamPageEditsIn(jar: Jar): DummyTeamPageLayerEditsStore {
   return {
     current: parseTeamPageLayerEdits(jar.get(TEST_DEVELOPER_TEAM_PAGE_COOKIE)?.value),
     save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_TEAM_PAGE_COOKIE, serializeTeamPageLayerEdits(next)),
+  };
+}
+
+/** Changes to the Team page's advisors (issue #286, lib/dummy-data/team-page.ts); the public Team page never reads them. */
+function dummyAdvisorEditsIn(jar: Jar): DummyAdvisorEditsStore {
+  return {
+    current: parseAdvisorEdits(jar.get(TEST_DEVELOPER_ADVISORS_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_ADVISORS_COOKIE, serializeAdvisorEdits(next)),
   };
 }
 

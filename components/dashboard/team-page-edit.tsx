@@ -2,12 +2,22 @@
 
 import { useCallback, useMemo, useState, useTransition, type ReactNode } from "react";
 import Image from "next/image";
-import { Check, Eye, Plus, RotateCcw, TriangleAlert, X } from "lucide-react";
+import { Check, Eye, LogOut, Plus, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
-import { resetTeamPageLayer, saveTeamPageLayer } from "@/app/dashboard/actions";
+import { endAdvising, resetTeamPageLayer, saveTeamAdvisors, saveTeamPageLayer } from "@/app/dashboard/actions";
 import { PAGE_INTRO } from "@/components/about/page-header";
 import { TeamPageView, type TeamPageFrames } from "@/components/about/team-page";
 import { CURRENT_ACADEMIC_YEAR } from "@/lib/about/academic-year-copy";
+import {
+  advisorFieldErrors,
+  advisorRowsOf,
+  advisorsOfRows,
+  inPageOrder,
+  teamPageStatus,
+  withAdvisors,
+  type AdvisorItem,
+  type AdvisorRow,
+} from "@/lib/about/advisors";
 import {
   nextAddedId,
   resetLayer,
@@ -71,10 +81,13 @@ import {
 import type { Photo } from "@/lib/about/types";
 import type { TeamPageOpening } from "@/lib/about/team-page-editor";
 import type { EditBlocks } from "@/lib/content/edit-shell";
-import { statusOf, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
+import { editorVersion, statusOf, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
+import { FIRST_ALUMNI_YEAR } from "@/lib/dashboard/alumni";
+import { YearSelect } from "./alumni-panels";
 import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { BarButton, EditableBlock, EditShell } from "./edit-shell";
+import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
 import { TeamHeadPanel } from "./team-head-panel";
 import { TeamLeaderPanel } from "./team-leader-panel";
 import { TeamPersonPanel } from "./team-person-panel";
@@ -88,12 +101,16 @@ import { TeamPersonPanel } from "./team-person-panel";
 // place on the arc (gone at eight leaders), "+ Add department" beside each
 // slide's heading, and "+ Add division lead" on a hovered head block, under a
 // note that added items show only on the Team page. The core members list and
-// "In numbers" have no affordance. The editor holds the working layer and lays
-// it on the roles build as it changes; Save draft and Publish send it whole
-// to the layer actions, which check it again and write nothing but the layer.
+// "In numbers" have no affordance. The Advisors section is one block (board
+// 80c) whose "Edit advisors" opens the Advisors panel (board 80d, issue
+// #286). The editor holds the working layer and the working advisor list and
+// lays both on the page as they change; Save draft and Publish send them
+// whole to the layer and advisor actions, which check them again and write
+// nothing but the layer and the advisors. End advising is the one change
+// made at once, after the editor confirms the years.
 
 /** What an Edit chip opens: the intro or the group photo in place, or a panel: a person's spot, a leader the editor added, a head block, a department the editor added. */
-type Section = "intro" | "group-photo" | PersonSpot | `leader:${number}` | HeadSpot | `department:${number}`;
+type Section = "intro" | "group-photo" | "advisors" | PersonSpot | `leader:${number}` | HeadSpot | `department:${number}`;
 
 /** The panel open beside the page, with its fields as the editor fills them. */
 type Panel =
@@ -101,7 +118,9 @@ type Panel =
   /** `id` null: a leader the "+" is adding. */
   | { readonly kind: "leader"; readonly id: number | null; readonly fields: LeaderFields }
   /** `at` null: a department "+ Add department" is adding. */
-  | { readonly kind: "head"; readonly at: HeadRef | null; readonly fields: HeadFields };
+  | { readonly kind: "head"; readonly at: HeadRef | null; readonly fields: HeadFields }
+  /** The Advisors panel, with its copy of the list: Done keeps it, closing drops it. */
+  | { readonly kind: "advisors"; readonly rows: readonly KeyedAdvisorRow[] };
 
 const isArcSpot = (at: string): at is ArcSpot => at.startsWith("arc:");
 const isAddedRef = (at: string): at is AddedRef => at.startsWith("added:");
@@ -114,6 +133,7 @@ function previewOf(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null):
   if (panel === null) return layer;
   if (panel.kind === "person") return withSpotEdit(layer, panel.spot, editOfFields(build, panel.spot, panel.fields));
   if (panel.kind === "leader") return layerWithLeader(build, layer, panel.id, panel.fields);
+  if (panel.kind === "advisors") return layer;
   return layerWithHead(build, layer, panel.at, panel.fields);
 }
 
@@ -125,6 +145,9 @@ function panelRefusal(build: TeamBuild, layer: TeamPageLayer, panel: Panel | nul
     const errors = leaderFieldErrors(build, layer, panel.id, panel.fields);
     return errors.arc ?? (Object.keys(errors).length > 0 ? "Fix the highlighted fields first." : null);
   }
+  if (panel.kind === "advisors") {
+    return panel.rows.some((r) => Object.keys(advisorFieldErrors(r.fields)).length > 0) ? "Fix the highlighted advisors first." : null;
+  }
   return hasHeadErrors(headFieldErrors(panel.at, panel.fields)) ? "Fix the highlighted fields first." : null;
 }
 
@@ -133,21 +156,44 @@ function selectedOf(layer: TeamPageLayer, panel: Panel | null): string | undefin
   if (panel === null) return undefined;
   if (panel.kind === "person") return panel.spot;
   if (panel.kind === "leader") return `added:${panel.id ?? nextAddedId(layer)}`;
+  if (panel.kind === "advisors") return "advisors";
   return panel.at ?? `added:${nextAddedId(layer)}`;
 }
 
-export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpening; academicYear: number }) {
+/** The rows the panel opens on, each keyed for the panel. */
+const keyed = (rows: readonly AdvisorRow[]): KeyedAdvisorRow[] => rows.map((row, i) => ({ ...row, key: i + 1 }));
+
+/** The panel's rows as the working list keeps them. */
+const unkeyed = (rows: readonly KeyedAdvisorRow[]): AdvisorRow[] => inPageOrder(rows).map(({ id, fields }) => ({ id, fields }));
+
+export function TeamPageEdit({
+  opening,
+  advisors,
+  academicYear,
+}: {
+  opening: TeamPageOpening;
+  advisors: readonly AdvisorItem[];
+  academicYear: number;
+}) {
   const { build, base } = opening;
   const [layer, setLayer] = useState<TeamPageLayer>(opening.layer);
-  // Nothing saved yet reads as a draft, as board 80 shows the bar.
-  const [status, setStatus] = useState<ContentStatus>(opening.status ?? "draft");
+  // Null until the layer is first saved: the bar then reads Draft, as board 80 shows it.
+  const [layerStatus, setLayerStatus] = useState<ContentStatus | null>(opening.status);
+  // The advisors as stored, for the bar's state, and the list the editor works on.
+  const [advisorItems, setAdvisorItems] = useState<readonly AdvisorItem[]>(advisors);
+  const [advisorRows, setAdvisorRows] = useState<readonly AdvisorRow[]>(() => advisorRowsOf(advisors));
+  const [ending, setEnding] = useState<number | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [inPlace, setInPlace] = useState<"intro" | "group-photo" | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
+  const status = teamPageStatus(layerStatus, advisorItems);
   const preview = previewOf(build, layer, panel);
-  const { page, shown } = useMemo(() => editedTeamPage(build, base, preview), [build, base, preview]);
+  const shownAdvisors = panel?.kind === "advisors" ? panel.rows : advisorRows;
+  const edited = useMemo(() => editedTeamPage(build, base, preview), [build, base, preview]);
+  const { shown } = edited;
+  const page = useMemo(() => withAdvisors(edited.page, advisorsOfRows(shownAdvisors)), [edited, shownAdvisors]);
   const edits = editCount(preview);
   const personPhotos = useMemo(() => personPhotoChoices(build, base), [build, base]);
   const groupPhotos = useMemo(() => groupPhotoChoices(build, base), [build, base]);
@@ -163,6 +209,7 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
     });
     const entries: [string, EditBlocks<string, Section>[string]][] = [
       ["intro", { name: "Intro text", section: "intro" }],
+      ["advisors", { name: "Advisors · Added by hand", section: "advisors", chip: "Edit advisors" }],
       ["group-photo", { name: "Group photo", section: "group-photo", chip: "Replace photo" }],
     ];
     if (shown !== null && shown.leader !== null) entries.push(["leader", person("leader", shown.leader.role)]);
@@ -195,6 +242,11 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
         setInPlace(section);
         return;
       }
+      if (section === "advisors") {
+        setInPlace(null);
+        setPanel({ kind: "advisors", rows: keyed(advisorRows) });
+        return;
+      }
       if (section.startsWith("leader:")) {
         const id = Number(section.slice("leader:".length));
         const fields = leaderFieldsOf(build, layer, id);
@@ -211,7 +263,7 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
       setInPlace(null);
       setPanel({ kind: "person", spot, fields });
     },
-    [build, layer, openHead],
+    [build, layer, openHead, advisorRows],
   );
 
   const addLeader = (gap: number) => {
@@ -271,6 +323,7 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
         </div>
       ),
     },
+    advisors: (node) => <EditableBlock id="advisors">{node}</EditableBlock>,
     note: adding ? <AddedItemsNote /> : null,
     groupPhoto: (node) => (
       <>
@@ -298,11 +351,15 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
     return preview;
   };
 
-  /** The panel's edit kept in the working layer, and the panel closed. */
+  /** The working advisor list with the Advisors panel's changes kept. */
+  const keptAdvisors = (): readonly AdvisorRow[] => (panel?.kind === "advisors" ? unkeyed(panel.rows) : advisorRows);
+
+  /** The panel's edit kept in the working layer or advisor list, and the panel closed. */
   const keep = () => {
     const next = keptLayer();
     if (next === null) return;
     setLayer(next);
+    setAdvisorRows(keptAdvisors());
     setPanel(null);
   };
 
@@ -321,7 +378,9 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
       toast.error(`Intro text: ${refused}`);
       return;
     }
+    const rows = keptAdvisors();
     setLayer(next);
+    setAdvisorRows(rows);
     setPanel(null);
     startTransition(async () => {
       const result = await saveTeamPageLayer(step, next);
@@ -329,7 +388,14 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
         toast.error(result.error);
         return;
       }
-      setStatus(statusOf(result.value));
+      setLayerStatus(statusOf(result.value));
+      const saved = await saveTeamAdvisors(step, rows);
+      if (!saved.ok) {
+        toast.error(`Advisors: ${saved.error}`);
+        return;
+      }
+      setAdvisorItems(saved.value);
+      setAdvisorRows(advisorRowsOf(saved.value));
       toast.success(step === "publish" ? "The Team page is published." : "Draft saved. The live Team page stays as it is.");
     });
   };
@@ -344,9 +410,26 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
       // The reset keeps the intro text and the group photo as the editor has them.
       setLayer((l) => resetLayer(l));
       setPanel(null);
-      setStatus(statusOf(result.value));
+      setLayerStatus(statusOf(result.value));
       setResetOpen(false);
       toast.success("The page is back to the team. Publish to put it on the site.");
+    });
+  };
+
+  /** End advising, confirmed: off the working list once the Team page and the Alumni page have it. */
+  const endAdvisor = (id: number, years: { from: number; to: number }) => {
+    startTransition(async () => {
+      const result = await endAdvising(id, years);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      const name = advisorRows.find((r) => r.id === id)?.fields.name ?? "The advisor";
+      setAdvisorItems((items) => items.filter((a) => a.id !== id));
+      setAdvisorRows((rows) => rows.filter((r) => r.id !== id));
+      setPanel((open) => (open?.kind === "advisors" ? { ...open, rows: open.rows.filter((r) => r.id !== id) } : open));
+      setEnding(null);
+      toast.success(`${name} is now in the Advisors group on the Alumni page.`);
     });
   };
 
@@ -380,6 +463,15 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
               onSave={keep}
               onCancel={() => setPanel(null)}
               onBack={() => closeWith((l) => backToTeamRecord(l, panel.spot))}
+            />
+          ) : panel.kind === "advisors" ? (
+            <TeamAdvisorsPanel
+              rows={panel.rows}
+              photoChoices={personPhotos}
+              onChange={(rows) => setPanel({ kind: "advisors", rows })}
+              onDone={keep}
+              onCancel={() => setPanel(null)}
+              onEnd={setEnding}
             />
           ) : panel.kind === "leader" ? (
             <TeamLeaderPanel
@@ -415,6 +507,14 @@ export function TeamPageEdit({ opening, academicYear }: { opening: TeamPageOpeni
       >
         <TeamPageView page={page} academicYear={academicYear} frames={frames} />
       </EditShell>
+
+      <EndAdvisingDialog
+        advisor={ending === null ? null : (advisorItems.find((a) => a.id === ending) ?? null)}
+        thisYear={academicYear}
+        pending={pending}
+        onCancel={() => setEnding(null)}
+        onConfirm={(years) => ending !== null && endAdvisor(ending, years)}
+      />
 
       <ConfirmDialog
         open={resetOpen}
@@ -537,6 +637,67 @@ function HeadPanel({
       onHide={at === null ? null : () => onHide(at)}
       onBack={roles !== null && edited ? () => onBack(roles) : null}
     />
+  );
+}
+
+/**
+ * End advising, confirmed with the academic years they advised (board 80d):
+ * the advisor leaves the Team page and joins the Alumni page's Advisors group
+ * with their role and years, both at once rather than on Publish.
+ */
+function EndAdvisingDialog({
+  advisor,
+  thisYear,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  advisor: AdvisorItem | null;
+  thisYear: number;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: (years: { from: number; to: number }) => void;
+}) {
+  const years = Array.from({ length: Math.max(1, thisYear - FIRST_ALUMNI_YEAR + 1) }, (_, i) => thisYear - i);
+  const [from, setFrom] = useState(thisYear);
+  const [to, setTo] = useState(thisYear);
+  const shown = advisor === null ? null : editorVersion(advisor.version);
+  return (
+    <ConfirmDialog
+      open={shown !== null}
+      onOpenChange={(open) => {
+        if (open) return;
+        onCancel();
+        setFrom(thisYear);
+        setTo(thisYear);
+      }}
+      icon={<LogOut className="h-5 w-5" strokeWidth={1.75} />}
+      title={`End advising for ${shown?.name ?? ""}?`}
+      description={`They leave the Team page and show in the Advisors group on the Alumni page as ${shown?.role ?? ""}, under each year they advised. Both pages change now, not on Publish.`}
+      cancelLabel="Keep them"
+      confirmLabel="End advising"
+      pending={pending}
+      onConfirm={() => onConfirm({ from, to })}
+    >
+      <div role="group" aria-labelledby="end-advising-years" className="mt-5">
+        <p id="end-advising-years" className="mb-2 text-[13px] leading-snug text-prt-text">
+          Academic years they advised
+        </p>
+        <div className="flex items-center gap-3">
+          <YearSelect
+            label="From"
+            value={from}
+            years={years}
+            onChange={(next) => {
+              setFrom(next);
+              setTo((current) => Math.max(current, next));
+            }}
+          />
+          <span className="text-[13px] text-prt-muted">to</span>
+          <YearSelect label="To" value={to} years={years.filter((y) => y >= from)} onChange={setTo} />
+        </div>
+      </div>
+    </ConfirmDialog>
   );
 }
 

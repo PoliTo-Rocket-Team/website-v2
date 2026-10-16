@@ -4,7 +4,7 @@ import { LANDING_AFTER_LEAVING, type NavCounts } from "@/lib/dashboard/access";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
 import { hasNoneShown } from "@/lib/dashboard/my-applications";
 import { myAlumniOf } from "@/lib/dashboard/my-alumni";
-import { dummyAlumni } from "./alumni";
+import { DUMMY_ALUMNI_YEAR, dummyAlumni } from "./alumni";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { formatEuro, waitingOrders, type ApproveOrdersChange } from "@/lib/dashboard/orders";
 import { partnerEditor } from "@/lib/partners-editor";
@@ -14,7 +14,8 @@ import { NO_CONTENT_EDITS_STORE } from "./content-edits";
 import { dummyFaqNow, dummyFaqStore, type DummyFaqEditsStore } from "./faqs";
 import { team as teamRecord } from "@/lib/about/team";
 import { teamPageEditor } from "@/lib/about/team-page-editor";
-import { dummyTeamPageLayerStore, dummyTeamRoles, type DummyTeamPageLayerEditsStore } from "./team-page";
+import { advisorEditor } from "@/lib/about/advisors";
+import { dummyAdvisorStore, dummyTeamPageLayerStore, dummyTeamRoles, type DummyAdvisorEditsStore, type DummyTeamPageLayerEditsStore } from "./team-page";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { dummyOutreachStore, dummyPhotoFiles, NO_OUTREACH_EDITS_STORE, type DummyOutreachEditsStore } from "./outreach";
 import {
@@ -917,6 +918,7 @@ export function dummyDashboardData(
   faqEdits: DummyFaqEditsStore = NO_CONTENT_EDITS_STORE,
   outreachEdits: DummyOutreachEditsStore = NO_OUTREACH_EDITS_STORE,
   teamPageEdits: DummyTeamPageLayerEditsStore = NO_CONTENT_EDITS_STORE,
+  advisorEdits: DummyAdvisorEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
   if (viewer !== "alumni" && viewer !== "non-member" && teamEditsStore.current.movedToAlumni[personFor[viewer].id] !== undefined) {
@@ -1096,6 +1098,8 @@ export function dummyDashboardData(
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
     // The layer lives in the test developer's cookie and is laid on the dummy team as they edited it.
     teamPage: teamPageEditor(dummyViewer(viewer, holders), dummyTeamPageLayerStore(teamPageEdits), async () => dummyTeamRoles(teamEdits.current), teamRecord),
+    // The advisors live in their own cookie; End advising adds to the Alumni edits, on the dummy clock's year.
+    teamAdvisors: advisorEditor(dummyViewer(viewer, holders), dummyAdvisorStore(advisorEdits, teamEdits), async () => DUMMY_ALUMNI_YEAR),
     outreach: outreachEditor(dummyViewer(viewer, holders), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),

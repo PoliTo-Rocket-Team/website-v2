@@ -22,7 +22,7 @@ import { PageHeader } from "./page-header";
 
 /**
  * What the editor wraps: the intro, each person on the org chart, the head
- * blocks and slide headings of the departments, the group photo; and what it
+ * blocks and slide headings of the departments, the advisors, the group photo; and what it
  * adds: the Add leader affordances and a note over the page (board 80e,
  * issue #285). The core members list and "In numbers" have none.
  */
@@ -32,6 +32,8 @@ export type TeamPageFrames = {
   readonly addLeader?: AddLeader | null;
   readonly departments?: DepartmentFrames;
   readonly groupPhoto?: (photo: ReactNode) => ReactNode;
+  /** The Advisors section, framed as one block (board 80c, issue #286). */
+  readonly advisors?: (section: ReactNode) => ReactNode;
   readonly note?: ReactNode;
 };
 
@@ -55,7 +57,7 @@ export function TeamPageView({
 
           <OrgChart chart={page.orgChart} frame={frames.leader} onAdd={frames.addLeader} />
           <Departments departments={page.departments} frames={frames.departments} />
-          <Advisors advisors={page.advisors} />
+          <Advisors advisors={page.advisors} frame={frames.advisors} />
           <InNumbers numbers={page.inNumbers} />
           <CoreMembers core={page.coreMembers} photoFrame={frames.groupPhoto} />
         </main>
