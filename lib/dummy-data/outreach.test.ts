@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { editorVersion, publicItems, statusOf } from "@/lib/content/versioned";
 import { outreachRecord } from "@/lib/outreach";
 import { outreachEditor } from "@/lib/outreach-editor";
+import { outreachPostOf } from "@/lib/outreach-rows";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
 import {
@@ -59,7 +60,7 @@ test("a test developer's writes stay in their cookie, across requests", async ()
   assert.ok((await outreach.addTag("Workshop")).ok);
   const drafted = await outreach.posts.save(1, "save-draft", async (current) => ({
     ok: true,
-    value: { ...current!, title: "Wings for Life, Aosta 2025", tags: ["Charity run", "Workshop"] },
+    value: { ...outreachPostOf(current)!, title: "Wings for Life, Aosta 2025", tags: ["Charity run", "Workshop"] },
   }));
   assert.ok(drafted.ok, drafted.ok ? "" : drafted.error);
   const created = await outreach.posts.save(null, "save-draft", async () => ({
@@ -89,7 +90,7 @@ test("a test developer's writes stay in their cookie, across requests", async ()
 test("a cookie this code did not write reads as no changes", () => {
   assert.deepEqual(parseOutreachEdits(undefined), NO_OUTREACH_EDITS);
   assert.deepEqual(parseOutreachEdits("not json"), NO_OUTREACH_EDITS);
-  const forgedPost = { posts: { saved: [{ id: 1, siteOrder: 1, version: { state: "draft", draft: { patch: { body: [] } } } }], removed: [], order: [] }, summit: null, tags: [] };
+  const forgedPost = { posts: { saved: [{ id: 1, siteOrder: 1, version: { state: "draft", draft: { patch: { body: "not blocks" } } } }], removed: [], order: [] }, summit: null, tags: [] };
   assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedPost))).posts.saved, []);
   const forgedTag = { posts: { saved: [], removed: [], order: [] }, summit: null, tags: ["Award"] };
   assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedTag))), NO_OUTREACH_EDITS);

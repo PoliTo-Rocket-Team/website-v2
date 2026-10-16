@@ -43,6 +43,17 @@ export function editChips<Id extends string, Section extends string>(
   };
 }
 
+/**
+ * One line of the checklist under Publish (board 74f): what a new item still
+ * needs before it can go on the site. Publish stays off until every line is done.
+ */
+export type PublishCheck = { readonly label: string; readonly done: boolean };
+
+/** Whether Publish may run: every line of the checklist is done. */
+export function checklistDone(checks: readonly PublishCheck[]): boolean {
+  return checks.every((c) => c.done);
+}
+
 /** One page the switch shows (board 75d: Project page, Home, Projects list). */
 export type PageTarget<Page extends string> = {
   readonly id: Page;

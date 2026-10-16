@@ -704,21 +704,25 @@ export const outreachPostVersions = pgTable(
       table.postId,
       table.version,
     ),
+    // A published version is a whole post. A draft may not be one yet: Save
+    // draft works at any point on a new post (board 74f, issue #292), so a
+    // draft row may have no title, text, photo or channel. The editor keeps
+    // a live post's draft whole (lib/content/versioned.ts, `Versioned`).
     titled: check(
       "outreach_post_versions_titled",
-      sql`char_length(${table.title}) >= 1`,
+      sql`${table.version} = 'draft' or char_length(${table.title}) >= 1`,
     ),
     hasBody: check(
       "outreach_post_versions_body",
-      sql`jsonb_typeof(${table.body}) = 'array' and jsonb_array_length(${table.body}) >= 1`,
+      sql`jsonb_typeof(${table.body}) = 'array' and (${table.version} = 'draft' or jsonb_array_length(${table.body}) >= 1)`,
     ),
     hasPhoto: check(
       "outreach_post_versions_photos",
-      sql`jsonb_typeof(${table.photos}) = 'array' and jsonb_array_length(${table.photos}) >= 1`,
+      sql`jsonb_typeof(${table.photos}) = 'array' and (${table.version} = 'draft' or jsonb_array_length(${table.photos}) >= 1)`,
     ),
     hasChannel: check(
       "outreach_post_versions_channels",
-      sql`jsonb_typeof(${table.channels}) = 'object' and (${table.channels} ? 'instagram' or ${table.channels} ? 'linkedin')`,
+      sql`jsonb_typeof(${table.channels}) = 'object' and (${table.version} = 'draft' or ${table.channels} ? 'instagram' or ${table.channels} ? 'linkedin')`,
     ),
   }),
 );

@@ -1,11 +1,10 @@
 import { memoryContentStore } from "@/lib/content/memory";
-import type { ContentItem, Versioned } from "@/lib/content/versioned";
 import { refused, written } from "@/lib/dashboard/write";
 import { checkNewTag, type OutreachStore, type StoredOutreach, type SummitVersions } from "@/lib/outreach-editor";
 import { importedOutreach } from "@/lib/outreach-import";
 import type { PhotoFiles } from "@/lib/outreach-photos";
-import { outreachFeatureOf, outreachPostOf } from "@/lib/outreach-rows";
-import type { OutreachFeature, OutreachPhoto, OutreachPost, OutreachTag } from "@/lib/outreach-types";
+import { outreachDraftOf, outreachFeatureOf, outreachPostOf } from "@/lib/outreach-rows";
+import type { OutreachDraft, OutreachFeature, OutreachPhoto, OutreachPost, OutreachTag, PostItem, PostVersions } from "@/lib/outreach-types";
 import { contentEditsOf, NO_CONTENT_EDITS, parseContentEdits, PREVIEW_FULL, withContentEdits, type ContentEdits } from "./content-edits";
 import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 
@@ -26,7 +25,7 @@ import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 
 /** What a test developer changed on the Outreach content. */
 export type DummyOutreachEdits = {
-  readonly posts: ContentEdits<OutreachPost>;
+  readonly posts: ContentEdits<OutreachPost, OutreachDraft>;
   /** The summit's versions, once changed; null while it is the seed's. */
   readonly summit: SummitVersions | null;
   /** Tags added to the end of the list, in the order they were added. */
@@ -102,6 +101,7 @@ export function serializeOutreachEdits(edits: DummyOutreachEdits): string {
 }
 
 const isPost = (value: unknown): value is OutreachPost => outreachPostOf(value) !== null;
+const isDraft = (value: unknown): value is OutreachDraft => outreachDraftOf(value) !== null;
 
 function summitOf(value: unknown): SummitVersions | null {
   if (!isShape(value) || value.state !== "published") return null;
@@ -135,7 +135,7 @@ export function parseOutreachEdits(value: string | undefined): DummyOutreachEdit
           isShape(item) ? { ...item, version: eachVersion(item.version, (post) => expand(seedPost(item.id), post)) } : item,
         )
       : wire.posts.saved;
-    const posts = parseContentEdits(encodeURIComponent(JSON.stringify({ ...wire.posts, saved })), isPost);
+    const posts = parseContentEdits(encodeURIComponent(JSON.stringify({ ...wire.posts, saved })), isPost, isDraft);
     const summit = wire.summit === null ? null : summitOf(eachVersion(wire.summit, (f) => expand(SEED.summit.published, f)));
     const tags = addedTags(wire.tags);
     if ((wire.summit !== null && summit === null) || tags === null) return NO_OUTREACH_EDITS;
@@ -158,13 +158,13 @@ function keptPhoto(photo: OutreachPhoto): OutreachPhoto {
 }
 
 /** A version the cookie can hold: an uploaded photo (a data URL) is not kept. */
-function keptVersion(version: Versioned<OutreachPost>): Versioned<OutreachPost> {
+function keptVersion(version: PostVersions): PostVersions {
   const keep = (post: OutreachPost): OutreachPost => {
     const [cover, ...more] = post.photos;
     return { ...post, photos: [keptPhoto(cover), ...more.map(keptPhoto)] };
   };
   return version.state === "draft"
-    ? { state: "draft", draft: keep(version.draft) }
+    ? { state: "draft", draft: { ...version.draft, photos: version.draft.photos.map(keptPhoto) } }
     : { state: "published", published: keep(version.published), draft: version.draft === null ? null : keep(version.draft) };
 }
 
@@ -186,7 +186,7 @@ export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStor
   }
 
   return {
-    posts: memoryContentStore(withContentEdits(SEED.posts, current.posts), (items: readonly ContentItem<OutreachPost>[]) =>
+    posts: memoryContentStore(withContentEdits(SEED.posts, current.posts), (items: readonly PostItem[]) =>
       keep({ ...current, posts: contentEditsOf(SEED.posts, items, keptVersion) }),
     ),
 

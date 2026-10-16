@@ -8,7 +8,7 @@ import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutre
 import { awardPosts, outreachRecord, outreachStats, postBySlug, slugOf, trackRecord } from "./outreach";
 import { outreachEditor, publicOutreach, type StoredOutreach } from "./outreach-editor";
 import { importedOutreach, outreachImportSql } from "./outreach-import";
-import { postColumns, postFromColumns, summitColumns, summitFromColumns } from "./outreach-rows";
+import { outreachPostOf, postColumns, postFromColumns, summitColumns, summitFromColumns } from "./outreach-rows";
 import type { IsoDate, OutreachPost } from "./outreach-types";
 
 // The Outreach store (issue #287): the import that carries lib/outreach.ts
@@ -92,7 +92,7 @@ test("/outreach and the post pages show only published posts: a draft-only post 
   const draftOnly: OutreachPost = { ...outreachRecord.posts[0], title: "A post still in draft", date: "2026-10-01" };
   const created = await editor.posts.save(null, "save-draft", async () => ({ ok: true, value: draftOnly }));
   assert.ok(created.ok);
-  const changed = await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...current!, title: "Changed in a draft" } }));
+  const changed = await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, title: "Changed in a draft" } }));
   assert.ok(changed.ok);
 
   const shown = publicOutreach({ ...stored, posts: await posts.list() });
@@ -105,7 +105,7 @@ test("/outreach and the post pages show only published posts: a draft-only post 
   assert.ok(home !== null);
   assert.ok(![home.featured, ...home.news].some((p) => p.title === draftOnly.title || p.title === "Changed in a draft"));
 
-  const published = await editor.posts.save(created.value.id, "publish", async (current) => ({ ok: true, value: current! }));
+  const published = await editor.posts.save(created.value.id, "publish", async (current) => ({ ok: true, value: outreachPostOf(current)! }));
   assert.ok(published.ok);
   const live = publicOutreach({ ...stored, posts: await posts.list() });
   assert.equal(postBySlug(live.posts, slugOf(draftOnly))?.title, draftOnly.title);
@@ -152,13 +152,13 @@ test("tags are data: a post tagged Award counts toward the award figure, and the
 test("the editor keeps a post's tags to the list, adds a tag inline, and lets only site-content editors in", async () => {
   const jar = cookie();
   const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
-  const unknown = await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...current!, tags: ["Workshop"] } }));
+  const unknown = await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, tags: ["Workshop"] } }));
   assert.deepEqual(unknown, { ok: false, error: "Workshop is not a tag. Add it to the tag list first." });
 
   assert.deepEqual(await editor.addTag(" Workshop "), { ok: true, value: { name: "Workshop", award: false } });
   assert.deepEqual(await editor.addTag("award"), { ok: false, error: "Award is already a tag." });
   assert.deepEqual(await editor.addTag("  "), { ok: false, error: "Write the tag." });
-  assert.ok((await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...current!, tags: ["Workshop"] } }))).ok);
+  assert.ok((await editor.posts.save(1, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, tags: ["Workshop"] } }))).ok);
   assert.deepEqual((await editor.tags())?.at(-1), { name: "Workshop", award: false });
 
   const refused = outreachEditor(member, dummyOutreachStore(cookie()), dummyPhotoFiles);

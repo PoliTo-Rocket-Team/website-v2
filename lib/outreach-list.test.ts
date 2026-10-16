@@ -6,6 +6,7 @@ import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutre
 import { outreachRecord, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachStore } from "./outreach-editor";
 import { filterRows, newestRowsFirst, outreachRow } from "./outreach-list";
+import { outreachPostOf } from "./outreach-rows";
 import { checkSummitFields, summitFieldsOf } from "./outreach-summit-fields";
 
 // The dashboard's Outreach list (board 74, issue #289): Unpublish and Delete
@@ -52,7 +53,7 @@ test("Unpublish keeps the post in the list as a draft and takes it off /outreach
   assert.equal((await editor.posts.unpublish(first.id)).ok, false);
 
   // Draft changes are what the draft keeps, so nothing typed is lost.
-  assert.ok((await editor.posts.save(second.id, "save-draft", async (current) => ({ ok: true, value: { ...current!, lead: "Rewritten lead" } }))).ok);
+  assert.ok((await editor.posts.save(second.id, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, lead: "Rewritten lead" } }))).ok);
   const withChanges = await editor.posts.unpublish(second.id);
   assert.ok(withChanges.ok && withChanges.value.version.state === "draft");
   assert.equal(withChanges.value.version.draft.lead, "Rewritten lead");
@@ -115,7 +116,7 @@ test("the list is newest first, and the Status filter reads a post with draft ch
   const store = freshStore();
   const editor = outreachEditor(admin, store, dummyPhotoFiles);
   const [newest] = (await editor.posts.list())!;
-  assert.ok((await editor.posts.save(newest.id, "save-draft", async (current) => ({ ok: true, value: { ...current!, lead: "Changed" } }))).ok);
+  assert.ok((await editor.posts.save(newest.id, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, lead: "Changed" } }))).ok);
   const rows = newestRowsFirst((await editor.posts.list())!.map((item) => outreachRow(item, String(item.id))));
   const dates = rows.map((r) => r.post.date);
   assert.deepEqual(dates, [...dates].sort().reverse());

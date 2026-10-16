@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { editorVersion, type ContentItem } from "@/lib/content/versioned";
+import { editorVersion } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
 import { awardPosts, postBySlug, slugOf } from "./outreach";
@@ -8,7 +8,7 @@ import { outreachEditor, publicOutreach, type OutreachEditor } from "./outreach-
 import { importedOutreach } from "./outreach-import";
 import { postFieldsOf, type PostFields } from "./outreach-post-fields";
 import { postColumns, postFromColumns } from "./outreach-rows";
-import type { OutreachPost } from "./outreach-types";
+import type { OutreachPost, PostItem } from "./outreach-types";
 
 // The Edit post panel's writes (boards 74c, 74d and 74h, issue #290): the
 // rules both buttons enforce, tags added inline, and what Save draft and
@@ -33,7 +33,7 @@ function editorOverCookie(): { editor: OutreachEditor; shown: () => Promise<Retu
   return { editor, shown };
 }
 
-async function firstPost(editor: OutreachEditor): Promise<ContentItem<OutreachPost>> {
+async function firstPost(editor: OutreachEditor): Promise<PostItem> {
   const items = await editor.posts.list();
   assert.ok(items !== null && items.length > 1);
   return items[0];
@@ -80,7 +80,7 @@ test("a tag typed inline joins the tag data, another post can pick it, and Award
 
   // Award counts by the tag list's mark, not by any new tag.
   const after = await shown();
-  const wasAward = (item: ContentItem<OutreachPost>) => editorVersion(item.version).tags.includes("Award");
+  const wasAward = (item: PostItem) => editorVersion(item.version).tags.includes("Award");
   const expected = awardsBefore - (wasAward(first) ? 1 : 0) + (wasAward(second) ? 0 : 1);
   assert.equal(awardPosts(after).length, expected);
   assert.ok(awardPosts(after).some((p) => p.title === editorVersion(second.version).title));

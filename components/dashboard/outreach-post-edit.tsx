@@ -12,10 +12,21 @@ import type { PostFrame, PostPart } from "@/components/outreach/post";
 import { postCardOf } from "@/components/outreach/post-card";
 import { PostPage } from "@/components/outreach/post-page";
 import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
-import { editorVersion, publicVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
 import { newestFirst, outreachStats, postYears, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
-import { checkPostFields, firstPostError, postFieldsOf, postViewOf, standingErrors, type PostFieldErrors, type PostFields } from "@/lib/outreach-post-fields";
-import type { OutreachContent, OutreachPost, OutreachTag, PostView } from "@/lib/outreach-types";
+import {
+  blankPost,
+  blankPostFields,
+  checkPostFields,
+  firstPostError,
+  postFieldsOf,
+  postViewOf,
+  publishChecklist,
+  standingErrors,
+  type PostFieldErrors,
+  type PostFields,
+} from "@/lib/outreach-post-fields";
+import { titleOf, type IsoDate, type OutreachContent, type OutreachDraft, type OutreachTag, type PostItem } from "@/lib/outreach-types";
 import { CardInPlace, EditableBlock, EditShell } from "./edit-shell";
 import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post-panel";
 
@@ -25,6 +36,12 @@ import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post
 // The page is drawn from the panel's fields, so it changes as the editor
 // types; Save draft and Publish on the bar send the fields to the outreach
 // editor, which checks them again. Save draft leaves the published post live.
+//
+// New post (board 74f, issue #292) opens the same editor on an empty post
+// dated today, with "Start here" on Title and details. Until the post is
+// first published, Save draft keeps it as it is, blanks and all; Publish
+// waits on the checklist under it. The first save gives the post its
+// address, and the editor moves there.
 
 const POST_BLOCKS: EditBlocks<PostPart, PostSection> = {
   details: { name: "Title and details", section: "details" },
@@ -38,7 +55,8 @@ const outlined: PostFrame = (part, node) => <EditableBlock id={part}>{node}</Edi
 
 // The page switch (issue #294, the board 75d pattern): the post's own page,
 // then the two pages its card shows on, each with the card drawn from the
-// fields being edited, in place among the published posts.
+// fields being edited, in place among the published posts. A new post has
+// none until it is saved (board 74f).
 type PostPageId = "post" | "list" | "home";
 
 const PAGE_TARGETS: readonly PageTarget<PostPageId>[] = [
@@ -47,22 +65,26 @@ const PAGE_TARGETS: readonly PageTarget<PostPageId>[] = [
   { id: "home", label: "Home" },
 ];
 
+/** What the editor opens on: a stored post, or a new one not saved yet, dated `today`. */
+type Opening = { readonly item: PostItem } | { readonly item: null; readonly today: IsoDate };
+
 export function OutreachPostEdit({
-  item: initial,
   tags: initialTags,
   neighbours,
   published,
-}: {
-  item: ContentItem<OutreachPost>;
+  ...opening
+}: Opening & {
   tags: readonly OutreachTag[];
   neighbours: Neighbouring;
   /** What the public pages show, for the list and home targets. */
   published: OutreachContent;
 }) {
   const router = useRouter();
-  const [item, setItem] = useState(initial);
+  // What the page opened on; for a new post, the blank dated the day it opened.
+  const [start] = useState<OutreachDraft>(() => (opening.item === null ? blankPost(opening.today) : editorVersion(opening.item.version)));
+  const [item, setItem] = useState<PostItem | null>(opening.item);
   const [tags, setTags] = useState(initialTags);
-  const [fields, setFields] = useState<PostFields>(() => postFieldsOf(editorVersion(initial.version)));
+  const [fields, setFields] = useState<PostFields>(() => (opening.item === null ? blankPostFields(opening.today) : postFieldsOf(start)));
   // A save hands the panel the stored fields; it starts afresh on them.
   const [revision, setRevision] = useState(0);
   // The last failed check and the fields it judged; an edited field drops its error.
@@ -73,10 +95,12 @@ export function OutreachPostEdit({
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState<PostPageId>("post");
 
-  const opened = editorVersion(item.version);
+  const opened = item === null ? start : editorVersion(item.version);
   const view = postViewOf(fields, opened);
   const errors = standingErrors(failed, fields);
-  const live = publicVersion(item.version);
+  const live = item === null ? null : publicVersion(item.version);
+  // A post never published may be saved as a draft as it is; a live post's draft must be whole.
+  const unfinishedDraft = live === null;
 
   const openSection = useCallback((section: PostSection) => {
     setPanelOpen(true);
@@ -85,19 +109,21 @@ export function OutreachPostEdit({
   }, []);
 
   const save = (step: PublishStep) => {
-    const check = checkPostFields(fields, opened, tags);
-    if (!check.ok) {
-      setFailed({ fields, errors: check.errors });
-      const first = firstPostError(check.errors);
-      if (first !== undefined) {
-        openSection(SECTION_OF[first.field]);
-        toast.error(first.error);
+    if (step === "publish" || !unfinishedDraft) {
+      const check = checkPostFields(fields, opened, tags);
+      if (!check.ok) {
+        setFailed({ fields, errors: check.errors });
+        const first = firstPostError(check.errors);
+        if (first !== undefined) {
+          openSection(SECTION_OF[first.field]);
+          toast.error(first.error);
+        }
+        return;
       }
-      return;
     }
     setFailed(null);
     startTransition(async () => {
-      const result = await saveOutreachPost(item.id, step, fields);
+      const result = await saveOutreachPost(item?.id ?? null, step, fields);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -106,8 +132,8 @@ export function OutreachPostEdit({
       setItem(result.value);
       setFields(postFieldsOf(saved));
       setRevision((r) => r + 1);
-      toast.success(step === "publish" ? "The post is published." : "Draft saved. The published post stays live.");
-      if (slugOf(saved) !== slugOf(opened)) router.replace(`/dashboard/outreach/${slugOf(saved)}`);
+      toast.success(step === "publish" ? "The post is published." : live === null ? "Draft saved." : "Draft saved. The published post stays live.");
+      if (item === null || slugOf(saved) !== slugOf(opened)) router.replace(`/dashboard/outreach/${slugOf(saved)}`);
     });
   };
 
@@ -124,13 +150,15 @@ export function OutreachPostEdit({
   return (
     <EditShell
       section={{ label: "Outreach", href: "/dashboard/outreach" }}
-      item={opened.title}
-      status={statusOf(item.version)}
-      saved={panelOpen ? "Changes show on the page as you type" : undefined}
+      heading={item === null ? "New post" : `Editing ${titleOf(opened)}`}
+      status={item === null ? "draft" : statusOf(item.version)}
+      saved={item === null ? "Not saved yet" : panelOpen ? "Changes show on the page as you type" : undefined}
       onSaveDraft={pending ? null : () => save("save-draft")}
       onPublish={pending ? null : () => save("publish")}
-      pages={{ targets: PAGE_TARGETS, current: page, onSelect: setPage }}
+      publishChecklist={publishChecklist(fields)}
+      pages={item === null ? undefined : { targets: PAGE_TARGETS, current: page, onSelect: setPage }}
       blocks={POST_BLOCKS}
+      startHere={item === null && !panelOpen ? "details" : undefined}
       onEdit={openSection}
       panel={
         panelOpen && (
@@ -149,8 +177,8 @@ export function OutreachPostEdit({
         )
       }
     >
-      {page === "post" ? (
-        <PostPage post={view} neighbours={neighbours} frame={outlined} />
+      {page === "post" || item === null ? (
+        <PostPage post={view} neighbours={neighbours} frame={outlined} hints />
       ) : (
         <CardPage
           page={page}
@@ -177,7 +205,7 @@ function CardPage({
   onEditCard,
 }: {
   page: Exclude<PostPageId, "post">;
-  view: PostView;
+  view: OutreachDraft;
   published: OutreachContent;
   publishedSlug: string | null;
   onEditCard: () => void;

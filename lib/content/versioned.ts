@@ -8,9 +8,15 @@
  * One item's versions. An item that was never published holds only a draft;
  * a published one may also hold draft changes. An item with no version at
  * all cannot be written down.
+ *
+ * `D` is what the draft of a never-published item may be. A content type
+ * whose new items are saved before they are whole (an Outreach post, board
+ * 74f) names a looser type there; the others leave it `T`. Draft changes to
+ * a published item are always a whole `T`, because Publish puts them on the
+ * site as they are.
  */
-export type Versioned<T> =
-  | { readonly state: "draft"; readonly draft: T }
+export type Versioned<T extends D, D = T> =
+  | { readonly state: "draft"; readonly draft: D }
   | { readonly state: "published"; readonly published: T; readonly draft: T | null };
 
 /** What the editor's list and panel say about an item (boards 76 and 76b). */
@@ -30,25 +36,25 @@ export function isPublishStep(value: unknown): value is PublishStep {
 }
 
 /** One stored item: its id, its place in the site order, and its versions. */
-export type ContentItem<T> = {
+export type ContentItem<T extends D, D = T> = {
   readonly id: number;
   /** Lower comes first on the site. Only the order matters, not the numbers. */
   readonly siteOrder: number;
-  readonly version: Versioned<T>;
+  readonly version: Versioned<T, D>;
 };
 
-export function statusOf<T>(version: Versioned<T>): ContentStatus {
+export function statusOf<T extends D, D = T>(version: Versioned<T, D>): ContentStatus {
   if (version.state === "draft") return "draft";
   return version.draft === null ? "published" : "draft-changes";
 }
 
 /** What the public site shows: the published version, or nothing for an item never published. */
-export function publicVersion<T>(version: Versioned<T>): T | null {
+export function publicVersion<T extends D, D = T>(version: Versioned<T, D>): T | null {
   return version.state === "published" ? version.published : null;
 }
 
 /** What the edit panel opens on: the working draft when there is one, else the published version. */
-export function editorVersion<T>(version: Versioned<T>): T {
+export function editorVersion<T extends D, D = T>(version: Versioned<T, D>): D {
   return version.state === "draft" ? version.draft : (version.draft ?? version.published);
 }
 
@@ -58,10 +64,19 @@ export function editorVersion<T>(version: Versioned<T>): T {
  * the public version and drops the draft. A new item (`current` null) saved
  * as a draft is a draft only.
  */
-export function afterStep<T>(current: Versioned<T> | null, content: T, step: PublishStep): Versioned<T> {
+export function afterStep<T extends D, D = T>(current: Versioned<T, D> | null, content: T, step: PublishStep): Versioned<T, D> {
   if (step === "publish") return { state: "published", published: content, draft: null };
   if (current === null || current.state === "draft") return { state: "draft", draft: content };
   return { state: "published", published: current.published, draft: content };
+}
+
+/**
+ * The versions after Save draft with content that is not whole yet: the
+ * draft of a new or never-published item. Null for a published item, whose
+ * draft changes must be whole (`Versioned`).
+ */
+export function afterUnfinishedDraft<T extends D, D = T>(current: Versioned<T, D> | null, content: D): Versioned<T, D> | null {
+  return current === null || current.state === "draft" ? { state: "draft", draft: content } : null;
 }
 
 /**
@@ -70,12 +85,12 @@ export function afterStep<T>(current: Versioned<T> | null, content: T, step: Pub
  * draft changes when it had some, else what was published. Null for an item
  * that was never published, which has nothing to take down.
  */
-export function unpublished<T>(version: Versioned<T>): Versioned<T> | null {
+export function unpublished<T extends D, D = T>(version: Versioned<T, D>): Versioned<T, D> | null {
   return version.state === "published" ? { state: "draft", draft: version.draft ?? version.published } : null;
 }
 
 /** The items the public site shows, in site order, as their published versions. */
-export function publicItems<T>(items: readonly ContentItem<T>[]): T[] {
+export function publicItems<T extends D, D = T>(items: readonly ContentItem<T, D>[]): T[] {
   return [...items]
     .sort((a, b) => a.siteOrder - b.siteOrder)
     .flatMap((item) => {
@@ -90,7 +105,7 @@ export type VersionKind = "published" | "draft";
 export const VERSION_KINDS = ["published", "draft"] as const satisfies readonly VersionKind[];
 
 /** The rows an item's versions are stored as: one per version it holds. */
-export function versionRows<T>(version: Versioned<T>): { kind: VersionKind; content: T }[] {
+export function versionRows<T extends D, D = T>(version: Versioned<T, D>): { kind: VersionKind; content: D }[] {
   if (version.state === "draft") return [{ kind: "draft", content: version.draft }];
   const published = { kind: "published" as const, content: version.published };
   return version.draft === null ? [published] : [published, { kind: "draft", content: version.draft }];

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Photo } from "@/components/outreach/photo";
 import { CopyText } from "@/components/project-page/parts";
 import { dayMonthYear, phoneNewsCard, slugOf, type TrackRecord } from "@/lib/outreach";
-import type { OutreachTag, PostView } from "@/lib/outreach-types";
+import { titleOf, type OutreachDraft, type OutreachTag } from "@/lib/outreach-types";
 import { RocketArrow } from "./rocket-arrow";
 
 // Board 21, track record: the newest published Outreach posts (issue #293).
@@ -17,7 +17,7 @@ import { RocketArrow } from "./rocket-arrow";
 // card in a box laid out where the card would be, and the card fills it.
 
 /** What a Track record card shows of a post: a published one, or the editor's view of one. */
-export type TrackRecordPost = Pick<PostView, "title" | "date" | "tags" | "summary" | "photos">;
+export type TrackRecordPost = Pick<OutreachDraft, "title" | "date" | "tags" | "summary" | "photos">;
 
 /** Wraps one card; `layout` holds the classes that place it in the section. */
 export type TrackRecordFrame<P extends TrackRecordPost> = (post: P, card: ReactNode, layout: string) => ReactNode;
@@ -66,7 +66,7 @@ function FeaturedCard({ post, awardTags, layout }: CardProps) {
       </div>
       <h3 className="text-[20px] font-bold leading-[1.2] tracking-[-0.02em] md:text-[34px]">
         <Link href={`/outreach/${slugOf(post)}`} className={cardLink}>
-          {post.title}
+          {titleOf(post)}
         </Link>
       </h3>
       <p className="text-[14px] leading-[22px] text-text-2 md:text-[17px] md:leading-relaxed">
@@ -95,7 +95,7 @@ function NewsCard({ post, awardTags, layout }: CardProps) {
       <TagLine post={post} awardTags={awardTags} />
       <h3 className="text-[16px] font-semibold leading-[1.2] md:text-[21px] md:leading-snug">
         <Link href={`/outreach/${slugOf(post)}`} className={cardLink}>
-          {post.title}
+          {titleOf(post)}
         </Link>
       </h3>
       <p className="text-[14px] leading-[21px] text-text-2 md:text-[17px] md:leading-relaxed">

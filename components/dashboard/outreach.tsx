@@ -29,21 +29,22 @@ import {
   type SummitFieldErrors,
   type SummitFields,
 } from "@/lib/outreach-summit-fields";
-import type { MainChannelName, OutreachPhoto, OutreachTag } from "@/lib/outreach-types";
+import { titleOf, type MainChannelName, type OutreachPhoto, type OutreachTag } from "@/lib/outreach-types";
 import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS as FOCUS, PublishFooter, StatusPill, TextField } from "./content-parts";
 import { ColumnFilterMenu, FilterMenu } from "./controls";
 import { MenuItem, RowMenu } from "./division-members";
 import { DrawerPage, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
-import { EYEBROW, GHOST_PILL, PageHeader } from "./page-header";
+import { EYEBROW, GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
 
 // The Outreach page (board 74, issue #289): the featured summit with Edit,
 // then every post, newest first, with tag and status filters in the table's
 // headings and each row's menu: View on site, Unpublish, Delete. A post opens
-// on its own page under the edit shell (issue #288). New post is the later
-// slice of issue #292, so the page has no button for it yet. The page keeps
+// on its own page under the edit shell (issue #288); New post opens an empty
+// one there (board 74f, issue #292). A draft with no title yet is listed as
+// "Untitled post", and one with no photo yet shows an empty thumbnail. The page keeps
 // the rows it was sent and each answer from the server; every write is
 // checked there again, behind the site-content gate.
 
@@ -75,7 +76,7 @@ export function OutreachView({
         return;
       }
       setRows((list) => list.map((r) => (r.id === row.id ? outreachRow(result.value, row.slug) : r)));
-      toast.success(`${row.post.title} is off the Outreach page and kept as a draft.`);
+      toast.success(`${titleOf(row.post)} is off the Outreach page and kept as a draft.`);
     });
   };
 
@@ -96,7 +97,16 @@ export function OutreachView({
 
   return (
     <DrawerPage drawerOpen={opened !== null} wide>
-      <PageHeader title="Outreach" intro="Posts on the Outreach page, newest first. Drafts stay hidden until you publish them." />
+      <PageHeader
+        title="Outreach"
+        intro="Posts on the Outreach page, newest first. Drafts stay hidden until you publish them."
+        action={
+          <Link href="/dashboard/outreach/new" className={PRIMARY_PILL}>
+            <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
+            New post
+          </Link>
+        }
+      />
 
       <SummitCard summit={summit} onEdit={() => setOpened((n) => (n ?? 0) + 1)} />
 
@@ -205,7 +215,7 @@ function PostRow({
       <Link href={`/dashboard/outreach/${row.slug}`} className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg md:gap-4 ${FOCUS}`}>
         <Thumb photo={post.photos[0]} />
         <span className="min-w-0">
-          <span className="block truncate text-[14px] font-medium text-prt-text">{post.title}</span>
+          <span className="block truncate text-[14px] font-medium text-prt-text">{titleOf(post)}</span>
           <span className="block truncate text-[13px] text-prt-muted md:line-clamp-2 md:whitespace-normal">{post.summary.text}</span>
           <span className="mt-0.5 block truncate text-[12px] text-prt-muted md:hidden">
             {rowDate(post.date)}
@@ -237,7 +247,7 @@ function PostRow({
         <StatusPill status={status} short />
       </span>
       <span className="shrink-0">
-        <RowMenu label={`More for ${post.title}`}>
+        <RowMenu label={`More for ${titleOf(post)}`}>
           <MenuItem
             icon={<ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />}
             locked={live ? null : "Not on the site until it is published."}
@@ -262,17 +272,18 @@ function PostRow({
   );
 }
 
-function Thumb({ photo }: { photo: OutreachPhoto }) {
+/** The post's cover; empty while a draft has no photo yet. */
+function Thumb({ photo }: { photo: OutreachPhoto | undefined }) {
   return (
     <span className="relative h-10 w-16 shrink-0 overflow-hidden rounded-md bg-white-5">
-      <Photo photo={{ ...photo, alt: "" }} sizes="64px" />
+      {photo !== undefined && <Photo photo={{ ...photo, alt: "" }} sizes="64px" />}
     </span>
   );
 }
 
 function DeleteDialog({ row, onOpenChange, onDeleted }: { row: OutreachRow; onOpenChange: (open: boolean) => void; onDeleted: () => void }) {
   const [pending, startTransition] = useTransition();
-  const title = row.post.title;
+  const title = titleOf(row.post);
   const confirm = () =>
     startTransition(async () => {
       const result = await deleteOutreachPost(row.id);
