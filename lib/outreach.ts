@@ -445,6 +445,20 @@ export function newestFirst(posts: readonly OutreachPost[]): OutreachPost[] {
   return [...posts].sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/**
+ * The home page's Track record section (board 21, issue #293): the newest
+ * post as the featured card and the next three as the news cards.
+ */
+export type TrackRecord = { featured: OutreachPost; news: OutreachPost[] };
+
+const TRACK_RECORD_NEWS = 3;
+
+/** The Track record cards from the published posts, or null when none is published. */
+export function trackRecord(posts: readonly OutreachPost[]): TrackRecord | null {
+  const [featured, ...older] = newestFirst(posts);
+  return featured === undefined ? null : { featured, news: older.slice(0, TRACK_RECORD_NEWS) };
+}
+
 /** The first address two posts share, or null. Two posts with one address would hide one of them. */
 export function sharedSlug(posts: readonly OutreachPost[]): string | null {
   const seen = new Set<string>();
@@ -547,6 +561,12 @@ function parts(date: IsoDate): { year: number; month: (typeof MONTHS)[number]; d
 export function monthYear(date: IsoDate): string {
   const { year, month } = parts(date);
   return `${month.slice(0, 3).toUpperCase()} ${year}`;
+}
+
+/** "03 MAY 2025" on a home Track record card (board 21). */
+export function dayMonthYear(date: IsoDate): string {
+  const { year, month, day } = parts(date);
+  return `${String(day).padStart(2, "0")} ${month.slice(0, 3).toUpperCase()} ${year}`;
 }
 
 /** "Oct 2024" under an original post's account. */
