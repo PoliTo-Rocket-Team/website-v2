@@ -1,12 +1,9 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2, type LucideIcon } from "lucide-react";
 import type { EditDevice } from "@/lib/content/edit-shell";
 import {
   FACTS_LIMIT,
   REASONS_LIMIT,
-  type CopyFields,
   type FactFields,
   type PanelSection as Section,
   type PartFields,
@@ -15,19 +12,30 @@ import {
   type StoryFields,
 } from "@/lib/project-content/fields";
 import { partNumber, twoDigits } from "@/lib/project-pages";
-import { CONTENT_FOCUS, TextField, useDragOrder } from "./content-parts";
+import { TextField } from "./content-parts";
 import { Toggle } from "./controls";
-import { EditPanel, ErrorLine, PanelSection, usePanelScroll } from "./edit-panel";
+import { EditPanel, PanelSection, usePanelScroll } from "./edit-panel";
+import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts";
+import {
+  GalleryEditor,
+  gallerySummary,
+  LaunchesEditor,
+  launchesSummary,
+  PlanEditor,
+  planSummary,
+  VersionsEditor,
+  versionsSummary,
+} from "./project-list-sections";
 
-// The Edit <project> panel (board 75c, issue #298): beside the project page
-// under the edit shell, one card per section. This slice holds the story
-// sections: Top of the page, Name story, Design story, Why and the
-// Next-project card. Every change goes straight back to the page, which
+// The Edit <project> panel (board 75c, issues #298 and #299): beside the
+// project page under the edit shell, one card per section: Top of the page,
+// Name story, Design story, Versions, Launch history (a rocket's only), Plan,
+// Why, Gallery and the Next-project card. The list sections are in
+// ./project-list-sections.tsx. Every change goes straight back to the page, which
 // redraws as the editor types. In Phone the fields that have a phone version
 // edit it; an empty phone field shows the desktop text.
 
-/** A field's error by its path in the fields ("hero.facts.2.value"). */
-export type FieldErrors = Readonly<Record<string, string>>;
+export type { FieldErrors };
 
 type Change = (change: (fields: ProjectFields) => ProjectFields) => void;
 
@@ -61,11 +69,13 @@ export function ProjectEditPanel({
 }) {
   const card = usePanelScroll(scrollTo);
   const phone = device === "phone";
-  const { hero, nameStory, design, reasons } = fields;
+  const { hero, nameStory, design, reasons, versions, launches, plan, gallery } = fields;
   const setHero = (change: Partial<ProjectFields["hero"]>) => onChange((f) => ({ ...f, hero: { ...f.hero, ...change } }));
   const setName = (change: Partial<StoryFields>) => onChange((f) => ({ ...f, nameStory: { ...f.nameStory, ...change } }));
   const setDesign = (change: Partial<ProjectFields["design"]>) => onChange((f) => ({ ...f, design: { ...f.design, ...change } }));
   const setReasons = (change: Partial<ProjectFields["reasons"]>) => onChange((f) => ({ ...f, reasons: { ...f.reasons, ...change } }));
+  const setVersions = (next: ProjectFields["versions"]) => onChange((f) => ({ ...f, versions: next }));
+  const setPlan = (next: ProjectFields["plan"]) => onChange((f) => ({ ...f, plan: next }));
 
   return (
     <EditPanel
@@ -168,6 +178,50 @@ export function ProjectEditPanel({
       </PanelSection>
 
       <PanelSection
+        value="versions"
+        cardRef={card("versions")}
+        title="Versions"
+        summary={versionsSummary(versions)}
+        control={<Toggle label="Show Versions on the page" checked={versions.shown} onCheckedChange={(shown) => setVersions({ ...versions, shown })} />}
+      >
+        <VersionsEditor versions={versions} phone={phone} errors={errors} onChange={setVersions} />
+      </PanelSection>
+
+      {kind === "vehicle" && (
+        <PanelSection
+          value="launches"
+          cardRef={card("launches")}
+          title="Launch history"
+          summary={launchesSummary(launches)}
+          control={
+            <Toggle
+              label="Show Launch history on the page"
+              checked={launches.shown}
+              onCheckedChange={(shown) => onChange((f) => ({ ...f, launches: { ...f.launches, shown } }))}
+            />
+          }
+        >
+          <LaunchesEditor
+            launches={launches}
+            versionNames={versions.items.map((v) => v.pill.trim()).filter((pill) => pill !== "")}
+            phone={phone}
+            errors={errors}
+            onChange={(change) => onChange((f) => ({ ...f, launches: change(f.launches) }))}
+          />
+        </PanelSection>
+      )}
+
+      <PanelSection
+        value="plan"
+        cardRef={card("plan")}
+        title="Plan"
+        summary={planSummary(plan)}
+        control={<Toggle label="Show Plan on the page" checked={plan.shown} onCheckedChange={(shown) => setPlan({ ...plan, shown })} />}
+      >
+        <PlanEditor plan={plan} phone={phone} errors={errors} onChange={setPlan} />
+      </PanelSection>
+
+      <PanelSection
         value="reasons"
         cardRef={card("reasons")}
         title="Why"
@@ -222,6 +276,22 @@ export function ProjectEditPanel({
         />
       </PanelSection>
 
+      <PanelSection
+        value="gallery"
+        cardRef={card("gallery")}
+        title="Gallery"
+        summary={gallerySummary(gallery)}
+        control={
+          <Toggle
+            label="Show Gallery on the page"
+            checked={gallery.shown}
+            onCheckedChange={(shown) => onChange((f) => ({ ...f, gallery: { ...f.gallery, shown } }))}
+          />
+        }
+      >
+        <GalleryEditor gallery={gallery} errors={errors} onChange={(change) => onChange((f) => ({ ...f, gallery: change(f.gallery) }))} />
+      </PanelSection>
+
       <PanelSection value="teaser" cardRef={card("teaser")} title="Next-project card" summary={`The line on ${previousName}'s page`}>
         <TextField
           label="Card line"
@@ -239,36 +309,6 @@ export function ProjectEditPanel({
 function topSummary(fields: ProjectFields): string {
   const n = fields.hero.facts.length;
   return `Intro, status, dates, ${n} key ${n === 1 ? "fact" : "facts"}`;
-}
-
-/** A text with a phone version: Desktop edits the text, Phone the phone's, which shows the text while empty. */
-function CopyField({
-  label,
-  copy,
-  phone,
-  rows,
-  error,
-  onChange,
-}: {
-  label: string;
-  copy: CopyFields;
-  phone: boolean;
-  rows?: number;
-  error?: string;
-  onChange: (copy: CopyFields) => void;
-}) {
-  if (!phone) return <TextField label={label} rows={rows} value={copy.text} error={error} onChange={(text) => onChange({ ...copy, text })} />;
-  return (
-    <TextField
-      label={label}
-      hint="phone"
-      rows={rows}
-      value={copy.phone}
-      placeholder={copy.text}
-      error={error}
-      onChange={(p) => onChange({ ...copy, phone: p })}
-    />
-  );
 }
 
 /** A story column's title and text: desktop paragraphs in Desktop, the phone's one paragraph in Phone. */
@@ -305,128 +345,3 @@ function StoryEditor({
   );
 }
 
-/**
- * A list of rows the editor adds to, removes from and reorders: drag a row by
- * its grip, or use its Move up and Move down buttons from the keyboard. A
- * list at its least keeps its rows: Remove is off. Each
- * row keeps one key while it moves, so a field being typed in stays itself.
- */
-function EditableList<T>({
-  label,
-  hint,
-  items,
-  limit,
-  error,
-  blank,
-  rowName,
-  rowLabel = (i) => twoDigits(i + 1),
-  addLabel,
-  onChange,
-  row,
-}: {
-  label: string;
-  hint?: string;
-  items: readonly T[];
-  limit: { readonly min: number; readonly max: number };
-  error?: string;
-  blank: () => T;
-  rowName: (index: number) => string;
-  rowLabel?: (index: number, count: number) => string;
-  addLabel: string;
-  onChange: (items: T[]) => void;
-  row: (item: T, index: number, update: (item: T) => void) => ReactNode;
-}) {
-  const [keys, setKeys] = useState(() => items.map((_, i) => i));
-  const nextKey = useRef(items.length);
-  // A save hands back fresh fields of another length: start the keys afresh.
-  const rowKeys = keys.length === items.length ? keys : items.map((_, i) => i);
-  const itemOf = new Map(rowKeys.map((key, i) => [key, items[i]]));
-
-  const reorder = (order: readonly number[]) => {
-    setKeys([...order]);
-    onChange(order.map((key) => itemOf.get(key)!));
-  };
-  const drag = useDragOrder(rowKeys, reorder);
-  const move = (key: number, by: -1 | 1) => {
-    const at = rowKeys.indexOf(key);
-    const order = [...rowKeys];
-    [order[at], order[at + by]] = [order[at + by], order[at]];
-    reorder(order);
-  };
-  const remove = (key: number) => {
-    setKeys(rowKeys.filter((k) => k !== key));
-    onChange(items.filter((_, i) => rowKeys[i] !== key));
-  };
-  const add = () => {
-    setKeys([...rowKeys, nextKey.current++]);
-    onChange([...items, blank()]);
-  };
-  const shown = drag.order;
-
-  return (
-    <div>
-      <p className="mb-2 text-[13px] leading-snug text-prt-text">
-        {label}
-        {hint && <span className="ml-1.5 text-prt-muted">{hint}</span>}
-      </p>
-      <ol className="space-y-2" {...drag.list}>
-        {shown.map((key, index) => {
-          const item = itemOf.get(key)!;
-          const at = rowKeys.indexOf(key);
-          const r = drag.row(key, index);
-          const canRemove = items.length > limit.min;
-          return (
-            <li
-              key={key}
-              onDragOver={r.onDragOver}
-              className={`rounded-[10px] border border-hairline bg-white-5 p-3 transition-colors duration-300 ease-out hover:border-border-strong ${r.dragged ? "opacity-50" : ""}`}
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <span
-                  draggable
-                  onDragStart={r.onDragStart}
-                  onDragEnd={r.onDragEnd}
-                  aria-hidden
-                  className="cursor-grab text-dim"
-                >
-                  <GripVertical className="h-3.5 w-3.5" strokeWidth={1.75} />
-                </span>
-                <span className="flex-1 font-mono text-[10px] tracking-[0.2em] text-dim">{rowLabel(index, shown.length)}</span>
-                <RowButton icon={ArrowUp} label={`Move ${rowName(index)} up`} onClick={index > 0 ? () => move(key, -1) : null} />
-                <RowButton icon={ArrowDown} label={`Move ${rowName(index)} down`} onClick={index < shown.length - 1 ? () => move(key, 1) : null} />
-                <RowButton icon={Trash2} label={`Remove ${rowName(index)}`} onClick={canRemove ? () => remove(key) : null} />
-              </div>
-              <div className="space-y-2.5">{row(item, at, (next) => onChange(items.map((x, i) => (i === at ? next : x))))}</div>
-            </li>
-          );
-        })}
-      </ol>
-      <ErrorLine error={error} />
-      {items.length < limit.max && (
-        <button
-          type="button"
-          onClick={add}
-          className={`mt-2.5 inline-flex items-center gap-1.5 rounded-md text-[13px] text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${CONTENT_FOCUS}`}
-        >
-          <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-          {addLabel}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function RowButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: (() => void) | null }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={onClick === null}
-      onClick={() => onClick?.()}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text disabled:pointer-events-none disabled:opacity-30 ${CONTENT_FOCUS}`}
-    >
-      <Icon aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-    </button>
-  );
-}

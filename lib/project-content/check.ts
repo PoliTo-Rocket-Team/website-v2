@@ -1,3 +1,4 @@
+import { isPhotoSrc } from "@/lib/outreach-photos";
 import { specRows } from "@/lib/project-pages/types";
 import { ownRocketModels } from "@/lib/rocket-model";
 import type { ProjectRecord } from "./record";
@@ -81,6 +82,7 @@ const launchBase = {
   version: isString,
   motor: isString,
   summary: copyWithPhone,
+  photos: optional(list(shape({ src: isPhotoSrc, alt: isString }), 1, 2)),
 };
 
 const flown = shape({
@@ -119,7 +121,7 @@ const galleryItem: Check = (v) =>
 
 const gallery = shape({ title: isString, items: list(galleryItem, 1) });
 
-const card = shape({
+const cardFields = {
   year: copy,
   status: isString,
   statusTone: oneOf("dark", "light"),
@@ -127,7 +129,11 @@ const card = shape({
   specs: list(spec, 3, 3),
   infoTint: optional(isNumber),
   rocket: optional(oneOf(...ownRocketModels)),
-});
+};
+
+/** A rocket's pill may count its flights; an engine has none to count. */
+const vehicleCard = shape({ ...cardFields, status: (v) => isString(v) || shape({ count: oneOf("flights") })(v) });
+const engineCard = shape(cardFields);
 
 const listingBase = { years: isString, description: copy, specs: list(spec, 6, 6) };
 
@@ -135,7 +141,6 @@ const recordBase = {
   slug: (v: unknown) => isString(v) && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v as string),
   name: isString,
   texture: isString,
-  card,
   description: isString,
   hero,
   nameStory,
@@ -150,6 +155,7 @@ const recordBase = {
 const vehicle = shape({
   ...recordBase,
   kind: oneOf("vehicle"),
+  card: vehicleCard,
   listing: shape({ ...listingBase, versions: list(isString), logSummary: isString }),
   launches: optional(launches),
 });
@@ -157,6 +163,7 @@ const vehicle = shape({
 const engine = shape({
   ...recordBase,
   kind: oneOf("engine"),
+  card: engineCard,
   listing: shape({ ...listingBase, workLines: list(shape({ code: isString, name: isString })), milestone: isString }),
 });
 

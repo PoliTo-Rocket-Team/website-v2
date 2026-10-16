@@ -1,4 +1,5 @@
 import type { FilledGallery } from "@/components/gallery/items";
+import type { PhotoSrc } from "@/lib/outreach-types";
 import type { Award, Copy } from "@/lib/projects";
 import type { OwnRocket } from "@/lib/rocket-model";
 
@@ -102,6 +103,12 @@ export type Versions = {
 
 export type Outcome = "nominal" | "recovery-failed" | "did-not-fly";
 
+/** A photo of a campaign: a file uploaded from the dashboard (lib/outreach-photos.ts) and what it shows, for assistive tech. */
+export type LaunchPhoto = { src: PhotoSrc; alt: string };
+
+/** A launch card draws two photo slots, so it holds one or two photos; with none the key is absent and the slots show the texture. */
+export type LaunchPhotos = readonly [LaunchPhoto] | readonly [LaunchPhoto, LaunchPhoto];
+
 /** One campaign on the launch history, as the page draws it. */
 export type LogEntry = {
   date: string;
@@ -115,6 +122,7 @@ export type LogEntry = {
   stats: readonly [Stat, Stat, Stat, Stat];
   /** The phone card keeps three numbers, with shorter labels. */
   phoneStats: readonly [Stat, Stat, Stat];
+  photos?: LaunchPhotos;
 };
 
 export type LaunchLog = { title: string; entries: readonly [LogEntry, ...LogEntry[]] };

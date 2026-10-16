@@ -1,9 +1,13 @@
 import { contentEditor, type ContentEditor, type ContentStore } from "@/lib/content/editor";
+import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import type { ContentItem, PublishStep } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { refused, type WriteResult } from "@/lib/dashboard/write";
+import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
+import { checkPhotoUpload, filesNoLongerShown, freeingFiles, isPhotoSrc, type PhotoFiles } from "@/lib/outreach-photos";
+import type { PhotoSrc } from "@/lib/outreach-types";
 import { editedLine, type EditStamp } from "./edited";
 import { checkProjectFields, type ProjectFields } from "./fields";
+import { listPhotos } from "./list-fields";
 import type { ProjectRecord } from "./record";
 
 // The projects' editor (issues #255, #297 and #298): the shared content
@@ -12,7 +16,10 @@ import type { ProjectRecord } from "./record";
 // the Edit <project> panel's save and the dashboard Projects page's list.
 // Each side of the dashboard brings its store and its edit history: the
 // database and its audit log, or a test developer's cookie over the dummy
-// projects, seen from the dummy team's moment.
+// projects, seen from the dummy team's moment. Photos of a launch or of the
+// gallery (issue #299) are uploaded the way Outreach's are
+// (lib/outreach-photos.ts): stored at once behind the gate, put on the
+// project by a save, and deleted once no version of any project shows them.
 
 /** When each project was last edited and by whom, and the moment the list counts "today" from. */
 export interface EditHistory {
@@ -22,6 +29,29 @@ export interface EditHistory {
 
 /** No one is named and nothing is dated: for an editor that never shows the list. */
 export const NO_EDIT_HISTORY: EditHistory = { stamps: async () => new Map(), now: () => new Date() };
+
+/** No photo uploads: for an editor that never shows the panel's photos. */
+export const NO_PHOTO_FILES: PhotoFiles = {
+  put: async () => {
+    throw new Error("this projects editor takes no photos");
+  },
+  owns: (src): src is PhotoSrc => false,
+  drop: async () => {},
+};
+
+/** The uploaded photos a project's version shows: its launches' and its gallery's. */
+const photosIn = (record: ProjectRecord): PhotoSrc[] => listPhotos(record).filter(isPhotoSrc);
+
+/**
+ * The record, or why not: each photo is one the version the panel opened on
+ * had, or a file this side stored. A save cannot point a project at a file
+ * somewhere else.
+ */
+export function checkProjectPhotos(record: ProjectRecord, opened: ProjectRecord, files: Pick<PhotoFiles, "owns">): WriteResult<ProjectRecord> {
+  const known = new Set(listPhotos(opened));
+  const stray = listPhotos(record).find((src) => !known.has(src) && !files.owns(src));
+  return stray === undefined ? written(record) : refused("A photo was not uploaded. Add it again.");
+}
 
 /** The dashboard Projects page (board 75): every project in site order, with the line over its card. */
 export type ProjectBoard = {
@@ -41,14 +71,28 @@ export interface ProjectEditor extends ContentEditor<ProjectRecord> {
   board(): Promise<ProjectBoard | null>;
   /** Every project in the order its cards were dragged into: the site order Home and /projects follow. */
   setSiteOrder(ids: readonly number[]): Promise<WriteResult<null>>;
+  /** A photo picked in the panel, stored once the gate admits the viewer; answers its src. */
+  uploadPhoto(photo: Upload): Promise<WriteResult<PhotoSrc>>;
+  /** A photo removed in the panel before any save used it: its file is deleted, unless a version of a project shows it. */
+  discardPhoto(src: string): Promise<WriteResult<null>>;
 }
 
-export function projectEditor(viewer: ViewerStanding, store: ContentStore<ProjectRecord>, history: EditHistory = NO_EDIT_HISTORY): ProjectEditor {
-  const editor = contentEditor(viewer, store);
+export function projectEditor(
+  viewer: ViewerStanding,
+  store: ContentStore<ProjectRecord>,
+  history: EditHistory = NO_EDIT_HISTORY,
+  files: PhotoFiles = NO_PHOTO_FILES,
+): ProjectEditor {
+  const allowed = maySiteContent(viewer);
+  const editor = contentEditor(viewer, freeingFiles(store, files, photosIn));
   return {
     ...editor,
     saveFields: (id, step, fields) =>
-      editor.save(id, step, async (opened) => (opened === null ? refused("Unknown project.") : checkProjectFields(fields, opened))),
+      editor.save(id, step, async (opened) => {
+        if (opened === null) return refused("Unknown project.");
+        const record = checkProjectFields(fields, opened);
+        return record.ok ? checkProjectPhotos(record.value, opened, files) : record;
+      }),
     async board() {
       const items = await editor.list();
       if (items === null) return null;
@@ -63,5 +107,18 @@ export function projectEditor(viewer: ViewerStanding, store: ContentStore<Projec
       return { items, edited };
     },
     setSiteOrder: (ids) => editor.reorder(() => true, ids),
+
+    async uploadPhoto(upload) {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      const photo = checkPhotoUpload(upload);
+      return photo.ok ? written(await files.put(photo.value)) : photo;
+    },
+
+    async discardPhoto(src) {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      if (!files.owns(src)) return written(null);
+      await files.drop(filesNoLongerShown([src], await store.list(), photosIn));
+      return written(null);
+    },
   };
 }

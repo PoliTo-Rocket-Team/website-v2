@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { isPublishStep, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import { uploadOf } from "@/lib/dashboard/form-upload";
 import { openDashboard } from "@/lib/dashboard/open";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
+import type { PhotoSrc } from "@/lib/outreach-types";
 import { readProjectFields } from "@/lib/project-content/fields";
 import type { ProjectRecord } from "@/lib/project-content/record";
 
@@ -40,4 +42,24 @@ export async function reorderProjects(projectIds: readonly number[]): Promise<Wr
   const result = await opening.data.projects.setSiteOrder(projectIds);
   if (result.ok) refreshPublicProjects();
   return result;
+}
+
+/**
+ * A launch or gallery photo picked in the Edit <project> panel (issue #299),
+ * stored at once, through the same path as Outreach's, so the page can show
+ * it; a save puts it on the project.
+ */
+export async function uploadProjectPhoto(form: FormData): Promise<WriteResult<PhotoSrc>> {
+  const photo = await uploadOf(form, "photo");
+  if (photo === null) return refused("Choose a photo.");
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return refused("Sign in again to make changes.");
+  return opening.data.projects.uploadPhoto(photo);
+}
+
+/** A photo removed before a save used it: its file goes, unless a project version shows it. */
+export async function discardProjectPhoto(src: string): Promise<WriteResult<null>> {
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return refused("Sign in again to make changes.");
+  return opening.data.projects.discardPhoto(String(src ?? ""));
 }

@@ -3,6 +3,7 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { GripVertical, Plus, X } from "lucide-react";
+import { discardOutreachPhoto, uploadOutreachPhoto } from "@/app/dashboard/actions";
 import { CHANNEL_ICONS } from "@/components/outreach/channel-icons";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { shortDayMonthYear } from "@/lib/outreach";
@@ -18,7 +19,9 @@ import {
 import { CONTENT_FOCUS, RowMenu, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { EditPanel, ErrorLine, PanelSection, usePanelScroll } from "./edit-panel";
 import { Field, GroupLabel, inputClass } from "./field";
-import { PhotosSection } from "./outreach-post-photos";
+import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
+
+const OUTREACH_UPLOADS: PhotoUploads = { upload: uploadOutreachPhoto, discard: discardOutreachPhoto };
 
 // The Edit post panel (boards 74c, 74d and 74h, issue #290): 480px beside the
 // post page under the edit shell, one card per section, any of them open at
@@ -87,6 +90,9 @@ export function OutreachPostPanel({
         <PhotosSection
           photos={fields.photos}
           onChange={(change) => onChange((f) => ({ ...f, photos: change(f.photos) }))}
+          uploads={OUTREACH_UPLOADS}
+          cover
+          max={null}
           error={errors.photos}
         />
       </PanelSection>

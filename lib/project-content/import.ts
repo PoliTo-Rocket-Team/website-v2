@@ -115,7 +115,8 @@ const cavour: VehicleRecord = {
   },
   card: {
     year: { text: "2023" },
-    status: "FLOWN ×3",
+    // "FLOWN ×3", counted off the launch history below.
+    status: { count: "flights" },
     statusTone: "dark",
     desc: { text: "Our first rocket. First Italian team at Spaceport America Cup." },
     specs: [

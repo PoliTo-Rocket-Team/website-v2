@@ -3,6 +3,7 @@ import type {
   GallerySection,
   Hero,
   LaunchLog,
+  LaunchPhotos,
   LogEntry,
   NameStory,
   Plan,
@@ -28,6 +29,7 @@ import type { OwnRocketModel } from "@/lib/rocket-model";
 /** The home card (board 21): its own short copy, beside the project's name and texture. */
 export type HomeCard = {
   year: Copy;
+  /** The pill's text. */
   status: string;
   /** IN DESIGN reads as a light pill; flown vehicles get a dark one. */
   statusTone: "dark" | "light";
@@ -42,6 +44,16 @@ export type HomeCard = {
    */
   rocket?: OwnRocketModel;
 };
+
+/**
+ * A rocket's pill may count its flights instead of naming them: it then reads
+ * "FLOWN ×<n>" off the published launch history, as /projects counts them, so
+ * a launch published changes it (issue #299).
+ */
+export type FlightCount = { readonly count: "flights" };
+
+/** A rocket's home card: its pill is text or its flight count. */
+export type VehicleCard = Omit<HomeCard, "status"> & { status: string | FlightCount };
 
 /** What every /projects entry shows (board 22). */
 type ListingBase = {
@@ -76,6 +88,8 @@ type LaunchBase = {
   version: string;
   motor: string;
   summary: Copy & { phone: string };
+  /** Photos beside the page's launch card; absent until one is uploaded. */
+  photos?: LaunchPhotos;
 };
 
 /**
@@ -110,7 +124,6 @@ type RecordBase = {
   name: string;
   /** The brand texture behind its card and its page. */
   texture: string;
-  card: HomeCard;
   /** The page's meta description. */
   description: string;
   hero: Hero;
@@ -125,10 +138,10 @@ type RecordBase = {
 };
 
 /** A rocket: versions and a launch history, and its status counts its flights. */
-export type VehicleRecord = RecordBase & { kind: "vehicle"; listing: VehicleListing; launches?: LaunchHistory };
+export type VehicleRecord = RecordBase & { kind: "vehicle"; card: VehicleCard; listing: VehicleListing; launches?: LaunchHistory };
 
 /** An engine in development: work lines and a milestone in place of a launch history. */
-export type EngineRecord = RecordBase & { kind: "engine"; listing: EngineListing };
+export type EngineRecord = RecordBase & { kind: "engine"; card: HomeCard; listing: EngineListing };
 
 export type ProjectRecord = VehicleRecord | EngineRecord;
 
@@ -187,6 +200,7 @@ export function logEntry(launch: StoredLaunch): LogEntry {
     outcome: launch.outcome,
     summary: launch.summary,
     ...(launch.award && { award: launch.award }),
+    ...(launch.photos && { photos: launch.photos }),
   };
   if (launch.outcome === "did-not-fly") {
     const [a, b, c, d] = launch.stats;
@@ -258,8 +272,20 @@ export function listingOf(record: ProjectRecord, position: number): Project {
 /** The home card as the Projects section draws it: the card's copy with the project's number, name and texture. */
 export type HomeCardView = HomeCard & { num: string; name: string; texture: string };
 
+/** How many of the record's launches left the pad: the count /projects shows as "FLOWN ×<n>". */
+export function flightCountOf(record: ProjectRecord): number {
+  return launchesOf(record).filter((launch) => launch.outcome !== "did-not-fly").length;
+}
+
 export function homeCardOf(record: ProjectRecord, position: number): HomeCardView {
-  return { ...record.card, num: pad(position + 1), name: record.name, texture: record.texture };
+  const { status } = record.card;
+  return {
+    ...record.card,
+    status: typeof status === "string" ? status : `FLOWN ×${flightCountOf(record)}`,
+    num: pad(position + 1),
+    name: record.name,
+    texture: record.texture,
+  };
 }
 
 /**

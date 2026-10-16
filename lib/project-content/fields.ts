@@ -1,16 +1,18 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import type { Fact, KeyFacts, Part, Prose, Reason, Reasons, Title } from "@/lib/project-pages/types";
-import type { Copy } from "@/lib/projects";
+import type { Fact, KeyFacts, Part, Prose, Reason, Reasons } from "@/lib/project-pages/types";
 import { isProjectRecord } from "./check";
+import { copyFields, copyOf, titleOf, titleText, type CopyFields } from "./copy-fields";
+import { listFieldsAfterSave, listFieldsOf, listProblems, readListFields, withListFields, type ListFields, type ListSection } from "./list-fields";
 import type { ProjectRecord } from "./record";
 
-// The Edit <project> panel's fields (board 75c, issue #298): the story
-// sections of one project record as the text an editor types. The page under
-// the edit shell is drawn from `projectViewOf`, so it changes as they type;
-// Save draft and Publish send the fields, and `checkProjectFields` turns them
-// back into a record. A section the panel does not edit yet (versions, launch
-// history, plan, gallery, the cards) is carried over from the version the
-// panel opened on.
+// The Edit <project> panel's fields (board 75c, issues #298 and #299): the
+// sections of one project record as the text an editor types. The story
+// sections are here; Versions, Launch history, Plan and Gallery are in
+// ./list-fields.ts. The page under the edit shell is drawn from
+// `projectViewOf`, so it changes as they type; Save draft and Publish send
+// the fields, and `checkProjectFields` turns them back into a record. What
+// the panel does not edit (the cards, the /projects entry) is carried over
+// from the version the panel opened on.
 //
 // Desktop and phone copy: a text with a shorter phone version keeps both, and
 // an empty phone field means the phone shows the desktop text (`Copy`). The
@@ -24,10 +26,10 @@ import type { ProjectRecord } from "./record";
 // text for a section that is off, so once the editor is closed or reloaded
 // that text is gone.
 
-/** The panel's sections, in order; each block's Edit chip opens one. */
-export type PanelSection = "top" | "name" | "design" | "reasons" | "teaser";
+/** The panel's sections; each block's Edit chip opens one. */
+export type PanelSection = "top" | "name" | "design" | ListSection | "reasons" | "teaser";
 
-export type CopyFields = { readonly text: string; readonly phone: string };
+export type { CopyFields };
 export type FactFields = { readonly value: string; readonly label: CopyFields };
 export type PartFields = { readonly name: string; readonly desc: string; readonly phone: string };
 export type ReasonFields = { readonly title: string; readonly text: string };
@@ -35,7 +37,7 @@ export type ReasonFields = { readonly title: string; readonly text: string };
 /** A story column: its title (a line per forced break), its paragraphs (a blank line between two) and the phone's one paragraph. */
 export type StoryFields = { readonly title: string; readonly body: string; readonly phone: string };
 
-export type ProjectFields = {
+export type ProjectFields = ListFields & {
   readonly hero: {
     readonly intro: CopyFields;
     readonly status: string;
@@ -60,11 +62,6 @@ export type ProjectFields = {
 /** How many key facts the hero holds (`KeyFacts`), and reasons the Why section (`Reasons`). */
 export const FACTS_LIMIT = { min: 1, max: 6 } as const;
 export const REASONS_LIMIT = { min: 1, max: 3 } as const;
-
-const copyFields = (copy: Copy): CopyFields => ({ text: copy.text, phone: copy.phone ?? "" });
-
-/** A title's forced line breaks as lines of text. */
-const titleText = (title: Title): string => (typeof title === "string" ? title : title.join("\n"));
 
 const proseText = (prose: Prose): string => prose.text.join("\n\n");
 
@@ -93,24 +90,8 @@ export function fieldsOf(record: ProjectRecord): ProjectFields {
         ? { shown: false, eyebrow: "", title: "", items: [{ title: "", text: "" }] }
         : { shown: true, eyebrow: reasons.eyebrow, title: titleText(reasons.title), items: reasons.items.map((r) => ({ ...r })) },
     teaser: record.teaser,
+    ...listFieldsOf(record),
   };
-}
-
-const copyOf = (fields: CopyFields): Copy => {
-  const text = fields.text.trim();
-  const phone = fields.phone.trim();
-  return phone === "" ? { text } : { text, phone };
-};
-
-/** Lines of text as a title: one line is a plain string, more are forced breaks. */
-function titleOf(text: string): Title {
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-  if (lines.length < 2) return lines[0] ?? "";
-  const [first, ...rest] = lines;
-  return [first, ...rest];
 }
 
 function proseOf(story: StoryFields): Prose {
@@ -155,7 +136,7 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
     : reasonItems === null
       ? opened.reasons
       : { eyebrow: reasons.eyebrow.trim(), title: titleOf(reasons.title), items: reasonItems };
-  return {
+  const story: ProjectRecord = {
     ...rest,
     hero: {
       ...opened.hero,
@@ -174,6 +155,7 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
     ...(shownReasons && { reasons: shownReasons }),
     teaser: teaser.trim(),
   };
+  return withListFields(story, fields, opened);
 }
 
 /**
@@ -183,7 +165,7 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
  * without this the save would blank it.
  */
 export function fieldsAfterSave(stored: ProjectRecord, sent: ProjectFields): ProjectFields {
-  const fields = fieldsOf(stored);
+  const fields = { ...fieldsOf(stored), ...listFieldsAfterSave(stored, sent) };
   return sent.reasons.shown ? fields : { ...fields, reasons: sent.reasons };
 }
 
@@ -238,8 +220,11 @@ export function fieldProblems(fields: ProjectFields): FieldProblem[] {
   }
 
   need("teaser", "teaser", fields.teaser, "the next-project card line");
-  return problems;
+  return [...problems, ...listProblems(fields)].sort((a, b) => PANEL_ORDER.indexOf(a.section) - PANEL_ORDER.indexOf(b.section));
 }
+
+/** The panel's sections top to bottom, as board 75c stacks them. */
+export const PANEL_ORDER: readonly PanelSection[] = ["top", "name", "design", "versions", "launches", "plan", "reasons", "gallery", "teaser"];
 
 /** The record Save draft or Publish stores: `opened` with the fields laid over it, or why it cannot be. */
 export function checkProjectFields(fields: ProjectFields, opened: ProjectRecord): WriteResult<ProjectRecord> {
@@ -290,7 +275,10 @@ export function readProjectFields(input: unknown): ProjectFields | null {
   const items = isObject(reasons) ? listOf(reasons.items, readReason) : null;
   if (intro === null || facts === null || name === null || designStory === null || parts === null || items === null) return null;
   if (!hasStrings(design, ["partsCaption"]) || !hasStrings(reasons, ["eyebrow", "title"]) || typeof reasons.shown !== "boolean") return null;
+  const lists = readListFields(input);
+  if (lists === null) return null;
   return {
+    ...lists,
     hero: { intro, status: hero.status, dates: hero.dates, caption, facts },
     nameStory: name,
     design: { ...designStory, partsCaption: design.partsCaption, parts },

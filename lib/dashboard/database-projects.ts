@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -10,6 +11,8 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { isProjectRecord } from "@/lib/project-content/check";
 import type { EditStamp } from "@/lib/project-content/edited";
 import type { ProjectRecord } from "@/lib/project-content/record";
+import { publicStorePanelPhotos, type PhotoFiles } from "@/lib/outreach-photos";
+import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
 import { written } from "./write";
 
 // The database side of the projects (issue #295): the store a projects editor
@@ -154,3 +157,8 @@ export const databaseProjectStore: ContentStore<ProjectRecord> = {
     return written(null);
   },
 };
+
+/** Uploaded launch and gallery photos in this deployment's public Blob store, under `project-photos/`, each under a new name (issue #299). */
+export function blobProjectPhotoFiles(): PhotoFiles {
+  return publicStorePanelPhotos("project-photo", ownPublicStoreHost(), { upload: uploadPublicFile, remove: deletePublicFile }, randomUUID);
+}
