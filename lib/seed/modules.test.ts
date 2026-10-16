@@ -37,7 +37,7 @@ const tableModules = SEED_MODULES.flatMap((m) => ("seed" in m ? [(m as typeof m 
 test("the registry runs every area module, people before the orders and applications that name them, and the audit clear last", () => {
   assert.deepEqual(
     SEED_MODULES.map((m) => m.name),
-    ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq", "outreach", "audit"],
+    ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq", "outreach", "hand-overs", "audit"],
   );
   assert.equal(SEED_MODULES.at(-1), audit);
 });
@@ -129,6 +129,7 @@ test("rows that set their own serial ids move the sequence past them", () => {
     "departments",
     "divisions",
     "faqs",
+    "hand_over_requests",
     "interview_slots",
     "members",
     "orders",

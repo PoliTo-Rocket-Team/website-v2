@@ -1,4 +1,4 @@
-// The cases the typed seed holds (issues #304 and #305), each with the check that
+// The cases the typed seed holds (issues #304, #305 and #308), each with the check that
 // proves it from the seeded rows. docs/seed-cases.md lists the same cases; a
 // test runs every check and fails when the page and this list differ.
 
@@ -13,6 +13,7 @@ import {
   type divisions,
   type faqs,
   type faqVersions,
+  type handOverRequests,
   type interviewSlots,
   type members,
   type orders,
@@ -40,6 +41,10 @@ import { CHANNEL_NAMES, type OutreachDraft, type OutreachTag, type PostItem, typ
 import type { Partner } from "@/lib/partners";
 import { partnerFromColumns } from "@/lib/partners-rows";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
+import type { TeamPerson } from "@/lib/dashboard/division-edit";
+import { steppingDown } from "@/lib/dashboard/hand-over";
+import { handOverAttentionFor, hasLapsed, successorsFor, type HandOverRequest, type RequestedRole } from "@/lib/dashboard/hand-over-request";
+import { membershipsOfRoles, roleBeyondDivisions, type OrgChart, type RoleSeat } from "@/lib/dashboard/team";
 import {
   kindOfTestViewer,
   seatOf,
@@ -55,6 +60,7 @@ import {
 import { ALUMNI_ENTRY_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
 import { FAQ_ROWS, FAQ_VERSION_ROWS } from "./faq";
+import { HAND_OVER_ROWS } from "./hand-overs";
 import { ORDER_ROWS } from "./orders";
 import {
   OUTREACH_POST_ROWS,
@@ -86,6 +92,7 @@ export type SeedData = {
   readonly partnerVersions: readonly InferInsertModel<typeof partnerVersions>[];
   readonly faqs: readonly InferInsertModel<typeof faqs>[];
   readonly faqVersions: readonly InferInsertModel<typeof faqVersions>[];
+  readonly handOvers: readonly InferInsertModel<typeof handOverRequests>[];
   readonly outreachTags: readonly InferInsertModel<typeof outreachTags>[];
   readonly outreachPosts: readonly InferInsertModel<typeof outreachPosts>[];
   readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
@@ -110,6 +117,7 @@ export const SEED_DATA: SeedData = {
   partnerVersions: PARTNER_VERSION_ROWS.rows,
   faqs: FAQ_ROWS.rows,
   faqVersions: FAQ_VERSION_ROWS.rows,
+  handOvers: HAND_OVER_ROWS.rows,
   outreachTags: OUTREACH_TAG_ROWS.rows,
   outreachPosts: OUTREACH_POST_ROWS.rows,
   outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
@@ -319,6 +327,100 @@ export function faqItemsOf(data: SeedData): ContentItem<FaqVersion>[] {
   );
 }
 
+// Hand-overs (issue #308), read through the hand-over rules
+// (lib/dashboard/hand-over-request.ts) the way the database source reads them.
+
+/** The open org chart, as the team snapshot reads it (lib/dashboard/team-database.ts). */
+export function orgOf(data: SeedData): OrgChart {
+  return {
+    departments: data.departments.filter((d) => (d.closedAt ?? null) === null).map((d) => ({ id: d.id!, name: d.name, code: d.code ?? null })),
+    divisions: data.divisions
+      .filter((d) => (d.closedAt ?? null) === null)
+      .flatMap((d) => (d.deptId == null ? [] : [{ id: d.id!, name: d.name, departmentId: d.deptId, code: d.code ?? null }])),
+  };
+}
+
+/**
+ * Everyone on the team as the hand-over rules read them, as `teamPeopleOf`
+ * builds them from the same rows: each division they hold an active role in,
+ * and every active role they hold in no division.
+ */
+export function teamOf(data: SeedData): TeamPerson[] {
+  const org = orgOf(data);
+  return [...onTeam(data)].map((memberId) => {
+    const active = data.roles
+      .filter((r) => r.memberId === memberId && isActive(r))
+      .map((r): RoleSeat => ({ type: r.type ?? null, divisionId: r.divisionId ?? null, since: r.startedAt!, departmentId: r.deptId ?? null, title: r.title }));
+    const user = data.users.find((u) => u.member === memberId);
+    const inOpenDivision = (r: RoleSeat) => org.divisions.some((d) => d.id === r.divisionId);
+    return {
+      id: memberId,
+      name: [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+      emails: user === undefined ? [] : [user.email],
+      memberships: membershipsOfRoles(active.filter((r) => inOpenDivision(r) && roleBeyondDivisions(r, org) === null)),
+      beyond: active.flatMap((r) => roleBeyondDivisions(r, org) ?? []),
+    };
+  });
+}
+
+type HandOverRow = SeedData["handOvers"][number];
+
+function requestedRoleOf(row: HandOverRow): RequestedRole | null {
+  if (row.role === "lead") return row.divisionId == null ? null : { kind: "lead", divisionId: row.divisionId };
+  return row.deptId == null ? null : { kind: "head", departmentId: row.deptId };
+}
+
+/** The hand-overs still waiting for an answer, as `readWaitingHandOvers` reads them. */
+export function waitingHandOversOf(data: SeedData): HandOverRequest[] {
+  return data.handOvers.flatMap((row) => {
+    const role = requestedRoleOf(row);
+    return row.decision != null || role === null
+      ? []
+      : [{ id: row.id!, fromId: row.fromId, role, toId: row.toId, outcome: row.outcome, sentAt: row.createdAt! }];
+  });
+}
+
+/** The member a seeded user is, or null for someone off the team. */
+export function memberOfUser(data: SeedData, userId: string): number | null {
+  return data.users.find((u) => u.id === userId)?.member ?? null;
+}
+
+/** Whether the role row was held on `day` ("2022-09-30"). */
+function heldOn(role: Role, day: string): boolean {
+  return role.startedAt! <= day && (role.leavedAt == null || role.leavedAt > day);
+}
+
+/**
+ * Whether a confirmed lead hand-over left the roles as Confirm writes them
+ * (lib/dashboard/database-team.ts): a head of the lead's department answered
+ * it; on that day the sender's lead row ended and, for "Become an advisor",
+ * their Advisor role in the division started with their access gone; and the
+ * successor, in the division when it was sent, leads it now.
+ */
+export function confirmedAsWritten(data: SeedData, row: HandOverRow): boolean {
+  const role = requestedRoleOf(row);
+  if (row.decision !== "confirmed" || row.decidedAt == null || row.decidedBy == null || role === null || role.kind !== "lead") return false;
+  const day = row.decidedAt.slice(0, 10);
+  const sent = row.createdAt!.slice(0, 10);
+  const deptId = data.divisions.find((d) => d.id === role.divisionId)?.deptId;
+  const answeredByHead = data.roles.some(
+    (r) => r.memberId === row.decidedBy && r.type === "head" && r.deptId === deptId && r.divisionId == null && heldOn(r, day),
+  );
+  const senderRoles = data.roles.filter((r) => r.memberId === row.fromId);
+  const leadEnded = senderRoles.some((r) => r.type === "lead" && r.divisionId === role.divisionId && heldOn(r, sent) && r.leavedAt === day);
+  const step = steppingDown(role, row.outcome);
+  const steppedDown =
+    step.kind === "leave"
+      ? senderRoles.every((r) => !isActive(r)) && !data.scopes.some((s) => s.memberId === row.fromId)
+      : step.place.kind === "division" &&
+        senderRoles.some((r) => r.type === "advisor" && r.divisionId === role.divisionId && r.startedAt === day && isActive(r)) &&
+        (step.access === "keeps-full-access" || !data.scopes.some((s) => s.memberId === row.fromId));
+  const successorLeads = data.roles.some(
+    (r) => r.memberId === row.toId && r.type === "lead" && r.divisionId === role.divisionId && isActive(r) && r.startedAt! <= sent,
+  );
+  return answeredByHead && leadEnded && steppedDown && successorLeads;
+}
+
 // Outreach (issue #309), read back from the rows the way
 // lib/dashboard/database-outreach.ts reads them.
 
@@ -370,7 +472,7 @@ function outreachVersionsOf(data: SeedData): OutreachDraft[] {
   );
 }
 
-export type SeedArea = "structure" | "people" | "alumni" | "access" | "orders" | "recruitment" | "partners" | "faq" | "outreach";
+export type SeedArea = "structure" | "people" | "alumni" | "access" | "orders" | "recruitment" | "partners" | "faq" | "outreach" | "hand-overs";
 
 export const SEED_AREAS: readonly SeedArea[] = [
   "structure",
@@ -382,6 +484,7 @@ export const SEED_AREAS: readonly SeedArea[] = [
   "partners",
   "faq",
   "outreach",
+  "hand-overs",
 ];
 
 export type SeedCase = {
@@ -836,6 +939,30 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`outreach_summit_versions` version `published`",
     exercisedBy: `${issue(287)}, ${issue(289)}`,
     holds: (data) => (outreachSummitOf(data)?.published.editions.length ?? 0) >= 1,
+  },
+  {
+    area: "hand-overs",
+    case: "A division lead's hand-over waiting for the head of their department, on the department-head test viewer's Overview",
+    rows: "`hand_over_requests` 2, member 20 to member 29",
+    exercisedBy: issue(262),
+    holds: (data) => {
+      const waiting = waitingHandOversOf(data);
+      const team = teamOf(data);
+      const org = orgOf(data);
+      const head = memberOfUser(data, TEST_VIEWER_PEOPLE["department-head"]);
+      return (
+        waiting.length === 1 &&
+        waiting.every((r) => !hasLapsed(r, team) && successorsFor(r.role, r.fromId, team, org).some((s) => s.id === r.toId)) &&
+        handOverAttentionFor(head, waiting, team, org, new Date()).length === 1
+      );
+    },
+  },
+  {
+    area: "hand-overs",
+    case: "A confirmed hand-over: the lead became an advisor in the division and their access ended",
+    rows: "`hand_over_requests` 1, member 43 to member 16",
+    exercisedBy: `${issue(253)}, ${issue(262)}`,
+    holds: (data) => data.handOvers.some((row) => row.outcome === "advisor" && confirmedAsWritten(data, row)),
   },
 ];
 

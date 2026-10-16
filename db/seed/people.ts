@@ -83,6 +83,14 @@ export const ANONYMIZED_ALUMNUS = 48;
 export const REMOVED_ALUMNUS = 49;
 /** Left in 2024–25; an editor fixed the name the Alumni page shows. */
 export const RENAMED_ALUMNUS = SEEDED_RENAMED_ALUMNUS;
+/** Took over Liquid Systems Architecture from the division advisor by a hand-over sent from My profile (./hand-overs.ts). */
+export const LSA_SUCCESSOR = 16;
+/** The day that hand-over was confirmed: the advisor's lead row ends and their Advisor role starts. */
+export const LSA_HAND_OVER_DAY = "2022-09-30";
+/** Head of Propulsion since 2022–23; confirmed that hand-over. */
+export const PROPULSION_HEAD = 2;
+/** The Optimization and Analysis lead's hand-over to a member of the division, waiting for the head of Aerodynamics. */
+export const WAITING_HAND_OVER = { from: 20, to: 29 } as const;
 /** A member of two divisions at once. */
 export const TWO_DIVISION_MEMBER = 15;
 /** The IT lead's seat (issue #238). */
@@ -283,14 +291,17 @@ export const ROLE_ROWS = rowsOf(roles, [
 
   // Propulsion
   { memberId: CO_FOUNDER, deptId: propulsion, title: "Head of Propulsion", startedAt: "2021-10-01", leavedAt: "2022-09-09", type: "head" },
-  { memberId: 2, deptId: propulsion, title: "Head of Propulsion", startedAt: "2022-09-10", type: "head" },
+  { memberId: PROPULSION_HEAD, deptId: propulsion, title: "Head of Propulsion", startedAt: "2022-09-10", type: "head" },
   { memberId: 14, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: "2022-09-20", type: "lead" },
   { memberId: TWO_DIVISION_MEMBER, deptId: propulsion, divisionId: D.testBench, title: "Test Operations Engineer", startedAt: "2022-09-25", type: "core" },
   { memberId: TWO_DIVISION_MEMBER, deptId: propulsion, divisionId: D.liquidSystems, title: "Feed Systems Engineer", startedAt: "2024-10-01", type: "core" },
-  { memberId: DIVISION_ADVISOR, deptId: propulsion, divisionId: D.liquidSystems, title: "LSA Lead Engineer", startedAt: "2021-10-01", leavedAt: "2022-09-30", type: "lead" },
-  { memberId: DIVISION_ADVISOR, deptId: propulsion, divisionId: D.liquidSystems, title: "Advisor", startedAt: "2022-10-01", type: "advisor" },
+  // The division advisor handed the lead over to LSA_SUCCESSOR from My profile.
+  // Confirm ended the lead row and started the Advisor role on one day, and
+  // made the successor's own row in the division the lead (./hand-overs.ts).
+  { memberId: DIVISION_ADVISOR, deptId: propulsion, divisionId: D.liquidSystems, title: "LSA Lead Engineer", startedAt: "2021-10-01", leavedAt: LSA_HAND_OVER_DAY, type: "lead" },
+  { memberId: DIVISION_ADVISOR, deptId: propulsion, divisionId: D.liquidSystems, title: "Advisor", startedAt: LSA_HAND_OVER_DAY, type: "advisor" },
   { memberId: FORMER_TEAM_LEADER, deptId: propulsion, divisionId: D.liquidSystems, title: "Valve Engineer", startedAt: "2021-10-01", leavedAt: "2023-09-30", type: "core" },
-  { memberId: 16, deptId: propulsion, divisionId: D.liquidSystems, title: "LSA Lead Engineer", startedAt: "2022-10-01", type: "lead" },
+  { memberId: LSA_SUCCESSOR, deptId: propulsion, divisionId: D.liquidSystems, title: "LSA Lead Engineer", startedAt: "2022-09-15", type: "lead" },
   { memberId: 32, deptId: propulsion, divisionId: D.liquidSystems, title: "Feed Systems Engineer", startedAt: "2022-10-05", type: "core" },
   { memberId: 34, deptId: propulsion, divisionId: D.thrustChamber, title: "TCA Lead Engineer", startedAt: "2022-10-10", type: "lead" },
   { memberId: 35, deptId: propulsion, divisionId: D.thrustChamber, title: "Combustion Engineer", startedAt: "2022-10-15", type: "core" },
@@ -310,8 +321,8 @@ export const ROLE_ROWS = rowsOf(roles, [
   { memberId: 19, deptId: aerodynamics, divisionId: D.missionAnalysis, title: "Trajectory Engineer", startedAt: "2025-10-01", type: "core" },
   { memberId: 28, deptId: aerodynamics, divisionId: D.missionAnalysis, title: "Mission Analyst", startedAt: "2022-09-25", type: "core" },
   { memberId: HIDDEN_ALUMNUS, deptId: aerodynamics, divisionId: D.missionAnalysis, title: "Flight Dynamics Engineer", startedAt: "2022-10-01", leavedAt: "2024-07-31", type: "core" },
-  { memberId: 20, deptId: aerodynamics, divisionId: D.optimization, title: "Optimization Lead", startedAt: "2022-10-01", type: "lead" },
-  { memberId: 29, deptId: aerodynamics, divisionId: D.optimization, title: "Analysis Software Engineer", startedAt: "2022-10-05", type: "core" },
+  { memberId: WAITING_HAND_OVER.from, deptId: aerodynamics, divisionId: D.optimization, title: "Optimization Lead", startedAt: "2022-10-01", type: "lead" },
+  { memberId: WAITING_HAND_OVER.to, deptId: aerodynamics, divisionId: D.optimization, title: "Analysis Software Engineer", startedAt: "2022-10-05", type: "core" },
 
   // Recovery
   { memberId: 8, deptId: recovery, title: "Head of Recovery", startedAt: "2022-09-10", type: "head" },

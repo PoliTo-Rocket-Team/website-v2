@@ -26,7 +26,7 @@ export const SEED_TRIGGERS = {
   sync_public_users_from_better_auth_user:
     "sets users.updated_at to NOW() for each tester's better_auth row; the people module sets it back to a fixed time after that insert",
   lapse_hand_over_requests:
-    "closes a waiting hand-over request when its sender's roles change; the people module's reset empties members with CASCADE, so hand_over_requests is empty before any role is written and the trigger changes no row",
+    "closes a waiting hand-over request when its sender's roles change; every reset empties hand_over_requests before any role is written, and the hand-overs module inserts its rows after the people module's roles, so the trigger changes no row",
   lapse_hand_over_requests_on_change:
     "the same rule on a role update; it changes no row for the same reason",
 } as const;
