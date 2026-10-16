@@ -70,8 +70,19 @@ test("a preview build migrates, then resets and re-seeds, the database it is giv
   assert.deepEqual(events, [`guard ${DIRECT}`, "lock", "migrate preview", "seed preview", "unlock"]);
 });
 
-test("with no direct connection string the pooled one is migrated and seeded", () => {
-  assert.deepEqual(previewBuildPlan({ VERCEL_ENV: "preview", DATABASE_URL: POOLED }), { kind: "prepare", connectionString: POOLED });
+test("a preview with no direct connection string is refused, so no lock is ever held through the pooler", async () => {
+  const env = { VERCEL_ENV: "preview", DATABASE_URL: POOLED };
+  assert.equal(previewBuildPlan(env).kind, "refuse");
+  const { events, steps } = recorded(env);
+  assert.equal((await preparePreviewDatabase(env, steps)).kind, "refused");
+  assert.deepEqual(events, []);
+});
+
+test("the lock, the migration and the seed all run on the direct connection string", () => {
+  assert.deepEqual(previewBuildPlan({ VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT }), {
+    kind: "prepare",
+    connectionString: DIRECT,
+  });
 });
 
 test("nothing runs when the guard refuses the target or the two strings name different databases", async () => {
@@ -91,14 +102,14 @@ test("nothing runs when the guard refuses the target or the two strings name dif
 });
 
 test("the lock is released when the migration fails, and the seed does not run", async () => {
-  const env = { VERCEL_ENV: "preview", DATABASE_URL: POOLED };
+  const env = { VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT };
   const { events, steps } = recorded(env);
   steps.migrate = async () => {
     events.push("migrate failed");
     throw new Error("migration failed");
   };
   await assert.rejects(preparePreviewDatabase(env, steps), /migration failed/);
-  assert.deepEqual(events, [`guard ${POOLED}`, "lock", "migrate failed", "unlock"]);
+  assert.deepEqual(events, [`guard ${DIRECT}`, "lock", "migrate failed", "unlock"]);
 });
 
 test("two concurrent preview builds migrate and seed one after the other, never interleaved", async () => {

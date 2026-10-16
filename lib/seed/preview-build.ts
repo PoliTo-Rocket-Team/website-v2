@@ -16,7 +16,7 @@ export type PreviewBuildEnv = {
   readonly VERCEL_ENV?: string;
   /** What the pages read: the pooled connection string. */
   readonly DATABASE_URL?: string;
-  /** The direct connection string to the same database, which a lock needs. */
+  /** The direct connection string to the same database. The lock, the migration and the seed all run on it (ADR 0016). */
   readonly DATABASE_URL_UNPOOLED?: string;
 };
 
@@ -48,10 +48,19 @@ export function previewBuildPlan(env: PreviewBuildEnv): PreviewBuildPlan {
   if (!pooled) {
     return { kind: "skip", why: "this preview has no DATABASE_URL, so its pages read the dummy arrays" };
   }
-  if (direct && databaseOf(direct) !== databaseOf(pooled)) {
+  if (!direct) {
+    // The lock is a session lock. Through Neon's pooler the lock and the
+    // unlock can land on different server connections, so the lock could stay
+    // held and stall every later preview build. Refuse rather than lock there.
+    return {
+      kind: "refuse",
+      why: "this preview has a DATABASE_URL but no DATABASE_URL_UNPOOLED, and the seed lock is held only on a direct connection",
+    };
+  }
+  if (databaseOf(direct) !== databaseOf(pooled)) {
     return { kind: "refuse", why: "DATABASE_URL and DATABASE_URL_UNPOOLED name different databases" };
   }
-  return { kind: "prepare", connectionString: direct ?? pooled };
+  return { kind: "prepare", connectionString: direct };
 }
 
 /** The real work, behind seams the unit test replaces. */

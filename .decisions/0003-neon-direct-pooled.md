@@ -1,7 +1,7 @@
 ---
 id: 0003
 title: "Neon Postgres direct with pooled connections; no host-managed Postgres"
-status: accepted
+status: amended-in-part by [0016](0016-previews-read-their-own-seeded-branch.md)
 date: 2026-08-24
 ---
 
