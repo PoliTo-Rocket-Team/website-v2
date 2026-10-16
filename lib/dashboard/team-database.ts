@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import type { MemberDetails } from "./details";
+import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
 import { normalizeLinkedin } from "./self";
 import {
@@ -269,6 +270,17 @@ function detailsOf(person: PersonRow): MemberDetails {
     birthDate: person.date_of_birth ?? "",
     gender: oneOf(GENDERS, person.gender),
   };
+}
+
+/** Everyone on the team as the division and hand-over rules read them (./division-edit.ts, ./hand-over-request.ts). */
+export function teamPeopleOf(snapshot: TeamSnapshot): TeamPerson[] {
+  return recordsOf(snapshot).map((r) => ({
+    id: r.id,
+    name: r.name,
+    emails: [r.signInEmail, r.details.prtEmail].filter((e) => e !== ""),
+    memberships: r.memberships,
+    beyond: r.beyondDivisions,
+  }));
 }
 
 /**

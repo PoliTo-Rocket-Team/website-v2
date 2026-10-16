@@ -20,7 +20,9 @@ import { publicPathname } from "@/lib/storage/pathname";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { canReach } from "./access";
 import { alumniDirectory, checkAdvisor, checkAlumnusFix, alumnusRow, type AlumniDirectory } from "./alumni";
+import type { DashboardIdentity } from "./database";
 import { storedPhotoPathname } from "./database-self";
+import { myAlumniOf, type MyAlumni } from "./my-alumni";
 import { checkPhoto } from "./self";
 import type { ViewerStanding } from "./viewer";
 import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
@@ -231,6 +233,68 @@ async function addAdvisor(viewer: ViewerStanding, input: unknown, photo: Upload 
   ]);
   refreshAlumni();
   return written(null);
+}
+
+// An alumnus's own entry (boards 56 and 56b, issue #317) ----------------------
+
+/** The member as the Alumni record lists them, removed or not; null when it does not know them. */
+export async function readOwnAlumnus(memberId: number): Promise<Alumnus | null> {
+  const key: AlumnusKey = `m${memberId}`;
+  return (await readAlumni()).find((a) => a.key === key) ?? null;
+}
+
+/** The viewer's own entry: only an alumnus has one to read or change. */
+async function ownKey(identity: DashboardIdentity): Promise<AlumnusKey | null> {
+  if (identity.kind !== "alumni" || identity.memberId === null) return null;
+  return (await readOwnAlumnus(identity.memberId))?.key ?? null;
+}
+
+const NOT_AN_ALUMNUS = "This page is for former members on the Alumni page.";
+
+/**
+ * "Show me on the Alumni page": the person's own request to be left off,
+ * the `removed_at` the leave-time box writes (#257), never an editor's
+ * Shown or Hidden.
+ */
+async function setOwnShown(identity: DashboardIdentity, shown: boolean): Promise<WriteResult<null>> {
+  if (typeof shown !== "boolean") return refused("Check the switch.");
+  const key = await ownKey(identity);
+  if (key === null) return refused(NOT_AN_ALUMNUS);
+  await runAuditBatch((db) => [upsertEntry(db, key, { removedAt: shown ? null : new Date().toISOString() })]);
+  refreshAlumni();
+  return written(null);
+}
+
+/** The photo the Alumni page shows beside their name, by the Alumni page's own rules (`checkPhoto`). */
+async function setOwnPhoto(identity: DashboardIdentity, photo: Upload | null): Promise<WriteResult<null>> {
+  const key = await ownKey(identity);
+  if (key === null) return refused(NOT_AN_ALUMNUS);
+  const person = await findAlumnusAnyListing(key);
+  const uploaded = photo === null ? written(null) : await uploadAlumniPhoto(photo);
+  if (!uploaded.ok) return uploaded;
+  await runAuditBatch((db) => [upsertEntry(db, key, { photo: uploaded.value })]);
+  const old = storedPhotoPathname(person?.photo ?? null);
+  if (old !== null) await deletePublicFile(old).catch(() => undefined);
+  refreshAlumni();
+  return written(null);
+}
+
+/** Fresh, not cached, and whether or not they asked to be removed: the person's own write reads it. */
+async function findAlumnusAnyListing(key: AlumnusKey): Promise<Alumnus | null> {
+  return alumniOf(await queryAlumniRecord(), await currentAcademicYearStart()).find((a) => a.key === key) ?? null;
+}
+
+/** An alumnus's own Alumni entry on the database: My alumni's read and writes. */
+export function databaseOwnAlumni(identity: DashboardIdentity) {
+  return {
+    myAlumni: async (): Promise<MyAlumni | null> => {
+      if (identity.kind !== "alumni" || identity.memberId === null) return null;
+      const alumnus = await readOwnAlumnus(identity.memberId);
+      return alumnus === null ? null : myAlumniOf(alumnus);
+    },
+    setMyAlumniShown: (shown: boolean) => setOwnShown(identity, shown),
+    setMyAlumniPhoto: (photo: Upload | null) => setOwnPhoto(identity, photo),
+  };
 }
 
 /** The Alumni page's writes on the database, for one viewer. */

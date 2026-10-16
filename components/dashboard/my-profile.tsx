@@ -14,12 +14,14 @@ import {
   type LeaveState,
   type MyProfile,
 } from "@/lib/dashboard/self";
+import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
 import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Drawer } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { HandOverDialog, handOverRowText } from "./hand-over-dialog";
 import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
 import { DetailValue, EditPill, YourDetailsCard } from "./your-details";
@@ -30,6 +32,7 @@ type Actions = {
   removePhoto: () => Promise<WriteResult<null>>;
   saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
   leaveTeam: (reason: string, removeFromAlumni: boolean) => Promise<WriteResult<DashboardLanding>>;
+  sendHandOver: (input: HandOverSend) => Promise<WriteResult<null>>;
   deleteAccount: (withdrawOpenApplications: boolean, removeFromAlumni: boolean) => Promise<WriteResult<null>>;
 };
 
@@ -42,26 +45,58 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
     <>
       <PageHeader title="My profile" intro="How you appear on the site and to the team." />
       <div className="mt-6 flex flex-col gap-5">
-        <PhotoCard name={profile.name} photoUrl={profile.photoUrl} uploadPhoto={actions.uploadPhoto} removePhoto={actions.removePhoto} />
+        <PhotoCard
+          name={profile.name}
+          photoUrl={profile.photoUrl}
+          uploadPhoto={actions.uploadPhoto}
+          removePhoto={actions.removePhoto}
+          detail="Used on the site to show you. Make sure your face is clear even when small. Square image, JPEG or PNG, up to 2 MB; we crop and resize it for you."
+          previews={PROFILE_PREVIEWS}
+        />
         <DetailsCard profile={profile} saveLinkedin={actions.saveLinkedin} />
         <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
         <AccountCard signIn={profile.signIn} />
-        <LeaveOrDelete leave={profile.leave} session={session} leaveTeam={actions.leaveTeam} deleteAccount={actions.deleteAccount} />
+        <LeaveOrDelete
+          leave={profile.leave}
+          handOver={profile.handOver}
+          session={session}
+          leaveTeam={actions.leaveTeam}
+          sendHandOver={actions.sendHandOver}
+          deleteAccount={actions.deleteAccount}
+        />
       </div>
     </>
   );
 }
 
-function PhotoCard({
+/** One size the photo shows at on the site, with where: "Team page", "Dashboard", "Alumni page". */
+export type PhotoPreviewSize = { readonly caption: string; readonly size: string };
+
+/** Board 55: the Team page's size beside the dashboard's. */
+const PROFILE_PREVIEWS: readonly PhotoPreviewSize[] = [
+  { caption: "Team page", size: "h-[72px] w-[72px] text-[24px] md:h-24 md:w-24 md:text-[30px]" },
+  { caption: "Dashboard", size: "h-8 w-8 text-[11px] md:h-10 md:w-10 md:text-[13px]" },
+];
+
+/**
+ * The Photo card: the photo at each size the site shows it, Upload photo
+ * through the crop dialog, and Remove photo. My profile (board 55) and My
+ * alumni (board 56b, issue #317) each hand in their own writes and sizes.
+ */
+export function PhotoCard({
   name,
   photoUrl,
   uploadPhoto,
   removePhoto,
+  detail,
+  previews,
 }: {
   name: string;
   photoUrl: string | null;
   uploadPhoto: Actions["uploadPhoto"];
   removePhoto: Actions["removePhoto"];
+  detail: string;
+  previews: readonly PhotoPreviewSize[];
 }) {
   const [shown, setShown] = useState(photoUrl);
   const [cropping, setCropping] = useState<File | null>(null);
@@ -123,14 +158,12 @@ function PhotoCard({
   };
 
   return (
-    <Card
-      title="Photo"
-      detail="Used on the site to show you. Make sure your face is clear even when small. Square image, JPEG or PNG, up to 2 MB; we crop and resize it for you."
-    >
+    <Card title="Photo" detail={detail}>
       <div className="flex flex-col gap-6 px-5 py-5 md:flex-row md:items-end md:justify-between md:px-6">
         <div className="flex items-end gap-6 md:gap-7">
-          <PhotoPreview name={name} url={shown} size="h-[72px] w-[72px] text-[24px] md:h-24 md:w-24 md:text-[30px]" caption="Team page" />
-          <PhotoPreview name={name} url={shown} size="h-8 w-8 text-[11px] md:h-10 md:w-10 md:text-[13px]" caption="Dashboard" />
+          {previews.map((preview) => (
+            <PhotoPreview key={preview.caption} name={name} url={shown} size={preview.size} caption={preview.caption} />
+          ))}
         </div>
         <div className="flex flex-col items-stretch gap-3 md:items-end">
           <input
@@ -385,28 +418,48 @@ const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your a
 /**
  * Board 55's "Leave or delete": one card from md, two on phones (55m). Leave
  * asks first, with an optional reason (55b); Delete asks for the word DELETE
- * (55c).
+ * (55c). A division lead or a department head has "Hand over your role" in
+ * place of Leave (board 55d, issue #262): it asks who takes over and what
+ * they do next, then waits for the next level up.
  */
 function LeaveOrDelete({
   leave: initial,
+  handOver: initialOffer,
   session,
   leaveTeam,
+  sendHandOver,
   deleteAccount,
 }: {
   leave: LeaveState;
+  handOver: HandOverOffer | null;
   session: ViewerSession;
   leaveTeam: Actions["leaveTeam"];
+  sendHandOver: Actions["sendHandOver"];
   deleteAccount: Actions["deleteAccount"];
 }) {
   const [leave, setLeave] = useState(initial);
-  const [asking, setAsking] = useState<"leave" | "delete" | null>(null);
+  const [offer, setOffer] = useState(initialOffer);
+  const [asking, setAsking] = useState<"leave" | "hand-over" | "delete" | null>(null);
   const left = leave === "left";
 
-  const leaveButton = !left && (
-    <button type="button" onClick={() => setAsking("leave")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
-      Leave the team
-    </button>
-  );
+  const exitRow =
+    offer !== null ? (
+      <DangerRow title="Hand over your role" text={handOverRowText(offer)}>
+        {offer.waiting === null && (
+          <button type="button" onClick={() => setAsking("hand-over")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
+            Hand over your role
+          </button>
+        )}
+      </DangerRow>
+    ) : (
+      <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
+        {!left && (
+          <button type="button" onClick={() => setAsking("leave")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
+            Leave the team
+          </button>
+        )}
+      </DangerRow>
+    );
   const deleteButton = (
     <button type="button" onClick={() => setAsking("delete")} className={`${DANGER_PILL} w-full md:w-auto`}>
       Delete account
@@ -417,20 +470,14 @@ function LeaveOrDelete({
     <>
       <Card title="Leave or delete" danger className="hidden md:block">
         <div className="divide-y divide-danger/25">
-          <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
-            {leaveButton}
-          </DangerRow>
+          {exitRow}
           <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
             {deleteButton}
           </DangerRow>
         </div>
       </Card>
       <div className="flex flex-col gap-5 md:hidden">
-        <section className="rounded-xl border border-hairline bg-panel/60">
-          <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
-            {leaveButton}
-          </DangerRow>
-        </section>
+        <section className="rounded-xl border border-hairline bg-panel/60">{exitRow}</section>
         <DangerBox>
           <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
             {deleteButton}
@@ -445,6 +492,18 @@ function LeaveOrDelete({
         // The dialog stays open, pending, until the applicant's page replaces this one (issue #227).
         onLeft={() => setLeave("left")}
       />
+      {offer !== null && (
+        <HandOverDialog
+          open={asking === "hand-over"}
+          onOpenChange={(open) => setAsking(open ? "hand-over" : null)}
+          offer={offer}
+          sendHandOver={sendHandOver}
+          onSent={(waiting) => {
+            setOffer({ ...offer, waiting });
+            setAsking(null);
+          }}
+        />
+      )}
       <DeleteAccountDialog
         open={asking === "delete"}
         onOpenChange={(open) => setAsking(open ? "delete" : null)}

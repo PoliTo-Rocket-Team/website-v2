@@ -6,6 +6,7 @@ import { AccountUnresolved } from "@/components/dashboard/account-unresolved";
 import { DashboardShell } from "@/components/dashboard/shell";
 import { sidebarFor, userMenuPageFor } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
+import { userCardRole } from "@/lib/dashboard/viewer";
 
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
@@ -29,11 +30,11 @@ async function SignedInShell({ children }: { children: ReactNode }) {
   // A token holder sent to /login would bounce straight back (proxy.ts).
   if (opening.kind === "account-unresolved") return <AccountUnresolved />;
   const { data } = opening;
-  const [counts, hasOwnApplications] = await Promise.all([data.navCounts(), data.hasOwnApplications()]);
+  const [counts, hasShownApplications] = await Promise.all([data.navCounts(), data.hasShownApplications()]);
   return (
     <DashboardShell
-      viewer={data.viewer}
-      sections={sidebarFor(data.viewer, { counts, hasOwnApplications })}
+      viewer={{ ...data.viewer, role: userCardRole(data.viewer, hasShownApplications) }}
+      sections={sidebarFor(data.viewer, { counts, hasShownApplications })}
       menuPage={userMenuPageFor(data.viewer.kind)}
     >
       {children}

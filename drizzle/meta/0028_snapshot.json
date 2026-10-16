@@ -1,6 +1,6 @@
 {
-  "id": "053ce47c-0725-426e-95cc-df3ba855a4ae",
-  "prevId": "17b358f6-9912-4afe-9aeb-bc34b6ecbf48",
+  "id": "c2c43055-3cdc-4e77-9503-5377eb7cb5df",
+  "prevId": "25f983bd-6a0f-4828-b411-ff8ac440b015",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1123,6 +1123,185 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.hand_over_requests": {
+      "name": "hand_over_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "from_id": {
+          "name": "from_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "hand_over_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "division_id": {
+          "name": "division_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dept_id": {
+          "name": "dept_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_id": {
+          "name": "to_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "hand_over_outcome",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "decision": {
+          "name": "decision",
+          "type": "hand_over_decision",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "hand_over_requests_one_waiting": {
+          "name": "hand_over_requests_one_waiting",
+          "columns": [
+            {
+              "expression": "from_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"hand_over_requests\".\"decision\" is null",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "hand_over_requests_from_id_members_member_id_fk": {
+          "name": "hand_over_requests_from_id_members_member_id_fk",
+          "tableFrom": "hand_over_requests",
+          "columnsFrom": [
+            "from_id"
+          ],
+          "tableTo": "members",
+          "columnsTo": [
+            "member_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "hand_over_requests_division_id_divisions_id_fk": {
+          "name": "hand_over_requests_division_id_divisions_id_fk",
+          "tableFrom": "hand_over_requests",
+          "columnsFrom": [
+            "division_id"
+          ],
+          "tableTo": "divisions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "hand_over_requests_dept_id_departments_id_fk": {
+          "name": "hand_over_requests_dept_id_departments_id_fk",
+          "tableFrom": "hand_over_requests",
+          "columnsFrom": [
+            "dept_id"
+          ],
+          "tableTo": "departments",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "hand_over_requests_to_id_members_member_id_fk": {
+          "name": "hand_over_requests_to_id_members_member_id_fk",
+          "tableFrom": "hand_over_requests",
+          "columnsFrom": [
+            "to_id"
+          ],
+          "tableTo": "members",
+          "columnsTo": [
+            "member_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "hand_over_requests_decided_by_members_member_id_fk": {
+          "name": "hand_over_requests_decided_by_members_member_id_fk",
+          "tableFrom": "hand_over_requests",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "tableTo": "members",
+          "columnsTo": [
+            "member_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hand_over_requests_unit": {
+          "name": "hand_over_requests_unit",
+          "value": "(\"hand_over_requests\".\"role\" = 'lead' and \"hand_over_requests\".\"division_id\" is not null and \"hand_over_requests\".\"dept_id\" is null) or (\"hand_over_requests\".\"role\" = 'head' and \"hand_over_requests\".\"dept_id\" is not null and \"hand_over_requests\".\"division_id\" is null)"
+        },
+        "hand_over_requests_someone_else": {
+          "name": "hand_over_requests_someone_else",
+          "value": "\"hand_over_requests\".\"from_id\" <> \"hand_over_requests\".\"to_id\""
+        },
+        "hand_over_requests_decided": {
+          "name": "hand_over_requests_decided",
+          "value": "(\"hand_over_requests\".\"decision\" is null) = (\"hand_over_requests\".\"decided_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.interview_slots": {
       "name": "interview_slots",
       "schema": "",
@@ -1536,406 +1715,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.outreach_post_tags": {
-      "name": "outreach_post_tags",
-      "schema": "",
-      "columns": {
-        "post_id": {
-          "name": "post_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "content_version",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tag_name": {
-          "name": "tag_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "outreach_post_tags_tag_name_outreach_tags_name_fk": {
-          "name": "outreach_post_tags_tag_name_outreach_tags_name_fk",
-          "tableFrom": "outreach_post_tags",
-          "columnsFrom": [
-            "tag_name"
-          ],
-          "tableTo": "outreach_tags",
-          "columnsTo": [
-            "name"
-          ],
-          "onUpdate": "cascade",
-          "onDelete": "no action"
-        },
-        "outreach_post_tags_version_fk": {
-          "name": "outreach_post_tags_version_fk",
-          "tableFrom": "outreach_post_tags",
-          "columnsFrom": [
-            "post_id",
-            "version"
-          ],
-          "tableTo": "outreach_post_versions",
-          "columnsTo": [
-            "post_id",
-            "version"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {
-        "outreach_post_tags_pk": {
-          "name": "outreach_post_tags_pk",
-          "columns": [
-            "post_id",
-            "version",
-            "position"
-          ]
-        }
-      },
-      "uniqueConstraints": {
-        "outreach_post_tags_once": {
-          "name": "outreach_post_tags_once",
-          "columns": [
-            "post_id",
-            "version",
-            "tag_name"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.outreach_post_versions": {
-      "name": "outreach_post_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "post_id": {
-          "name": "post_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "content_version",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "date": {
-          "name": "date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "place": {
-          "name": "place",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "summary_phone": {
-          "name": "summary_phone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "lead": {
-          "name": "lead",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "body": {
-          "name": "body",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "photos": {
-          "name": "photos",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "channels": {
-          "name": "channels",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "outreach_post_versions_post_id_outreach_posts_id_fk": {
-          "name": "outreach_post_versions_post_id_outreach_posts_id_fk",
-          "tableFrom": "outreach_post_versions",
-          "columnsFrom": [
-            "post_id"
-          ],
-          "tableTo": "outreach_posts",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "outreach_post_versions_post_version_unique": {
-          "name": "outreach_post_versions_post_version_unique",
-          "columns": [
-            "post_id",
-            "version"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "outreach_post_versions_titled": {
-          "name": "outreach_post_versions_titled",
-          "value": "char_length(\"outreach_post_versions\".\"title\") >= 1"
-        },
-        "outreach_post_versions_body": {
-          "name": "outreach_post_versions_body",
-          "value": "jsonb_typeof(\"outreach_post_versions\".\"body\") = 'array' and jsonb_array_length(\"outreach_post_versions\".\"body\") >= 1"
-        },
-        "outreach_post_versions_photos": {
-          "name": "outreach_post_versions_photos",
-          "value": "jsonb_typeof(\"outreach_post_versions\".\"photos\") = 'array' and jsonb_array_length(\"outreach_post_versions\".\"photos\") >= 1"
-        },
-        "outreach_post_versions_channels": {
-          "name": "outreach_post_versions_channels",
-          "value": "jsonb_typeof(\"outreach_post_versions\".\"channels\") = 'object' and (\"outreach_post_versions\".\"channels\" ? 'instagram' or \"outreach_post_versions\".\"channels\" ? 'linkedin')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.outreach_posts": {
-      "name": "outreach_posts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "site_order": {
-          "name": "site_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.outreach_summit_versions": {
-      "name": "outreach_summit_versions",
-      "schema": "",
-      "columns": {
-        "version": {
-          "name": "version",
-          "type": "content_version",
-          "typeSchema": "public",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "eyebrow": {
-          "name": "eyebrow",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "story": {
-          "name": "story",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "story_phone": {
-          "name": "story_phone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "photo_src": {
-          "name": "photo_src",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "photo_alt": {
-          "name": "photo_alt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "editions": {
-          "name": "editions",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "outreach_summit_versions_editions": {
-          "name": "outreach_summit_versions_editions",
-          "value": "jsonb_typeof(\"outreach_summit_versions\".\"editions\") = 'array' and jsonb_array_length(\"outreach_summit_versions\".\"editions\") >= 1"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.outreach_tags": {
-      "name": "outreach_tags",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "award": {
-          "name": "award",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "list_order": {
-          "name": "list_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "outreach_tags_one_award": {
-          "name": "outreach_tags_one_award",
-          "columns": [
-            {
-              "expression": "award",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "with": {},
-          "method": "btree",
-          "where": "\"outreach_tags\".\"award\"",
-          "concurrently": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "outreach_tags_name_unique": {
-          "name": "outreach_tags_name_unique",
-          "columns": [
-            "name"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "outreach_tags_name_length": {
-          "name": "outreach_tags_name_length",
-          "value": "char_length(\"outreach_tags\".\"name\") between 1 and 32"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.partner_versions": {
@@ -3176,6 +2955,30 @@
       "values": [
         "operations_lead",
         "it_lead"
+      ]
+    },
+    "public.hand_over_decision": {
+      "name": "hand_over_decision",
+      "schema": "public",
+      "values": [
+        "confirmed",
+        "declined"
+      ]
+    },
+    "public.hand_over_outcome": {
+      "name": "hand_over_outcome",
+      "schema": "public",
+      "values": [
+        "advisor",
+        "leave"
+      ]
+    },
+    "public.hand_over_role": {
+      "name": "hand_over_role",
+      "schema": "public",
+      "values": [
+        "lead",
+        "head"
       ]
     },
     "public.status": {

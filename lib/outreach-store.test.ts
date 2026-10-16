@@ -39,16 +39,16 @@ function throughRow(post: OutreachPost): OutreachPost {
   return postFromColumns(columns, [...post.tags]);
 }
 
-test("migrations 0027 and 0028 come after 0025 in that order, and 0028 holds exactly the import of the record", () => {
+test("migrations 0031 and 0032 come after 0030 in that order, and 0032 holds exactly the import of the record", () => {
   const files = readdirSync(drizzle).filter((f) => f.endsWith(".sql")).sort();
-  const at = files.indexOf("0027_outreach.sql");
-  assert.ok(at > files.indexOf("0025_faqs_audit_and_import.sql"), files.join(", "));
-  assert.equal(files[at + 1], "0028_outreach_audit_and_import.sql");
-  const tables = readFileSync(join(drizzle, "0027_outreach.sql"), "utf8");
+  const at = files.indexOf("0031_outreach.sql");
+  assert.ok(at > files.indexOf("0030_application_rejected_at.sql"), files.join(", "));
+  assert.equal(files[at + 1], "0032_outreach_audit_and_import.sql");
+  const tables = readFileSync(join(drizzle, "0031_outreach.sql"), "utf8");
   for (const table of ["outreach_tags", "outreach_posts", "outreach_post_versions", "outreach_post_tags", "outreach_summit_versions"]) {
     assert.match(tables, new RegExp(`CREATE TABLE "${table}"`), table);
   }
-  const migration = readFileSync(join(drizzle, "0028_outreach_audit_and_import.sql"), "utf8");
+  const migration = readFileSync(join(drizzle, "0032_outreach_audit_and_import.sql"), "utf8");
   assert.ok(migration.trimEnd().endsWith(outreachImportSql()), "regenerate the migration's import from outreachImportSql()");
   // The tag list, the summit, then one statement per post.
   assert.equal(outreachImportSql().split("--> statement-breakpoint").length, 2 + outreachRecord.posts.length);

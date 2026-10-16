@@ -10,7 +10,10 @@ import { shortDate } from "./write";
 // entry here, not a new mechanism: "promoted" (#188), the department head
 // told about a promotion, is the second.
 
-export const NOTICE_KINDS = ["member-left", "promoted"] as const;
+export const NOTICE_KINDS = ["member-left", "promoted", "hand-over-answered"] as const;
+
+/** How the next level up answered a hand-over (issue #262). */
+export type HandOverAnswered = "confirmed" | "declined";
 
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 
@@ -20,6 +23,12 @@ type NoticeData = {
   readonly "member-left": { readonly divisions: readonly string[]; readonly reason: string | null };
   /** A division lead promoted the subject (#188): the division they now lead, how, and the lead who did it. */
   readonly promoted: { readonly division: string; readonly mode: PromoteMode; readonly lead: string };
+  /**
+   * The next level up (the subject) answered the recipient's hand-over from
+   * My profile (#262): the role ("Mission Analysis lead"), who was to take it
+   * over, and the answer.
+   */
+  readonly "hand-over-answered": { readonly role: string; readonly successor: string; readonly answer: HandOverAnswered };
 };
 
 /** A notice to write: its kind and what it stores. */
@@ -66,6 +75,12 @@ const READ: { readonly [K in NoticeKind]: (data: unknown) => NoticeData[K] | nul
     if (typeof division !== "string" || typeof lead !== "string" || !isPromoteMode(mode)) return null;
     return { division, mode, lead };
   },
+  "hand-over-answered": (data) => {
+    if (!isRecord(data)) return null;
+    const { role, successor, answer } = data;
+    if (typeof role !== "string" || typeof successor !== "string" || (answer !== "confirmed" && answer !== "declined")) return null;
+    return { role, successor, answer };
+  },
 };
 
 function isNoticeKind(kind: string): kind is NoticeKind {
@@ -83,6 +98,8 @@ export function noticeOf(row: StoredNotice): Notice | null {
     case "member-left":
       return read(row.kind);
     case "promoted":
+      return read(row.kind);
+    case "hand-over-answered":
       return read(row.kind);
   }
 }
@@ -121,10 +138,33 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
         action,
       };
     }
+    case "hand-over-answered": {
+      const { role, successor, answer } = notice.data;
+      return {
+        kind: "notice",
+        title: `${notice.subject} ${answer} your hand-over`,
+        detail: [`${role} to ${successor}`, shortDate(notice.createdAt, now.getUTCFullYear()), answer === "declined" ? "you keep the role" : null]
+          .filter(Boolean)
+          .join(" · "),
+        action,
+      };
+    }
   }
 }
 
 // Who is told -----------------------------------------------------------------
+
+/**
+ * The notice an answered hand-over writes (issue #262): one, to the person
+ * who sent it, about the approver who answered, naming the role and who was
+ * to take it over.
+ */
+export function handOverAnsweredNotice(
+  senderId: number,
+  answered: { readonly role: string; readonly successor: string; readonly answer: HandOverAnswered },
+): AddressedNotice {
+  return { recipientId: senderId, notice: { kind: "hand-over-answered", data: answered } };
+}
 
 /** A division the leaver had an active role in. */
 export type LeftDivision = { readonly id: number; readonly name: string };

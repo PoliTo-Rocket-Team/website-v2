@@ -6,8 +6,8 @@ import { ownApplicationsStartOf, type OwnApplicationsStart } from "@/lib/dummy-d
 // person or an agent can sign in as a test developer: no Google, no account
 // and no database session, only a cookie naming which viewer they look as
 // (team leader, operations lead, department head, division lead, member,
-// non-member). The dashboard then
-// reads the dummy data in lib/dummy-data/ instead of the database.
+// alumni, non-member). The dashboard then reads the dummy data in
+// lib/dummy-data/ instead of the database.
 //
 // Production never offers it and never accepts it: every path asks
 // `testDeveloperOn()` first, at request time, so a cookie set elsewhere is

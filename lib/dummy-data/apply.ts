@@ -9,7 +9,7 @@ import { publicFaqs } from "@/lib/faq/faq";
 import { dummyFaqSeed } from "./faqs";
 import { NO_OWN_CHANGES, type OwnApplicationsStart, type OwnChanges } from "./own";
 import { dummyDetails, isWithdrawn, ownApplicationsOf } from "./own-applications";
-import { applicant as nonMember, departments, divisions, personFor, positions, type DummyPosition } from "./team";
+import { applicant as nonMember, departments, divisions, formerMember, personFor, positions, type DummyPosition } from "./team";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
 
 // The dummy side of the apply data interface (issue #150): the positions of
@@ -166,7 +166,7 @@ export function dummyOpenLimit(selector: string | null): number | null {
 function applicantFor(viewer: TestViewer, own: OwnChanges): Applicant {
   return {
     id: `test-developer:${viewer}`,
-    email: viewer === "non-member" ? nonMember.email : personFor[viewer].email,
+    email: viewer === "non-member" ? nonMember.email : viewer === "alumni" ? formerMember.email : personFor[viewer].email,
     defaults: applyFormDefaults(dummyDetails(viewer, own)),
   };
 }

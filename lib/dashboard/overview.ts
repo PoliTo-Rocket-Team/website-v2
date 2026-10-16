@@ -6,12 +6,14 @@
 // upcoming interviews); a department head sees the department shape (board
 // 62, issue #230: the same across their department, plus a Divisions panel);
 // a member sees the personal shape (board 52: who they
-// are and what is theirs). A non-member who has applied sees the applicant
-// shape (board 50e, ./applicant-overview.ts), which the page builds from My
-// applications and the open positions. The components in
-// components/dashboard/ render these and fetch nothing.
+// are and what is theirs). A non-member sees the applicant shape (boards 50e
+// and 50f, ./applicant-overview.ts) and an alumnus the alumni shape (issue
+// #317's board 56, not the division lead's board 56 above; ./my-alumni.ts),
+// which the page builds from My applications and My alumni. The components
+// in components/dashboard/ render these and fetch nothing.
 
 import type { ApplicantOverview } from "./applicant-overview";
+import type { AlumniOverview } from "./my-alumni";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -25,7 +27,8 @@ export type Stat = {
 
 /**
  * "notice": a stored dashboard notice (./notices.ts), whatever its own kind.
- * The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
+ * "hand-over": a hand-over waiting for the viewer's answer (board 62c,
+ * ./hand-over-request.ts), always the top row. The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
  * their decision, approved orders not ordered yet, and positions closing soon.
  */
 export type AttentionKind =
@@ -35,16 +38,24 @@ export type AttentionKind =
   | "no-photo"
   | "notice"
   | "orders-to-decide"
-  | "approved-orders";
+  | "approved-orders"
+  | "hand-over";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
 
-/** Where a row's button goes, or the notice it dismisses. */
-export type AttentionAction = Link | DismissNotice;
+/** A row's Decline and Confirm on a hand-over waiting for the viewer (board 62c, ./hand-over-request.ts). */
+export type AnswerHandOver = { readonly answerHandOver: number };
+
+/** Where a row's button goes, the notice it dismisses, or the hand-over it answers. */
+export type AttentionAction = Link | DismissNotice | AnswerHandOver;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
+}
+
+export function isAnswerHandOver(action: AttentionAction): action is AnswerHandOver {
+  return "answerHandOver" in action;
 }
 
 export type AttentionItem = {
@@ -258,6 +269,12 @@ export function divisionRoster(
 
 export type PersonalOverview = {
   readonly shape: "personal";
+  /**
+   * The member's stored notices (./notices.ts), when they have any: the
+   * answer to a hand-over they sent (issue #262) reaches a sender who is now
+   * an advisor here.
+   */
+  readonly attention: readonly AttentionItem[];
   readonly person: PersonHeader;
   readonly checklist: Checklist | null;
   readonly roster: Roster | null;
@@ -268,7 +285,8 @@ export type PersonalOverview = {
 /** What the dashboard data interface answers: the team's own Overviews. */
 export type TeamSideOverview = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
 
-export type Overview = TeamSideOverview | ApplicantOverview;
+/** Someone off the team: a non-member (boards 50e, 50f) or an alumnus (board 56, issue #317), built by the page. */
+export type Overview = TeamSideOverview | ApplicantOverview | AlumniOverview;
 
 /** "2 of 4 done", the count phones show beside the checklist title (board 52m). */
 export function checklistCount(items: readonly ChecklistItem[]): string {
