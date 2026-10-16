@@ -39,8 +39,11 @@ import { EditFrame } from "./edit-frame";
 //
 // A content type may add to the bar (board 80, issue #284): a tag after the
 // state ("Visual changes only") and actions before Save draft ("Reset to
-// team", drawn with BarButton). While its panel edits one block, it names
-// that block `selected`, which keeps its outline with no chips (board 80b).
+// team", drawn with BarButton). Below sm such a bar folds the actions to their
+// icons and the state to its dot, so they never draw over the name and state;
+// a bar with no actions (Outreach) keeps its layout. While its panel edits one
+// block, it names that block `selected`, which keeps its outline with no
+// chips (board 80b).
 
 const ChipContext = createContext<{
   readonly chipOf: (id: string) => EditChip;
@@ -56,17 +59,23 @@ const STATE_TONE: Readonly<Record<ContentStatus, { pill: string; dot: string }>>
 
 const BAR_BUTTON = `inline-flex h-[31px] items-center justify-center rounded-full px-4 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${CONTENT_FOCUS}`;
 
-/** An outlined button on the edit bar, as Save draft is; `null` shows it but leaves it off. */
+/**
+ * An outlined button on the edit bar, as Save draft is; `null` shows it but
+ * leaves it off. With an icon it folds to the icon alone below sm, so a
+ * content type's extra action leaves the phone bar room for the item's name
+ * and state; its label stays its accessible name.
+ */
 export function BarButton({ onClick, icon, children }: { onClick: (() => void) | null; icon?: ReactNode; children: ReactNode }) {
+  const folds = icon !== undefined;
   return (
     <button
       type="button"
       disabled={onClick === null}
       onClick={() => onClick?.()}
-      className={`${BAR_BUTTON} gap-2 whitespace-nowrap border border-white-10 transition-colors duration-300 ease-out enabled:hover:border-border-strong`}
+      className={`${BAR_BUTTON} gap-2 whitespace-nowrap border border-white-10 transition-colors duration-300 ease-out enabled:hover:border-border-strong ${folds ? "max-sm:w-[31px] max-sm:px-0" : ""}`}
     >
       {icon}
-      {children}
+      {folds ? <span className="max-sm:sr-only">{children}</span> : children}
     </button>
   );
 }
@@ -164,7 +173,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
             /
           </span>
           <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
-          <StatePill status={status} />
+          <StatePill status={status} folds={actions !== undefined} />
           {tag !== undefined && <span className="hidden shrink-0 sm:contents">{tag}</span>}
         </div>
 
@@ -247,12 +256,21 @@ function PublishChecklist({ id, checks, pinned }: { id: string; checks: readonly
   );
 }
 
-function StatePill({ status }: { status: ContentStatus }) {
+/**
+ * The item's state. On a bar that also carries a content type's actions, it
+ * folds to its dot below sm: a phone bar has no room for the name, the state
+ * and four buttons, and the label stays its accessible name.
+ */
+function StatePill({ status, folds }: { status: ContentStatus; folds: boolean }) {
   const tone = STATE_TONE[status];
+  const label = CONTENT_STATUS_LABELS[status];
   return (
-    <span className={`inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] ${tone.pill}`}>
+    <span
+      title={folds ? label : undefined}
+      className={`inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] ${tone.pill}`}
+    >
       <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
-      {CONTENT_STATUS_LABELS[status]}
+      {folds ? <span className="max-sm:sr-only">{label}</span> : label}
     </span>
   );
 }
