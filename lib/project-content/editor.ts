@@ -8,6 +8,7 @@ import type { PhotoSrc } from "@/lib/outreach-types";
 import { editedLine, type EditStamp } from "./edited";
 import { checkProjectFields, type ProjectFields } from "./fields";
 import { heldPhotos, listPhotos } from "./list-fields";
+import { checkNewProject, takenSlugs, type NewProject } from "./new-project";
 import type { ProjectRecord } from "./record";
 
 // The projects' editor (issues #255, #297 and #298): the shared content
@@ -74,6 +75,12 @@ export interface ProjectEditor extends ContentEditor<ProjectRecord> {
    * there is one), and checked again here, whatever the browser checked.
    */
   saveFields(id: number, step: PublishStep, fields: ProjectFields): Promise<WriteResult<ContentItem<ProjectRecord>>>;
+  /**
+   * New project (issue #301): a stored project whose only version is a draft,
+   * last in the site order, so it reaches no public page until it is
+   * published. Its address must be one no project holds.
+   */
+  create(project: NewProject): Promise<WriteResult<ContentItem<ProjectRecord>>>;
   /** The Projects page's list; null for a viewer the site-content gate refuses. */
   board(): Promise<ProjectBoard | null>;
   /** Every project in the order its cards were dragged into: the site order Home and /projects follow. */
@@ -104,6 +111,9 @@ export function projectEditor(
         return record.ok ? checkProjectPhotos(record.value, opened, files) : record;
       });
     },
+    create: (project) =>
+      editor.save(null, "save-draft", async () => checkNewProject(project, takenSlugs(await store.list()), history.now().getUTCFullYear())),
+
     async board() {
       const items = await editor.list();
       if (items === null) return null;
