@@ -1,5 +1,6 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { Fact, KeyFacts, Part, Prose, Reason, Reasons } from "@/lib/project-pages/types";
+import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
 import { isProjectRecord } from "./check";
 import { copyFields, copyOf, titleOf, titleText, type CopyFields } from "./copy-fields";
 import { listFieldsAfterSave, listFieldsOf, listProblems, readListFields, withListFields, type ListFields, type ListSection } from "./list-fields";
@@ -10,9 +11,10 @@ import type { ProjectRecord } from "./record";
 // sections are here; Versions, Launch history, Plan and Gallery are in
 // ./list-fields.ts. The page under the edit shell is drawn from
 // `projectViewOf`, so it changes as they type; Save draft and Publish send
-// the fields, and `checkProjectFields` turns them back into a record. What
-// the panel does not edit (the cards, the /projects entry) is carried over
-// from the version the panel opened on.
+// the fields, and `checkProjectFields` turns them back into a record. The
+// Card section (the home card, issue #300) is in ./card-fields.ts. What the
+// panel does not edit (the /projects entry's own copy) is carried over from
+// the version the panel opened on.
 //
 // Desktop and phone copy: a text with a shorter phone version keeps both, and
 // an empty phone field means the phone shows the desktop text (`Copy`). The
@@ -27,9 +29,9 @@ import type { ProjectRecord } from "./record";
 // that text is gone.
 
 /** The panel's sections; each block's Edit chip opens one. */
-export type PanelSection = "top" | "name" | "design" | ListSection | "reasons" | "teaser";
+export type PanelSection = "top" | "name" | "design" | ListSection | "reasons" | "teaser" | "card";
 
-export type { CopyFields };
+export type { CardFields, CopyFields };
 export type FactFields = { readonly value: string; readonly label: CopyFields };
 export type PartFields = { readonly name: string; readonly desc: string; readonly phone: string };
 export type ReasonFields = { readonly title: string; readonly text: string };
@@ -57,6 +59,8 @@ export type ProjectFields = ListFields & {
   };
   /** The one line the previous project's page shows on its next-project card. */
   readonly teaser: string;
+  /** The project's card on Home, which the page switch shows in place (board 75d). */
+  readonly card: CardFields;
 };
 
 /** How many key facts the hero holds (`KeyFacts`), and reasons the Why section (`Reasons`). */
@@ -90,6 +94,7 @@ export function fieldsOf(record: ProjectRecord): ProjectFields {
         ? { shown: false, eyebrow: "", title: "", items: [{ title: "", text: "" }] }
         : { shown: true, eyebrow: reasons.eyebrow, title: titleText(reasons.title), items: reasons.items.map((r) => ({ ...r })) },
     teaser: record.teaser,
+    card: cardFieldsOf(record),
     ...listFieldsOf(record),
   };
 }
@@ -155,7 +160,7 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
     ...(shownReasons && { reasons: shownReasons }),
     teaser: teaser.trim(),
   };
-  return withListFields(story, fields, opened);
+  return withListFields(withCardFields(story, fields.card), fields, opened);
 }
 
 /**
@@ -165,7 +170,7 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
  * without this the save would blank it.
  */
 export function fieldsAfterSave(stored: ProjectRecord, sent: ProjectFields): ProjectFields {
-  const fields = { ...fieldsOf(stored), ...listFieldsAfterSave(stored, sent) };
+  const fields = { ...fieldsOf(stored), ...listFieldsAfterSave(stored, sent), card: cardFieldsAfterSave(stored, sent.card) };
   return sent.reasons.shown ? fields : { ...fields, reasons: sent.reasons };
 }
 
@@ -220,16 +225,18 @@ export function fieldProblems(fields: ProjectFields): FieldProblem[] {
   }
 
   need("teaser", "teaser", fields.teaser, "the next-project card line");
-  return [...problems, ...listProblems(fields)].sort((a, b) => PANEL_ORDER.indexOf(a.section) - PANEL_ORDER.indexOf(b.section));
+  return [...problems, ...listProblems(fields), ...cardProblems(fields.card)].sort((a, b) => PANEL_ORDER.indexOf(a.section) - PANEL_ORDER.indexOf(b.section));
 }
 
 /** The panel's sections top to bottom, as board 75c stacks them. */
-export const PANEL_ORDER: readonly PanelSection[] = ["top", "name", "design", "versions", "launches", "plan", "reasons", "gallery", "teaser"];
+export const PANEL_ORDER: readonly PanelSection[] = ["top", "name", "design", "versions", "launches", "plan", "reasons", "gallery", "teaser", "card"];
 
 /** The record Save draft or Publish stores: `opened` with the fields laid over it, or why it cannot be. */
 export function checkProjectFields(fields: ProjectFields, opened: ProjectRecord): WriteResult<ProjectRecord> {
   const [first] = fieldProblems(fields);
   if (first !== undefined) return refused(first.error);
+  // Only a rocket's pill counts flights; the panel never offers it for an engine.
+  if (opened.kind === "engine" && fields.card.countsFlights) return refused("Reload the page and try again.");
   const record = projectViewOf(fields, opened);
   return isProjectRecord(record) ? written(record) : refused("Reload the page and try again.");
 }
@@ -276,7 +283,8 @@ export function readProjectFields(input: unknown): ProjectFields | null {
   if (intro === null || facts === null || name === null || designStory === null || parts === null || items === null) return null;
   if (!hasStrings(design, ["partsCaption"]) || !hasStrings(reasons, ["eyebrow", "title"]) || typeof reasons.shown !== "boolean") return null;
   const lists = readListFields(input);
-  if (lists === null) return null;
+  const card = readCardFields(input.card);
+  if (lists === null || card === null) return null;
   return {
     ...lists,
     hero: { intro, status: hero.status, dates: hero.dates, caption, facts },
@@ -284,5 +292,6 @@ export function readProjectFields(input: unknown): ProjectFields | null {
     design: { ...designStory, partsCaption: design.partsCaption, parts },
     reasons: { shown: reasons.shown, eyebrow: reasons.eyebrow, title: reasons.title, items },
     teaser: input.teaser,
+    card,
   };
 }

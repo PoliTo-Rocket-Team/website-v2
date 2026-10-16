@@ -32,11 +32,21 @@ function Text({ copy, draw = (text) => text }: { copy: Copy; draw?: (text: strin
   );
 }
 
-export function HomeProjectCard({ project }: { project: HomeCardView }) {
+/**
+ * Where a card sits in the Projects row: 210 x 360 in the phone swipe row,
+ * 618px tall from md. The edit shell's page switch (board 75d) puts this box
+ * on the frame round the card instead, and the card fills the frame.
+ */
+export const HOME_CARD_LAYOUT = "h-[360px] w-[210px] shrink-0 snap-start md:mx-auto md:h-[618px] md:w-full md:max-w-[480px] lg:max-w-none";
+
+/** A card inside a frame that carries its layout. */
+export const FILLS_FRAME = "h-full w-full";
+
+export function HomeProjectCard({ project, layout = HOME_CARD_LAYOUT }: { project: HomeCardView; layout?: string }) {
   return (
     // isolate: the card is its own stacking context, so the z-indexes below
     // order its own layers and never reach a neighbouring card.
-    <article className="glass-project group relative isolate h-[360px] w-[210px] shrink-0 snap-start rounded-2xl hover:z-10 md:mx-auto md:h-[618px] md:w-full md:max-w-[480px] lg:max-w-none">
+    <article className={`glass-project group relative isolate rounded-2xl hover:z-10 ${layout}`}>
       {/* Texture: clipped to the card's corners on its own layer, because the
           card itself must not clip the rocket's nose. */}
       <div className="absolute inset-0 overflow-hidden rounded-2xl">
@@ -99,8 +109,9 @@ export function HomeProjectCard({ project }: { project: HomeCardView }) {
           <Text copy={project.desc} draw={withSubscriptDigits} />
         </p>
         <dl className="mt-2.5 grid grid-cols-3 gap-2 border-t border-white-10 pt-2.5 md:mt-4 md:gap-3 md:pt-4">
-          {project.specs.map((s) => (
-            <div key={s.label.text}>
+          {project.specs.map((s, i) => (
+            // By place: a label being typed in the editor may be blank or repeat another.
+            <div key={i}>
               <dt className="font-mono text-[8px] tracking-[0.2em] text-prt-muted md:text-[10px]">
                 <Text copy={s.label} />
               </dt>

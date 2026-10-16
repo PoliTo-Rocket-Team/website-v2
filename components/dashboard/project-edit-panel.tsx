@@ -15,6 +15,8 @@ import { partNumber, twoDigits } from "@/lib/project-pages";
 import { TextField } from "./content-parts";
 import { Toggle } from "./controls";
 import { EditPanel, PanelSection, usePanelScroll } from "./edit-panel";
+import type { HomeCardView } from "@/lib/project-content/record";
+import { CardEditor, cardSummary } from "./project-card-section";
 import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts";
 import {
   GalleryEditor,
@@ -30,7 +32,8 @@ import {
 // The Edit <project> panel (board 75c, issues #298 and #299): beside the
 // project page under the edit shell, one card per section: Top of the page,
 // Name story, Design story, Versions, Launch history (a rocket's only), Plan,
-// Why, Gallery and the Next-project card. The list sections are in
+// Why, Gallery and the Next-project card, then the Card (issue #300), which
+// the Edit card chip on Home and the Projects list opens. The list sections are in
 // ./project-list-sections.tsx. Every change goes straight back to the page, which
 // redraws as the editor types. In Phone the fields that have a phone version
 // edit it; an empty phone field shows the desktop text.
@@ -43,6 +46,7 @@ export function ProjectEditPanel({
   name,
   kind,
   previousName,
+  card: homeCard,
   fields,
   onChange,
   device,
@@ -57,6 +61,8 @@ export function ProjectEditPanel({
   kind: "vehicle" | "engine";
   /** The project before this one in the site order, whose page shows the next-project card line. */
   previousName: string;
+  /** The project's card as Home draws it now, for the Card section's number and counted pill. */
+  card: HomeCardView;
   fields: ProjectFields;
   onChange: Change;
   device: EditDevice;
@@ -300,6 +306,17 @@ export function ProjectEditPanel({
           value={fields.teaser}
           error={errors.teaser}
           onChange={(teaser) => onChange((f) => ({ ...f, teaser }))}
+        />
+      </PanelSection>
+
+      <PanelSection value="card" cardRef={card("card")} title="Card" summary={cardSummary(homeCard)}>
+        <CardEditor
+          card={fields.card}
+          shown={homeCard}
+          kind={kind}
+          phone={phone}
+          errors={errors}
+          onChange={(change) => onChange((f) => ({ ...f, card: { ...f.card, ...change } }))}
         />
       </PanelSection>
     </EditPanel>
