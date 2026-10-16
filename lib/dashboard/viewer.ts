@@ -104,19 +104,22 @@ export function kindOfTestViewer(viewer: TestViewer): ViewerKind {
 
 /**
  * A test developer holds no scope rows, so their standing is who they look
- * as alone: the operations-lead test developer sits in the operations lead's
- * seat, the team-leader one in the team leader's.
+ * as: the operations-lead test developer sits in the operations lead's seat,
+ * the team-leader one in the team leader's. `approveOrders` is whether the
+ * person they look as holds "Approve orders" in the dummy data, which the
+ * team leader gives on the Access page (issue #270); someone off the team
+ * never holds it.
  */
-export function testDeveloperStanding(viewer: TestViewer): ViewerStanding {
+export function testDeveloperStanding(viewer: TestViewer, approveOrders = false): ViewerStanding {
   switch (viewer) {
     case "non-member":
       return { kind: viewer, siteContent: false, approveOrders: false };
     case "team-leader":
-      return { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
+      return { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders };
     case "operations-lead":
-      return { kind: viewer, seat: "operations-lead", siteContent: false, approveOrders: false };
+      return { kind: viewer, seat: "operations-lead", siteContent: false, approveOrders };
     default:
-      return { kind: viewer, siteContent: false, approveOrders: false };
+      return { kind: viewer, siteContent: false, approveOrders };
   }
 }
 

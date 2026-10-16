@@ -492,7 +492,9 @@ and 67m).
   developer" switch, with six people: team leader, operations lead, department head, division
   lead, member and non-member. The operations lead there sits in the operations lead's seat, so
   they have full access and do not decide orders; the team leader decides orders and gives
-  "Approve orders" (#247), and sees boards 72 to 73c (#252).
+  "Approve orders" (#247), and sees boards 72 to 73c (#252). "Approve orders" given or removed
+  there is kept until sign out, so after switching to the member it went to, that member reaches
+  Orders and decides there (#270).
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and

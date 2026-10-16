@@ -16,6 +16,7 @@ import {
   stateAfterEdit,
   WHOLE_TEAM,
   type Answer,
+  type ApproveOrdersChange,
   type EditUnit,
   type NewOrder,
   type Order,
@@ -29,7 +30,7 @@ import {
 import { heldLevel } from "@/lib/dashboard/division-access";
 import { ledDivisionOf } from "@/lib/dashboard/team";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { approveOrdersHolders, heldAccess, TEAM_LEADER_ID, type AccessViewerKind } from "./division";
+import { heldAccess, TEAM_LEADER_ID, type AccessViewerKind, type ApproveOrdersHolding } from "./division";
 import { departments, divisions, people, type DummyPerson } from "./team";
 
 // The Orders page for the test developer (boards 61 to 61d, issue #172;
@@ -40,9 +41,11 @@ import { departments, divisions, people, type DummyPerson } from "./team";
 // operations lead (Giulia Rossi) has full access and edits every order (issue
 // #238). The team leader (Alessandro Greco) edits every order too, and decides:
 // every answer on the page is theirs. None of the others is the team leader or
-// holds "Approve orders", so they are refused a decision, as the database
-// side refuses them. Writes check what was sent as the database side does,
-// store nothing, and answer what the page shows next.
+// holds "Approve orders" until the team leader gives it on the Access page
+// (issue #270), so they are refused a decision, as the database side refuses
+// them; a member given it reaches the page and decides there. Writes check
+// what was sent as the database side does, store nothing, and answer what the
+// page shows next.
 
 /** Where a stored request stands. Every answer is the team leader's, the day after the request was sent. */
 type DummyState =
@@ -160,8 +163,6 @@ export const orders: readonly DummyOrder[] = [...recent, ...older];
 /** Who answers the requests: the team leader. */
 const DECIDER = TEAM_LEADER_ID;
 
-const holderIds = approveOrdersHolders.map((h) => h.personId);
-
 function personOf(id: number): DummyPerson {
   return people.find((p) => p.id === id)!;
 }
@@ -187,14 +188,21 @@ function unitOfDivision(divisionId: number): OrderUnit {
 }
 
 /**
+ * Who looks at Orders: the Access viewers, and a member, who reaches it only
+ * by holding "Approve orders" (issue #270).
+ */
+export type OrdersViewerKind = AccessViewerKind | "member";
+
+/**
  * The viewer's Orders scope, as the database side reads it: the whole team
  * for full access, a lead's Orders level in the division they lead, a head's
- * whole department at Can edit; null for anyone with no Orders access.
+ * whole department at Can edit, deciding alone for a holder of "Approve
+ * orders" in `holders`; null for anyone with no Orders access.
  */
-function scopeOf(kind: AccessViewerKind, viewer: DummyPerson): OrdersScope | null {
+function scopeOf(kind: OrdersViewerKind, viewer: DummyPerson, holders: readonly ApproveOrdersHolding[]): OrdersScope | null {
   const decides = decideRightOf({
     teamLeader: viewer.placement.role === "team-leader",
-    approveOrders: holderIds.includes(viewer.id),
+    approveOrders: holders.some((h) => h.personId === viewer.id),
   });
   const placement = viewer.placement;
   // Full access edits every order in the team (issue #238); deciding still needs the team leader's role or the grant.
@@ -259,8 +267,8 @@ export function dummyOrdersIn(divisionIds: readonly number[]): Order[] {
 }
 
 /** Boards 61 to 67b: every order in the team for someone with Orders access; null for anyone else. */
-export function dummyOrdersPage(kind: AccessViewerKind, viewer: DummyPerson): OrdersPage | null {
-  return ordersPageFor(scopeOf(kind, viewer), orgUnits(), orders.map((o) => orderOf(o, viewer.id)));
+export function dummyOrdersPage(kind: OrdersViewerKind, viewer: DummyPerson, holders: readonly ApproveOrdersHolding[]): OrdersPage | null {
+  return ordersPageFor(scopeOf(kind, viewer, holders), orgUnits(), orders.map((o) => orderOf(o, viewer.id)));
 }
 
 /** The New order or Edit order fields, checked as the database side checks them. */
@@ -288,12 +296,13 @@ const NO_ACCESS = "You do not have access to Orders.";
 const OUT_OF_SCOPE = "This order is outside your division or department, so it is read-only for you.";
 
 export function dummyPlaceOrder(
-  kind: AccessViewerKind,
+  kind: OrdersViewerKind,
   viewer: DummyPerson,
+  holders: readonly ApproveOrdersHolding[],
   fields: Record<string, string>,
   quote: Upload | null,
 ): WriteResult<Order> {
-  const page = dummyOrdersPage(kind, viewer);
+  const page = dummyOrdersPage(kind, viewer, holders);
   if (page === null) return refused(NO_ACCESS);
   const division = checkOrderDivision(orderingDivisions(page.scope, page.departments), fields.division);
   if (!division.ok) return refused(division.error);
@@ -318,13 +327,14 @@ export function dummyPlaceOrder(
  * names.
  */
 export function dummyEditOrder(
-  kind: AccessViewerKind,
+  kind: OrdersViewerKind,
   viewer: DummyPerson,
+  holders: readonly ApproveOrdersHolding[],
   orderId: number,
   fields: Record<string, string>,
   quote: Upload | null,
 ): WriteResult<Order> {
-  const page = dummyOrdersPage(kind, viewer);
+  const page = dummyOrdersPage(kind, viewer, holders);
   if (page === null) return refused(NO_ACCESS);
   const stored = page.orders.find((o) => o.id === orderId);
   if (stored !== undefined && !canEditOrder(page.scope, stored)) return refused(OUT_OF_SCOPE);
@@ -358,8 +368,8 @@ export function dummyEditOrder(
   });
 }
 
-export function dummyCancelOrder(kind: AccessViewerKind, viewer: DummyPerson, orderId: number): WriteResult<null> {
-  const page = dummyOrdersPage(kind, viewer);
+export function dummyCancelOrder(kind: OrdersViewerKind, viewer: DummyPerson, holders: readonly ApproveOrdersHolding[], orderId: number): WriteResult<null> {
+  const page = dummyOrdersPage(kind, viewer, holders);
   if (page === null) return refused(NO_ACCESS);
   const stored = page.orders.find((o) => o.id === orderId);
   // A request sent on the page lives only in its state: cancelling it leaves nothing behind.
@@ -369,8 +379,14 @@ export function dummyCancelOrder(kind: AccessViewerKind, viewer: DummyPerson, or
 }
 
 /** Checks a decision as the database side does: only the team leader or a holder of "Approve orders" decides. */
-export function dummyDecideOrder(kind: AccessViewerKind, viewer: DummyPerson, orderId: number, input: unknown): WriteResult<Order> {
-  const page = dummyOrdersPage(kind, viewer);
+export function dummyDecideOrder(
+  kind: OrdersViewerKind,
+  viewer: DummyPerson,
+  holders: readonly ApproveOrdersHolding[],
+  orderId: number,
+  input: unknown,
+): WriteResult<Order> {
+  const page = dummyOrdersPage(kind, viewer, holders);
   if (page === null) return refused(NO_ACCESS);
   const stored = page.orders.find((o) => o.id === orderId);
   if (stored === undefined) return refused("That request is no longer on the page.");
@@ -385,8 +401,8 @@ export function dummyDecideOrder(kind: AccessViewerKind, viewer: DummyPerson, or
  * one is still waiting: `approvedNow` says the page shows it approved by the
  * viewer, and the check runs on that.
  */
-export function dummyMarkOrdered(kind: AccessViewerKind, viewer: DummyPerson, orderId: number): WriteResult<Order> {
-  const page = dummyOrdersPage(kind, viewer);
+export function dummyMarkOrdered(kind: OrdersViewerKind, viewer: DummyPerson, holders: readonly ApproveOrdersHolding[], orderId: number): WriteResult<Order> {
+  const page = dummyOrdersPage(kind, viewer, holders);
   if (page === null) return refused(NO_ACCESS);
   const stored = page.orders.find((o) => o.id === orderId);
   if (stored === undefined) return refused("That request is no longer on the page.");
@@ -400,16 +416,21 @@ export function dummyMarkOrdered(kind: AccessViewerKind, viewer: DummyPerson, or
   return written({ ...shown, ...checked.value });
 }
 
-/** Checks a give or remove of "Approve orders" as the database side does; nothing is stored. */
-export function dummySetApproveOrders(viewer: DummyPerson, onTeam: readonly number[], input: unknown): WriteResult<null> {
+/** Checks a give or remove of "Approve orders" as the database side does, and answers the change for the caller to keep (issue #270). */
+export function dummySetApproveOrders(
+  viewer: DummyPerson,
+  onTeam: readonly number[],
+  holders: readonly ApproveOrdersHolding[],
+  input: unknown,
+): WriteResult<ApproveOrdersChange> {
   const checked = checkApproveOrdersChange(
     {
       byTeamLeader: viewer.placement.role === "team-leader",
       team: onTeam,
       teamLeaders: people.filter((p) => p.placement.role === "team-leader").map((p) => p.id),
-      holders: holderIds,
+      holders: holders.map((h) => h.personId),
     },
     input,
   );
-  return checked.ok ? written(null) : refused(checked.error);
+  return checked.ok ? written(checked.value) : refused(checked.error);
 }

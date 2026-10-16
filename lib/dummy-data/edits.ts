@@ -59,6 +59,14 @@ export type DummyAlumniEdits = {
 
 export const NO_ALUMNI_EDITS: DummyAlumniEdits = { entries: {}, advisors: [] };
 
+/**
+ * "Approve orders" the team leader gave or took away on the Access page
+ * (issue #270): given on a day, or removed. It is laid over the holders
+ * ./division.ts starts with, so the grant is still there when the test
+ * developer switches to the person who holds it.
+ */
+export type DummyApproveOrders = { readonly holds: true; readonly givenOn: string } | { readonly holds: false };
+
 export type TeamEdits = {
   /** The Alumni page's fixes and added advisors. */
   readonly alumni: DummyAlumniEdits;
@@ -80,6 +88,8 @@ export type TeamEdits = {
   readonly details: Readonly<Record<string, MemberDetails>>;
   /** Divisions created, edited, closed or reopened (issue #232), by id. */
   readonly divisions: Readonly<Record<number, DummyDivisionEdit>>;
+  /** "Approve orders" given or removed (issue #270), by person id. */
+  readonly approveOrders: Readonly<Record<number, DummyApproveOrders>>;
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -93,6 +103,7 @@ export const NO_EDITS: TeamEdits = {
   cancelled: [],
   details: {},
   divisions: {},
+  approveOrders: {},
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -191,6 +202,12 @@ function readConfirmation(value: unknown): DummyConfirmation | null {
   return { on: value.on, by: value.by as number };
 }
 
+function readApproveOrders(value: unknown): DummyApproveOrders | null {
+  if (!isRecord(value)) return null;
+  if (value.holds === false) return { holds: false };
+  return value.holds === true && isDay(value.givenOn) ? { holds: true, givenOn: value.givenOn } : null;
+}
+
 function readDivision(value: unknown): DummyDivisionEdit | null {
   if (!isRecord(value)) return null;
   const { name, code, departmentId, closedOn } = value;
@@ -284,6 +301,7 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
       : [],
     details: readDetails(raw.details),
     divisions: entriesOf(raw.divisions, readDivision),
+    approveOrders: entriesOf(raw.approveOrders, readApproveOrders),
   };
 }
 

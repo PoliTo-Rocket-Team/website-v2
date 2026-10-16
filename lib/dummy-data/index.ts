@@ -2,7 +2,7 @@ import { positionCode, type Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitment-switch";
 import { landingAfterLeaving, type NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
-import { formatEuro, waitingOrders } from "@/lib/dashboard/orders";
+import { formatEuro, waitingOrders, type ApproveOrdersChange } from "@/lib/dashboard/orders";
 import {
   checklistProgress,
   divisionShortName,
@@ -45,7 +45,14 @@ import { applications as baseApplications, type DummyApplication } from "./appli
 import { departmentCode, divisionLabel, positionText } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
-import { dummyAccessPage, dummyRemoveAllAccess, dummySaveAccess } from "./division";
+import {
+  approveOrdersHoldersOf,
+  dummyAccessPage,
+  dummyRemoveAllAccess,
+  dummySaveAccess,
+  withApproveOrdersChange,
+  type ApproveOrdersHolding,
+} from "./division";
 import {
   dummyCancelOrder,
   dummyDecideOrder,
@@ -55,6 +62,7 @@ import {
   dummyOrdersPage,
   dummyPlaceOrder,
   dummySetApproveOrders,
+  type OrdersViewerKind,
 } from "./orders";
 import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
@@ -99,7 +107,8 @@ import { dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, ed
 // ./recruitment.ts) and the positions and applications they changed
 // (./state.ts). Those writes save only through the store the caller hands in
 // (a cookie, lib/dashboard/open.ts); the other pages' writes (./division.ts,
-// ./self.ts) store nothing.
+// ./self.ts) store nothing, except "Approve orders", which the team edits
+// keep so the holder's own pages read it (issue #270).
 
 /** The dummy team as this test developer has left it. */
 type Team = {
@@ -229,13 +238,19 @@ function headDepartment() {
   return { ...department, divisions: own, divisionIds: own.map((d) => d.id) as number[] };
 }
 
-/** Who a test developer signed in as `viewer` is: the dashboard's user card and the navbar show this name. */
-export function dummyViewer(viewer: TestViewer): DashboardViewer {
+/**
+ * Who a test developer signed in as `viewer` is: the dashboard's user card
+ * and the navbar show this name. Their standing carries "Approve orders" when
+ * the person they look as is one of `holders` (issue #270), so a grant the
+ * team leader gave opens Orders once the test developer switches to them.
+ */
+export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersHolding[]): DashboardViewer {
   if (viewer === "non-member") {
     return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", session: "test-developer" };
   }
   const person = personFor[viewer];
-  return { ...testDeveloperStanding(viewer), name: person.name, role: person.title, session: "test-developer" };
+  const approveOrders = holders.some((h) => h.personId === person.id);
+  return { ...testDeveloperStanding(viewer, approveOrders), name: person.name, role: person.title, session: "test-developer" };
 }
 
 /** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
@@ -842,6 +857,13 @@ export function dummyDashboardData(
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(viewer);
   const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;
+  // A member reaches Orders only by holding "Approve orders" (issue #270): their scope is then deciding alone.
+  const ordersKind: OrdersViewerKind | null = accessKind ?? (kind === "member" ? kind : null);
+  // "Approve orders" as the team leader left it on the Access page: every page reads this one list (issue #270).
+  const holders = approveOrdersHoldersOf(teamEdits.current);
+  const keepApproveOrders = async (change: ApproveOrdersChange | null) => {
+    if (change !== null) await teamEdits.save(withApproveOrdersChange(teamEdits.current, change));
+  };
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
   const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));
@@ -871,7 +893,7 @@ export function dummyDashboardData(
   }
 
   return {
-    viewer: dummyViewer(viewer),
+    viewer: dummyViewer(viewer, holders),
     navCounts: async () => navCountsFor(kind, team),
     hasOwnApplications: async () => ownApplicationsOf(viewer, ownStart).length > 0,
     overview: async () =>
@@ -946,23 +968,41 @@ export function dummyDashboardData(
 
     moveApplication,
 
-    divisionAccess: async () => (accessKind === null || person === null ? null : dummyAccessPage(accessKind, person, teamRoster, closedIds)),
-    saveAccess: async (input) =>
-      accessKind === null || person === null ? refused(notOnTeam) : dummySaveAccess(accessKind, person, teamRoster, input, closedIds),
-    removeAllAccess: async (personId) =>
-      accessKind === null || person === null ? refused(notOnTeam) : dummyRemoveAllAccess(accessKind, person, teamRoster, personId, closedIds),
+    divisionAccess: async () =>
+      accessKind === null || person === null ? null : dummyAccessPage(accessKind, person, teamRoster, closedIds, holders),
+    async saveAccess(input) {
+      if (accessKind === null || person === null) return refused(notOnTeam);
+      const result = dummySaveAccess(accessKind, person, teamRoster, input, closedIds, holders);
+      if (!result.ok) return result;
+      await keepApproveOrders(result.value.approveOrders);
+      return written(result.value.grants);
+    },
+    async removeAllAccess(personId) {
+      if (accessKind === null || person === null) return refused(notOnTeam);
+      const result = dummyRemoveAllAccess(accessKind, person, teamRoster, personId, closedIds, holders);
+      if (!result.ok) return result;
+      await keepApproveOrders(result.value);
+      return written(null);
+    },
 
-    orders: async () => (accessKind === null || person === null ? null : dummyOrdersPage(accessKind, person)),
+    orders: async () => (ordersKind === null || person === null ? null : dummyOrdersPage(ordersKind, person, holders)),
     placeOrder: async (fields, quote) =>
-      accessKind === null || person === null ? refused(noOrders) : dummyPlaceOrder(accessKind, person, fields, quote),
+      ordersKind === null || person === null ? refused(noOrders) : dummyPlaceOrder(ordersKind, person, holders, fields, quote),
     editOrder: async (id, fields, quote) =>
-      accessKind === null || person === null ? refused(noOrders) : dummyEditOrder(accessKind, person, id, fields, quote),
-    cancelOrder: async (id) => (accessKind === null || person === null ? refused(noOrders) : dummyCancelOrder(accessKind, person, id)),
+      ordersKind === null || person === null ? refused(noOrders) : dummyEditOrder(ordersKind, person, holders, id, fields, quote),
+    cancelOrder: async (id) =>
+      ordersKind === null || person === null ? refused(noOrders) : dummyCancelOrder(ordersKind, person, holders, id),
     decideOrder: async (id, input) =>
-      accessKind === null || person === null ? refused(noOrders) : dummyDecideOrder(accessKind, person, id, input),
-    markOrdered: async (id) => (accessKind === null || person === null ? refused(noOrders) : dummyMarkOrdered(accessKind, person, id)),
-    setApproveOrders: async (input) =>
-      person === null ? refused(notOnTeam) : dummySetApproveOrders(person, teamRoster.map((e) => e.id), input),
+      ordersKind === null || person === null ? refused(noOrders) : dummyDecideOrder(ordersKind, person, holders, id, input),
+    markOrdered: async (id) =>
+      ordersKind === null || person === null ? refused(noOrders) : dummyMarkOrdered(ordersKind, person, holders, id),
+    async setApproveOrders(input) {
+      if (person === null) return refused(notOnTeam);
+      const result = dummySetApproveOrders(person, teamRoster.map((e) => e.id), holders, input);
+      if (!result.ok) return result;
+      await keepApproveOrders(result.value);
+      return written(null);
+    },
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {
