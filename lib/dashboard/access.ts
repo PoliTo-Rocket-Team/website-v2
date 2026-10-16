@@ -187,6 +187,18 @@ export const DASHBOARD_PAGES = [
     seatPlace: { "team-leader": "content" },
   },
   {
+    key: "team-page",
+    label: "Team page",
+    href: "/dashboard/team-page",
+    // The Team page editor (boards 80 to 80h, issues #283 and #284): the
+    // site-content rule Partners, Alumni and FAQ follow (maySiteContent,
+    // lib/content/gate.ts), placed after FAQ, under Content for the team
+    // leader.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    seatPlace: { "team-leader": "content" },
+  },
+  {
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",

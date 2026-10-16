@@ -36,8 +36,8 @@ const PILL_TONE: Record<string, ProjectRecord["card"]["statusTone"]> = {
 
 const published = () => publicItems(importedProjects());
 
-test("migration 0035 holds exactly the import of Cavour, VES and Efesto, each a whole record", () => {
-  const migration = readFileSync(join(__dirname, "..", "..", "drizzle", "0035_projects_audit_and_import.sql"), "utf8");
+test("migration 0037 holds exactly the import of Cavour, VES and Efesto, each a whole record", () => {
+  const migration = readFileSync(join(__dirname, "..", "..", "drizzle", "0037_projects_audit_and_import.sql"), "utf8");
   assert.ok(migration.trimEnd().endsWith(projectImportSql()), "regenerate the migration's import from projectImportSql()");
   assert.equal(projectImportSql().split("--> statement-breakpoint").length, 3);
   assert.deepEqual(importedRecords.map((r) => r.slug), ["cavour", "ves", "efesto"]);

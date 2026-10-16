@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { ChevronDown, Linkedin, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,14 @@ function MemberRow({ member, hiddenClass }: { member: Member; hiddenClass: strin
   );
 }
 
-export function CoreMembers({ core }: { core: CoreMembersData }) {
+export function CoreMembers({
+  core,
+  photoFrame = (node) => node,
+}: {
+  core: CoreMembersData;
+  /** Wraps the group photo: the Team page editor outlines it (board 80, issue #284). The list is never framed. */
+  photoFrame?: (photo: ReactNode) => ReactNode;
+}) {
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
   const searchId = useId();
@@ -64,16 +71,20 @@ export function CoreMembers({ core }: { core: CoreMembersData }) {
       <div className="mx-auto max-w-[1312px]">
         <SectionHead eyebrow={`${core.eyebrow} · ${total}`} title={core.title} align="left" />
 
-        <div className="relative mt-6 aspect-[350/210] overflow-hidden rounded-xl md:mt-10 md:aspect-[1312/520]">
-          <Image
-            src={core.groupPhoto.src}
-            alt={core.groupPhoto.alt}
-            fill
-            sizes="(min-width: 1440px) 1312px, 100vw"
-            placeholder="blur"
-            blurDataURL={groupPhotoBlur}
-            className="object-cover"
-          />
+        <div className="mt-6 md:mt-10">
+          {photoFrame(
+            <div className="relative aspect-[350/210] overflow-hidden rounded-xl md:aspect-[1312/520]">
+              <Image
+                src={core.groupPhoto.src}
+                alt={core.groupPhoto.alt}
+                fill
+                sizes="(min-width: 1440px) 1312px, 100vw"
+                placeholder="blur"
+                blurDataURL={groupPhotoBlur}
+                className="object-cover"
+              />
+            </div>,
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-6 md:mt-10">

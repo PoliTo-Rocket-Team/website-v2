@@ -9,7 +9,7 @@ import type { ProjectRecord, VehicleRecord, EngineRecord } from "./record";
 // its /projects entry (lib/projects.ts) and its home card
 // (components/landing/projects.tsx). The records below join the three, word
 // for word; ./content.test.ts checks they draw what those files drew
-// (./before.json). Migration drizzle/0035_projects_audit_and_import.sql
+// (./before.json). Migration drizzle/0037_projects_audit_and_import.sql
 // holds exactly the SQL `projectImportSql` writes, and the dummy data
 // (previews) starts from the same items. Every fact is from
 // design/specs-from-old-site.md; where it gives no value a spec is null and

@@ -19,6 +19,7 @@ import {
   Rocket,
   ShoppingCart,
   Users,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import type { DashboardPageKey, MenuPage, NavSection } from "@/lib/dashboard/access";
@@ -38,6 +39,7 @@ const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   outreach: Megaphone,
   partners: Handshake,
   faq: CircleHelp,
+  "team-page": UsersRound,
   orders: ShoppingCart,
   "division-access": KeyRound,
   "activity-log": History,

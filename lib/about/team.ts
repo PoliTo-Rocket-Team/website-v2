@@ -1,6 +1,12 @@
 import type { TeamPage } from "./types";
 
-// The Team page's data. Names, roles, divisions, LinkedIn handles, emails
+// The Team page's hand-typed record. The page builds who leads, the
+// departments and the core members from the team's roles (./team-roles.ts,
+// ADR 0015) and keeps this record's header and "In numbers". The intro text
+// and group photo here show until the visual layer sets them, and the
+// advisors here seed the stored advisors list (./advisors.ts), which the page
+// shows once its migration has run. It reads all of this record only when the
+// roles cannot fill the page yet. Names, roles, divisions, LinkedIn handles, emails
 // and stats come from the team's live page (politorocketteam.it/about/
 // current-team, read 2026-10-07), with names trimmed and roles tidied ("Head
 // of Propulsion Department" reads "Head of Propulsion"). A role the live data

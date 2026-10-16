@@ -1,5 +1,7 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
+import type { AdvisorEditor } from "@/lib/about/advisors";
+import type { TeamPageEditor } from "@/lib/about/team-page-editor";
 import type { FaqEditor } from "@/lib/faq/editor";
 import type { OutreachEditor } from "@/lib/outreach-editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
@@ -207,6 +209,24 @@ export interface DashboardData {
    * questions, seen from the dummy team's moment.
    */
   readonly faqs: FaqEditor;
+
+  /**
+   * The Team page's visual layer (issue #283): Save draft, Publish and Reset
+   * to team, behind the same gate. It writes the layer alone, never a role,
+   * division, department, scope or member. Each side brings its own store and
+   * its own roles: the database's, or a test developer's cookie laid on the
+   * dummy team.
+   */
+  readonly teamPage: TeamPageEditor;
+
+  /**
+   * The Team page's advisors (issue #286): added by hand, never from roles,
+   * behind the same gate. Save draft and Publish write the advisor list
+   * alone; End advising also adds the advisor to the Alumni page's Advisors
+   * group. Reset to team never reaches them. Each side brings its own store:
+   * the database's, or a test developer's cookie over today's advisors.
+   */
+  readonly teamAdvisors: AdvisorEditor;
 
   /**
    * Boards 74 to 74h (issue #287): the Outreach posts, the featured summit and

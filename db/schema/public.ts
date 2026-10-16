@@ -838,6 +838,50 @@ export const outreachSummitVersions = pgTable(
   }),
 );
 
+// The Team page's visual layer (issue #283, ADR 0015): one document, kept as
+// the published version /about/the-team lays on the roles build and an
+// optional draft, one row each. It holds what an editor changed on the page
+// (lib/about/team-layer.ts), never a role, division, department or access.
+export const teamPageLayerVersions = pgTable("team_page_layer_versions", {
+  id: serial("id").primaryKey(),
+  version: contentVersionEnum("version").notNull().unique("team_page_layer_versions_version_unique"),
+  layer: jsonb("layer").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+// The Team page's advisors (issue #286): faculty and specialists added by
+// hand, never from roles (lib/about/advisors.ts). One row per advisor with
+// its site order, and one version row each for what the page shows and an
+// optional draft, as `faqs` keeps its questions. Migration 0035 imports
+// today's advisors as published.
+export const teamPageAdvisors = pgTable("team_page_advisors", {
+  id: serial("id").primaryKey(),
+  siteOrder: integer("site_order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+export const teamPageAdvisorVersions = pgTable(
+  "team_page_advisor_versions",
+  {
+    id: serial("id").primaryKey(),
+    advisorId: integer("advisor_id")
+      .references(() => teamPageAdvisors.id, { onDelete: "cascade" })
+      .notNull(),
+    version: contentVersionEnum("version").notNull(),
+    advisor: jsonb("advisor").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneOfEachVersion: unique("team_page_advisor_versions_advisor_version_unique").on(table.advisorId, table.version),
+  }),
+);
+
 // The projects (issue #295, boards 75 to 75d): each project page, its
 // /projects entry and its home card, read off one record. A project is its
 // place in the site order; its record lives in its versions, as a partner's

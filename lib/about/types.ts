@@ -1,8 +1,9 @@
 import type { Copy } from "@/lib/projects";
 
 // The Team page (/about/the-team) as data: one record, drawn by
-// components/about/. A dashboard will edit it, so every field is a plain
-// value a form can fill. A fact a person does not have is an absent key,
+// components/about/. Its people are built from the team's roles
+// (./team-roles.ts); the rest is the hand-typed ./team.ts. Every field is a
+// plain value a form can fill. A fact a person does not have is an absent key,
 // never an empty string: no photo, no LinkedIn, no email, no role.
 
 /** One to N items of T, in order. Bounds a count the layout is drawn for. */
@@ -13,10 +14,13 @@ export type UpTo<T, N extends number, R extends readonly T[] = readonly [T]> =
 /** A photo in public/team/, given as its path from the site root. */
 export type Photo = `/team/${string}`;
 
+/** A person's photo: one in public/team/, or the public store URL a member uploaded (`members.picture`). */
+export type PersonPhoto = Photo | `https://${string}`;
+
 /** Someone the page shows. Without a photo a large circle shows the PRT mark, a small one the initials. */
 export type Person = {
   name: string;
-  photo?: Photo;
+  photo?: PersonPhoto;
   /** The LinkedIn profile handle, the part after linkedin.com/in/. */
   linkedin?: string;
   email?: string;
@@ -65,14 +69,18 @@ export type Departments = {
 };
 
 /** Principal advisors (faculty, the founder) have their role in accent; specialists in grey. */
-export type Advisor = Person & { role?: string; standing: "principal" | "specialist" };
+export type Advisor = Person & { role: string; standing: "principal" | "specialist" };
 
 /** The Advisors section has a title and no eyebrow (board 26). */
 export type Advisors = {
   title: string;
   intro: string;
-  /** In order; they fill three columns row by row on desktop. */
-  people: readonly [Advisor, ...Advisor[]];
+  /**
+   * In order; they fill three columns row by row on desktop. Hand-added in
+   * the dashboard (lib/about/advisors.ts): with none, the page leaves the
+   * section out.
+   */
+  people: readonly Advisor[];
 };
 
 /** One slice of a pie, as a share of the whole in percent. */
