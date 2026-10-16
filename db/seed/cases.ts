@@ -1,4 +1,4 @@
-// The cases the typed seed holds (issues #304, #305 and #308), each with the check that
+// The cases the typed seed holds (issues #304, #305, #308 and #311), each with the check that
 // proves it from the seeded rows. docs/seed-cases.md lists the same cases; a
 // test runs every check and fails when the page and this list differ.
 
@@ -27,9 +27,17 @@ import {
   type recruitmentSetting,
   type roles,
   type scopes,
+  type teamPageAdvisors,
+  type teamPageAdvisorVersions,
+  type teamPageLayerVersions,
   type users,
 } from "@/db/schema";
+import { isAdvisorVersion, publicAdvisors, type AdvisorItem } from "@/lib/about/advisors";
 import { academicYearOfDay, alumniOf, listed, type AlumniRecord, type Alumnus } from "@/lib/about/alumni-record";
+import { team as teamRecord } from "@/lib/about/team";
+import { applyLayer, isTeamPageLayer, NO_TEAM_LAYER, resetLayer, type ShownTeam, type TeamBuild, type TeamPageLayer } from "@/lib/about/team-layer";
+import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
+import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "@/lib/about/team-roles";
 import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
 import { APPLICATION_STAGES, type ApplicationStage } from "@/lib/dashboard/application-flow";
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
@@ -44,7 +52,7 @@ import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
 import type { TeamPerson } from "@/lib/dashboard/division-edit";
 import { steppingDown } from "@/lib/dashboard/hand-over";
 import { handOverAttentionFor, hasLapsed, successorsFor, type HandOverRequest, type RequestedRole } from "@/lib/dashboard/hand-over-request";
-import { membershipsOfRoles, roleBeyondDivisions, type OrgChart, type RoleSeat } from "@/lib/dashboard/team";
+import { boardSeatOf, headDepartmentOf, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
 import {
   kindOfTestViewer,
   seatOf,
@@ -73,6 +81,17 @@ import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
 import { APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
+import {
+  ADDED_LEAD_DEPARTMENT,
+  ADDED_LEAD_PERSON,
+  ADDED_LEADER_AFTER,
+  ADDED_LEADER_PERSON,
+  HIDDEN_LEAD_SPOT,
+  RENAMED_HEAD_SPOT,
+  TEAM_PAGE_ADVISOR_ROWS,
+  TEAM_PAGE_ADVISOR_VERSION_ROWS,
+  TEAM_PAGE_LAYER_ROWS,
+} from "./team-page";
 
 /** Every row the typed modules insert, by table. */
 export type SeedData = {
@@ -98,6 +117,9 @@ export type SeedData = {
   readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
   readonly outreachPostTags: readonly InferInsertModel<typeof outreachPostTags>[];
   readonly outreachSummitVersions: readonly InferInsertModel<typeof outreachSummitVersions>[];
+  readonly teamPageLayerVersions: readonly InferInsertModel<typeof teamPageLayerVersions>[];
+  readonly teamPageAdvisors: readonly InferInsertModel<typeof teamPageAdvisors>[];
+  readonly teamPageAdvisorVersions: readonly InferInsertModel<typeof teamPageAdvisorVersions>[];
 };
 
 export const SEED_DATA: SeedData = {
@@ -123,6 +145,9 @@ export const SEED_DATA: SeedData = {
   outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
   outreachPostTags: OUTREACH_POST_TAG_ROWS.rows,
   outreachSummitVersions: OUTREACH_SUMMIT_ROWS.rows,
+  teamPageLayerVersions: TEAM_PAGE_LAYER_ROWS.rows,
+  teamPageAdvisors: TEAM_PAGE_ADVISOR_ROWS.rows,
+  teamPageAdvisorVersions: TEAM_PAGE_ADVISOR_VERSION_ROWS.rows,
 };
 
 /** The academic year the Alumni page counts as current when the seed was written (2026–27). */
@@ -472,7 +497,95 @@ function outreachVersionsOf(data: SeedData): OutreachDraft[] {
   );
 }
 
-export type SeedArea = "structure" | "people" | "alumni" | "access" | "orders" | "recruitment" | "partners" | "faq" | "outreach" | "hand-overs";
+// The Team page (issue #311), read back the way lib/about/team-data.ts reads
+// it: the roles placed as the team snapshot places them, with the published
+// layer laid on.
+
+/** A role's rank when the roster picks where someone sits, as lib/dashboard/team-database.ts ranks it. */
+function placementRank(role: Role): number {
+  if (role.type === "president") return 0;
+  if (role.deptId == null && role.divisionId == null && boardSeatOf(role.title) !== null) return 1;
+  const ranks: Readonly<Record<string, number>> = { head: 2, lead: 3, core: 4, advisor: 4 };
+  return ranks[role.type ?? ""] ?? 5;
+}
+
+function seatOfRole(role: Role): RoleSeat {
+  return { type: role.type ?? null, divisionId: role.divisionId ?? null, since: role.startedAt!, departmentId: role.deptId ?? null, title: role.title };
+}
+
+/** Where someone's active roles put them, highest first, as `placementOf` in lib/dashboard/team-database.ts. */
+function placementOfRoles(active: readonly Role[], org: OrgChart): Placement {
+  const [top] = active;
+  const open = active.filter((r) => org.divisions.some((d) => d.id === r.divisionId)).map(seatOfRole);
+  const beside = () => membershipsOfRoles(open.filter((r) => roleBeyondDivisions(r, org) === null));
+  if (top.type === "president") return { role: "team-leader", memberships: beside() };
+  const seat = placementRank(top) === 1 ? boardSeatOf(top.title) : null;
+  if (seat !== null) return { role: "board", seat, memberships: beside() };
+  if (top.type === "head") {
+    const departmentId = headDepartmentOf(seatOfRole(top), org);
+    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, memberships: beside() };
+  }
+  return { role: "divisions", memberships: membershipsOfRoles(open) };
+}
+
+/** The team as the Team page reads it from the seeded rows. */
+export function teamRolesOf(data: SeedData): TeamRoles {
+  const org = orgOf(data);
+  const people = [...onTeam(data)].flatMap((memberId): PagePerson[] => {
+    const active = data.roles.filter((r) => r.memberId === memberId && isActive(r)).sort((a, b) => placementRank(a) - placementRank(b));
+    const user = data.users.find((u) => u.member === memberId);
+    const member = data.members.find((m) => m.memberId === memberId);
+    if (user === undefined) return [];
+    return [
+      {
+        id: memberId,
+        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
+        placement: placementOfRoles(active, org),
+        pageTitle: active[0].title || null,
+        photo: member?.picture ?? null,
+        linkedin: user.linkedin ?? null,
+        teamEmail: member?.prtEmail ?? null,
+      },
+    ];
+  });
+  return { org, people };
+}
+
+/** The published visual layer, or null when no row holds a layer this code could have written. */
+export function publishedTeamPageLayerOf(data: SeedData): TeamPageLayer | null {
+  const row = data.teamPageLayerVersions.find((r) => r.version === "published");
+  return row !== undefined && isTeamPageLayer(row.layer) ? row.layer : null;
+}
+
+/** The roles build, and what /about/the-team shows with the published layer laid on. */
+export function teamPageOfSeed(data: SeedData): { readonly build: TeamBuild; readonly layer: TeamPageLayer; readonly shown: ShownTeam } {
+  const build = teamBuildOf(teamRolesOf(data));
+  const layer = publishedTeamPageLayerOf(data) ?? NO_TEAM_LAYER;
+  return { build, layer, shown: applyLayer(build, layer) };
+}
+
+/** The advisors read back from their version rows, as lib/dashboard/database-team-advisors.ts reads them. */
+export function teamAdvisorItemsOf(data: SeedData): AdvisorItem[] {
+  return itemsOf(
+    data.teamPageAdvisors,
+    data.teamPageAdvisorVersions.flatMap((v) => (isAdvisorVersion(v.advisor) ? [{ itemId: v.advisorId, kind: v.version, content: v.advisor }] : [])),
+  );
+}
+
+const shownDepartment = (shown: ShownTeam, id: number) => shown.departments.find((d) => d.at === id);
+
+export type SeedArea =
+  | "structure"
+  | "people"
+  | "alumni"
+  | "access"
+  | "orders"
+  | "recruitment"
+  | "partners"
+  | "faq"
+  | "outreach"
+  | "hand-overs"
+  | "team-page";
 
 export const SEED_AREAS: readonly SeedArea[] = [
   "structure",
@@ -485,6 +598,7 @@ export const SEED_AREAS: readonly SeedArea[] = [
   "faq",
   "outreach",
   "hand-overs",
+  "team-page",
 ];
 
 export type SeedCase = {
@@ -527,6 +641,20 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`roles` type `president`, member 1",
     exercisedBy: `${issue(247)}, ${issue(252)}`,
     holds: (data) => data.roles.filter((r) => r.type === "president" && isActive(r)).length === 1,
+  },
+  {
+    area: "people",
+    case: "A Project Manager and a Chief Engineer, the two board seats, so the roles fill every section of the Team page",
+    rows: "`roles` titled by the seat, members 52 and 53",
+    exercisedBy: `${issue(282)}, ${issue(311)}`,
+    holds: (data) => {
+      const roles = teamRolesOf(data);
+      const { build } = teamPageOfSeed(data);
+      return (
+        build.arc.map((l) => l.spot).join(",") === "arc:project-manager:0,arc:chief-engineer:0" &&
+        teamPageFromRoles(roles, teamRecord) !== null
+      );
+    },
   },
   {
     area: "people",
@@ -963,6 +1091,109 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`hand_over_requests` 1, member 43 to member 16",
     exercisedBy: `${issue(253)}, ${issue(262)}`,
     holds: (data) => data.handOvers.some((row) => row.outcome === "advisor" && confirmedAsWritten(data, row)),
+  },
+  {
+    area: "team-page",
+    case: "The team leader's photo replaced on the page",
+    rows: "`team_page_layer_versions` published, `leader.photo`",
+    exercisedBy: `${issue(283)}, ${issue(284)}`,
+    holds: (data) => {
+      const { build, layer, shown } = teamPageOfSeed(data);
+      return layer.leader.photo !== undefined && shown.leader?.photo === layer.leader.photo && build.leader?.person.photo !== layer.leader.photo;
+    },
+  },
+  {
+    area: "team-page",
+    case: "A head's role text changed on the page",
+    rows: "`team_page_layer_versions` published, `spots` `head:4:0`, member 8",
+    exercisedBy: `${issue(283)}, ${issue(285)}`,
+    holds: (data) => {
+      const { build, layer, shown } = teamPageOfSeed(data);
+      const role = layer.spots[RENAMED_HEAD_SPOT]?.role;
+      const built = build.departments.flatMap((d) => d.heads).find((h) => h.spot === RENAMED_HEAD_SPOT);
+      const drawn = shown.departments.flatMap((d) => d.heads).find((h) => h.at === RENAMED_HEAD_SPOT);
+      return role !== undefined && built !== undefined && built.title !== role && drawn?.shown.role === role;
+    },
+  },
+  {
+    area: "team-page",
+    case: "A leader added on the arc between the Project Manager and the Chief Engineer",
+    rows: "`team_page_layer_versions` published, `addedLeaders` 1, member 21",
+    exercisedBy: `${issue(283)}, ${issue(285)}`,
+    holds: (data) => {
+      const { build, layer, shown } = teamPageOfSeed(data);
+      const added = layer.addedLeaders.find((l) => l.person === ADDED_LEADER_PERSON);
+      const at = shown.leaders.map((l) => l.at);
+      const i = added === undefined ? -1 : at.indexOf(`added:${added.id}`);
+      return (
+        i > 0 &&
+        at[i - 1] === ADDED_LEADER_AFTER &&
+        at[i + 1] === "arc:chief-engineer:0" &&
+        !build.arc.some((l) => l.person.id === ADDED_LEADER_PERSON)
+      );
+    },
+  },
+  {
+    area: "team-page",
+    case: "A division lead hidden from the page",
+    rows: "`team_page_layer_versions` published, `spots` `lead:9:0`, member 23",
+    exercisedBy: `${issue(283)}, ${issue(285)}`,
+    holds: (data) => {
+      const { build, shown } = teamPageOfSeed(data);
+      return (
+        build.departments.some((d) => d.leads.some((l) => l.spot === HIDDEN_LEAD_SPOT)) &&
+        !shown.departments.some((d) => d.leads.some((l) => l.at === HIDDEN_LEAD_SPOT))
+      );
+    },
+  },
+  {
+    area: "team-page",
+    case: "A division lead added to a department whose one division has nobody in it",
+    rows: "`team_page_layer_versions` published, `departments` 8 `addedLeads`, member 25",
+    exercisedBy: `${issue(283)}, ${issue(285)}`,
+    holds: (data) => {
+      const { build, shown } = teamPageOfSeed(data);
+      const before = build.departments.find((d) => d.id === ADDED_LEAD_DEPARTMENT);
+      const after = shownDepartment(shown, ADDED_LEAD_DEPARTMENT);
+      const leadsNothing = !data.roles.some((r) => r.memberId === ADDED_LEAD_PERSON && r.type === "lead" && isActive(r));
+      return before?.leads.length === 0 && (after?.leads.some((l) => l.at.startsWith("added:")) ?? false) && leadsNothing;
+    },
+  },
+  {
+    area: "team-page",
+    case: "The intro text and the group photo's caption changed, which Reset to team keeps",
+    rows: "`team_page_layer_versions` published, `intro` and `groupPhoto`",
+    exercisedBy: `${issue(283)}, ${issue(284)}`,
+    holds: (data) => {
+      const { build, layer, shown } = teamPageOfSeed(data);
+      const reset = resetLayer(layer);
+      const roleBuild = JSON.stringify(applyLayer(build, NO_TEAM_LAYER).leaders);
+      return (
+        shown.intro !== null &&
+        shown.intro !== teamRecord.header.intro &&
+        shown.groupPhoto !== null &&
+        shown.groupPhoto.alt !== teamRecord.coreMembers.groupPhoto.alt &&
+        reset.intro === layer.intro &&
+        reset.groupPhoto === layer.groupPhoto &&
+        JSON.stringify(applyLayer(build, reset).leaders) === roleBuild
+      );
+    },
+  },
+  {
+    area: "team-page",
+    case: "One principal advisor and several specialists, each published",
+    rows: "`team_page_advisors` 1–5",
+    exercisedBy: `${issue(286)}`,
+    holds: (data) => {
+      const items = teamAdvisorItemsOf(data);
+      const shown = publicAdvisors(items);
+      return (
+        items.length === data.teamPageAdvisors.length &&
+        items.every((item) => item.version.state === "published" && item.version.draft === null) &&
+        shown.filter((a) => a.standing === "principal").length === 1 &&
+        shown.filter((a) => a.standing === "specialist").length >= 2
+      );
+    },
   },
 ];
 

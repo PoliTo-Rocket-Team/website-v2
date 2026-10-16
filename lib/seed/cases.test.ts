@@ -28,16 +28,24 @@ import {
   outreachSummitOf,
   outreachTagsOf,
   partnerItemsOf,
+  publishedTeamPageLayerOf,
   resolvesTo,
   SEED_AREAS,
   SEED_CASES,
   SEED_DATA,
   stageOf,
+  teamAdvisorItemsOf,
   teamOf,
+  teamPageOfSeed,
+  teamRolesOf,
   waitingHandOversOf,
 } from "../../db/seed/cases";
 import { handOverAttentionFor } from "../dashboard/hand-over-request";
 import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, TEST_VIEWER_PEOPLE } from "../../db/seed/people";
+import { teamPageSeed } from "../../db/seed/team-page";
+import { getTableName } from "drizzle-orm";
+import { advisorOfFields, fieldsOf as advisorFields } from "../about/advisors";
+import { ARC_LEADERS, isTeamPageLayer, leadersOnArc } from "../about/team-layer";
 
 const data = SEED_DATA;
 
@@ -406,4 +414,55 @@ test("every outreach key is unique, and every post tag names a seeded version an
   }
   for (const v of data.outreachPostVersions) assert.ok(data.outreachPosts.some((p) => p.id === v.postId), `version of post ${v.postId}`);
   assert.equal(data.outreachTags.filter((t) => t.award).length, 1, "the list has one award tag");
+});
+
+// The Team page (issue #311).
+
+test("the team-page module writes only the Team page's own tables, so no seeded visual edit changes a role", () => {
+  const tables = (list: readonly Parameters<typeof getTableName>[0][]) => list.map(getTableName).sort();
+  assert.deepEqual(tables(teamPageSeed.seed.owns), ["team_page_advisor_versions", "team_page_advisors", "team_page_layer_versions"]);
+  assert.deepEqual(teamPageSeed.seed.keyed ?? [], []);
+  assert.deepEqual(tables(teamPageSeed.seed.rows.map((set) => set.table)), tables(teamPageSeed.seed.owns));
+  // The roles read the same with and without the layer.
+  assert.deepEqual(teamRolesOf({ ...data, teamPageLayerVersions: [] }), teamRolesOf(data));
+});
+
+test("the seeded layer is published, is one the editor could have saved, and every edit lands on the page", () => {
+  const layer = publishedTeamPageLayerOf(data);
+  assert.ok(layer, "the published layer reads back");
+  assert.ok(isTeamPageLayer(layer));
+  assert.deepEqual(
+    data.teamPageLayerVersions.map((r) => r.version),
+    ["published"],
+  );
+  const { build } = teamPageOfSeed(data);
+  assert.ok(leadersOnArc(build, layer) <= ARC_LEADERS, "the arc holds the added leader");
+  const spots = new Set<string>([
+    ...build.arc.map((l) => l.spot),
+    ...build.departments.flatMap((d) => [...d.heads.map((h) => h.spot), ...d.leads.map((l) => l.spot)]),
+  ]);
+  for (const spot of Object.keys(layer.spots)) assert.ok(spots.has(spot), `${spot} is a spot the seeded roles fill`);
+  for (const id of Object.keys(layer.departments)) assert.ok(build.departments.some((d) => `${d.id}` === id), `department ${id} is on the page`);
+  const onTeam = new Set(build.people.map((p) => p.id));
+  const named = [
+    layer.leader.person,
+    ...Object.values(layer.spots).map((edit) => edit?.person),
+    ...layer.addedLeaders.map((l) => l.person),
+    ...Object.values(layer.departments).flatMap((d) => (d?.addedLeads ?? []).map((l) => l.person)),
+  ].filter((id): id is number => id !== undefined);
+  assert.ok(named.length > 0);
+  for (const id of named) assert.ok(onTeam.has(id), `member ${id} is on the team`);
+});
+
+test("each seeded advisor is one the Advisors panel would keep as it is", () => {
+  const items = teamAdvisorItemsOf(data);
+  assert.equal(items.length, data.teamPageAdvisors.length);
+  unique(data.teamPageAdvisors.map((a) => a.id), "an advisor id");
+  unique(data.teamPageAdvisorVersions.map((v) => `${v.advisorId}/${v.version}`), "an advisor version");
+  for (const item of items) {
+    assert.equal(item.version.state, "published");
+    if (item.version.state !== "published") continue;
+    const { place: _, ...advisor } = item.version.published;
+    assert.deepEqual(advisorOfFields(advisorFields(advisor)), advisor, item.version.published.name);
+  }
 });

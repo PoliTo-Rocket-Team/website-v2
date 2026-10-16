@@ -12,7 +12,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { neonBranchLookup } from "@/lib/seed/neon-branch";
 import { preparePreviewDatabase, type PreviewBuildSteps } from "@/lib/seed/preview-build";
 import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
@@ -23,12 +22,7 @@ import { SEED_MODULES } from "./seed/registry";
 const PREVIEW_SEED_LOCK = "prt-website-preview-seed";
 
 const steps: PreviewBuildSteps = {
-  guard: (connectionString) =>
-    guardSeedTarget(
-      connectionString,
-      neonBranchLookup({ NEON_API_KEY: process.env.NEON_API_KEY, NEON_PROJECT_ID: process.env.NEON_PROJECT_ID }),
-      { VERCEL_ENV: process.env.VERCEL_ENV },
-    ),
+  guard: async (connectionString) => guardSeedTarget(connectionString, { VERCEL_ENV: process.env.VERCEL_ENV }),
   async exclusive(target, work) {
     // A session lock on its own direct connection: it lasts until unlocked or
     // until this process ends, whichever comes first.

@@ -743,9 +743,11 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   except the intro text and the group photo.
 - Writes follow the site-content rule, and none writes a role, division, department, scope or
   member.
-- Previews never touch a database: a test developer's layer stays in their own cookie until they
-  sign out, laid on the dummy team in the editor. The public Team page there shows the dummy team
-  with no layer.
+- On a preview with the seeded `preview` branch (ADR 0016), the public Team page shows the seeded
+  published layer and advisors. A test developer's layer writes there are refused before they
+  reach the database (ADR 0016). Only a preview with no database keeps a test developer's layer in
+  their own cookie until they sign out, laid on the dummy team in the editor; its public Team page
+  shows the dummy team with no layer.
 - The editor (boards 80, 80b and 80h, #284) is "Team page" under Content, at
   `/dashboard/team-page`: the real page under the shared edit shell, with the "Visual changes
   only" tag and Reset to team on the bar. The team leader and each leader on the arc open the Edit
@@ -776,5 +778,7 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
   their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
   row, never a role, division, department, scope or member. Reset to team never changes the
-  advisors. Previews keep a test developer's advisors in their own cookie over today's advisors;
-  End advising there adds to their Alumni changes.
+  advisors. On a preview with the seeded `preview` branch, a test developer's advisor changes and
+  End advising are refused before they reach the database (ADR 0016). Only a preview with no
+  database keeps a test developer's advisors in their own cookie over today's advisors; End
+  advising there adds to their Alumni changes.

@@ -21,7 +21,7 @@ Decided 2026-10-16 by the project owner (Owner decision), recorded in the amendm
 1. **One branch for previews.** Every preview deployment reads the one Neon branch named `preview`, in the project's own Neon account. Only previews use it; a preview never reads the production database.
 2. **Empty start.** That branch was created from `main` with the schema only and no rows. Each preview build migrates it and re-seeds it, so it never holds production data.
 3. **One dummy set.** `pnpm db:seed` loads the same set on a local database and on a preview branch, and running it twice leaves the same rows, including the columns a default or a trigger fills. The seed leaves the audit table `logs` empty: its own writes are not history.
-4. **The seed guards its target.** Before any write the seed reads the connection target and refuses unless it is a local database, or a Neon branch that Neon reports as neither the default branch nor protected and that is named `preview/…`, or is the shared branch named `preview` on a Vercel preview build (`VERCEL_ENV` is `preview`). The refusal is decided from the target; no flag turns it into a pass.
+4. **The seed guards its target.** Before any write the seed reads the connection target and refuses unless it is a local database, or the shared branch named `preview`, known by its compute endpoint `ep-floral-mouse-b2er5ebz` in the connection host (direct or `-pooler`), on a Vercel preview build (`VERCEL_ENV` is `preview`). Every other Neon endpoint is refused. The refusal is decided from the target; no flag turns it into a pass. The endpoint allow-list replaced a Neon API read; the last amendment below records why.
 5. **Dummy arrays only without a database.** `lib/dummy-data/` serves a page only when no database is configured, such as `next dev` with no `DATABASE_URL`.
 6. **The test developer stays.** The preview's test developer sign-in and viewer switch stay, and the viewers resolve to seeded people.
 7. **Production unchanged.** Production never shows dummy data, never offers the test developer sign-in, and is never a seed target.
@@ -49,11 +49,12 @@ Decided 2026-10-16 by the project owner (Owner decision), recorded in the amendm
 - Reviewers test features through a real database on every preview, with the same data each time.
 - Previews share one branch, so each preview build resets the rows every other preview reads; since the seed is the same set each time, they read the same data.
 - Every new area adds a seed module and its cases to [docs/seed-cases.md](../docs/seed-cases.md).
-- A preview deploy depends on the owner's one-time setup. A preview with no `DATABASE_URL` stays on the dummy arrays. A preview with a `DATABASE_URL` but no `DATABASE_URL_UNPOOLED`, or no `NEON_API_KEY` and `NEON_PROJECT_ID` for the guard, fails its build; it never falls back to the dummy arrays.
+- A preview deploy depends on the owner's one-time setup. A preview with no `DATABASE_URL` stays on the dummy arrays. A preview with a `DATABASE_URL` but no `DATABASE_URL_UNPOOLED`, or whose strings name any endpoint but the `preview` branch's, fails its build; it never falls back to the dummy arrays.
 
 ## Gaps
 
-- The owner's preview connection is done (2026-10-16); the setup is in [docs/seed-cases.md](../docs/seed-cases.md#connect-previews-to-the-preview-database-branch). The guard needs `NEON_API_KEY` and `NEON_PROJECT_ID` on Preview to read the branch; without them every preview build with a database fails at the guard.
+- The owner's preview connection is done (2026-10-16); the setup is in [docs/seed-cases.md](../docs/seed-cases.md#connect-previews-to-the-preview-database-branch). The guard needs no variable beyond the two connection strings.
+- If the `preview` branch is ever recreated, its compute endpoint changes, and every preview build with a database fails at the guard until the one constant `PREVIEW_ENDPOINT` in [lib/seed/target.ts](../lib/seed/target.ts) names the new endpoint.
 - Whether a test developer may ever write to the `preview` branch is not decided here; until an Owner decision says so, it may not.
 
 Followed today: the guard is `guardSeedTarget` in [lib/seed/target.ts](../lib/seed/target.ts); the runner is [lib/seed/runner.ts](../lib/seed/runner.ts), with its modules registered in [db/seed/registry.ts](../db/seed/registry.ts). The same-rows rule is checked by [lib/seed/modules.test.ts](../lib/seed/modules.test.ts), which fails when a seeded insert leaves a clock default unset, and by [lib/seed/baseline.test.ts](../lib/seed/baseline.test.ts), which fails when a migration adds a trigger the seed does not handle. The preview build step is [db/preview-build.ts](../db/preview-build.ts), with its rules in [lib/seed/preview-build.ts](../lib/seed/preview-build.ts); the switch is `dummyDataOn` in [lib/dummy-data/mode.ts](../lib/dummy-data/mode.ts); the test developer's seeded people are [lib/test-viewer-people.ts](../lib/test-viewer-people.ts).
@@ -73,6 +74,15 @@ Every preview deployment reads the same `preview` branch (Owner decision, record
 - **A preview's changes last only until the next preview build.** Any preview build resets the rows every preview reads. Since the seed is the same set each time, every preview reads the same data after it.
 - **A pull request's migration reaches the shared branch.** A preview build applies the migrations its own branch carries, so the shared branch takes them before the pull request merges, and every other preview then reads a schema one migration ahead of its code. A migration that other previews' code cannot run against shows up there first.
 - **The test developer is read as a seeded person and may not write.** Where the pages read a database, `dummyDataOn` is false and each viewer of the test developer's "View as" switch is read as its seeded person ([lib/test-viewer-people.ts](../lib/test-viewer-people.ts)). Every signed-in write goes through [lib/db-audit.ts](../lib/db-audit.ts), which refuses a test developer's write before it is sent, so the binding constraint that a test developer's changes never reach a database holds on the `preview` branch.
+
+## Amendment, 2026-10-16: the guard allow-lists the `preview` branch's endpoint
+
+The guard no longer reads the Neon API (Owner decision, recorded on [#311](https://github.com/PoliTo-Rocket-Team/website-v2/issues/311)): the project will not hold a Neon API key, so the `NEON_API_KEY` and `NEON_PROJECT_ID` the guard needed are gone, and nothing reads them. Decision 4 and the amendment above read with it as follows:
+
+- **One Neon endpoint passes.** A Neon target passes only when its connection host names the `preview` branch's compute endpoint, `ep-floral-mouse-b2er5ebz`, by the direct host or the `-pooler` host, and only on a Vercel preview build. Every other Neon endpoint is refused on every build. A local database passes as before.
+- **Production is refused by its endpoint.** Production's branch has a different compute endpoint, so a production connection string never matches the allow-list. A Vercel production build is refused whatever the target, as before.
+- **Branches named `preview/…` no longer pass.** The integration creates no per-preview branches (the first amendment), so the rule that let such a branch through went with the API read.
+- **The endpoint id lives in the code.** It is not a secret. It is the one constant `PREVIEW_ENDPOINT` in [lib/seed/target.ts](../lib/seed/target.ts); if the `preview` branch is ever recreated, that constant changes in the same change that records the new branch.
 
 ## Records
 

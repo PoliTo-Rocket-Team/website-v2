@@ -41,7 +41,7 @@ function inMemory(store: Store, log: string[], urls: string[] = []) {
 }
 
 async function localTarget(url = "postgres://dev@localhost/prt") {
-  const verdict = await guardSeedTarget(url, async () => undefined);
+  const verdict = guardSeedTarget(url);
   assert.ok(verdict.ok);
   return verdict.target;
 }
