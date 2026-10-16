@@ -64,6 +64,16 @@ export function afterStep<T>(current: Versioned<T> | null, content: T, step: Pub
   return { state: "published", published: current.published, draft: content };
 }
 
+/**
+ * The versions after Unpublish (board 74's row menu, issue #289): the item
+ * leaves the public site and stays as a draft of what the editor showed, its
+ * draft changes when it had some, else what was published. Null for an item
+ * that was never published, which has nothing to take down.
+ */
+export function unpublished<T>(version: Versioned<T>): Versioned<T> | null {
+  return version.state === "published" ? { state: "draft", draft: version.draft ?? version.published } : null;
+}
+
 /** The items the public site shows, in site order, as their published versions. */
 export function publicItems<T>(items: readonly ContentItem<T>[]): T[] {
   return [...items]

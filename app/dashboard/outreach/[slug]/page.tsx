@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { OutreachPostEdit } from "@/components/dashboard/outreach-post-edit";
 import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { editorVersion, publicVersion } from "@/lib/content/versioned";
+import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { neighboursOf, slugOf } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
@@ -19,9 +20,9 @@ type Params = { params: Promise<{ slug: string }> };
 // panel beside it. The page opens on the version the editor works on (the
 // draft when there is one) and redraws as they type. The address is the slug
 // of that version's title, or of the published one's, so a link made before a
-// draft renamed the post still opens it. The outreach editor applies the
-// site-content rule (lib/content/gate.ts): everyone else gets the dashboard's
-// not found.
+// draft renamed the post still opens it. The Outreach page's reach decides who
+// opens it (lib/dashboard/access.ts, the site-content rule); everyone else gets
+// the dashboard's not found.
 export default function OutreachPostEditPage({ params }: Params) {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
@@ -35,6 +36,7 @@ async function LivePost({ params }: Params) {
   const opening = await openDashboard();
   if (opening.kind === "signed-out") redirect(`/login?cb=/dashboard/outreach/${encodeURIComponent(slug)}`);
   if (opening.kind === "account-unresolved") return null;
+  if (!canReach(opening.data.viewer, "outreach")) notFound();
   const { outreach } = opening.data;
   const [items, tags] = await Promise.all([outreach.posts.list(), outreach.tags()]);
   if (items === null || tags === null) notFound();
