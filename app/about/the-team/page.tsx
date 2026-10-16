@@ -11,6 +11,7 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { currentAcademicYearStart, withAcademicYear } from "@/lib/about/academic-year";
 import { team } from "@/lib/about/team";
+import { teamPageData } from "@/lib/about/team-data";
 
 export const metadata: Metadata = {
   title: "The Team · PoliTo Rocket Team",
@@ -19,12 +20,15 @@ export const metadata: Metadata = {
 
 // Boards 26 (desktop) and 26m (phone): the header and its
 // figures, then who leads, the departments, the advisors, the numbers and
-// every core member, all drawn from one record (lib/about/team.ts). The page
+// every core member, all drawn from one record: who leads, the departments
+// and the core members built from the team's roles (lib/about/team-data.ts),
+// the rest the hand-typed lib/about/team.ts. The page
 // sky runs behind everything above the apply band; the sections paint no
 // background of their own and each sits one section pad below the last, as
 // on the project pages.
 export default async function TeamPage() {
-  const { header } = team;
+  const page = await teamPageData();
+  const { header } = page;
   // The intro names the current academic year, which turns over on 1 October.
   const intro = withAcademicYear(header.intro, await currentAcademicYearStart());
   return (
@@ -34,11 +38,11 @@ export default async function TeamPage() {
         <main className="pb-section pt-16 md:pt-[72px]">
           <PageHeader {...header} intro={intro} />
 
-          <OrgChart chart={team.orgChart} />
-          <Departments departments={team.departments} />
-          <Advisors advisors={team.advisors} />
-          <InNumbers numbers={team.inNumbers} />
-          <CoreMembers core={team.coreMembers} />
+          <OrgChart chart={page.orgChart} />
+          <Departments departments={page.departments} />
+          <Advisors advisors={page.advisors} />
+          <InNumbers numbers={page.inNumbers} />
+          <CoreMembers core={page.coreMembers} />
         </main>
       </PageSky>
       <ApplyBand />

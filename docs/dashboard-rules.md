@@ -256,8 +256,9 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
   lead's Promote or lead change.
 
-- The role on the operations lead's member panel is the person's title on the Team page.
-  - **Gap:** the title saved on the panel never reaches the public Team page. Tracked in #189.
+- The role on the operations lead's member panel is the person's title on the Team page. The
+  public Team page is built from the team's roles, so a saved title shows there once the
+  `team-roster` cache refreshes (ADR 0015).
 - Promote changes a division's leads, so it is the department head's (#231). It is confirmed, with
   "lead together" or "hand over the division", and each head of the division's department gets a
   notice under "Needs your attention" on their Overview, naming who now leads the division and how

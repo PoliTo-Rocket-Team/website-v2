@@ -54,7 +54,7 @@ function Member({ member }: { member: GroupMember }) {
       {leads.length > 0 && (
         <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-5 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5">
           {leads.map((l) => (
-            <Lead key={l.division} lead={l} />
+            <Lead key={`${l.division}-${l.name}`} lead={l} />
           ))}
         </ul>
       )}
