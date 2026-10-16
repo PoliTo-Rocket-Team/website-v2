@@ -78,7 +78,8 @@ writes (issue #256) pass the site-content gate in `contentEditor`
 ([lib/content/editor.ts](../lib/content/editor.ts)), then
 [lib/dashboard/database-partners.ts](../lib/dashboard/database-partners.ts) writes and calls
 `updateTag(PARTNERS_CACHE_TAG)`; the question writes (issue #258) do the same through
-[lib/dashboard/database-faqs.ts](../lib/dashboard/database-faqs.ts) and `updateTag(FAQS_CACHE_TAG)`. Where no
+[lib/dashboard/database-faqs.ts](../lib/dashboard/database-faqs.ts) and `updateTag(FAQS_CACHE_TAG)`, and the Team page's visual layer (issue #283) through
+[lib/dashboard/database-team-page.ts](../lib/dashboard/database-team-page.ts) and `updateTag(TEAM_PAGE_LAYER_CACHE_TAG)`. Where no
 database is configured, a test developer's write goes to the dummy side, which checks the same rules
 and stores nothing; where one is, `runAuditQuery` refuses it before it is sent. The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))

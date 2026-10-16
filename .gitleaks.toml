@@ -12,4 +12,7 @@ regexes = [
   # (16) rules. Each entry is one exact handle; do not widen it.
   '''linkedin: "lorenzopezzolato"''',
   '''linkedin: "nicolascerutti"''',
+  # The same public handle as JSON, in the advisors seed of
+  # drizzle/0035_team_page_advisors.sql (written by lib/about/advisors-import.ts).
+  '''linkedin":"lorenzopezzolato"''',
 ]

@@ -68,23 +68,23 @@ test("the team leader, the operations lead and the IT lead reach every page of t
   }
 });
 
-test("the team leader's sidebar is board 72's: Team holds Members, Access and Orders, and Content holds Partners, Alumni and FAQ (issues #252, #256, #258)", () => {
+test("the team leader's sidebar is board 72's: Team holds Members, Access and Orders, and Content holds Outreach, Partners, Alumni, FAQ and Team page (issues #252, #256, #258, #284)", () => {
   assert.deepEqual(shape(fullAccess("team-leader"), withoutApplications), [
     [null, ["Overview", "Team tree"]],
     ["Recruitment", ["Positions", "Applications"]],
     ["Team", ["Members", "Access", "Orders"]],
-    ["Content", ["Outreach", "Partners", "Alumni", "FAQ"]],
+    ["Content", ["Outreach", "Partners", "Alumni", "FAQ", "Team page"]],
   ]);
 });
 
-test("the operations lead's and the IT lead's sidebars keep Partners, Alumni and FAQ under Team, with no Content group (issues #252, #256, #258)", () => {
+test("the operations lead's and the IT lead's sidebars keep the content pages under Team, with no Content group (issues #252, #256, #258, #284)", () => {
   for (const seat of ["operations-lead", "it-lead", null] as const) {
     assert.deepEqual(
       shape(fullAccess(seat), withoutApplications),
       [
         [null, ["Overview", "Team tree"]],
         ["Recruitment", ["Positions", "Applications"]],
-        ["Team", ["Members", "Outreach", "Partners", "Alumni", "FAQ", "Access", "Orders"]],
+        ["Team", ["Members", "Outreach", "Partners", "Alumni", "FAQ", "Team page", "Access", "Orders"]],
       ],
       String(seat),
     );
@@ -122,11 +122,11 @@ test("the Alumni page is for full admins and site-content access, never from a l
   }
   assert.deepEqual(shape({ kind: "member", siteContent: true, approveOrders: false }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
-    ["Team", ["Outreach", "Partners", "Alumni", "FAQ"]],
+    ["Team", ["Outreach", "Partners", "Alumni", "FAQ", "Team page"]],
   ]);
 });
 
-test("the Outreach page is for whoever the site-content gate admits, never from a lead's role, and sits in the team leader's Content group (issue #289)", () => {
+test("the Outreach and Team page pages are for whoever the site-content gate admits, never from a lead's role, and sit in the team leader's Content group (issues #289, #284)", () => {
   const reaches: readonly [ViewerStanding, boolean][] = [
     [fullAccess("team-leader"), true],
     [fullAccess("operations-lead"), true],
@@ -140,11 +140,13 @@ test("the Outreach page is for whoever the site-content gate admits, never from 
   ];
   for (const [viewer, reached] of reaches) {
     assert.equal(canReach(viewer, "outreach"), reached, JSON.stringify(viewer));
+    assert.equal(canReach(viewer, "team-page"), reached, JSON.stringify(viewer));
     assert.equal(maySiteContent(viewer), reached, `the page and the gate agree: ${JSON.stringify(viewer)}`);
   }
   const content = sidebarFor(fullAccess("team-leader"), withoutApplications).find((s) => s.group === "content");
   assert.equal(content?.items.find((item) => item.key === "outreach")?.href, "/dashboard/outreach");
   assert.equal(pageTitleFor("/dashboard/outreach/iress-3rd-edition"), "Outreach");
+  assert.equal(content?.items.find((item) => item.key === "team-page")?.href, "/dashboard/team-page");
 });
 
 test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue #270)", () => {
