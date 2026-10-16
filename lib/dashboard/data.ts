@@ -3,6 +3,7 @@ import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/re
 import type { FaqEditor } from "@/lib/faq/editor";
 import type { OutreachEditor } from "@/lib/outreach-editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
+import type { ProjectEditor } from "@/lib/project-content/editor";
 import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
@@ -214,6 +215,13 @@ export interface DashboardData {
    * content.
    */
   readonly outreach: OutreachEditor;
+
+  /**
+   * Boards 75 to 75d (issues #255 and #298): the projects and their writes,
+   * behind the same gate. Each side brings its own store: the database, or a
+   * test developer's cookie over the dummy projects.
+   */
+  readonly projects: ProjectEditor;
 
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;

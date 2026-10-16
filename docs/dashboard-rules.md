@@ -717,3 +717,24 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's question changes stay in their own cookie
   until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
   shows the questions as they were before the switch.
+
+### Project pages (#298, boards 75b and 75c)
+
+- A project opens on its real page under the shared edit bar ("Projects / Editing <project>"
+  and its state, Desktop | Phone, Save draft, Publish). Hovering a block outlines it with its name
+  and an Edit chip; the chip opens the "Edit <project>" panel with that section open.
+- The panel's sections so far: Top of the page (intro, status, dates, the visual's caption, one to
+  six key facts), Name story, Design story (with its parts, drawn top to bottom and numbered from
+  the bottom), Why (one to three reasons) and the Next-project card line, which the previous
+  project's page shows. The page redraws as the editor types.
+- Desktop edits the desktop text. Phone edits the phone text of the fields that have one; an empty
+  phone field shows the desktop text, except the story texts, which always have their own.
+- An optional section (Why, today) has a show-on-page switch in its header. Off, the section
+  leaves the page and the numbers of the sections after it close up; its text stays in the panel,
+  and switching it back on brings it back. A section that is off does not stop a save.
+- Save draft and Publish refuse an empty field and open its section. Save draft leaves the
+  published page as it is; Publish puts the changes on the public page.
+- Only the full admins and holders of site-content access open the editor or save; everyone else
+  gets the dashboard's not found.
+- Previews never touch a database: a test developer's project changes stay in their own cookie
+  until they sign out. The public pages there show the projects as they were before the switch.

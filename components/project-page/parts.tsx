@@ -12,7 +12,7 @@ export function TitleText({ title }: { title: Title }) {
   return (
     <>
       {title.map((line, i) => (
-        <span key={line}>
+        <span key={i}>
           {i > 0 && <br />}
           {line}
         </span>
