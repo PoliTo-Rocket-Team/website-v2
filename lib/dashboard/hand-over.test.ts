@@ -84,7 +84,7 @@ test("after the hand-over the new person is the team leader seat; the former one
   assert.equal(decideRightOf({ teamLeader: isTeamLeader(newLeader), approveOrders: false }), "team-leader", "decides orders and gives Approve orders");
   // The former team leader: an Advisor role on the whole team, and the org-wide row their full access stays as.
   const former = viewerStandingOf({ scopes: ["org"], activeRoles: [role("advisor")] });
-  assert.deepEqual(former, { kind: "operations-lead", seat: null, siteContent: false }, "full access, from the access row");
+  assert.deepEqual(former, { kind: "operations-lead", seat: null, siteContent: false, approveOrders: false }, "full access, from the access row; no Approve orders grant");
   assert.equal(decideRightOf({ teamLeader: isTeamLeader(former), approveOrders: false }), null, "orders are the new team leader's");
 });
 

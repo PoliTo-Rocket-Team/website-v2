@@ -43,16 +43,14 @@ import {
   checkNewOrder,
   checkOrderDivision,
   checkQuote,
-  decideRightOf,
   orderActions,
   orderingDivisions,
   ordersPageFor,
+  ordersScopeOf,
   orgUnitsOf,
   parseEuros,
   stateAfterEdit,
-  WHOLE_TEAM,
   type Answer,
-  type EditUnit,
   type NewOrder,
   type Order,
   type OrderDecision,
@@ -441,54 +439,25 @@ async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
   return orgUnitsOf(deps, divs);
 }
 
-/**
- * The viewer's Orders scope (issue #233), or null when they hold no Orders
- * access anywhere. Full access edits every order in the team (issue #238). A
- * `division` or `department` scope row on `orders` (or on `all`) is access
- * there, at its level; a head's role is Can edit across their department
- * (board 65), and a `team` row on `orders` is access across the whole team
- * (issue #247). Deciding comes from being the team leader (`isTeamLeader`,
- * ./viewer.ts), or from a `team` row on `approve_orders`: full access alone
- * does not decide.
- */
+/** The viewer's Orders scope, read from their scope rows (`ordersScopeOf`, ./orders.ts); null for someone off the team. */
 async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDepartmentUnits[]): Promise<OrdersScope | null> {
   if (identity.memberId === null || identity.kind === "non-member") return null;
   const [rows, headDepartment] = await Promise.all([
     getDb()
-      .select({ scope: scopes.scope, target: scopes.target, level: scopes.accessLevel, division_id: scopes.divisionId, dept_id: scopes.deptId })
+      .select({ scope: scopes.scope, target: scopes.target, level: scopes.accessLevel, divisionId: scopes.divisionId, deptId: scopes.deptId })
       .from(scopes)
       .where(eq(scopes.memberId, identity.memberId)),
     readHeadDepartment(identity),
   ]);
-  const ordersRows = rows.filter((r) => (r.scope === "division" || r.scope === "department") && (r.target === "orders" || r.target === "all"));
-  // Orders given across the whole team (issue #247): at Can edit every order is theirs to edit.
-  const teamOrders = rows.filter((r) => r.scope === "team" && r.target === "orders");
-  const decides = decideRightOf({
-    teamLeader: isTeamLeader(identity),
-    approveOrders: rows.some((r) => r.scope === "team" && r.target === "approve_orders"),
-  });
-  if (identity.kind === "operations-lead") return { edits: [WHOLE_TEAM], decides };
-  if (teamOrders.some((r) => r.level === "edit")) return { edits: [WHOLE_TEAM], decides };
-
-  type UnitEdit = Exclude<EditUnit, { kind: "team" }>;
-  const edits: UnitEdit[] = [];
-  const add = (unit: UnitEdit) => {
-    const key = (u: UnitEdit) => (u.kind === "division" ? `v${u.division.id}` : `d${u.department.id}`);
-    if (!edits.some((e) => key(e) === key(unit))) edits.push(unit);
-  };
-  if (headDepartment !== null) add({ kind: "department", department: { id: headDepartment.id, name: headDepartment.name } });
-  for (const r of ordersRows) {
-    if (r.level !== "edit") continue;
-    if (r.scope === "department") {
-      const department = org.find((d) => d.id === r.dept_id);
-      if (department) add({ kind: "department", department: { id: department.id, name: department.name } });
-    } else {
-      const division = org.flatMap((d) => d.divisions).find((d) => d.id === r.division_id);
-      if (division) add({ kind: "division", division });
-    }
-  }
-  if (headDepartment === null && ordersRows.length === 0 && teamOrders.length === 0 && decides === null) return null;
-  return { edits, decides };
+  return ordersScopeOf(
+    {
+      fullAccess: identity.kind === "operations-lead",
+      teamLeader: isTeamLeader(identity),
+      headDepartment: headDepartment === null ? null : { id: headDepartment.id, name: headDepartment.name },
+    },
+    rows,
+    org,
+  );
 }
 
 type DbOrderStatus = (typeof orders.$inferSelect)["status"];

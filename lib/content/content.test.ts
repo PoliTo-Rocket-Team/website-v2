@@ -13,7 +13,7 @@ import { publicItems, statusOf, versionedFromRows, versionRows, type ContentItem
 // so nothing here leans on partners: a note with a group.
 type Note = { title: string; group: "a" | "b" };
 
-const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false };
+const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 
 function seed(): ContentItem<Note>[] {
   return [
@@ -67,7 +67,7 @@ test("the public site shows published items only, in site order", () => {
 test("the gate lets in full access and site-content access, and refuses everyone else before preparing anything", async () => {
   for (const kind of VIEWER_KINDS) {
     for (const siteContent of [false, true]) {
-      const viewer = (kind === "operations-lead" ? { kind, seat: null, siteContent } : kind === "non-member" ? { kind, siteContent: false } : { kind, siteContent }) as ViewerStanding;
+      const viewer = (kind === "operations-lead" ? { kind, seat: null, siteContent, approveOrders: false } : kind === "non-member" ? { kind, siteContent: false, approveOrders: false } : { kind, siteContent, approveOrders: false }) as ViewerStanding;
       const allowed = kind === "operations-lead" || (siteContent && kind !== "non-member");
       assert.equal(maySiteContent(viewer), allowed, JSON.stringify(viewer));
       // The page and its writes read one rule.

@@ -20,6 +20,7 @@ import {
   orderPage,
   ordersIntro,
   ordersPageFor,
+  ordersScopeOf,
   orgUnitsOf,
   pagerSlots,
   parseEuros,
@@ -31,6 +32,8 @@ import {
   type ApproveOrdersFacts,
   type Order,
   type OrdersScope,
+  type OrdersScopeRow,
+  type OrdersViewer,
   type OrderState,
   type OrderStatus,
   type OrderUnit,
@@ -192,6 +195,42 @@ test("by default only the team leader decides; Approve orders lets someone else 
   assert.equal(decideRightOf({ teamLeader: true, approveOrders: false }), "team-leader");
   assert.equal(decideRightOf({ teamLeader: false, approveOrders: true }), "approve-orders");
   assert.equal(decideRightOf({ teamLeader: false, approveOrders: false }), null);
+});
+
+/** A member: no full access, not the team leader, no department to head. */
+const memberViewer: OrdersViewer = { fullAccess: false, teamLeader: false, headDepartment: null };
+const approveOrdersRow: OrdersScopeRow = { scope: "team", target: "approve_orders", level: "edit", divisionId: null, deptId: null };
+
+test("\"Approve orders\" alone is Orders access: the page opens, the holder decides, and edits nothing (issue #270)", () => {
+  const scope = ordersScopeOf(memberViewer, [approveOrdersRow], org);
+  assert.deepEqual(scope, { edits: [], decides: "approve-orders" });
+  assert.notEqual(ordersPageFor(scope, org, [order({ status: "waiting" })]), null);
+  assert.ok(scope !== null);
+  // The decide buttons on a waiting order, Mark as ordered on an approved one, and no edit, cancel or new order anywhere.
+  assert.deepEqual(orderActions(scope, order({ status: "waiting" })), { ...NOTHING, decide: true });
+  assert.deepEqual(orderActions(scope, order(approved)), { ...NOTHING, markOrdered: true });
+  for (const status of ORDER_STATUSES) assert.equal(orderActions(scope, order(STATES[status])).edit, null, status);
+  assert.deepEqual(orderingDivisions(scope, org), []);
+});
+
+test("a member with no \"Approve orders\" and no Orders access gets no Orders page (issue #270)", () => {
+  const siteContent: OrdersScopeRow = { scope: "website", target: "all", level: "edit", divisionId: null, deptId: null };
+  for (const rows of [[], [siteContent]]) {
+    const scope = ordersScopeOf(memberViewer, rows, org);
+    assert.equal(scope, null);
+    assert.equal(ordersPageFor(scope, org, [order({ status: "waiting" })]), null);
+  }
+});
+
+test("Orders access from scope rows, a head's role and full access keeps its edits; deciding stays apart (issue #233)", () => {
+  const divisionEdit: OrdersScopeRow = { scope: "division", target: "orders", level: "edit", divisionId: missionAnalysis.id, deptId: null };
+  const divisionView: OrdersScopeRow = { ...divisionEdit, level: "view" };
+  assert.deepEqual(ordersScopeOf(memberViewer, [divisionEdit], org), lead);
+  assert.deepEqual(ordersScopeOf(memberViewer, [divisionView], org), viewer);
+  assert.deepEqual(ordersScopeOf({ ...memberViewer, headDepartment: aerodynamics }, [], org), head);
+  assert.deepEqual(ordersScopeOf({ ...memberViewer, fullAccess: true }, [], org), operationsLeadScope);
+  assert.deepEqual(ordersScopeOf({ ...memberViewer, fullAccess: true, teamLeader: true }, [], org), teamLeaderScope);
+  assert.deepEqual(ordersScopeOf(memberViewer, [divisionView, approveOrdersRow], org), holderScope);
 });
 
 test("a decision is refused to anyone without the right, and on a request that is not waiting", () => {

@@ -4,7 +4,8 @@ import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } fro
 // viewer (Dashboard v2 boards 51b, 52 and 56; the operations lead keeps boards
 // 40 to 46). One row per page: a new page adds one row. A viewer whose kind is
 // missing from a row's `reach` does not reach the page, unless the row names a
-// `siteContent` place and they hold site-content access. A row that names a
+// `siteContent` place and they hold site-content access, or an
+// `approveOrders` place and they hold "Approve orders". A row that names a
 // `seat` is reached by that full-access seat alone (issue #238). The
 // `operations-lead` kind is full access: the team leader, the operations lead
 // and the IT lead, or an admin or org scope row (./viewer.ts), so it reaches
@@ -43,6 +44,8 @@ type PageRow = {
   readonly reach: Readonly<Partial<Record<ViewerKind, NavPlace>>>;
   /** Where the page shows for a viewer whose kind does not reach it but who holds site-content access. */
   readonly siteContent?: NavPlace;
+  /** Where the page shows for a viewer whose kind does not reach it but who holds "Approve orders". */
+  readonly approveOrders?: NavPlace;
   /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
   /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
@@ -149,6 +152,9 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/orders",
     // Every order in the team, for anyone with Orders access (issue #233).
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
+    // "Approve orders" is a grant across the whole team, so the page sits
+    // under Team, as it does for full access (issue #270).
+    approveOrders: "team",
   },
   {
     key: "activity-log",
@@ -210,7 +216,9 @@ function placeOf(page: PageRow, viewer: ViewerStanding): NavPlace | undefined {
   const seat = seatOf(viewer);
   if (page.seat !== undefined && seat !== page.seat) return undefined;
   const reached = page.reach[viewer.kind];
-  if (reached === undefined) return viewer.siteContent ? page.siteContent : undefined;
+  if (reached === undefined) {
+    return (viewer.siteContent ? page.siteContent : undefined) ?? (viewer.approveOrders ? page.approveOrders : undefined);
+  }
   return (seat === null ? undefined : page.seatPlace?.[seat]) ?? reached;
 }
 

@@ -59,9 +59,9 @@ test("someone who leads division A and is a member of division B is a lead for A
 });
 
 test("a website scope row gives site-content access, but not to someone who left the team (issue #234)", () => {
-  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRoles: [role("core")] }), { kind: "member", siteContent: true });
-  assert.deepEqual(viewerStandingOf({ scopes: ["division"], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: false });
-  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRoles: [] }), { kind: "non-member", siteContent: false });
+  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRoles: [role("core")] }), { kind: "member", siteContent: true, approveOrders: false });
+  assert.deepEqual(viewerStandingOf({ scopes: ["division"], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: false, approveOrders: false });
+  assert.deepEqual(viewerStandingOf({ scopes: ["website"], activeRoles: [] }), { kind: "non-member", siteContent: false, approveOrders: false });
 });
 
 test("a head role is a department head, unless org or admin access makes them the operations lead (issue #230)", () => {
@@ -126,7 +126,7 @@ test("the team leader, the operations lead and the IT lead get full access from 
   ] as const;
   for (const [held, seat] of seats) {
     assert.equal(fullAccessSeatOf([held]), seat);
-    assert.deepEqual(viewerStandingOf({ scopes: [], activeRoles: [held] }), { kind: "operations-lead", seat, siteContent: false });
+    assert.deepEqual(viewerStandingOf({ scopes: [], activeRoles: [held] }), { kind: "operations-lead", seat, siteContent: false, approveOrders: false });
   }
 });
 
@@ -139,7 +139,7 @@ test("a division lead, a department head and a member hold no full-access seat (
 
 test("an admin or org scope row still gives full access, with no seat (issue #238)", () => {
   for (const scope of ["admin", "org"] as const) {
-    assert.deepEqual(viewerStandingOf({ scopes: [scope], activeRoles: [role("core", 3)] }), { kind: "operations-lead", seat: null, siteContent: false });
+    assert.deepEqual(viewerStandingOf({ scopes: [scope], activeRoles: [role("core", 3)] }), { kind: "operations-lead", seat: null, siteContent: false, approveOrders: false });
   }
 });
 

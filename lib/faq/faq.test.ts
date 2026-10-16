@@ -14,7 +14,7 @@ import { faqImportSql, importedFaqs } from "./import";
 // both sides of the dashboard data interface build. The draft and publish
 // step and the site order themselves are lib/content/content.test.ts's.
 
-const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false };
+const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const NOW = new Date("2026-10-16T09:00:00.000Z");
 const SEEDED = "2026-09-12T10:00:00.000Z";
 
@@ -83,12 +83,12 @@ test("reordering saves the new order, and /apply shows it, a question published 
 test("the FAQ page reaches full access and site-content access only, and the server refuses everyone else", async () => {
   const reaches: readonly [ViewerStanding, boolean][] = [
     [admin, true],
-    [{ kind: "operations-lead", seat: "it-lead", siteContent: false }, true],
-    [{ kind: "member", siteContent: true }, true],
-    [{ kind: "division-lead", siteContent: false }, false],
-    [{ kind: "department-head", siteContent: false }, false],
-    [{ kind: "member", siteContent: false }, false],
-    [{ kind: "non-member", siteContent: false }, false],
+    [{ kind: "operations-lead", seat: "it-lead", siteContent: false, approveOrders: false }, true],
+    [{ kind: "member", siteContent: true, approveOrders: false }, true],
+    [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
+    [{ kind: "department-head", siteContent: false, approveOrders: false }, false],
+    [{ kind: "member", siteContent: false, approveOrders: false }, false],
+    [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, allowed] of reaches) {
     const { store, editor } = editorOver(viewer);
