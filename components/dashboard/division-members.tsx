@@ -29,10 +29,11 @@ import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
 
 // A division's Members page for its lead (boards 61e to 61h2, issue #231):
-// everyone in the division with every division they are in as chips, their
-// role, phone (blurred until hover) and Discord, the people added by email
-// who wait for Confirm NDA, and the amber note that the site sends no
-// emails. A row opens the member panel (61f); its ⋯ menu removes the person
+// everyone in the division with every division they are in as chips and
+// their role, the people added by email who wait for Confirm NDA, and the
+// amber note that the site sends no emails. Phone and Discord are not in the
+// list; the member panel shows them (Owner decision, 2026-10-16, issue
+// #251). A row opens the member panel (61f); its ⋯ menu removes the person
 // from this division or records that they leave the team, and a waiting row's
 // menu cancels the add, each behind an "are you sure". The leads are
 // read-only here: only the head changes them.
@@ -183,7 +184,12 @@ export function PeopleTable({
   onAsk: (asking: Asking) => void;
   onFill: (waiting: WaitingPerson) => void;
   phoneCard: "chips" | "line";
-  /** A side panel is open: Phone and Discord give way (phoneColumn, discordColumn). */
+  /**
+   * A side panel is open: from xl it takes 428px of the page, which leaves the
+   * table about 520px wide at 1280, so Divisions and Role take the room they
+   * need (a department chip, the Confirm NDA button) and no cell runs into
+   * the next.
+   */
   drawerOpen: boolean;
 }) {
   const waitingRows = waitingDivision === null ? [] : waiting;
@@ -233,12 +239,6 @@ export function PeopleTable({
               <th scope="col" className={`${TH} w-[15%] ${drawerOpen ? "xl:w-[29%]" : ""}`}>
                 Role
               </th>
-              <th scope="col" className={`${TH} ${phoneColumn(drawerOpen)} w-[15%]`}>
-                Phone
-              </th>
-              <th scope="col" className={`${TH} ${discordColumn(drawerOpen)} w-[12%]`}>
-                Discord
-              </th>
               <th scope="col" className="w-14">
                 <span className="sr-only">Actions</span>
               </th>
@@ -255,7 +255,6 @@ export function PeopleTable({
                   onConfirm={() => onAsk({ kind: "nda", waiting: w, division: name })}
                   onFill={() => onFill(w)}
                   onCancel={() => onAsk({ kind: "cancel", waiting: w, short })}
-                  drawerOpen={drawerOpen}
                 />
               ))}
             {people.map((p) => (
@@ -268,7 +267,6 @@ export function PeopleTable({
                 onOpen={() => onOpen(p.id)}
                 onRemove={(r) => onAsk({ kind: "remove", person: p, divisionId: r.divisionId, short: r.short })}
                 onLeave={() => onAsk({ kind: "leave", person: p })}
-                drawerOpen={drawerOpen}
               />
             ))}
           </tbody>
@@ -308,22 +306,6 @@ function phoneLine(person: DivisionPerson): string {
   return [person.chips.map((c) => c.label).join(", "), role, `since ${person.since}`].filter(Boolean).join(" · ");
 }
 
-/**
- * Private data is blurred until hover (Owner decision, 2026-10-11), and
- * until keyboard focus, so it can be read without a mouse.
- */
-export function Private({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <span
-      tabIndex={0}
-      aria-label={label}
-      className={`inline-block max-w-full truncate rounded-sm align-middle blur-[5px] transition-[filter] duration-300 ease-out hover:blur-none focus-visible:blur-none ${FOCUS}`}
-    >
-      {children}
-    </span>
-  );
-}
-
 export function MailAvatar() {
   return (
     <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-muted">
@@ -353,24 +335,6 @@ export function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const DASH = <span className="text-dim">–</span>;
-
-// From xl an open side panel takes 428px of the page, which leaves the table
-// about 520px wide at 1280: too short for Phone and Discord. They go while it
-// is open, as Orders hides its Department column (board 61b, issue #244), and
-// Divisions and Role take the room they need there (a department chip, the
-// Confirm NDA button), so no cell runs into the next.
-
-/** The Phone column: from lg, and not while a side panel is open from xl. */
-function phoneColumn(drawerOpen: boolean): string {
-  return drawerOpen ? "hidden lg:table-cell xl:hidden" : "hidden lg:table-cell";
-}
-
-/** The Discord column: from xl, and not while a side panel is open. */
-function discordColumn(drawerOpen: boolean): string {
-  return drawerOpen ? "hidden" : "hidden xl:table-cell";
-}
-
 function WaitingRow({
   waiting,
   division,
@@ -378,12 +342,10 @@ function WaitingRow({
   onConfirm,
   onFill,
   onCancel,
-  drawerOpen,
 }: {
   waiting: WaitingPerson;
   division: DivisionMembers["division"];
   editable: boolean;
-  drawerOpen: boolean;
   onConfirm: () => void;
   onFill: () => void;
   onCancel: () => void;
@@ -403,8 +365,6 @@ function WaitingRow({
         <Chips chips={[{ divisionId: division.id, label: division.code ?? divisionLabel(division.name), code: division.code !== null }]} />
       </td>
       <td className="px-5 py-2.5">{editable ? <ConfirmNdaButton onClick={onConfirm} /> : <span className="text-[14px] text-prt-muted">Waiting</span>}</td>
-      <td className={`${phoneColumn(drawerOpen)} px-5 py-2.5 text-[14px]`}>{DASH}</td>
-      <td className={`${discordColumn(drawerOpen)} px-5 py-2.5 text-[14px]`}>{DASH}</td>
       <td className="pr-4 text-right">
         {editable && (
           <RowMenu label={`Actions for ${waiting.email}`}>
@@ -429,13 +389,11 @@ function PersonRow({
   onOpen,
   onRemove,
   onLeave,
-  drawerOpen,
 }: {
   person: DivisionPerson;
   removals: readonly DivisionRemoval[];
   selected: boolean;
   editable: boolean;
-  drawerOpen: boolean;
   onOpen: () => void;
   onRemove: (removal: DivisionRemoval) => void;
   onLeave: () => void;
@@ -462,10 +420,6 @@ function PersonRow({
         <Chips chips={person.chips} />
       </td>
       <td className={`truncate px-5 py-2.5 text-[14px] ${lead ? "text-accent" : "text-prt-text"}`}>{roleText(person)}</td>
-      <td className={`${phoneColumn(drawerOpen)} px-5 py-2.5 text-[14px] text-text-2`} onClick={(e) => e.stopPropagation()}>
-        {person.details.phone === "" ? DASH : <Private label={`Phone of ${person.name}, hover to show`}>{person.details.phone}</Private>}
-      </td>
-      <td className={`${discordColumn(drawerOpen)} truncate px-5 py-2.5 text-[14px] text-text-2`}>{person.details.discord || DASH}</td>
       <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
         {editable && !person.self ? (
           <RowMenu label={`Actions for ${person.name}`}>

@@ -1,22 +1,13 @@
-import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionHeader, type DivisionMembers, type DivisionPerson, type PersonRecord, type WaitingPerson } from "./division-members";
 import { divisionLabel, type Joining, type OrgChart, type Removal, type TeamActor } from "./team";
 
 // A department head's Members page (issue #235, boards 69 to 69c and 69m):
 // every division of the department as a tab, each the division page the lead
 // sees (./division-members.ts), plus "All divisions" with everyone in the
-// department once and "Closed" with the department's closed divisions. Both
-// sides of the data interface build it here from their own records.
-
-/** A closed division of the department, listed under the Closed tab. */
-export type ClosedDivision = {
-  readonly id: number;
-  /** "Wind Tunnel Division" */
-  readonly name: string;
-  readonly code: string | null;
-  /** "2025-06-30" */
-  readonly closedOn: string;
-};
+// department once. It holds no structure tools and no Closed tab: divisions
+// are created, edited and closed in the Team tree's edit view, and a closed
+// division never opens again (issue #251). Both sides of the data interface
+// build it here from their own records.
 
 /** "Remove from <division>" for one division of the department a person is in. */
 export type DivisionRemoval = {
@@ -39,17 +30,6 @@ export type DepartmentMembers = {
   readonly tabs: readonly DivisionMembers[];
   /** Everyone in the department's divisions, once each: leads first, then by division and name. */
   readonly everyone: readonly DepartmentPerson[];
-  readonly closed: readonly ClosedDivision[];
-  /**
-   * Whether the viewer may create, edit, close and reopen the department's
-   * divisions (`mayChangeDivision`): the "+ New division", "Edit division"
-   * and "Close division" entry points show only then.
-   */
-  readonly divisionTools: boolean;
-  /** Open positions per division id: Close division says how many will close (board 68c). */
-  readonly openPositions: Readonly<Record<number, number>>;
-  /** The code of every open division of the team: a division code is unique among them (#232). */
-  readonly takenCodes: readonly { readonly id: number; readonly name: string; readonly code: string | null }[];
 };
 
 /**
@@ -64,9 +44,6 @@ export function departmentMembers(input: {
   readonly selfId: number | null;
   readonly waiting: Readonly<Record<number, readonly WaitingPerson[]>>;
   readonly joining: Readonly<Record<number, readonly Joining[]>>;
-  readonly closed: readonly ClosedDivision[];
-  /** Open positions per division id; none counted when left out. */
-  readonly openPositions?: Readonly<Record<number, number>>;
 }): DepartmentMembers | null {
   const { org, departmentId, actor } = input;
   const department = org.departments.find((d) => d.id === departmentId);
@@ -89,10 +66,6 @@ export function departmentMembers(input: {
     department: { id: department.id, name: department.name },
     tabs,
     everyone: everyoneIn(tabs, divisionIds),
-    closed: input.closed,
-    divisionTools: mayManageDivisionsIn(actor, departmentId),
-    openPositions: input.openPositions ?? {},
-    takenCodes: org.divisions.map((d) => ({ id: d.id, name: d.name, code: d.code ?? null })),
   };
 }
 
@@ -126,8 +99,8 @@ export function departmentLine(page: Pick<DepartmentMembers, "department" | "eve
   return `${page.department.name} Department · ${people} ${people === 1 ? "person" : "people"} in ${divisions} ${divisions === 1 ? "division" : "divisions"}`;
 }
 
-/** The open tab: All divisions, one division (by id), or Closed. */
-export type DepartmentTab = { readonly kind: "all" } | { readonly kind: "division"; readonly divisionId: number } | { readonly kind: "closed" };
+/** The open tab: All divisions, or one division (by id). */
+export type DepartmentTab = { readonly kind: "all" } | { readonly kind: "division"; readonly divisionId: number };
 
 export const ALL_TAB: DepartmentTab = { kind: "all" };
 
@@ -137,7 +110,6 @@ export function tabKey(tab: DepartmentTab): string {
 }
 
 export function tabOfKey(key: string, page: Pick<DepartmentMembers, "tabs">): DepartmentTab {
-  if (key === "closed") return { kind: "closed" };
   const divisionId = Number(key.slice(1));
   return key.startsWith("d") && page.tabs.some((t) => t.division.id === divisionId) ? { kind: "division", divisionId } : ALL_TAB;
 }
@@ -145,11 +117,10 @@ export function tabOfKey(key: string, page: Pick<DepartmentMembers, "tabs">): De
 export type DepartmentTabOption = { readonly key: string; readonly label: string; readonly count: number };
 
 /**
- * The tabs (board 69): All divisions with everyone once, each division with
- * the people it lists (those waiting for their NDA included), then Closed
- * with the closed divisions.
+ * The tabs (board 69): All divisions with everyone once, then each division
+ * with the people it lists (those waiting for their NDA included).
  */
-export function departmentTabs(page: Pick<DepartmentMembers, "tabs" | "everyone" | "closed">): DepartmentTabOption[] {
+export function departmentTabs(page: Pick<DepartmentMembers, "tabs" | "everyone">): DepartmentTabOption[] {
   return [
     { key: tabKey(ALL_TAB), label: "All divisions", count: page.everyone.length },
     ...page.tabs.map((t) => ({
@@ -157,7 +128,6 @@ export function departmentTabs(page: Pick<DepartmentMembers, "tabs" | "everyone"
       label: divisionLabel(t.division.name),
       count: t.people.length + t.waiting.length,
     })),
-    { key: tabKey({ kind: "closed" }), label: "Closed", count: page.closed.length },
   ];
 }
 

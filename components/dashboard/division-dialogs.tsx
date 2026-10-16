@@ -2,20 +2,19 @@
 
 import { useState, useTransition } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { AlertTriangle, Briefcase, KeyRound, RotateCcw, Users } from "lucide-react";
+import { AlertTriangle, Briefcase, KeyRound, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { closeDivision } from "@/app/dashboard/team-actions";
-import type { ClosedDivision } from "@/lib/dashboard/department-members";
 import type { DivisionMembers } from "@/lib/dashboard/division-members";
-import { ConfirmDialog, SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
+import { SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 
-// Close division (board 68c) and Reopen (board 68e, with the Owner decision of
-// 2026-10-11 on #232). A division with anyone in it cannot close: the dialog
-// says so and offers Edit division in place of the way out. An empty one asks
-// "are you sure", since its open positions close and its division access goes.
-// Reopen leads into the Edit division drawer, and the division opens again
-// only when that drawer is saved with at least one lead.
+// Close division (board 68c, #232), opened from Edit division's footer in the
+// Team tree's edit view (#251). A division with anyone in it cannot close:
+// the dialog says so and offers Edit division in place of the way out. An
+// empty one asks "are you sure", since its open positions close, its division
+// access goes, and a closed division never opens again (board 68e is
+// dropped).
 
 /** "9 people to move", "2 open positions will close", "Division access goes away". */
 function Summary({ people, positions }: { people: number; positions: number }) {
@@ -83,7 +82,7 @@ export function CloseDivisionDialog({
           <p className="mt-2 text-[14px] leading-relaxed text-text-2">
             {blocked
               ? `${people} ${people === 1 ? "person is" : "people are"} still in this division. Remove them or add them to another division from Edit division first, then close it.`
-              : "Nobody is in this division. It moves to Closed, where it can be reopened."}
+              : "Nobody is in this division. Once closed, it cannot be reopened; its name stays in the team's history."}
           </p>
           <Summary people={people} positions={openPositions} />
           <div className={SHEET_BUTTONS}>
@@ -101,28 +100,5 @@ export function CloseDivisionDialog({
         </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
-  );
-}
-
-/**
- * Reopen (board 68e): an "are you sure", then the Edit division drawer for
- * the closed division. The board's line about picking a lead after the
- * reopen gives way to the Owner decision: the lead is picked first.
- */
-export function ReopenDialog({ closed, onClose, onReopen }: { closed: ClosedDivision | null; onClose: () => void; onReopen: (closed: ClosedDivision) => void }) {
-  const [shown, setShown] = useState(closed);
-  if (closed !== null && closed !== shown) setShown(closed);
-  return (
-    <ConfirmDialog
-      open={closed !== null}
-      onOpenChange={(next) => !next && onClose()}
-      icon={<RotateCcw className="h-5 w-5" strokeWidth={1.75} />}
-      tone="success"
-      title={`Reopen ${shown?.name ?? ""}?`}
-      description="It comes back with no members. Pick at least one lead in Edit division; it opens again when you save."
-      cancelLabel="Cancel"
-      confirmLabel="Reopen"
-      onConfirm={() => shown && onReopen(shown)}
-    />
   );
 }

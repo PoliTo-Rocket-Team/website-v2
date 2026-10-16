@@ -81,7 +81,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
   const db = getDb();
   const [departmentRows, divisionRows, roleRows, personRows, scopeRows] = await Promise.all([
     db
-      .select({ id: departments.id, name: departments.name })
+      .select({ id: departments.id, name: departments.name, code: departments.code })
       .from(departments)
       .where(isNull(departments.closedAt))
       .orderBy(asc(departments.id)),
@@ -132,7 +132,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
   ]);
   return {
     org: {
-      departments: departmentRows,
+      departments: departmentRows.map((d) => ({ id: d.id, name: d.name, code: d.code?.trim() || null })),
       divisions: divisionRows.flatMap((d) =>
         d.dept_id === null ? [] : [{ id: d.id, name: d.name, departmentId: d.dept_id, code: d.code?.trim() || null }],
       ),

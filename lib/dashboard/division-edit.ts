@@ -17,10 +17,13 @@ import {
   type TeamActor,
 } from "./team";
 
-// A department head creates, edits, closes and reopens the divisions of their
-// department (issue #232, boards 68b to 68e and 69d). Both sides of the data
-// interface run these checks, so the drawer's rules and the server's are one:
-// the drawer runs them first, and the server runs them again on every save.
+// A department head creates, edits and closes the divisions of their
+// department (issue #232, boards 68b to 68c and 69d), from the Team tree's
+// edit view (issue #251). A closed division never opens again (Owner
+// decision, 2026-10-16): no save here clears its `closed_at`. Both sides of
+// the data interface run these checks, so the drawer's rules and the
+// server's are one: the drawer runs them first, and the server runs them
+// again on every save.
 
 /** A division code: 2 or 3 letters, kept in capitals (Owner decision on #232). */
 const CODE = /^[A-Z]{2,3}$/;
@@ -66,8 +69,8 @@ export type OldLeadOutcome = (typeof OLD_LEAD_OUTCOMES)[number];
 /**
  * What New division and Edit division send. A replaced lead and a removed one
  * are the same to the server: an old lead with an outcome. Members and emails
- * are sent only by New division and Reopen: an open division adds its members
- * one by one, as the Members page does.
+ * are sent only by New division: an open division adds its members one by
+ * one, as the Members page does.
  */
 export type DivisionSave = {
   /** As typed, without "Division". */
@@ -108,22 +111,11 @@ export type TeamPerson = {
   readonly beyond: readonly RoleBeyondDivisions[];
 };
 
-/** The division a save is about: a new one in a department, an open one, or a closed one being reopened. */
-export type DivisionSubject =
-  | { readonly kind: "new"; readonly departmentId: number }
-  | { readonly kind: "open"; readonly division: OrgDivision }
-  | {
-      readonly kind: "closed";
-      readonly division: OrgDivision;
-      /**
-       * People whose lead or member role in it never ended (`isDivisionRole`;
-       * a seat kept on its row is not a role in it). Close division refuses
-       * while anyone is in it, but a division closed before that rule can
-       * still hold roles; the org chart leaves closed divisions out, so it is
-       * read here.
-       */
-      readonly stillIn: readonly number[];
-    };
+/**
+ * The division a save is about: a new one in a department, or an open one. A
+ * closed division is never a subject: no save opens it again.
+ */
+export type DivisionSubject = { readonly kind: "new"; readonly departmentId: number } | { readonly kind: "open"; readonly division: OrgDivision };
 
 /** What a checked save changes; each data source writes it in one go. */
 export type DivisionPlan = {
@@ -132,14 +124,6 @@ export type DivisionPlan = {
   readonly code: string;
   /** The code changed: the division's position codes read the new one from now on. */
   readonly codeChanged: boolean;
-  /**
-   * A closed division opens again with this save, or null. It comes back
-   * with no members (Owner decision, 2026-10-11): every role still active in
-   * it ends, its pending NDA adds and its division access go, and only the
-   * roles of `keep` stay, the leads this save picks who still held one there.
-   * Those are in `promote`, so nobody gets a second role in the division.
-   */
-  readonly reopen: { readonly keep: readonly number[] } | null;
   /** Members of the division who become its leads. */
   readonly promote: readonly number[];
   /** People not in the division who join it as leads, keeping their other divisions. */
@@ -150,9 +134,9 @@ export type DivisionPlan = {
   readonly leaveDivision: readonly number[];
   /** Old leads who leave the team: every role and every access ends, and they move to Alumni. */
   readonly leaveTeam: readonly number[];
-  /** People who join as members (New division and Reopen). */
+  /** People who join as members (New division). */
   readonly joinAsMember: readonly number[];
-  /** Emails new to the team: they wait for Confirm NDA in the division (New division and Reopen). */
+  /** Emails new to the team: they wait for Confirm NDA in the division (New division). */
   readonly emails: readonly string[];
 };
 
@@ -163,8 +147,8 @@ function no(error: string): Planned {
 }
 
 /**
- * Whether the actor may create, edit, close or reopen a division of the
- * department: its head, or the team leader (Owner decision, 2026-10-11).
+ * Whether the actor may create, edit or close a division of the department:
+ * its head, or the team leader and full access (Owner decision, 2026-10-11).
  */
 export function mayManageDivisionsIn(actor: TeamActor, departmentId: number): boolean {
   return actor.kind === "team" || (actor.kind === "head" && actor.departmentIds.includes(departmentId));
@@ -192,8 +176,8 @@ function pickError(person: TeamPerson | undefined): string | null {
  * - only the department's head or the team leader may make it;
  * - a name, and a code of 2 or 3 letters no other open division uses;
  * - leads are picked from the whole team and keep their other divisions;
- * - an open division always has at least one lead, so a create, an edit or a
- *   reopen that leaves none is refused;
+ * - an open division always has at least one lead, so a create or an edit
+ *   that leaves none is refused;
  * - an old lead leaves this division only when they are in another one or
  *   hold a seat (`mayLeaveDivision`), and leaves the team only when
  *   `mayLeaveTeam` allows it.
@@ -210,6 +194,7 @@ export function planDivisionSave(input: {
   const departmentId = subject.kind === "new" ? subject.departmentId : subject.division.departmentId;
   if (!org.departments.some((d) => d.id === departmentId)) return no("That department is closed.");
   if (subject.kind === "open") {
+    if (!org.divisions.some((d) => d.id === subject.division.id)) return no("That division is closed.");
     const may = mayChangeDivision(actor, subject.division.id, org);
     if (!may.allowed) return no(may.reason);
   } else {
@@ -226,10 +211,9 @@ export function planDivisionSave(input: {
   const byId = new Map(team.map((p) => [p.id, p]));
   const divisionId = subject.kind === "new" ? null : subject.division.id;
   const roleHere = (p: TeamPerson) => (divisionId === null ? null : roleIn(p.memberships, divisionId));
-  const leads = subject.kind === "open" ? team.filter((p) => roleHere(p) === "lead").map((p) => p.id) : [];
-  const stillIn = subject.kind === "closed" ? subject.stillIn : [];
-  /** A role here this save turns into a lead's: a member of an open division, or a role a closed one still holds. */
-  const holdsRole = (personId: number) => roleHere(byId.get(personId)!) === "member" || stillIn.includes(personId);
+  const leads = team.filter((p) => roleHere(p) === "lead").map((p) => p.id);
+  /** A role here this save turns into a lead's: a member of the division. */
+  const holdsRole = (personId: number) => roleHere(byId.get(personId)!) === "member";
 
   const newLeads = [...new Set(save.newLeads)];
   const oldIds = save.oldLeads.map((o) => o.personId);
@@ -282,7 +266,6 @@ export function planDivisionSave(input: {
       name: storedDivisionName(save.name),
       code: save.code,
       codeChanged: subject.kind === "open" && normalizeDivisionCode(subject.division.code ?? "") !== save.code,
-      reopen: subject.kind === "closed" ? { keep: newLeads.filter((p) => stillIn.includes(p)) } : null,
       promote: newLeads.filter(holdsRole),
       joinAsLead: newLeads.filter((p) => !holdsRole(p)),
       demote,
@@ -326,7 +309,7 @@ export type DivisionRow = {
  * The people in the division, each once, out of the active rows kept on it:
  * only a lead or member row makes someone in it (`isDivisionRole`). A seat row
  * kept on the division (the team leader's or a head's) does not, so Close
- * counts the same people the dialog lists, and a reopen clears the same people.
+ * counts the same people the dialog lists.
  */
 export function peopleInDivision(divisionId: number, held: readonly DivisionRow[]): number[] {
   return [...new Set(held.filter((r) => isDivisionRole({ type: r.type, divisionId })).map((r) => r.memberId))];
@@ -334,7 +317,7 @@ export function peopleInDivision(divisionId: number, held: readonly DivisionRow[
 
 /** The rows of the division a plan's writes end or change, by row id. */
 export type DivisionRowWrites = {
-  /** Rows that end: on a reopen everyone's but the kept leads', and the old leads who leave this division. */
+  /** Rows that end: the old leads who leave this division. */
   readonly end: readonly number[];
   /** Rows that become a lead's. */
   readonly toLead: readonly number[];
@@ -346,16 +329,14 @@ export type DivisionRowWrites = {
  * The rows a checked plan ends or changes in its division, out of the active
  * rows kept on it. Only lead and member rows are touched (`isDivisionRole`):
  * the team leader or a head whose seat row is kept on the division keeps that
- * seat through a reopen, a promote, a demote and a leave (#232, review round
- * 3). Leaving the team is not here: it ends every role, as Leaves the team does.
+ * seat through a promote, a demote and a leave (#232, review round 3).
+ * Leaving the team is not here: it ends every role, as Leaves the team does.
  */
 export function divisionRowWrites(plan: DivisionPlan, divisionId: number, held: readonly DivisionRow[]): DivisionRowWrites {
   const rows = held.filter((r) => isDivisionRole({ type: r.type, divisionId }));
   const of = (people: readonly number[]) => rows.filter((r) => people.includes(r.memberId));
-  const keep = plan.reopen?.keep;
-  const cleared = keep === undefined ? [] : rows.filter((r) => !keep.includes(r.memberId));
   return {
-    end: [...new Set([...cleared, ...of(plan.leaveDivision)].map((r) => r.id))],
+    end: of(plan.leaveDivision).map((r) => r.id),
     toLead: of(plan.promote).map((r) => r.id),
     toMember: of(plan.demote)
       .filter((r) => r.type === "lead")
@@ -375,6 +356,8 @@ export type TeamPick = {
   /** "Member", "Lead · Parachutes" for someone who leads a division, or their seat: "Team Leader", "Head of Recovery". */
   readonly role: string;
   readonly divisionIds: readonly number[];
+  /** They hold a role beyond every division (team leader, board seat, head): New department cannot make them a head too. */
+  readonly seated: boolean;
 };
 
 /** What a picker's field finds as the actor types. */
@@ -402,6 +385,7 @@ function pickOf(person: TeamPerson, org: OrgChart): TeamPick {
     place: home === null || !department ? null : `${department.name} · ${label(home)}`,
     role: seat !== undefined ? beyondTitle(seat, org) : ledLabel === null ? "Member" : `Lead · ${ledLabel}`,
     divisionIds: person.memberships.map((m) => m.divisionId),
+    seated: seat !== undefined,
   };
 }
 

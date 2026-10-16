@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronDown, LocateFixed, Maximize2, Minus, Plus } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, LocateFixed, Maximize2, Minus, Pencil, Plus } from "lucide-react";
 import { BOARD_SEAT_TITLES, divisionLabel, matchesQuery, type TeamTree, type TreePerson } from "@/lib/dashboard/team";
 import { boxOf, layoutTeamTree, type Box, type TreeLayout, type TreeNode } from "@/lib/dashboard/tree-layout";
 import { Avatar } from "./avatar";
@@ -13,10 +14,15 @@ import { SearchField } from "./directory";
 // centred on the viewer's department. On phones it is board 54c-m: the same
 // tree top-down and indented, each head and lead folding open in place, the
 // viewer's department and division open first. Both draw the viewer's path
-// from the leader down in accent and mark the viewer "you".
+// from the leader down in accent and mark the viewer "you". The team leader,
+// full access and a department head get one Edit button in the header
+// (boards 77 and 66t, issue #251), which opens the edit view
+// (./team-tree-edit.tsx); a division lead and a member get none.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const PILL = `inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-hairline px-3.5 text-[14px] font-medium text-prt-text transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`;
+/** Edit (boards 77, 66t): the outlined pill beside Find someone. */
+const EDIT_PILL = `inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-white-10 px-4 text-[14px] font-medium text-prt-text transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`;
 
 function everyone(tree: TeamTree): TreePerson[] {
   return [
@@ -32,7 +38,7 @@ function everyone(tree: TeamTree): TreePerson[] {
 /** A request to bring someone into view; the counter makes asking twice for one person move the view again. */
 type Target = { readonly personId: number; readonly ask: number };
 
-export function TeamTreeView({ tree }: { tree: TeamTree }) {
+export function TeamTreeView({ tree, editHref = null }: { tree: TeamTree; /** The edit view, for a viewer who edits structure; null for anyone else. */ editHref?: string | null }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<number | null>(null);
   const [target, setTarget] = useState<Target | null>(null);
@@ -69,6 +75,12 @@ export function TeamTreeView({ tree }: { tree: TeamTree }) {
               <LocateFixed aria-hidden className="h-4 w-4" strokeWidth={1.75} />
               Show me
             </button>
+          )}
+          {editHref !== null && (
+            <Link href={editHref} className={EDIT_PILL}>
+              <Pencil aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              Edit
+            </Link>
           )}
         </div>
       </div>

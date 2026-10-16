@@ -71,39 +71,29 @@ test("a division code is 2 or 3 letters, unique among open divisions; its own co
   assert.equal(plan({ code: "DM" }).ok, false, "unique across departments too");
 });
 
-test("only the department's head or the team leader may create, edit, close or reopen a division", () => {
+test("only the department's head, the team leader or full access may create, edit or close a division", () => {
   assert.ok(plan({}).ok);
   assert.ok(plan({}, missionAnalysis, { kind: "team" }).ok);
   assert.equal(plan({}, missionAnalysis, { kind: "lead", divisionIds: [1] }).ok, false, "not even its own lead");
   assert.equal(plan({}, missionAnalysis, { kind: "head", departmentIds: [2] }).ok, false, "not another department's head");
   const create = { name: "Flight Dynamics", code: "FD", newLeads: [3] };
   assert.equal(plan(create, { kind: "new", departmentId: 1 }, { kind: "head", departmentIds: [2] }).ok, false);
-  assert.equal(plan(create, { kind: "closed", division: { id: 9, name: "Wind Tunnel Division", departmentId: 1, code: "WT" }, stillIn: [] }, { kind: "lead", divisionIds: [1] }).ok, false);
+  assert.ok(plan(create, { kind: "new", departmentId: 1 }).ok, "the head of its own department");
+  assert.equal(plan(create, { kind: "new", departmentId: 1 }, { kind: "lead", divisionIds: [1] }).ok, false);
   assert.equal(closeRefusal({ kind: "lead", divisionIds: [1] }, org, 1, { people: 0, waiting: 0 }), "Leads are changed by the Head of Aerodynamics");
   assert.equal(closeRefusal({ kind: "head", departmentIds: [2] }, org, 1, { people: 0, waiting: 0 }), "Only the team leader can do this");
 });
 
-test("an open division always keeps a lead: an edit, a create or a reopen with none is refused", () => {
+test("an open division always keeps a lead: an edit or a create with none is refused", () => {
   const both = plan({ oldLeads: [{ personId: 1, outcome: "member" }, { personId: 2, outcome: "member" }] });
   assert.deepEqual(both, { ok: false, error: "A division needs at least one lead." });
   assert.equal(plan({ name: "Flight Dynamics", code: "FD" }, { kind: "new", departmentId: 1 }).ok, false);
-  const windTunnel: DivisionSubject = { kind: "closed", division: { id: 9, name: "Wind Tunnel Division", departmentId: 1, code: "WT" }, stillIn: [] };
-  assert.equal(plan({ name: "Wind Tunnel", code: "WT" }, windTunnel).ok, false);
-  const reopened = plan({ name: "Wind Tunnel", code: "WT", newLeads: [3] }, windTunnel);
-  assert.ok(reopened.ok && reopened.plan.reopen !== null && reopened.plan.joinAsLead.join() === "3" && reopened.plan.joinAsMember.length === 0);
 });
 
-test("a reopen ends every role a closed division still holds, but keeps the picked lead's as their lead role", () => {
-  // Closed before Close division refused while people were in it: Sara and Davide still hold roles there.
-  const held: DivisionSubject = { kind: "closed", division: { id: 9, name: "Wind Tunnel Division", departmentId: 1, code: "WT" }, stillIn: [3, 5] };
-  const result = plan({ name: "Wind Tunnel", code: "WT", newLeads: [3, 4], members: [5] }, held);
-  assert.ok(result.ok);
-  assert.deepEqual(result.plan.reopen, { keep: [3] }, "every other role there ends, Davide's included");
-  assert.deepEqual(result.plan.promote, [3], "Sara's role there becomes a lead's, not a second role");
-  assert.deepEqual(result.plan.joinAsLead, [4]);
-  assert.deepEqual(result.plan.joinAsMember, [5], "a member picked again joins fresh after the old role ends");
-  const edit = plan({});
-  assert.ok(edit.ok && edit.plan.reopen === null, "an edit of an open division reopens nothing");
+test("a closed division never opens again: a save on a division off the chart is refused, even with a lead (#251)", () => {
+  const windTunnel: DivisionSubject = { kind: "open", division: { id: 9, name: "Wind Tunnel Division", departmentId: 1, code: "WT" } };
+  assert.deepEqual(plan({ name: "Wind Tunnel", code: "WT", newLeads: [3] }, windTunnel), { ok: false, error: "That division is closed." });
+  assert.deepEqual(plan({ name: "Wind Tunnel", code: "WT", newLeads: [3] }, windTunnel, { kind: "team" }), { ok: false, error: "That division is closed." });
 });
 
 test("a lead picked from another division joins as a lead; a member here is promoted", () => {
@@ -183,12 +173,6 @@ test("every division write touches only lead and member rows: a seat kept on the
   assert.ok(picked.ok && picked.plan.joinAsLead.join() === "6");
   assert.deepEqual(divisionRowWrites(picked.plan, 1, seatOnly), { end: [], toLead: [], toMember: [] });
   assert.deepEqual(divisionRowWrites({ ...picked.plan, joinAsLead: [], promote: [6, 7] }, 1, seatRows).toLead, [105], "a seat row never becomes a lead's");
-
-  // Reopen: every lead and member row the closed division still holds ends but the kept lead's; the seats stay.
-  const windTunnel: DivisionSubject = { kind: "closed", division: { id: 9, name: "Wind Tunnel Division", departmentId: 1, code: "WT" }, stillIn: [1, 3, 6] };
-  const reopened = plan({ name: "Wind Tunnel", code: "WT", newLeads: [3, 6] }, windTunnel);
-  assert.ok(reopened.ok);
-  assert.deepEqual(divisionRowWrites(reopened.plan, 9, seatRows), { end: [101], toLead: [103, 105], toMember: [] }, "rows 104 and 106 are never in a write");
 });
 
 test("a code change is planned as one, and the name is kept with 'Division'", () => {

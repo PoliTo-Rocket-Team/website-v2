@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Layers, Pencil, Plus, RotateCcw } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import {
   addMemberDivisions,
   ALL_TAB,
@@ -9,40 +9,29 @@ import {
   departmentTabs,
   tabKey,
   tabOfKey,
-  type ClosedDivision,
   type DepartmentMembers,
   type DepartmentTab,
   type DivisionRemoval,
 } from "@/lib/dashboard/department-members";
 import { matchesPerson, type DivisionHeader, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
 import { divisionLabel } from "@/lib/dashboard/team";
-import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { FilterMenu } from "./controls";
 import { SearchField, Tabs } from "./directory";
 import { Chips } from "./division-chips";
 import { JoiningBanner, matchesWaiting, MemberDialogs, NoEmailNote, PeopleTable, type Asking } from "./division-members";
-import { CloseDivisionDialog, ReopenDialog } from "./division-dialogs";
-import { DivisionDrawer, type DivisionDrawerTarget } from "./division-drawer";
 import { DrawerPage } from "./drawer";
 import { AddMemberDrawer, EditDetailsDrawer, PersonDrawer, type EditTarget } from "./member-panels";
-import { EYEBROW, GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
+import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
 
-// A department head's Members page (issue #235): tabs for All divisions, each
-// division and Closed (board 69); a division tab adds the division bar with
-// its leads and the division tools (69b); Add member starts with a Division
-// select (69c); on a phone the tabs are one select chip (69m). Everything a
-// row does is the lead's page's (./division-members.tsx, #231). "+ New
-// division", "Edit division", "Close division" and "Reopen" open the division
-// drawer and dialogs of #232 (./division-drawer.tsx, ./division-dialogs.tsx).
-
-/** Which division drawer is open: New division, Edit division for an open one, or the reopen of a closed one. */
-type DrawerState = { readonly kind: "new" } | { readonly kind: "edit"; readonly divisionId: number } | { readonly kind: "reopen"; readonly closed: ClosedDivision };
-
-const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-
-const DANGER_PILL = `inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-full border border-danger/50 px-3.5 text-[13px] font-medium text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 ${FOCUS}`;
+// A department head's Members page (issue #235): tabs for All divisions and
+// each division (board 69); a division tab adds the division bar with its
+// leads (69b); Add member starts with a Division select (69c); on a phone the
+// tabs are one select chip (69m). Everything a row does is the lead's page's
+// (./division-members.tsx, #231). It holds no structure tools: divisions are
+// created, edited and closed in the Team tree's edit view (issue #251,
+// ./team-tree-edit.tsx), and a closed division is listed nowhere.
 
 export function DepartmentMembersView({ page, editable }: { page: DepartmentMembers; editable: boolean }) {
   const [tab, setTab] = useState<DepartmentTab>(ALL_TAB);
@@ -53,19 +42,15 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
   const [editDivision, setEditDivision] = useState<DivisionHeader | null>(null);
   const [adding, setAdding] = useState(false);
   const [asking, setAsking] = useState<Asking | null>(null);
-  const [drawer, setDrawer] = useState<DrawerState | null>(null);
-  const [closing, setClosing] = useState<number | null>(null);
-  const [reopening, setReopening] = useState<ClosedDivision | null>(null);
 
   const current = tab.kind === "division" ? (page.tabs.find((t) => t.division.id === tab.divisionId) ?? null) : null;
   const listed: readonly DivisionPerson[] = current?.people ?? page.everyone;
   const people = listed.filter((p) => matchesPerson(p, query));
   const waiting = (current?.waiting ?? []).filter((w) => matchesWaiting(w, query));
-  const open = tab.kind === "closed" ? null : (listed.find((p) => p.id === openId) ?? null);
+  const open = listed.find((p) => p.id === openId) ?? null;
   const removals = useMemo(() => new Map(page.everyone.map((p) => [p.id, p.removals])), [page.everyone]);
   const joining = (current ? [current] : tab.kind === "all" ? page.tabs : []).flatMap((t) => t.joining.map((j) => ({ joining: j, division: t.division.name })));
   const add = addMemberDivisions(page, tab);
-  const tools = editable && page.divisionTools;
 
   /** The division a row's Edit details sets the role in: the open tab's, else the person's first in the department. */
   const divisionFor = (person: DivisionPerson): DivisionHeader | null =>
@@ -90,37 +75,7 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
   };
 
   const options = departmentTabs(page);
-  const newDivision = tools ? (
-    <button
-      type="button"
-      onClick={() => setDrawer({ kind: "new" })}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`}
-    >
-      <Plus aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-      New division
-    </button>
-  ) : null;
-
-  // The drawer reads the division from the page, so a change made in it (Add member, Confirm NDA) shows at once.
-  const editedTab = drawer?.kind === "edit" ? (page.tabs.find((t) => t.division.id === drawer.divisionId) ?? null) : null;
-  const drawerTarget: DivisionDrawerTarget | null =
-    drawer === null
-      ? null
-      : drawer.kind === "new"
-        ? { kind: "new", department: page.department }
-        : drawer.kind === "reopen"
-          ? { kind: "reopen", closed: drawer.closed }
-          : editedTab
-            ? { kind: "edit", tab: editedTab }
-            : null;
-  const closingTab = closing === null ? null : (page.tabs.find((t) => t.division.id === closing) ?? null);
-  const fillFromDrawer = (w: WaitingPerson, division: DivisionMembers) => {
-    setDrawer(null);
-    setEditDivision(division.division);
-    setEditing({ kind: "waiting", waiting: w });
-  };
-
-  const drawerOpen = open !== null || editing !== null || adding || drawerTarget !== null;
+  const drawerOpen = open !== null || editing !== null || adding;
 
   return (
     <DrawerPage drawerOpen={drawerOpen}>
@@ -163,39 +118,25 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
               options={options.slice(1).map((o) => ({ value: o.key, label: o.label }))}
             />
           </div>
-          {newDivision}
         </div>
-        {tab.kind !== "closed" && (
-          <SearchField value={query} onChange={setQuery} placeholder="Search name, email, phone" className="hidden md:flex md:w-[240px]" />
-        )}
+        <SearchField value={query} onChange={setQuery} placeholder="Search name, email, phone" className="hidden md:flex md:w-[240px]" />
       </div>
 
-      {current && (
-        <DivisionBar
-          tab={current}
-          tools={tools}
-          onEdit={() => setDrawer({ kind: "edit", divisionId: current.division.id })}
-          onClose={() => setClosing(current.division.id)}
-        />
-      )}
+      {current && <DivisionBar tab={current} />}
 
-      {tab.kind === "closed" ? (
-        <ClosedList closed={page.closed} tools={tools} onReopen={setReopening} />
-      ) : (
-        <PeopleTable
-          people={people}
-          waiting={waiting}
-          waitingDivision={current?.division ?? null}
-          editable={editable}
-          openId={openId}
-          onOpen={setOpenId}
-          removalsOf={removalsOf}
-          onAsk={setAsking}
-          onFill={fillDetails}
-          phoneCard="line"
-          drawerOpen={drawerOpen}
-        />
-      )}
+      <PeopleTable
+        people={people}
+        waiting={waiting}
+        waitingDivision={current?.division ?? null}
+        editable={editable}
+        openId={openId}
+        onOpen={setOpenId}
+        removalsOf={removalsOf}
+        onAsk={setAsking}
+        onFill={fillDetails}
+        phoneCard="line"
+        drawerOpen={drawerOpen}
+      />
 
       {current?.waiting.map((w) => (
         <NoEmailNote key={w.joinId} waiting={w} editable={editable} onFill={() => fillDetails(w)} />
@@ -211,34 +152,12 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
         />
       )}
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
-      {tools && (
-        <>
-          <DivisionDrawer target={drawerTarget} takenCodes={page.takenCodes} editable={editable} onClose={() => setDrawer(null)} onFill={fillFromDrawer} />
-          <CloseDivisionDialog
-            tab={closingTab}
-            openPositions={closing === null ? 0 : (page.openPositions[closing] ?? 0)}
-            onClose={() => setClosing(null)}
-            onEdit={() => {
-              setClosing(null);
-              if (closingTab) setDrawer({ kind: "edit", divisionId: closingTab.division.id });
-            }}
-          />
-          <ReopenDialog
-            closed={reopening}
-            onClose={() => setReopening(null)}
-            onReopen={(closed) => {
-              setReopening(null);
-              setDrawer({ kind: "reopen", closed });
-            }}
-          />
-        </>
-      )}
     </DrawerPage>
   );
 }
 
-/** Board 69b: the open division's code and name, its leads, and Edit division and Close division for whoever may change it. */
-function DivisionBar({ tab, tools, onEdit, onClose }: { tab: DivisionMembers; tools: boolean; onEdit: () => void; onClose: () => void }) {
+/** Board 69b: the open division's code and name, and its leads. */
+function DivisionBar({ tab }: { tab: DivisionMembers }) {
   const { division } = tab;
   const leads = tab.people.filter((p) => p.role === "lead");
   return (
@@ -261,42 +180,6 @@ function DivisionBar({ tab, tools, onEdit, onClose }: { tab: DivisionMembers; to
           </span>
         </>
       )}
-      {tools && (
-        <span className="flex items-center gap-2 md:ml-auto">
-          <button type="button" onClick={onEdit} className={GHOST_PILL}>
-            <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Edit division
-          </button>
-          <button type="button" onClick={onClose} className={DANGER_PILL}>
-            Close division
-          </button>
-        </span>
-      )}
     </section>
-  );
-}
-
-/** The Closed tab: the department's closed divisions, each with the day it closed and Reopen for whoever may reopen it. */
-function ClosedList({ closed, tools, onReopen }: { closed: readonly ClosedDivision[]; tools: boolean; onReopen: (division: ClosedDivision) => void }) {
-  const thisYear = new Date().getUTCFullYear();
-  if (closed.length === 0) return <p className={`${PANEL} mt-4 px-5 py-6 text-[14px] text-prt-muted`}>No closed divisions.</p>;
-  return (
-    <ul aria-label="Closed divisions" className={`${PANEL} mt-4 divide-y divide-hairline`}>
-      {closed.map((d) => (
-        <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
-          {d.code !== null && <Chips chips={[{ divisionId: d.id, label: d.code, code: true }]} />}
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[15px] text-prt-text">{d.name}</span>
-            <span className="block text-[13px] text-prt-muted">Closed on {shortDate(d.closedOn, thisYear)}</span>
-          </span>
-          {tools && (
-            <button type="button" onClick={() => onReopen(d)} className={GHOST_PILL}>
-              <RotateCcw aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Reopen
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }

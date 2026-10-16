@@ -309,11 +309,10 @@ function departmentPage(directory: MemberDirectory) {
   return directory;
 }
 
-test("the department head's Members page holds their department's divisions, and its closed one (#235)", async () => {
+test("the department head's Members page holds their department's open divisions, and no closed one (#235, #251)", async () => {
   const page = departmentPage(await pages("department-head").view.members());
   assert.equal(page.department.name, "Aerodynamics");
-  assert.deepEqual(page.tabs.map((t) => t.division.code), ["MA", "OA"]);
-  assert.deepEqual(page.closed.map((d) => d.name), ["Wind Tunnel Division"]);
+  assert.deepEqual(page.tabs.map((t) => t.division.code), ["MA", "OA"], "Wind Tunnel is closed and listed nowhere");
   assert.equal(new Set(page.everyone.map((p) => p.id)).size, page.everyone.length, "everyone once");
   assert.ok(page.everyone.some((p) => p.name === "Matteo Greco"), "in Optimization and Analysis beside Structures");
   assert.ok(!page.everyone.some((p) => p.name === "Federica Leone"), "nobody from Structures alone");
