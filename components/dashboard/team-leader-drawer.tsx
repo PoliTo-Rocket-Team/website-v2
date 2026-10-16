@@ -115,8 +115,8 @@ export function TeamLeaderDrawer({ open, leader, onClose }: { open: boolean; lea
         <p className="mt-6 flex gap-3 rounded-xl border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
           <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
           <span>
-            Only you can hand over this role. {next?.name ?? "The person you pick"} becomes Team Leader when you save, and only they can approve orders from
-            then on.
+            Only you can hand over this role. {next?.name ?? "The person you pick"} becomes Team Leader when you save. From then on they approve orders, along
+            with anyone they give Approve orders.
           </span>
         </p>
       </PanelBody>
