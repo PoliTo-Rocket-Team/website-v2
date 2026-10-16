@@ -6,10 +6,13 @@ The dummy set that `pnpm db:seed` loads into a local database and into the one N
 
 - `pnpm db:seed` runs [db/seed.ts](../db/seed.ts). It checks the target first, then runs every module in [db/seed/registry.ts](../db/seed/registry.ts) in one transaction: each module's reset (last module first), then each module's insert (in order). Running it twice leaves the same rows, including columns a default or a trigger fills. It leaves the audit table `logs` empty.
 - `pnpm db:seed --check` runs the target check alone and writes nothing.
-- The check reads `DATABASE_URL` and allows only two targets:
+- The check reads `DATABASE_URL` and allows only these targets:
   - a local database (`localhost`, `127.x.x.x` or `::1`);
-  - a Neon branch whose name starts with `preview/` and that the Neon API reports as neither the default branch nor protected. This needs `NEON_API_KEY` and `NEON_PROJECT_ID`.
-- It refuses everything else: production, a Vercel production build, any host it cannot classify, and any Neon branch it cannot read or that is not a preview branch. No variable or flag turns a refusal into a pass. The rules are in [lib/seed/target.ts](../lib/seed/target.ts).
+  - a Neon branch whose name starts with `preview/` and that the Neon API reports as neither the default branch nor protected;
+  - the shared Neon branch named `preview`, on the same Neon terms, and only on a Vercel preview build (`VERCEL_ENV` is `preview`).
+  The Neon targets need `NEON_API_KEY` and `NEON_PROJECT_ID`.
+- It refuses everything else: production, a Vercel production build, any host it cannot classify, any Neon branch it cannot read or that is not a preview branch, and the `preview` branch outside a preview build. No variable or flag turns a refusal into a pass. The rules are in [lib/seed/target.ts](../lib/seed/target.ts).
+- A preview build seeds the `preview` branch itself: `pnpm build` runs [db/preview-build.ts](../db/preview-build.ts) before `next build`. On a Vercel preview build given a `DATABASE_URL`, it checks the target, then migrates and re-seeds it under a Postgres advisory lock, so concurrent preview builds take turns. Production and development builds, local builds and a preview with no database skip it. A refusal or failure fails the preview build.
 - No agent runs the seed or a migration against any real database.
 
 ## Row format
@@ -80,4 +83,4 @@ This is an owner action. Agents never change a Vercel, Neon or repository settin
 3. **Preview-only connection strings.** In Vercel, **Project → Settings → Environment Variables**, `DATABASE_URL` (the pooled string) and `DATABASE_URL_UNPOOLED` (the direct string) point at the `preview` branch, with only the **Preview** environment ticked. No production connection string is set for Preview.
 4. **The guard's two variables, Preview only.** The seed's target check reads `NEON_PROJECT_ID` (the project id from the Neon console) and `NEON_API_KEY` (a project-scoped API key), set with only **Preview** ticked and never **Production**. The 2026-10-16 setup record does not say whether these two are set.
 
-Every preview deployment shares the `preview` branch. Each preview build migrates it and re-seeds it, so it holds only the dummy set, never production rows, and the last preview build's seed is what every preview reads. Wiring migrate and seed into the preview build, and letting the target check accept the branch named `preview`, is the preview-switch slice, [#307](https://github.com/PoliTo-Rocket-Team/website-v2/issues/307). Today the check accepts only branches named `preview/…`, and previews keep reading the dummy arrays in `lib/dummy-data/` until that slice lands.
+Every preview deployment shares the `preview` branch. Each preview build migrates it and re-seeds it, so it holds only the dummy set, never production rows, and the last preview build's seed is what every preview reads. A preview's changes last only until the next preview build, and a pull request's migration reaches the shared branch before it merges. On a preview with this database, the pages read it, and the test developer's viewers are the seeded people in [lib/test-viewer-people.ts](../lib/test-viewer-people.ts); a test developer's writes are refused. A preview with no `DATABASE_URL` keeps reading the dummy arrays in `lib/dummy-data/`.

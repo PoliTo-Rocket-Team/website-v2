@@ -13,7 +13,12 @@ import {
   testDeveloperSignInHref,
   testDeveloperSignOut,
   testDeveloperViewer,
+  auditWriterOf,
+  testDeveloperStandIn,
+  TestDeveloperWriteRefused,
 } from "./test-developer";
+import { TEST_VIEWERS } from "./dashboard/viewer";
+import { TEST_VIEWER_PEOPLE } from "./test-viewer-people";
 
 const PRODUCTION = { NODE_ENV: "production", VERCEL_ENV: "production" };
 const PREVIEW = { NODE_ENV: "production", VERCEL_ENV: "preview" };
@@ -135,4 +140,31 @@ test("sign-out clears the cookie and the dummy team's changes, and goes to /logi
   assert.match(cleared[1] ?? "", new RegExp(`^${TEST_DEVELOPER_STATE_COOKIE}=;.*Max-Age=0`));
   assert.match(cleared[2] ?? "", new RegExp(`^${TEST_DEVELOPER_EDITS_COOKIE}=;.*Max-Age=0`));
   assert.match(cleared[4] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=;.*Max-Age=0`));
+});
+
+const DB = "postgresql://app@ep-cool-darkness-123456-pooler.eu-central-1.aws.neon.tech/neondb";
+
+test("on a preview with its seeded database, each viewer is read as its seeded person", () => {
+  for (const viewer of TEST_VIEWERS) {
+    assert.deepEqual(
+      testDeveloperStandIn(viewer, { ...PREVIEW, DATABASE_URL: DB }),
+      { viewer, userId: TEST_VIEWER_PEOPLE[viewer] },
+      viewer,
+    );
+  }
+  assert.equal(testDeveloperStandIn("not-a-viewer", { ...PREVIEW, DATABASE_URL: DB }), null);
+  assert.equal(testDeveloperStandIn(undefined, { ...PREVIEW, DATABASE_URL: DB }), null);
+});
+
+test("a test developer is read as no one where pages read the dummy arrays or the gate is off", () => {
+  assert.equal(testDeveloperStandIn("member", PREVIEW), null, "preview with no database: the dummy dashboard serves it");
+  assert.equal(testDeveloperStandIn("member", LOCAL_DEV), null, "next dev with no database");
+  assert.equal(testDeveloperStandIn("member", { ...PRODUCTION, DATABASE_URL: DB }), null, "production");
+  assert.equal(testDeveloperStandIn("member", { NODE_ENV: "production", DATABASE_URL: DB }), null, "local production build");
+});
+
+test("an audited write is logged under the account, and a test developer's write is refused before it is sent", () => {
+  assert.equal(auditWriterOf({ session: "account", id: "u1" }), "u1");
+  assert.equal(auditWriterOf(null), null);
+  assert.throws(() => auditWriterOf({ session: "test-developer", id: TEST_VIEWER_PEOPLE.member }), TestDeveloperWriteRefused);
 });

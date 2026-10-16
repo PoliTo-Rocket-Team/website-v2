@@ -655,14 +655,17 @@ and 67m).
 
 ## 5. Data and testing
 
-- Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
+- A preview with a database reads the shared, seeded `preview` branch (ADR 0016): a test
+  developer there is read as the viewer's seeded person, and every write they try is refused.
+  The dummy data, and the cookie that keeps a test developer's changes, apply only where no
+  database is configured (`next dev` without one). Both offer the "Sign in as test
   developer" switch, with seven people: team leader, operations lead, department head, division
   lead, member, alumni and non-member. The alumni viewer is a former member with three years of
   ended roles, an Alumni entry, one application decided within the last month and one decided
   before it (#317). The operations lead there sits in the operations lead's seat, so
   they have full access and do not decide orders; the team leader decides orders and gives
-  "Approve orders" (#247), and sees boards 72 to 73c (#252). "Approve orders" given or removed
-  there is kept until sign out, so after switching to the member it went to, that member reaches
+  "Approve orders" (#247), and sees boards 72 to 73c (#252). On dummy data, "Approve orders" given or
+  removed is kept until sign out, so after switching to the member it went to, that member reaches
   Orders and decides there (#270).
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
@@ -691,9 +694,11 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - A logo is an 8-bit PNG of at most 1 MB. It is measured on upload: one too dark for the page is
   saved with the dark flag, and the panel and the public pages draw it white.
 - Remove asks "are you sure" first. It removes the partner and its draft at once.
-- Previews never touch a database: a test developer's partner changes stay in a cookie in their
-  own browser until they sign out, and a logo they upload is not kept. The public pages there show
-  the partners as they were before the switch.
+- On a preview with a database, a test developer reads the seeded `preview` branch as the
+  viewer's seeded person, and their partner changes are refused. Only where no database is
+  configured do their partner changes stay in a cookie in their own browser until they sign out,
+  and a logo they upload is not kept; the public pages there show the partners as they were
+  before the switch.
 
 ### FAQ (#258, boards 79 and 79b)
 
@@ -714,6 +719,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   being typed.
 - Remove asks "are you sure" first, and removes the question and its draft at once.
 - Every write renders /apply again (it is prerendered whole, #163).
-- Previews never touch a database: a test developer's question changes stay in their own cookie
-  until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
-  shows the questions as they were before the switch.
+- On a preview with a database, a test developer reads the seeded `preview` branch as the
+  viewer's seeded person, and their question changes are refused. Only where no database is
+  configured do their question changes stay in their own cookie until they sign out, seen from
+  the dummy team's moment, so a change reads "Today"; /apply there shows the questions as they
+  were before the switch.
