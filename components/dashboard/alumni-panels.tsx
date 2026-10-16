@@ -291,7 +291,8 @@ export function AddAdvisorPanel({ open, thisYear, onClose }: { open: boolean; th
   );
 }
 
-function YearSelect({ label, value, years, onChange }: { label: string; value: number; years: readonly number[]; onChange: (year: number) => void }) {
+/** One academic year from `years`, shown as "2024–25"; Add alumni and End advising (board 80d) pick their years with it. */
+export function YearSelect({ label, value, years, onChange }: { label: string; value: number; years: readonly number[]; onChange: (year: number) => void }) {
   return (
     <span className="relative block min-w-0 flex-1">
       <select

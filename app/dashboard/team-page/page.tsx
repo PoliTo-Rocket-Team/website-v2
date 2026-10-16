@@ -11,9 +11,9 @@ export const metadata: Metadata = {
   title: "Team page · Dashboard · PoliTo Rocket Team",
 };
 
-// Boards 80, 80b and 80h (issue #284): the Team page on its real page under
-// the edit shell, opened on the layer the editor works on (the draft when
-// there is one), laid on the team's roles. Full access and anyone with
+// Boards 80 to 80h (issues #284 to #286): the Team page on its real page
+// under the edit shell, opened on the layer the editor works on (the draft
+// when there is one), laid on the team's roles, with the hand-added advisors. Full access and anyone with
 // site-content access reach it (lib/content/gate.ts); everyone else gets the
 // dashboard's not found.
 export default function TeamPageEditPage() {
@@ -30,7 +30,7 @@ async function LiveTeamPage() {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "team-page")) notFound();
-  const [editing, academicYear] = await Promise.all([data.teamPage.open(), currentAcademicYearStart()]);
-  if (editing === null) notFound();
-  return <TeamPageEdit opening={editing} academicYear={academicYear} />;
+  const [editing, advisors, academicYear] = await Promise.all([data.teamPage.open(), data.teamAdvisors.list(), currentAcademicYearStart()]);
+  if (editing === null || advisors === null) notFound();
+  return <TeamPageEdit opening={editing} advisors={advisors} academicYear={academicYear} />;
 }

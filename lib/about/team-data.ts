@@ -1,10 +1,12 @@
 import "server-only";
 
 import { isDatabaseConfigured } from "@/db/client";
+import { cachedPublishedAdvisors } from "@/lib/dashboard/database-team-advisors";
 import { cachedTeamPageLayer } from "@/lib/dashboard/database-team-page";
 import { readTeamSnapshot, recordsOf, rosterOf } from "@/lib/dashboard/team-database";
 import { dummyDataOn } from "@/lib/dummy-data/mode";
-import { dummyTeamPageLayerSeed, dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { dummyAdvisorSeed, dummyTeamPageLayerSeed, dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { publicAdvisors, withAdvisors } from "./advisors";
 import { team } from "./team";
 import { publicTeamPage } from "./team-page-editor";
 import { teamPeopleOf, type TeamRoles } from "./team-roles";
@@ -24,11 +26,14 @@ export async function databaseTeamRoles(): Promise<TeamRoles> {
  * with the dummy seed's published layer in dummy mode
  * (lib/dummy-data/mode.ts). A draft never reaches it. With no database the
  * hand-typed ./team.ts; with roles that cannot fill the page yet, the same
- * with the layer's intro text and group photo (`publicTeamPage`).
+ * with the layer's intro text and group photo (`publicTeamPage`). The
+ * advisors are the published hand-added list (issue #286, tag
+ * `team-page-advisors`), the record's own until the advisors' migration runs.
  */
 export async function teamPageData(): Promise<TeamPage> {
-  if (dummyDataOn()) return publicTeamPage(dummyTeamRoles(), team, dummyTeamPageLayerSeed());
+  if (dummyDataOn()) return withAdvisors(publicTeamPage(dummyTeamRoles(), team, dummyTeamPageLayerSeed()), publicAdvisors(dummyAdvisorSeed()));
   if (!isDatabaseConfigured()) return team;
-  const [roles, layer] = await Promise.all([databaseTeamRoles(), cachedTeamPageLayer()]);
-  return publicTeamPage(roles, team, layer);
+  const [roles, layer, advisors] = await Promise.all([databaseTeamRoles(), cachedTeamPageLayer(), cachedPublishedAdvisors()]);
+  const page = publicTeamPage(roles, team, layer);
+  return advisors === null ? page : withAdvisors(page, advisors);
 }

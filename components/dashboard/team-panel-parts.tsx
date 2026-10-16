@@ -27,8 +27,8 @@ export function TeamPanel({
   children,
 }: {
   label: string;
-  /** The section after "Team page" in the eyebrow: "Org chart", "Departments". */
-  eyebrow: string;
+  /** The section after "Team page" in the eyebrow: "Org chart", "Departments"; none when the title names it (board 80d). */
+  eyebrow?: string;
   title: string;
   onClose: () => void;
   footer: ReactNode;
@@ -41,7 +41,7 @@ export function TeamPanel({
     >
       <header className="flex shrink-0 items-start gap-3.5 border-b border-hairline px-7 py-5">
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Team page · {eyebrow}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Team page{eyebrow === undefined ? "" : ` · ${eyebrow}`}</p>
           <h2 className="mt-1.5 truncate text-[20px] font-bold leading-tight">{title}</h2>
         </div>
         <button

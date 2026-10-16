@@ -246,6 +246,13 @@
       "when": 1792163151967,
       "tag": "0034_team_page_layer",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792166328486,
+      "tag": "0035_team_page_advisors",
+      "breakpoints": true
     }
   ]
 }

@@ -69,14 +69,18 @@ export type Departments = {
 };
 
 /** Principal advisors (faculty, the founder) have their role in accent; specialists in grey. */
-export type Advisor = Person & { role?: string; standing: "principal" | "specialist" };
+export type Advisor = Person & { role: string; standing: "principal" | "specialist" };
 
 /** The Advisors section has a title and no eyebrow (board 26). */
 export type Advisors = {
   title: string;
   intro: string;
-  /** In order; they fill three columns row by row on desktop. */
-  people: readonly [Advisor, ...Advisor[]];
+  /**
+   * In order; they fill three columns row by row on desktop. Hand-added in
+   * the dashboard (lib/about/advisors.ts): with none, the page leaves the
+   * section out.
+   */
+  people: readonly Advisor[];
 };
 
 /** One slice of a pie, as a share of the whole in percent. */

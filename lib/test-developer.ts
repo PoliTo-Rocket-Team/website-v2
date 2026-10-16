@@ -55,6 +55,9 @@ export const TEST_DEVELOPER_FAQ_COOKIE = "prt_test_developer_faq";
 
 /** What a test developer saved, published or reset on the Team page's visual layer (lib/dummy-data/team-page.ts); cleared on sign out. Its own cookie, as the FAQ's. */
 export const TEST_DEVELOPER_TEAM_PAGE_COOKIE = "prt_test_developer_team_page";
+
+/** What a test developer added, edited, reordered or published on the Team page's advisors (lib/dummy-data/team-page.ts); cleared on sign out. Its own cookie, as the layer's. */
+export const TEST_DEVELOPER_ADVISORS_COOKIE = "prt_test_developer_advisors";
 /** What a test developer changed on the Outreach posts, summit and tags (lib/dummy-data/outreach.ts); cleared on sign out. Its own cookie, as the questions have. */
 export const TEST_DEVELOPER_OUTREACH_COOKIE = "prt_test_developer_outreach";
 
@@ -145,6 +148,7 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url, TEST_DEVELOPER_CONTENT_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_FAQ_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_TEAM_PAGE_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_ADVISORS_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_OUTREACH_COOKIE),
   );
 }
