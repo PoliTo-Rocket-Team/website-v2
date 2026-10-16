@@ -1,13 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { homeCardOf, type HomeCardView } from "@/lib/project-content/record";
+import { publishedProjects } from "@/lib/project-content/public";
+import { withSubscriptDigits } from "@/lib/project-content/subscript";
+import type { Copy } from "@/lib/projects";
 import { RocketCardStage } from "./rocket-card-stage";
 import { RocketArrow } from "./rocket-arrow";
 import { SwipeRow } from "./swipe-row";
 
-// Board 21, projects. Three vehicles on their brand textures, each with
-// Cavour live in 3D and a liquid glass info box. Data from
-// design/specs-from-old-site.md.
+// Board 21, projects. The published projects in site order (issue #295), on
+// their brand textures, each with Cavour live in 3D and a liquid glass info
+// box. Each card's copy is its project's stored record's home card.
 //
 // Hover: only the card's glass edge brightens. The rocket stays where it
 // rests (Huey, 2026-10-06: no hover rise).
@@ -17,94 +21,24 @@ import { SwipeRow } from "./swipe-row";
 // pager dots below (swipe-row.tsx). Phone copy is shorter: `phone` text
 // replaces the desktop text below md.
 
-/** Text with an optional shorter phone version (board 24). */
-type Copy<T = string> = { text: T; phone?: T };
-
-type Spec = { label: Copy; value: Copy };
-type Project = {
-  num: string;
-  year: Copy;
-  status: string;
-  /** IN DESIGN reads as a light pill; flown vehicles get a dark one. */
-  statusStyle: string;
-  name: string;
-  desc: Copy<ReactNode>;
-  specs: Spec[];
-  texture: string;
-  /** Efesto's texture is bright grey, so its info box is tinted darker. */
-  infoTint?: number;
+/** IN DESIGN reads as a light pill; flown vehicles get a dark one. */
+const pill: Record<HomeCardView["statusTone"], string> = {
+  dark: "bg-ground/70 text-prt-text",
+  light: "bg-prt-text text-ground",
 };
 
-const darkPill = "bg-ground/70 text-prt-text";
-const lightPill = "bg-prt-text text-ground";
-
-const projects: Project[] = [
-  {
-    num: "01",
-    year: { text: "2023" },
-    status: "FLOWN ×3",
-    statusStyle: darkPill,
-    name: "Cavour",
-    desc: { text: "Our first rocket. First Italian team at Spaceport America Cup." },
-    specs: [
-      { label: { text: "APOGEE" }, value: { text: "3 143 m" } },
-      { label: { text: "MOTOR" }, value: { text: "Solid · L", phone: "Solid L" } },
-      { label: { text: "SPEED" }, value: { text: "295 m/s" } },
-    ],
-    texture: "/textures/project-cavour.webp",
-  },
-  {
-    num: "02",
-    year: { text: "2024–25", phone: "24–25" },
-    status: "FLOWN · MK I",
-    statusStyle: darkPill,
-    name: "VES",
-    desc: {
-      text: "130 mm, all-SRAD systems. Mark I flew EuRoC 2024; Mark II won Design & Build at IREC 2025.",
-      phone: "130 mm, all-SRAD systems. Mark II won Design & Build at IREC 2025.",
-    },
-    specs: [
-      { label: { text: "APOGEE" }, value: { text: "3 160 m" } },
-      { label: { text: "MOTOR" }, value: { text: "M · O" } },
-      { label: { text: "VERSIONS", phone: "MARKS" }, value: { text: "Mk I · II", phone: "Mk I–II" } },
-    ],
-    texture: "/textures/project-ves.webp",
-  },
-  {
-    num: "03",
-    year: { text: "2023–" },
-    status: "IN DESIGN",
-    statusStyle: lightPill,
-    name: "Efesto",
-    desc: {
-      text: (
-        <>
-          The first Italian pressure-fed liquid rocket engine. N<sub>2</sub>O and ethanol, printed
-          in copper.
-        </>
-      ),
-    },
-    specs: [
-      { label: { text: "THRUST" }, value: { text: "5 kN" } },
-      { label: { text: "FUEL" }, value: { text: "N₂O · EtOH", phone: "Ethanol" } },
-      { label: { text: "COOLING" }, value: { text: "Regen." } },
-    ],
-    texture: "/textures/project-efesto.webp",
-    infoTint: 0.82,
-  },
-];
-
-function Text<T extends ReactNode>({ copy }: { copy: Copy<T> }) {
-  if (copy.phone === undefined) return <>{copy.text}</>;
+/** Text with an optional shorter phone version (board 24): `phone` replaces `text` below md. */
+function Text({ copy, draw = (text) => text }: { copy: Copy; draw?: (text: string) => ReactNode }) {
+  if (copy.phone === undefined) return <>{draw(copy.text)}</>;
   return (
     <>
-      <span className="md:hidden">{copy.phone}</span>
-      <span className="hidden md:inline">{copy.text}</span>
+      <span className="md:hidden">{draw(copy.phone)}</span>
+      <span className="hidden md:inline">{draw(copy.text)}</span>
     </>
   );
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({ project }: { project: HomeCardView }) {
   return (
     // isolate: the card is its own stacking context, so the z-indexes below
     // order its own layers and never reach a neighbouring card.
@@ -149,7 +83,7 @@ function ProjectCard({ project }: { project: Project }) {
           {project.num} · <Text copy={project.year} />
         </span>
         <span
-          className={`rounded-full px-2 py-1 font-mono text-[9px] tracking-[0.15em] md:px-3 md:py-1.5 md:text-[11px] ${project.statusStyle}`}
+          className={`rounded-full px-2 py-1 font-mono text-[9px] tracking-[0.15em] md:px-3 md:py-1.5 md:text-[11px] ${pill[project.statusTone]}`}
         >
           {project.status}
         </span>
@@ -168,7 +102,7 @@ function ProjectCard({ project }: { project: Project }) {
           {project.name}
         </h3>
         <p className="mt-2 text-[11px] leading-[15px] text-prt-text/90 md:mt-4 md:text-[15px] md:leading-[23px] xl:text-base">
-          <Text copy={project.desc} />
+          <Text copy={project.desc} draw={withSubscriptDigits} />
         </p>
         <dl className="mt-2.5 grid grid-cols-3 gap-2 border-t border-white-10 pt-2.5 md:mt-4 md:gap-3 md:pt-4">
           {project.specs.map((s) => (
@@ -187,7 +121,8 @@ function ProjectCard({ project }: { project: Project }) {
   );
 }
 
-export function Projects() {
+export async function Projects() {
+  const cards = (await publishedProjects()).map(homeCardOf);
   return (
     // Board 24 below md: 20px sides, 56px top and bottom, 26px heading, then
     // the swipe row.
@@ -215,7 +150,7 @@ export function Projects() {
           label="Projects"
           className="mt-6 md:mt-14 md:grid md:gap-8 lg:grid-cols-3 lg:gap-4"
         >
-          {projects.map((p) => (
+          {cards.map((p) => (
             <ProjectCard key={p.name} project={p} />
           ))}
         </SwipeRow>

@@ -366,15 +366,16 @@ Efesto fuel "Ethanol".
 
 **/projects** (boards 22 and 22m, `app/projects/page.tsx`, `components/projects/`): the header
 figures, then one `.glass-info` card per project: texture panel, facts, then the launch log
-(Efesto: work lines). Every fact comes from `lib/projects.ts`. A project with its own page
+(Efesto: work lines). Every fact comes from the projects' published records
+(`lib/project-content/`, issue #295), and the header counts their launches. A project with its own page
 has a clickable card: the name is the link, and its `::after` covers the card, so the whole
 card is the target. The card takes `.glass-linked`, and keyboard focus shows an accent outline
 4px outside it. A project with no page has no link.
 
 **Project pages** (`/projects/cavour`, `/projects/ves`, `/projects/efesto`; boards 23 to 25 and
-23m to 25m): one template, `components/project-page/`, draws every project page from one typed
-record per project (`lib/project-pages/`). There are no per-project components; a new project
-page is a new record and a thin route. The built Cavour page is the layout reference.
+23m to 25m): one template, `components/project-page/`, draws every project page from the
+project's published record (`pageRecordOf` in `lib/project-content/record.ts`). There are no
+per-project components; a new project page is a new record and a thin route. The built Cavour page is the layout reference.
 - Order: hero, 01 The name and 02 The design side by side, then versions, launch history, the
   plan, numbered reasons and gallery, then the next project.
 - A section the record has no data for is an absent key, and the page leaves it out entirely,
@@ -388,15 +389,16 @@ page is a new record and a thin route. The built Cavour page is the layout refer
   `hero.tsx`); a shorter set is one row of six.
 - Versions: one highlighted version, bold under an accent pill on desktop and the default tab
   on phones. A spec with no value shows the dimmed dash (`Value` in `parts.tsx`).
-- The launch history reads each campaign's facts from `lib/projects.ts` (`cavourLaunches`,
-  `vesLaunches`), the same record /projects uses; the page record adds only its own copy, keyed
-  by launch date (issue #72). A campaign that did not fly gives its own four numbers and reads
+- The launch history and the /projects log read each campaign from the one launch list in the
+  project's record (issues #72 and #295): the page's launch card and the /projects row come
+  from the same entry. A campaign that did not fly gives its own four numbers and reads
   "DID NOT FLY"; a setback takes the orange pill, never red.
 - The plan (board 25): steps done, the one under way, next and later, in that order by the
   record's shape. Desktop: a row of steps under a top rule, the step under way in accent.
   Phones: a vertical timeline with dots. Numbered reasons (board 25 "Why liquid"): up to three,
   in columns on desktop, stacked on phones.
-- Next project loops Cavour, VES, Efesto, back to Cavour (`pageSlugs` in `lib/projects.ts`).
+- Next project loops through the published projects in site order, back to the first (Cavour,
+  VES, Efesto, back to Cavour).
   "Open <name>" is the white pill and "All projects" the outlined one, as built for Cavour
   (boards 24 and 25 draw the open button orange; the built page wins).
 - Gallery (boards 23, 23m and 23L, `components/gallery/gallery.tsx`): a carousel with the

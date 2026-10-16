@@ -2,7 +2,8 @@ import type { FilledGallery } from "@/components/gallery/items";
 import type { Award, Copy } from "@/lib/projects";
 
 // One project page as data: every /projects/<slug> page is one of these
-// records drawn by the same components (components/project-page/). A section
+// records drawn by the same components (components/project-page/), read off
+// the project's stored record (lib/project-content/record.ts). A section
 // the project has no data for is an absent key, never an empty value, so the
 // page leaves it out; the section numbers follow the sections that are there.
 
@@ -138,7 +139,7 @@ export type Reasons = {
 
 export type GallerySection = { title: string; items: FilledGallery };
 
-/** One project's page. The registry (index.ts) keys it by the slug of its /projects entry. */
+/** One project's page, as `pageRecordOf` (lib/project-content/record.ts) reads it off the stored record. */
 export type ProjectPageRecord = {
   /** The page's meta description. */
   description: string;
