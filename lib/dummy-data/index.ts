@@ -71,7 +71,9 @@ import {
   dummySaveLinkedin,
   dummySetPhoto,
   dummyWithdraw,
+  teamEmailOf,
 } from "./self";
+import type { NavViewer } from "@/lib/nav-viewer-shape";
 import {
   activity,
   applicant,
@@ -233,6 +235,13 @@ export function dummyViewer(view: TestView): DashboardViewer {
   }
   const person = personFor[view];
   return { ...testDeveloperStanding(view), name: person.name, role: person.title, session: "test-developer" };
+}
+
+/** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
+export function dummyNavViewer(view: TestView): NavViewer {
+  if (view === "non-member") return { name: applicant.name, email: applicant.email, photoUrl: null, session: "test-developer" };
+  const person = personFor[view];
+  return { name: person.name, email: teamEmailOf(person), photoUrl: null, session: "test-developer" };
 }
 
 function divisionOf(id: number) {

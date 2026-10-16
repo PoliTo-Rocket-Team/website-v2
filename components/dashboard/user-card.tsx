@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/compone
 import type { MenuPage } from "@/lib/dashboard/access";
 import { TEST_VIEWS, TEST_VIEW_LABELS, testViewOf, type DashboardViewer } from "@/lib/dashboard/viewer";
 import { testDeveloperSignInHref } from "@/lib/test-developer";
-import { useSignOut } from "./account-parts";
+import { useSignOut } from "@/components/use-sign-out";
 import { Avatar } from "./avatar";
 
 const ITEM =
