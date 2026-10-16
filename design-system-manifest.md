@@ -55,8 +55,9 @@ Rules:
   Launch tag and the apply band. Do not add a second accent. The navbar has no Apply
   pill any more: Apply is a link like the others (issue #119).
 - Tags and status pills pair a `-soft` fill with the solid text colour: Launch = accent,
-  Competition = warning, Outreach = success, Team = `white-10` with `prt-text`
-  (`latest.tsx`, HANDOFF board 05). Project status pills sit on a texture, so they follow
+  Competition = warning, Outreach = success, Team = `white-10` with `prt-text` (HANDOFF
+  board 05). Outreach tags are data, so the home Track record cards (`latest.tsx`) give the
+  award tag accent and every other tag `white-10` with `prt-text`. Project status pills sit on a texture, so they follow
   board 21 instead: flown = `ground/70` with `prt-text`, In design = `prt-text` with `ground`
   (`projects.tsx`).
 - Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
@@ -329,7 +330,9 @@ either, so motion behind an open menu keeps the state it had. New continuous mot
 gate.
 
 **Latest** (track record, board 21, `latest.tsx`): featured card plus a three-row list, then
-a centred "All news" link. The cards are `.glass-card` with no texture of their own. From lg
+a centred "All news" link to /outreach. The cards are the newest published Outreach posts
+(issue #293): the newest is the featured card, with its cover photo, and the next three are
+the list; each card links to its post page. The cards are `.glass-card` with no texture of their own. From lg
 the section fits one 1440 x 900 screen under the navbar: 40px from the header to the cards and
 from the cards to "All news", and a cards row at least 560px tall that both columns stretch
 to. The list cards are 12px apart there and centre their text. The featured card: the tag
@@ -337,7 +340,7 @@ line on the left and "Read the record" (accent, with a `RocketArrow` from md) at
 right on the same row; then the title (34px), the excerpt, and the inset photo. From lg the
 photo fills what the card has left under the text, so the card matches the list column;
 from md to lg it keeps a 2.2:1 shape. Phones (board 24): one column, the featured card (20px
-title, photo 150px tall, no arrow), then only the first news card (IREC 2025), 20px below,
+title, photo 150px tall, no arrow), then only the first news card, 20px below,
 then "All news". The other two news cards are desktop-only (from md).
 
 **Projects:** exactly three cards, Cavour, VES and Efesto, with the board 21 data from
