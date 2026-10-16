@@ -5,11 +5,11 @@ import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyOutreachStore, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
-import { awardPosts, outreachRecord, outreachStats, postBySlug, slugOf } from "./outreach";
+import { awardPosts, outreachRecord, outreachStats, postBySlug, slugOf, trackRecord } from "./outreach";
 import { outreachEditor, publicOutreach, type StoredOutreach } from "./outreach-editor";
 import { importedOutreach, outreachImportSql } from "./outreach-import";
 import { postColumns, postFromColumns, summitColumns, summitFromColumns } from "./outreach-rows";
-import type { OutreachPost } from "./outreach-types";
+import type { IsoDate, OutreachPost } from "./outreach-types";
 
 // The Outreach store (issue #287): the import that carries lib/outreach.ts
 // into the database, the rows it is stored as, the published read the public
@@ -100,10 +100,35 @@ test("/outreach and the post pages show only published posts: a draft-only post 
   assert.equal(postBySlug(shown.posts, slugOf(draftOnly)), undefined, "its page is not found");
   assert.equal(postBySlug(shown.posts, slugOf(outreachRecord.posts[0]))?.title, outreachRecord.posts[0].title, "draft changes stay off the site");
   assert.equal(postBySlug(shown.posts, "changed-in-a-draft"), undefined);
+  // The home Track record section (issue #293) leaves the draft-only post out, though it is the newest.
+  const home = trackRecord(shown.posts);
+  assert.ok(home !== null);
+  assert.ok(![home.featured, ...home.news].some((p) => p.title === draftOnly.title || p.title === "Changed in a draft"));
 
   const published = await editor.posts.save(created.value.id, "publish", async (current) => ({ ok: true, value: current! }));
   assert.ok(published.ok);
-  assert.equal(postBySlug(publicOutreach({ ...stored, posts: await posts.list() }).posts, slugOf(draftOnly))?.title, draftOnly.title);
+  const live = publicOutreach({ ...stored, posts: await posts.list() });
+  assert.equal(postBySlug(live.posts, slugOf(draftOnly))?.title, draftOnly.title);
+  assert.equal(trackRecord(live.posts)?.featured.title, draftOnly.title, "once published, the newest post is the featured card");
+});
+
+test("the home Track record section shows the four newest published posts by date, whatever their site order", () => {
+  const dated = (title: string, date: IsoDate): OutreachPost => ({ ...outreachRecord.posts[0], title, date });
+  const posts = [
+    dated("Spring fair", "2025-04-02"),
+    dated("Summit", "2025-11-20"),
+    dated("Old talk", "2023-01-15"),
+    dated("School visit", "2025-05-03"),
+    dated("Award night", "2026-02-10"),
+    dated("Expo", "2024-09-30"),
+  ];
+  const home = trackRecord(posts);
+  assert.equal(home?.featured.title, "Award night");
+  assert.deepEqual(home?.news.map((p) => p.title), ["Summit", "School visit", "Spring fair"]);
+
+  // Fewer than four: every post shows; none: no cards.
+  assert.deepEqual(trackRecord(posts.slice(0, 2)), { featured: posts[1], news: [posts[0]] });
+  assert.equal(trackRecord([]), null);
 });
 
 test("tags are data: a post tagged Award counts toward the award figure, and the award tag is the list's to say", () => {
