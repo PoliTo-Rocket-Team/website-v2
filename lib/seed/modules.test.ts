@@ -25,7 +25,7 @@ function recorder(sent: Sent[]): (url: string) => SeedConnection<SeedTx> {
 }
 
 async function seedOnce(): Promise<Sent[]> {
-  const verdict = await guardSeedTarget("postgres://dev@localhost/prt", async () => undefined);
+  const verdict = guardSeedTarget("postgres://dev@localhost/prt");
   assert.ok(verdict.ok);
   const sent: Sent[] = [];
   await runSeed(verdict.target, SEED_MODULES, recorder(sent));
@@ -37,7 +37,7 @@ const tableModules = SEED_MODULES.flatMap((m) => ("seed" in m ? [(m as typeof m 
 test("the registry runs every area module, people before the orders and applications that name them, and the audit clear last", () => {
   assert.deepEqual(
     SEED_MODULES.map((m) => m.name),
-    ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq", "outreach", "hand-overs", "audit"],
+    ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq", "outreach", "hand-overs", "team-page", "audit"],
   );
   assert.equal(SEED_MODULES.at(-1), audit);
 });
@@ -135,6 +135,7 @@ test("rows that set their own serial ids move the sequence past them", () => {
     "orders",
     "outreach_posts",
     "partners",
+    "team_page_advisors",
   ]);
   for (const set of seeded) {
     const name = getTableName(set.table);

@@ -4,7 +4,8 @@
 // keep the numbers the old SQL seed used; the orders and recruitment modules
 // name people by them.
 //
-// Who holds what now: a team leader; an operations lead and an IT lead (the
+// Who holds what now: a team leader; a Project Manager and a Chief Engineer,
+// the two board seats (issue #311); an operations lead and an IT lead (the
 // two flagged seats, issue #238); department heads; division leads; members,
 // some in two divisions; an advisor in a division and a team-level advisor,
 // the former team leader (issue #253). Who left: people whose last role ended
@@ -95,6 +96,9 @@ export const WAITING_HAND_OVER = { from: 20, to: 29 } as const;
 export const TWO_DIVISION_MEMBER = 15;
 /** The IT lead's seat (issue #238). */
 export const IT_LEAD = 11;
+/** The two board seats beside the team leader (board 54c), which the Team page draws on its arc (issue #311). */
+export const PROJECT_MANAGER = 52;
+export const CHIEF_ENGINEER = 53;
 
 export const PEOPLE: readonly Person[] = [
   teammate(TEAM_LEADER, seedUserId(1), "Aurora", "Galli", "Master", "Aerospace Engineering", "2022-09-01"),
@@ -135,6 +139,8 @@ export const PEOPLE: readonly Person[] = [
   teammate(36, "1c555555-5555-5555-5555-555555555555", "Davide", "Rosso", "Master", "Communications Engineering", "2022-09-15"),
   teammate(37, "1c666666-6666-6666-6666-666666666666", "Laura", "Verde", "Bachelor", "Management Engineering", "2022-09-15"),
   teammate(38, "1c777777-7777-7777-7777-777777777777", "Gabriele", "Azzurro", "Master", "Computer Engineering", "2022-09-15"),
+  teammate(PROJECT_MANAGER, seedUserId(PROJECT_MANAGER), "Davide", "Ferrero", "Master", "Management Engineering", "2023-09-15"),
+  teammate(CHIEF_ENGINEER, seedUserId(CHIEF_ENGINEER), "Noemi", "Bellini", "Master", "Aerospace Engineering", "2023-09-15"),
 
   teammate(FORMER_TEAM_LEADER, seedUserId(40), "Paolo", "Neri", "Master", "Aerospace Engineering", "2021-09-20"),
   teammate(FOUNDER, seedUserId(41), "Giorgio", "Valli", "PhD", "Aerospace Engineering", "2021-09-15", { from: 2021, to: 2022 }),
@@ -288,6 +294,9 @@ export const ROLE_ROWS = rowsOf(roles, [
   { memberId: FORMER_TEAM_LEADER, title: "Team Leader", startedAt: "2023-10-01", leavedAt: "2025-09-30", type: "president" },
   { memberId: FORMER_TEAM_LEADER, title: "Advisor", startedAt: "2025-10-01", type: "advisor" },
   { memberId: TEAM_LEADER, title: "Team Leader", startedAt: "2025-10-01", type: "president" },
+  // The board seats: a role in no department or division whose title names the seat.
+  { memberId: PROJECT_MANAGER, title: "Project Manager", startedAt: "2025-10-01", type: "core" },
+  { memberId: CHIEF_ENGINEER, title: "Chief Engineer", startedAt: "2025-10-01", type: "core" },
 
   // Propulsion
   { memberId: CO_FOUNDER, deptId: propulsion, title: "Head of Propulsion", startedAt: "2021-10-01", leavedAt: "2022-09-09", type: "head" },

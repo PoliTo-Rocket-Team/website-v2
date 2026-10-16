@@ -1,23 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { preparePreviewDatabase, previewBuildPlan, type PreviewBuildEnv, type PreviewBuildSteps } from "./preview-build";
-import { guardSeedTarget, type NeonBranchFacts } from "./target";
+import { guardSeedTarget, PREVIEW_ENDPOINT } from "./target";
 
-const POOLED = "postgresql://app@ep-cool-darkness-123456-pooler.eu-central-1.aws.neon.tech/neondb";
-const DIRECT = "postgresql://app@ep-cool-darkness-123456.eu-central-1.aws.neon.tech/neondb";
+const POOLED = `postgresql://app@${PREVIEW_ENDPOINT}-pooler.eu-central-1.aws.neon.tech/neondb`;
+const DIRECT = `postgresql://app@${PREVIEW_ENDPOINT}.eu-central-1.aws.neon.tech/neondb`;
 const OTHER = "postgresql://app@ep-other-branch-999999.eu-central-1.aws.neon.tech/neondb";
-const SHARED: NeonBranchFacts = { name: "preview", isDefault: false, isProtected: false };
+const OTHER_POOLED = "postgresql://app@ep-other-branch-999999-pooler.eu-central-1.aws.neon.tech/neondb";
 
-/** Steps that record what ran, with a real one-at-a-time lock and the real guard over a fixed Neon branch. */
-function recorded(env: PreviewBuildEnv, branch: NeonBranchFacts | null = SHARED) {
+/** Steps that record what ran, with a real one-at-a-time lock and the real guard. */
+function recorded(env: PreviewBuildEnv) {
   const events: string[] = [];
   let held: Promise<void> = Promise.resolve();
   const pause = () => new Promise<void>((resolve) => setImmediate(resolve));
   const steps: PreviewBuildSteps = {
     guard: async (url) => {
       events.push(`guard ${url}`);
-      // null: Neon could not be read.
-      return guardSeedTarget(url, async () => branch ?? undefined, { VERCEL_ENV: env.VERCEL_ENV });
+      return guardSeedTarget(url, { VERCEL_ENV: env.VERCEL_ENV });
     },
     async exclusive(_target, work) {
       const before = held;
@@ -86,14 +85,11 @@ test("the lock, the migration and the seed all run on the direct connection stri
 });
 
 test("nothing runs when the guard refuses the target or the two strings name different databases", async () => {
-  const production = { VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT };
-  const refusedByGuard = recorded(production, { name: "main", isDefault: true, isProtected: false });
+  // Another endpoint, such as production's, given to a preview build by mistake.
+  const production = { VERCEL_ENV: "preview", DATABASE_URL: OTHER_POOLED, DATABASE_URL_UNPOOLED: OTHER };
+  const refusedByGuard = recorded(production);
   assert.equal((await preparePreviewDatabase(production, refusedByGuard.steps)).kind, "refused");
-  assert.deepEqual(refusedByGuard.events, [`guard ${DIRECT}`]);
-
-  const unread = recorded(production, null);
-  assert.equal((await preparePreviewDatabase(production, unread.steps)).kind, "refused");
-  assert.deepEqual(unread.events, [`guard ${DIRECT}`]);
+  assert.deepEqual(refusedByGuard.events, [`guard ${OTHER}`]);
 
   const mismatched = { VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: OTHER };
   const split = recorded(mismatched);

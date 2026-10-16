@@ -1,20 +1,10 @@
 // The seed guard (issue #303, ADR 0016). Before the seed writes anything it
 // reads the connection target and refuses unless that target is a local
-// database or a Neon preview branch it can prove is not the production branch.
-// The answer comes from the target itself: its host, and for a Neon host the
-// branch that host's endpoint belongs to. No flag can turn a refusal into a
-// pass; VERCEL_ENV=production can only add one.
-
-/** What the guard knows about the Neon branch behind an endpoint, read from Neon itself. */
-export type NeonBranchFacts = {
-  readonly name: string;
-  /** Neon's default branch: the one production reads. */
-  readonly isDefault: boolean;
-  readonly isProtected: boolean;
-};
-
-/** Reads the branch behind a Neon endpoint id; undefined when it cannot be read. */
-export type NeonBranchLookup = (endpointId: string) => Promise<NeonBranchFacts | undefined>;
+// database or the compute endpoint of the shared Neon branch named `preview`,
+// on a Vercel preview build. The answer comes from the target's host alone:
+// the guard calls no API and reads no credential beside the target (issue
+// #311). No flag can turn a refusal into a pass; VERCEL_ENV=production can
+// only add one.
 
 /** The host part of a connection target, classified. */
 export type ParsedTarget =
@@ -28,20 +18,17 @@ export type SeedRefusal =
   | { readonly reason: "unclassifiable"; readonly detail: string }
   | { readonly reason: "unproven-preview"; readonly detail: string };
 
-/** Neon's per-deployment preview branches, as the Neon integration for Vercel names them. */
-export const PREVIEW_BRANCH_PREFIX = "preview/";
-
-/**
- * The one schema-only branch every preview deployment shares (ADR 0016,
- * issue #307). Only a preview build may seed it, since every preview reads it.
- */
+/** The one schema-only branch every preview deployment shares (ADR 0016, issue #307). */
 export const SHARED_PREVIEW_BRANCH = "preview";
 
-/** Whether the guard may treat `name` as a preview branch, given the build it runs in. */
-function isPreviewBranch(name: string, env: GuardEnv): boolean {
-  if (name === SHARED_PREVIEW_BRANCH) return env.VERCEL_ENV === "preview";
-  return name.startsWith(PREVIEW_BRANCH_PREFIX);
-}
+/**
+ * The compute endpoint of the `preview` branch (Owner decision on #311): the
+ * only Neon endpoint the guard lets through, by its direct host or its
+ * `-pooler` host. It is not a secret. Production's endpoint is a different
+ * one, so a production connection string never matches. If the `preview`
+ * branch is ever recreated, its new endpoint id goes here.
+ */
+export const PREVIEW_ENDPOINT = "ep-floral-mouse-b2er5ebz";
 
 const LOCAL_HOSTS = new Set(["localhost", "::1", "[::1]"]);
 // ep-<words>-<digits>[-pooler].<region>.<cloud>.neon.tech
@@ -104,16 +91,11 @@ function refuse(reason: SeedRefusal["reason"], detail: string): GuardVerdict {
 
 /**
  * Decides whether the seed may write to `connectionString`. A local host
- * passes. A Neon host passes only when Neon says its branch is not the
- * default branch, not protected, and is named `preview/…`, or is the shared
- * branch named `preview` and this is a Vercel preview build. Everything else,
- * including a branch that cannot be read, is refused.
+ * passes. A Neon host passes only when its endpoint is `PREVIEW_ENDPOINT`
+ * and this is a Vercel preview build. Every other Neon host, and every host
+ * the guard cannot classify, is refused.
  */
-export async function guardSeedTarget(
-  connectionString: string | undefined,
-  lookupBranch: NeonBranchLookup,
-  env: GuardEnv = {},
-): Promise<GuardVerdict> {
+export function guardSeedTarget(connectionString: string | undefined, env: GuardEnv = {}): GuardVerdict {
   if (env.VERCEL_ENV === "production") {
     return refuse("production", "this is a Vercel production build");
   }
@@ -123,29 +105,13 @@ export async function guardSeedTarget(
       return refuse("unclassifiable", parsed.why);
     case "local":
       return { ok: true, target: ApprovedSeedTarget[approved](connectionString!, "local", parsed.host) };
-    case "neon": {
-      let branch: NeonBranchFacts | undefined;
-      try {
-        branch = await lookupBranch(parsed.endpointId);
-      } catch {
-        branch = undefined;
+    case "neon":
+      if (parsed.endpointId !== PREVIEW_ENDPOINT) {
+        return refuse("unproven-preview", `${parsed.endpointId} is not the endpoint of the "${SHARED_PREVIEW_BRANCH}" branch`);
       }
-      if (!branch) {
-        return refuse("unproven-preview", `could not read the Neon branch behind ${parsed.endpointId}`);
+      if (env.VERCEL_ENV !== "preview") {
+        return refuse("unproven-preview", `the "${SHARED_PREVIEW_BRANCH}" branch is seeded only by a Vercel preview build`);
       }
-      if (branch.isDefault) {
-        return refuse("production", `${parsed.endpointId} is on the default branch "${branch.name}"`);
-      }
-      if (branch.isProtected) {
-        return refuse("production", `${parsed.endpointId} is on the protected branch "${branch.name}"`);
-      }
-      if (branch.name === SHARED_PREVIEW_BRANCH && !isPreviewBranch(branch.name, env)) {
-        return refuse("unproven-preview", `branch "${branch.name}" is seeded only by a Vercel preview build`);
-      }
-      if (!isPreviewBranch(branch.name, env)) {
-        return refuse("unproven-preview", `branch "${branch.name}" is neither "${SHARED_PREVIEW_BRANCH}" nor a ${PREVIEW_BRANCH_PREFIX}… branch`);
-      }
-      return { ok: true, target: ApprovedSeedTarget[approved](connectionString!, "preview", branch.name) };
-    }
+      return { ok: true, target: ApprovedSeedTarget[approved](connectionString!, "preview", SHARED_PREVIEW_BRANCH) };
   }
 }

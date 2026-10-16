@@ -15,6 +15,7 @@ import { partnersSeed } from "./partners";
 import { people } from "./people";
 import { recruitmentSeed } from "./recruitment";
 import { structure } from "./structure";
+import { teamPageSeed } from "./team-page";
 import type { SeedTx } from "./tx";
 
 export const SEED_MODULES: readonly SeedModule<SeedTx>[] = [
@@ -29,5 +30,6 @@ export const SEED_MODULES: readonly SeedModule<SeedTx>[] = [
   outreachSeed,
   // After people: its rows go in after every role, so no role insert closes the waiting one.
   handOversSeed,
+  teamPageSeed,
   audit,
 ];
