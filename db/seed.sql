@@ -1,5 +1,6 @@
--- Clear existing data (if needed)
-TRUNCATE members, users, departments, divisions, roles, orders, apply_positions, applications, scopes RESTART IDENTITY CASCADE;
+-- The baseline seed module (db/seed/baseline.ts) runs this file. Its reset
+-- empties these tables first, so this file only inserts. Run it through
+-- `pnpm db:seed`, never by hand: the runner's guard checks the target.
 
 -- Insert Members (at least 10)
 INSERT INTO members (member_id, prt_email, mobile_number, discord, nda_signed_at, nda_name, nda_confirmed_by, picture) VALUES
@@ -690,10 +691,8 @@ INSERT INTO scopes (member_id, scope, target, access_level, dept_id, division_id
 -- Local-only testers (issue #129), one per access level. Sign in as them on
 -- `pnpm dev` only; see "Sign in as a tester (local only)" in README.md. The
 -- ids and emails must match TESTERS in lib/dev-tester.ts (a test checks).
--- Removing the old better_auth rows also drops their sessions and accounts.
-DELETE FROM better_auth."user"
-WHERE id LIKE '7e57e500-0000-4000-8000-00000000000_'
-   OR email LIKE '%.tester@example.com';
+-- The module's reset removes their old better_auth rows, with their sessions
+-- and accounts.
 
 INSERT INTO members (member_id, prt_email, discord, nda_name, nda_confirmed_by) VALUES
 (901, 'member.tester@example.com', 'member.tester', 'Tester Member NDA', 1),
@@ -737,8 +736,8 @@ INSERT INTO scopes (member_id, scope, target, access_level, dept_id, division_id
 -- The sync_auth_users trigger matches each row to the public.users row above
 -- by id, so the member link and the scopes stay attached.
 INSERT INTO better_auth."user" (id, email, name, "emailVerified", "createdAt", "updatedAt") VALUES
-('7e57e500-0000-4000-8000-000000000001', 'applicant.tester@example.com', 'Tester Applicant', true, NOW(), NOW()),
-('7e57e500-0000-4000-8000-000000000002', 'member.tester@example.com', 'Tester Member', true, NOW(), NOW()),
-('7e57e500-0000-4000-8000-000000000003', 'division-lead.tester@example.com', 'Tester Division Lead', true, NOW(), NOW()),
-('7e57e500-0000-4000-8000-000000000004', 'operations-lead.tester@example.com', 'Tester Operations Lead', true, NOW(), NOW()),
-('7e57e500-0000-4000-8000-000000000005', 'department-head.tester@example.com', 'Tester Department Head', true, NOW(), NOW());
+('7e57e500-0000-4000-8000-000000000001', 'applicant.tester@example.com', 'Tester Applicant', true, '2026-10-09 10:00:00+02'::timestamptz, '2026-10-09 10:00:00+02'::timestamptz),
+('7e57e500-0000-4000-8000-000000000002', 'member.tester@example.com', 'Tester Member', true, '2026-10-09 10:00:00+02'::timestamptz, '2026-10-09 10:00:00+02'::timestamptz),
+('7e57e500-0000-4000-8000-000000000003', 'division-lead.tester@example.com', 'Tester Division Lead', true, '2026-10-09 10:00:00+02'::timestamptz, '2026-10-09 10:00:00+02'::timestamptz),
+('7e57e500-0000-4000-8000-000000000004', 'operations-lead.tester@example.com', 'Tester Operations Lead', true, '2026-10-09 10:00:00+02'::timestamptz, '2026-10-09 10:00:00+02'::timestamptz),
+('7e57e500-0000-4000-8000-000000000005', 'department-head.tester@example.com', 'Tester Department Head', true, '2026-10-09 10:00:00+02'::timestamptz, '2026-10-09 10:00:00+02'::timestamptz);

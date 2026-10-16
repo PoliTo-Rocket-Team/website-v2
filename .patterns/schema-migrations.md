@@ -41,7 +41,10 @@ express (functions, triggers, data fixes) goes in hand-written migration files i
 5. **Apply.** `pnpm db:migrate` runs [db/migrate.ts](../db/migrate.ts): the `postgres-js` driver,
    one connection, `migrate(db, { migrationsFolder: "./drizzle" })`. The app itself uses the
    `neon-http` driver ([db/client.ts](../db/client.ts)); the migrator does not. `pnpm db:seed`
-   ([db/seed.ts](../db/seed.ts)) then runs [db/seed.sql](../db/seed.sql) as raw SQL.
+   ([db/seed.ts](../db/seed.ts)) then checks the target with the guard in
+   [lib/seed/target.ts](../lib/seed/target.ts) and runs the modules in
+   [db/seed/registry.ts](../db/seed/registry.ts) in one transaction: every reset, then every insert.
+   The first module runs [db/seed.sql](../db/seed.sql) as raw SQL.
 
 6. **Derived types.** [db/types.ts](../db/types.ts) builds the shared UI types from
    `InferSelectModel<typeof table>`, so a column change flows into the types `tsc` checks.
