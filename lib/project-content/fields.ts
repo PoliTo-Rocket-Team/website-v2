@@ -18,8 +18,11 @@ import type { ProjectRecord } from "./record";
 //
 // An optional section has a show-on-page switch. Switched off, the section
 // leaves the record, so the page drops it and the numbers of the sections
-// after it close up (`sectionsOf`); its fields stay in the panel, so
-// switching it back on brings the same text back.
+// after it close up (`sectionsOf`). Its fields stay in the panel while the
+// editor is open, through Save draft and Publish too (`fieldsAfterSave`), so
+// switching it back on brings the same text back. The stored record keeps no
+// text for a section that is off, so once the editor is closed or reloaded
+// that text is gone.
 
 /** The panel's sections, in order; each block's Edit chip opens one. */
 export type PanelSection = "top" | "name" | "design" | "reasons" | "teaser";
@@ -171,6 +174,17 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
     ...(shownReasons && { reasons: shownReasons }),
     teaser: teaser.trim(),
   };
+}
+
+/**
+ * The panel's fields after a save: the stored record's, which is what the
+ * page now shows, with the text of a section switched off kept from the
+ * fields that were sent. The record holds nothing for that section, so
+ * without this the save would blank it.
+ */
+export function fieldsAfterSave(stored: ProjectRecord, sent: ProjectFields): ProjectFields {
+  const fields = fieldsOf(stored);
+  return sent.reasons.shown ? fields : { ...fields, reasons: sent.reasons };
 }
 
 /** One field the panel cannot save as it is: where it sits and why. `field` is its path in the fields, such as "hero.facts.2.value". */

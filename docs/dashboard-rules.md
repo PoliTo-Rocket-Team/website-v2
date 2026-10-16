@@ -730,8 +730,10 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Desktop edits the desktop text. Phone edits the phone text of the fields that have one; an empty
   phone field shows the desktop text, except the story texts, which always have their own.
 - An optional section (Why, today) has a show-on-page switch in its header. Off, the section
-  leaves the page and the numbers of the sections after it close up; its text stays in the panel,
-  and switching it back on brings it back. A section that is off does not stop a save.
+  leaves the page and the numbers of the sections after it close up. Its text stays in the panel
+  while the editor is open, Save draft and Publish included, and switching it back on brings it
+  back. The saved page keeps no text for a section that is off, so closing or reloading the
+  editor loses it. A section that is off does not stop a save.
 - Save draft and Publish refuse an empty field and open its section. Save draft leaves the
   published page as it is; Publish puts the changes on the public page.
 - Only the full admins and holders of site-content access open the editor or save; everyone else

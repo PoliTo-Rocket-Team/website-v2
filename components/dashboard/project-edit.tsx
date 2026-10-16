@@ -6,7 +6,7 @@ import { saveProject } from "@/app/dashboard/project-actions";
 import { ProjectPageView, type ProjectFrame, type ProjectPart } from "@/components/project-page/view";
 import type { EditBlocks, EditDevice } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
-import { fieldProblems, fieldsOf, projectViewOf, type PanelSection, type ProjectFields } from "@/lib/project-content/fields";
+import { fieldProblems, fieldsAfterSave, fieldsOf, projectViewOf, type PanelSection, type ProjectFields } from "@/lib/project-content/fields";
 import { listingOf, pageRecordOf, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
 import { EditableBlock, EditShell } from "./edit-shell";
 import { ProjectEditPanel, type FieldErrors } from "./project-edit-panel";
@@ -74,7 +74,7 @@ export function ProjectEdit({ item: opening, place }: { item: ContentItem<Projec
         return;
       }
       setItem(result.value);
-      setFields(fieldsOf(editorVersion(result.value.version)));
+      setFields(fieldsAfterSave(editorVersion(result.value.version), fields));
       setRevision((r) => r + 1);
       setRefusedOnce(false);
       toast.success(step === "publish" ? `${view.name} is published.` : "Draft saved. The published page stays live.");

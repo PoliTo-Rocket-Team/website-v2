@@ -6,7 +6,7 @@ import { editorVersion, publicItems, statusOf } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { sectionsOf } from "@/lib/project-pages";
 import { projectEditor } from "./editor";
-import { fieldsOf, fieldProblems, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
+import { fieldsAfterSave, fieldsOf, fieldProblems, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
 import { importedProjects, importedRecords } from "./import";
 import { pageRecordOf } from "./record";
 
@@ -55,6 +55,21 @@ test("switching an optional section off drops it and closes up the numbers; swit
 });
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
+
+test("a section switched off keeps its text through Save draft and Publish, so switching it back on brings it back", async () => {
+  const editor = projectEditor(admin, memoryContentStore(importedProjects()));
+  const fields = fieldsOf(efesto);
+  const off = { ...fields, reasons: { ...fields.reasons, shown: false } };
+  for (const step of ["save-draft", "publish"] as const) {
+    const saved = await editor.saveFields(3, step, off);
+    assert.ok(saved.ok, step);
+    const stored = editorVersion(saved.value.version);
+    assert.equal(stored.reasons, undefined, "the stored page leaves the section out");
+    const after = fieldsAfterSave(stored, off);
+    assert.deepEqual(after.reasons, off.reasons, step);
+    assert.deepEqual(projectViewOf({ ...after, reasons: { ...after.reasons, shown: true } }, stored).reasons, efesto.reasons, step);
+  }
+});
 
 test("Save draft changes only the draft; Publish changes what the public pages show", async () => {
   const editor = projectEditor(admin, memoryContentStore(importedProjects()));
