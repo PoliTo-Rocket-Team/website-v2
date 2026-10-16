@@ -1,14 +1,29 @@
 import type { HeaderStats } from "./about/types";
-import type { BodyBlock, ChannelName, Channel, IsoDate, OutreachPage, OutreachPost } from "./outreach-types";
+import type { NonEmpty } from "./about/alumni-types";
+import {
+  CHANNEL_NAMES,
+  UNTITLED_POST,
+  type BodyBlock,
+  type ChannelName,
+  type Channel,
+  type IsoDate,
+  type OutreachContent,
+  type OutreachCopy,
+  type OutreachPost,
+  type OutreachTag,
+  type OutreachDraft,
+} from "./outreach-types";
 
 // Boards 32/32m (the Outreach page) and 33/33m (a post page). The posts are
 // the team's live Outreach page: each body is the live post's own text, and
 // the title, summary and lead say the same in fewer words, as the boards do.
 // Each post has one photo and one channel today, the "See more" link on the
-// live page. Adding a post is one entry here plus its photo in
-// public/outreach/.
+// live page. The summit, the posts and the tags below are the record the
+// import carries into the database (lib/outreach-import.ts, issue #287). The
+// pages read the published ones from there (lib/outreach-public.ts), and this
+// record only where there is no database or no outreach tables yet.
 
-export const outreach: OutreachPage = {
+export const outreachCopy: OutreachCopy = {
   description:
     "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
 
@@ -18,6 +33,26 @@ export const outreach: OutreachPage = {
     intro:
       "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
   },
+
+  postsTitle: "Where we’ve been",
+};
+
+/** The record's tags, in the order the editor lists them. Award is the one the header counts. */
+const recordTags: NonEmpty<OutreachTag> = [
+  { name: "Award", award: true },
+  { name: "Charity run", award: false },
+  { name: "Congress", award: false },
+  { name: "Expo", award: false },
+  { name: "Fair", award: false },
+  { name: "Hackathon", award: false },
+  { name: "School", award: false },
+  { name: "Summit", award: false },
+  { name: "Talk", award: false },
+  { name: "Visit", award: false },
+];
+
+export const outreachRecord: OutreachContent & { readonly posts: NonEmpty<OutreachPost> } = {
+  tags: recordTags,
 
   feature: {
     eyebrow: "STARTED BY US · 2023",
@@ -37,8 +72,6 @@ export const outreach: OutreachPage = {
       { year: 2025, place: "Rome" },
     ],
   },
-
-  postsTitle: "Where we’ve been",
 
   posts: [
     {
@@ -402,40 +435,116 @@ export const outreach: OutreachPage = {
 // What the pages read from the record. Every count and order is worked out
 // here, so the record holds each fact once.
 
-/** A post's address: its title in lower case, with every run of other characters as one hyphen. */
+/** Today in Torino, where the team is: the date a new post starts on (board 74f). */
+export function todayInRome(now: Date = new Date()): IsoDate {
+  // en-CA writes a date as YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(now) as IsoDate;
+}
+
+/**
+ * A post's address: its title in lower case, with every run of other
+ * characters as one hyphen. A title with no letter or digit (a new draft's
+ * empty one) gives the address of "Untitled post".
+ */
 export function slugOf(post: Pick<OutreachPost, "title">): string {
-  return post.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  const slug = (title: string) =>
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+  return slug(post.title) || slug(UNTITLED_POST);
 }
 
 /** The posts newest first, as the page lists them. */
-export const postsNewestFirst: readonly OutreachPost[] = [...outreach.posts].sort((a, b) => b.date.localeCompare(a.date));
+export function newestFirst<P extends Pick<OutreachPost, "date">>(posts: readonly P[]): P[] {
+  return [...posts].sort((a, b) => b.date.localeCompare(a.date));
+}
 
-{
-  // Two posts with one address would hide one of them.
+/**
+ * The home page's Track record section (board 21, issue #293): the newest
+ * post as the featured card and the next three as the news cards. The edit
+ * shell's page switch fills it with the post being edited among the
+ * published ones (`trackRecordShowing`), so a card may be a draft's view.
+ */
+export type TrackRecord<P extends Pick<OutreachPost, "date"> = OutreachPost> = { featured: P; news: P[] };
+
+const TRACK_RECORD_NEWS = 3;
+
+/** The Track record cards from the published posts, or null when none is published. */
+export function trackRecord<P extends Pick<OutreachPost, "date">>(posts: readonly P[]): TrackRecord<P> | null {
+  const [featured, ...older] = newestFirst(posts);
+  return featured === undefined ? null : { featured, news: older.slice(0, TRACK_RECORD_NEWS) };
+}
+
+/**
+ * The published posts with the one being edited in place (issue #294): its
+ * published version, the post at `publishedSlug`, gives way to the version
+ * the editor works on. A post never published has none to replace.
+ */
+export function withEdited<P extends Pick<OutreachPost, "date">>(
+  published: readonly OutreachPost[],
+  publishedSlug: string | null,
+  edited: P,
+): (OutreachPost | P)[] {
+  return [...published.filter((p) => slugOf(p) !== publishedSlug), edited];
+}
+
+/**
+ * The Track record the page switch shows (issue #294): the cards from
+ * `posts`, which hold `edited`, and when it is not among the four newest, it
+ * takes the last news card's place, so the editor still sees its card.
+ */
+export function trackRecordShowing<P extends Pick<OutreachPost, "date">>(posts: readonly P[], edited: P): TrackRecord<P> {
+  const cards = trackRecord(posts);
+  if (cards === null) return { featured: edited, news: [] };
+  if (cards.featured === edited || cards.news.includes(edited)) return cards;
+  return { featured: cards.featured, news: [...cards.news.slice(0, -1), edited] };
+}
+
+/**
+ * The one news card a phone shows (board 24): the first. The page switch
+ * names the edited post's card instead when it is a news card (issue #294),
+ * so the editor still sees it in Phone mode; the public page names none.
+ */
+export function phoneNewsCard<P extends Pick<OutreachPost, "date">>(cards: TrackRecord<P>, edited?: P): P | undefined {
+  return edited !== undefined && cards.news.includes(edited) ? edited : cards.news[0];
+}
+
+/** The first address two posts share, or null. Two posts with one address would hide one of them. */
+export function sharedSlug(posts: readonly OutreachPost[]): string | null {
   const seen = new Set<string>();
-  for (const post of postsNewestFirst) {
+  for (const post of posts) {
     const slug = slugOf(post);
-    if (seen.has(slug)) throw new Error(`Two outreach posts share the address /outreach/${slug}`);
+    if (seen.has(slug)) return slug;
     seen.add(slug);
   }
+  return null;
 }
 
-export function postBySlug(slug: string): OutreachPost | undefined {
-  return postsNewestFirst.find((p) => slugOf(p) === slug);
+{
+  const shared = sharedSlug(outreachRecord.posts);
+  if (shared !== null) throw new Error(`Two outreach posts share the address /outreach/${shared}`);
 }
 
-/** The posts either side of one: the next older and the next newer, where there is one. */
-export function neighboursOf(post: OutreachPost): { older?: OutreachPost; newer?: OutreachPost } {
-  const i = postsNewestFirst.indexOf(post);
-  return { older: postsNewestFirst[i + 1], newer: i > 0 ? postsNewestFirst[i - 1] : undefined };
+/** The post at an address, or undefined. Where two share it, the newest wins. */
+export function postBySlug(posts: readonly OutreachPost[], slug: string): OutreachPost | undefined {
+  return newestFirst(posts).find((p) => slugOf(p) === slug);
+}
+
+/** The next older and the next newer post, where there is one. */
+export type Neighbouring = { older?: OutreachPost; newer?: OutreachPost };
+
+/** The posts either side of one (none for a post not in the list): the next older and the next newer, where there is one. */
+export function neighboursOf(posts: readonly OutreachPost[], post: Pick<OutreachPost, "title">): Neighbouring {
+  const sorted = newestFirst(posts);
+  const i = sorted.findIndex((p) => slugOf(p) === slugOf(post));
+  if (i < 0) return {};
+  return { older: sorted[i + 1], newer: i > 0 ? sorted[i - 1] : undefined };
 }
 
 /** The years that have posts, newest first: the year filter's pills after All. */
-export function postYears(): number[] {
-  return [...new Set(postsNewestFirst.map((p) => yearOf(p.date)))];
+export function postYears(posts: readonly Pick<OutreachPost, "date">[]): number[] {
+  return [...new Set(newestFirst(posts).map((p) => yearOf(p.date)))];
 }
 
 export function yearOf(date: IsoDate): number {
@@ -454,22 +563,31 @@ export function readingMinutes(body: readonly BodyBlock[]): number {
   return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
 }
 
-/** The channels a post has, Instagram first, each with its name. */
-export function channelsOf(post: OutreachPost): { name: ChannelName; channel: Channel }[] {
-  const out: { name: ChannelName; channel: Channel }[] = [];
-  if (post.channels.instagram) out.push({ name: "instagram", channel: post.channels.instagram });
-  if (post.channels.linkedin) out.push({ name: "linkedin", channel: post.channels.linkedin });
-  return out;
+/** The channels a post has, in `CHANNEL_NAMES` order (Instagram first), each with its name. */
+export function channelsOf(post: Pick<OutreachDraft, "channels">): { name: ChannelName; channel: Channel }[] {
+  return CHANNEL_NAMES.flatMap((name) => {
+    const channel = post.channels[name];
+    return channel === undefined ? [] : [{ name, channel }];
+  });
 }
 
-/** The header's four figures, counted from the posts and the feature. */
-export function outreachStats(page: OutreachPage = outreach): HeaderStats {
-  const first = Math.min(...page.posts.map((p) => yearOf(p.date)));
-  const awards = page.posts.filter((p) => p.tags.includes("Award")).length;
+/** The posts the header counts as awards: those carrying the tag the tag list marks as the award one. */
+export function awardPosts(content: Pick<OutreachContent, "posts" | "tags">): OutreachPost[] {
+  const award = new Set(content.tags.filter((t) => t.award).map((t) => t.name));
+  return content.posts.filter((p) => p.tags.some((name) => award.has(name)));
+}
+
+/** The header's four figures, counted from the posts, the tags and the feature. */
+export function outreachStats(content: OutreachContent): HeaderStats {
+  const years = content.posts.map((p) => yearOf(p.date));
+  const awards = awardPosts(content).length;
   return [
-    { value: String(page.posts.length), label: { text: `EVENTS SINCE ${first}` } },
-    { value: String(page.feature.editions.length), label: { text: "IRESS EDITIONS" } },
-    { value: String(page.feature.editions[0].year), label: { text: "WE STARTED IRESS" } },
+    {
+      value: String(content.posts.length),
+      label: { text: years.length === 0 ? "EVENTS" : `EVENTS SINCE ${Math.min(...years)}` },
+    },
+    { value: String(content.feature.editions.length), label: { text: "IRESS EDITIONS" } },
+    { value: String(content.feature.editions[0].year), label: { text: "WE STARTED IRESS" } },
     { value: String(awards), label: { text: awards === 1 ? "AWARD" : "AWARDS" } },
   ];
 }
@@ -500,10 +618,22 @@ export function monthYear(date: IsoDate): string {
   return `${month.slice(0, 3).toUpperCase()} ${year}`;
 }
 
+/** "03 MAY 2025" on a home Track record card (board 21). */
+export function dayMonthYear(date: IsoDate): string {
+  const { year, month, day } = parts(date);
+  return `${String(day).padStart(2, "0")} ${month.slice(0, 3).toUpperCase()} ${year}`;
+}
+
 /** "Oct 2024" under an original post's account. */
 export function shortMonthYear(date: IsoDate): string {
   const { year, month } = parts(date);
   return `${month.slice(0, 3)} ${year}`;
+}
+
+/** "14 Oct 2024" in the Edit post panel's Title and details line (board 74d). */
+export function shortDayMonthYear(date: IsoDate): string {
+  const { year, month, day } = parts(date);
+  return `${day} ${month.slice(0, 3)} ${year}`;
 }
 
 /** "OCTOBER 14, 2024" in a post's meta line; phones use `monthYear`-style "OCT 14, 2024". */

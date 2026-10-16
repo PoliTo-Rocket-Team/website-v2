@@ -5,7 +5,7 @@ import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { MyProfileView } from "@/components/dashboard/my-profile";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
-import { deleteAccount, leaveTeam, removePhoto, saveDetails, saveLinkedin, uploadPhoto } from "../actions";
+import { deleteAccount, leaveTeam, removePhoto, saveDetails, saveLinkedin, sendHandOver, uploadPhoto } from "../actions";
 
 export const metadata: Metadata = {
   title: "My profile · Dashboard · PoliTo Rocket Team",
@@ -38,6 +38,7 @@ async function LiveProfile() {
       removePhoto={removePhoto}
       saveDetails={saveDetails}
       leaveTeam={leaveTeam}
+      sendHandOver={sendHandOver}
       deleteAccount={deleteAccount}
     />
   );

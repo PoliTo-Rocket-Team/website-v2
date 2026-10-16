@@ -34,7 +34,7 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "./division-access";
-import { fullAccessSeatOf, headDivisionsOf, isTeamLeader, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
+import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
   checkApproveOrdersChange,
@@ -441,7 +441,7 @@ async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
 
 /** The viewer's Orders scope, read from their scope rows (`ordersScopeOf`, ./orders.ts); null for someone off the team. */
 async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDepartmentUnits[]): Promise<OrdersScope | null> {
-  if (identity.memberId === null || identity.kind === "non-member") return null;
+  if (identity.memberId === null || isOffTeam(identity.kind)) return null;
   const [rows, headDepartment] = await Promise.all([
     getDb()
       .select({ scope: scopes.scope, target: scopes.target, level: scopes.accessLevel, divisionId: scopes.divisionId, deptId: scopes.deptId })

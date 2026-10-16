@@ -4,12 +4,14 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -315,6 +317,9 @@ export const applications = pgTable("applications", {
   // "The signed NDA arrived" tick sets `nda_arrived_at`; Confirm join sets
   // `joined_at` once the person is on the team.
   acceptedAt: timestamp("accepted_at", { withTimezone: true, mode: "string" }),
+  // Reject, or another team taking the person, sets `rejected_at` (issue
+  // #317): the decision time the one-month rule on the applicant's pages reads.
+  rejectedAt: timestamp("rejected_at", { withTimezone: true, mode: "string" }),
   ndaArrivedAt: timestamp("nda_arrived_at", { withTimezone: true, mode: "string" }),
   joinedAt: timestamp("joined_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
@@ -439,6 +444,54 @@ export const dashboardNotices = pgTable("dashboard_notices", {
   dismissedAt: timestamp("dismissed_at", { withTimezone: true, mode: "string" }),
 }, (table) => ({
   recipientIdx: index("dashboard_notices_recipient_idx").on(table.recipientId),
+}));
+
+/** What the person who hands over a role does next (lib/dashboard/hand-over.ts). */
+export const handOverOutcomeEnum = pgEnum("hand_over_outcome", ["advisor", "leave"]);
+
+/** The role a lead or head hands over from My profile: never the team leader's (board 77i). */
+export const handOverRoleEnum = pgEnum("hand_over_role", ["lead", "head"]);
+
+/**
+ * How a hand-over request closed: answered by the next level up, or lapsed
+ * when its sender's roles changed before anyone answered (drizzle/0029,
+ * `hasLapsed` in lib/dashboard/hand-over-request.ts).
+ */
+export const handOverDecisionEnum = pgEnum("hand_over_decision", ["confirmed", "declined", "lapsed"]);
+
+/**
+ * A hand-over a division lead or a department head sent from My profile
+ * (issue #262, board 55d). It changes no role until the next level up
+ * confirms it from their Overview (board 62c); lib/dashboard/hand-over-request.ts
+ * owns who that is. A lead hands over a division, a head a department, and
+ * one person has at most one request waiting.
+ */
+export const handOverRequests = pgTable("hand_over_requests", {
+  id: serial("id").primaryKey(),
+  fromId: integer("from_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  role: handOverRoleEnum("role").notNull(),
+  divisionId: integer("division_id").references(() => divisions.id),
+  deptId: integer("dept_id").references(() => departments.id),
+  toId: integer("to_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  outcome: handOverOutcomeEnum("outcome").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  decision: handOverDecisionEnum("decision"),
+  decidedBy: integer("decided_by").references(() => members.memberId, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneWaiting: uniqueIndex("hand_over_requests_one_waiting").on(table.fromId).where(sql`${table.decision} is null`),
+  unit: check(
+    "hand_over_requests_unit",
+    sql`(${table.role} = 'lead' and ${table.divisionId} is not null and ${table.deptId} is null) or (${table.role} = 'head' and ${table.deptId} is not null and ${table.divisionId} is null)`,
+  ),
+  someoneElse: check("hand_over_requests_someone_else", sql`${table.fromId} <> ${table.toId}`),
+  decided: check("hand_over_requests_decided", sql`(${table.decision} is null) = (${table.decidedAt} is null)`),
 }));
 
 // The Alumni page (issue #257). The page is built from the roles; an entry
@@ -628,6 +681,159 @@ export const faqVersions = pgTable(
     answered: check(
       "faq_versions_answered",
       sql`cardinality(${table.answer}) >= 1`,
+    ),
+  }),
+);
+
+// The tags an Outreach post can carry (issue #287): data, so the editor can
+// add one. `award` marks the one tag whose posts the /outreach header counts
+// as awards; the partial unique index keeps it to one. Posts point at a tag by
+// its name, so renaming a tag renames it on every post.
+export const outreachTags = pgTable(
+  "outreach_tags",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull().unique("outreach_tags_name_unique"),
+    award: boolean("award").default(false).notNull(),
+    /** Where the tag sits in the editor's tag list. */
+    listOrder: integer("list_order").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneAward: uniqueIndex("outreach_tags_one_award")
+      .on(table.award)
+      .where(sql`${table.award}`),
+    // The editor's limit (lib/outreach-editor.ts, OUTREACH_TAG_MAX).
+    nameLength: check(
+      "outreach_tags_name_length",
+      sql`char_length(${table.name}) between 1 and 32`,
+    ),
+  }),
+);
+
+// The posts on /outreach and their pages (issue #287, boards 74 to 74h). A
+// post is its place in the site order; what it shows lives in its versions,
+// as a partner's does: a published one, a draft, or both. Removing a post
+// removes its versions and their tags.
+export const outreachPosts = pgTable("outreach_posts", {
+  id: serial("id").primaryKey(),
+  siteOrder: integer("site_order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+export const outreachPostVersions = pgTable(
+  "outreach_post_versions",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id")
+      .references(() => outreachPosts.id, { onDelete: "cascade" })
+      .notNull(),
+    version: contentVersionEnum("version").notNull(),
+    title: text("title").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    place: text("place"),
+    summary: text("summary").notNull(),
+    /** The card's shorter summary on phones, when it has one. */
+    summaryPhone: text("summary_phone"),
+    lead: text("lead").notNull(),
+    /** The body blocks in order (lib/outreach-rows.ts reads them back). */
+    body: jsonb("body").notNull(),
+    /** `{ src, alt }` in order; the first is the cover and the card photo. */
+    photos: jsonb("photos").notNull(),
+    /** `{ instagram?, linkedin? }`, each `{ url, caption, account? }`. */
+    channels: jsonb("channels").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneOfEachVersion: unique("outreach_post_versions_post_version_unique").on(
+      table.postId,
+      table.version,
+    ),
+    // A published version is a whole post. A draft may not be one yet: Save
+    // draft works at any point on a new post (board 74f, issue #292), so a
+    // draft row may have no title, text, photo or channel. The editor keeps
+    // a live post's draft whole (lib/content/versioned.ts, `Versioned`).
+    titled: check(
+      "outreach_post_versions_titled",
+      sql`${table.version} = 'draft' or char_length(${table.title}) >= 1`,
+    ),
+    hasBody: check(
+      "outreach_post_versions_body",
+      sql`jsonb_typeof(${table.body}) = 'array' and (${table.version} = 'draft' or jsonb_array_length(${table.body}) >= 1)`,
+    ),
+    hasPhoto: check(
+      "outreach_post_versions_photos",
+      sql`jsonb_typeof(${table.photos}) = 'array' and (${table.version} = 'draft' or jsonb_array_length(${table.photos}) >= 1)`,
+    ),
+    hasChannel: check(
+      "outreach_post_versions_channels",
+      sql`jsonb_typeof(${table.channels}) = 'object' and (${table.version} = 'draft' or ${table.channels} ? 'instagram' or ${table.channels} ? 'linkedin')`,
+    ),
+  }),
+);
+
+// A post version's tags, in the order the post shows them. Each row belongs
+// to one version and goes with it.
+export const outreachPostTags = pgTable(
+  "outreach_post_tags",
+  {
+    postId: integer("post_id").notNull(),
+    version: contentVersionEnum("version").notNull(),
+    tagName: text("tag_name")
+      .references(() => outreachTags.name, { onUpdate: "cascade" })
+      .notNull(),
+    position: integer("position").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: "outreach_post_tags_pk",
+      columns: [table.postId, table.version, table.position],
+    }),
+    oneEach: unique("outreach_post_tags_once").on(
+      table.postId,
+      table.version,
+      table.tagName,
+    ),
+    ofVersion: foreignKey({
+      name: "outreach_post_tags_version_fk",
+      columns: [table.postId, table.version],
+      foreignColumns: [
+        outreachPostVersions.postId,
+        outreachPostVersions.version,
+      ],
+    }).onDelete("cascade"),
+  }),
+);
+
+// The summit the team started, featured above the posts (board 74's summit
+// card). There is one, so a version is keyed by its kind alone: a published
+// one, which the import writes, and an optional draft beside it.
+export const outreachSummitVersions = pgTable(
+  "outreach_summit_versions",
+  {
+    version: contentVersionEnum("version").primaryKey(),
+    eyebrow: text("eyebrow").notNull(),
+    title: text("title").notNull(),
+    story: text("story").notNull(),
+    storyPhone: text("story_phone"),
+    photoSrc: text("photo_src").notNull(),
+    photoAlt: text("photo_alt").notNull(),
+    /** `{ year, place }` oldest first; the first is the one the team started. */
+    editions: jsonb("editions").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    hasEdition: check(
+      "outreach_summit_versions_editions",
+      sql`jsonb_typeof(${table.editions}) = 'array' and jsonb_array_length(${table.editions}) >= 1`,
     ),
   }),
 );

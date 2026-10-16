@@ -1,5 +1,5 @@
 {
-  "id": "ec816c9e-e7b7-4f1d-9d6e-ae22a4e5014b",
+  "id": "25f983bd-6a0f-4828-b411-ff8ac440b015",
   "prevId": "c8878f14-4cd4-4f3f-aefb-acaeac44ecec",
   "version": "7",
   "dialect": "postgresql",
@@ -1123,6 +1123,185 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.hand_over_requests": {
+      "name": "hand_over_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "from_id": {
+          "name": "from_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "hand_over_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "division_id": {
+          "name": "division_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dept_id": {
+          "name": "dept_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_id": {
+          "name": "to_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "hand_over_outcome",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "decision": {
+          "name": "decision",
+          "type": "hand_over_decision",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "hand_over_requests_one_waiting": {
+          "name": "hand_over_requests_one_waiting",
+          "columns": [
+            {
+              "expression": "from_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"hand_over_requests\".\"decision\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "hand_over_requests_from_id_members_member_id_fk": {
+          "name": "hand_over_requests_from_id_members_member_id_fk",
+          "tableFrom": "hand_over_requests",
+          "tableTo": "members",
+          "columnsFrom": [
+            "from_id"
+          ],
+          "columnsTo": [
+            "member_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "hand_over_requests_division_id_divisions_id_fk": {
+          "name": "hand_over_requests_division_id_divisions_id_fk",
+          "tableFrom": "hand_over_requests",
+          "tableTo": "divisions",
+          "columnsFrom": [
+            "division_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hand_over_requests_dept_id_departments_id_fk": {
+          "name": "hand_over_requests_dept_id_departments_id_fk",
+          "tableFrom": "hand_over_requests",
+          "tableTo": "departments",
+          "columnsFrom": [
+            "dept_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hand_over_requests_to_id_members_member_id_fk": {
+          "name": "hand_over_requests_to_id_members_member_id_fk",
+          "tableFrom": "hand_over_requests",
+          "tableTo": "members",
+          "columnsFrom": [
+            "to_id"
+          ],
+          "columnsTo": [
+            "member_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "hand_over_requests_decided_by_members_member_id_fk": {
+          "name": "hand_over_requests_decided_by_members_member_id_fk",
+          "tableFrom": "hand_over_requests",
+          "tableTo": "members",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "member_id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "hand_over_requests_unit": {
+          "name": "hand_over_requests_unit",
+          "value": "(\"hand_over_requests\".\"role\" = 'lead' and \"hand_over_requests\".\"division_id\" is not null and \"hand_over_requests\".\"dept_id\" is null) or (\"hand_over_requests\".\"role\" = 'head' and \"hand_over_requests\".\"dept_id\" is not null and \"hand_over_requests\".\"division_id\" is null)"
+        },
+        "hand_over_requests_someone_else": {
+          "name": "hand_over_requests_someone_else",
+          "value": "\"hand_over_requests\".\"from_id\" <> \"hand_over_requests\".\"to_id\""
+        },
+        "hand_over_requests_decided": {
+          "name": "hand_over_requests_decided",
+          "value": "(\"hand_over_requests\".\"decision\" is null) = (\"hand_over_requests\".\"decided_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.interview_slots": {
       "name": "interview_slots",
       "schema": "",
@@ -1670,111 +1849,6 @@
     },
     "public.partners": {
       "name": "partners",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "site_order": {
-          "name": "site_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.project_versions": {
-      "name": "project_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "content_version",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content": {
-          "name": "content",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "project_versions_project_id_projects_id_fk": {
-          "name": "project_versions_project_id_projects_id_fk",
-          "tableFrom": "project_versions",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "project_versions_project_version_unique": {
-          "name": "project_versions_project_version_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "project_id",
-            "version"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "project_versions_content_is_record": {
-          "name": "project_versions_content_is_record",
-          "value": "jsonb_typeof(\"project_versions\".\"content\") = 'object'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.projects": {
-      "name": "projects",
       "schema": "",
       "columns": {
         "id": {
@@ -2881,6 +2955,30 @@
       "values": [
         "operations_lead",
         "it_lead"
+      ]
+    },
+    "public.hand_over_decision": {
+      "name": "hand_over_decision",
+      "schema": "public",
+      "values": [
+        "confirmed",
+        "declined"
+      ]
+    },
+    "public.hand_over_outcome": {
+      "name": "hand_over_outcome",
+      "schema": "public",
+      "values": [
+        "advisor",
+        "leave"
+      ]
+    },
+    "public.hand_over_role": {
+      "name": "hand_over_role",
+      "schema": "public",
+      "values": [
+        "lead",
+        "head"
       ]
     },
     "public.status": {

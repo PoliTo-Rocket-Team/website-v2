@@ -5,14 +5,29 @@ import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { applications, applyPositions, departments, divisions, members, roles, scopes, teamJoins, teamLeaves, users } from "@/db/schema";
+import {
+  applications,
+  applyPositions,
+  dashboardNotices,
+  departments,
+  divisions,
+  handOverRequests,
+  members,
+  roles,
+  scopes,
+  teamJoins,
+  teamLeaves,
+  users,
+} from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { publicPathname } from "@/lib/storage/pathname";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { alumniMove } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
+import { readWaitingHandOvers } from "./database-hand-over";
 import { promotedNoticesInsert, promotionOf } from "./database-notices";
 import { moveApplication } from "./database-recruitment";
+import { answerNoticeOf, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
 import { storedPhotoPathname } from "./database-self";
 import type { DashboardIdentity } from "./database";
 import { columnsFromMemberDetails, NO_MEMBER_DETAILS, type MemberDetails } from "./details";
@@ -61,7 +76,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { seatOf } from "./viewer";
+import { isOffTeam, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -85,7 +100,7 @@ import {
   type TeamSearch,
 } from "./division-edit";
 import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
-import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, type TeamSnapshot } from "./team-database";
+import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -111,7 +126,7 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
  * cover. Null for anyone else.
  */
 async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
-  if (identity.memberId === null || identity.kind === "non-member") return null;
+  if (identity.memberId === null || isOffTeam(identity.kind)) return null;
   if (identity.kind === "operations-lead") return { kind: "team" };
   const rows = await getDb()
     .select({ type: roles.type, dept_id: roles.deptId, division_id: roles.divisionId })
@@ -787,17 +802,6 @@ async function setMemberPhoto(identity: DashboardIdentity, personId: number, div
 // below runs what they allow in one audited batch. Nothing here clears a
 // division's `closed_at`: a closed division never opens again.
 
-/** Everyone on the team as the division rules read them. */
-function teamPeopleOf(snapshot: TeamSnapshot): TeamPerson[] {
-  return recordsOf(snapshot).map((r) => ({
-    id: r.id,
-    name: r.name,
-    emails: [r.signInEmail, r.details.prtEmail].filter((e) => e !== ""),
-    memberships: r.memberships,
-    beyond: r.beyondDivisions,
-  }));
-}
-
 /** The lead and member pickers (boards 68b2, 69d): the whole team, for whoever manages a division. */
 export async function findPeople(identity: DashboardIdentity, query: string): Promise<TeamSearch> {
   const snapshot = await readTeamSnapshot();
@@ -1204,6 +1208,80 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
     db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
     ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
   ]);
+  done();
+  return written(null);
+}
+
+/**
+ * What Confirm writes beyond the notice (board 62c, issue #262): the
+ * successor takes the role, then the sender steps down as they chose
+ * (`steppingDownWrites`). A lead's successor leads the division (their rows in
+ * it become lead rows, unless they lead it already); a head's successor gets a
+ * head role on the department and keeps every role they hold.
+ */
+async function confirmedHandOverWrites(
+  plan: Extract<HandOverAnswerPlan, { answer: "confirm" }>,
+  org: OrgChart,
+  on: string,
+): Promise<(db: Tx) => BatchItem<"pg">[]> {
+  const { request, steppingDown: step } = plan;
+  const { fromId, toId, role } = request;
+  const active = await activeRoles(fromId);
+  if (role.kind === "lead") {
+    const theirs = (await heldRows(role.divisionId)).filter((r) => r.memberId === toId);
+    const promote = theirs.some((r) => r.type === "lead" || r.type === "head") ? [] : theirs.map((r) => r.id);
+    const ending = active.filter((r) => r.division_id === role.divisionId && r.type === "lead").map((r) => r.id);
+    return (db) => [
+      ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
+      ...steppingDownWrites(db, { memberId: fromId, active }, step, ending, on),
+    ];
+  }
+  const department = org.departments.find((d) => d.id === role.departmentId)?.name ?? "";
+  const ending = active.filter(headRowOf(role.departmentId, org)).map((r) => r.id);
+  return (db) => [
+    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: headTitle(department), type: "head", startedAt: on }),
+    ...steppingDownWrites(db, { memberId: fromId, active }, step, ending, on),
+  ];
+}
+
+/**
+ * Confirm or Decline on a hand-over sent from My profile (board 62c, issue
+ * #262), checked by `planHandOverAnswer`: only the next level up answers.
+ * The request is marked answered first, so a second answer finds it gone;
+ * then one batch writes the sender's notice and, on Confirm, the hand-over.
+ * If that batch fails, the request waits again.
+ */
+export async function answerHandOver(identity: DashboardIdentity, requestId: number, answer: HandOverAnswer): Promise<WriteResult<null>> {
+  const viewerId = identity.memberId;
+  const [request] = await readWaitingHandOvers({ id: requestId });
+  if (!request || viewerId === null) return refused("This hand-over was already answered.");
+  const snapshot = await readTeamSnapshot();
+  const team = teamPeopleOf(snapshot);
+  const planned = planHandOverAnswer({ viewerId, request, answer, team, org: snapshot.org });
+  if (!planned.ok) return refused(planned.error);
+  const plan = planned.value;
+  const { recipientId, notice } = answerNoticeOf(plan, team, snapshot.org);
+  const on = today();
+  const claimed = await runAuditQuery((db) =>
+    db
+      .update(handOverRequests)
+      .set({ decision: answer === "confirm" ? "confirmed" : "declined", decidedBy: viewerId, decidedAt: new Date().toISOString() })
+      .where(and(eq(handOverRequests.id, requestId), isNull(handOverRequests.decision)))
+      .returning({ id: handOverRequests.id }),
+  );
+  if (claimed.length === 0) return refused("This hand-over was already answered.");
+  try {
+    const writes = plan.answer === "confirm" ? await confirmedHandOverWrites(plan, snapshot.org, on) : () => [];
+    await runAuditBatch((db) => [
+      db.insert(dashboardNotices).values({ recipientId, subjectId: viewerId, kind: notice.kind, data: notice.data }),
+      ...writes(db),
+    ]);
+  } catch (error) {
+    await runAuditQuery((db) =>
+      db.update(handOverRequests).set({ decision: null, decidedBy: null, decidedAt: null }).where(eq(handOverRequests.id, requestId)),
+    );
+    throw error;
+  }
   done();
   return written(null);
 }

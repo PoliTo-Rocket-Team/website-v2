@@ -296,6 +296,13 @@ export const DUMMY_NOW = "2026-10-09T16:00:00+02:00";
 /** The applicant the non-member viewer signs in as; not on the team, so not in `people`. */
 export const applicant = { firstName: "Chiara", lastName: "Lombardi", name: "Chiara Lombardi", email: "chiara.lombardi@gmail.com" } as const;
 
+/**
+ * The former member the Alumni viewer signs in as (issue #317): off the
+ * team since June 2025, on the Alumni record with the roles ./alumni.ts
+ * gives him; not on the roster, and not among the `alumni` rows above.
+ */
+export const formerMember = { id: 1020, firstName: "Luca", lastName: "Moretti", name: "Luca Moretti", email: "luca.moretti@gmail.com" } as const;
+
 function personById(id: number): DummyPerson {
   return people.find((p) => p.id === id)!;
 }

@@ -1,6 +1,7 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
 import type { FaqEditor } from "@/lib/faq/editor";
+import type { OutreachEditor } from "@/lib/outreach-editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
 import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, AccessPage } from "./division-access";
@@ -14,10 +15,12 @@ import type { AddLookup, DetailsTarget } from "./division-members";
 import type { TeamSearch } from "./division-edit";
 import type { TeamStructure } from "./team-structure";
 import type { InterviewSlot, MyApplications } from "./my-applications";
+import type { MyAlumni } from "./my-alumni";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
 import type { Promotion } from "./hand-over";
+import type { HandOverAnswer } from "./hand-over-request";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
@@ -41,15 +44,30 @@ import type { Upload, WriteResult } from "./write";
 export interface DashboardData {
   readonly viewer: DashboardViewer;
   navCounts(): Promise<NavCounts>;
-  /** Whether the viewer has sent at least one application: the sidebar lists My applications only then. */
-  hasOwnApplications(): Promise<boolean>;
   /**
-   * The team's own Overview (boards 40, 52, 56). A non-member's Overview
-   * (board 50e) is built by the page from `myApplications()` and the open
-   * positions (./applicant-overview.ts), so this rejects them with
-   * DashboardRefused.
+   * Whether at least one of the viewer's applications is shown now
+   * (`isShownAt`, ./my-applications.ts): the sidebar lists My applications
+   * only then (issue #317).
+   */
+  hasShownApplications(): Promise<boolean>;
+  /**
+   * The team's own Overview (boards 40, 52, 56). Someone off the team has
+   * theirs built by the page: a non-member's (boards 50e, 50f) from
+   * `myApplications()` (./applicant-overview.ts), an alumnus's (issue
+   * #317's board 56) from `myAlumni()` too (./my-alumni.ts). So this
+   * rejects them with DashboardRefused.
    */
   overview(): Promise<TeamSideOverview>;
+  /** Board 56b (issue #317): how the Alumni page shows the viewer; null for anyone but an alumnus. */
+  myAlumni(): Promise<MyAlumni | null>;
+  /**
+   * My alumni's "Show me on the Alumni page": the alumnus's own request to
+   * be left off the page, the one the leave-time box records (#257). Refused
+   * for anyone but an alumnus.
+   */
+  setMyAlumniShown(shown: boolean): Promise<WriteResult<null>>;
+  /** My alumni's photo, the one the Alumni page shows (`checkPhoto`, ./self.ts), or null to remove it. */
+  setMyAlumniPhoto(photo: Upload | null): Promise<WriteResult<null>>;
   /**
    * Dismiss on a notice under "Needs your attention" (./notices.ts, issue
    * #201): it leaves the list. Refused for a notice that is not the viewer's.
@@ -189,6 +207,14 @@ export interface DashboardData {
    */
   readonly faqs: FaqEditor;
 
+  /**
+   * Boards 74 to 74h (issue #287): the Outreach posts, the featured summit and
+   * the tag list, and their writes, behind the same gate. Each side brings its
+   * own store: the database, or a test developer's cookie over the dummy
+   * content.
+   */
+  readonly outreach: OutreachEditor;
+
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;
   saveLinkedin(text: string): Promise<WriteResult<string | null>>;
@@ -198,9 +224,21 @@ export interface DashboardData {
    * Board 55b: the member leaves the team at once, with the reason they gave
    * (may be empty). They show in Alumni and keep their sign-in, unless they
    * ticked "Remove my name from the Alumni page" (issue #257). Answers the
-   * page that now opens their dashboard (landingAfterLeaving, ./access.ts).
+   * page that now opens their dashboard (LANDING_AFTER_LEAVING, ./access.ts).
    */
   leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>>;
+  /**
+   * Board 55d (issue #262): "Send for confirmation" stores the lead's or
+   * head's hand-over as waiting, checked by `planHandOverSend`
+   * (./hand-over-request.ts). No role changes until the next level up answers.
+   */
+  sendHandOver(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Board 62c: Confirm or Decline on a hand-over waiting for the viewer,
+   * checked by `planHandOverAnswer`. Confirm runs the hand-over at once;
+   * either answer notifies the sender. Refused for anyone but the next level up.
+   */
+  answerHandOver(requestId: number, answer: HandOverAnswer): Promise<WriteResult<null>>;
 
   /** Board 51: an applicant's own account. */
   myAccount(): Promise<MyAccount | null>;
@@ -213,8 +251,9 @@ export interface DashboardData {
   deleteAccount(options: DeleteAccount): Promise<WriteResult<null>>;
 
   /**
-   * Boards 50 and 53: the viewer's own applications, empty lists when they
-   * have not applied yet (issue #179); null for a viewer who does not apply.
+   * Boards 50 and 53: the viewer's own applications the one-month rule
+   * shows (`isShownAt`, ./my-applications.ts, issue #317), empty lists when
+   * none is (issue #179); null for a viewer who does not apply.
    */
   myApplications(): Promise<MyApplications | null>;
   /** Board 50b: the lead stops seeing it at once, and it moves to Past as Withdrawn. */
