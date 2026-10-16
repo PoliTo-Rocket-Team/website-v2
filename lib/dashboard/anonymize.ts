@@ -3,11 +3,13 @@
 // records `users.deleted_at`. A year or more later the person's identifying
 // fields are cleared, their remaining files deleted, and the same values
 // removed from the audit log; every field the team counts for statistics
-// stays. Rules and the plan only: the database side is
+// stays. The person's alumni entry (name, years, roles, founder mark) stays
+// as part of the team's history, unless they ticked "Remove my name from the
+// Alumni page" (issue #257). Rules and the plan only: the database side is
 // ./database-anonymize.ts, and the daily cron route runs it.
 
 import { getTableColumns, type InferSelectModel } from "drizzle-orm";
-import { applications, members, users } from "@/db/schema";
+import { alumniEntries, applications, members, users } from "@/db/schema";
 
 /** One account Delete account closed, as the store reads it. */
 export type DeletedAccount = {
@@ -18,6 +20,12 @@ export type DeletedAccount = {
   readonly anonymizedAt: Date | null;
   /** A Better Auth user with this id exists again: the person signed in after deleting. */
   readonly signedInAgain: boolean;
+  /**
+   * For someone who was on the team: their name on the team record, which
+   * their alumni entry keeps, and whether they asked to be removed from the
+   * Alumni page (boards 55b, 55c). Null for someone never on the team.
+   */
+  readonly alumni: { readonly name: string | null; readonly removed: boolean } | null;
 };
 
 /** The latest deletion time an account may have and still be anonymized at `now`: one calendar year before. */
@@ -42,6 +50,7 @@ export const ANONYMIZED_EMAIL = "anonymized@anonymized.invalid";
 type UserRow = InferSelectModel<typeof users>;
 type MemberRow = InferSelectModel<typeof members>;
 type ApplicationRow = InferSelectModel<typeof applications>;
+type AlumniEntryRow = InferSelectModel<typeof alumniEntries>;
 
 // The identifying fields each row loses. The statistics fields are the ones
 // left out: users' gender, date of birth, origin, country, level of study,
@@ -78,10 +87,20 @@ export const CLEARED_MEMBER: MemberClear = {
 
 export const CLEARED_APPLICATION: ApplicationClear = { mlName: null, cvName: null };
 
+/**
+ * What a removed person's alumni entry loses: every name and the photo. The
+ * entry stays, still marked removed, so the page never lists their roles
+ * under any name; their per-year role text goes with it.
+ */
+const CLEARED_ALUMNI_KEYS = ["recordName", "name", "photo"] as const;
+export type AlumniEntryClear = Pick<AlumniEntryRow, (typeof CLEARED_ALUMNI_KEYS)[number]>;
+export const CLEARED_ALUMNI_ENTRY: AlumniEntryClear = { recordName: null, name: null, photo: null };
+
 /** SQL column names, as the audit trigger writes them into `logs` (`to_jsonb` of the row). */
 const userColumns = getTableColumns(users);
 const memberColumns = getTableColumns(members);
 const applicationColumns = getTableColumns(applications);
+const alumniColumns = getTableColumns(alumniEntries);
 
 /**
  * How a log row is known to be about the person: its `record_id` is their
@@ -91,7 +110,9 @@ const applicationColumns = getTableColumns(applications);
 export type LogOwner =
   | { readonly by: "user-id" }
   | { readonly by: "member-id" }
-  | { readonly by: "column"; readonly column: "user_id" | "userId" };
+  | { readonly by: "column"; readonly column: "user_id" | "userId" }
+  /** Its JSON copy names their member id in `member_id` (the row's own id is its `record_id`). */
+  | { readonly by: "member-column" };
 
 /** The audit log rows of one table whose JSON copies lose `keys`. */
 export type LogScrub = {
@@ -167,7 +188,23 @@ export function scrubReaches(scrub: LogScrub, person: Pick<DeletedAccount, "user
       const column = scrub.owner.column;
       return row.oldData?.[column] === person.userId || row.newData?.[column] === person.userId;
     }
+    case "member-column":
+      return person.memberId !== null && (row.oldData?.member_id === person.memberId || row.newData?.member_id === person.memberId);
   }
+}
+
+/**
+ * The alumni entry's log rows lose its photo always, and its names too when
+ * the person asked to be removed; a kept entry's name stays, as the entry does.
+ */
+function alumniScrub(removed: boolean): LogScrub {
+  const keys: readonly (keyof AlumniEntryClear)[] = removed ? CLEARED_ALUMNI_KEYS : ["photo"];
+  return { schema: "public", table: "alumni_entries", owner: { by: "member-column" }, keys: keys.map((key) => alumniColumns[key].name) };
+}
+
+/** Every log scrub one account's anonymization runs: LOG_SCRUBS, and the alumni entry's for someone on the team. */
+export function logScrubsOf(account: Pick<DeletedAccount, "memberId" | "alumni">): readonly LogScrub[] {
+  return account.memberId === null || account.alumni === null ? LOG_SCRUBS : [...LOG_SCRUBS, alumniScrub(account.alumni.removed)];
 }
 
 /** A log row's JSON copy without `keys`: what the SQL `jsonb - text[]` does. */
@@ -178,37 +215,51 @@ export function scrubLogData(data: Record<string, unknown> | null, keys: readonl
 
 /**
  * One account's anonymization, as the writes run in one transaction, in this
- * order. The log scrub is last so it also reaches the log rows the updates
- * before it write. Deleting the remaining application files is the only
- * delete: the person's applications, roles and team leaves stay.
+ * order. The alumni step is first, while the person's name is still on the
+ * user row it copies. The log scrub is last so it also reaches the log rows
+ * the updates before it write. Deleting the remaining application files and
+ * a removed person's per-year role text are the only deletes: the person's
+ * applications, roles and team leaves stay.
  */
 export type AnonymizationStep =
+  /** Their alumni entry keeps the record's name (made when they had none yet); its photo goes. */
+  | { readonly kind: "keep-alumni-entry"; readonly memberId: number; readonly name: string | null }
+  /** They asked to be removed: their entry loses every name and the photo, and its role text goes. */
+  | { readonly kind: "clear-alumni-entry"; readonly memberId: number; readonly set: AlumniEntryClear }
   | { readonly kind: "clear-user"; readonly userId: string; readonly set: UserClear }
   | { readonly kind: "clear-member"; readonly memberId: number; readonly set: MemberClear }
   | { readonly kind: "clear-applications"; readonly userId: string; readonly set: ApplicationClear }
   | { readonly kind: "delete-application-files"; readonly userId: string }
   | { readonly kind: "scrub-logs"; readonly userId: string; readonly memberId: number | null; readonly scrubs: readonly LogScrub[] };
 
+function alumniStep(account: DeletedAccount): AnonymizationStep[] {
+  if (account.memberId === null || account.alumni === null) return [];
+  return account.alumni.removed
+    ? [{ kind: "clear-alumni-entry", memberId: account.memberId, set: CLEARED_ALUMNI_ENTRY }]
+    : [{ kind: "keep-alumni-entry", memberId: account.memberId, name: account.alumni.name }];
+}
+
 export function anonymizationPlan(account: DeletedAccount, now: Date): AnonymizationStep[] {
   return [
+    ...alumniStep(account),
     { kind: "clear-user", userId: account.userId, set: clearedUser(now) },
     ...(account.memberId === null
       ? []
       : [{ kind: "clear-member", memberId: account.memberId, set: CLEARED_MEMBER } as const]),
     { kind: "clear-applications", userId: account.userId, set: CLEARED_APPLICATION },
     { kind: "delete-application-files", userId: account.userId },
-    { kind: "scrub-logs", userId: account.userId, memberId: account.memberId, scrubs: LOG_SCRUBS },
+    { kind: "scrub-logs", userId: account.userId, memberId: account.memberId, scrubs: logScrubsOf(account) },
   ];
 }
 
-/** A stored file the anonymization deletes: an application file in the private store, or a member photo in the public one. */
+/** A stored file the anonymization deletes: an application file in the private store, or a member or alumni photo in the public one. */
 export type PersonalFile = { readonly store: "private" | "public"; readonly pathname: string };
 
 /** What anonymization needs from the database and the file stores. */
 export interface AnonymizationStore {
   /** Deleted, not yet anonymized accounts deleted at or before `cutoff`. */
   deletedAccounts(cutoff: Date): Promise<readonly DeletedAccount[]>;
-  /** The person's stored files: their remaining application files, and their member photo. */
+  /** The person's stored files: their remaining application files, their member photo and their alumni photo. */
   personalFiles(account: DeletedAccount): Promise<readonly PersonalFile[]>;
   /** Deletes one stored file; deleting one already gone is not an error. */
   deleteFile(file: PersonalFile): Promise<void>;

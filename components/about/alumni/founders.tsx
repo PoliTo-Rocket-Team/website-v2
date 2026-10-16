@@ -1,11 +1,12 @@
-import type { AlumniPage, Founder } from "@/lib/about/alumni-types";
+import type { Founder } from "@/lib/about/alumni-types";
 import { Avatar } from "../person";
 import { SectionHead } from "../section-head";
 
-// Board 28, "The founders": a centred row of the founder and the five
-// co-founders, each a round colour photo (the initials where there is none),
-// the FOUNDER or CO-FOUNDER tag, the name and what they did. Phones: a
-// two-column grid with 72px photos.
+// Board 28, "The founders": a centred row of the founder and the co-founders,
+// each a round colour photo (the initials where there is none), the FOUNDER
+// or CO-FOUNDER tag, the name and what they did. Who shows here is the
+// founder mark on their alumni entry (issue #257). Phones: a two-column grid
+// with 72px photos.
 
 function FounderCard({ founder }: { founder: Founder }) {
   return (
@@ -26,13 +27,23 @@ function FounderCard({ founder }: { founder: Founder }) {
   );
 }
 
-export function Founders({ founders }: { founders: AlumniPage["founders"] }) {
+export function Founders({
+  eyebrow,
+  title,
+  intro,
+  people,
+}: {
+  eyebrow: string;
+  title: string;
+  intro: string;
+  people: readonly Founder[];
+}) {
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
-        <SectionHead eyebrow={founders.eyebrow} title={founders.title} intro={founders.intro} align="centre" />
+        <SectionHead eyebrow={eyebrow} title={title} intro={intro} align="centre" />
         <ul className="mx-auto mt-8 grid max-w-[1120px] grid-cols-2 gap-x-4 gap-y-8 md:mt-14 md:grid-cols-3 lg:grid-cols-6 lg:gap-x-6">
-          {founders.people.map((f) => (
+          {people.map((f) => (
             <FounderCard key={f.name} founder={f} />
           ))}
         </ul>

@@ -421,6 +421,81 @@ export const dashboardNotices = pgTable("dashboard_notices", {
   recipientIdx: index("dashboard_notices_recipient_idx").on(table.recipientId),
 }));
 
+// The Alumni page (issue #257). The page is built from the roles; an entry
+// holds only how one person shows on it, so a fix never writes a role, a
+// division or access. A member's entry is keyed by their member row and made
+// on the first fix; an imported person's (drizzle/0021) and an external
+// advisor's (board 78c) hold the name they were imported or added with.
+export const alumniEntryKindEnum = pgEnum("alumni_entry_kind", [
+  "member",
+  "imported",
+  "advisor",
+]);
+
+export const alumniFounderEnum = pgEnum("alumni_founder", [
+  "founder",
+  "co_founder",
+]);
+
+export const alumniEntries = pgTable("alumni_entries", {
+  id: serial("id").primaryKey(),
+  kind: alumniEntryKindEnum("kind").notNull(),
+  // A member's entry only; it outlives the member row's private fields.
+  memberId: integer("member_id").references(() => members.memberId, { onDelete: "cascade" }),
+  // An imported person's or an advisor's name; for a member, the record's
+  // name, copied here when their account is anonymized (lib/dashboard/anonymize.ts).
+  recordName: text("record_name"),
+  // The name an editor fixed for the page; null shows the record's.
+  name: text("name"),
+  founder: alumniFounderEnum("founder"),
+  // A public store URL, or a photo in public/team/.
+  photo: text("photo"),
+  shown: boolean("shown").default(true).notNull(),
+  // They ticked "Remove my name from the Alumni page" (boards 55b, 55c).
+  removedAt: timestamp("removed_at", { withTimezone: true, mode: "string" }),
+  // An advisor's role on the page and the academic years they advised, as
+  // the calendar year each year starts in.
+  advisorRole: text("advisor_role"),
+  advisorFrom: integer("advisor_from"),
+  advisorTo: integer("advisor_to"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+}, (table) => ({
+  oneEntryPerMember: uniqueIndex("alumni_entries_member").on(table.memberId),
+  memberKind: check("alumni_entries_member_kind", sql`(${table.kind} = 'member') = (${table.memberId} is not null)`),
+  namedOthers: check("alumni_entries_named", sql`${table.kind} = 'member' or ${table.recordName} is not null`),
+  advisorFields: check(
+    "alumni_entries_advisor",
+    sql`(${table.kind} = 'advisor') = (${table.advisorRole} is not null and ${table.advisorFrom} is not null and ${table.advisorTo} is not null)`,
+  ),
+}));
+
+/** One line of an imported year (drizzle/0021): the group and role the old page gave, in its order. */
+export const alumniImportedRoles = pgTable("alumni_imported_roles", {
+  id: serial("id").primaryKey(),
+  entryId: integer("entry_id")
+    .references(() => alumniEntries.id, { onDelete: "cascade" })
+    .notNull(),
+  year: integer("year").notNull(),
+  groupName: text("group_name").notNull(),
+  role: text("role").notNull(),
+  position: integer("position").notNull(),
+}, (table) => ({
+  entryIdx: index("alumni_imported_roles_entry_idx").on(table.entryId),
+}));
+
+/** The page's text for one person's role in one group of one year (board 78b). */
+export const alumniRoleFixes = pgTable("alumni_role_fixes", {
+  id: serial("id").primaryKey(),
+  entryId: integer("entry_id")
+    .references(() => alumniEntries.id, { onDelete: "cascade" })
+    .notNull(),
+  year: integer("year").notNull(),
+  groupName: text("group_name").notNull(),
+  role: text("role").notNull(),
+}, (table) => ({
+  oneFixPerLine: uniqueIndex("alumni_role_fixes_line").on(table.entryId, table.year, table.groupName),
+}));
+
 export const scopes = pgTable(
   "scopes",
   {

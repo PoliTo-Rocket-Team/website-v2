@@ -112,8 +112,8 @@ export async function removePhoto(): Promise<WriteResult<null>> {
   return write("my-profile", (data) => data.setPhoto(null));
 }
 
-export async function leaveTeam(reason: string): Promise<WriteResult<DashboardLanding>> {
-  const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? "")));
+export async function leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>> {
+  const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? ""), removeFromAlumni === true));
   // Off the team, the sidebar and every page change to the applicant's (issue #201).
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
@@ -136,6 +136,8 @@ export async function saveDetails(input: unknown): Promise<WriteResult<YourDetai
   return write(OWN_PAGES, (data) => data.saveDetails(input));
 }
 
-export async function deleteAccount(withdrawOpenApplications: boolean): Promise<WriteResult<null>> {
-  return write(OWN_PAGES, (data) => data.deleteAccount({ withdrawOpenApplications: withdrawOpenApplications === true }));
+export async function deleteAccount(withdrawOpenApplications: boolean, removeFromAlumni: boolean): Promise<WriteResult<null>> {
+  return write(OWN_PAGES, (data) =>
+    data.deleteAccount({ withdrawOpenApplications: withdrawOpenApplications === true, removeFromAlumni: removeFromAlumni === true }),
+  );
 }
