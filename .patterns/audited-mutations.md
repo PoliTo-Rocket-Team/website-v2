@@ -76,8 +76,9 @@ writes (issue #256) pass the site-content gate in `contentEditor`
 ([lib/content/editor.ts](../lib/content/editor.ts)), then
 [lib/dashboard/database-partners.ts](../lib/dashboard/database-partners.ts) writes and calls
 `updateTag(PARTNERS_CACHE_TAG)`; the question writes (issue #258) do the same through
-[lib/dashboard/database-faqs.ts](../lib/dashboard/database-faqs.ts) and `updateTag(FAQS_CACHE_TAG)`. A test
-developer's write goes to the dummy side, which checks the same rules and stores nothing. The
+[lib/dashboard/database-faqs.ts](../lib/dashboard/database-faqs.ts) and `updateTag(FAQS_CACHE_TAG)`. Where no
+database is configured, a test developer's write goes to the dummy side, which checks the same rules
+and stores nothing; where one is, `runAuditQuery` refuses it before it is sent. The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
 position or application before it writes through `runAuditQuery`, and a test developer's dummy
