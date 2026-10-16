@@ -1,5 +1,5 @@
 -- The audit trigger 0002 attached to every table that existed then, on the
--- five tables 0026 creates (issue #287): a table created later gets none
+-- five tables 0027 creates (issue #287): a table created later gets none
 -- unless its migration adds it, and who edited, published, reordered or
 -- removed a post, changed the summit or added a tag must be logged.
 DROP TRIGGER IF EXISTS audit_row_changes ON public.outreach_tags;

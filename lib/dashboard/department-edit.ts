@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { TeamPerson } from "./division-edit";
+import { HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown } from "./hand-over";
 import { beyondTitle, divisionLabel, type OrgChart, type TeamActor } from "./team";
 
 // New department, Edit department and Close department (issue #251, boards
@@ -59,8 +60,16 @@ export type DepartmentCreate = {
   readonly heads: readonly number[];
 };
 
-/** What Save changes on Edit department sends (board 77e): the name and the code. Changing the head is #253's. */
-export type DepartmentSave = { readonly name: string; readonly code: string };
+/**
+ * Change head on Edit department (board 77e, issue #253): who heads the
+ * department from now on, and what the head they replace does next. The
+ * outcome is null only when nothing was picked; the rules refuse that while
+ * the department has a head.
+ */
+export type HeadChange = { readonly to: number; readonly outcome: HandOverOutcome | null };
+
+/** What Save changes on Edit department sends (board 77e): the name, the code, and a new head when Change head picked one. */
+export type DepartmentSave = { readonly name: string; readonly code: string; readonly head: HeadChange | null };
 
 /** What becomes of one division when its department closes (board 77f). */
 export type DivisionFate =
@@ -68,24 +77,15 @@ export type DivisionFate =
   | { readonly divisionId: number; readonly action: "close" };
 
 /**
- * What becomes of the head of a department that closes (board 77f, Owner
- * decision 2026-10-16): no role is given automatically, the closer picks one.
- * "advisor" ends the head role and starts one Advisor role in no department
- * and no division, and removes their access; "leave" ends every role they hold,
- * so they appear on Alumni.
- */
-export const HEAD_OUTCOMES = ["advisor", "leave"] as const;
-export type HeadOutcome = (typeof HEAD_OUTCOMES)[number];
-
-/** The title of the role "Become an advisor" starts. */
-export const ADVISOR_TITLE = "Advisor";
-
-/**
  * What Close department sends: a fate for each of its open divisions, and
- * what becomes of its head. `head` is null only when nothing was picked; the
- * rules refuse that while the department has a head.
+ * what becomes of its head (board 77f, Owner decision 2026-10-16): no role is
+ * given automatically, the closer picks one. "advisor" ends the head role and
+ * starts one Advisor role in no department and no division, since the
+ * department closes, and removes their access; "leave" ends every role they
+ * hold, so they appear on Alumni. `head` is null only when nothing was
+ * picked; the rules refuse that while the department has a head.
  */
-export type DepartmentClose = { readonly divisions: readonly DivisionFate[]; readonly head: HeadOutcome | null };
+export type DepartmentClose = { readonly divisions: readonly DivisionFate[]; readonly head: HandOverOutcome | null };
 
 export type Checked<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
@@ -102,7 +102,11 @@ const name = z.string().max(200);
 const code = z.string().max(10).transform(normalizeDepartmentCode);
 
 const createSchema = z.object({ name, code, heads: z.array(id).max(5) });
-const saveSchema = z.object({ name, code });
+const saveSchema = z.object({
+  name,
+  code,
+  head: z.object({ to: id, outcome: z.enum(HAND_OVER_OUTCOMES).nullable() }).nullable().default(null),
+});
 const closeSchema = z.object({
   divisions: z
     .array(
@@ -112,7 +116,7 @@ const closeSchema = z.object({
       ]),
     )
     .max(60),
-  head: z.enum(HEAD_OUTCOMES).nullable().default(null),
+  head: z.enum(HAND_OVER_OUTCOMES).nullable().default(null),
 });
 
 function parsed<T>(result: z.ZodSafeParseResult<T>): Checked<T> {
@@ -165,22 +169,40 @@ export function planDepartmentCreate(input: {
   return yes({ name: storedDepartmentName(save.name), code: save.code, headId: head.id });
 }
 
-/** A checked Edit department save: the name and code as stored, and what changed. */
+/**
+ * A checked Change head: who heads the department from now on, the people
+ * who head it now (`from`, none for a department with no head), and what
+ * becomes of them (null when nobody heads it).
+ */
+export type HeadChangePlan = { readonly to: number; readonly from: readonly number[]; readonly steppingDown: SteppingDown | null };
+
+/** A checked Edit department save: the name and code as stored, what changed, and the new head, if any. */
 export type DepartmentSavePlan = {
   readonly name: string;
   readonly code: string;
   readonly nameChanged: boolean;
   readonly codeChanged: boolean;
+  readonly head: HeadChangePlan | null;
 };
 
-/** Edit department's Save changes (board 77e): the same name and code rules as New department, for an open department. */
+/**
+ * Edit department's Save changes (board 77e): the same name and code rules
+ * as New department, for an open department. Change head (issue #253) hands
+ * the head role over: the new head is on the team, holds no seat yet (as in
+ * New department) and keeps their divisions; the head they replace becomes an
+ * advisor in this department or leaves the team, as the editor picked, and
+ * nothing is picked for them (`steppingDown`). `headIds` are the people who
+ * head it now.
+ */
 export function planDepartmentSave(input: {
   readonly actor: TeamActor | null;
   readonly org: OrgChart;
   readonly departmentId: number;
   readonly save: DepartmentSave;
+  readonly team: readonly TeamPerson[];
+  readonly headIds: readonly number[];
 }): Checked<DepartmentSavePlan> {
-  const { actor, org, departmentId, save } = input;
+  const { actor, org, departmentId, save, team } = input;
   if (!mayManageDepartments(actor)) return no(ONLY_TEAM);
   const department = org.departments.find((d) => d.id === departmentId);
   if (!department) return no("That department is closed.");
@@ -189,12 +211,26 @@ export function planDepartmentSave(input: {
   const codeError = departmentCodeError(save.code, org.departments, departmentId);
   if (codeError !== null) return no(codeError);
   const stored = storedDepartmentName(save.name);
+  const head = save.head === null ? null : planHeadChange(save.head, departmentId, [...new Set(input.headIds)], team, org);
+  if (head !== null && !head.ok) return no(head.error);
   return yes({
     name: stored,
     code: save.code,
     nameChanged: stored !== department.name,
     codeChanged: save.code !== normalizeDepartmentCode(department.code ?? ""),
+    head: head === null ? null : head.value,
   });
+}
+
+function planHeadChange(change: HeadChange, departmentId: number, from: readonly number[], team: readonly TeamPerson[], org: OrgChart): Checked<HeadChangePlan> {
+  const next = team.find((p) => p.id === change.to);
+  if (!next) return no("They are not on the team.");
+  if (from.includes(next.id)) return no(`${next.name} already heads this department.`);
+  const [seat] = next.beyond;
+  if (seat !== undefined) return no(`${next.name} is already ${beyondTitle(seat, org)}.`);
+  if (from.length === 0) return yes({ to: next.id, from, steppingDown: null });
+  if (change.outcome === null) return no("Choose what happens to the head: Become an advisor or Leave the team.");
+  return yes({ to: next.id, from, steppingDown: steppingDown({ kind: "head", departmentId }, change.outcome) });
 }
 
 /**
@@ -205,7 +241,7 @@ export function planDepartmentSave(input: {
 export type DepartmentClosePlan = {
   readonly move: readonly { readonly divisionId: number; readonly to: number }[];
   readonly close: readonly number[];
-  readonly head: { readonly outcome: HeadOutcome; readonly personIds: readonly number[] } | null;
+  readonly head: { readonly outcome: HandOverOutcome; readonly personIds: readonly number[] } | null;
 };
 
 /**
@@ -215,7 +251,7 @@ export type DepartmentClosePlan = {
  * department, with its people, leads and open positions; a division closes
  * only when nobody is in it (`inIt`, the people and the people waiting for
  * their NDA, by division id); while anyone heads it (`headIds`), the closer
- * picks what becomes of them (`HeadOutcome`), and nothing is picked for them.
+ * picks what becomes of them (`HandOverOutcome`), and nothing is picked for them.
  */
 export function planDepartmentClose(input: {
   readonly actor: TeamActor | null;

@@ -18,7 +18,8 @@ import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
-import type { Departure, MemberDirectory, MemberEdit, PromoteMode, TeamTree } from "./team";
+import type { Promotion } from "./hand-over";
+import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
@@ -258,9 +259,11 @@ export interface TeamWrites {
   /**
    * Board 59e: a member becomes a lead of the division. Changing a
    * division's leads is the head's (`mayChangeDivision`, ./team.ts), so a
-   * division lead's Promote is refused (#231).
+   * division lead's Promote is refused (#231). "Hand over the division"
+   * makes the lead an advisor in it or moves them to Alumni
+   * (`promotingLead`, ./hand-over.ts), never a member (#253).
    */
-  promote(personId: number, mode: PromoteMode): Promise<boolean>;
+  promote(personId: number, promotion: Promotion): Promise<boolean>;
   /**
    * "Leaves the team" (board 59d, widened by #231): every role and every
    * access grant ends and the person moves to Alumni; their account stays.
@@ -318,6 +321,13 @@ export interface TeamWrites {
    * Checked by `planDepartmentClose`.
    */
   closeDepartment(departmentId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * "Hand over the role" on the Team Leader box (board 77i, issue #253): who
+   * takes over, and whether the team leader becomes an advisor or leaves the
+   * team, checked by `planTeamLeaderHandOver` (./hand-over.ts). Only the
+   * current team leader; everyone else is refused.
+   */
+  handOverTeamLeader(input: unknown): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

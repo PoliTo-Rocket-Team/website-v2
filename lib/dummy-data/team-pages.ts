@@ -5,6 +5,12 @@ import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/das
 import { departmentMembers } from "@/lib/dashboard/department-members";
 import {
   ADVISOR_TITLE,
+  checkTeamLeaderHandOver,
+  planTeamLeaderHandOver,
+  type AdvisorPlace,
+  type SteppingDown,
+} from "@/lib/dashboard/hand-over";
+import {
   checkDepartmentClose,
   checkDepartmentCreate,
   checkDepartmentSave,
@@ -69,12 +75,12 @@ import {
   type TeamActor,
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
-import { kindOfTestViewer, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
-import { cleanTitle, detailsKey, type MemberChange, type TeamEdits } from "./edits";
+import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type TeamEdits } from "./edits";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
 import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
 
@@ -306,15 +312,30 @@ export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] =
     const confirmation = edits.confirmed[a.joinId];
     return confirmation ? [entryWithChanges(confirmedEntry(a, confirmation.on), edits.members[ADDED_ID_BASE + a.joinId])] : [];
   });
-  return [...joinedTeam, ...added, ...confirmed].filter((e) => edits.movedToAlumni[e.id] === undefined).map((e) => withoutAdvisorAccess(withDepartmentSeat(e, edits), edits));
+  return [...joinedTeam, ...added, ...confirmed]
+    .filter((e) => edits.movedToAlumni[e.id] === undefined)
+    .map((e) => withoutAdvisorAccess(withTeamLeaderSeat(withDepartmentSeat(e, edits), edits), edits));
 }
 
 /**
- * A closed department's "Become an advisor" removes every access row the
- * person holds (Owner decision, 2026-10-16), as the database deletes them.
+ * "Become an advisor" removes every access row a lead or head holds (Owner
+ * decision, 2026-10-16), as the database deletes them; a former team leader
+ * keeps theirs.
  */
 function withoutAdvisorAccess(entry: RosterEntry, edits: TeamEdits): RosterEntry {
-  return edits.advisorRoles.includes(entry.id) ? { ...entry, access: [] } : entry;
+  return edits.advisors[entry.id]?.access === "ends" ? { ...entry, access: [] } : entry;
+}
+
+/**
+ * The seat "Hand over the role" moved (board 77i, issue #253): the person
+ * picked is the team leader, keeping the divisions they are in; the one in
+ * the arrays is the team leader no more and keeps theirs.
+ */
+function withTeamLeaderSeat(entry: RosterEntry, edits: TeamEdits): RosterEntry {
+  const { placement } = entry;
+  if (edits.teamLeader === null) return entry;
+  if (entry.id === edits.teamLeader) return { ...entry, placement: { role: "team-leader", memberships: placement.memberships } };
+  return placement.role === "team-leader" ? { ...entry, placement: { role: "divisions", memberships: placement.memberships } } : entry;
 }
 
 function entryWithChanges(entry: RosterEntry, change: MemberChange | undefined): RosterEntry {
@@ -322,26 +343,42 @@ function entryWithChanges(entry: RosterEntry, change: MemberChange | undefined):
 }
 
 /**
- * The seat New department and Close department changed (issue #251): the
- * head New department picked heads it, keeping their divisions; the head of a
- * closed department holds that seat no more and keeps every division they are
- * in. Close department's head outcome is kept apart: "Become an advisor" in
- * `advisorRoles` (`beyondOf`), "Leave the team" in `movedToAlumni`.
+ * The seat New department, Change head and Close department changed (issues
+ * #251, #253): the head New department or Change head picked heads it,
+ * keeping their divisions; a head replaced by Change head, and the head of a
+ * closed department, hold that seat no more and keep every division they are
+ * in. What became of them is kept apart: "Become an advisor" in `advisors`
+ * (`beyondOf`), "Leave the team" in `movedToAlumni`.
  */
 function withDepartmentSeat(entry: RosterEntry, edits: TeamEdits): RosterEntry {
   const { placement } = entry;
   const headed = Object.entries(edits.departments).find(([, d]) => d.headId === entry.id && d.closedOn === null);
   if (headed && placement.role === "divisions") return { ...entry, placement: { role: "head", departmentId: Number(headed[0]), memberships: placement.memberships } };
-  if (placement.role === "head" && (edits.departments[placement.departmentId]?.closedOn ?? null) !== null) {
+  const department = placement.role === "head" ? edits.departments[placement.departmentId] : undefined;
+  if (department && (department.closedOn !== null || (department.headId !== null && department.headId !== entry.id))) {
     return { ...entry, placement: { role: "divisions", memberships: placement.memberships } };
   }
   return entry;
 }
 
-/** Every role someone holds in no division: their seat, and the Advisor role a closed department's "Become an advisor" started. */
+/** An Advisor role as a role beyond every division: one on a department or on the whole team. One in a division is a membership. */
+function advisorBeyond(place: AdvisorPlace): RoleBeyondDivisions | null {
+  if (place.kind === "division") return null;
+  return { kind: "advisor", departmentId: place.kind === "department" ? place.departmentId : null };
+}
+
+/** Every role someone holds in no division: their seat, and an Advisor role on a department or on the whole team. */
 function beyondOf(entry: RosterEntry, edits: TeamEdits): readonly RoleBeyondDivisions[] {
   const { beyond } = standingOfPlacement(entry.placement);
-  return edits.advisorRoles.includes(entry.id) ? [...beyond, { kind: "team", title: ADVISOR_TITLE }] : beyond;
+  const advisor = edits.advisors[entry.id];
+  const role = advisor ? advisorBeyond(advisor.place) : null;
+  return role === null ? beyond : [...beyond, role];
+}
+
+/** The advisors with someone's Advisor role set, from what `steppingDown` said became of them. */
+function withAdvisor(edits: TeamEdits, personId: number, step: Extract<SteppingDown, { kind: "advisor" }>): TeamEdits {
+  const advisor: DummyAdvisor = { place: step.place, access: step.access };
+  return { ...edits, advisors: { ...edits.advisors, [personId]: advisor } };
 }
 
 /** People off the team: the ./team.ts alumni, and those the test developer moved with the place they held. */
@@ -538,6 +575,11 @@ function writesFor(
     plan.joinAsLead.forEach((id) => change(id, join("lead")));
     plan.joinAsMember.forEach((id) => change(id, join("member")));
     plan.demote.forEach((id) => change(id, setRole("member")));
+    // A replaced lead stays in the division with the Advisor role, and their access ends (issue #253).
+    for (const id of plan.advise) {
+      change(id, (c) => ({ ...setRole("member")(c), titles: { ...c.titles, [divisionId]: ADVISOR_TITLE } }));
+      next = withAdvisor(next, id, { kind: "advisor", place: { kind: "division", divisionId }, access: "ends" });
+    }
     plan.leaveDivision.forEach((id) => change(id, leave));
     for (const id of plan.leaveTeam) {
       const moved = leftTeam(next, id);
@@ -573,6 +615,9 @@ function writesFor(
 
   /** People in each division and people waiting for their NDA there: Close division and Close department refuse while any are. */
   const inIt = (divisionId: number) => team.filter((e) => isIn(e.placement, divisionId)).length + waitingIn(edits, divisionId).length;
+
+  /** Who heads the department now. */
+  const headsOf = (departmentId: number) => team.filter((e) => e.placement.role === "head" && e.placement.departmentId === departmentId).map((e) => e.id);
 
   /** The department as the edits keep it, before this write. */
   const departmentEdit = (departmentId: number) => {
@@ -628,18 +673,33 @@ function writesFor(
     async saveDepartment(departmentId, input) {
       const checked = checkDepartmentSave(input);
       if (!checked.ok) return refused(checked.error);
-      const planned = planDepartmentSave({ actor, org, departmentId, save: checked.value });
+      const planned = planDepartmentSave({ actor, org, departmentId, save: checked.value, team: teamPeople(team, edits), headIds: headsOf(departmentId) });
       if (!planned.ok) return refused(planned.error);
-      const { name, code } = planned.value;
-      await save({ ...edits, departments: { ...edits.departments, [departmentId]: { ...departmentEdit(departmentId), name, code } } });
+      const { name, code, head } = planned.value;
+      const before = departmentEdit(departmentId);
+      let next: TeamEdits = { ...edits, departments: { ...edits.departments, [departmentId]: { ...before, name, code, headId: head?.to ?? before.headId } } };
+      // Change head (issue #253): the head they replace becomes an advisor in this department, or leaves the team.
+      const step = head?.steppingDown ?? null;
+      for (const id of head !== null && step !== null ? head.from : []) {
+        const after = step?.kind === "advisor" ? withAdvisor(next, id, step) : leftTeam(next, id);
+        if (typeof after === "string") return refused(after);
+        next = after;
+      }
+      await save(next);
       return written(null);
     },
     async closeDepartment(departmentId, input) {
       const checked = checkDepartmentClose(input);
       if (!checked.ok) return refused(checked.error);
       const ids = org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
-      const headIds = team.filter((e) => e.placement.role === "head" && e.placement.departmentId === departmentId).map((e) => e.id);
-      const planned = planDepartmentClose({ actor, org, departmentId, close: checked.value, inIt: Object.fromEntries(ids.map((id) => [id, inIt(id)])), headIds });
+      const planned = planDepartmentClose({
+        actor,
+        org,
+        departmentId,
+        close: checked.value,
+        inIt: Object.fromEntries(ids.map((id) => [id, inIt(id)])),
+        headIds: headsOf(departmentId),
+      });
       if (!planned.ok) return refused(planned.error);
       const { head } = planned.value;
       const moved = { ...edits.divisions };
@@ -650,19 +710,36 @@ function writesFor(
       // A division moves with everyone in it: the people stay in it, so they move with it.
       for (const { divisionId, to } of planned.value.move) moved[divisionId] = { ...state(divisionId), departmentId: to };
       for (const divisionId of planned.value.close) moved[divisionId] = { ...state(divisionId), closedOn: TODAY };
-      const advisors = head?.outcome === "advisor" ? head.personIds : [];
       let next: TeamEdits = {
         ...edits,
         divisions: moved,
         departments: { ...edits.departments, [departmentId]: { ...departmentEdit(departmentId), closedOn: TODAY } },
-        advisorRoles: [...edits.advisorRoles.filter((id) => !advisors.includes(id)), ...advisors],
       };
+      // The department closes, so its head's Advisor role sits on the whole team, and their access ends.
+      for (const id of head?.outcome === "advisor" ? head.personIds : []) next = withAdvisor(next, id, { kind: "advisor", place: { kind: "team" }, access: "ends" });
       for (const id of head?.outcome === "leave" ? head.personIds : []) {
         const left = leftTeam(next, id);
         if (typeof left === "string") return refused(left);
         next = left;
       }
       await save(next);
+      return written(null);
+    },
+    async handOverTeamLeader(input) {
+      const checked = checkTeamLeaderHandOver(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planTeamLeaderHandOver({
+        viewer: { seat: seatOf(testDeveloperStanding(kind)), selfId: SELF_ID[kind] },
+        leaderId: team.find((e) => e.placement.role === "team-leader")?.id ?? null,
+        handOver: checked.value,
+        team: teamPeople(team, edits),
+      });
+      if (!planned.ok) return refused(planned.error);
+      const { from, to, steppingDown: step } = planned.value;
+      const next: TeamEdits = { ...edits, teamLeader: to };
+      const after = step.kind === "advisor" ? withAdvisor(next, from, step) : leftTeam(next, from);
+      if (typeof after === "string") return refused(after);
+      await save(after);
       return written(null);
     },
     async setAlumnusShown(key, shown) {
@@ -924,6 +1001,7 @@ export function dummyTeamPages(
         org,
         actor,
         selfId: self,
+        seat: seatOf(testDeveloperStanding(kind)),
         waiting: Object.fromEntries(ids.map((id) => [id, waitingIn(edits, id)])),
         joining: Object.fromEntries(ids.map((id) => [id, joiningIn(team, id)])),
         openPositions: Object.fromEntries(ids.map((id) => [id, openPositionsIn(id)])),

@@ -7,7 +7,7 @@ import type { OutreachContent } from "./outreach-types";
 // #287): the tag list with Award as the award tag, the summit, and every post
 // in the record's order, each published with no draft. The photos stay where
 // they are, in public/outreach/. Migration
-// drizzle/0027_outreach_audit_and_import.sql holds exactly the SQL
+// drizzle/0028_outreach_audit_and_import.sql holds exactly the SQL
 // `outreachImportSql` writes, which lib/outreach-store.test.ts checks, and the
 // dummy data (previews) starts from the same items.
 

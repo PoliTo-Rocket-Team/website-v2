@@ -28,6 +28,7 @@ import {
   seasonAt,
   teamDirectory,
   type MemberDirectory,
+  type RoleType,
 } from "./team";
 import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
@@ -73,7 +74,7 @@ import { written } from "./write";
 
 type ActiveRole = {
   title: string;
-  type: "president" | "head" | "lead" | "core" | null;
+  type: RoleType;
   startedAt: string;
   divisionId: number | null;
   divisionName: string | null;
@@ -187,7 +188,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
   };
 }
 
-const ROLE_RANK: Readonly<Record<NonNullable<ActiveRole["type"]>, number>> = { president: 0, head: 1, lead: 2, core: 3 };
+const ROLE_RANK: Readonly<Record<NonNullable<ActiveRole["type"]>, number>> = { president: 0, head: 1, lead: 2, core: 3, advisor: 3 };
 
 /** Their highest role, the oldest of those when they hold several: a lead role over a member role. */
 function primaryRole(active: readonly ActiveRole[]): ActiveRole | null {

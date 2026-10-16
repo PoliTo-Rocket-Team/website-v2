@@ -2,7 +2,8 @@ import { mayManageDepartments } from "./department-edit";
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
 import { divisionLabel, roleIn, type Joining, type OrgChart, type TeamActor } from "./team";
-import type { ViewerStanding } from "./viewer";
+import { mayHandOverTeamLeader } from "./hand-over";
+import type { FullAccessSeat, ViewerStanding } from "./viewer";
 
 // The Team tree's edit view (issue #251, boards 77b and 66t-b): every open
 // department with its head, and every open division under it with its lead,
@@ -46,8 +47,11 @@ export type StructureDepartment = {
   readonly divisions: readonly StructureDivision[];
 };
 
+/** The Team Leader box (board 77i): who leads the team, and whether the viewer may hand the role over: only the team leader. */
+export type StructureLeader = StructurePerson & { readonly handsOver: boolean };
+
 export type TeamStructure = {
-  readonly leader: StructurePerson | null;
+  readonly leader: StructureLeader | null;
   /** The department pencils and Add department (board 77b): the team leader and full access only, never a head (66t-b). */
   readonly departmentsEditable: boolean;
   readonly departments: readonly StructureDepartment[];
@@ -88,6 +92,8 @@ export function teamStructure(input: {
   readonly org: OrgChart;
   readonly actor: TeamActor | null;
   readonly selfId: number | null;
+  /** The viewer's full-access seat: only the team leader's opens the Team Leader box (`mayHandOverTeamLeader`). */
+  readonly seat: FullAccessSeat | null;
   readonly waiting: Readonly<Record<number, readonly WaitingPerson[]>>;
   readonly joining: Readonly<Record<number, readonly Joining[]>>;
   readonly openPositions: Readonly<Record<number, number>>;
@@ -148,7 +154,7 @@ export function teamStructure(input: {
   });
 
   return {
-    leader: leader ? person(leader) : null,
+    leader: leader ? { ...person(leader), handsOver: mayHandOverTeamLeader({ seat: input.seat, selfId: input.selfId }, leader.id) } : null,
     departmentsEditable: mayManageDepartments(actor),
     departments,
     takenCodes: org.divisions.map((d) => ({ id: d.id, name: d.name, code: d.code ?? null })),

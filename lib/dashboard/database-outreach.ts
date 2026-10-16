@@ -14,7 +14,7 @@ import { written } from "./write";
 
 // The database side of the Outreach content (issue #287): the editor's store
 // and the public read /outreach and its post pages make. Writes go through
-// runAuditQuery or runAuditBatch, so the audit triggers of migration 0027 log
+// runAuditQuery or runAuditBatch, so the audit triggers of migration 0028 log
 // who made them, then refresh the public read (.patterns/audited-mutations.md).
 
 export const OUTREACH_CACHE_TAG = "outreach";
