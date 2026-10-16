@@ -10,17 +10,20 @@ import {
   normalizeDivisionCode,
   storedDivisionName,
   type DivisionSave,
-  type OldLeadOutcome,
+  type OldLead,
+  type RemovedLeadOutcome,
   type TeamPick,
   type TeamSearch,
 } from "@/lib/dashboard/division-edit";
 import { matchesPerson, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
+import { steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import { divisionLabel, type Permission } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
+import { HandOverChoice } from "./hand-over-choice";
 
 // New division (boards 77c, 69d) and Edit division (77g, 68b to 68b8): name
 // and code, the leads, and the members, in one drawer, opened from the Team
@@ -56,8 +59,10 @@ type Draft = {
   readonly added: readonly NewLead[];
   /** Leads removed with Remove, not replaced. */
   readonly removed: readonly number[];
-  /** What happens to each lead who is replaced or removed; "member" when not chosen (Owner decision, 2026-10-11). */
-  readonly outcomes: Readonly<Record<number, OldLeadOutcome>>;
+  /** What happens to each lead removed with Remove; "member" when not chosen (Owner decision, 2026-10-11). */
+  readonly outcomes: Readonly<Record<number, RemovedLeadOutcome>>;
+  /** What each replaced lead does next (issue #253, board 68b4): nothing is picked for them. */
+  readonly handOvers: Readonly<Record<number, HandOverOutcome>>;
   /** New division only: people from the team, and emails new to it. */
   readonly members: readonly TeamPick[];
   readonly emails: readonly string[];
@@ -71,6 +76,7 @@ function draftOf(target: DivisionDrawerTarget): Draft {
     added: [],
     removed: [],
     outcomes: {},
+    handOvers: {},
     members: [],
     emails: [],
   };
@@ -153,7 +159,9 @@ function DrawerForm({
   const nameError = divisionNameError(draft.name);
   const codeError = draft.code.trim() === "" ? "Write a code." : divisionCodeError(code, takenCodes, target.kind === "edit" ? target.tab.division.id : null);
   const leadError = leadCount < 1 ? "A division needs at least one lead." : null;
-  const valid = nameError === null && codeError === null && leadError === null;
+  const undecided = gone.find((l) => replacedBy(l.id) !== null && draft.handOvers[l.id] === undefined);
+  const handOverError = undecided ? `Choose what happens to ${undecided.name}: Become an advisor or Leave the team.` : null;
+  const valid = nameError === null && codeError === null && leadError === null && handOverError === null;
 
   const original = draftOf(target);
   const nameChanged = target.kind === "edit" && storedDivisionName(draft.name) !== storedDivisionName(original.name);
@@ -164,7 +172,11 @@ function DrawerForm({
     name: draft.name,
     code,
     newLeads: draft.added.map((a) => a.pick.id),
-    oldLeads: gone.map((l) => ({ personId: l.id, outcome: draft.outcomes[l.id] ?? "member" })),
+    oldLeads: gone.flatMap((l): OldLead[] => {
+      if (replacedBy(l.id) === null) return [{ personId: l.id, via: "removed", outcome: draft.outcomes[l.id] ?? "member" }];
+      const outcome = draft.handOvers[l.id];
+      return outcome === undefined ? [] : [{ personId: l.id, via: "replaced", outcome }];
+    }),
     members: draft.members.map((m) => m.id),
     emails: draft.emails,
   };
@@ -335,15 +347,29 @@ function DrawerForm({
                 />
               ),
             )}
-            {gone.map((lead) => (
-              <OutcomeChoice
-                key={lead.id}
-                lead={lead}
-                short={short}
-                value={draft.outcomes[lead.id] ?? "member"}
-                onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
-              />
-            ))}
+            {gone.map((lead) =>
+              replacedBy(lead.id) !== null ? (
+                <div key={lead.id} className="mt-5">
+                  <HandOverChoice
+                    name={`hand-over-${lead.id}`}
+                    person={lead.name}
+                    unit={short}
+                    value={draft.handOvers[lead.id] ?? null}
+                    leave={lead.leave}
+                    onChange={(outcome) => set({ handOvers: { ...draft.handOvers, [lead.id]: outcome } })}
+                  />
+                </div>
+              ) : (
+                <OutcomeChoice
+                  key={lead.id}
+                  lead={lead}
+                  short={short}
+                  value={draft.outcomes[lead.id] ?? "member"}
+                  onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
+                />
+              ),
+            )}
+            {showErrors && handOverError !== null && <p className="mt-2 text-[12px] text-danger">{handOverError}</p>}
           </section>
 
           {tab ? (
@@ -375,7 +401,9 @@ function DrawerForm({
         nameChanged={nameChanged}
         codeChanged={codeChanged}
         added={draft.added}
-        gone={gone.map((l) => ({ lead: l, outcome: draft.outcomes[l.id] ?? "member" }))}
+        gone={gone.map((l) =>
+          goneLine(l, replacedBy(l.id) === null ? { via: "removed", outcome: draft.outcomes[l.id] ?? "member" } : { via: "replaced", outcome: draft.handOvers[l.id] ?? null }, divisionId, short),
+        )}
         members={draft.members.length + draft.emails.length}
         onConfirm={confirm}
       />
@@ -500,8 +528,8 @@ function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: rea
   );
 }
 
-/** Whether each of the old lead's three outcomes is open, with the reason when it is not. */
-function outcomesFor(lead: DivisionPerson, short: string): Readonly<Record<OldLeadOutcome, Permission>> {
+/** Whether each of a removed lead's three outcomes is open, with the reason when it is not. */
+function outcomesFor(lead: DivisionPerson, short: string): Readonly<Record<RemovedLeadOutcome, Permission>> {
   // Someone in another division, or with a seat, keeps a place on the team (`mayLeaveDivision`).
   const mayLeave = lead.removal.kind !== "only-division";
   return {
@@ -511,7 +539,11 @@ function outcomesFor(lead: DivisionPerson, short: string): Readonly<Record<OldLe
   };
 }
 
-/** "What happens to Marco?" (board 68b4): stays as a member, leaves this division, or leaves the team. */
+/**
+ * "What happens to Marco?" for a lead taken off with Remove (board 68b4):
+ * stays as a member, leaves this division, or leaves the team. Remove is not
+ * a hand-over, so it keeps these three; a replaced lead gets `HandOverChoice`.
+ */
 function OutcomeChoice({
   lead,
   short,
@@ -520,11 +552,11 @@ function OutcomeChoice({
 }: {
   lead: DivisionPerson;
   short: string;
-  value: OldLeadOutcome;
-  onChange: (outcome: OldLeadOutcome) => void;
+  value: RemovedLeadOutcome;
+  onChange: (outcome: RemovedLeadOutcome) => void;
 }) {
   const open = outcomesFor(lead, short);
-  const options: readonly { value: OldLeadOutcome; title: string; detail: string; danger?: boolean }[] = [
+  const options: readonly { value: RemovedLeadOutcome; title: string; detail: string; danger?: boolean }[] = [
     { value: "member", title: "Stays as a member", detail: `Keeps ${short}, loses lead access` },
     { value: "leave-division", title: `Leaves ${short}`, detail: "Keeps their other divisions, if any" },
     { value: "leave-team", title: "Leaves the team", detail: "Moves to Alumni; their access ends", danger: true },
@@ -576,7 +608,8 @@ function OutcomeChoice({
 
 /**
  * The picker under "+ Add lead", "+ Add member" (boards 68b2, 68b6, 68b7) or
- * "+ Pick head" (77d): it searches the whole team by name, and in member mode
+ * "+ Pick head" (77d, 77e), or who takes over as team leader (77i): it
+ * searches the whole team by name, and in member mode
  * takes an email new to the team. Escape closes it.
  */
 export function PeoplePicker({
@@ -587,7 +620,7 @@ export function PeoplePicker({
   onEmail,
   onClose,
 }: {
-  mode: "lead" | "member" | "head";
+  mode: "lead" | "member" | "head" | "leader";
   /** The division or department the pick joins: "Mission Analysis", "the new department". */
   short: string;
   /** Why someone cannot be picked here ("Already a lead"), or null. */
@@ -611,19 +644,21 @@ export function PeoplePicker({
 
   const newEmail = mode === "member" && found.kind === "new-email" ? found.email : null;
   const footer =
-    mode === "head"
-      ? `Search anyone in the team. They head ${short} and keep their divisions.`
-      : mode === "lead"
-        ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
-        : newEmail !== null
-          ? "They join once you confirm their signed NDA. You or they can fill in their details."
-          : "Not in the team yet? Type their email to add them as a new member.";
+    mode === "leader"
+      ? "Search anyone in the team. They become Team Leader when you save and keep their roles."
+      : mode === "head"
+        ? `Search anyone in the team. They head ${short} and keep their divisions.`
+        : mode === "lead"
+          ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
+          : newEmail !== null
+            ? "They join once you confirm their signed NDA. You or they can fill in their details."
+            : "Not in the team yet? Type their email to add them as a new member.";
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-hairline bg-panel" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), onClose())}>
       <label className="flex items-center gap-2.5 border-b border-hairline px-3.5">
         <Search aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-        <span className="sr-only">{mode === "member" ? "Search the team, or type an email" : `Search the team for a ${mode}`}</span>
+        <span className="sr-only">{mode === "member" ? "Search the team, or type an email" : mode === "leader" ? "Search the team for who takes over" : `Search the team for a ${mode}`}</span>
         <input
           autoFocus
           value={query}
@@ -966,11 +1001,26 @@ function DraftMembers({
   );
 }
 
-const OUTCOME_LINES: Readonly<Record<OldLeadOutcome, (short: string) => string>> = {
+const OUTCOME_LINES: Readonly<Record<RemovedLeadOutcome, (short: string) => string>> = {
   member: (short) => `stays in ${short} as a member`,
   "leave-division": (short) => `leaves ${short} and keeps their other divisions`,
   "leave-team": () => "leaves the team: they move to Alumni and all their access ends",
 };
+
+/** An old lead as the confirm lists them: what becomes of them, and whether they leave the team. */
+type GoneLine = { readonly lead: DivisionPerson; readonly line: string; readonly leaving: boolean };
+
+function goneLine(
+  lead: DivisionPerson,
+  old: { readonly via: "removed"; readonly outcome: RemovedLeadOutcome } | { readonly via: "replaced"; readonly outcome: HandOverOutcome | null },
+  divisionId: number | null,
+  short: string,
+): GoneLine {
+  if (old.via === "removed") return { lead, line: `${lead.name} ${OUTCOME_LINES[old.outcome](short)}.`, leaving: old.outcome === "leave-team" };
+  if (old.outcome === null || divisionId === null) return { lead, line: `${lead.name} is replaced.`, leaving: false };
+  const step = steppingDown({ kind: "lead", divisionId }, old.outcome);
+  return { lead, line: `${lead.name} is replaced and ${steppingDownLine(step, short)}.`, leaving: step.kind === "leave" };
+}
 
 /** The "are you sure" before Save changes or Create division, saying what will change. */
 function SaveConfirm({
@@ -998,7 +1048,7 @@ function SaveConfirm({
   nameChanged: boolean;
   codeChanged: boolean;
   added: readonly NewLead[];
-  gone: readonly { readonly lead: DivisionPerson; readonly outcome: OldLeadOutcome }[];
+  gone: readonly GoneLine[];
   members: number;
   onConfirm: () => void;
 }) {
@@ -1014,9 +1064,9 @@ function SaveConfirm({
     );
   }
   for (const a of added) lines.push(`${a.pick.name} becomes a lead and keeps their other divisions.`);
-  for (const g of gone) lines.push(`${g.lead.name} ${OUTCOME_LINES[g.outcome](short)}.`);
+  for (const g of gone) lines.push(g.line);
   if (target.kind !== "edit" && members > 0) lines.push(`${members} ${members === 1 ? "member joins" : "members join"}.`);
-  const leaving = gone.some((g) => g.outcome === "leave-team");
+  const leaving = gone.some((g) => g.leaving);
 
   const title = target.kind === "new" ? `Create ${name}?` : codeChanged && lines.length === 1 ? `Change the code to ${code}?` : `Save changes to ${name}?`;
   const intro = target.kind === "new" ? `It opens in ${target.department.name} with the code ${code}.` : null;

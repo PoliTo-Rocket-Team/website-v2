@@ -183,6 +183,13 @@
       "when": 1792143462924,
       "tag": "0025_faqs_audit_and_import",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792144062924,
+      "tag": "0026_advisor_role",
+      "breakpoints": true
     }
   ]
 }

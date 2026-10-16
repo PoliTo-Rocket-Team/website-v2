@@ -19,6 +19,7 @@ import {
   type Placement,
   type RoleHeld,
   type RoleSeat,
+  type RoleType,
   type RosterEntry,
 } from "./team";
 
@@ -33,7 +34,7 @@ export const TEAM_ROSTER_CACHE_TAG = "team-roster";
 
 type RoleRow = {
   member_id: number;
-  type: "president" | "head" | "lead" | "core" | null;
+  type: RoleType;
   title: string;
   started_at: string;
   leaved_at: string | null;
@@ -149,7 +150,7 @@ export async function readTeamSnapshot(): Promise<TeamSnapshot> {
   return queryTeamSnapshot();
 }
 
-const ROLE_RANK = { president: 0, head: 2, lead: 3, core: 4 } as const;
+const ROLE_RANK = { president: 0, head: 2, lead: 3, core: 4, advisor: 4 } as const;
 
 /**
  * A board seat (Project Manager, Chief Engineer) has no role type of its own:
