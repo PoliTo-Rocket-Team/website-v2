@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -8,14 +9,19 @@ import type { ContentStore } from "@/lib/content/editor";
 import { versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { publicOutreach, type OutreachStore, type StoredOutreach, type SummitVersions } from "@/lib/outreach-editor";
+import { storedPhotoPathname, unusedPhotoFiles, type PhotoFiles } from "@/lib/outreach-photos";
 import { postColumns, postFromColumns, summitColumns, summitFromColumns } from "@/lib/outreach-rows";
 import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag } from "@/lib/outreach-types";
+import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
+import { publicPathname, type PublicPathname } from "@/lib/storage/pathname";
 import { written } from "./write";
 
 // The database side of the Outreach content (issue #287): the editor's store
 // and the public read /outreach and its post pages make. Writes go through
 // runAuditQuery or runAuditBatch, so the audit triggers of migration 0028 log
 // who made them, then refresh the public read (.patterns/audited-mutations.md).
+// Uploaded post photos live in the public Blob store; a write deletes the
+// files its post no longer uses (issue #291).
 
 export const OUTREACH_CACHE_TAG = "outreach";
 
@@ -102,6 +108,11 @@ function versionsValues(postId: number, version: Versioned<OutreachPost>) {
   return { versions: all.map((v) => v.version), tags: all.flatMap((v) => v.tags) };
 }
 
+async function dropFiles(pathnames: readonly PublicPathname[]): Promise<void> {
+  // A file left behind costs storage only; the write already landed.
+  await Promise.all(pathnames.map((p) => deletePublicFile(p).catch(() => undefined)));
+}
+
 const databasePostStore: ContentStore<OutreachPost> = {
   list: async () => (await readStoredOutreach()).posts,
 
@@ -143,13 +154,16 @@ const databasePostStore: ContentStore<OutreachPost> = {
       db.insert(outreachPostTags).values(tags),
     ]);
     updateTag(OUTREACH_CACHE_TAG);
+    await dropFiles(unusedPhotoFiles(before?.version ?? null, version));
     return written({ id, siteOrder: before?.siteOrder ?? 0, version });
   },
 
   async remove(id) {
+    const before = (await readStoredOutreach()).posts.find((item) => item.id === id) ?? null;
     // Its versions and their tags go with it (ON DELETE CASCADE).
     await runAuditQuery((db) => db.delete(outreachPosts).where(eq(outreachPosts.id, id)));
     updateTag(OUTREACH_CACHE_TAG);
+    await dropFiles(unusedPhotoFiles(before?.version ?? null, null));
     return written(null);
   },
 
@@ -196,5 +210,17 @@ export const databaseOutreachStore: OutreachStore = {
     );
     updateTag(OUTREACH_CACHE_TAG);
     return written({ name, award: false });
+  },
+};
+
+/** Uploaded post photos go to the public Blob store, under `post-photos/`, each under a new name. */
+export const blobPhotoFiles: PhotoFiles = {
+  async put(photo) {
+    const { url } = await uploadPublicFile(publicPathname("post-photo", `${randomUUID()}.${photo.extension}`), photo.bytes, photo.contentType);
+    return url as `https://${string}`;
+  },
+  owns: (src): src is `https://${string}` => storedPhotoPathname(src) !== null,
+  async drop(srcs) {
+    await dropFiles(srcs.flatMap((src) => storedPhotoPathname(src) ?? []));
   },
 };

@@ -1,11 +1,12 @@
 import { contentEditor, type ContentEditor, type ContentStore } from "@/lib/content/editor";
 import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { textLength } from "@/lib/content/text";
-import { publicItems, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
+import { publicItems, versionRows, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
 import { checkPostFields, postCheckResult, type PostFields } from "./outreach-post-fields";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag } from "./outreach-types";
+import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
+import { checkPhotoSources, checkPhotoUpload, type PhotoFiles } from "./outreach-photos";
+import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag, PhotoSrc } from "./outreach-types";
 
 // The Outreach content as the dashboard keeps it (issue #287): the posts, each
 // a content item with a published version and an optional draft
@@ -13,8 +14,9 @@ import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag } from
 // tag list. Each side of the dashboard data interface brings an
 // `OutreachStore`: the database (lib/dashboard/database-outreach.ts), or the
 // dummy data on previews and in test-developer sessions
-// (lib/dummy-data/outreach.ts). The editor puts every write behind the
-// site-content gate and keeps a post's tags to the tag list.
+// (lib/dummy-data/outreach.ts), and its place for photo files
+// (lib/outreach-photos.ts). The editor puts every write and every upload
+// behind the site-content gate and keeps a post's tags to the tag list.
 
 /**
  * The summit's versions. It is always published (the import publishes it
@@ -76,9 +78,17 @@ export interface OutreachEditor {
   /**
    * Save draft or Publish from the Edit post panel (boards 74c to 74h): the
    * fields must make a whole post (lib/outreach-post-fields.ts), on either
-   * button. The post keeps the photos it had.
+   * button, and each photo must be one the post had or a file `uploadPhoto` stored.
    */
   savePost(id: number, step: PublishStep, fields: PostFields): Promise<WriteResult<ContentItem<OutreachPost>>>;
+  /** A photo picked in the panel, stored once the gate admits the viewer; answers its src. */
+  uploadPhoto(photo: Upload): Promise<WriteResult<PhotoSrc>>;
+  /**
+   * A photo removed in the panel before any save used it: its file is
+   * deleted, unless a version of a post shows it. Nothing for a photo the
+   * store did not upload.
+   */
+  discardPhoto(src: string): Promise<WriteResult<null>>;
   /** The summit's versions; null for a viewer the gate refuses. */
   summit(): Promise<SummitVersions | null>;
   /** Save draft or Publish on the summit. `prepare` gets the version the panel opened on, once the gate let the viewer through. */
@@ -91,7 +101,7 @@ export interface OutreachEditor {
   addTag(name: string): Promise<WriteResult<OutreachTag>>;
 }
 
-export function outreachEditor(viewer: ViewerStanding, store: OutreachStore): OutreachEditor {
+export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, files: PhotoFiles): OutreachEditor {
   const allowed = maySiteContent(viewer);
   const posts = contentEditor(viewer, store.posts);
   return {
@@ -105,9 +115,27 @@ export function outreachEditor(viewer: ViewerStanding, store: OutreachStore): Ou
     },
 
     savePost: (id, step, fields) =>
-      posts.save(id, step, async (current) =>
-        current === null ? refused("This post was removed. Reload the page.") : postCheckResult(checkPostFields(fields, current, await store.tags())),
-      ),
+      posts.save(id, step, async (current) => {
+        if (current === null) return refused("This post was removed. Reload the page.");
+        const post = postCheckResult(checkPostFields(fields, current, await store.tags()));
+        return post.ok ? checkPhotoSources(post.value, current, files) : post;
+      }),
+
+    async uploadPhoto(upload) {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      const photo = checkPhotoUpload(upload);
+      return photo.ok ? written(await files.put(photo.value)) : photo;
+    },
+
+    async discardPhoto(src) {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      if (!files.owns(src)) return written(null);
+      const used = (await store.posts.list()).some((item) =>
+        versionRows(item.version).some((row) => row.content.photos.some((p) => p.src === src)),
+      );
+      if (!used) await files.drop([src]);
+      return written(null);
+    },
 
     summit: async () => (allowed ? store.summit() : null),
 

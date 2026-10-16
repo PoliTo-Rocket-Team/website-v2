@@ -5,8 +5,8 @@
 /** Files served only after an access check: the private store. */
 export type PrivateFileKind = "application" | "order";
 
-/** Files shown on public pages: the public store. Partner logos joined photos with issue #256. */
-export type PublicFileKind = "photo" | "logo";
+/** Files shown on public pages: the public store. Partner logos joined photos with issue #256, Outreach post photos with #291. */
+export type PublicFileKind = "photo" | "logo" | "post-photo";
 
 const PRIVATE_FOLDER: Record<PrivateFileKind, string> = {
   application: "applications/",
@@ -16,6 +16,7 @@ const PRIVATE_FOLDER: Record<PrivateFileKind, string> = {
 const PUBLIC_FOLDER: Record<PublicFileKind, string> = {
   photo: "photos/",
   logo: "logos/",
+  "post-photo": "post-photos/",
 };
 
 declare const privateBrand: unique symbol;

@@ -5,7 +5,6 @@ import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, GripVertical, Plus, X } from "lucide-react";
 import { CHANNEL_ICONS } from "@/components/outreach/channel-icons";
-import { Photo } from "@/components/outreach/photo";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { shortDayMonthYear } from "@/lib/outreach";
 import type { ChannelFields, PostFieldErrors, PostFields } from "@/lib/outreach-post-fields";
@@ -15,18 +14,18 @@ import {
   CHANNEL_NAMES,
   type BodyBlock,
   type ChannelName,
-  type OutreachPhoto,
   type OutreachTag,
 } from "@/lib/outreach-types";
 import { CONTENT_FOCUS, RowMenu, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { PANEL_PRIMARY_BUTTON } from "./drawer";
 import { Field, GroupLabel, inputClass } from "./field";
+import { PhotosSection } from "./outreach-post-photos";
 
 // The Edit post panel (boards 74c, 74d and 74h, issue #290): 480px beside the
 // post page under the edit shell, one card per section, any of them open at
 // once. Every change goes straight back to the page, which redraws as the
-// editor types; Save draft and Publish sit on the edit bar. Photos is shown
-// as the post has them: uploading and ordering them is the next slice (#291).
+// editor types; Save draft and Publish sit on the edit bar. Photos upload,
+// move and take their alt text in ./outreach-post-photos.tsx (issue #291).
 
 /** The panel's sections, in order; each block's Edit chip opens one. */
 export type PostSection = "details" | "text" | "photos" | "channels";
@@ -39,6 +38,7 @@ export const SECTION_OF: Readonly<Record<keyof PostFieldErrors, PostSection>> = 
   lead: "details",
   summary: "details",
   body: "text",
+  photos: "photos",
   channels: "channels",
 };
 
@@ -50,7 +50,6 @@ export function OutreachPostPanel({
   onChange,
   tags,
   onAddTag,
-  photos,
   errors,
   expanded,
   onExpandedChange,
@@ -63,7 +62,6 @@ export function OutreachPostPanel({
   tags: readonly OutreachTag[];
   /** Adds a tag to the tag list; answers whether it was added. */
   onAddTag: (name: string) => Promise<boolean>;
-  photos: readonly OutreachPhoto[];
   errors: PostFieldErrors;
   expanded: readonly PostSection[];
   onExpandedChange: (sections: PostSection[]) => void;
@@ -123,9 +121,13 @@ export function OutreachPostPanel({
         </AccordionPrimitive.Item>
 
         <AccordionPrimitive.Item ref={card("photos")} value="photos" className={SECTION_CARD}>
-          <SectionTrigger title="Photos" summary={`${count(photos.length, "photo")} · the first is the cover`} />
+          <SectionTrigger title="Photos" summary={`${count(fields.photos.length, "photo")} · the first is the cover`} />
           <SectionContent>
-            <PhotosSection photos={photos} />
+            <PhotosSection
+              photos={fields.photos}
+              onChange={(change) => onChange((f) => ({ ...f, photos: change(f.photos) }))}
+              error={errors.photos}
+            />
           </SectionContent>
         </AccordionPrimitive.Item>
 
@@ -476,26 +478,6 @@ function BlockCard({
 function blockPreview(block: BodyBlock): string {
   if (block.kind !== "highlight") return block.text;
   return [block.label.trim().toUpperCase(), block.text.trim()].filter(Boolean).join(" · ");
-}
-
-function PhotosSection({ photos }: { photos: readonly OutreachPhoto[] }) {
-  return (
-    <>
-      <p className="text-[12px] text-prt-muted">The first is the top photo and the card photo.</p>
-      <ul className="grid grid-cols-3 gap-2">
-        {photos.map((photo, i) => (
-          <li key={photo.src} className="relative aspect-[4/3] overflow-hidden rounded-lg border border-hairline">
-            <Photo photo={photo} sizes="140px" />
-            {i === 0 && (
-              <span className="absolute left-1.5 top-1.5 rounded-[4px] bg-ground/80 px-1.5 py-0.5 text-[10px] font-semibold text-prt-text">
-                Cover
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
 }
 
 const MENU_ITEM =

@@ -7,6 +7,7 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
 import {
   dummyOutreachStore,
+  dummyPhotoFiles,
   NO_OUTREACH_EDITS,
   parseOutreachEdits,
   serializeOutreachEdits,
@@ -70,7 +71,7 @@ test("a test developer's writes stay in their cookie, across requests", async ()
   assert.ok((await outreach.posts.remove(12)).ok);
 
   // The next request reads the cookie again.
-  const next = outreachEditor(admin, dummyOutreachStore(jar));
+  const next = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
   const items = (await next.posts.list())!;
   const first = items.find((i) => i.id === 1)!;
   assert.equal(statusOf(first.version), "draft-changes");

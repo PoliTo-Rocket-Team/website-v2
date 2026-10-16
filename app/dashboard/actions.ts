@@ -15,7 +15,7 @@ import type { MeasuredLogo } from "@/lib/partners-editor";
 import { PARTNER_FIELDS, type PartnerFields } from "@/lib/partners-fields";
 import type { FaqFields, FaqVersion } from "@/lib/faq/faq";
 import { readPostFields } from "@/lib/outreach-post-fields";
-import type { OutreachPost, OutreachTag } from "@/lib/outreach-types";
+import type { OutreachPost, OutreachTag, PhotoSrc } from "@/lib/outreach-types";
 
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
@@ -208,6 +208,18 @@ export async function addOutreachTag(name: string): Promise<WriteResult<Outreach
   const result = await contentWrite((data) => data.outreach.addTag(String(name ?? "")));
   if (result.ok) refreshPublicOutreach();
   return result;
+}
+
+/** A photo picked in the Photos section (issue #291), stored at once so the page can show it; a save puts it on the post. */
+export async function uploadOutreachPhoto(form: FormData): Promise<WriteResult<PhotoSrc>> {
+  const photo = await uploadOf(form, "photo");
+  if (photo === null) return refused("Choose a photo.");
+  return contentWrite((data) => data.outreach.uploadPhoto(photo));
+}
+
+/** A photo removed before a save used it: its file goes, unless a post version shows it. */
+export async function discardOutreachPhoto(src: string): Promise<WriteResult<null>> {
+  return contentWrite((data) => data.outreach.discardPhoto(String(src ?? "")));
 }
 
 export async function saveLinkedin(text: string): Promise<WriteResult<string | null>> {

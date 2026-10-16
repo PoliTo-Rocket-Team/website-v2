@@ -9,8 +9,16 @@ import type { Copy } from "./projects";
 /** A day, written YYYY-MM-DD. */
 export type IsoDate = `${number}-${number}-${number}`;
 
-/** A photo in public/outreach/, given as its path from the site root. */
-export type OutreachPhoto = { src: `/outreach/${string}`; alt: string };
+/**
+ * Where a post photo is: a file of the site in public/outreach/, given as its
+ * path from the site root; a file uploaded from the dashboard, at its public
+ * Blob store URL (issue #291); or, on a preview, an upload kept nowhere, as a
+ * data URL the page shows until the next load (lib/dummy-data/outreach.ts).
+ */
+export type PhotoSrc = `/outreach/${string}` | `https://${string}` | `data:image/${string}`;
+
+/** A photo with its alt text, which every photo has. */
+export type OutreachPhoto = { src: PhotoSrc; alt: string };
 
 /**
  * One tag in the tag list: what kind of event a post is about. Tags are data
