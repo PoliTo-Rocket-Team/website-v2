@@ -179,12 +179,13 @@ export const DASHBOARD_PAGES = [
     key: "team-page",
     label: "Team page",
     href: "/dashboard/team-page",
-    // The Team page's visual layer (issue #283): the site-content rule
-    // Partners, Alumni and FAQ follow (maySiteContent, lib/content/gate.ts).
-    // Its writes are here; the editor that lists it under Content comes with
-    // the boards 80 to 80h slices, so the sidebar does not list it yet.
-    reach: { "operations-lead": "unlisted" },
-    siteContent: "unlisted",
+    // The Team page editor (boards 80 to 80h, issues #283 and #284): the
+    // site-content rule Partners, Alumni and FAQ follow (maySiteContent,
+    // lib/content/gate.ts), placed after FAQ, under Content for the team
+    // leader.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    seatPlace: { "team-leader": "content" },
   },
   {
     key: "division-access",

@@ -36,8 +36,17 @@ import { EditFrame } from "./edit-frame";
 // A new item (74f): the bar reads "<Section> / New post", Publish waits on
 // the content type's checklist, which hangs under it, and the block to fill
 // first is outlined with a "Start here" chip.
+//
+// A content type may add to the bar (board 80, issue #284): a tag after the
+// state ("Visual changes only") and actions before Save draft ("Reset to
+// team", drawn with BarButton). While its panel edits one block, it names
+// that block `selected`, which keeps its outline with no chips (board 80b).
 
-const ChipContext = createContext<{ readonly chipOf: (id: string) => EditChip; readonly startHere: string | null } | null>(null);
+const ChipContext = createContext<{
+  readonly chipOf: (id: string) => EditChip;
+  readonly startHere: string | null;
+  readonly selected: string | null;
+} | null>(null);
 
 const STATE_TONE: Readonly<Record<ContentStatus, { pill: string; dot: string }>> = {
   draft: { pill: "bg-white-5 text-text-2", dot: "bg-prt-muted" },
@@ -46,6 +55,21 @@ const STATE_TONE: Readonly<Record<ContentStatus, { pill: string; dot: string }>>
 };
 
 const BAR_BUTTON = `inline-flex h-[31px] items-center justify-center rounded-full px-4 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${CONTENT_FOCUS}`;
+
+/** An outlined button on the edit bar, as Save draft is; `null` shows it but leaves it off. */
+export function BarButton({ onClick, icon, children }: { onClick: (() => void) | null; icon?: ReactNode; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      disabled={onClick === null}
+      onClick={() => onClick?.()}
+      className={`${BAR_BUTTON} gap-2 whitespace-nowrap border border-white-10 transition-colors duration-300 ease-out enabled:hover:border-border-strong`}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
 
 /** The page switch: the pages this item shows on, and the one in view. */
 export type PageSwitch<Page extends string> = {
@@ -65,7 +89,10 @@ export function EditShell<Id extends string, Section extends string, Page extend
   pages,
   blocks,
   startHere,
+  selected,
   onEdit,
+  tag,
+  actions,
   children,
   panel,
 }: {
@@ -95,14 +122,23 @@ export function EditShell<Id extends string, Section extends string, Page extend
   blocks: EditBlocks<Id, Section>;
   /** A block outlined from the start with a "Start here" chip, as a new item opens (board 74f). */
   startHere?: Id;
+  /** The block the content type's panel is editing: outlined, with no chips (board 80b). */
+  selected?: Id;
   onEdit: (section: Section) => void;
+  /** After the state pill: a tag the content type's whole editor carries (board 80: "Visual changes only"). */
+  tag?: ReactNode;
+  /** Before Save draft: the content type's own bar actions, each a BarButton (board 80: "Reset to team"). */
+  actions?: ReactNode;
   /** The page, its blocks marked with EditableBlock. */
   children: ReactNode;
   /** The content type's edit panel, drawn right of the page below the bar while open (board 74c); it sets its own width. */
   panel?: ReactNode;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
-  const chips = useMemo(() => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null }), [blocks, onEdit, startHere]);
+  const chips = useMemo(
+    () => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null, selected: selected ?? null }),
+    [blocks, onEdit, startHere, selected],
+  );
   const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
   const devices = <DeviceToggle device={device} onChange={setDevice} />;
   const phone = device === "phone";
@@ -129,6 +165,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
           </span>
           <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
           <StatePill status={status} />
+          {tag !== undefined && <span className="hidden shrink-0 sm:contents">{tag}</span>}
         </div>
 
         <div className="hidden md:block">
@@ -138,14 +175,8 @@ export function EditShell<Id extends string, Section extends string, Page extend
         <div className="flex items-center justify-end gap-2.5">
           {switcher !== null && <div className="mr-0.5 hidden md:block">{devices}</div>}
           {saved !== undefined && <p className="hidden whitespace-nowrap text-[12px] text-prt-muted lg:block">{saved}</p>}
-          <button
-            type="button"
-            disabled={onSaveDraft === null}
-            onClick={() => onSaveDraft?.()}
-            className={`${BAR_BUTTON} border border-white-10 transition-colors duration-300 ease-out hover:border-border-strong`}
-          >
-            Save draft
-          </button>
+          {actions}
+          <BarButton onClick={onSaveDraft}>Save draft</BarButton>
           {/* Publish stays focusable while the checklist is not done, so a
               keyboard reaches it and hears what is missing. */}
           <div className="group/publish">
@@ -283,10 +314,26 @@ function PageSwitcher<Page extends string>({ targets, current, onSelect }: PageS
  * `startHere` block shows its outline from the start, with a "Start here"
  * chip in place of Edit (board 74f).
  */
-export function EditableBlock({ id, className = "", children }: { id: string; className?: string; children: ReactNode }) {
+export function EditableBlock({
+  id,
+  narrow = false,
+  className = "",
+  children,
+}: {
+  id: string;
+  /**
+   * A block about as wide as its name chip, such as one person on the Team
+   * page's org chart (board 80): the Edit chip hangs off the outline's right
+   * edge, so the two chips never overlap.
+   */
+  narrow?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
   const chips = useContext(ChipContext);
   if (chips === null) throw new Error("EditableBlock is drawn outside an EditShell.");
   const start = chips.startHere === id;
+  const selected = chips.selected === id;
   const chip = start ? { ...chips.chipOf(id), label: "Start here" } : chips.chipOf(id);
   const shown = start
     ? "opacity-100"
@@ -296,27 +343,35 @@ export function EditableBlock({ id, className = "", children }: { id: string; cl
   // here" sits left of it, so it moves in from the block's right edge far
   // enough to clear the checklist; from 1440px the page's centred column
   // leaves room for the board's own spot.
-  const chipPlace = start ? "md:right-[220px] min-[1440px]:right-[145px]" : "md:right-[33px]";
+  const chipPlace = narrow
+    ? "left-[calc(100%-4px)] md:left-[calc(100%-8px)]"
+    : start
+      ? "right-6 md:right-[220px] min-[1440px]:right-[145px]"
+      : "right-6 md:right-[33px]";
   return (
     <div className={`group/block relative ${className}`}>
       {children}
       <div
         aria-hidden
-        className={`pointer-events-none absolute -inset-3 z-10 rounded-xl border-[1.5px] border-accent bg-accent/5 md:-inset-[22px] ${shown}`}
+        className={`pointer-events-none absolute -inset-3 z-10 rounded-xl border-[1.5px] border-accent bg-accent/5 md:-inset-[22px] ${selected ? "opacity-100" : shown}`}
       >
-        <span className="absolute left-4 top-0 -translate-y-1/2 whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent">
-          {chip.name}
-        </span>
+        {!selected && (
+          <span className="absolute left-4 top-0 -translate-y-1/2 whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent">
+            {chip.name}
+          </span>
+        )}
       </div>
-      <button
-        type="button"
-        onClick={chip.edit}
-        aria-label={`${chip.label}: ${chip.name}`}
-        className={`absolute -top-3 right-6 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] ${chipPlace} ${shown} focus-visible:opacity-100 ${CONTENT_FOCUS}`}
-      >
-        <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-        {chip.label}
-      </button>
+      {!selected && (
+        <button
+          type="button"
+          onClick={chip.edit}
+          aria-label={`${chip.label}: ${chip.name}`}
+          className={`absolute -top-3 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] ${chipPlace} ${shown} focus-visible:opacity-100 ${CONTENT_FOCUS}`}
+        >
+          <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+          {chip.label}
+        </button>
+      )}
     </div>
   );
 }

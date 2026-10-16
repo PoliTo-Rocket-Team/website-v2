@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Image from "next/image";
 import type { Leader, OrgChart as OrgChartData } from "@/lib/about/types";
 import { arcLayout, CENTRE_BELOW_PHOTO, LEADER_PHOTO } from "./arc-layout";
@@ -10,6 +11,14 @@ import { SectionHead } from "./section-head";
 // leader by a dashed line. Below xl the arc does not fit beside its labels,
 // so the chart is board 26m's stacked tree: logo, leader, then the others in
 // a two-column grid (four columns from md).
+
+/** Who a frame wraps: the team leader, or a leader on the arc by their place in `OrgChart.leaders`. */
+export type LeaderSlot = "leader" | number;
+
+/** Wraps one person on the chart: the Team page editor outlines them (board 80, issue #284). */
+export type LeaderFrame = (slot: LeaderSlot, person: ReactNode) => ReactNode;
+
+const unframed: LeaderFrame = (_slot, person) => person;
 
 function LeaderLabel({ leader, size }: { leader: Leader; size: "top" | "arc" | "grid" }) {
   const name = { top: "text-[18px] md:text-[26px]", arc: "text-[22px]", grid: "text-[17px]" }[size];
@@ -36,7 +45,7 @@ function University({ university }: { university: OrgChartData["university"] }) 
 }
 
 /** The arc, from xl. Every position is measured from the centre of the circle round the team leader. */
-function Arc({ leader, leaders }: { leader: Leader; leaders: readonly Leader[] }) {
+function Arc({ leader, leaders, frame }: { leader: Leader; leaders: readonly Leader[]; frame: LeaderFrame }) {
   const nodes = arcLayout(leaders.length);
   const centreY = LEADER_PHOTO / 2 + CENTRE_BELOW_PHOTO;
   // The lowest leader's photo, then room for its name, role and icons.
@@ -58,28 +67,34 @@ function Arc({ leader, leaders }: { leader: Leader; leaders: readonly Leader[] }
         ))}
       </svg>
 
-      <div className="absolute left-1/2 top-0 flex -translate-x-1/2 flex-col items-center">
-        <Avatar person={leader} sizeClass="h-[176px] w-[176px]" sizes="176px" fallback="mark" />
-        <div className="mt-5">
-          <LeaderLabel leader={leader} size="top" />
-        </div>
+      <div className="absolute left-1/2 top-0 -translate-x-1/2">
+        {frame(
+          "leader",
+          <div className="flex flex-col items-center">
+            <Avatar person={leader} sizeClass="h-[176px] w-[176px]" sizes="176px" fallback="mark" />
+            <div className="mt-5">
+              <LeaderLabel leader={leader} size="top" />
+            </div>
+          </div>,
+        )}
       </div>
 
       {leaders.map((l, i) => {
         const n = nodes[i];
         const px = `${n.photo}px`;
         return (
-          <div
-            key={l.name}
-            className="absolute flex -translate-x-1/2 flex-col items-center"
-            style={{ left: `calc(50% + ${n.x}px)`, top: centreY + n.y - n.photo / 2 }}
-          >
-            <span className="block" style={{ width: px, height: px }}>
-              <Avatar person={l} sizeClass="h-full w-full" sizes={px} fallback="mark" />
-            </span>
-            <div className="mt-[18px]">
-              <LeaderLabel leader={l} size="arc" />
-            </div>
+          <div key={i} className="absolute -translate-x-1/2" style={{ left: `calc(50% + ${n.x}px)`, top: centreY + n.y - n.photo / 2 }}>
+            {frame(
+              i,
+              <div className="flex flex-col items-center">
+                <span className="block" style={{ width: px, height: px }}>
+                  <Avatar person={l} sizeClass="h-full w-full" sizes={px} fallback="mark" />
+                </span>
+                <div className="mt-[18px]">
+                  <LeaderLabel leader={l} size="arc" />
+                </div>
+              </div>,
+            )}
           </div>
         );
       })}
@@ -88,13 +103,18 @@ function Arc({ leader, leaders }: { leader: Leader; leaders: readonly Leader[] }
 }
 
 /** Board 26m's tree, below xl: the leader, a rule branching to the grid, then the others. */
-function Tree({ leader, leaders }: { leader: Leader; leaders: readonly Leader[] }) {
+function Tree({ leader, leaders, frame }: { leader: Leader; leaders: readonly Leader[]; frame: LeaderFrame }) {
   return (
     <div className="flex flex-col items-center">
-      <Avatar person={leader} sizeClass="h-[120px] w-[120px]" sizes="120px" fallback="mark" />
-      <div className="mt-3">
-        <LeaderLabel leader={leader} size="top" />
-      </div>
+      {frame(
+        "leader",
+        <div className="flex flex-col items-center">
+          <Avatar person={leader} sizeClass="h-[120px] w-[120px]" sizes="120px" fallback="mark" />
+          <div className="mt-3">
+            <LeaderLabel leader={leader} size="top" />
+          </div>
+        </div>,
+      )}
       {/* A line down from the leader, a rule across to the first row's
           outer columns, and a short drop to each. */}
       <span aria-hidden className="mt-3 block h-6 w-px bg-white-10" />
@@ -103,12 +123,17 @@ function Tree({ leader, leaders }: { leader: Leader; leaders: readonly Leader[] 
           aria-hidden
           className="col-span-2 mx-[25%] block h-4 border-x border-t border-white-10 md:col-span-4 md:mx-[12.5%]"
         />
-        {leaders.map((l) => (
-          <div key={l.name} className="mt-2 flex flex-col items-center pb-8">
-            <Avatar person={l} sizeClass="h-24 w-24" sizes="96px" fallback="mark" />
-            <div className="mt-3">
-              <LeaderLabel leader={l} size="grid" />
-            </div>
+        {leaders.map((l, i) => (
+          <div key={i} className="mt-2 flex justify-center pb-8">
+            {frame(
+              i,
+              <div className="flex flex-col items-center">
+                <Avatar person={l} sizeClass="h-24 w-24" sizes="96px" fallback="mark" />
+                <div className="mt-3">
+                  <LeaderLabel leader={l} size="grid" />
+                </div>
+              </div>,
+            )}
           </div>
         ))}
       </div>
@@ -116,7 +141,7 @@ function Tree({ leader, leaders }: { leader: Leader; leaders: readonly Leader[] 
   );
 }
 
-export function OrgChart({ chart }: { chart: OrgChartData }) {
+export function OrgChart({ chart, frame = unframed }: { chart: OrgChartData; frame?: LeaderFrame }) {
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
@@ -128,10 +153,10 @@ export function OrgChart({ chart }: { chart: OrgChartData }) {
           <span aria-hidden className="mx-auto block h-6 w-px bg-white-10 xl:mt-1 xl:h-[34px] xl:w-0 xl:border-l xl:border-dashed xl:border-dim xl:bg-transparent" />
           <div className="xl:mt-9">
             <div className="hidden xl:block">
-              <Arc leader={chart.leader} leaders={chart.leaders} />
+              <Arc leader={chart.leader} leaders={chart.leaders} frame={frame} />
             </div>
             <div className="xl:hidden">
-              <Tree leader={chart.leader} leaders={chart.leaders} />
+              <Tree leader={chart.leader} leaders={chart.leaders} frame={frame} />
             </div>
           </div>
         </div>

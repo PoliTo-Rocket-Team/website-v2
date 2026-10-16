@@ -739,3 +739,9 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's layer stays in their own cookie until they
   sign out, laid on the dummy team in the editor. The public Team page there shows the dummy team
   with no layer.
+- The editor (boards 80, 80b and 80h, #284) is "Team page" under Content, at
+  `/dashboard/team-page`: the real page under the shared edit shell, with the "Visual changes
+  only" tag and Reset to team on the bar. The team leader and each leader on the arc open the Edit
+  person panel; the intro text and the group photo are edited in place. A field put back as the
+  team record has it is no edit. The core members list and "In numbers" have no edit affordance.
+  Replace photo picks a photo the site already holds; the layer takes no upload yet.

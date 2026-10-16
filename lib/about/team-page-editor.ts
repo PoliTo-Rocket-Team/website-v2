@@ -2,7 +2,8 @@ import { contentEditor, type ContentStore } from "@/lib/content/editor";
 import { editorVersion, publicItems, statusOf, type ContentItem, type ContentStatus, type PublishStep, type Versioned } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import { ARC_FULL, ARC_LEADERS, isTeamPageLayer, leadersOnArc, NO_TEAM_LAYER, resetLayer, type TeamPageLayer } from "./team-layer";
+import { ARC_FULL, ARC_LEADERS, isTeamPageLayer, leadersOnArc, NO_TEAM_LAYER, resetLayer, type TeamBuild, type TeamPageLayer } from "./team-layer";
+import { editedTeamPage } from "./team-page-edit";
 import { teamBuildOf, teamPageFromRoles, withLayerText, type TeamRoles } from "./team-roles";
 import type { TeamPage } from "./types";
 
@@ -30,12 +31,19 @@ export function publicTeamPage(roles: TeamRoles, base: TeamPage, items: readonly
   return teamPageFromRoles(roles, base, layer) ?? withLayerText(base, layer);
 }
 
-/** What the editor opens on: the layer it edits (the draft, else the published one) and the page with it laid on. */
+/**
+ * What the editor opens on: the layer it edits (the draft, else the published
+ * one) and the page with it laid on, with the roles build and the hand-typed
+ * record under it, so the editor lays each change on as it is made
+ * (`editedTeamPage`, ./team-page-edit.ts).
+ */
 export type TeamPageOpening = {
   /** Null before anything was saved. */
   readonly status: ContentStatus | null;
   readonly layer: TeamPageLayer;
   readonly page: TeamPage;
+  readonly build: TeamBuild;
+  readonly base: TeamPage;
 };
 
 export interface TeamPageEditor {
@@ -67,8 +75,8 @@ export function teamPageEditor(
       if (items === null) return null;
       const version = items[0]?.version ?? null;
       const layer = version === null ? NO_TEAM_LAYER : editorVersion(version);
-      const page = teamPageFromRoles(await roles(), base, layer) ?? withLayerText(base, layer);
-      return { status: version === null ? null : statusOf(version), layer, page };
+      const build = teamBuildOf(await roles());
+      return { status: version === null ? null : statusOf(version), layer, page: editedTeamPage(build, base, layer).page, build, base };
     },
 
     async save(step, layer) {

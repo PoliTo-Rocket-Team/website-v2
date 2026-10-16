@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { CopyText } from "@/components/project-page/parts";
 import type { HeaderStats } from "@/lib/about/types";
 
@@ -9,6 +10,9 @@ import type { HeaderStats } from "@/lib/about/types";
 // (boards 26m, 28) unless the page asks for 2 x 2 (board 30m), where each
 // row sits under its own hairline.
 
+/** The intro's type, so a text box in its place reads the same. */
+export const PAGE_INTRO = "text-[15px] leading-[1.6] text-text-2 md:text-[18px]";
+
 type Figures =
   | { stats?: undefined; statsOnPhone?: undefined }
   | { stats: HeaderStats; statsOnPhone?: "row" | "two-by-two" };
@@ -17,12 +21,15 @@ export function PageHeader({
   eyebrow,
   title,
   intro,
+  introFrame = (node) => node,
   stats,
   statsOnPhone = "row",
 }: {
   eyebrow: string;
   title: string;
   intro: string;
+  /** Wraps the intro: the Team page editor outlines it, or puts the text box in its place (board 80, issue #284). */
+  introFrame?: (intro: ReactNode) => ReactNode;
 } & Figures) {
   return (
     <div className="px-5 md:px-16">
@@ -32,7 +39,9 @@ export function PageHeader({
           <h1 className="mt-4 text-[34px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-6 md:text-[64px] md:leading-[1.03]">
             {title}
           </h1>
-          <p className="mt-4 max-w-[600px] text-[15px] leading-[1.6] text-text-2 md:mt-7 md:text-[18px]">{intro}</p>
+          <div className="mt-4 max-w-[600px] md:mt-7">
+            {introFrame(<p className={PAGE_INTRO}>{intro}</p>)}
+          </div>
           {stats !== undefined && <Stats stats={stats} onPhone={statsOnPhone} />}
         </header>
       </div>
