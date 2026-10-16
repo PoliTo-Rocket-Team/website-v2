@@ -1,7 +1,6 @@
 // The structure seed (issue #304): every department and division. Ids 1–8
-// and 1–17 keep the numbers db/seed.sql has always used, so the orders and
-// positions it still holds point at the same units. Division 18 is closed
-// and kept as a name; division 19 is open with nobody in it.
+// and 1–17 keep the numbers the old SQL seed used. Division 18 is closed and
+// kept as a name; division 19 is open with nobody in it.
 
 import { departments, divisions } from "@/db/schema";
 import { rowsOf, tableSeedModule } from "./rows";

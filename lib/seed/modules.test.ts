@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { getTableColumns, getTableName, is, SQL } from "drizzle-orm";
 import { PgDialect, type PgTable } from "drizzle-orm/pg-core";
 import { audit, AUDIT_CLEAR, AUDIT_RESET } from "../../db/seed/audit";
-import { baseline } from "../../db/seed/baseline";
+import { SEED_DATA } from "../../db/seed/cases";
 import { SEED_MODULES } from "../../db/seed/registry";
 import { resetTables, sequenceStatement, type TableSeed } from "../../db/seed/rows";
 import type { SeedTx } from "../../db/seed/tx";
@@ -34,13 +34,19 @@ async function seedOnce(): Promise<Sent[]> {
 
 const tableModules = SEED_MODULES.flatMap((m) => ("seed" in m ? [(m as typeof m & { seed: TableSeed }).seed] : []));
 
-test("the registry runs structure, people, alumni and access before the baseline, and the audit clear last", () => {
+test("the registry runs every area module, people before the orders and applications that name them, and the audit clear last", () => {
   assert.deepEqual(
     SEED_MODULES.map((m) => m.name),
-    ["structure", "people", "alumni", "access", "baseline", "audit"],
+    ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq", "audit"],
   );
   assert.equal(SEED_MODULES.at(-1), audit);
-  assert.ok(SEED_MODULES.includes(baseline));
+});
+
+test("every module but the audit clear writes typed rows", () => {
+  assert.deepEqual(
+    SEED_MODULES.filter((m) => !("seed" in m)).map((m) => m.name),
+    ["audit"],
+  );
 });
 
 test("running the seed twice sends the same statements with the same values", async () => {
@@ -58,6 +64,11 @@ test("every reset runs before any insert, so a second run starts from the same e
   assert.ok(lastReset >= 0 && firstInsert === lastReset + 1);
   assert.equal(sent.at(-1)?.sql, AUDIT_CLEAR);
   assert.ok(sent.some((s) => s.sql === AUDIT_RESET));
+});
+
+test("the case checks read the very rows the modules insert", () => {
+  const inserted = new Set<unknown>(tableModules.flatMap((seed) => seed.rows.map((set) => set.rows)));
+  for (const [key, rows] of Object.entries(SEED_DATA)) assert.ok(inserted.has(rows), `SEED_DATA.${key} is not a list a module inserts`);
 });
 
 test("each typed module inserts only into tables its own reset clears", () => {
@@ -111,7 +122,18 @@ test("every typed row sets each column whose default reads the clock or a random
 
 test("rows that set their own serial ids move the sequence past them", () => {
   const seeded = tableModules.flatMap((s) => s.rows).filter((set) => sequenceStatement(set) !== null);
-  assert.deepEqual(seeded.map((set) => getTableName(set.table)).sort(), ["alumni_entries", "departments", "divisions", "members"]);
+  assert.deepEqual(seeded.map((set) => getTableName(set.table)).sort(), [
+    "alumni_entries",
+    "applications",
+    "apply_positions",
+    "departments",
+    "divisions",
+    "faqs",
+    "interview_slots",
+    "members",
+    "orders",
+    "partners",
+  ]);
   for (const set of seeded) {
     const name = getTableName(set.table);
     assert.match(sequenceStatement(set)!.sql, new RegExp(`^SELECT setval\\(pg_get_serial_sequence\\('${name}', '[a-z_]+'\\)`));

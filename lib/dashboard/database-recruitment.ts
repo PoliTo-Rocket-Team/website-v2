@@ -33,7 +33,8 @@ import { DashboardRefused } from "./data";
 import type { DashboardIdentity } from "./database";
 import { readHeadDepartment } from "./database-division";
 import { positionCode } from "@/lib/apply/positions";
-import { interviewStateOf, type SlotRow } from "./interview-slots";
+import type { SlotRow } from "./interview-slots";
+import { storedApplicationState } from "./stored-application";
 import { checkNewPosition, checkPositionContent, newPositionCode, type CreatedPosition, type DivisionChoice } from "./new-position";
 import {
   ago,
@@ -257,36 +258,8 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
 
 // Applications ----------------------------------------------------------------
 
-type StateRow = {
-  status: DbStatus;
-  applied_at: string;
-  accepted_at: string | null;
-  nda_arrived_at: string | null;
-  joined_at: string | null;
-};
-
-/**
- * Where a stored application stands. "Accepted by another team" reads as
- * Rejected: this team did not take them. An interview row reads as
- * ./interview-slots.ts says.
- */
-function stateOf(row: StateRow, slots: readonly SlotRow[]): ApplicationState {
-  switch (row.status) {
-    case "received":
-      return { stage: "new" };
-    case "pending":
-      return { stage: "in-review" };
-    case "interview":
-      return interviewStateOf(slots);
-    case "accepted":
-      return { stage: "accepted", acceptedAt: row.accepted_at ?? row.applied_at, ndaArrived: row.nda_arrived_at !== null };
-    case "joined":
-      return { stage: "joined", joinedAt: row.joined_at ?? row.accepted_at ?? row.applied_at };
-    case "rejected":
-    case "accepted_by_another_team":
-      return { stage: "rejected" };
-  }
-}
+/** Where a stored application stands (./stored-application.ts). */
+const stateOf = storedApplicationState;
 
 /** The stored interview times of the given applications, by application. */
 export async function readSlots(applicationIds: readonly number[]): Promise<Map<number, SlotRow[]>> {

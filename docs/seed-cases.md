@@ -51,8 +51,25 @@ Each row is one seeded case. An area slice that adds a seed module adds its rows
 | access | Grants at view and at edit | `scopes.access_level` | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
 | access | A member who holds "Approve orders" and nothing else | `scopes` target `approve_orders`, member 24 | [#270](https://github.com/PoliTo-Rocket-Team/website-v2/issues/270) |
 | access | Alumni access, given across the whole team | `scopes` scope `website`, member 36 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247), [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| orders | An order in every status: waiting, changes requested, rejected, approved, ordered and cancelled | `orders` 1–7 | [#172](https://github.com/PoliTo-Rocket-Team/website-v2/issues/172), [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
+| orders | Orders made for divisions in different departments | `orders.division_id` | [#233](https://github.com/PoliTo-Rocket-Team/website-v2/issues/233), [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
+| orders | An order approved by the member who holds "Approve orders" and nothing else | `orders` 5, `reviewed_by` member 24 | [#270](https://github.com/PoliTo-Rocket-Team/website-v2/issues/270) |
+| recruitment | Recruitment is on | `recruitment_setting.is_open` | [#119](https://github.com/PoliTo-Rocket-Team/website-v2/issues/119) |
+| recruitment | Open and closed positions | `apply_positions.status`; closed: 13, 18 and 23 | [#119](https://github.com/PoliTo-Rocket-Team/website-v2/issues/119), [#171](https://github.com/PoliTo-Rocket-Team/website-v2/issues/171) |
+| recruitment | An application in every stage: new, in review, interview, accepted, joined, rejected and withdrawn | `applications`, `interview_slots` | [#169](https://github.com/PoliTo-Rocket-Team/website-v2/issues/169), [#171](https://github.com/PoliTo-Rocket-Team/website-v2/issues/171) |
+| recruitment | An application in every stored status, "accepted by another team" among them | `applications.status` | [#171](https://github.com/PoliTo-Rocket-Team/website-v2/issues/171) |
+| recruitment | An interview with times offered and none booked, and one the applicant booked | `interview_slots` of applications 5 and 6 | [#169](https://github.com/PoliTo-Rocket-Team/website-v2/issues/169), [#186](https://github.com/PoliTo-Rocket-Team/website-v2/issues/186) |
+| recruitment | Accepted applications waiting for the signed NDA, and with the NDA arrived | `applications` 3 and 1 | [#171](https://github.com/PoliTo-Rocket-Team/website-v2/issues/171) |
+| recruitment | The local applicant tester holds applications to act on | `applications` 24 and 25 | [#129](https://github.com/PoliTo-Rocket-Team/website-v2/issues/129), [#169](https://github.com/PoliTo-Rocket-Team/website-v2/issues/169) |
+| partners | Main and media partners on the public pages | `partner_versions.tier` | [#256](https://github.com/PoliTo-Rocket-Team/website-v2/issues/256) |
+| partners | A published partner with draft changes | `partner_versions` of partner 3 (EvoMisure) | [#256](https://github.com/PoliTo-Rocket-Team/website-v2/issues/256) |
+| partners | A draft partner, never published, so the public pages do not show it | `partner_versions` of partner 14 | [#256](https://github.com/PoliTo-Rocket-Team/website-v2/issues/256) |
+| partners | A published partner with no website | `partner_versions` of partner 10 (Magicar) | [#256](https://github.com/PoliTo-Rocket-Team/website-v2/issues/256) |
+| partners | A published partner with a dark logo, drawn white | `partner_versions.logo_dark`, partners 11 and 12 | [#256](https://github.com/PoliTo-Rocket-Team/website-v2/issues/256) |
+| faq | Published questions on /apply | `faq_versions` version `published` | [#258](https://github.com/PoliTo-Rocket-Team/website-v2/issues/258) |
+| faq | A published question with a draft change that /apply does not show | `faq_versions` of question 3 | [#258](https://github.com/PoliTo-Rocket-Team/website-v2/issues/258) |
 
-The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The `baseline` module still holds the orders and recruitment rows of [db/seed.sql](../db/seed.sql); they are listed as cases when an area slice moves them into a typed module. The `audit` module runs last and leaves `logs` empty.
+The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The draft partner borrows the Team's own mark as a stand-in logo, since the seed uploads no file. The `audit` module runs last and leaves `logs` empty.
 
 ## Connect previews to the preview database branch
 

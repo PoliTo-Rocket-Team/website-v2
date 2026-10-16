@@ -1,8 +1,8 @@
 // The people-and-roles seed (issue #304): every person with a `users` row,
 // their member rows, every role they hold or held, and the local testers'
 // sign-in rows (issue #129). Member ids 2–38 and the applicants' user ids
-// keep the numbers db/seed.sql has always used, so its orders and
-// applications still point at the same people.
+// keep the numbers the old SQL seed used; the orders and recruitment modules
+// name people by them.
 //
 // Who holds what now: a team leader; an operations lead and an IT lead (the
 // two flagged seats, issue #238); department heads; division leads; members,

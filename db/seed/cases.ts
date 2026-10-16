@@ -1,10 +1,35 @@
-// The cases the typed seed holds (issue #304), each with the check that
+// The cases the typed seed holds (issues #304 and #305), each with the check that
 // proves it from the seeded rows. docs/seed-cases.md lists the same cases; a
 // test runs every check and fails when the page and this list differ.
 
 import type { InferInsertModel } from "drizzle-orm";
-import type { alumniEntries, departments, divisions, members, roles, scopes, users } from "@/db/schema";
+import {
+  applicationStatusEnum,
+  orderStatusEnum,
+  type alumniEntries,
+  type applications,
+  type applyPositions,
+  type departments,
+  type divisions,
+  type faqs,
+  type faqVersions,
+  type interviewSlots,
+  type members,
+  type orders,
+  type partners,
+  type partnerVersions,
+  type recruitmentSetting,
+  type roles,
+  type scopes,
+  type users,
+} from "@/db/schema";
 import { academicYearOfDay, alumniOf, listed, type AlumniRecord, type Alumnus } from "@/lib/about/alumni-record";
+import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
+import { APPLICATION_STAGES, type ApplicationStage } from "@/lib/dashboard/application-flow";
+import { storedApplicationState } from "@/lib/dashboard/stored-application";
+import type { FaqVersion } from "@/lib/faq/faq";
+import type { Partner } from "@/lib/partners";
+import { partnerFromColumns } from "@/lib/partners-rows";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
 import {
   kindOfTestViewer,
@@ -20,7 +45,11 @@ import {
 } from "@/lib/dashboard/viewer";
 import { ALUMNI_ENTRY_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
+import { FAQ_ROWS, FAQ_VERSION_ROWS } from "./faq";
+import { ORDER_ROWS } from "./orders";
+import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
+import { APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 
 /** Every row the typed modules insert, by table. */
@@ -32,6 +61,15 @@ export type SeedData = {
   readonly roles: readonly InferInsertModel<typeof roles>[];
   readonly scopes: readonly InferInsertModel<typeof scopes>[];
   readonly alumniEntries: readonly InferInsertModel<typeof alumniEntries>[];
+  readonly orders: readonly InferInsertModel<typeof orders>[];
+  readonly positions: readonly InferInsertModel<typeof applyPositions>[];
+  readonly applications: readonly InferInsertModel<typeof applications>[];
+  readonly interviewSlots: readonly InferInsertModel<typeof interviewSlots>[];
+  readonly recruitmentSetting: readonly InferInsertModel<typeof recruitmentSetting>[];
+  readonly partners: readonly InferInsertModel<typeof partners>[];
+  readonly partnerVersions: readonly InferInsertModel<typeof partnerVersions>[];
+  readonly faqs: readonly InferInsertModel<typeof faqs>[];
+  readonly faqVersions: readonly InferInsertModel<typeof faqVersions>[];
 };
 
 export const SEED_DATA: SeedData = {
@@ -42,6 +80,15 @@ export const SEED_DATA: SeedData = {
   roles: ROLE_ROWS.rows,
   scopes: SCOPE_ROWS.rows,
   alumniEntries: ALUMNI_ENTRY_ROWS.rows,
+  orders: ORDER_ROWS.rows,
+  positions: POSITION_ROWS.rows,
+  applications: APPLICATION_ROWS.rows,
+  interviewSlots: SLOT_ROWS.rows,
+  recruitmentSetting: RECRUITMENT_SETTING_ROWS.rows,
+  partners: PARTNER_ROWS.rows,
+  partnerVersions: PARTNER_VERSION_ROWS.rows,
+  faqs: FAQ_ROWS.rows,
+  faqVersions: FAQ_VERSION_ROWS.rows,
 };
 
 /** The academic year the Alumni page counts as current when the seed was written (2026–27). */
@@ -161,7 +208,94 @@ export function leftInYear(data: SeedData): Map<number, number> {
   return left;
 }
 
-export type SeedArea = "structure" | "people" | "alumni" | "access";
+// Orders, recruitment, partners and FAQ (issue #305), read back from the
+// rows the way the database sources read them.
+
+/** The department each order is for, through its division. */
+export function orderDepartments(data: SeedData): Set<number> {
+  return new Set(
+    data.orders.flatMap((o) => {
+      const deptId = data.divisions.find((d) => d.id === o.divisionId)?.deptId;
+      return deptId == null ? [] : [deptId];
+    }),
+  );
+}
+
+type Application = SeedData["applications"][number];
+
+/** Where a seeded application stands, as the dashboard reads it: withdrawn first, then ./stored-application.ts. */
+export function stageOf(data: SeedData, application: Application): ApplicationStage {
+  if (application.withdrawnAt != null) return "withdrawn";
+  const slots = data.interviewSlots
+    .filter((s) => s.applicationId === application.id)
+    .map((s) => ({
+      application_id: s.applicationId,
+      starts_at: s.startsAt,
+      ends_at: s.endsAt,
+      chosen: s.chosen ?? false,
+      chosen_at: s.chosenAt ?? null,
+      created_at: s.createdAt!,
+    }));
+  return storedApplicationState(
+    {
+      status: application.status ?? "received",
+      applied_at: application.appliedAt!,
+      accepted_at: application.acceptedAt ?? null,
+      nda_arrived_at: application.ndaArrivedAt ?? null,
+      joined_at: application.joinedAt ?? null,
+    },
+    slots,
+  ).stage;
+}
+
+/** Items read back from their version rows, the way the database sources build them. */
+function itemsOf<T>(
+  rows: readonly { id?: number; siteOrder: number }[],
+  versions: readonly { itemId: number; kind: VersionKind; content: T }[],
+): ContentItem<T>[] {
+  return rows.flatMap((row) => {
+    const version = versionedFromRows(versions.filter((v) => v.itemId === row.id));
+    return version === null ? [] : [{ id: row.id!, siteOrder: row.siteOrder, version }];
+  });
+}
+
+export function partnerItemsOf(data: SeedData): ContentItem<Partner>[] {
+  return itemsOf(
+    data.partners,
+    data.partnerVersions.map((v) => ({
+      itemId: v.partnerId,
+      kind: v.version,
+      content: partnerFromColumns({
+        name: v.name,
+        tier: v.tier,
+        logoUrl: v.logoUrl,
+        logoWidth: v.logoWidth,
+        logoHeight: v.logoHeight,
+        logoKind: v.logoKind,
+        logoDark: v.logoDark,
+        website: v.website ?? null,
+        oneLiner: v.oneLiner,
+        about: v.about ?? null,
+        support: v.support ?? null,
+      }),
+    })),
+  );
+}
+
+export function faqItemsOf(data: SeedData): ContentItem<FaqVersion>[] {
+  return itemsOf(
+    data.faqs,
+    data.faqVersions.map((v) => ({
+      itemId: v.faqId,
+      kind: v.version,
+      content: { question: v.question, answer: v.answer as unknown as FaqVersion["answer"], updatedAt: v.updatedAt! },
+    })),
+  );
+}
+
+export type SeedArea = "structure" | "people" | "alumni" | "access" | "orders" | "recruitment" | "partners" | "faq";
+
+export const SEED_AREAS: readonly SeedArea[] = ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq"];
 
 export type SeedCase = {
   readonly area: SeedArea;
@@ -400,6 +534,147 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`scopes` scope `website`, member 36",
     exercisedBy: `${issue(247)}, ${issue(257)}`,
     holds: (data) => data.scopes.some((s) => s.scope === "website"),
+  },
+  {
+    area: "orders",
+    case: "An order in every status: waiting, changes requested, rejected, approved, ordered and cancelled",
+    rows: "`orders` 1–7",
+    exercisedBy: `${issue(172)}, ${issue(247)}`,
+    holds: (data) => orderStatusEnum.enumValues.every((status) => data.orders.some((o) => o.status === status)),
+  },
+  {
+    area: "orders",
+    case: "Orders made for divisions in different departments",
+    rows: "`orders.division_id`",
+    exercisedBy: `${issue(233)}, ${issue(247)}`,
+    holds: (data) => orderDepartments(data).size >= 5,
+  },
+  {
+    area: "orders",
+    case: "An order approved by the member who holds \"Approve orders\" and nothing else",
+    rows: "`orders` 5, `reviewed_by` member 24",
+    exercisedBy: issue(270),
+    holds: (data) =>
+      data.orders.some(
+        (o) => o.status === "accepted" && data.scopes.some((s) => s.memberId === o.reviewedBy && s.target === "approve_orders"),
+      ),
+  },
+  {
+    area: "recruitment",
+    case: "Recruitment is on",
+    rows: "`recruitment_setting.is_open`",
+    exercisedBy: issue(119),
+    holds: (data) => data.recruitmentSetting.length === 1 && data.recruitmentSetting[0].isOpen === true,
+  },
+  {
+    area: "recruitment",
+    case: "Open and closed positions",
+    rows: "`apply_positions.status`; closed: 13, 18 and 23",
+    exercisedBy: `${issue(119)}, ${issue(171)}`,
+    holds: (data) => [true, false].every((open) => data.positions.some((p) => p.status === open && !p.isDeleted)),
+  },
+  {
+    area: "recruitment",
+    case: "An application in every stage: new, in review, interview, accepted, joined, rejected and withdrawn",
+    rows: "`applications`, `interview_slots`",
+    exercisedBy: `${issue(169)}, ${issue(171)}`,
+    holds: (data) => APPLICATION_STAGES.every((stage) => data.applications.some((a) => stageOf(data, a) === stage)),
+  },
+  {
+    area: "recruitment",
+    case: "An application in every stored status, \"accepted by another team\" among them",
+    rows: "`applications.status`",
+    exercisedBy: issue(171),
+    holds: (data) => applicationStatusEnum.enumValues.every((status) => data.applications.some((a) => a.status === status)),
+  },
+  {
+    area: "recruitment",
+    case: "An interview with times offered and none booked, and one the applicant booked",
+    rows: "`interview_slots` of applications 5 and 6",
+    exercisedBy: `${issue(169)}, ${issue(186)}`,
+    holds: (data) => {
+      const interviews = data.applications.filter((a) => stageOf(data, a) === "interview");
+      const booked = (a: Application) => data.interviewSlots.some((s) => s.applicationId === a.id && s.chosen);
+      return interviews.some(booked) && interviews.some((a) => !booked(a));
+    },
+  },
+  {
+    area: "recruitment",
+    case: "Accepted applications waiting for the signed NDA, and with the NDA arrived",
+    rows: "`applications` 3 and 1",
+    exercisedBy: issue(171),
+    holds: (data) => {
+      const accepted = data.applications.filter((a) => stageOf(data, a) === "accepted");
+      return accepted.some((a) => a.ndaArrivedAt == null) && accepted.some((a) => a.ndaArrivedAt != null);
+    },
+  },
+  {
+    area: "recruitment",
+    case: "The local applicant tester holds applications to act on",
+    rows: "`applications` 24 and 25",
+    exercisedBy: `${issue(129)}, ${issue(169)}`,
+    holds: (data) => {
+      const theirs = data.applications.filter((a) => a.userId === TEST_VIEWER_PEOPLE["non-member"]);
+      return theirs.some((a) => stageOf(data, a) === "interview") && theirs.some((a) => stageOf(data, a) === "new");
+    },
+  },
+  {
+    area: "partners",
+    case: "Main and media partners on the public pages",
+    rows: "`partner_versions.tier`",
+    exercisedBy: issue(256),
+    holds: (data) => (["main", "media"] as const).every((tier) => publicItems(partnerItemsOf(data)).some((p) => p.tier === tier)),
+  },
+  {
+    area: "partners",
+    case: "A published partner with draft changes",
+    rows: "`partner_versions` of partner 3 (EvoMisure)",
+    exercisedBy: issue(256),
+    holds: (data) => partnerItemsOf(data).some((item) => statusOf(item.version) === "draft-changes"),
+  },
+  {
+    area: "partners",
+    case: "A draft partner, never published, so the public pages do not show it",
+    rows: "`partner_versions` of partner 14",
+    exercisedBy: issue(256),
+    holds: (data) => {
+      const shown = publicItems(partnerItemsOf(data)).map((p) => p.name);
+      return partnerItemsOf(data).some((item) => item.version.state === "draft" && !shown.includes(item.version.draft.name));
+    },
+  },
+  {
+    area: "partners",
+    case: "A published partner with no website",
+    rows: "`partner_versions` of partner 10 (Magicar)",
+    exercisedBy: issue(256),
+    holds: (data) => publicItems(partnerItemsOf(data)).some((p) => p.website === undefined),
+  },
+  {
+    area: "partners",
+    case: "A published partner with a dark logo, drawn white",
+    rows: "`partner_versions.logo_dark`, partners 11 and 12",
+    exercisedBy: issue(256),
+    holds: (data) => publicItems(partnerItemsOf(data)).some((p) => p.logo.darkLogo),
+  },
+  {
+    area: "faq",
+    case: "Published questions on /apply",
+    rows: "`faq_versions` version `published`",
+    exercisedBy: issue(258),
+    holds: (data) => publicItems(faqItemsOf(data)).length >= 2,
+  },
+  {
+    area: "faq",
+    case: "A published question with a draft change that /apply does not show",
+    rows: "`faq_versions` of question 3",
+    exercisedBy: issue(258),
+    holds: (data) =>
+      faqItemsOf(data).some(
+        (item) =>
+          item.version.state === "published" &&
+          item.version.draft !== null &&
+          item.version.draft.answer.join("\n") !== item.version.published.answer.join("\n"),
+      ),
   },
 ];
 
