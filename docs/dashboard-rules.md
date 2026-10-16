@@ -62,14 +62,11 @@ An admin column comes later. **Planned**, no issue yet.
     is Partners, then Alumni. Each content page adds its own row there.
   - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
     the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
-    the orders waiting for a decision (one row, naming the oldest, with Review), the approved
-    orders not ordered yet (one row, naming up to three items, with Open), and each open position
-    that closes within 7 days, soonest first. Stored notices follow. The orders rows show counts
-    and items, never a price. A Departments panel lists each department with its head, its
+    the orders waiting for a decision (one row, naming the oldest, with Review) and the approved
+    orders not ordered yet (one row, naming up to three items, with Open). Stored notices follow.
+    The orders rows show counts and items, never a price. A Departments panel lists each department with its head, its
     divisions and people, and its new applications and open positions. Recent activity has no
     Activity log link.
-  - **Gap:** positions keep no closing day in the database, so no position reads as closing soon
-    there. Only the dummy data sets one.
   - **Members, List view (board 73):** the whole team, with an "All departments" select, an
     "All divisions" select (the chosen department's divisions), and a search over name, email and
     phone. Heads and leads come first: the team leader, the board seats, department heads,

@@ -420,18 +420,7 @@ function leaderOverview(team: Team, edits: TeamEdits, notices: DummyNotices): Te
       departments: org.departments.length,
     }),
     attention: [
-      ...leaderAttention({
-        orders,
-        positions: open.map((p) => ({
-          ref: p.slug,
-          title: p.title,
-          department: departmentOf(p.divisionId).name,
-          division: divisionOf(p.divisionId).name,
-          applications: applicationsTo([p], team).length,
-          closesOn: p.closesOn ?? null,
-        })),
-        now: NOW,
-      }),
+      ...leaderAttention({ orders, now: NOW }),
       ...dummyNoticeAttention(me, notices, NOW),
     ],
     departments: departmentSummaries(

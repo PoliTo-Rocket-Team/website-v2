@@ -385,7 +385,6 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   notice: UserMinus,
   "orders-to-decide": ShoppingCart,
   "approved-orders": Package,
-  "closing-position": Timer,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
