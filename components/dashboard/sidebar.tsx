@@ -37,7 +37,6 @@ const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   outreach: Megaphone,
   partners: Handshake,
   faq: CircleHelp,
-  // Not listed until the Team page editor lands (issue #283).
   "team-page": UsersRound,
   orders: ShoppingCart,
   "division-access": KeyRound,

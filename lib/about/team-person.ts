@@ -22,7 +22,7 @@ export function photoOf(url: string | null | undefined): PersonPhoto | undefined
 }
 
 /** "linkedin.com/in/elif-kaya" is the handle "elif-kaya". */
-function linkedinHandleOf(profile: string | null): string | undefined {
+export function linkedinHandleOf(profile: string | null): string | undefined {
   const match = /linkedin\.com\/in\/([^/?#\s]+)/i.exec(profile ?? "");
   if (!match) return undefined;
   try {

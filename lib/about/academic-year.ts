@@ -11,18 +11,9 @@ export function academicYearStart(at: Date): number {
   return month >= 10 ? year : year - 1;
 }
 
-/** "2026–2027": an academic year as page copy writes it (no em dashes). */
-export function academicYearLabel(start: number): string {
-  return `${start}–${start + 1}`;
-}
-
-/** Where copy names the current academic year; the page fills it in. */
-export const CURRENT_ACADEMIC_YEAR = "{academicYear}";
-
-/** Fills `{academicYear}` in a line of copy with the current academic year. */
-export function withAcademicYear(text: string, start: number): string {
-  return text.replaceAll(CURRENT_ACADEMIC_YEAR, academicYearLabel(start));
-}
+// How copy names the year lives apart, with no cache, so the Team page
+// editor in the browser fills the intro the same way (issue #284).
+export { academicYearLabel, CURRENT_ACADEMIC_YEAR, withAcademicYear } from "./academic-year-copy";
 
 /**
  * Today's academic year. Cached for a day, so a prerendered page turns over

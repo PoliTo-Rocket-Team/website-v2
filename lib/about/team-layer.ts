@@ -358,7 +358,9 @@ const isText =
     typeof value === "string" && value.trim() !== "" && textLength(value) <= max;
 const isShortText = isText(TEAM_PAGE_TEXT_MAX);
 const isPhoto: Check = (value) => typeof value === "string" && textLength(value) <= 2048 && (value.startsWith("/team/") || value.startsWith("https://"));
-const isHandle: Check = (value) => typeof value === "string" && /^[^/?#\s]{1,100}$/.test(value);
+/** A LinkedIn handle the layer takes: the part after linkedin.com/in/, with no slash, query or space. */
+export const isLinkedinHandle = (value: unknown): value is string => typeof value === "string" && /^[^/?#\s]{1,100}$/.test(value);
+const isHandle: Check = isLinkedinHandle;
 const isTrue: Check = (value) => value === true;
 
 /** Every key is one of `checks` and passes it; a key `required` names must be there. */
