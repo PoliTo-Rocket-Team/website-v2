@@ -14,7 +14,7 @@ The dummy set that `pnpm db:seed` loads into a local database and into each prev
 
 ## Row format
 
-Each row is one seeded case. An area slice that adds a seed module adds its rows here in the same change.
+Each row is one seeded case. An area slice that adds a seed module adds its rows here in the same change, and the same case, with a check that proves it from the seeded rows, to `SEED_CASES` in [db/seed/cases.ts](../db/seed/cases.ts). A unit test runs every check and fails when this table and that list differ.
 
 | Column | What goes in it |
 |---|---|
@@ -27,8 +27,31 @@ Each row is one seeded case. An area slice that adds a seed module adds its rows
 
 | Area | Case | Rows | Exercised by |
 |---|---|---|---|
+| structure | A closed division, kept as a name, with nobody in it now | `divisions` code `HYB` | [#251](https://github.com/PoliTo-Rocket-Team/website-v2/issues/251), [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| structure | An open division with nobody in it | `divisions` code `PLI` | [#251](https://github.com/PoliTo-Rocket-Team/website-v2/issues/251) |
+| people | One team leader | `roles` type `president`, member 1 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247), [#252](https://github.com/PoliTo-Rocket-Team/website-v2/issues/252) |
+| people | One operations lead and one IT lead, the two full-access seats | `roles.full_access`, members 903 and 11 | [#238](https://github.com/PoliTo-Rocket-Team/website-v2/issues/238), [#252](https://github.com/PoliTo-Rocket-Team/website-v2/issues/252) |
+| people | A head in every open department | `roles` type `head` | [#252](https://github.com/PoliTo-Rocket-Team/website-v2/issues/252) |
+| people | A lead in every open division that has people | `roles` type `lead` with a `division_id` | [#251](https://github.com/PoliTo-Rocket-Team/website-v2/issues/251), [#252](https://github.com/PoliTo-Rocket-Team/website-v2/issues/252) |
+| people | Members with no lead role | `roles` type `core` | [#252](https://github.com/PoliTo-Rocket-Team/website-v2/issues/252) |
+| people | A member in two divisions at once | `roles` of member 15 | [#251](https://github.com/PoliTo-Rocket-Team/website-v2/issues/251), [#252](https://github.com/PoliTo-Rocket-Team/website-v2/issues/252) |
+| people | An advisor in a division, a former lead who stayed | `roles` type `advisor`, member 43 | [#251](https://github.com/PoliTo-Rocket-Team/website-v2/issues/251), [#253](https://github.com/PoliTo-Rocket-Team/website-v2/issues/253) |
+| people | A team-level advisor: the former team leader, in no department or division | `roles` type `advisor`, member 40 | [#253](https://github.com/PoliTo-Rocket-Team/website-v2/issues/253), [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| people | One seeded person per test viewer, read as that viewer | `TEST_VIEWER_PEOPLE` in `db/seed/people.ts` | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
+| alumni | People who left in each year from 2021–22 to 2025–26 | `roles.leaved_at`, members 40–51 | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257), [#271](https://github.com/PoliTo-Rocket-Team/website-v2/issues/271) |
+| alumni | A founder and a co-founder mark | `alumni_entries.founder`, members 41 and 42 | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| alumni | A hidden alumnus | `alumni_entries` member 47, `shown` false | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| alumni | An alumnus whose account is deleted and anonymized, with the Alumni entry kept | `users` and `members` 48, `alumni_entries` member 48 | [#191](https://github.com/PoliTo-Rocket-Team/website-v2/issues/191), [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| alumni | An alumnus who asked to be removed from the Alumni page | `alumni_entries` member 49, `removed_at` set | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| alumni | A name fixed for the Alumni page | `alumni_entries` member 50, `name` set | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| access | Grants across the whole team | `scopes` scope `team`, members 7 and 9 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
+| access | Grants in one department | `scopes` scope `department`, members 14 and 30 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
+| access | Grants in one division | `scopes` scope `division`, members 28 and 22 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
+| access | Grants at view and at edit | `scopes.access_level` | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
+| access | A member who holds "Approve orders" and nothing else | `scopes` target `approve_orders`, member 24 | [#270](https://github.com/PoliTo-Rocket-Team/website-v2/issues/270) |
+| access | Alumni access, given across the whole team | `scopes` scope `website`, member 36 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247), [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
 
-The `baseline` module still holds the rows of [db/seed.sql](../db/seed.sql), including the five local testers of issue #129. They are listed as cases when an area slice moves them into a typed module.
+The five local testers of issue #129 are seeded by the `people` module, with the ids and emails in [lib/dev-tester.ts](../lib/dev-tester.ts). The `baseline` module still holds the orders and recruitment rows of [db/seed.sql](../db/seed.sql); they are listed as cases when an area slice moves them into a typed module. The `audit` module runs last and leaves `logs` empty.
 
 ## Connect previews to their own database branch
 

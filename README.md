@@ -120,7 +120,7 @@ answer 404. Sign-in there stays Google only.
 | Tester Operations Lead | `operations-lead` | In Operations; org-level `edit` on `positions` | `/dashboard`, including the site-wide recruitment switch |
 
 The testers' ids, emails and names live in `lib/dev-tester.ts` and
-`db/seed.sql`; nothing comes from `.env`. The gate is `testerSignInOn()` in
+`db/seed/people.ts`; nothing comes from `.env`. The gate is `testerSignInOn()` in
 `lib/dev-tester.ts`, and `lib/dev-tester.test.ts` proves it is off outside
 `next dev`.
 
