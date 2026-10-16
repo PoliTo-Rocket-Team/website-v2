@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import { CopyText } from "@/components/project-page/parts";
+import { monthYear, slugOf, yearOf } from "@/lib/outreach";
 import type { Copy } from "@/lib/projects";
-import type { OutreachPhoto } from "@/lib/outreach-types";
+import { titleOf, type OutreachDraft, type OutreachPhoto } from "@/lib/outreach-types";
 import { Photo } from "./photo";
 
 /** What a post card shows, worked out on the server from the record. */
@@ -13,8 +14,21 @@ export type PostCardData = {
   date: string;
   title: string;
   summary: Copy;
-  photo: OutreachPhoto;
+  /** None while a draft has no photo yet. */
+  photo: OutreachPhoto | undefined;
 };
+
+/** A post's card: a published post, or the editor's view of one (issue #294). */
+export function postCardOf(post: Pick<OutreachDraft, "title" | "date" | "summary" | "photos">): PostCardData {
+  return {
+    slug: slugOf(post),
+    year: yearOf(post.date),
+    date: monthYear(post.date),
+    title: titleOf(post),
+    summary: post.summary,
+    photo: post.photos[0],
+  };
+}
 
 // Boards 32 and 32m: one post in "Where we've been". A glass card with the
 // photo on top, then the date, the title, the summary and "Read more". The

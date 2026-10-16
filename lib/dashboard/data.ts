@@ -1,6 +1,7 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
 import type { FaqEditor } from "@/lib/faq/editor";
+import type { OutreachEditor } from "@/lib/outreach-editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
 import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, AccessPage } from "./division-access";
@@ -205,6 +206,14 @@ export interface DashboardData {
    * questions, seen from the dummy team's moment.
    */
   readonly faqs: FaqEditor;
+
+  /**
+   * Boards 74 to 74h (issue #287): the Outreach posts, the featured summit and
+   * the tag list, and their writes, behind the same gate. Each side brings its
+   * own store: the database, or a test developer's cookie over the dummy
+   * content.
+   */
+  readonly outreach: OutreachEditor;
 
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;

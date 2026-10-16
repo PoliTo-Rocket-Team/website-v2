@@ -61,6 +61,8 @@ import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
 import { faqEditor } from "@/lib/faq/editor";
 import { databaseFaqStore } from "./database-faqs";
+import { blobPhotoFiles, databaseOutreachStore } from "./database-outreach";
+import { outreachEditor } from "@/lib/outreach-editor";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { upcomingInterviews } from "./interview-slots";
@@ -789,6 +791,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     ...databaseDivisionPages(identity),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
+    outreach: outreachEditor(identity, databaseOutreachStore, blobPhotoFiles()),
     ...self,
     ...databaseOwnAlumni(identity),
     // Every viewer opens on their Overview, so leaving opens it too (issue #317).
