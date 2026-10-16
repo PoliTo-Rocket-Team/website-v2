@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { canReach, DASHBOARD_PAGES, dashboardLandingFor, landingAfterLeaving, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
+import { maySiteContent } from "@/lib/content/gate";
 import { FULL_ACCESS_SEATS, testDeveloperStanding as kindOnly, type FullAccessSeat, type ViewerKind, type ViewerStanding } from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
@@ -64,7 +65,7 @@ test("the team leader's sidebar is board 72's: Team holds Members, Access and Or
     [null, ["Overview", "Team tree"]],
     ["Recruitment", ["Positions", "Applications"]],
     ["Team", ["Members", "Access", "Orders"]],
-    ["Content", ["Partners", "Alumni", "FAQ"]],
+    ["Content", ["Outreach", "Partners", "Alumni", "FAQ"]],
   ]);
 });
 
@@ -75,7 +76,7 @@ test("the operations lead's and the IT lead's sidebars keep Partners, Alumni and
       [
         [null, ["Overview", "Team tree"]],
         ["Recruitment", ["Positions", "Applications"]],
-        ["Team", ["Members", "Partners", "Alumni", "FAQ", "Access", "Orders"]],
+        ["Team", ["Members", "Outreach", "Partners", "Alumni", "FAQ", "Access", "Orders"]],
       ],
       String(seat),
     );
@@ -113,8 +114,29 @@ test("the Alumni page is for full admins and site-content access, never from a l
   }
   assert.deepEqual(shape({ kind: "member", siteContent: true, approveOrders: false }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
-    ["Team", ["Partners", "Alumni", "FAQ"]],
+    ["Team", ["Outreach", "Partners", "Alumni", "FAQ"]],
   ]);
+});
+
+test("the Outreach page is for whoever the site-content gate admits, never from a lead's role, and sits in the team leader's Content group (issue #289)", () => {
+  const reaches: readonly [ViewerStanding, boolean][] = [
+    [fullAccess("team-leader"), true],
+    [fullAccess("operations-lead"), true],
+    [fullAccess("it-lead"), true],
+    [{ kind: "department-head", siteContent: false, approveOrders: false }, false],
+    [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
+    [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", siteContent: false, approveOrders: true }, false],
+    [{ kind: "member", siteContent: true, approveOrders: false }, true],
+    [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
+  ];
+  for (const [viewer, reached] of reaches) {
+    assert.equal(canReach(viewer, "outreach"), reached, JSON.stringify(viewer));
+    assert.equal(maySiteContent(viewer), reached, `the page and the gate agree: ${JSON.stringify(viewer)}`);
+  }
+  const content = sidebarFor(fullAccess("team-leader"), withoutApplications).find((s) => s.group === "content");
+  assert.equal(content?.items.find((item) => item.key === "outreach")?.href, "/dashboard/outreach");
+  assert.equal(pageTitleFor("/dashboard/outreach/iress-3rd-edition"), "Outreach");
 });
 
 test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue #270)", () => {

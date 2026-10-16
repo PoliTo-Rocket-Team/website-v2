@@ -2,7 +2,7 @@
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
-import { Check, ChevronDown, Search, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, ListFilter, Search, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -134,6 +134,62 @@ export function FilterMenu({
         {Icon && <Icon aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-2" strokeWidth={1.75} />}
         <span className="truncate">{current}</span>
         <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={2} />
+      </DropdownMenuTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuPrimitive.Content
+          align="start"
+          sideOffset={6}
+          className="z-50 max-h-[320px] min-w-[200px] overflow-y-auto rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
+        >
+          <DropdownMenuPrimitive.RadioGroup value={value ?? ""} onValueChange={(v) => onChange(v === "" ? null : v)}>
+            {[{ value: "", label: allLabel }, ...options].map((option) => (
+              <DropdownMenuPrimitive.RadioItem
+                key={option.value}
+                value={option.value}
+                className="flex h-8 cursor-pointer items-center justify-between gap-4 rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[highlighted]:text-prt-text"
+              >
+                {option.label}
+                <DropdownMenuPrimitive.ItemIndicator>
+                  <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
+                </DropdownMenuPrimitive.ItemIndicator>
+              </DropdownMenuPrimitive.RadioItem>
+            ))}
+          </DropdownMenuPrimitive.RadioGroup>
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPortal>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * A table column's heading that filters the column (board 74's TAGS and
+ * STATUS): the mono heading with a filter icon, accent while a choice is on,
+ * opening one of a list or all of them (`null`).
+ */
+export function ColumnFilterMenu({
+  heading,
+  allLabel,
+  options,
+  value,
+  onChange,
+}: {
+  heading: string;
+  allLabel: string;
+  options: readonly { readonly value: string; readonly label: string }[];
+  value: string | null;
+  onChange: (value: string | null) => void;
+}) {
+  const current = options.find((o) => o.value === value)?.label ?? allLabel;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Filter by ${heading.toLowerCase()}: ${current}`}
+        className={`-mx-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 font-mono text-[10px] uppercase tracking-[0.3em] transition-colors duration-300 ease-out hover:text-prt-text data-[state=open]:text-prt-text ${
+          value === null ? "text-dim" : "text-accent"
+        } ${FOCUS}`}
+      >
+        {heading}
+        <ListFilter aria-hidden className="h-3 w-3" strokeWidth={2} />
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
         <DropdownMenuPrimitive.Content
