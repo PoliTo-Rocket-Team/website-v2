@@ -58,7 +58,11 @@ export function onTeam(data: SeedData): Set<number> {
   return new Set(data.roles.filter(isActive).flatMap((r) => (r.memberId == null ? [] : [r.memberId])));
 }
 
-/** The standing the dashboard reads for one seeded user, the way `readIdentity` builds it. */
+/**
+ * The standing the dashboard reads for one seeded user, the way `readIdentity`
+ * builds it: someone with no active role is on the Alumni record when the
+ * Alumni page knows them (`readOwnAlumnus`, lib/dashboard/database-alumni.ts).
+ */
 export function standingOfUser(data: SeedData, userId: string): ViewerStanding | null {
   const user = data.users.find((u) => u.id === userId);
   if (user === undefined) return null;
@@ -75,7 +79,8 @@ export function standingOfUser(data: SeedData, userId: string): ViewerStanding |
       divisionId: r.divisionId ?? null,
       fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess],
     }));
-  return viewerStandingOf({ scopes: unitRowsOf(scopeRows, openDepartmentIds).map((s) => s.scope), activeRoles });
+  const onAlumniRecord = activeRoles.length === 0 && alumnusOf(data, memberId) !== undefined;
+  return viewerStandingOf({ scopes: unitRowsOf(scopeRows, openDepartmentIds).map((s) => s.scope), activeRoles, onAlumniRecord });
 }
 
 /** Whether the seeded person reads as the test viewer: the same kind and the same full-access seat. */
@@ -334,6 +339,19 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`alumni_entries` member 50, `name` set",
     exercisedBy: issue(257),
     holds: (data) => alumniOfSeed(data).some((a) => listed(a) && a.name !== a.recordName),
+  },
+  {
+    area: "alumni",
+    case: "A former member read as the alumni test viewer: every role ended, an Alumni entry kept",
+    rows: "`TEST_VIEWER_PEOPLE` alumni, member 50",
+    exercisedBy: issue(317),
+    holds: (data) => {
+      const user = data.users.find((u) => u.id === TEST_VIEWER_PEOPLE.alumni);
+      const memberId = user?.member ?? null;
+      if (memberId === null) return false;
+      const roles = data.roles.filter((r) => r.memberId === memberId);
+      return roles.length > 0 && !roles.some(isActive) && entryOf(data, memberId) !== undefined && resolvesTo(data, "alumni");
+    },
   },
   {
     area: "access",

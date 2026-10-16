@@ -44,6 +44,7 @@ Each row is one seeded case. An area slice that adds a seed module adds its rows
 | alumni | An alumnus whose account is deleted and anonymized, with the Alumni entry kept | `users` and `members` 48, `alumni_entries` member 48 | [#191](https://github.com/PoliTo-Rocket-Team/website-v2/issues/191), [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
 | alumni | An alumnus who asked to be removed from the Alumni page | `alumni_entries` member 49, `removed_at` set | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
 | alumni | A name fixed for the Alumni page | `alumni_entries` member 50, `name` set | [#257](https://github.com/PoliTo-Rocket-Team/website-v2/issues/257) |
+| alumni | A former member read as the alumni test viewer: every role ended, an Alumni entry kept | `TEST_VIEWER_PEOPLE` alumni, member 50 | [#317](https://github.com/PoliTo-Rocket-Team/website-v2/issues/317) |
 | access | Grants across the whole team | `scopes` scope `team`, members 7 and 9 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
 | access | Grants in one department | `scopes` scope `department`, members 14 and 30 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
 | access | Grants in one division | `scopes` scope `division`, members 28 and 22 | [#247](https://github.com/PoliTo-Rocket-Team/website-v2/issues/247) |
