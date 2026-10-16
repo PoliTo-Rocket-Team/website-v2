@@ -9,6 +9,7 @@ import { PostPage } from "@/components/outreach/post-page";
 import { maySiteContent } from "@/lib/content/gate";
 import { openDashboard } from "@/lib/dashboard/open";
 import { postBySlug } from "@/lib/outreach";
+import { publishedOutreach } from "@/lib/outreach-public";
 
 export const metadata: Metadata = {
   title: "Edit post · Outreach · Dashboard · PoliTo Rocket Team",
@@ -17,8 +18,8 @@ export const metadata: Metadata = {
 type Params = { params: Promise<{ slug: string }> };
 
 // Board 74b (issue #288): an Outreach post on its real page under the edit
-// shell, each part outlined as a block. The post is read from the record
-// (lib/outreach.ts) as the public page reads it, so it shows as published and
+// shell, each part outlined as a block. The post is read as the public page
+// reads it (lib/outreach-public.ts), so it shows as published and
 // nothing on it can be changed yet. The site-content rule decides who opens
 // it (lib/content/gate.ts); everyone else gets the dashboard's not found.
 export default function OutreachPostEditPage({ params }: Params) {
@@ -37,11 +38,12 @@ async function LivePost({ params }: Params) {
   if (opening.kind === "signed-out") redirect(`/login?cb=/dashboard/outreach/${encodeURIComponent(slug)}`);
   if (opening.kind === "account-unresolved") return null;
   if (!maySiteContent(opening.data.viewer)) notFound();
-  const post = postBySlug(slug);
+  const { posts } = await publishedOutreach();
+  const post = postBySlug(posts, slug);
   if (post === undefined) notFound();
   return (
     <OutreachPostEdit title={post.title} status="published">
-      <PostPage post={post} frame={outlined} />
+      <PostPage post={post} posts={posts} frame={outlined} />
     </OutreachPostEdit>
   );
 }
