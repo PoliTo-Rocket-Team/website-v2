@@ -4,44 +4,20 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 import { is, SQL } from "drizzle-orm";
 import { getTableConfig, PgDialect, PgTable } from "drizzle-orm/pg-core";
-import { TESTER_KEYS, TESTERS } from "../dev-tester";
 import * as schema from "../../db/schema";
-import {
-  baseline,
-  BASELINE_AUDIT_CLEAR,
-  BASELINE_AUTH_RESET,
-  BASELINE_SQL_PATH,
-  BASELINE_TABLES,
-  SEED_TRIGGERS,
-} from "../../db/seed/baseline";
-import { SEED_MODULES } from "../../db/seed/registry";
+import { SEED_TRIGGERS } from "../../db/seed/audit";
+import { baseline, BASELINE_SQL_PATH, BASELINE_TABLES } from "../../db/seed/baseline";
 import type { SeedTx } from "../../db/seed/tx";
 
 const seedSql = readFileSync(BASELINE_SQL_PATH, "utf8");
 const code = seedSql.replace(/--.*$/gm, "");
 
-test("the registry runs the baseline module", () => {
-  assert.ok(SEED_MODULES.includes(baseline));
-});
-
 test("every table db/seed.sql writes is one the baseline reset empties", () => {
   const written = [...code.matchAll(/\b(?:INSERT\s+INTO|UPDATE)\s+([a-z_."]+)/gi)].map((match) => match[1]);
   assert.ok(written.length > 0);
   for (const table of written) {
-    if (table === 'better_auth."user"') continue;
     assert.ok((BASELINE_TABLES as readonly string[]).includes(table), `${table} is written but never reset`);
   }
-});
-
-test("every better_auth.user row the seed inserts is one the reset deletes", () => {
-  const authRows = code.slice(code.indexOf('INSERT INTO better_auth."user"'));
-  const rows = [...authRows.matchAll(/\('([0-9a-f-]{36})', '([^']+)'/g)];
-  assert.equal(rows.length, TESTER_KEYS.length);
-  for (const [, id, email] of rows) {
-    assert.match(id, /^7e57e500-0000-4000-8000-00000000000.$/);
-    assert.match(email, /\.tester@example\.com$/);
-  }
-  assert.ok(TESTER_KEYS.every((key) => rows.some(([, id]) => id === TESTERS[key].id)));
 });
 
 test("db/seed.sql only inserts fixed rows: no reset of its own, no clock, no randomness", () => {
@@ -49,17 +25,12 @@ test("db/seed.sql only inserts fixed rows: no reset of its own, no clock, no ran
   assert.doesNotMatch(code, /(\bNOW\(\)|\bCURRENT_TIMESTAMP\b|\bCURRENT_DATE\b|\brandom\(\)|\bgen_random_uuid\(\))/i);
 });
 
-test("the reset deletes the testers' sign-in rows, then empties and renumbers every baseline table", async () => {
+test("the reset empties and renumbers every baseline table, then the insert runs db/seed.sql", async () => {
   const statements: string[] = [];
   const tx = { unsafe: async (query: string) => statements.push(query) } as unknown as SeedTx;
   await baseline.reset(tx);
   await baseline.insert(tx);
-  assert.deepEqual(statements, [
-    BASELINE_AUTH_RESET,
-    `TRUNCATE ${BASELINE_TABLES.join(", ")} RESTART IDENTITY CASCADE`,
-    seedSql,
-    BASELINE_AUDIT_CLEAR,
-  ]);
+  assert.deepEqual(statements, [`TRUNCATE ${BASELINE_TABLES.join(", ")} RESTART IDENTITY CASCADE`, seedSql]);
 });
 
 // A database default or trigger that reads the clock or a random source gives
@@ -101,6 +72,7 @@ test("every insert in db/seed.sql sets each column whose default reads the clock
 test("the check knows the clock defaults it guards", () => {
   assert.ok(volatileDefaults(schema.members).includes("nda_signed_at"));
   assert.ok(volatileDefaults(schema.users).includes("created_at"));
+  assert.ok(volatileDefaults(schema.orders).includes("created_at"));
   assert.ok(volatileDefaults(schema.logs).includes("changed_at"));
 });
 
@@ -120,12 +92,4 @@ function liveTriggers(): Set<string> {
 
 test("every trigger the migrations leave is one the seed handles", () => {
   assert.deepEqual([...liveTriggers()].sort(), Object.keys(SEED_TRIGGERS).sort());
-});
-
-test("after the testers' sign-in rows, db/seed.sql sets their trigger-set updated_at back to a fixed time", () => {
-  const afterAuth = code.slice(code.indexOf('INSERT INTO better_auth."user"'));
-  assert.match(
-    afterAuth,
-    /UPDATE users SET updated_at = '[^']+'::timestamptz\s+WHERE id LIKE '7e57e500-0000-4000-8000-00000000000_'/,
-  );
 });
