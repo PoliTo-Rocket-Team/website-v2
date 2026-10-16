@@ -186,7 +186,12 @@ export function membershipsIn(placement: Placement): Memberships {
   return placement.memberships;
 }
 
-export type OrgDepartment = { readonly id: number; readonly name: string };
+export type OrgDepartment = {
+  readonly id: number;
+  readonly name: string;
+  /** The short code Edit department shows: "AE" (issue #251). Null where none is set. */
+  readonly code?: string | null;
+};
 export type OrgDivision = {
   readonly id: number;
   readonly name: string;

@@ -30,12 +30,12 @@ export type DummyPerson = {
 };
 
 export const departments = [
-  { id: 1, name: "Aerodynamics" },
-  { id: 2, name: "Structures" },
-  { id: 3, name: "Recovery" },
-  { id: 4, name: "Controls and Systems" },
-  { id: 5, name: "Electronics" },
-  { id: 6, name: "Operations" },
+  { id: 1, name: "Aerodynamics", code: "AE" },
+  { id: 2, name: "Structures", code: "ST" },
+  { id: 3, name: "Recovery", code: "RC" },
+  { id: 4, name: "Controls and Systems", code: "CS" },
+  { id: 5, name: "Electronics", code: "EL" },
+  { id: 6, name: "Operations", code: "OP" },
 ] as const satisfies readonly DummyDepartment[];
 
 export const divisions = [

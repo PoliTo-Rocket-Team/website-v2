@@ -12,6 +12,7 @@ import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { YourDetails } from "./details";
 import type { AddLookup, DetailsTarget } from "./division-members";
 import type { TeamSearch } from "./division-edit";
+import type { TeamStructure } from "./team-structure";
 import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
@@ -67,14 +68,22 @@ export interface DashboardData {
   findForAdd(divisionId: number, query: string): Promise<AddLookup>;
   /**
    * The lead and member pickers of New division and Edit division (boards
-   * 68b2, 69d): the whole team searched by name, or an email (#232). Nothing
-   * for a viewer who manages no division.
+   * 68b2, 69d) and the head picker of New department (77d): the whole team
+   * searched by name, or an email (#232, #251). Nothing for a viewer who
+   * manages no division.
    */
   findPeople(query: string): Promise<TeamSearch>;
   /** The Alumni page (board 78, #257): everyone the public Alumni page can list, for a viewer who reaches it. */
   alumni(): Promise<AlumniDirectory>;
   /** The Team tree (#143), built from this year's roster. */
   teamTree(): Promise<TeamTree>;
+  /**
+   * The Team tree's edit view (boards 77b and 66t-b, #251): every open
+   * department and division, with the pages Edit division and Close division
+   * read for the divisions the viewer may change. Null for a viewer who edits
+   * no structure: a division lead, a member, an applicant.
+   */
+  teamStructure(): Promise<TeamStructure | null>;
   /** Writes from the Team pages; null where this source stores none yet. */
   readonly teamWrites: TeamWrites | null;
   /** The site-wide recruitment switch (issue #121): its state, and whether this viewer may flip it. */
@@ -274,9 +283,9 @@ export interface TeamWrites {
    */
   createDivision(departmentId: number, input: unknown): Promise<WriteResult<number>>;
   /**
-   * Edit division (boards 68b to 68b4), or the save that reopens a closed
-   * division (68e): name, code and leads, with what happens to each old lead.
-   * A closed division reopens only with at least one lead.
+   * Edit division (boards 68b to 68b4): name, code and leads, with what
+   * happens to each old lead. Refused for a closed division: a closed
+   * division never opens again (#251).
    */
   saveDivision(divisionId: number, input: unknown): Promise<WriteResult<null>>;
   /**
@@ -284,6 +293,22 @@ export interface TeamWrites {
    * closes its open positions and removes the access given in it.
    */
   closeDivision(divisionId: number): Promise<WriteResult<null>>;
+  /**
+   * New department (board 77d, #251): name, code and one head, checked by
+   * `planDepartmentCreate` (./department-edit.ts). The team leader and full
+   * access only. Answers the new department's id.
+   */
+  createDepartment(input: unknown): Promise<WriteResult<number>>;
+  /** Edit department's Save changes (board 77e): its name and code. The team leader and full access only. */
+  saveDepartment(departmentId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Close department (board 77f): each open division moves to another
+   * department with its people, leads and open positions, or closes when it
+   * is empty; then the department closes, and its head becomes an advisor or
+   * leaves the team, as the closer picked (refused when nothing was picked).
+   * Checked by `planDepartmentClose`.
+   */
+  closeDepartment(departmentId: number, input: unknown): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

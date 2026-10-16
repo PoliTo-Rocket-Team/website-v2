@@ -50,7 +50,6 @@ const page = departmentMembers({
   selfId: null,
   waiting: { 1: [{ joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] },
   joining: {},
-  closed: [{ id: 7, name: "Wind Tunnel Division", code: "WT", closedOn: "2025-07-15" }],
 })!;
 
 test("All divisions lists everyone in the department once, with Remove from each of their divisions there", () => {
@@ -61,8 +60,7 @@ test("All divisions lists everyone in the department once, with Remove from each
   assert.deepEqual(davide.removals.map((r) => r.short), ["Mission Analysis"], "never a division outside the department");
   assert.deepEqual(davide.chips.map((c) => [c.label, c.code]), [["MA", true], ["Structures", false]], "another department shows its name, not a code");
   assert.equal(page.everyone.find((p) => p.name === "Marco Bianchi")!.removals[0].removal.kind, "only-division");
-  assert.deepEqual(departmentTabs(page).map((t) => [t.label, t.count]), [["All divisions", 4], ["Mission Analysis", 4], ["Optimization and Analysis", 2], ["Closed", 1]]);
-  assert.equal(page.divisionTools, true);
+  assert.deepEqual(departmentTabs(page).map((t) => [t.label, t.count]), [["All divisions", 4], ["Mission Analysis", 4], ["Optimization and Analysis", 2]], "no Closed tab (#251)");
 });
 
 test("Add member's Division select lists only the department's divisions and starts on the open tab", () => {
@@ -70,9 +68,4 @@ test("Add member's Division select lists only the department's divisions and sta
   assert.deepEqual(addMemberDivisions(page, ALL_TAB).divisions.map((d) => d.code), ["MA", "OA"]);
   assert.equal(addMemberDivisions(page, { kind: "division", divisionId: 2 }).start, 2);
   assert.equal(addMemberDivisions(page, { kind: "division", divisionId: 3 }).start, 1, "a division outside the department is never the start");
-});
-
-test("a division lead never gets the division tools on a department page", () => {
-  const asLead = departmentMembers({ records, org, departmentId: 1, actor: { kind: "lead", divisionIds: [1] }, selfId: null, waiting: {}, joining: {}, closed: [] })!;
-  assert.equal(asLead.divisionTools, false);
 });

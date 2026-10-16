@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { ChevronDown, CornerDownLeft, Lock, MailPlus, Pencil, RefreshCw, RotateCcw, Search, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { ChevronDown, CornerDownLeft, Lock, MailPlus, Pencil, RefreshCw, Search, Undo2, UserMinus, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
-import type { ClosedDivision } from "@/lib/dashboard/department-members";
 import {
   divisionCodeError,
   divisionNameError,
@@ -20,19 +19,19 @@ import { divisionLabel, type Permission } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
-import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
+import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 
-// New division (board 69d), Edit division (68b to 68b8) and the Edit division
-// drawer a closed division reopens from (68e, Owner decision on #232): name and
-// code, the leads, and the members, in one drawer.
+// New division (boards 77c, 69d) and Edit division (77g, 68b to 68b8): name
+// and code, the leads, and the members, in one drawer, opened from the Team
+// tree's edit view (#251). Edit division's footer holds Close division (68c).
 //
 // Name, code and leads are a draft until "Save changes", which asks "are you
 // sure" first; the server checks every rule again (lib/dashboard/division-
 // edit.ts). An open division's members are changed one by one, as on the
 // Members page: Add member, Confirm NDA, Remove and Leaves the team act at
-// once, each behind its own confirm. New division and a reopen gather their
-// members in the draft, since the division is not open yet.
+// once, each behind its own confirm. New division gathers its members in the
+// draft, since the division is not open yet.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
@@ -40,11 +39,10 @@ const LIST = "overflow-hidden rounded-xl border border-hairline";
 const SECTION_LABEL = "text-[13px] text-prt-text";
 const MEMBERS_SHOWN = 5;
 
-/** What the drawer is about: a new division in a department, an open division, or a closed one being reopened. */
+/** What the drawer is about: a new division in a department, or an open division. */
 export type DivisionDrawerTarget =
   | { readonly kind: "new"; readonly department: { readonly id: number; readonly name: string } }
-  | { readonly kind: "edit"; readonly tab: DivisionMembers }
-  | { readonly kind: "reopen"; readonly closed: ClosedDivision };
+  | { readonly kind: "edit"; readonly tab: DivisionMembers };
 
 type TakenCode = { readonly id: number; readonly name: string; readonly code: string | null };
 
@@ -60,13 +58,13 @@ type Draft = {
   readonly removed: readonly number[];
   /** What happens to each lead who is replaced or removed; "member" when not chosen (Owner decision, 2026-10-11). */
   readonly outcomes: Readonly<Record<number, OldLeadOutcome>>;
-  /** New division and a reopen only: people from the team, and emails new to it. */
+  /** New division only: people from the team, and emails new to it. */
   readonly members: readonly TeamPick[];
   readonly emails: readonly string[];
 };
 
 function draftOf(target: DivisionDrawerTarget): Draft {
-  const division = target.kind === "edit" ? target.tab.division : target.kind === "reopen" ? target.closed : null;
+  const division = target.kind === "edit" ? target.tab.division : null;
   return {
     name: division ? divisionLabel(division.name) : "",
     code: division?.code ?? "",
@@ -88,6 +86,7 @@ export function DivisionDrawer({
   editable,
   onClose,
   onFill,
+  onCloseDivision,
 }: {
   target: DivisionDrawerTarget | null;
   takenCodes: readonly TakenCode[];
@@ -95,13 +94,26 @@ export function DivisionDrawer({
   onClose: () => void;
   /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  /** Close division in Edit division's footer (boards 77g, 68b): the page's Close division dialog. */
+  onCloseDivision: (division: DivisionMembers) => void;
 }) {
   // The last target stays while the panel closes, so its content does not vanish mid-close.
   const [shown, setShown] = useState(target);
   if (target !== null && target !== shown) setShown(target);
-  const key = shown === null ? "none" : shown.kind === "edit" ? `e${shown.tab.division.id}` : shown.kind === "reopen" ? `r${shown.closed.id}` : "n";
+  const key = shown === null ? "none" : shown.kind === "edit" ? `e${shown.tab.division.id}` : `n${shown.department.id}`;
   if (shown === null) return null;
-  return <DrawerForm key={key} open={target !== null} target={shown} takenCodes={takenCodes} editable={editable} onClose={onClose} onFill={onFill} />;
+  return (
+    <DrawerForm
+      key={key}
+      open={target !== null}
+      target={shown}
+      takenCodes={takenCodes}
+      editable={editable}
+      onClose={onClose}
+      onFill={onFill}
+      onCloseDivision={onCloseDivision}
+    />
+  );
 }
 
 function DrawerForm({
@@ -111,6 +123,7 @@ function DrawerForm({
   editable,
   onClose,
   onFill,
+  onCloseDivision,
 }: {
   open: boolean;
   target: DivisionDrawerTarget;
@@ -118,6 +131,7 @@ function DrawerForm({
   editable: boolean;
   onClose: () => void;
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
+  onCloseDivision: (division: DivisionMembers) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(target));
   const [picking, setPicking] = useState<{ readonly replaces: number | null } | null>(null);
@@ -126,8 +140,8 @@ function DrawerForm({
   const [pending, startTransition] = useTransition();
 
   const tab = target.kind === "edit" ? target.tab : null;
-  const divisionId = target.kind === "edit" ? target.tab.division.id : target.kind === "reopen" ? target.closed.id : null;
-  // Only a division being created is new; one being reopened or edited already exists (issue #249).
+  const divisionId = target.kind === "edit" ? target.tab.division.id : null;
+  // Only a division being created is new; one being edited already exists (issue #249).
   const unnamed = target.kind === "new" ? "the new division" : "this division";
   const short = draft.name.trim() === "" ? unnamed : divisionLabel(draft.name.trim());
   const leads = tab?.people.filter((p) => p.role === "lead") ?? [];
@@ -190,26 +204,20 @@ function DrawerForm({
       } else {
         const result = await saveDivision(divisionId!, save);
         if (!result.ok) {
-          toast.error(target.kind === "reopen" ? "Could not reopen the division" : "Could not save the division", { description: result.error });
+          toast.error("Could not save the division", { description: result.error });
           return;
         }
-        toast.success(target.kind === "reopen" ? `${storedDivisionName(draft.name)} is open again` : "Division saved");
+        toast.success("Division saved");
       }
       setConfirming(false);
       onClose();
     });
 
   const title = target.kind === "new" ? "New division" : "Edit division";
-  const detail =
-    target.kind === "new"
-      ? `In ${target.department.name} Department`
-      : target.kind === "reopen"
-        ? `${target.closed.name} · closed`
-        : target.tab.division.name;
-  const submitLabel =
-    target.kind === "new" ? "Create division" : target.kind === "reopen" ? "Reopen division" : changes > 0 ? `Save changes · ${changes}` : "Save changes";
+  const detail = target.kind === "new" ? `In ${target.department.name} Department` : `${target.tab.division.name} · ${target.tab.division.department} Department`;
+  const submitLabel = target.kind === "new" ? "Create division" : changes > 0 ? `Save changes · ${changes}` : "Save changes";
   const formId = `division-${divisionId ?? "new"}-form`;
-  const blocked = target.kind !== "edit" && !valid;
+  const blocked = target.kind === "new" && !valid;
 
   return (
     <SidePanel
@@ -219,9 +227,15 @@ function DrawerForm({
       detail={detail}
       footer={
         <>
-          <button type="button" onClick={onClose} className={PANEL_GHOST_BUTTON}>
-            Cancel
-          </button>
+          {tab ? (
+            <button type="button" onClick={() => onCloseDivision(tab)} className={PANEL_DANGER_BUTTON}>
+              Close division
+            </button>
+          ) : (
+            <button type="button" onClick={onClose} className={PANEL_GHOST_BUTTON}>
+              Cancel
+            </button>
+          )}
           <button type="submit" form={formId} disabled={pending || blocked} className={`${PANEL_PRIMARY_BUTTON} disabled:cursor-not-allowed disabled:opacity-50`}>
             {submitLabel}
           </button>
@@ -561,11 +575,11 @@ function OutcomeChoice({
 }
 
 /**
- * The picker under "+ Add lead" or "+ Add member" (boards 68b2, 68b6, 68b7):
- * it searches the whole team by name, and in member mode takes an email new
- * to the team. Escape closes it.
+ * The picker under "+ Add lead", "+ Add member" (boards 68b2, 68b6, 68b7) or
+ * "+ Pick head" (77d): it searches the whole team by name, and in member mode
+ * takes an email new to the team. Escape closes it.
  */
-function PeoplePicker({
+export function PeoplePicker({
   mode,
   short,
   taken,
@@ -573,7 +587,8 @@ function PeoplePicker({
   onEmail,
   onClose,
 }: {
-  mode: "lead" | "member";
+  mode: "lead" | "member" | "head";
+  /** The division or department the pick joins: "Mission Analysis", "the new department". */
   short: string;
   /** Why someone cannot be picked here ("Already a lead"), or null. */
   taken: (pick: TeamPick) => string | null;
@@ -596,23 +611,25 @@ function PeoplePicker({
 
   const newEmail = mode === "member" && found.kind === "new-email" ? found.email : null;
   const footer =
-    mode === "lead"
-      ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
-      : newEmail !== null
-        ? "They join once you confirm their signed NDA. You or they can fill in their details."
-        : "Not in the team yet? Type their email to add them as a new member.";
+    mode === "head"
+      ? `Search anyone in the team. They head ${short} and keep their divisions.`
+      : mode === "lead"
+        ? `Search anyone in the team. They join ${short} as a lead and keep their other divisions.`
+        : newEmail !== null
+          ? "They join once you confirm their signed NDA. You or they can fill in their details."
+          : "Not in the team yet? Type their email to add them as a new member.";
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-hairline bg-panel" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), onClose())}>
       <label className="flex items-center gap-2.5 border-b border-hairline px-3.5">
         <Search aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-        <span className="sr-only">{mode === "lead" ? "Search the team for a lead" : "Search the team, or type an email"}</span>
+        <span className="sr-only">{mode === "member" ? "Search the team, or type an email" : `Search the team for a ${mode}`}</span>
         <input
           autoFocus
           value={query}
           autoComplete="off"
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={mode === "lead" ? "Search the team" : "Name or email"}
+          placeholder={mode === "member" ? "Name or email" : "Search the team"}
           className="h-11 min-w-0 flex-1 bg-transparent text-[14px] text-prt-text placeholder:text-dim focus:outline-none"
         />
         <button
@@ -673,7 +690,7 @@ function PeoplePicker({
           </button>
         </div>
       )}
-      {mode === "lead" && found.kind === "new-email" && <p className="px-4 py-3 text-[13px] text-prt-muted">No one in the team uses this email.</p>}
+      {mode !== "member" && found.kind === "new-email" && <p className="px-4 py-3 text-[13px] text-prt-muted">No one in the team uses this email.</p>}
       <p className="border-t border-hairline px-3.5 py-2.5 text-[12px] leading-relaxed text-prt-muted">{footer}</p>
     </div>
   );
@@ -866,9 +883,8 @@ function MemberItem({
 }
 
 /**
- * The members of New division and of a reopen (board 69d): people from the
- * team and emails new to it, gathered until the division is created or opens
- * again.
+ * The members of New division (board 69d): people from the team and emails
+ * new to it, gathered until the division is created.
  */
 function DraftMembers({
   short,
@@ -956,7 +972,7 @@ const OUTCOME_LINES: Readonly<Record<OldLeadOutcome, (short: string) => string>>
   "leave-team": () => "leaves the team: they move to Alumni and all their access ends",
 };
 
-/** The "are you sure" before Save changes, Create division or Reopen division, saying what will change. */
+/** The "are you sure" before Save changes or Create division, saying what will change. */
 function SaveConfirm({
   open,
   onOpenChange,
@@ -1002,20 +1018,14 @@ function SaveConfirm({
   if (target.kind !== "edit" && members > 0) lines.push(`${members} ${members === 1 ? "member joins" : "members join"}.`);
   const leaving = gone.some((g) => g.outcome === "leave-team");
 
-  const title =
-    target.kind === "new" ? `Create ${name}?` : target.kind === "reopen" ? `Reopen ${name}?` : codeChanged && lines.length === 1 ? `Change the code to ${code}?` : `Save changes to ${name}?`;
-  const intro =
-    target.kind === "new"
-      ? `It opens in ${target.department.name} with the code ${code}.`
-      : target.kind === "reopen"
-        ? `It opens again with the code ${code}. Nobody from before comes back.`
-        : null;
+  const title = target.kind === "new" ? `Create ${name}?` : codeChanged && lines.length === 1 ? `Change the code to ${code}?` : `Save changes to ${name}?`;
+  const intro = target.kind === "new" ? `It opens in ${target.department.name} with the code ${code}.` : null;
   return (
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      icon={target.kind === "reopen" ? <RotateCcw className="h-5 w-5" strokeWidth={1.75} /> : <Pencil className="h-5 w-5" strokeWidth={1.75} />}
-      tone={leaving ? "danger" : target.kind === "reopen" ? "success" : "accent"}
+      icon={<Pencil className="h-5 w-5" strokeWidth={1.75} />}
+      tone={leaving ? "danger" : "accent"}
       danger={leaving}
       title={title}
       description={
@@ -1031,7 +1041,7 @@ function SaveConfirm({
         </>
       }
       cancelLabel="Back"
-      confirmLabel={target.kind === "new" ? "Create division" : target.kind === "reopen" ? "Reopen division" : "Save changes"}
+      confirmLabel={target.kind === "new" ? "Create division" : "Save changes"}
       pending={pending}
       onConfirm={onConfirm}
     />

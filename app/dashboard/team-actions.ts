@@ -167,10 +167,11 @@ export async function setMemberPhoto(personId: number, divisionId: number, form:
   return answered(await writes.setMemberPhoto(personId, divisionId, photo));
 }
 
-// New division, Edit division, Close division and Reopen (issue #232). The
-// rules are checked again behind each of these (lib/dashboard/division-edit.ts).
+// New division, Edit division and Close division (issue #232), opened from
+// the Team tree's edit view (#251). The rules are checked again behind each
+// of these (lib/dashboard/division-edit.ts). No action reopens a division.
 
-/** The lead and member pickers of the division drawers: the whole team, searched by name or email. */
+/** The lead, member and head pickers of the structure drawers: the whole team, searched by name or email. */
 export async function findPeople(query: string): Promise<TeamSearch> {
   const opening = await openDashboard();
   if (opening.kind !== "open" || !canReach(opening.data.viewer, "members") || typeof query !== "string") return { kind: "none" };
@@ -195,4 +196,29 @@ export async function closeDivision(divisionId: number): Promise<TeamActionResul
   const writes = await writesOn("members");
   if (!writes || !isId(divisionId)) return REFUSED;
   return answered(await writes.closeDivision(divisionId));
+}
+
+// New department, Edit department and Close department (issue #251, boards
+// 77d to 77f), on the Team tree's edit view. The rules are checked again
+// behind each of these (lib/dashboard/department-edit.ts): only the team
+// leader and full access manage departments.
+
+export async function createDepartment(input: unknown): Promise<WriteResult<number>> {
+  const writes = await writesOn("team-tree");
+  if (!writes) return refused("This change could not be saved.");
+  const result = await writes.createDepartment(input);
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+export async function saveDepartment(departmentId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(departmentId)) return REFUSED;
+  return answered(await writes.saveDepartment(departmentId, input));
+}
+
+export async function closeDepartment(departmentId: number, input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(departmentId)) return REFUSED;
+  return answered(await writes.closeDepartment(departmentId, input));
 }
