@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import * as AccordionPrimitive from "@radix-ui/react-accordion";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, GripVertical, Plus, X } from "lucide-react";
+import { GripVertical, Plus, X } from "lucide-react";
+import { discardOutreachPhoto, uploadOutreachPhoto } from "@/app/dashboard/actions";
 import { CHANNEL_ICONS } from "@/components/outreach/channel-icons";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { shortDayMonthYear } from "@/lib/outreach";
@@ -17,9 +17,11 @@ import {
   type OutreachTag,
 } from "@/lib/outreach-types";
 import { CONTENT_FOCUS, RowMenu, TextField, useDragOrder, type DragRow } from "./content-parts";
-import { PANEL_PRIMARY_BUTTON } from "./drawer";
+import { EditPanel, ErrorLine, PanelSection, usePanelScroll } from "./edit-panel";
 import { Field, GroupLabel, inputClass } from "./field";
-import { PhotosSection } from "./outreach-post-photos";
+import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
+
+const OUTREACH_UPLOADS: PhotoUploads = { upload: uploadOutreachPhoto, discard: discardOutreachPhoto };
 
 // The Edit post panel (boards 74c, 74d and 74h, issue #290): 480px beside the
 // post page under the edit shell, one card per section, any of them open at
@@ -41,9 +43,6 @@ export const SECTION_OF: Readonly<Record<keyof PostFieldErrors, PostSection>> = 
   photos: "photos",
   channels: "channels",
 };
-
-const SECTION_CARD =
-  "scroll-mt-4 rounded-xl border border-hairline bg-ground/40 transition-colors duration-300 ease-out data-[state=open]:border-accent/40";
 
 export function OutreachPostPanel({
   fields,
@@ -69,82 +68,39 @@ export function OutreachPostPanel({
   scrollTo: { readonly section: PostSection } | null;
   onClose: () => void;
 }) {
-  const cards = useRef<Partial<Record<PostSection, HTMLDivElement | null>>>({});
-  useEffect(() => {
-    if (scrollTo !== null) cards.current[scrollTo.section]?.scrollIntoView({ block: "start" });
-  }, [scrollTo]);
+  const card = usePanelScroll(scrollTo);
   const set = <K extends keyof PostFields>(key: K, value: PostFields[K]) => onChange((f) => ({ ...f, [key]: value }));
   const addTag = async (name: string) => {
     const added = await onAddTag(name);
     if (added) onChange((f) => ({ ...f, tags: [...f.tags, name] }));
     return added;
   };
-  const card = (section: PostSection) => (node: HTMLDivElement | null) => {
-    cards.current[section] = node;
-  };
 
   return (
-    <aside
-      aria-label="Edit post"
-      className="flex flex-col border-l border-hairline bg-panel max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[60px] max-md:z-50 md:w-[480px] md:shrink-0"
-    >
-      <header className="flex shrink-0 items-center justify-between border-b border-hairline px-6 py-[18px]">
-        <h2 className="text-[18px] font-bold">Edit post</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close the panel"
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${CONTENT_FOCUS}`}
-        >
-          <X aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-        </button>
-      </header>
+    <EditPanel label="Edit post" title="Edit post" expanded={expanded} onExpandedChange={onExpandedChange} onClose={onClose}>
+      <PanelSection value="details" cardRef={card("details")} title="Title and details" summary={detailsSummary(fields)}>
+        <DetailsSection fields={fields} set={set} tags={tags} onAddTag={addTag} errors={errors} />
+      </PanelSection>
 
-      <AccordionPrimitive.Root
-        type="multiple"
-        value={[...expanded]}
-        onValueChange={(value) => onExpandedChange(value as PostSection[])}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-[18px] py-4"
-      >
-        <AccordionPrimitive.Item ref={card("details")} value="details" className={SECTION_CARD}>
-          <SectionTrigger title="Title and details" summary={detailsSummary(fields)} />
-          <SectionContent>
-            <DetailsSection fields={fields} set={set} tags={tags} onAddTag={addTag} errors={errors} />
-          </SectionContent>
-        </AccordionPrimitive.Item>
+      <PanelSection value="text" cardRef={card("text")} title="Text" summary={textSummary(fields.body)}>
+        <TextSection body={fields.body} onChange={(body) => set("body", body)} error={errors.body} />
+      </PanelSection>
 
-        <AccordionPrimitive.Item ref={card("text")} value="text" className={SECTION_CARD}>
-          <SectionTrigger title="Text" summary={textSummary(fields.body)} />
-          <SectionContent>
-            <TextSection body={fields.body} onChange={(body) => set("body", body)} error={errors.body} />
-          </SectionContent>
-        </AccordionPrimitive.Item>
+      <PanelSection value="photos" cardRef={card("photos")} title="Photos" summary={`${count(fields.photos.length, "photo")} · the first is the cover`}>
+        <PhotosSection
+          photos={fields.photos}
+          onChange={(change) => onChange((f) => ({ ...f, photos: change(f.photos) }))}
+          uploads={OUTREACH_UPLOADS}
+          cover
+          max={null}
+          error={errors.photos}
+        />
+      </PanelSection>
 
-        <AccordionPrimitive.Item ref={card("photos")} value="photos" className={SECTION_CARD}>
-          <SectionTrigger title="Photos" summary={`${count(fields.photos.length, "photo")} · the first is the cover`} />
-          <SectionContent>
-            <PhotosSection
-              photos={fields.photos}
-              onChange={(change) => onChange((f) => ({ ...f, photos: change(f.photos) }))}
-              error={errors.photos}
-            />
-          </SectionContent>
-        </AccordionPrimitive.Item>
-
-        <AccordionPrimitive.Item ref={card("channels")} value="channels" className={SECTION_CARD}>
-          <SectionTrigger title="Original posts" summary={channelsSummary(fields.channels)} />
-          <SectionContent>
-            <ChannelsSection channels={fields.channels} onChange={(channels) => set("channels", channels)} error={errors.channels} />
-          </SectionContent>
-        </AccordionPrimitive.Item>
-      </AccordionPrimitive.Root>
-
-      <footer className="flex shrink-0 justify-end border-t border-hairline px-6 py-4">
-        <button type="button" onClick={onClose} className={PANEL_PRIMARY_BUTTON}>
-          Done
-        </button>
-      </footer>
-    </aside>
+      <PanelSection value="channels" cardRef={card("channels")} title="Original posts" summary={channelsSummary(fields.channels)}>
+        <ChannelsSection channels={fields.channels} onChange={(channels) => set("channels", channels)} error={errors.channels} />
+      </PanelSection>
+    </EditPanel>
   );
 }
 
@@ -171,40 +127,6 @@ function textSummary(body: readonly BodyBlock[]): string {
 
 function channelsSummary(channels: readonly ChannelFields[]): string {
   return channels.length === 0 ? "No channel yet" : `${joinedNames(channels.map((c) => CHANNEL_LABELS[c.name]))} links`;
-}
-
-function SectionTrigger({ title, summary }: { title: string; summary: string }) {
-  return (
-    <AccordionPrimitive.Header asChild>
-      <h3>
-        <AccordionPrimitive.Trigger
-          className={`group/section flex w-full items-center justify-between gap-4 rounded-xl px-4 py-3.5 text-left ${CONTENT_FOCUS}`}
-        >
-          <span className="min-w-0">
-            <span className="block text-[14px] font-semibold leading-snug">{title}</span>
-            <span className="mt-0.5 block truncate text-[12px] text-prt-muted group-data-[state=open]/section:hidden">{summary}</span>
-          </span>
-          <ChevronDown
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-prt-muted group-data-[state=open]/section:rotate-180"
-            strokeWidth={1.75}
-          />
-        </AccordionPrimitive.Trigger>
-      </h3>
-    </AccordionPrimitive.Header>
-  );
-}
-
-function SectionContent({ children }: { children: ReactNode }) {
-  return (
-    <AccordionPrimitive.Content className="px-4 pb-4">
-      <div className="space-y-4">{children}</div>
-    </AccordionPrimitive.Content>
-  );
-}
-
-function ErrorLine({ error }: { error: string | undefined }) {
-  return error === undefined ? null : <p className="text-[12px] text-danger">{error}</p>;
 }
 
 function DetailsSection({

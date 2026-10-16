@@ -1,7 +1,8 @@
-import { versionRows } from "@/lib/content/versioned";
+import type { ContentStore } from "@/lib/content/editor";
+import { versionRows, type ContentItem } from "@/lib/content/versioned";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { publicPathname, publicPathnameOfUrl, type PublicPathname, type PublicStoreHost } from "@/lib/storage/pathname";
-import type { OutreachDraft, PhotoSrc, PostItem, PostStore, PostVersions } from "./outreach-types";
+import { publicFolderOf, publicPathname, publicPathnameOfUrl, type PublicFileKind, type PublicPathname, type PublicStoreHost } from "@/lib/storage/pathname";
+import type { OutreachDraft, PhotoSrc, PostItem, PostStore } from "./outreach-types";
 
 // A post's photos as files (issue #291). The Edit post panel uploads a photo
 // the moment it is picked, through the outreach editor, so only once the
@@ -9,6 +10,8 @@ import type { OutreachDraft, PhotoSrc, PostItem, PostStore, PostVersions } from 
 // goes to the public Blob store under `post-photos/`; on previews it is kept
 // nowhere. A stored file is deleted once no version of any post uses it, and
 // only a file in this deployment's own public store is ever accepted or deleted.
+// The project editor's photos (issue #299) take the same path, under
+// `project-photos/`.
 
 /** Whether `value` has the shape of a photo's src. Whose file it is, a save checks with `checkPhotoSources`. */
 export function isPhotoSrc(value: unknown): value is PhotoSrc {
@@ -54,19 +57,19 @@ export interface PhotoFiles {
   drop(srcs: readonly PhotoSrc[]): Promise<void>;
 }
 
-/** The folder uploaded post photos live in, in the public store (`publicPathname("post-photo", ...)`). */
-const POST_PHOTO_FOLDER = "post-photos/";
+/** The photos a content editor's panel uploads: Outreach post photos, and project photos. */
+export type PanelPhotoKind = Extract<PublicFileKind, "post-photo" | "project-photo">;
 
 /**
- * The pathname of an uploaded post photo in this deployment's public store,
- * whose files `host` serves; null for anything else: a photo of the site
- * (`/outreach/...`), a preview's data URL, a file of another kind, or a file
- * on any other host, another Blob store included. Only this answers which
- * URLs a save may carry and which files may be deleted.
+ * The pathname of an uploaded photo of this kind in this deployment's public
+ * store, whose files `host` serves; null for anything else: a photo of the
+ * site (`/outreach/...`), a preview's data URL, a file of another kind, or a
+ * file on any other host, another Blob store included. Only this answers
+ * which URLs a save may carry and which files may be deleted.
  */
-export function storedPhotoPathname(src: string, host: PublicStoreHost): PublicPathname | null {
+export function storedPhotoPathname(src: string, host: PublicStoreHost, kind: PanelPhotoKind): PublicPathname | null {
   const pathname = publicPathnameOfUrl(src, host);
-  return pathname !== null && pathname.startsWith(POST_PHOTO_FOLDER) ? pathname : null;
+  return pathname !== null && pathname.startsWith(publicFolderOf(kind)) ? pathname : null;
 }
 
 /** The writes a public store takes: a new file at a pathname, and a delete. */
@@ -76,15 +79,21 @@ export interface PublicFileWrites {
 }
 
 /**
- * Post photos kept in the public store whose files `host` serves; `host` is
- * null while no store is configured, and then no URL is this side's. Each
- * upload gets a new name from `newName`, so nothing is overwritten.
+ * Photos of one kind kept in the public store whose files `host` serves;
+ * `host` is null while no store is configured, and then no URL is this
+ * side's. Each upload gets a new name from `newName`, so nothing is
+ * overwritten.
  */
-export function publicStorePhotoFiles(host: PublicStoreHost | null, writes: PublicFileWrites, newName: () => string): PhotoFiles {
-  const pathnameOf = (src: string) => (host === null ? null : storedPhotoPathname(src, host));
+export function publicStorePanelPhotos(
+  kind: PanelPhotoKind,
+  host: PublicStoreHost | null,
+  writes: PublicFileWrites,
+  newName: () => string,
+): PhotoFiles {
+  const pathnameOf = (src: string) => (host === null ? null : storedPhotoPathname(src, host, kind));
   return {
     async put(photo) {
-      const { url } = await writes.upload(publicPathname("post-photo", `${newName()}.${photo.extension}`), photo.bytes, photo.contentType);
+      const { url } = await writes.upload(publicPathname(kind, `${newName()}.${photo.extension}`), photo.bytes, photo.contentType);
       if (pathnameOf(url) === null) throw new Error(`The public store answered a URL off its own host: ${url}`);
       return url as `https://${string}`;
     },
@@ -97,16 +106,29 @@ export function publicStorePhotoFiles(host: PublicStoreHost | null, writes: Publ
   };
 }
 
+/** Post photos in the public store, under `post-photos/`. */
+export function publicStorePhotoFiles(host: PublicStoreHost | null, writes: PublicFileWrites, newName: () => string): PhotoFiles {
+  return publicStorePanelPhotos("post-photo", host, writes, newName);
+}
+
 /**
- * The post store, freeing the files a write leaves unshown: after an update
- * or a delete lands, each photo the post had before goes to `files.drop` when
- * no version of any post shows it any more (`photosNoLongerShown`).
+ * A content store freeing the photo files a write leaves unshown: after an
+ * update or a delete lands, each photo the item had before goes to
+ * `files.drop` when no version of any item shows it any more
+ * (`filesNoLongerShown`). `photosIn` reads the photos one version shows.
  */
-export function freeingPhotoFiles(store: PostStore, files: Pick<PhotoFiles, "drop">): PostStore {
+export function freeingFiles<T extends D, D>(
+  store: ContentStore<T, D>,
+  files: Pick<PhotoFiles, "drop">,
+  photosIn: (content: D) => readonly PhotoSrc[],
+): ContentStore<T, D> {
   async function thenFree<R>(id: number, write: () => Promise<WriteResult<R>>): Promise<WriteResult<R>> {
     const before = (await store.list()).find((item) => item.id === id) ?? null;
     const result = await write();
-    if (result.ok) await files.drop(photosNoLongerShown(photosOf(before?.version ?? null), await store.list()));
+    if (result.ok) {
+      const had = before === null ? [] : versionRows(before.version).flatMap((row) => photosIn(row.content));
+      await files.drop(filesNoLongerShown(had, await store.list(), photosIn));
+    }
     return result;
   }
   return {
@@ -116,9 +138,29 @@ export function freeingPhotoFiles(store: PostStore, files: Pick<PhotoFiles, "dro
   };
 }
 
-/** Every photo any version of these posts shows. */
-function photosShown(posts: readonly PostItem[]): Set<string> {
-  return new Set(posts.flatMap((item) => versionRows(item.version).flatMap((row) => row.content.photos.map((p) => p.src))));
+/**
+ * Of `candidates`, the photos no version of any item in `items` shows, so
+ * their files may go. `items` is every item as stored after the write: a file
+ * two items share stays while either one shows it.
+ */
+export function filesNoLongerShown<T extends D, D>(
+  candidates: Iterable<PhotoSrc>,
+  items: readonly ContentItem<T, D>[],
+  photosIn: (content: D) => readonly PhotoSrc[],
+): PhotoSrc[] {
+  const shown = new Set(items.flatMap((item) => versionRows(item.version).flatMap((row) => photosIn(row.content))));
+  return [...new Set(candidates)].filter((src) => !shown.has(src));
+}
+
+const postPhotos = (post: OutreachDraft): PhotoSrc[] => post.photos.map((p) => p.src);
+
+/**
+ * The post store, freeing the files a write leaves unshown: after an update
+ * or a delete lands, each photo the post had before goes to `files.drop` when
+ * no version of any post shows it any more (`photosNoLongerShown`).
+ */
+export function freeingPhotoFiles(store: PostStore, files: Pick<PhotoFiles, "drop">): PostStore {
+  return freeingFiles(store, files, postPhotos);
 }
 
 /**
@@ -128,13 +170,7 @@ function photosShown(posts: readonly PostItem[]): Set<string> {
  * photo all free files through this one check.
  */
 export function photosNoLongerShown(candidates: Iterable<PhotoSrc>, posts: readonly PostItem[]): PhotoSrc[] {
-  const shown = photosShown(posts);
-  return [...new Set(candidates)].filter((src) => !shown.has(src));
-}
-
-/** Every photo a post's versions show: the files a write to that post may free. */
-export function photosOf(version: PostVersions | null): PhotoSrc[] {
-  return version === null ? [] : versionRows(version).flatMap((row) => row.content.photos.map((p) => p.src));
+  return filesNoLongerShown(candidates, posts, postPhotos);
 }
 
 /**

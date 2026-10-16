@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import type { Copy } from "@/lib/projects";
-import type { Title } from "@/lib/project-pages";
+import type { LaunchPhoto, Title } from "@/lib/project-pages";
 
 // Pieces every project-page section shares: the accent rule over a numbered
 // eyebrow and the section title, the mono status pill, a photo slot, and the
@@ -12,7 +13,7 @@ export function TitleText({ title }: { title: Title }) {
   return (
     <>
       {title.map((line, i) => (
-        <span key={line}>
+        <span key={i}>
           {i > 0 && <br />}
           {line}
         </span>
@@ -74,8 +75,16 @@ export function Pill({ tone, children, className = "" }: { tone: PillTone; child
   );
 }
 
-/** A labelled photo slot: the project's texture under a dark fade until real photos exist. */
-export function PhotoSlot({ texture, className = "" }: { texture: string; className?: string }) {
+/** A photo slot: the launch's photo when it has one, else the project's texture under a dark fade, labelled. */
+export function PhotoSlot({ texture, photo, sizes, className = "" }: { texture: string; photo?: LaunchPhoto; sizes: string; className?: string }) {
+  if (photo !== undefined) {
+    return (
+      <div className={`relative overflow-hidden rounded-xl ${className}`}>
+        {/* An uploaded photo (the public store, or a preview's data URL) is served as it is, as Outreach photos are. */}
+        <Image src={photo.src} alt={photo.alt} fill sizes={sizes} unoptimized={!photo.src.startsWith("/")} className="object-cover" />
+      </div>
+    );
+  }
   return (
     <div className={`relative overflow-hidden rounded-xl ${className}`}>
       <div

@@ -3,9 +3,10 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, ImagePlus, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
-import { discardOutreachPhoto, uploadOutreachPhoto } from "@/app/dashboard/actions";
 import { Photo } from "@/components/outreach/photo";
+import type { WriteResult } from "@/lib/dashboard/write";
 import type { PhotoFields } from "@/lib/outreach-post-fields";
+import type { PhotoSrc } from "@/lib/outreach-types";
 import { CONTENT_FOCUS, useDragOrder } from "./content-parts";
 import { inputClass } from "./field";
 
@@ -15,13 +16,15 @@ import { inputClass } from "./field";
 // move it or remove it; Add uploads new ones. A photo is uploaded the moment
 // it is picked, so the page beside the panel shows it at once; Save draft or
 // Publish puts it on the post. A photo removed before any save used it is
-// deleted from the store again.
+// deleted from the store again. A launch card of the Edit <project> panel
+// (issue #299) holds its photos here too, through the projects' own upload,
+// with no cover and two photos at most.
 
 /** The longest side a picked photo is sent at. Uploaded photos are served as they are, so they are shrunk first. */
 const PHOTO_EDGE = 2400;
 
 /** The picked photo turned upright, shrunk to `PHOTO_EDGE` and sent as a JPEG; the file itself when the browser cannot draw it. */
-async function shrunkPhoto(file: File): Promise<File> {
+export async function shrunkPhoto(file: File): Promise<File> {
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     const scale = Math.min(1, PHOTO_EDGE / Math.max(bitmap.width, bitmap.height));
@@ -39,14 +42,28 @@ async function shrunkPhoto(file: File): Promise<File> {
 
 const TILE = "relative aspect-[16/9] overflow-hidden rounded-lg";
 
+/** Where a panel's photos go: stored the moment they are picked, and deleted again when removed before a save used them. */
+export type PhotoUploads = {
+  readonly upload: (form: FormData) => Promise<WriteResult<PhotoSrc>>;
+  readonly discard: (src: string) => Promise<unknown>;
+};
+
 export function PhotosSection({
   photos,
   onChange,
+  uploads,
+  cover,
+  max,
   error,
 }: {
   photos: readonly PhotoFields[];
   /** Takes a change to the photos as they are when it lands, so an upload that ends late never undoes an edit. */
   onChange: (change: (photos: readonly PhotoFields[]) => PhotoFields[]) => void;
+  uploads: PhotoUploads;
+  /** The first photo is the cover, and says so. */
+  cover: boolean;
+  /** The most photos the list takes; null for no limit. */
+  max: number | null;
   error?: string;
 }) {
   // Each photo keeps one key while it moves, so the open one stays open.
@@ -74,7 +91,7 @@ export function PhotosSection({
     onChange((list) => list.filter((p) => p.src !== src));
     setOpen(null);
     // The server keeps the file while a stored version of a post shows it.
-    void discardOutreachPhoto(src);
+    void uploads.discard(src);
   };
   const move = (key: number, by: -1 | 1) => {
     const at = keys.indexOf(key);
@@ -83,13 +100,16 @@ export function PhotosSection({
     reorder(order);
   };
 
-  const add = async (files: readonly File[]) => {
+  const room = max === null ? Infinity : max - photos.length - uploading;
+  const add = async (picked: readonly File[]) => {
+    const files = picked.slice(0, Math.max(0, room));
+    if (files.length < picked.length) toast.error(`Keep ${max} photos at most.`);
     setUploading((n) => n + files.length);
     let first = true;
     for (const file of files) {
       const form = new FormData();
       form.set("photo", await shrunkPhoto(file));
-      const result = await uploadOutreachPhoto(form);
+      const result = await uploads.upload(form);
       setUploading((n) => n - 1);
       if (!result.ok) {
         toast.error(result.error);
@@ -109,7 +129,7 @@ export function PhotosSection({
 
   return (
     <>
-      <p className="text-[12px] text-prt-muted">The first is the top photo and the card photo. Drag to reorder.</p>
+      {cover && <p className="text-[12px] text-prt-muted">The first is the top photo and the card photo. Drag to reorder.</p>}
       <ul className="grid grid-cols-3 gap-2" {...drag.list}>
         {drag.order.map((key, index) => {
           const photo = photoOf.get(key)!;
@@ -127,7 +147,7 @@ export function PhotosSection({
               <button
                 type="button"
                 aria-pressed={open === key}
-                aria-label={`Photo ${index + 1}${index === 0 ? ", the cover" : ""}: ${photo.alt.trim() || "no description yet"}`}
+                aria-label={`Photo ${index + 1}${cover && index === 0 ? ", the cover" : ""}: ${photo.alt.trim() || "no description yet"}`}
                 onClick={() => setOpen(open === key ? null : key)}
                 className={`absolute inset-0 rounded-lg ${CONTENT_FOCUS}`}
               >
@@ -139,7 +159,7 @@ export function PhotosSection({
                   }`}
                 />
               </button>
-              {index === 0 && (
+              {cover && index === 0 && (
                 <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-ground/80 px-2 py-0.5 text-[11px] font-semibold text-prt-text">
                   Cover
                 </span>
@@ -153,7 +173,7 @@ export function PhotosSection({
             <span className="sr-only">Uploading a photo</span>
           </li>
         ))}
-        <li className={TILE}>
+        <li className={room > 0 ? TILE : "hidden"}>
           <button
             type="button"
             onClick={() => input.current?.click()}
@@ -183,7 +203,7 @@ export function PhotosSection({
           <div className="flex items-center justify-between gap-3">
             <label htmlFor={altId} className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">
               Photo {openIndex + 1}
-              {openIndex === 0 && " · cover"}
+              {cover && openIndex === 0 && " · cover"}
             </label>
             <span className="flex items-center gap-1">
               <MoveButton label="Move earlier" onClick={openIndex > 0 ? () => move(open, -1) : null}>

@@ -60,7 +60,7 @@ Rules:
   board 05). Outreach tags are data, so the home Track record cards (`latest.tsx`) give the
   award tag accent and every other tag `white-10` with `prt-text`. Project status pills sit on a texture, so they follow
   board 21 instead: flown = `ground/70` with `prt-text`, In design = `prt-text` with `ground`
-  (`projects.tsx`).
+  (`project-card.tsx`).
 - Application stage pills on the dashboard follow the same pairing (board 58b, issue #171,
   `stage-pill.tsx`): New and "Interview · no time yet" = `white-10` with `prt-text`, In review =
   `info`, a booked interview = accent, Accepted and Joined = success, Rejected and Withdrawn =
@@ -345,16 +345,17 @@ from md to lg it keeps a 2.2:1 shape. Phones (board 24): one column, the feature
 title, photo 150px tall, no arrow), then only the first news card, 20px below,
 then "All news". The other two news cards are desktop-only (from md).
 
-**Projects:** exactly three cards, Cavour, VES and Efesto, with the board 21 data from
-`design/specs-from-old-site.md`, each on its texture, 618px tall, with a `.glass-info` box
+**Projects:** one card per published project, in site order (today Cavour, VES and Efesto,
+with the board 21 data from `design/specs-from-old-site.md`), each on its texture, 618px tall, with a `.glass-info` box
 inset 32px at the bottom (20px from lg to xl). From md to lg the cards stack, 480px wide at
-most. Each card renders Cavour live in 3D. At rest it shows from the nose to
+most. Each card renders its record's rocket model live in 3D (Cavour on the three cards today;
+a project with no model of its own draws the shared placeholder, `lib/rocket-model.ts`). At rest it shows from the nose to
 mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
 the rocket stays where it rests. The canvas wrapper hangs above and below the card and is clipped to the card's sides and
 bottom only. The vehicle and camera hold still in the scene.
 At rest the nose sits about 30px below the card top and
 the flags show just above the info box. The canvas takes no pointer events. No raycast hover
-(`projects.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
+(`project-card.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
 `rocket-card-3d.tsx`, not the JSX. Any new vehicle model follows
 `.claude/skills/rocket-surface/`.
 Phones (board 24): the cards sit side by side in a horizontal swipe row (`swipe-row.tsx`),
@@ -365,21 +366,24 @@ values. The rocket keeps the nose-to-mid-body framing, its nose about 20px below
 The row clips its vertical overflow (the hanging canvases), so it ends below the cards' whole
 shadow (56px), and the dots pull back up to sit 20px under the cards: the clip never cuts the
 shadow into a line (issue #50, `swipe-row.tsx`).
-Phone copy is shorter (`phone` text in `projects.tsx`): VES "130 mm, all-SRAD systems. Mark II
+Phone copy is shorter (the record's `phone` text, drawn by `project-card.tsx`): VES "130 mm, all-SRAD systems. Mark II
 won Design & Build at IREC 2025.", years "24–25", Cavour motor "Solid L", VES "MARKS" "Mk I–II",
 Efesto fuel "Ethanol".
 
 **/projects** (boards 22 and 22m, `app/projects/page.tsx`, `components/projects/`): the header
 figures, then one `.glass-info` card per project: texture panel, facts, then the launch log
-(Efesto: work lines). Every fact comes from `lib/projects.ts`. A project with its own page
-has a clickable card: the name is the link, and its `::after` covers the card, so the whole
-card is the target. The card takes `.glass-linked`, and keyboard focus shows an accent outline
-4px outside it. A project with no page has no link.
+(Efesto: work lines). Every fact comes from the projects' published records
+(`lib/project-content/`, issue #295), and the header counts their launches. Every published
+project has its own page (issue #301), so every card is clickable: the name is the link, and its
+`::after` covers the card, so the whole card is the target. The card takes `.glass-linked`, and
+keyboard focus shows an accent outline 4px outside it.
 
-**Project pages** (`/projects/cavour`, `/projects/ves`, `/projects/efesto`; boards 23 to 25 and
-23m to 25m): one template, `components/project-page/`, draws every project page from one typed
-record per project (`lib/project-pages/`). There are no per-project components; a new project
-page is a new record and a thin route. The built Cavour page is the layout reference.
+**Project pages** (`/projects/[slug]`, `app/projects/[slug]/page.tsx`; boards 23 to 25 and
+23m to 25m): one route and one template, `components/project-page/`, draw every published
+project's page from its record (`pageRecordOf` in `lib/project-content/record.ts`). There are no
+per-project components and no per-project routes: a new project is a stored record, created with
+New project on the dashboard Projects page (issue #301), and needs no new file. The built Cavour
+page is the layout reference.
 - Order: hero, 01 The name and 02 The design side by side, then versions, launch history, the
   plan, numbered reasons and gallery, then the next project.
 - A section the record has no data for is an absent key, and the page leaves it out entirely,
@@ -393,15 +397,16 @@ page is a new record and a thin route. The built Cavour page is the layout refer
   `hero.tsx`); a shorter set is one row of six.
 - Versions: one highlighted version, bold under an accent pill on desktop and the default tab
   on phones. A spec with no value shows the dimmed dash (`Value` in `parts.tsx`).
-- The launch history reads each campaign's facts from `lib/projects.ts` (`cavourLaunches`,
-  `vesLaunches`), the same record /projects uses; the page record adds only its own copy, keyed
-  by launch date (issue #72). A campaign that did not fly gives its own four numbers and reads
+- The launch history and the /projects log read each campaign from the one launch list in the
+  project's record (issues #72 and #295): the page's launch card and the /projects row come
+  from the same entry. A campaign that did not fly gives its own four numbers and reads
   "DID NOT FLY"; a setback takes the orange pill, never red.
 - The plan (board 25): steps done, the one under way, next and later, in that order by the
   record's shape. Desktop: a row of steps under a top rule, the step under way in accent.
   Phones: a vertical timeline with dots. Numbered reasons (board 25 "Why liquid"): up to three,
   in columns on desktop, stacked on phones.
-- Next project loops Cavour, VES, Efesto, back to Cavour (`pageSlugs` in `lib/projects.ts`).
+- Next project loops through the published projects in site order, back to the first (Cavour,
+  VES, Efesto, back to Cavour).
   "Open <name>" is the white pill and "All projects" the outlined one, as built for Cavour
   (boards 24 and 25 draw the open button orange; the built page wins).
 - Gallery (boards 23, 23m and 23L, `components/gallery/gallery.tsx`): a carousel with the
@@ -504,6 +509,6 @@ stacked.
   292px on phones) until the two boards agree.
 - **Between phone and desktop.** Boards 21 and 24 cover 1440px and 390px. From 768px to
   1023px the page uses the desktop layout with the menu in place of the link row.
-- **Subroutes.** `/projects`, the three project pages and `/apply` are built (Page rules
+- **Subroutes.** `/projects`, the project pages and `/apply` are built (Page rules
   above). `/about/*`, `/outreach`, `/partners` and the news page are still being designed
   (HANDOFF "Todo").

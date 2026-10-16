@@ -7,6 +7,7 @@ import type { YourDetails } from "@/lib/dashboard/details";
 import type { AccessGrant } from "@/lib/dashboard/division-access";
 import { isHandOverAnswer } from "@/lib/dashboard/hand-over-request";
 import type { InterviewSlot } from "@/lib/dashboard/my-applications";
+import { uploadOf } from "@/lib/dashboard/form-upload";
 import { openDashboard } from "@/lib/dashboard/open";
 import type { Order } from "@/lib/dashboard/orders";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
@@ -40,13 +41,6 @@ async function write<T>(
 ): Promise<WriteResult<T>> {
   const data = await dataFor(pages);
   return typeof data === "string" ? refused(data) : run(data);
-}
-
-/** The file field of a form as an Upload; null when no file was sent. */
-async function uploadOf(form: FormData, field: string): Promise<Upload | null> {
-  const file = form.get(field);
-  if (!(file instanceof File) || file.size === 0) return null;
-  return { name: file.name, contentType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) };
 }
 
 function textFields(form: FormData, names: readonly string[]): Record<string, string> {

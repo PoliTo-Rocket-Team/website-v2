@@ -882,6 +882,45 @@ export const teamPageAdvisorVersions = pgTable(
   }),
 );
 
+// The projects (issue #295, boards 75 to 75d): each project page, its
+// /projects entry and its home card, read off one record. A project is its
+// place in the site order; its record lives in its versions, as a partner's
+// does: a published one, a draft, or both. The record is one JSON document
+// (lib/project-content/record.ts, checked on every read), because its
+// sections nest lists of their own. Removing a project removes its versions.
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  siteOrder: integer("site_order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+export const projectVersions = pgTable(
+  "project_versions",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    version: contentVersionEnum("version").notNull(),
+    content: jsonb("content").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneOfEachVersion: unique("project_versions_project_version_unique").on(
+      table.projectId,
+      table.version,
+    ),
+    isRecord: check(
+      "project_versions_content_is_record",
+      sql`jsonb_typeof(${table.content}) = 'object'`,
+    ),
+  }),
+);
+
 export const logs = pgTable("logs", {
   id: serial("id").primaryKey(),
   schemaName: text("schema_name").notNull(),

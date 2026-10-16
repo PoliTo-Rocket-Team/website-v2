@@ -83,21 +83,31 @@ export function parseContentEdits<T extends D, D = T>(
 ): ContentEdits<T, D> {
   if (!value) return NO_CONTENT_EDITS;
   try {
-    const wire = JSON.parse(decodeURIComponent(value)) as ContentEdits<unknown>;
-    const saved = Array.isArray(wire.saved) ? wire.saved : [];
-    const removed = Array.isArray(wire.removed) ? wire.removed : [];
-    const order = Array.isArray(wire.order) ? wire.order : [];
-    if (
-      !saved.every((item) => isId(item?.id) && Number.isSafeInteger(item.siteOrder) && isVersioned(item.version, isContent, isDraft)) ||
-      !removed.every(isId) ||
-      !order.every((o) => Array.isArray(o) && o.length === 2 && isId(o[0]) && Number.isSafeInteger(o[1]))
-    ) {
-      return NO_CONTENT_EDITS;
-    }
-    return { saved: saved as ContentItem<T, D>[], removed, order };
+    return contentEditsFrom(JSON.parse(decodeURIComponent(value)), isContent, isDraft);
   } catch {
     return NO_CONTENT_EDITS;
   }
+}
+
+/** Edits read back from a cookie's parsed JSON; none unless every part is one this code wrote. */
+export function contentEditsFrom<T extends D, D = T>(
+  value: unknown,
+  isContent: Guard<T>,
+  isDraft: Guard<D> = isContent,
+): ContentEdits<T, D> {
+  if (typeof value !== "object" || value === null) return NO_CONTENT_EDITS;
+  const wire = value as Partial<ContentEdits<unknown>>;
+  const saved = Array.isArray(wire.saved) ? wire.saved : [];
+  const removed = Array.isArray(wire.removed) ? wire.removed : [];
+  const order = Array.isArray(wire.order) ? wire.order : [];
+  if (
+    !saved.every((item) => isId(item?.id) && Number.isSafeInteger(item.siteOrder) && isVersioned(item.version, isContent, isDraft)) ||
+    !removed.every(isId) ||
+    !order.every((o) => Array.isArray(o) && o.length === 2 && isId(o[0]) && Number.isSafeInteger(o[1]))
+  ) {
+    return NO_CONTENT_EDITS;
+  }
+  return { saved: saved as ContentItem<T, D>[], removed, order };
 }
 
 export const PREVIEW_FULL = "This preview keeps only a few changes. Sign out to start over.";
