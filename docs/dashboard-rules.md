@@ -18,6 +18,11 @@ The five people:
 - **Full access**: the team leader, the operations lead and the IT lead. They see and act on the
   whole team (see "Full access" below).
 
+An **advisor** (#253) is someone who handed over a role and stayed in the team (see "Handing
+over a role" below). The Advisor role leads nothing and heads nothing: it is never counted as a
+lead or a head, so an advisor reaches a member's pages, plus whatever their access rows give
+them. A former team leader who became an advisor keeps full access through an access row.
+
 An admin column comes later. **Planned**, no issue yet.
 
 | Sidebar item or page | Non-member | Member | Division lead | Department head | Full access |
@@ -201,6 +206,40 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
 - **Gap:** My profile and Access still show one division per person (the home division, or the
   oldest one a lead leads). Tracked in #185.
 
+### Handing over a role
+
+These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e and 68b4).
+
+- Whoever holds a role hands it over in one step: someone takes over, and the person stepping
+  down picks one of two outcomes. Nothing is picked for them, and there is no third option:
+  no hand-over leaves them as a member, and none has them leave only their division.
+  - **Become an advisor:** the role they handed over ends and one **Advisor** role starts (role
+    type `advisor`, migration 0026). A former division lead's Advisor role is in their own
+    division, a former department head's in their own department, and a former team leader's
+    in no department and no division: they advise the whole team.
+  - **Leave the team:** every role and every access ends and they move to Alumni, as Leaves
+    the team does.
+- Who hands over which role:
+  - **Team leader:** only the current team leader, from the Team Leader box in the Team tree's
+    edit view (board 77i). The box is locked for everyone else, the operations lead and the IT
+    lead included, and the server refuses them.
+  - **Department head:** the team leader or full access, with Change head in Edit department
+    (board 77e).
+  - **Division lead:** the department's head, the team leader or full access, when a new lead
+    replaces them in Edit division (board 68b4), or with Promote's "hand over the division".
+- **Access after a hand-over** (Owner decision, 2026-10-16): a lead or head who becomes an
+  advisor loses every access row they held; they keep only the Advisor role in their own unit.
+  A former team leader who becomes an advisor keeps every access row they hold, and the full
+  access their role gave them stays with them as an org-wide access row, until the new team
+  leader changes it in Access (#247).
+- The team leader's own powers (deciding orders by default, giving "Approve orders", handing the
+  role over) belong to the role, so they move to the new team leader on save.
+- The person who takes over keeps every role they already hold.
+- A lead taken off with Remove and no replacement is not a hand-over: Remove keeps its three
+  outcomes (see Divisions below).
+- **Planned:** a role holder's own request from My profile, which the next level up confirms
+  (board 55d), is #262.
+
 ### Members page
 
 These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 61h2).
@@ -259,7 +298,8 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - The role on the operations lead's member panel is the person's title on the Team page.
   - **Gap:** the title saved on the panel never reaches the public Team page. Tracked in #189.
 - Promote changes a division's leads, so it is the department head's (#231). It is confirmed, with
-  "lead together" or "hand over the division", and each head of the division's department gets a
+  "lead together" or "hand over the division"; "hand over the division" is a hand-over, so the
+  old lead becomes an advisor in the division or leaves the team (#253). Each head of the division's department gets a
   notice under "Needs your attention" on their Overview, naming who now leads the division and how
   (#188). The head who promoted is not told. No email is sent.
   - The head changes a division's leads in Edit division (see Divisions below).
@@ -330,6 +370,9 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   their own department, not only the page.
 - A division's pencil opens Edit division (below), with **Close division** in its footer. Add
   division opens New division in the department of the column it is under.
+- The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
+  alone, with a pencil. For everyone else, full access included, it shows a lock and opens
+  nothing (see "Handing over a role" above).
 
 #### Departments
 
@@ -341,16 +384,20 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
   picked. Divisions are added after, with Add division.
 - **Edit department** (board 77e) shows the name, the code, the head, and the divisions as rows
   that open to list their people, lead first, read-only. Save changes stores a new name or code,
-  after an "are you sure" that lists each change. Changing the head is not here: role hand-over is
-  #253.
+  after an "are you sure" that lists each change.
+- **Change head** (board 77e, #253), under the head in Edit department, picks the new head from
+  the team. As in New department, someone who already holds a seat cannot be picked, and the
+  new head keeps their divisions. The head they replace gets "What happens to {name}?":
+  Become an advisor (in this department) or Leave the team, with neither picked at first. The
+  change is saved with Save changes, after the same "are you sure".
 - **Close department** (board 77f), from Edit department's footer:
   - Each open division gets a choice: move it to another open department, or close it. A division
     with anyone in it (people waiting for their NDA included) can only move.
   - The head gets a choice too, in the drawer's "Head" block, with neither option picked at first
     (Owner decision, 2026-10-16). Nobody gets a role automatically.
-    - **Become an advisor:** the head role ends and one active role with the Advisor title starts,
-      in no department and no division. Every access row they hold is removed (Owner decision,
-      2026-10-16).
+    - **Become an advisor:** the head role ends and one Advisor role starts, in no department and
+      no division, since the department closes. Every access row they hold is removed (Owner
+      decision, 2026-10-16).
     - **Leave the team:** every role they hold ends and their access goes, as Leaves the team
       does, so they appear on Alumni.
   - Close department stays disabled until every division and the head have a choice. The server
@@ -394,13 +441,19 @@ of 2026-10-16 on #251.
 - An open division always has at least one lead. A create or an edit that would leave it with
   none is refused.
 - A new lead can replace an old one ("{new} replaces", default "Nobody, add as an extra lead").
-  A replaced lead, and a lead taken off with Remove, gets one of three outcomes:
+  Each new lead replaces at most one old lead.
+- A **replaced** lead hands the division over (#253, board 68b4): "What happens to {name}?" offers
+  only **Become an advisor** (the Advisor role in this division; all their access ends) and
+  **Leave the team**, with neither picked at first. Save changes waits until one is picked.
+- A lead taken off with **Remove** and no replacement is not a hand-over, and gets one of three
+  outcomes:
   - **Stays as a member** (the default): they keep the division and lose the lead role.
   - **Leaves {division}**: their role and division access there end; they keep their other
     divisions, and any seat. Not offered when it is their only division and they hold no seat.
   - **Leaves the team**: every role and every access ends and they move to Alumni, as "Leaves the
-    team" on the Members page. The same permission rule applies; otherwise it is disabled with a
-    lock and the reason.
+    team" on the Members page.
+- Leaving the team, for a replaced or a removed lead, follows the Members page's permission rule;
+  otherwise it is disabled with a lock and the reason.
 - Name, code and lead changes are saved together with "Save changes", after an "are you sure"
   that lists each change. Members of an open division change one at a time, as on the Members
   page: Add member (from the whole team, or an email that then waits for Confirm NDA), Confirm

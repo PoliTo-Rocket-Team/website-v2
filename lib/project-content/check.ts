@@ -1,4 +1,5 @@
 import { specRows } from "@/lib/project-pages/types";
+import { ownRocketModels } from "@/lib/rocket-model";
 import type { ProjectRecord } from "./record";
 
 // Whether a value read back is a project record (./record.ts): a stored JSON
@@ -40,7 +41,12 @@ const hero = shape({
   intro: copy,
   status: isString,
   dates: isString,
-  visual: optional(shape({ caption: isString, still: optional(shape({ src: isString, alt: isString })) })),
+  visual: optional(
+    shape({
+      caption: isString,
+      rocket: optional(shape({ own: optional(shape({ model: oneOf(...ownRocketModels), alt: isString })) })),
+    }),
+  ),
   facts: list(shape({ value: isString, label: copy }), 1, 6),
 });
 
@@ -120,6 +126,7 @@ const card = shape({
   desc: copy,
   specs: list(spec, 3, 3),
   infoTint: optional(isNumber),
+  rocket: optional(oneOf(...ownRocketModels)),
 });
 
 const listingBase = { years: isString, description: copy, specs: list(spec, 6, 6) };

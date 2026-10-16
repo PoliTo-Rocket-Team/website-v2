@@ -9,7 +9,7 @@ import type { ProjectRecord, VehicleRecord, EngineRecord } from "./record";
 // its /projects entry (lib/projects.ts) and its home card
 // (components/landing/projects.tsx). The records below join the three, word
 // for word; ./content.test.ts checks they draw what those files drew
-// (./before.json). Migration drizzle/0027_projects_audit_and_import.sql
+// (./before.json). Migration drizzle/0028_projects_audit_and_import.sql
 // holds exactly the SQL `projectImportSql` writes, and the dummy data
 // (previews) starts from the same items. Every fact is from
 // design/specs-from-old-site.md; where it gives no value a spec is null and
@@ -123,6 +123,7 @@ const cavour: VehicleRecord = {
       { label: { text: "MOTOR" }, value: { text: "Solid · L", phone: "Solid L" } },
       { label: { text: "SPEED" }, value: { text: "295 m/s" } },
     ],
+    rocket: "cavour",
   },
   description:
     "The Team's first rocket, named after Camillo Benso, Count of Cavour. Three flights in one year, three configurations, two awards.",
@@ -134,7 +135,7 @@ const cavour: VehicleRecord = {
     dates: "JUN 2022 – OCT 2023",
     visual: {
       caption: "CVR 100-75-3 · FLIGHT CONFIGURATION",
-      still: { src: "/design/cavour/stage-poster.webp", alt: "Cavour in its flight configuration, side-on, nose right" },
+      rocket: { own: { model: "cavour", alt: "Cavour in its flight configuration, side-on, nose right" } },
     },
     facts: [
       { value: "104 mm", label: { text: "DIAMETER" } },
@@ -357,6 +358,7 @@ const ves: VehicleRecord = {
       { label: { text: "MOTOR" }, value: { text: "M · O" } },
       { label: { text: "VERSIONS", phone: "MARKS" }, value: { text: "Mk I · II", phone: "Mk I–II" } },
     ],
+    rocket: "cavour",
   },
   description:
     "The second rocket of the Founding Fathers series, named after Vittorio Emanuele II, the first King of Italy. Built to fly the Team's own systems.",
@@ -522,6 +524,7 @@ const efesto: EngineRecord = {
       { label: { text: "COOLING" }, value: { text: "Regen." } },
     ],
     infoTint: 0.82,
+    rocket: "cavour",
   },
   description:
     "Not a rocket yet: the liquid engine for the Team's first bi-liquid vehicle, and the first pressure-fed liquid engine built in Italy.",

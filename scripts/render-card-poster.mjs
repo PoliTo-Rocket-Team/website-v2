@@ -1,8 +1,10 @@
-// Renders the project card's poster (CAVOUR_CARD_POSTER in
-// components/landing/cavour-assets.ts): the card canvas's finished frame as a
-// still, so the card shows its rocket before the 3D has loaded.
+// Renders a project card's poster (CAVOUR_CARD_POSTER in
+// components/landing/cavour-assets.ts, PLACEHOLDER_CARD_POSTER in
+// placeholder-assets.ts): the card canvas's finished frame as a still, so the
+// card shows its rocket before the 3D has loaded.
 //
-// Usage: node scripts/render-card-poster.mjs
+// Usage: node scripts/render-card-poster.mjs [cavour | placeholder]
+// (cavour when no model is named)
 //
 // It mounts the real card scene (rocket-card-3d.tsx) alone on a blank page in
 // a 480 x 1048 box at 1.5x, the canvas's own top resolution, and saves an
@@ -11,14 +13,17 @@
 //
 // One page, one capture, then the browser closes. Headless Chrome may draw
 // WebGL in software, which is slow and hot, so never put this in a loop.
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const out = path.join(root, "public/design/cavour/card-poster.png");
+const MODELS = ["cavour", "placeholder"];
+const model = process.argv[2] ?? "cavour";
+if (!MODELS.includes(model)) throw new Error(`unknown model ${model}; one of ${MODELS.join(", ")}`);
+const out = path.join(root, `public/design/${model}/card-poster.png`);
 const BOX = { width: 480, height: 1048 };
 const SCALE = 1.5;
 const ORIGIN = "http://poster.local";
@@ -33,6 +38,7 @@ import RocketCard3D from "./rocket-card-3d";
 const frames = (n, cb) => (n === 0 ? cb() : requestAnimationFrame(() => frames(n - 1, cb)));
 createRoot(document.getElementById("stage")).render(
   <RocketCard3D
+    model="${model}"
     tuning={false}
     onReadout={() => {}}
     onReady={() => frames(2, () => (window.posterState = "ready"))}
@@ -53,7 +59,9 @@ const html = `<!doctype html><html><body style="margin:0">
 <div id="stage" style="position:relative;width:${BOX.width}px;height:${BOX.height}px"></div>
 <script type="module" src="/bundle.js"></script></body></html>`;
 
-const browser = await chromium.launch({ args: ["--force-color-profile=srgb", "--enable-unsafe-swiftshader"] });
+const browser = await chromium.launch({
+  args: ["--force-color-profile=srgb", "--enable-unsafe-swiftshader", "--use-angle=metal"],
+});
 try {
   const page = await browser.newPage({ viewport: BOX, deviceScaleFactor: SCALE });
   page.on("pageerror", (e) => console.error("[page]", e.message));
@@ -70,6 +78,7 @@ try {
   await page.waitForFunction(() => window.posterState, null, { timeout: 90_000 });
   const state = await page.evaluate(() => window.posterState);
   if (state !== "ready") throw new Error(`card scene ${state}`);
+  await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, await page.locator("#stage").screenshot({ omitBackground: true }));
   console.log(`wrote ${path.relative(root, out)}`);
 } finally {

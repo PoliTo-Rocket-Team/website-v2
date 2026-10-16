@@ -12,6 +12,7 @@ import type {
   Versions,
 } from "@/lib/project-pages/types";
 import { isPageSlug, type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
+import type { OwnRocketModel } from "@/lib/rocket-model";
 
 // One project as the content store keeps it (issue #295): everything the
 // project page, its /projects entry and its home card show, in one record
@@ -19,8 +20,9 @@ import { isPageSlug, type Award, type Copy, type Launch, type Project, type Proj
 // Before the store each was typed by hand in its own file; now all three are
 // read off this record, so a fact lives in one place. Each top-level key is
 // one section an editor changes on its own. A section the page leaves out is
-// an absent key, as in lib/project-pages/types.ts. The 3D rocket is code, not
-// content, so it is not here.
+// an absent key, as in lib/project-pages/types.ts. A 3D rocket is code, not
+// content: the record only names the model its card and its page draw
+// (lib/rocket-model.ts), and a project with none draws the placeholder.
 
 /** The home card (board 21): its own short copy, beside the project's name and texture. */
 export type HomeCard = {
@@ -33,6 +35,11 @@ export type HomeCard = {
   specs: readonly [Spec, Spec, Spec];
   /** A bright texture tints its info box darker (Efesto's). */
   infoTint?: number;
+  /**
+   * The rocket the card draws; with none it draws the shared placeholder
+   * (lib/rocket-model.ts). All three cards draw Cavour, as board 21 does.
+   */
+  rocket?: OwnRocketModel;
 };
 
 /** What every /projects entry shows (board 22). */

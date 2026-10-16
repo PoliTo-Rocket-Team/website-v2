@@ -2,7 +2,10 @@
 // components/landing/cavour-assets.ts): the parked rocket, as the panel shows
 // it, with a transparent background so the Cavour texture shows through.
 //
-// Usage: node scripts/render-cavour-stage.mjs
+// Usage: node scripts/render-cavour-stage.mjs [cavour | placeholder]
+// (cavour when no model is named). The placeholder's still
+// (PLACEHOLDER_STAGE_POSTER in placeholder-assets.ts) comes from the same
+// scene, for a project page with no model of its own.
 //
 // It mounts the stage scene (cavour-stage-3d.tsx) alone on a blank page in
 // the panel's desktop box, 1312 x 620, at 1.5x, takes an element screenshot
@@ -11,14 +14,17 @@
 //
 // One page, one capture, then the browser closes. Headless Chrome may draw
 // WebGL in software, which is slow and hot, so never put this in a loop.
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const out = path.join(root, "public/design/cavour/stage-poster.webp");
+const MODELS = ["cavour", "placeholder"];
+const model = process.argv[2] ?? "cavour";
+if (!MODELS.includes(model)) throw new Error(`unknown model ${model}; one of ${MODELS.join(", ")}`);
+const out = path.join(root, `public/design/${model}/stage-poster.webp`);
 const BOX = { width: 1312, height: 620 };
 const SCALE = 1.5;
 const ORIGIN = "http://poster.local";
@@ -35,6 +41,7 @@ import CavourStage3D from "./cavour-stage-3d";
 const frames = (n, cb) => (n === 0 ? cb() : requestAnimationFrame(() => frames(n - 1, cb)));
 createRoot(document.getElementById("stage")).render(
   <CavourStage3D
+    model="${model}"
     onReady={() => frames(2, () => (window.posterState = "ready"))}
     onFailed={() => (window.posterState = "failed")}
   />,
@@ -53,7 +60,9 @@ const html = `<!doctype html><html><body style="margin:0">
 <div id="stage" style="position:relative;width:${BOX.width}px;height:${BOX.height}px"></div>
 <script type="module" src="/bundle.js"></script></body></html>`;
 
-const browser = await chromium.launch({ args: ["--force-color-profile=srgb", "--enable-unsafe-swiftshader"] });
+const browser = await chromium.launch({
+  args: ["--force-color-profile=srgb", "--enable-unsafe-swiftshader", "--use-angle=metal"],
+});
 try {
   const page = await browser.newPage({ viewport: BOX, deviceScaleFactor: SCALE });
   page.on("pageerror", (e) => console.error("[page]", e.message));
@@ -71,6 +80,7 @@ try {
   const state = await page.evaluate(() => window.posterState);
   if (state !== "ready") throw new Error(`stage scene ${state}`);
   const png = await page.locator("#stage").screenshot({ omitBackground: true });
+  await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, await sharp(png).webp({ quality: 90, alphaQuality: 100, effort: 6 }).toBuffer());
   console.log(`wrote ${path.relative(root, out)}`);
 } finally {

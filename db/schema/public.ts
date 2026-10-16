@@ -17,11 +17,16 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+// `advisor` (issue #253, drizzle/0026): the role someone holds after handing
+// over a role and staying in the team. It sits on the former lead's division,
+// the former head's department, or on neither for a former team leader. It
+// leads nothing and heads nothing.
 export const positionTypeEnum = pgEnum("position_type", [
   "president",
   "head",
   "lead",
   "core",
+  "advisor",
 ]);
 
 // Dashboard v2 orders (issue #172, drizzle/0010): the team leader can send a

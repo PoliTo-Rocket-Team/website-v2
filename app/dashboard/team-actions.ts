@@ -7,7 +7,8 @@ import type { TeamWrites } from "@/lib/dashboard/data";
 import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
 import { openDashboard } from "@/lib/dashboard/open";
-import { checkDeparture, isPromoteMode, type EditableRole, type PromoteMode } from "@/lib/dashboard/team";
+import { checkPromotion } from "@/lib/dashboard/hand-over";
+import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
 // The Team pages' writes (issues #143 and #172). Each goes through the dashboard data
@@ -85,10 +86,13 @@ export async function saveMember(
   return done(await writes.saveMember(personId, { role, pageTitle }));
 }
 
-export async function promote(personId: number, mode: PromoteMode): Promise<TeamActionResult> {
+/** Promote (board 59e): "together", or "hand-over" with what the lead does next (issue #253). */
+export async function promote(personId: number, promotion: unknown): Promise<TeamActionResult> {
   const writes = await writesOn("members");
-  if (!writes || !isId(personId) || !isPromoteMode(mode)) return REFUSED;
-  return done(await writes.promote(personId, mode));
+  if (!writes || !isId(personId)) return REFUSED;
+  const checked = checkPromotion(promotion);
+  if (!checked.ok) return { ok: false, error: checked.error };
+  return done(await writes.promote(personId, checked.value));
 }
 
 /** Board 59d: the years as typed ("2024 – 2026") and the reason, or none. */
@@ -221,4 +225,11 @@ export async function closeDepartment(departmentId: number, input: unknown): Pro
   const writes = await writesOn("team-tree");
   if (!writes || !isId(departmentId)) return REFUSED;
   return answered(await writes.closeDepartment(departmentId, input));
+}
+
+/** "Hand over the role" on the Team Leader box (board 77i, issue #253): only the team leader; the server refuses everyone else. */
+export async function handOverTeamLeader(input: unknown): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes) return REFUSED;
+  return answered(await writes.handOverTeamLeader(input));
 }

@@ -4,7 +4,8 @@ import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import CavourBuilt from "./rocket-cavour";
+import type { RocketModel } from "@/lib/rocket-model";
+import { builtRockets } from "./rocket-built";
 import type { WeatherUniforms } from "./hero-weathering";
 import { SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
@@ -13,6 +14,8 @@ import { CAVOUR_HDRI } from "./cavour-assets";
 // the whole rocket side-on, so the card is a close-up from an angle you cannot
 // get out of a flat render. Same model, materials and HDRI as the hero
 // (rocket-cavour.tsx, hero-rocket-3d.tsx) so the two read as one vehicle.
+// A project with no model of its own draws the placeholder
+// (rocket-placeholder.tsx) in the same pose and light.
 //
 // This file is the card's canvas and its tuning. It loads as its own chunk:
 // rocket-card-stage.tsx decides when to mount it (see scene-schedule.ts).
@@ -49,7 +52,8 @@ const PARKED_X = 1.2;
 const WEAR_SCALE = 2.5;
 const WEAR_AMOUNT = 0.45;
 
-function Vehicle() {
+function Vehicle({ model }: { model: RocketModel }) {
+  const Built = builtRockets[model];
   const group = useRef<THREE.Group>(null!);
   /** The group the vehicle sits in directly: its frame IS rocket space. */
   const frame = useRef<THREE.Group>(null!);
@@ -83,7 +87,7 @@ function Vehicle() {
   return (
     <group ref={group} position={[PARKED_X, PARKED_Y, PARKED_Z]}>
       <group ref={frame} rotation={[0, 0, Math.PI / 2 - LEAN]}>
-        <CavourBuilt weather={weather} length={LENGTH} />
+        <Built weather={weather} length={LENGTH} />
       </group>
     </group>
   );
@@ -116,6 +120,8 @@ function FixedCamera() {
 }
 
 type Props = {
+  /** The vehicle to draw. */
+  model: RocketModel;
   /** `?cam` on the URL: orbit controls and a live camera readout. */
   tuning: boolean;
   onReadout: (s: string) => void;
@@ -134,7 +140,7 @@ type Props = {
   onLost: () => void;
 };
 
-export default function RocketCard3D({ tuning, onReadout, onReady, onFailed, onLost }: Props) {
+export default function RocketCard3D({ model, tuning, onReadout, onReady, onFailed, onLost }: Props) {
   return (
     <Canvas
       // Nothing in the scene moves, so the canvas draws only when asked: the
@@ -175,7 +181,7 @@ export default function RocketCard3D({ tuning, onReadout, onReady, onFailed, onL
             environmentIntensity={0.45}
             environmentRotation={[-Math.PI / 2, 0, 0]}
           />
-          <Vehicle />
+          <Vehicle model={model} />
           <WarmUp onWarm={onReady} />
         </Suspense>
       </SceneErrorBoundary>

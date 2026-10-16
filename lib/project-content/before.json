@@ -10,9 +10,11 @@
         "dates": "JUN 2022 – OCT 2023",
         "visual": {
           "caption": "CVR 100-75-3 · FLIGHT CONFIGURATION",
-          "still": {
-            "src": "/design/cavour/stage-poster.webp",
-            "alt": "Cavour in its flight configuration, side-on, nose right"
+          "rocket": {
+            "own": {
+              "model": "cavour",
+              "alt": "Cavour in its flight configuration, side-on, nose right"
+            }
           }
         },
         "facts": [
@@ -1172,7 +1174,8 @@
           }
         }
       ],
-      "texture": "/textures/project-cavour.webp"
+      "texture": "/textures/project-cavour.webp",
+      "rocket": "cavour"
     },
     {
       "num": "02",
@@ -1215,7 +1218,8 @@
           }
         }
       ],
-      "texture": "/textures/project-ves.webp"
+      "texture": "/textures/project-ves.webp",
+      "rocket": "cavour"
     },
     {
       "num": "03",
@@ -1256,7 +1260,8 @@
         }
       ],
       "texture": "/textures/project-efesto.webp",
-      "infoTint": 0.82
+      "infoTint": 0.82,
+      "rocket": "cavour"
     }
   ],
   "headerStats": [

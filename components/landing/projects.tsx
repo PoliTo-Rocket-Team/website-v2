@@ -5,6 +5,7 @@ import { homeCardOf, type HomeCardView } from "@/lib/project-content/record";
 import { publishedProjects } from "@/lib/project-content/public";
 import { withSubscriptDigits } from "@/lib/project-content/subscript";
 import type { Copy } from "@/lib/projects";
+import { rocketModelOf } from "@/lib/rocket-model";
 import { RocketCardStage } from "./rocket-card-stage";
 import { RocketArrow } from "./rocket-arrow";
 import { SwipeRow } from "./swipe-row";
@@ -38,7 +39,7 @@ function Text({ copy, draw = (text) => text }: { copy: Copy; draw?: (text: strin
   );
 }
 
-function ProjectCard({ project }: { project: HomeCardView }) {
+export function HomeProjectCard({ project }: { project: HomeCardView }) {
   return (
     // isolate: the card is its own stacking context, so the z-indexes below
     // order its own layers and never reach a neighbouring card.
@@ -73,7 +74,7 @@ function ProjectCard({ project }: { project: HomeCardView }) {
           and the hover does not stutter while the canvas draws frames. */}
       <div className="pointer-events-none absolute inset-0 z-[2] [clip-path:inset(-400px_0_0_0_round_16px)]">
         <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
-          <RocketCardStage />
+          <RocketCardStage model={rocketModelOf(project.rocket)} />
         </div>
       </div>
 
@@ -151,7 +152,7 @@ export async function Projects() {
           className="mt-6 md:mt-14 md:grid md:gap-8 lg:grid-cols-3 lg:gap-4"
         >
           {cards.map((p) => (
-            <ProjectCard key={p.name} project={p} />
+            <HomeProjectCard key={p.name} project={p} />
           ))}
         </SwipeRow>
       </div>

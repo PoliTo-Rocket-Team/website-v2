@@ -62,32 +62,53 @@ test("a seat holder whose only division it is can leave it and keeps the seat", 
   const row = (await tabOf(first.kept(), MISSION_ANALYSIS))!.people.find((p) => p.id === 14);
   assert.equal(row?.removal.kind, "offered", "the seat keeps them on the team, so this division is not their last place");
   const leaves = head(first.kept());
-  const saved = await leaves.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 14, outcome: "leave-division" }] });
+  const saved = await leaves.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 14, via: "removed", outcome: "leave-division" }] });
   assert.deepEqual(saved, { ok: true, value: null });
   assert.equal((await tabOf(leaves.kept(), MISSION_ANALYSIS))!.people.some((p) => p.id === 14), false);
   assert.equal((await head(leaves.kept()).view.teamTree()).leader?.id, 14, "still the team leader");
 });
 
-test("the old lead's three outcomes: stays as a member, leaves this division, leaves the team", async () => {
+test("a removed lead keeps Remove's three outcomes: stays as a member, leaves this division, leaves the team", async () => {
   // Anna Villa (13) is in Mission Analysis and Optimization and Analysis: lead her first, then let each outcome play.
   const first = head();
   await first.writes.saveDivision(MISSION_ANALYSIS, { ...keep, newLeads: [13] });
 
   const stays = head(first.kept());
-  await stays.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 13, outcome: "member" }] });
+  await stays.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 13, via: "removed", outcome: "member" }] });
   assert.equal((await tabOf(stays.kept(), MISSION_ANALYSIS))!.people.find((p) => p.id === 13)?.role, "member");
 
   const leaves = head(first.kept());
-  await leaves.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 13, outcome: "leave-division" }] });
+  await leaves.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 13, via: "removed", outcome: "leave-division" }] });
   assert.equal((await tabOf(leaves.kept(), MISSION_ANALYSIS))!.people.some((p) => p.id === 13), false);
   assert.ok((await tabOf(leaves.kept(), OPTIMIZATION))!.people.some((p) => p.id === 13), "keeps Optimization and Analysis");
 
   // Pietro Ricci (6) only leads Mission Analysis, so the head may move him to Alumni.
   const gone = head();
-  assert.equal((await gone.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 6, outcome: "leave-team" }] })).ok, true);
+  assert.equal((await gone.writes.saveDivision(MISSION_ANALYSIS, { ...keep, oldLeads: [{ personId: 6, via: "removed", outcome: "leave-team" }] })).ok, true);
   assert.ok(gone.kept().movedToAlumni[6]);
   const alumni = await dummyTeamPages("operations-lead", gone.kept(), async () => {}).alumni();
   assert.ok(alumni.rows.some((a) => a.name === "Pietro Ricci"));
+});
+
+test("a replaced lead becomes an advisor in the division with no access, or moves to Alumni; never a member (#253)", async () => {
+  // Pietro Ricci (6) only leads Mission Analysis; Sara Conti (7) is a member of it.
+  const advises = head();
+  const replaced = { ...keep, newLeads: [7], oldLeads: [{ personId: 6, via: "replaced", outcome: "advisor" }] };
+  assert.deepEqual(await advises.writes.saveDivision(MISSION_ANALYSIS, replaced), { ok: true, value: null });
+  const people = (await tabOf(advises.kept(), MISSION_ANALYSIS))!.people;
+  const pietro = people.find((p) => p.id === 6);
+  assert.equal(pietro?.role, "member", "an advisor leads nothing");
+  assert.equal(pietro?.divisions.find((d) => d.divisionId === MISSION_ANALYSIS)?.title, "Advisor");
+  assert.equal(people.find((p) => p.id === 7)?.role, "lead");
+  assert.deepEqual(advises.kept().advisors[6], { place: { kind: "division", divisionId: MISSION_ANALYSIS }, access: "ends" });
+
+  const leaves = head();
+  const left = await leaves.writes.saveDivision(MISSION_ANALYSIS, { ...replaced, oldLeads: [{ personId: 6, via: "replaced", outcome: "leave" }] });
+  assert.deepEqual(left, { ok: true, value: null });
+  assert.ok(leaves.kept().movedToAlumni[6]);
+
+  const member = await head().writes.saveDivision(MISSION_ANALYSIS, { ...replaced, oldLeads: [{ personId: 6, via: "replaced", outcome: "member" }] });
+  assert.equal(member.ok, false, "a hand-over never leaves them as a member");
 });
 
 test("a changed code is the one the division's position codes read", async () => {
