@@ -60,7 +60,8 @@ test("the team leader, the operations lead and the IT lead reach every page of t
   assert.deepEqual(shape(fullAccess("team-leader"), withoutApplications), [
     [null, ["Overview", "Team tree"]],
     ["Recruitment", ["Positions", "Applications"]],
-    ["Team", ["Members", "Alumni", "Access", "Orders"]],
+    ["Team", ["Members", "Access", "Orders"]],
+    ["Content", ["Partners", "Alumni"]],
   ]);
 });
 
@@ -95,7 +96,7 @@ test("the Alumni page is for full admins and site-content access, never from a l
   }
   assert.deepEqual(shape({ kind: "member", siteContent: true }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
-    ["Team", ["Alumni"]],
+    ["Content", ["Partners", "Alumni"]],
   ]);
 });
 

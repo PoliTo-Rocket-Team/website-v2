@@ -134,6 +134,20 @@
       "when": 1791800000000,
       "tag": "0018_full_access_seats",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792110554160,
+      "tag": "0019_partners",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792110555160,
+      "tag": "0020_partners_audit_and_import",
+      "breakpoints": true
     }
   ]
 }

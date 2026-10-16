@@ -31,7 +31,10 @@ export function SidePanel({
   title,
   detail,
   leading,
+  below,
   footer,
+  footerLayout = "pair",
+  wide = false,
   children,
 }: {
   open: boolean;
@@ -40,8 +43,14 @@ export function SidePanel({
   detail?: string;
   /** Beside the title, before it: the person's avatar on the member panels (boards 61f, 61g). */
   leading?: ReactNode;
+  /** Under the title, in place of `detail`: a status pill and a line (board 76b). */
+  below?: ReactNode;
   /** The pinned actions; none for a panel that only shows. */
   footer?: ReactNode;
+  /** Two equal buttons, or one action on the left and the rest on the right (board 76b: Remove, then Save draft and Publish). */
+  footerLayout?: "pair" | "spread";
+  /** The 520px panel of board 76b, for a form with fields side by side. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -50,7 +59,7 @@ export function SidePanel({
         <DialogOverlay className="bg-ground/50" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex flex-col bg-ground text-prt-text focus:outline-none md:inset-y-0 md:left-auto md:right-0 md:w-[440px] md:border-l md:border-hairline motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-right"
+          className={`fixed inset-0 z-50 flex flex-col bg-ground text-prt-text focus:outline-none md:inset-y-0 md:left-auto md:right-0 ${wide ? "md:w-[520px]" : "md:w-[440px]"} md:border-l md:border-hairline motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-right`}
         >
           <header className="flex shrink-0 items-start gap-3 border-b border-hairline px-5 py-4 md:justify-between md:px-7 md:py-5">
             <DialogClose
@@ -64,6 +73,7 @@ export function SidePanel({
               <div className="min-w-0">
                 <DialogTitle className="truncate text-[18px] font-semibold leading-8 md:text-[20px] md:leading-tight">{title}</DialogTitle>
                 {detail && <p className="mt-0.5 truncate text-[13px] text-prt-muted">{detail}</p>}
+                {below}
               </div>
             </div>
             <DialogClose
@@ -75,7 +85,9 @@ export function SidePanel({
           </header>
           {children}
           {footer && (
-            <footer className="grid shrink-0 grid-cols-2 gap-3 border-t border-hairline px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-7">
+            <footer
+              className={`shrink-0 gap-3 border-t ${footerLayout === "pair" ? "grid grid-cols-2" : "flex items-center justify-between"} border-hairline px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-7`}
+            >
               {footer}
             </footer>
           )}
@@ -141,6 +153,6 @@ export function Drawer({
 }
 
 /** The page under a side panel: from xl it keeps clear of the open panel, as the boards show. */
-export function DrawerPage({ drawerOpen, children }: { drawerOpen: boolean; children: ReactNode }) {
-  return <div className={drawerOpen ? "xl:pr-[428px]" : undefined}>{children}</div>;
+export function DrawerPage({ drawerOpen, wide = false, children }: { drawerOpen: boolean; wide?: boolean; children: ReactNode }) {
+  return <div className={drawerOpen ? (wide ? "xl:pr-[508px]" : "xl:pr-[428px]") : undefined}>{children}</div>;
 }

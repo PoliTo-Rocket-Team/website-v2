@@ -46,6 +46,9 @@ export const TEST_DEVELOPER_EDITS_COOKIE = "prt_test_developer_edits";
 /** What a test developer changed on their own pages (lib/dummy-data/own.ts); cleared on sign out. */
 export const TEST_DEVELOPER_OWN_COOKIE = "prt_test_developer_own";
 
+/** What a test developer changed on the site's content, the partners today (lib/dummy-data/partners.ts); cleared on sign out. */
+export const TEST_DEVELOPER_CONTENT_COOKIE = "prt_test_developer_content";
+
 /**
  * Which own applications the test developer starts with (lib/dummy-data/own.ts):
  * "none" or "withdrawn" after a sign-in with that `applications` value, absent otherwise.
@@ -130,5 +133,6 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url, TEST_DEVELOPER_EDITS_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_OWN_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_CONTENT_COOKIE),
   );
 }

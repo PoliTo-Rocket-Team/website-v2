@@ -3,6 +3,8 @@ import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitme
 import { landingAfterLeaving, type NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { formatEuro, waitingOrders } from "@/lib/dashboard/orders";
+import { partnerEditor } from "@/lib/partners-editor";
+import { dummyLogoFiles, dummyPartnerStore, NO_PARTNER_EDITS_STORE, type DummyPartnerEditsStore } from "./partners";
 import {
   checklistProgress,
   divisionShortName,
@@ -771,6 +773,7 @@ export function dummyDashboardData(
   teamEdits: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
+  partnerEdits: DummyPartnerEditsStore = NO_PARTNER_EDITS_STORE,
 ): DashboardData {
   if (kind !== "non-member" && teamEdits.current.movedToAlumni[personFor[kind].id] !== undefined) {
     return leftTeamDashboard(kind, personFor[kind], recruitment, changes, teamEdits, own);
@@ -896,6 +899,9 @@ export function dummyDashboardData(
       accessKind === null || person === null ? refused(noOrders) : dummyDecideOrder(accessKind, person, id, input),
     setApproveOrders: async (input) =>
       person === null ? refused(notOnTeam) : dummySetApproveOrders(person, teamRoster.map((e) => e.id), input),
+
+    // Behind the same site-content gate as the database side; changes live in the test developer's cookie.
+    partners: partnerEditor(dummyViewer(kind), dummyPartnerStore(partnerEdits), dummyLogoFiles),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(kind, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {

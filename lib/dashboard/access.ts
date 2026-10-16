@@ -8,9 +8,10 @@ import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } fro
 // `seat` is reached by that full-access seat alone (issue #238). The
 // `operations-lead` kind is full access: the team leader, the operations lead
 // and the IT lead, or an admin or org scope row (./viewer.ts), so it reaches
-// every page of the team. Site content is not designed yet, so it has no row.
+// every page of the team. The Content group holds the pages that change the
+// public site (issue #256); its gate is lib/content/gate.ts, the same rule.
 
-export const NAV_GROUPS = ["main", "recruitment", "team", "my-department", "my-division"] as const;
+export const NAV_GROUPS = ["main", "recruitment", "team", "my-department", "my-division", "content"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
 /** The small heading over each group; the main group has none. */
@@ -20,6 +21,7 @@ export const NAV_GROUP_LABELS: Readonly<Record<NavGroup, string | null>> = {
   team: "Team",
   "my-department": "My department",
   "my-division": "My division",
+  content: "Content",
 };
 
 /**
@@ -96,16 +98,6 @@ export const DASHBOARD_PAGES = [
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
   },
   {
-    key: "alumni",
-    label: "Alumni",
-    href: "/dashboard/alumni",
-    // Owner decision on #234: full access (the team leader, the operations
-    // lead and the IT lead, issue #238) and anyone given site-content access.
-    // A division lead or department head gets nothing from their role here.
-    reach: { "operations-lead": "team" },
-    siteContent: "team",
-  },
-  {
     key: "division-access",
     label: "Access",
     href: "/dashboard/access",
@@ -119,6 +111,26 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/orders",
     // Every order in the team, for anyone with Orders access (issue #233).
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
+  },
+  {
+    key: "partners",
+    label: "Partners",
+    href: "/dashboard/partners",
+    // Boards 76 and 76b (issue #256): the site-content rule, as Alumni reads
+    // it (maySiteContent, lib/content/gate.ts).
+    reach: { "operations-lead": "content" },
+    siteContent: "content",
+  },
+  {
+    key: "alumni",
+    label: "Alumni",
+    href: "/dashboard/alumni",
+    // Owner decision on #234: full access (the team leader, the operations
+    // lead and the IT lead, issue #238) and anyone given site-content access.
+    // A division lead or department head gets nothing from their role here.
+    // It sits in the Content group with the other site pages (board 76).
+    reach: { "operations-lead": "content" },
+    siteContent: "content",
   },
   {
     key: "activity-log",

@@ -1,5 +1,6 @@
 import { PartnerLogo, type LogoHeights } from "@/components/partners/partner-logo";
-import { partners, type Partner } from "@/lib/partners";
+import type { Partner } from "@/lib/partners";
+import { publishedPartners } from "@/lib/partners-public";
 import { Marquee } from "./marquee";
 import { RocketArrow } from "./rocket-arrow";
 
@@ -7,8 +8,8 @@ import { RocketArrow } from "./rocket-arrow";
 // hover and while nobody can see it (marquee.tsx).
 // Full-color logos (grayscale was explicitly rejected); a logo too dark for
 // the page is drawn white (`darkLogo`). Edge fade masks on site only.
-// The logos are every partner in lib/partners.ts, the record the Partners
-// page reads, in its order. A logo with a site links to it in a new tab; one
+// The logos are the published partners in site order (issue #256), as the
+// Partners page reads them. A logo with a site links to it in a new tab; one
 // with none is a plain logo, never a dead link. A near-square mark is drawn
 // taller than the wordmarks, as board 21 draws Sophia.
 
@@ -33,7 +34,8 @@ function LogoItem({ partner }: { partner: Partner }) {
   );
 }
 
-export function Partners() {
+export async function Partners() {
+  const partners = await publishedPartners();
   const loop = [...partners, ...partners];
   return (
     // No box and no fill: the page sky shows behind the logo strip. Board 24

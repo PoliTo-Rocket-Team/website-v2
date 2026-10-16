@@ -28,6 +28,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch |
 | Applications | No | No | Own divisions | All divisions in the department, under division tabs | All |
 | Members | No | No | Their divisions | Their divisions | The whole team |
+| Partners | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes |
 | Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
@@ -89,6 +90,10 @@ An admin column comes later. **Planned**, no issue yet.
   the page read one rule, and the page answers "not found" to everyone else.
   - **Gap:** the full admins' Access page has no site-content area yet, so site-content access
     cannot be given there. Tracked in #247.
+- **Content** is the sidebar group of the pages that change the public site: Partners, then
+  Alumni (board 76). Partners follows the Alumni rule: the full admins, and anyone with
+  site-content access. Whoever may edit may also publish. The server checks the same rule on
+  every write (`maySiteContent`, `lib/content/gate.ts`). See "6. Site content".
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -431,3 +436,26 @@ and 67m).
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and
   tables become stacked cards.
+
+## 6. Site content
+
+These rules come from #256 (boards 76 and 76b). Partners is the first content editor; Outreach,
+Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
+
+- Every content item keeps the version the public site shows and, beside it, an optional working
+  draft. "Save draft" never reaches the public site; "Publish" makes the draft the public version.
+  A new item saved as a draft is not on the site at all.
+- The list shows Published or Draft. The panel says "Draft changes" for a published item with a
+  draft.
+- Partners are grouped Main, then Media, each with its count. Dragging a row, or Move up and Move
+  down in its menu, sets its place within its tier; /partners and the home logo strip follow that
+  order.
+- The panel enforces the text limits of `PARTNER_TEXT_LIMITS` (one line 80, about 220, support
+  160, counted as characters, so "ò" is one) with a live counter, and the server refuses a text
+  over its limit.
+- A logo is an 8-bit PNG of at most 1 MB. It is measured on upload: one too dark for the page is
+  saved with the dark flag, and the panel and the public pages draw it white.
+- Remove asks "are you sure" first. It removes the partner and its draft at once.
+- Previews never touch a database: a test developer's partner changes stay in a cookie in their
+  own browser until they sign out, and a logo they upload is not kept. The public pages there show
+  the partners as they were before the switch.
