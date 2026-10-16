@@ -888,7 +888,8 @@ function OrderPanel({
             </label>
             <textarea
               id={noteId}
-              autoFocus
+              // Only the required note opens focused: Reject's reason is optional, so it opens with the neutral edge (board 70e).
+              autoFocus={deciding === "ask-for-changes"}
               value={note}
               onChange={(e) => {
                 setNote(e.target.value);
