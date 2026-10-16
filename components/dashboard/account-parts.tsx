@@ -1,20 +1,19 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Info, LogIn, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { authClient } from "@/lib/auth-client";
+import { useSignOut } from "@/components/use-sign-out";
 import { DELETE_ACCOUNT_COPY, DELETE_WORD, deleteConfirmed, type SignIn } from "@/lib/dashboard/self";
 import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
-import { TEST_DEVELOPER_SIGN_OUT_HREF } from "@/lib/test-developer";
 import { ConfirmDialog } from "./confirm-dialog";
 import { inputClass } from "./field";
 import { PANEL } from "./panel";
 
 // Parts My profile (board 55) and My account (board 51) share: the titled
-// card, the sign-in cards, signing out, and Delete account.
+// card, the sign-in cards and Delete account. Signing out is
+// components/use-sign-out.ts, shared with the navbar's account menu.
 
 /** A titled card; `danger` gives the red edge and tint of "Delete account" and "Leave or delete". */
 export function Card({
@@ -46,24 +45,6 @@ export function Card({
       {children}
     </section>
   );
-}
-
-/** Ends the session the viewer has: the test developer cookie, or the Better Auth session. */
-export function useSignOut(session: ViewerSession): () => Promise<void> {
-  const router = useRouter();
-  return async () => {
-    if (session === "test-developer") {
-      window.location.assign(TEST_DEVELOPER_SIGN_OUT_HREF);
-      return;
-    }
-    const { error } = await authClient.signOut();
-    if (error) {
-      toast.error(`Could not sign out. ${error.message ?? "Please try again."}`);
-      return;
-    }
-    router.replace("/login");
-    router.refresh();
-  };
 }
 
 /** The accent circle with the person's initials (boards 51 and 55m). */

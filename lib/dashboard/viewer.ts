@@ -32,7 +32,12 @@ export function isViewerKind(value: unknown): value is ViewerKind {
  * How the viewer signed in, which decides how they sign out. A test developer
  * holds no account and no database session (lib/test-developer.ts).
  */
-export type ViewerSession = "account" | "test-developer";
+export const VIEWER_SESSIONS = ["account", "test-developer"] as const;
+export type ViewerSession = (typeof VIEWER_SESSIONS)[number];
+
+export function isViewerSession(value: unknown): value is ViewerSession {
+  return typeof value === "string" && (VIEWER_SESSIONS as readonly string[]).includes(value);
+}
 
 /**
  * The three seats that hold every access in the dashboard from the role alone

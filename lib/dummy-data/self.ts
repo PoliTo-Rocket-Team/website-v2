@@ -57,6 +57,11 @@ function signInOf(person: DummyPerson): DummySignIn {
   return signIns.find((s) => s.personId === person.id) ?? { personId: person.id, signInEmail: person.email, teamEmail: person.email };
 }
 
+/** The team address the site shows for a person the test developer can be. */
+export function teamEmailOf(person: DummyPerson): string {
+  return signInOf(person).teamEmail;
+}
+
 export function dummyMyProfile(kind: ViewerKind, person: DummyPerson, changes: OwnChanges, leave: LeaveState): MyProfile {
   // My profile names one division, their home one, until #231 lists them all.
   const division = divisions.find((d) => d.id === homeDivisionOf(person.placement));
