@@ -1,4 +1,4 @@
-// The seed guard (issue #303, ADR 0015). Before the seed writes anything it
+// The seed guard (issue #303, ADR 0016). Before the seed writes anything it
 // reads the connection target and refuses unless that target is a local
 // database or a Neon preview branch it can prove is not the production branch.
 // The answer comes from the target itself: its host, and for a Neon host the

@@ -1,6 +1,6 @@
 # Seed cases
 
-The dummy set that `pnpm db:seed` loads into a local database and into each preview's own database branch ([ADR 0015](../.decisions/0015-previews-read-their-own-seeded-branch.md)). This page lists every case the set holds and the board or issue that case exercises, so a reviewer knows where to look and a maintainer knows what a change to the seed may break.
+The dummy set that `pnpm db:seed` loads into a local database and into each preview's own database branch ([ADR 0016](../.decisions/0016-previews-read-their-own-seeded-branch.md)). This page lists every case the set holds and the board or issue that case exercises, so a reviewer knows where to look and a maintainer knows what a change to the seed may break.
 
 ## How the seed runs
 

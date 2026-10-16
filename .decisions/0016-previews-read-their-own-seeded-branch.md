@@ -1,12 +1,12 @@
 ---
-id: 0015
+id: 0016
 title: "Each preview reads its own database branch, created from an empty schema and filled with the dummy seed; dummy arrays stay only where no database is configured"
 status: accepted
 date: 2026-10-16
 tags: [previews, seed, dummy-data, database]
 ---
 
-# 0015 — Each preview reads its own database branch, created from an empty schema and filled with the dummy seed; dummy arrays stay only where no database is configured
+# 0016 — Each preview reads its own database branch, created from an empty schema and filled with the dummy seed; dummy arrays stay only where no database is configured
 
 **What this decides:** A Vercel preview gets its own database branch. That branch starts from an empty schema, never from production data, and is migrated and then filled with the dummy seed. Previews read that branch. The typed arrays in `lib/dummy-data/` stay only for runs with no database configured. The seed itself refuses any target that is not a local database or a preview branch it can prove is not production. This supersedes [ADR 0009](0009-previews-and-dev-use-dummy-data.md).
 

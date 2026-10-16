@@ -1,4 +1,4 @@
-// The seed runner (issue #303, ADR 0015). The seed is a list of modules, one
+// The seed runner (issue #303, ADR 0016). The seed is a list of modules, one
 // per area, run in registry order. In one transaction the runner first resets
 // every module's own rows, last module first, then inserts every module's rows
 // in order. A second run therefore starts from the same empty slots and

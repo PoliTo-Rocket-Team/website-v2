@@ -1,7 +1,7 @@
 ---
 id: 0009
 title: "Previews and next dev without a database run on dummy data with a test developer sign-in, never production"
-status: superseded by [0015](0015-previews-read-their-own-seeded-branch.md)
+status: superseded by [0016](0016-previews-read-their-own-seeded-branch.md)
 date: 2026-10-10
 tags: [previews, dummy-data, test-developer, dashboard]
 ---
