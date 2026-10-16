@@ -1,14 +1,11 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { EditableBlock } from "@/components/dashboard/edit-shell";
 import { OutreachPostEdit } from "@/components/dashboard/outreach-post-edit";
 import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
-import type { PostFrame } from "@/components/outreach/post";
-import { PostPage } from "@/components/outreach/post-page";
-import { maySiteContent } from "@/lib/content/gate";
+import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { openDashboard } from "@/lib/dashboard/open";
-import { postBySlug } from "@/lib/outreach";
+import { neighboursOf, slugOf } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
 
 export const metadata: Metadata = {
@@ -17,11 +14,14 @@ export const metadata: Metadata = {
 
 type Params = { params: Promise<{ slug: string }> };
 
-// Board 74b (issue #288): an Outreach post on its real page under the edit
-// shell, each part outlined as a block. The post is read as the public page
-// reads it (lib/outreach-public.ts), so it shows as published and
-// nothing on it can be changed yet. The site-content rule decides who opens
-// it (lib/content/gate.ts); everyone else gets the dashboard's not found.
+// Boards 74b to 74h (issues #288 and #290): an Outreach post on its real page
+// under the edit shell, each part outlined as a block, with the Edit post
+// panel beside it. The page opens on the version the editor works on (the
+// draft when there is one) and redraws as they type. The address is the slug
+// of that version's title, or of the published one's, so a link made before a
+// draft renamed the post still opens it. The outreach editor applies the
+// site-content rule (lib/content/gate.ts): everyone else gets the dashboard's
+// not found.
 export default function OutreachPostEditPage({ params }: Params) {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
@@ -30,20 +30,24 @@ export default function OutreachPostEditPage({ params }: Params) {
   );
 }
 
-const outlined: PostFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
-
 async function LivePost({ params }: Params) {
   const { slug } = await params;
   const opening = await openDashboard();
   if (opening.kind === "signed-out") redirect(`/login?cb=/dashboard/outreach/${encodeURIComponent(slug)}`);
   if (opening.kind === "account-unresolved") return null;
-  if (!maySiteContent(opening.data.viewer)) notFound();
+  const { outreach } = opening.data;
+  const [items, tags] = await Promise.all([outreach.posts.list(), outreach.tags()]);
+  if (items === null || tags === null) notFound();
+  const item =
+    items.find((i) => slugOf(editorVersion(i.version)) === slug) ??
+    items.find((i) => {
+      const published = publicVersion(i.version);
+      return published !== null && slugOf(published) === slug;
+    });
+  if (item === undefined) notFound();
+  // The posts either side are the public page's: the published ones.
   const { posts } = await publishedOutreach();
-  const post = postBySlug(posts, slug);
-  if (post === undefined) notFound();
-  return (
-    <OutreachPostEdit title={post.title} status="published">
-      <PostPage post={post} posts={posts} frame={outlined} />
-    </OutreachPostEdit>
-  );
+  const published = publicVersion(item.version);
+  const neighbours = published === null ? {} : neighboursOf(posts, published);
+  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} />;
 }

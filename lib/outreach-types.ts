@@ -26,12 +26,35 @@ export type OutreachTag = { readonly name: string; readonly award: boolean };
  */
 export type Channel = { url: string; caption: string; account?: string };
 
-export type ChannelName = "instagram" | "linkedin";
+/** Every channel a post can link to, in the order the page and the editor list them (board 74h). */
+export const CHANNEL_NAMES = ["instagram", "linkedin", "youtube", "facebook", "x", "tiktok", "other"] as const;
 
-/** The channels a post was shared on: one or both, never none. */
-export type Channels =
-  | { instagram: Channel; linkedin?: Channel }
-  | { instagram?: Channel; linkedin: Channel };
+export type ChannelName = (typeof CHANNEL_NAMES)[number];
+
+/** Each channel's name as the editor and the post's cards write it. */
+export const CHANNEL_LABELS: Readonly<Record<ChannelName, string>> = {
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
+  youtube: "YouTube",
+  facebook: "Facebook",
+  x: "X",
+  tiktok: "TikTok",
+  other: "Other link",
+};
+
+/** The two channels the team always posts on; a post links at least one of them. */
+export type MainChannelName = "instagram" | "linkedin";
+
+/** The channels "+ Add another channel" offers beside them (board 74h). */
+export type ExtraChannelName = Exclude<ChannelName, MainChannelName>;
+
+/**
+ * The channels a post was shared on: Instagram, LinkedIn or both, never
+ * neither (the `outreach_post_versions_channels` check holds the same), and
+ * any of the extra channels beside them.
+ */
+export type Channels = ({ instagram: Channel; linkedin?: Channel } | { instagram?: Channel; linkedin: Channel }) &
+  Partial<Record<ExtraChannelName, Channel>>;
 
 /** One block of a post's body, drawn in the 760px text column. */
 export type BodyBlock =
@@ -56,6 +79,17 @@ export type OutreachPost = {
   /** The first is the card photo and the post's top photo; more make the photo grid. */
   photos: NonEmpty<OutreachPhoto>;
   channels: Channels;
+};
+
+/**
+ * A post as its page draws it. The edit panel (board 74c) shows the page as
+ * the editor types, so for a moment the post may have no tag, no text block
+ * or no channel; it is stored only once it is a whole `OutreachPost`.
+ */
+export type PostView = Omit<OutreachPost, "tags" | "body" | "channels"> & {
+  tags: readonly string[];
+  body: readonly BodyBlock[];
+  channels: Partial<Record<ChannelName, Channel>>;
 };
 
 /** One edition of the featured summit. */

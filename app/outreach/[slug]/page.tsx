@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PostPage } from "@/components/outreach/post-page";
-import { postBySlug, slugOf } from "@/lib/outreach";
+import { neighboursOf, postBySlug, slugOf } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -26,5 +26,5 @@ export default async function OutreachPostPage({ params }: Params) {
   const { posts } = await publishedOutreach();
   const post = postBySlug(posts, (await params).slug);
   if (post === undefined) notFound();
-  return <PostPage post={post} posts={posts} />;
+  return <PostPage post={post} neighbours={neighboursOf(posts, post)} />;
 }

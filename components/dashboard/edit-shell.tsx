@@ -19,8 +19,8 @@ import { EditFrame } from "./edit-frame";
 // The edit shell (boards 74b, 74e, 75b and 75d, issue #288): a content type's
 // real page under an edit bar, on top of the dashboard. Any content type
 // mounts it: it is handed the page, the page's blocks and their panel
-// sections, the publish state and the callbacks, and knows nothing of what
-// the page shows. The page marks each block with EditableBlock; hovering one
+// sections, the publish state, the callbacks and its own edit panel, and
+// knows nothing of what the page shows. The page marks each block with EditableBlock; hovering one
 // outlines it with its name and an Edit chip that hands its section back.
 //
 // The bar: "<Section> / Editing <item>" and the state on the left; Save draft
@@ -56,13 +56,18 @@ export function EditShell<Id extends string, Section extends string, Page extend
   blocks,
   onEdit,
   children,
+  panel,
 }: {
   /** The dashboard page this item belongs to, as the breadcrumb's first step. */
   section: { readonly label: string; readonly href: string };
   /** The item's name: "Editing <item>". */
   item: string;
   status: ContentStatus;
-  /** When the draft was last saved, in words ("Saved 2 min ago"); nothing before a save. */
+  /**
+   * A short line before Save draft: when the draft was last saved ("Saved 2
+   * min ago"), or, while the edit panel is open, "Changes show on the page as
+   * you type" (board 74c).
+   */
   saved?: string;
   /** Null shows the button but leaves it off, as on a page that cannot be edited yet. */
   onSaveDraft: (() => void) | null;
@@ -73,6 +78,8 @@ export function EditShell<Id extends string, Section extends string, Page extend
   onEdit: (section: Section) => void;
   /** The page, its blocks marked with EditableBlock. */
   children: ReactNode;
+  /** The content type's edit panel, drawn right of the page below the bar while open (board 74c); it sets its own width. */
+  panel?: ReactNode;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
   const chipOf = useMemo(() => editChips(blocks, onEdit), [blocks, onEdit]);
@@ -127,14 +134,17 @@ export function EditShell<Id extends string, Section extends string, Page extend
       {/* One frame for both devices: switching only resizes it, so the page
           keeps its state and scroll. Below md there is no Phone mode: the
           window is a phone already. */}
-      <div className={`min-h-0 flex-1 overflow-auto ${phone ? "md:flex md:justify-center md:py-7" : ""}`}>
-        <EditFrame
-          title={`Page preview: ${item}`}
-          className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
-          style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
-        >
-          <ChipContext.Provider value={chipOf as (id: string) => EditChip}>{children}</ChipContext.Provider>
-        </EditFrame>
+      <div className="flex min-h-0 flex-1">
+        <div className={`min-h-0 min-w-0 flex-1 overflow-auto ${phone ? "md:flex md:justify-center md:py-7" : ""}`}>
+          <EditFrame
+            title={`Page preview: ${item}`}
+            className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
+            style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
+          >
+            <ChipContext.Provider value={chipOf as (id: string) => EditChip}>{children}</ChipContext.Provider>
+          </EditFrame>
+        </div>
+        {panel}
       </div>
     </div>
   );

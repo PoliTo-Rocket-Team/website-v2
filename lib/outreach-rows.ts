@@ -1,13 +1,15 @@
 import type { NonEmpty } from "./about/alumni-types";
-import type {
-  BodyBlock,
-  Channel,
-  Channels,
-  Edition,
-  IsoDate,
-  OutreachFeature,
-  OutreachPhoto,
-  OutreachPost,
+import {
+  CHANNEL_NAMES,
+  type BodyBlock,
+  type Channel,
+  type ChannelName,
+  type Channels,
+  type Edition,
+  type IsoDate,
+  type OutreachFeature,
+  type OutreachPhoto,
+  type OutreachPost,
 } from "./outreach-types";
 import type { Copy } from "./projects";
 
@@ -111,7 +113,7 @@ const isShape = (value: unknown): value is Shape => typeof value === "object" &&
 const isText = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
 const optionalText = (value: unknown): value is string | undefined => value === undefined || isText(value);
 
-function isIsoDate(value: unknown): value is IsoDate {
+export function isIsoDate(value: unknown): value is IsoDate {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const day = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(value);
@@ -147,13 +149,24 @@ function channelOf(value: unknown): Channel | null {
   return { url: value.url, caption: value.caption, ...(value.account !== undefined && { account: value.account }) };
 }
 
+/** The channels, each one known and whole, Instagram or LinkedIn among them; null otherwise. */
 function channelsOf(value: unknown): Channels | null {
   if (!isShape(value)) return null;
-  const instagram = value.instagram === undefined ? undefined : channelOf(value.instagram);
-  const linkedin = value.linkedin === undefined ? undefined : channelOf(value.linkedin);
-  if (instagram === null || linkedin === null) return null;
-  if (instagram !== undefined) return { instagram, ...(linkedin !== undefined && { linkedin }) };
-  return linkedin === undefined ? null : { linkedin };
+  const read: Partial<Record<ChannelName, Channel>> = {};
+  for (const name of CHANNEL_NAMES) {
+    if (value[name] === undefined) continue;
+    const channel = channelOf(value[name]);
+    if (channel === null) return null;
+    read[name] = channel;
+  }
+  return withMainChannel(read);
+}
+
+/** `channels` as a post's, when Instagram or LinkedIn is among them; null otherwise. */
+export function withMainChannel(channels: Partial<Record<ChannelName, Channel>>): Channels | null {
+  const { instagram, linkedin, ...extra } = channels;
+  if (instagram !== undefined) return { ...extra, instagram, ...(linkedin !== undefined && { linkedin }) };
+  return linkedin === undefined ? null : { ...extra, linkedin };
 }
 
 function editionOf(value: unknown): Edition | null {

@@ -1,14 +1,16 @@
 import type { HeaderStats } from "./about/types";
 import type { NonEmpty } from "./about/alumni-types";
-import type {
-  BodyBlock,
-  ChannelName,
-  Channel,
-  IsoDate,
-  OutreachContent,
-  OutreachCopy,
-  OutreachPost,
-  OutreachTag,
+import {
+  CHANNEL_NAMES,
+  type BodyBlock,
+  type ChannelName,
+  type Channel,
+  type IsoDate,
+  type OutreachContent,
+  type OutreachCopy,
+  type OutreachPost,
+  type OutreachTag,
+  type PostView,
 } from "./outreach-types";
 
 // Boards 32/32m (the Outreach page) and 33/33m (a post page). The posts are
@@ -466,10 +468,14 @@ export function postBySlug(posts: readonly OutreachPost[], slug: string): Outrea
   return newestFirst(posts).find((p) => slugOf(p) === slug);
 }
 
-/** The posts either side of one: the next older and the next newer, where there is one. */
-export function neighboursOf(posts: readonly OutreachPost[], post: OutreachPost): { older?: OutreachPost; newer?: OutreachPost } {
+/** The next older and the next newer post, where there is one. */
+export type Neighbouring = { older?: OutreachPost; newer?: OutreachPost };
+
+/** The posts either side of one (none for a post not in the list): the next older and the next newer, where there is one. */
+export function neighboursOf(posts: readonly OutreachPost[], post: Pick<OutreachPost, "title">): Neighbouring {
   const sorted = newestFirst(posts);
   const i = sorted.findIndex((p) => slugOf(p) === slugOf(post));
+  if (i < 0) return {};
   return { older: sorted[i + 1], newer: i > 0 ? sorted[i - 1] : undefined };
 }
 
@@ -494,12 +500,12 @@ export function readingMinutes(body: readonly BodyBlock[]): number {
   return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
 }
 
-/** The channels a post has, Instagram first, each with its name. */
-export function channelsOf(post: OutreachPost): { name: ChannelName; channel: Channel }[] {
-  const out: { name: ChannelName; channel: Channel }[] = [];
-  if (post.channels.instagram) out.push({ name: "instagram", channel: post.channels.instagram });
-  if (post.channels.linkedin) out.push({ name: "linkedin", channel: post.channels.linkedin });
-  return out;
+/** The channels a post has, in `CHANNEL_NAMES` order (Instagram first), each with its name. */
+export function channelsOf(post: Pick<PostView, "channels">): { name: ChannelName; channel: Channel }[] {
+  return CHANNEL_NAMES.flatMap((name) => {
+    const channel = post.channels[name];
+    return channel === undefined ? [] : [{ name, channel }];
+  });
 }
 
 /** The posts the header counts as awards: those carrying the tag the tag list marks as the award one. */
@@ -553,6 +559,12 @@ export function monthYear(date: IsoDate): string {
 export function shortMonthYear(date: IsoDate): string {
   const { year, month } = parts(date);
   return `${month.slice(0, 3)} ${year}`;
+}
+
+/** "14 Oct 2024" in the Edit post panel's Title and details line (board 74d). */
+export function dayMonthYear(date: IsoDate): string {
+  const { year, month, day } = parts(date);
+  return `${day} ${month.slice(0, 3)} ${year}`;
 }
 
 /** "OCTOBER 14, 2024" in a post's meta line; phones use `monthYear`-style "OCT 14, 2024". */

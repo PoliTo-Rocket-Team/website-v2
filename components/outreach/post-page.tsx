@@ -1,21 +1,22 @@
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
-import { neighboursOf } from "@/lib/outreach";
-import type { OutreachPost } from "@/lib/outreach-types";
+import type { Neighbouring } from "@/lib/outreach";
+import type { PostView } from "@/lib/outreach-types";
 import { Neighbours, PostBody, PostHeader, type PostFrame } from "./post";
 
 // Boards 33 (desktop) and 33m (phone): one outreach post's whole page, as
 // /outreach/<slug> shows it and as the dashboard's edit shell shows it with
-// its parts outlined (`frame`). No apply band on this page (issue #110).
-// `posts` is the list the post was read from, which names its neighbours.
+// its parts outlined (`frame`), redrawn as the editor types (issue #290). No
+// apply band on this page (issue #110). `neighbours` are the published posts
+// either side of it (`neighboursOf` in lib/outreach.ts).
 export function PostPage({
   post,
-  posts,
+  neighbours,
   frame,
 }: {
-  post: OutreachPost;
-  posts: readonly OutreachPost[];
+  post: PostView;
+  neighbours: Neighbouring;
   frame?: PostFrame;
 }) {
   return (
@@ -26,7 +27,7 @@ export function PostPage({
           <div className="pt-8 md:pt-16">
             <PostHeader post={post} frame={frame} />
             <PostBody post={post} frame={frame} />
-            <Neighbours {...neighboursOf(posts, post)} />
+            <Neighbours {...neighbours} />
           </div>
         </main>
         <LandingFooter inSky />

@@ -2,6 +2,7 @@ import { contentEditor, type ContentEditor, type ContentStore } from "@/lib/cont
 import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { textLength } from "@/lib/content/text";
 import { publicItems, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
+import { checkPostFields, postCheckResult, type PostFields } from "./outreach-post-fields";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag } from "./outreach-types";
@@ -72,6 +73,12 @@ export function checkPostTags(post: OutreachPost, tags: readonly OutreachTag[]):
 export interface OutreachEditor {
   /** The posts through the shared content editor; a save whose post carries a tag off the list is refused. */
   readonly posts: ContentEditor<OutreachPost>;
+  /**
+   * Save draft or Publish from the Edit post panel (boards 74c to 74h): the
+   * fields must make a whole post (lib/outreach-post-fields.ts), on either
+   * button. The post keeps the photos it had.
+   */
+  savePost(id: number, step: PublishStep, fields: PostFields): Promise<WriteResult<ContentItem<OutreachPost>>>;
   /** The summit's versions; null for a viewer the gate refuses. */
   summit(): Promise<SummitVersions | null>;
   /** Save draft or Publish on the summit. `prepare` gets the version the panel opened on, once the gate let the viewer through. */
@@ -96,6 +103,11 @@ export function outreachEditor(viewer: ViewerStanding, store: OutreachStore): Ou
           return post.ok ? checkPostTags(post.value, await store.tags()) : post;
         }),
     },
+
+    savePost: (id, step, fields) =>
+      posts.save(id, step, async (current) =>
+        current === null ? refused("This post was removed. Reload the page.") : postCheckResult(checkPostFields(fields, current, await store.tags())),
+      ),
 
     summit: async () => (allowed ? store.summit() : null),
 
