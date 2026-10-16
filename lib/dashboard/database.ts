@@ -24,15 +24,15 @@ import { runAuditQuery } from "@/lib/db-audit";
 import { canReach, landingAfterLeaving, type NavCounts } from "./access";
 import { DashboardRefused, type DashboardData } from "./data";
 import {
-  alumniDirectory,
   buildTeamTree,
   seasonAt,
   teamDirectory,
   type MemberDirectory,
 } from "./team";
-import { alumniOf, readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
+import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
 import { wholeTeamMembers } from "./team-members";
+import { databaseAlumniWrites, readAlumniDirectory } from "./database-alumni";
 import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
   checklistProgress,
@@ -723,14 +723,13 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     members: (divisionId) => membersOf(identity, divisionId ?? null),
     findForAdd: (divisionId, query) => findForAdd(identity, divisionId, query),
     findPeople: (query) => findPeople(identity, query),
-    alumni: async () =>
-      alumniDirectory(canReach(identity, "alumni") ? alumniOf(await readTeamSnapshot()) : []),
+    alumni: () => readAlumniDirectory(identity),
     teamTree: async () => {
       const snapshot = await readTeamSnapshot();
       const roster = canReach(identity, "team-tree") ? rosterOf(snapshot) : [];
       return buildTeamTree(roster, snapshot.org, seasonAt(new Date()), identity.memberId);
     },
-    teamWrites: databaseTeamWrites(identity),
+    teamWrites: { ...databaseTeamWrites(identity), ...databaseAlumniWrites(identity) },
     dismissNotice: (noticeId) => dismissNotice(identity, noticeId),
     recruitment: getRecruitmentControl,
     setRecruitment: (next) =>
@@ -744,8 +743,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     ...databaseDivisionPages(identity),
     ...self,
     // Their applications stay theirs, so they say where the dashboard opens next (#227).
-    async leaveTeam(reason) {
-      const left = await self.leaveTeam(reason);
+    async leaveTeam(reason, removeFromAlumni) {
+      const left = await self.leaveTeam(reason, removeFromAlumni);
       return left.ok ? written(landingAfterLeaving(await hasOwnApplications(identity))) : left;
     },
   };

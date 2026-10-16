@@ -12,7 +12,9 @@ import type { AddLookup, DetailsTarget } from "./division-members";
 import type { TeamSearch } from "./division-edit";
 import type { InterviewSlot, MyApplications } from "./my-applications";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
-import type { AlumniDirectory, Departure, MemberDirectory, MemberEdit, PromoteMode, TeamTree } from "./team";
+import type { AlumnusKey } from "@/lib/about/alumni-record";
+import type { AlumniDirectory } from "./alumni";
+import type { Departure, MemberDirectory, MemberEdit, PromoteMode, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
 
@@ -67,7 +69,7 @@ export interface DashboardData {
    * for a viewer who manages no division.
    */
   findPeople(query: string): Promise<TeamSearch>;
-  /** The Alumni page (#143). */
+  /** The Alumni page (board 78, #257): everyone the public Alumni page can list, for a viewer who reaches it. */
   alumni(): Promise<AlumniDirectory>;
   /** The Team tree (#143), built from this year's roster. */
   teamTree(): Promise<TeamTree>;
@@ -167,10 +169,11 @@ export interface DashboardData {
   setPhoto(photo: Upload | null): Promise<WriteResult<null>>;
   /**
    * Board 55b: the member leaves the team at once, with the reason they gave
-   * (may be empty). They show in Alumni and keep their sign-in. Answers the
+   * (may be empty). They show in Alumni and keep their sign-in, unless they
+   * ticked "Remove my name from the Alumni page" (issue #257). Answers the
    * page that now opens their dashboard (landingAfterLeaving, ./access.ts).
    */
-  leaveTeam(reason: string): Promise<WriteResult<DashboardLanding>>;
+  leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>>;
 
   /** Board 51: an applicant's own account. */
   myAccount(): Promise<MyAccount | null>;
@@ -199,7 +202,18 @@ export interface DashboardData {
  * checks on the server, not only in the menu.
  */
 export interface TeamWrites {
-  setShownOnSite(alumnusId: number, shown: boolean): Promise<boolean>;
+  /** The Shown / Hidden switch on board 78: whether the public Alumni page lists them. */
+  setAlumnusShown(key: AlumnusKey, shown: boolean): Promise<boolean>;
+  /**
+   * Board 78b's Save: name, founder mark, per-year role text, shown or
+   * hidden, checked by `checkAlumnusFix` (./alumni.ts). It changes only the
+   * Alumni page: never a role, a division or access.
+   */
+  fixAlumnus(key: AlumnusKey, input: unknown): Promise<WriteResult<null>>;
+  /** Board 78b's photo: a JPEG or PNG of at most 2 MB, or null to remove it. */
+  setAlumnusPhoto(key: AlumnusKey, photo: Upload | null): Promise<WriteResult<null>>;
+  /** Board 78c: an external advisor, always in the Advisors group (`checkAdvisor`, ./alumni.ts). */
+  addAdvisor(input: unknown, photo: Upload | null): Promise<WriteResult<null>>;
   /**
    * The operations lead's member panel (board 46b): the Team page title, and
    * the role where the panel sets one. A division lead never changes a lead

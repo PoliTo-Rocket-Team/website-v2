@@ -271,6 +271,18 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
+- Alumni entries survive anonymization (#257). Anonymizing a deleted account clears the private
+  fields, but keeps the person's alumni entry: their name, years, roles and founder mark stay on
+  the Alumni page as part of the team's history. The entry's photo goes.
+  - Leave the team and Delete account show an unticked box, "Remove my name from the Alumni
+    page". Ticked, the person leaves the Alumni page at once, and anonymization later clears
+    every name and photo on their entry. They can also ask for removal later.
+- The Alumni page (#257) is built from the roles: each academic year lists who held which role
+  in which department or division, closed ones included. 2021–22, 2022–23 and the 2024–25
+  advisors come from a one-time import. The dashboard's Alumni page only fixes how someone shows
+  (name, founder mark, photo, per-year role text, shown or hidden); a fix never writes a role, a
+  division or access. "Add alumni" adds external advisors to the Advisors group and nowhere else;
+  the server refuses any other group.
 - Access is given only on the Access page. You can give only what you have, and only inside your
   scope.
 

@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import {
+  alumniEntries,
   applicationFiles,
   applications,
   applyPositions,
@@ -154,13 +155,27 @@ async function setPhoto(identity: DashboardIdentity, photo: Upload | null): Prom
 const today = () => new Date().toISOString().slice(0, 10);
 
 /**
+ * "Remove my name from the Alumni page" (boards 55b, 55c, issue #257), run in
+ * the batch that leaves or deletes: the member's alumni entry is marked
+ * removed, made if they had none, and the page stops listing them.
+ */
+function removeFromAlumni(db: ReturnType<typeof getDb>, memberId: number) {
+  const removedAt = new Date().toISOString();
+  return db
+    .insert(alumniEntries)
+    .values({ kind: "member", memberId, removedAt })
+    .onConflictDoUpdate({ target: alumniEntries.memberId, set: { removedAt } });
+}
+
+/**
  * Board 55b: every role the member still holds ends today, so the Alumni page
  * lists them, and the reason is kept. Their access grants go, so they come
  * back as an applicant, and the lead of each division they were in gets a
  * notice on their dashboard (issue #201), all in one batch. Their sign-in,
- * users row and member row stay.
+ * users row and member row stay. With the box ticked, the Alumni page stops
+ * listing them (issue #257).
  */
-async function leaveTeam(identity: DashboardIdentity, reason: string): Promise<WriteResult<null>> {
+async function leaveTeam(identity: DashboardIdentity, reason: string, removeFromAlumniPage: boolean): Promise<WriteResult<null>> {
   const memberId = identity.memberId;
   if (memberId === null) return refused("This page is for team members.");
   if ((await readLeaveState(memberId)) === "left") return refused("You already left the team.");
@@ -170,6 +185,7 @@ async function leaveTeam(identity: DashboardIdentity, reason: string): Promise<W
     db.update(roles).set({ leavedAt: today() }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
     db.delete(scopes).where(eq(scopes.memberId, memberId)),
     db.insert(teamLeaves).values({ memberId, reason: why }),
+    ...(removeFromAlumniPage ? [removeFromAlumni(db, memberId)] : []),
     ...(notices.length > 0
       ? [
           db.insert(dashboardNotices).values(
@@ -231,7 +247,7 @@ async function saveDetails(identity: DashboardIdentity, input: unknown): Promise
  * applications are withdrawn and those applications' files are deleted.
  */
 async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount): Promise<WriteResult<null>> {
-  if (typeof options.withdrawOpenApplications !== "boolean") return refused("Check the form.");
+  if (typeof options.withdrawOpenApplications !== "boolean" || typeof options.removeFromAlumni !== "boolean") return refused("Check the form.");
   const { userId, memberId } = identity;
   const withdraw = options.withdrawOpenApplications && identity.kind === "non-member";
   const { applicationIds, fileIds } = withdraw
@@ -262,6 +278,7 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
     ...(memberId === null
       ? []
       : [db.update(roles).set({ leavedAt: today() }).where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)))]),
+    ...(memberId !== null && options.removeFromAlumni ? [removeFromAlumni(db, memberId)] : []),
     ...(applicationIds.length === 0
       ? []
       : [
@@ -475,7 +492,7 @@ export function databaseSelfPages(identity: DashboardIdentity) {
     myProfile: () => readProfile(identity),
     saveLinkedin: (text: string) => saveLinkedin(identity, text),
     setPhoto: (photo: Upload | null) => setPhoto(identity, photo),
-    leaveTeam: (reason: string) => leaveTeam(identity, reason),
+    leaveTeam: (reason: string, removeFromAlumniPage: boolean) => leaveTeam(identity, reason, removeFromAlumniPage),
     myAccount: () => readAccount(identity),
     saveDetails: (input: unknown) => saveDetails(identity, input),
     deleteAccount: (options: DeleteAccount) => deleteAccount(identity, options),
