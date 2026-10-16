@@ -3,7 +3,9 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { LandingFooter } from "@/components/landing/footer";
 import { PageSky } from "@/components/landing/page-sky";
 import { ProjectCard } from "@/components/projects/project-card";
-import { headerStats, projects } from "@/lib/projects";
+import { listingOf } from "@/lib/project-content/record";
+import { publishedProjects } from "@/lib/project-content/public";
+import { launchCounts, type Stat } from "@/lib/projects";
 
 export const metadata: Metadata = {
   title: "Projects · PoliTo Rocket Team",
@@ -11,10 +13,23 @@ export const metadata: Metadata = {
     "Cavour, VES and Efesto: the rockets and the liquid engine designed, built and flown by students of Politecnico di Torino.",
 };
 
+/**
+ * The header's two targets after its counts: VES Mark II's apogee and
+ * Efesto's thrust. Page copy, like the intro above them; the no-break space
+ * keeps the figure on one line.
+ */
+const targets: readonly Stat[] = [
+  { value: "9 000 m", label: "TARGET APOGEE" },
+  { value: "5 kN", label: "ENGINE TARGET" },
+];
+
 // Approved /projects page per Pencil boards 22 (desktop) and 22m (phone, 390).
 // The page sky runs behind everything above the footer; the header and the
-// cards paint no background of their own.
-export default function ProjectsPage() {
+// cards paint no background of their own. The cards are the published
+// projects in site order (issue #295), and the header counts their launches.
+export default async function ProjectsPage() {
+  const projects = (await publishedProjects()).map(listingOf);
+  const stats = [...launchCounts(projects), ...targets];
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
@@ -39,7 +54,7 @@ export default function ProjectsPage() {
               {/* Phones: 3 + 2, each row under its own hairline. From md: five
                   columns under one hairline. */}
               <dl className="mt-5 grid grid-cols-6 md:mt-8 md:grid-cols-5 md:border-t md:border-white-10 md:pt-7">
-                {headerStats().map((s, i) => (
+                {stats.map((s, i) => (
                   <div
                     key={s.label}
                     className={`flex flex-col-reverse border-t border-white-10 py-4 md:col-span-1 md:border-0 md:py-0 ${

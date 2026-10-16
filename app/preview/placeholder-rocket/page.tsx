@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
-import { HomeProjectCard, type HomeCardProject } from "@/components/landing/projects";
+import { HomeProjectCard } from "@/components/landing/projects";
 import { ProjectHero } from "@/components/project-page/hero";
 import { dummyDataOn } from "@/lib/dummy-data/mode";
+import type { HomeCardView } from "@/lib/project-content/record";
 import type { Hero } from "@/lib/project-pages";
 
 export const metadata: Metadata = {
@@ -17,11 +18,11 @@ export const metadata: Metadata = {
 // projects. No project draws the placeholder until New project adds one, so
 // this sample lets a preview show it. Off dummy mode the route does not exist.
 
-const card: HomeCardProject = {
+const card: HomeCardView = {
   num: "04",
   year: { text: "2026" },
   status: "IN DESIGN",
-  statusStyle: "bg-prt-text text-ground",
+  statusTone: "light",
   name: "New project",
   desc: { text: "Student-built rocket, in design." },
   specs: [

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CAVOUR_CARD_POSTER, CAVOUR_STAGE_POSTER } from "@/components/landing/cavour-assets";
 import { PLACEHOLDER_CARD_POSTER, PLACEHOLDER_STAGE_POSTER } from "@/components/landing/placeholder-assets";
-import { pageRecord } from "@/lib/project-pages";
+import { importedRecords } from "@/lib/project-content/import";
+import { pageRecordOf } from "@/lib/project-content/record";
 import { cardPosterOf, rocketModelOf, stageStillOf } from "./rocket-model";
 
 // Which rocket a card stage and a page's rocket slot draw (issue #296).
@@ -23,6 +24,8 @@ test("a page slot with no model of its own draws the placeholder's still, with n
 });
 
 test("Cavour's page keeps its own rocket, VES keeps the texture alone and Efesto keeps no panel", () => {
+  // The pages read the stored records (issue #295); these are the imported ones.
+  const pageRecord = (slug: string) => pageRecordOf(importedRecords.find((r) => r.slug === slug)!);
   assert.deepEqual(pageRecord("cavour").hero.visual?.rocket?.own?.model, "cavour");
   assert.equal(pageRecord("ves").hero.visual?.rocket, undefined);
   assert.equal(pageRecord("efesto").hero.visual, undefined);
