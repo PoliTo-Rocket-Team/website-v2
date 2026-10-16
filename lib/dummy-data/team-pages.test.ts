@@ -50,8 +50,8 @@ test("a lead's Save sets titles but never a role, and Promote is refused: only t
   assert.equal(await writes.saveMember(7, { role: null, pageTitle: "Mission Analyst" }), true);
   assert.equal(await writes.saveMember(7, { role: "division-lead", pageTitle: null }), false, "no new lead");
   assert.equal(await writes.saveMember(2, { role: null, pageTitle: null }), false, "never themselves");
-  assert.equal(await writes.promote(7, "together"), false);
-  assert.equal(await writes.promote(7, "hand-over"), false);
+  assert.equal(await writes.promote(7, { mode: "together" }), false);
+  assert.equal(await writes.promote(7, { mode: "hand-over", outcome: "advisor" }), false);
   assert.equal(saved.length, 1);
 });
 

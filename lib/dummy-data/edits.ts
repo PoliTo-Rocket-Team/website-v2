@@ -7,6 +7,7 @@
 import { parseAlumnusKey, type EntryChange, type RoleFix } from "@/lib/about/alumni-record";
 import { MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, type NewAdvisor } from "@/lib/dashboard/alumni";
 import { parseMemberDetails, type MemberDetails } from "@/lib/dashboard/details";
+import type { AdvisorPlace, SteppingDown } from "@/lib/dashboard/hand-over";
 import { LEAVE_REASONS, type Departure, type DivisionRole } from "@/lib/dashboard/team";
 import type { DummyNotice } from "./notices";
 import type { DummyWaiting } from "./team";
@@ -55,9 +56,19 @@ export type DummyDepartmentEdit = {
   readonly code: string | null;
   /** The day it closed; null while it is open. */
   readonly closedOn: string | null;
-  /** The head New department picked; null for a department ./team.ts starts with, whose head is in the arrays. */
+  /**
+   * The head New department or Change head (issue #253) picked; null for a
+   * department ./team.ts starts with whose head is still the one in the arrays.
+   */
   readonly headId: number | null;
 };
+
+/**
+ * Someone who holds an Advisor role after a hand-over or a closed department
+ * (issue #253): where it sits, and whether their access ended (a lead's or a
+ * head's) or stayed (a former team leader's), as `steppingDown` says.
+ */
+export type DummyAdvisor = Omit<Extract<SteppingDown, { kind: "advisor" }>, "kind">;
 
 /** Confirm NDA on someone waiting: the day, and the member who confirmed it. */
 export type DummyConfirmation = { readonly on: string; readonly by: number };
@@ -98,11 +109,14 @@ export type TeamEdits = {
   /** Departments created, edited or closed (issue #251), by id. */
   readonly departments: Readonly<Record<number, DummyDepartmentEdit>>;
   /**
-   * People a closed department's "Become an advisor" made advisors (Owner
-   * decision, 2026-10-16): each holds one Advisor role in no department and
-   * no division, as the database starts it.
+   * People who became advisors (Owner decisions, 2026-10-16): a closed
+   * department's head (in no department or division), a replaced lead or head
+   * (in their own division or department) and a former team leader (on the
+   * whole team), by person id, as the database starts their Advisor role.
    */
-  readonly advisorRoles: readonly number[];
+  readonly advisors: Readonly<Record<number, DummyAdvisor>>;
+  /** Who "Hand over the role" made the team leader (board 77i, issue #253); null while it is the one in the arrays. */
+  readonly teamLeader: number | null;
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -117,7 +131,8 @@ export const NO_EDITS: TeamEdits = {
   details: {},
   divisions: {},
   departments: {},
-  advisorRoles: [],
+  advisors: {},
+  teamLeader: null,
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -235,6 +250,22 @@ function readDepartment(value: unknown): DummyDepartmentEdit | null {
   return { name: name.slice(0, 80), code: code === null ? null : code.slice(0, 3), closedOn, headId: headId as number | null };
 }
 
+function readAdvisorPlace(value: unknown): AdvisorPlace | null {
+  if (!isRecord(value)) return null;
+  const id = (key: string) => Number.isInteger(value[key]) && (value[key] as number) > 0;
+  if (value.kind === "team") return { kind: "team" };
+  if (value.kind === "department" && id("departmentId")) return { kind: "department", departmentId: value.departmentId as number };
+  if (value.kind === "division" && id("divisionId")) return { kind: "division", divisionId: value.divisionId as number };
+  return null;
+}
+
+function readAdvisorRole(value: unknown): DummyAdvisor | null {
+  if (!isRecord(value)) return null;
+  const place = readAdvisorPlace(value.place);
+  if (place === null || (value.access !== "ends" && value.access !== "keeps-full-access")) return null;
+  return { place, access: value.access };
+}
+
 function readDetails(value: unknown): Record<string, MemberDetails> {
   if (!isRecord(value)) return {};
   const out: Record<string, MemberDetails> = {};
@@ -320,9 +351,8 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     details: readDetails(raw.details),
     divisions: entriesOf(raw.divisions, readDivision),
     departments: entriesOf(raw.departments, readDepartment),
-    advisorRoles: Array.isArray(raw.advisorRoles)
-      ? raw.advisorRoles.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES)
-      : [],
+    advisors: entriesOf(raw.advisors, readAdvisorRole),
+    teamLeader: Number.isInteger(raw.teamLeader) && (raw.teamLeader as number) > 0 ? (raw.teamLeader as number) : null,
   };
 }
 

@@ -46,7 +46,7 @@ const records = [
 ];
 
 const build = (actor: TeamActor | null) =>
-  teamStructure({ records, org, actor, selfId: null, waiting: { 1: [{ joinId: 9, email: "new@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] }, joining: {}, openPositions: { 1: 2 } });
+  teamStructure({ records, org, actor, selfId: null, seat: null, waiting: { 1: [{ joinId: 9, email: "new@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] }, joining: {}, openPositions: { 1: 2 } });
 
 test("the team leader and full access edit every department and division, and add departments (board 77b)", () => {
   const structure = build({ kind: "team" })!;

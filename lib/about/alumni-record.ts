@@ -11,8 +11,8 @@ import { leadsByRole } from "./alumni-year";
 // a division or access: a fix is an entry, laid over the record at read time.
 // Both data sides hand an AlumniRecord to these functions.
 
-/** The role types the `roles` table holds. */
-export type RoleType = "president" | "head" | "lead" | "core" | null;
+/** The role types the `roles` table holds; an `advisor` (issue #253) ranks as a member. */
+export type RoleType = "president" | "head" | "lead" | "core" | "advisor" | null;
 
 /** One `roles` row, active or ended. */
 export type RecordRole = {

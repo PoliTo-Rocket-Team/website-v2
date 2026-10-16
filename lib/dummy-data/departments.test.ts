@@ -152,3 +152,53 @@ test("Leave the team: the head of a closed department leaves the team and appear
   assert.ok(members.scope === "team" && !members.rows.some((r) => r.id === CHIARA), "off the team");
   assert.ok((await view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "on Alumni");
 });
+
+// Change head and the Team Leader box (issue #253): handing a role over.
+
+const TEAM_LEADER = 14;
+const aerodynamics = { name: "Aerodynamics", code: "AE" };
+
+test("Change head: the new head heads the department; the old head is an advisor in it with no access, or on Alumni", async () => {
+  const editor = pages("operations-lead");
+  assert.deepEqual(await editor.writes.saveDepartment(AERODYNAMICS, { ...aerodynamics, head: { to: SARA, outcome: "advisor" } }), { ok: true, value: null });
+  const structure = await structureOf(editor.kept());
+  assert.equal(structure.departments.find((d) => d.id === AERODYNAMICS)?.head?.id, SARA);
+  const chiara = editedRoster(editor.kept()).find((e) => e.id === CHIARA);
+  assert.equal(chiara?.placement.role, "divisions", "no longer a head");
+  assert.deepEqual(chiara?.access, [], "their access ends");
+  assert.deepEqual(editor.kept().advisors[CHIARA], { place: { kind: "department", departmentId: AERODYNAMICS }, access: "ends" });
+
+  const leaves = pages("operations-lead");
+  assert.ok((await leaves.writes.saveDepartment(AERODYNAMICS, { ...aerodynamics, head: { to: SARA, outcome: "leave" } })).ok);
+  assert.ok((await pages("operations-lead", leaves.kept()).view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "on Alumni");
+
+  const nothing = pages("operations-lead");
+  const refused = await nothing.writes.saveDepartment(AERODYNAMICS, { ...aerodynamics, head: { to: SARA, outcome: null } });
+  assert.deepEqual(refused, { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
+  assert.equal(nothing.kept(), NO_EDITS, "nothing is saved");
+});
+
+test("only the team leader opens the Team Leader box; it is locked for the operations lead and a head (board 77i)", async () => {
+  assert.equal((await pages("team-leader").view.teamStructure())?.leader?.handsOver, true);
+  assert.equal((await pages("operations-lead").view.teamStructure())?.leader?.handsOver, false);
+  assert.equal((await pages("department-head").view.teamStructure())?.leader?.handsOver, false);
+});
+
+test("Hand over the role: only the team leader may; the new person is the team leader, the old one an advisor or on Alumni", async () => {
+  const ops = pages("operations-lead");
+  assert.deepEqual(await ops.writes.handOverTeamLeader({ to: SARA, outcome: "advisor" }), { ok: false, error: "Only the team leader can hand over this role." });
+  assert.equal(ops.kept(), NO_EDITS);
+
+  const leader = pages("team-leader");
+  assert.deepEqual(await leader.writes.handOverTeamLeader({ to: SARA, outcome: "advisor" }), { ok: true, value: null });
+  const team = editedRoster(leader.kept());
+  assert.equal(team.find((e) => e.id === SARA)?.placement.role, "team-leader");
+  assert.equal(team.find((e) => e.id === TEAM_LEADER)?.placement.role, "divisions");
+  assert.deepEqual(leader.kept().advisors[TEAM_LEADER], { place: { kind: "team" }, access: "keeps-full-access" });
+  assert.equal((await pages("team-leader", leader.kept()).view.teamStructure())?.leader?.id, SARA);
+  assert.equal((await pages("team-leader", leader.kept()).view.teamStructure())?.leader?.handsOver, false, "the role is no longer theirs to hand over");
+
+  const leaves = pages("team-leader");
+  assert.ok((await leaves.writes.handOverTeamLeader({ to: SARA, outcome: "leave" })).ok);
+  assert.ok((await pages("operations-lead", leaves.kept()).view.alumni()).rows.some((a) => a.key === `m${TEAM_LEADER}`), "on Alumni");
+});

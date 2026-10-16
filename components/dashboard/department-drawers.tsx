@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Building2, ChevronDown, Lock, Pencil, Undo2 } from "lucide-react";
+import { Building2, ChevronDown, Lock, Pencil, Repeat, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { closeDepartment, createDepartment, saveDepartment } from "@/app/dashboard/team-actions";
 import {
@@ -11,8 +11,8 @@ import {
   planDepartmentClose,
   storedDepartmentName,
   type DivisionFate,
-  type HeadOutcome,
 } from "@/lib/dashboard/department-edit";
+import { steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { divisionLabel, type OrgChart } from "@/lib/dashboard/team";
 import type { StructureDepartment, StructureDivision, TeamStructure } from "@/lib/dashboard/team-structure";
@@ -22,12 +22,14 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { PeoplePicker } from "./division-drawer";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
+import { HandOverChoice } from "./hand-over-choice";
 
 // New department (board 77d), Edit department (77e) and Close department
 // (77f), on the Team tree's edit view (issue #251). Only the team leader and
 // full access open them. Each save asks "are you sure" first, and the server
-// checks every rule again (lib/dashboard/department-edit.ts). Changing a
-// department's head is not here: role hand-over is its own issue (#253).
+// checks every rule again (lib/dashboard/department-edit.ts). Change head in
+// Edit department hands the head role over (issue #253): the head replaced
+// becomes an advisor in the department or leaves the team.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
@@ -299,12 +301,17 @@ function EditDepartment({
   const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [openDivision, setOpenDivision] = useState<number | null>(department.divisions[0]?.id ?? null);
+  const [newHead, setNewHead] = useState<TeamPick | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [headOutcome, setHeadOutcome] = useState<HandOverOutcome | null>(null);
   const [pending, startTransition] = useTransition();
+  const head = department.head;
 
   const code = normalizeDepartmentCode(rawCode);
   const nameError = departmentNameError(name);
   const codeError = rawCode.trim() === "" ? "Write a code." : departmentCodeError(code, structure.departments, department.id);
-  const valid = nameError === null && codeError === null;
+  const headError = newHead !== null && head !== null && headOutcome === null ? `Choose what happens to ${head.name}: Become an advisor or Leave the team.` : null;
+  const valid = nameError === null && codeError === null && headError === null;
   const stored = storedDepartmentName(name);
   const nameChanged = stored !== department.name;
   const codeChanged = code !== normalizeDepartmentCode(department.code ?? "");
@@ -313,16 +320,21 @@ function EditDepartment({
     e.preventDefault();
     setShowErrors(true);
     if (!valid) return;
-    if (!nameChanged && !codeChanged) {
+    if (!nameChanged && !codeChanged && newHead === null) {
       onClose();
       return;
     }
     setConfirming(true);
   };
 
+  const undoHead = () => {
+    setNewHead(null);
+    setHeadOutcome(null);
+  };
+
   const confirm = () =>
     startTransition(async () => {
-      const result = await saveDepartment(department.id, { name, code });
+      const result = await saveDepartment(department.id, { name, code, head: newHead === null ? null : { to: newHead.id, outcome: headOutcome } });
       if (!result.ok) {
         toast.error("Could not save the department", { description: result.error });
         return;
@@ -341,7 +353,11 @@ function EditDepartment({
       </>,
     );
   }
-  const head = department.head;
+  if (newHead !== null) lines.push(`${newHead.name} becomes Head of ${stored} and keeps their divisions.`);
+  if (newHead !== null && head !== null && headOutcome !== null) {
+    lines.push(`${head.name} ${steppingDownLine(steppingDown({ kind: "head", departmentId: department.id }, headOutcome), stored)}.`);
+  }
+  const leaving = newHead !== null && headOutcome === "leave";
 
   return (
     <SidePanel
@@ -365,17 +381,82 @@ function EditDepartment({
           <NameAndCode name={name} code={rawCode} nameError={nameError} codeError={codeError} showErrors={showErrors} onName={setName} onCode={setCode} />
           <section className="mt-6">
             <h3 className={SECTION_LABEL}>Head</h3>
-            {head ? (
-              <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
-                <Avatar name={head.name} size="md" accent />
-                <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                  <span className="shrink-0 text-[15px] text-prt-text">{head.name}</span>
-                  {head.divisions.length > 0 && <span className="truncate text-[12px] text-prt-muted">also in {head.divisions.join(", ")}</span>}
-                </span>
-              </div>
+            {newHead === null ? (
+              head ? (
+                <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
+                  <Avatar name={head.name} size="md" accent />
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span className="shrink-0 text-[15px] text-prt-text">{head.name}</span>
+                    {head.divisions.length > 0 && <span className="truncate text-[12px] text-prt-muted">also in {head.divisions.join(", ")}</span>}
+                  </span>
+                </div>
+              ) : (
+                <p className={`${LIST} mt-2.5 px-4 py-3 text-center text-[13px] text-prt-muted`}>No head</p>
+              )
             ) : (
-              <p className={`${LIST} mt-2.5 px-4 py-3 text-center text-[13px] text-prt-muted`}>No head</p>
+              <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
+                {head && (
+                  <li className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
+                    <Avatar name={head.name} size="md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] text-prt-text">{head.name}</span>
+                      <span className="block truncate text-[12px] text-prt-muted">Replaced by {newHead.name}</span>
+                    </span>
+                  </li>
+                )}
+                <li className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
+                  <Avatar name={newHead.name} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[14px] text-prt-text">{newHead.name}</span>
+                      <span className="inline-flex h-[18px] shrink-0 items-center rounded bg-accent-soft px-1.5 text-[11px] font-medium text-accent">New</span>
+                    </span>
+                    <span className="block truncate text-[12px] text-prt-muted">{newHead.place === null ? "In no division yet" : `Keeps ${newHead.place}`}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={undoHead}
+                    aria-label={`Undo picking ${newHead.name}`}
+                    className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+                  >
+                    <Undo2 aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    Undo
+                  </button>
+                </li>
+              </ul>
             )}
+            {picking ? (
+              <PeoplePicker
+                mode="head"
+                short={stored}
+                taken={(p) => (p.id === head?.id ? "Heads it now" : p.seated ? `Already ${p.role}` : null)}
+                onPick={(p) => {
+                  setNewHead(p);
+                  setPicking(false);
+                }}
+                onClose={() => setPicking(false)}
+              />
+            ) : (
+              newHead === null && (
+                <button type="button" onClick={() => setPicking(true)} className={`${ADD_LINK} mt-3`}>
+                  <Repeat aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+                  {head ? "Change head" : "Pick head"}
+                </button>
+              )
+            )}
+            {newHead !== null && head !== null && (
+              <div className="mt-5">
+                <HandOverChoice
+                  name={`head-${department.id}`}
+                  person={head.name}
+                  unit={stored}
+                  value={headOutcome}
+                  leave={{ allowed: true }}
+                  onChange={setHeadOutcome}
+                />
+              </div>
+            )}
+            {showErrors && headError !== null && <p className="mt-2 text-[12px] text-danger">{headError}</p>}
           </section>
           <section className="mt-6">
             <h3 className={SECTION_LABEL}>
@@ -402,6 +483,8 @@ function EditDepartment({
         open={confirming}
         onOpenChange={setConfirming}
         icon={<Pencil className="h-5 w-5" strokeWidth={1.75} />}
+        tone={leaving ? "danger" : "accent"}
+        danger={leaving}
         title={`Save changes to ${department.name} Department?`}
         description={
           <ul className="flex list-disc flex-col gap-1.5 pl-5">
@@ -487,7 +570,7 @@ function CloseDepartment({
   const [fates, setFates] = useState<Readonly<Record<number, Fate>>>(() =>
     Object.fromEntries(department.divisions.flatMap((d) => (inDivision(d) > 0 ? [[d.id, { action: "move", to: null } satisfies Fate]] : []))),
   );
-  const [headOutcome, setHeadOutcome] = useState<HeadOutcome | null>(null);
+  const [headOutcome, setHeadOutcome] = useState<HandOverOutcome | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const others = structure.departments.filter((d) => d.id !== department.id);

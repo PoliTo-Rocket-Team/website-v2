@@ -3,14 +3,15 @@ import { test } from "node:test";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
+  checkDepartmentSave,
   departmentCodeError,
   planDepartmentClose,
   planDepartmentCreate,
   planDepartmentSave,
   type DepartmentClose,
   type DepartmentCreate,
-  type HeadOutcome,
 } from "./department-edit";
+import type { HandOverOutcome } from "./hand-over";
 import type { TeamPerson } from "./division-edit";
 import { membershipsOf, type OrgChart, type TeamActor } from "./team";
 
@@ -46,7 +47,7 @@ test("only the team leader or full access creates, edits or closes a department;
   assert.ok(create({}).ok);
   for (const actor of [head, lead, null]) {
     assert.equal(create({}, actor).ok, false, JSON.stringify(actor));
-    assert.equal(planDepartmentSave({ actor, org, departmentId: 1, save: { name: "Aero", code: "AE" } }).ok, false);
+    assert.equal(planDepartmentSave({ actor, org, departmentId: 1, team, headIds: [6], save: { name: "Aero", code: "AE", head: null } }).ok, false);
     assert.equal(planDepartmentClose({ actor, org, departmentId: 1, close: { divisions: [], head: "advisor" }, inIt: {}, headIds: [6] }).ok, false);
   }
 });
@@ -71,16 +72,16 @@ test("a head is someone with no seat yet: another department's head or the team 
 });
 
 test("Edit department saves a new name or code under the same rules, for an open department", () => {
-  const renamed = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, save: { name: "Aerodynamics and Flight", code: "AF" } });
-  assert.deepEqual(renamed, { ok: true, value: { name: "Aerodynamics and Flight", code: "AF", nameChanged: true, codeChanged: true } });
-  const same = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, save: { name: "Aerodynamics", code: "AE" } });
+  const renamed = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics and Flight", code: "AF", head: null } });
+  assert.deepEqual(renamed, { ok: true, value: { name: "Aerodynamics and Flight", code: "AF", nameChanged: true, codeChanged: true, head: null } });
+  const same = planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics", code: "AE", head: null } });
   assert.ok(same.ok && !same.value.nameChanged && !same.value.codeChanged, "its own code stays allowed");
-  assert.equal(planDepartmentSave({ actor: fullAccess, org, departmentId: 1, save: { name: "Aerodynamics", code: "ST" } }).ok, false);
-  assert.deepEqual(planDepartmentSave({ actor: fullAccess, org, departmentId: 9, save: { name: "Gone", code: "GN" } }), { ok: false, error: "That department is closed." });
+  assert.equal(planDepartmentSave({ actor: fullAccess, org, departmentId: 1, team, headIds: [6], save: { name: "Aerodynamics", code: "ST", head: null } }).ok, false);
+  assert.deepEqual(planDepartmentSave({ actor: fullAccess, org, departmentId: 9, team, headIds: [], save: { name: "Gone", code: "GN", head: null } }), { ok: false, error: "That department is closed." });
   assert.equal(departmentCodeError("AE", org.departments, 1), null);
 });
 
-const close = (divisions: DepartmentClose["divisions"], inIt: Record<number, number> = { 1: 6, 2: 0 }, head: HeadOutcome | null = "advisor") =>
+const close = (divisions: DepartmentClose["divisions"], inIt: Record<number, number> = { 1: 6, 2: 0 }, head: HandOverOutcome | null = "advisor") =>
   planDepartmentClose({ actor: fullAccess, org, departmentId: 1, close: { divisions, head }, inIt, headIds: [6] });
 
 test("Close department needs a choice for every open division before it closes anything", () => {
@@ -114,4 +115,39 @@ test("Close department needs a head outcome while the department has a head, and
     assert.ok(planned.ok);
     assert.deepEqual(planned.value.head, { outcome, personIds: [6] });
   }
+});
+
+// Change head (issue #253, board 77e): handing the head role over.
+
+const changeHead = (head: { to: number; outcome: HandOverOutcome | null } | null, headIds: readonly number[] = [6], actor: TeamActor | null = fullAccess) =>
+  planDepartmentSave({ actor, org, departmentId: 1, team, headIds, save: { name: "Aerodynamics", code: "AE", head } });
+
+test("Change head: the replaced head becomes an advisor in the department or leaves the team; nothing leaves them as a member", () => {
+  assert.deepEqual(changeHead({ to: 1, outcome: "advisor" }), {
+    ok: true,
+    value: {
+      name: "Aerodynamics",
+      code: "AE",
+      nameChanged: false,
+      codeChanged: false,
+      head: { to: 1, from: [6], steppingDown: { kind: "advisor", place: { kind: "department", departmentId: 1 }, access: "ends" } },
+    },
+  });
+  const leaves = changeHead({ to: 1, outcome: "leave" });
+  assert.ok(leaves.ok);
+  assert.deepEqual(leaves.value.head?.steppingDown, { kind: "leave" });
+  assert.deepEqual(changeHead({ to: 1, outcome: null }), { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
+  assert.equal(checkDepartmentSave({ name: "Aerodynamics", code: "AE", head: { to: 1, outcome: "member" } }).ok, false, "only advisor or leave");
+});
+
+test("Change head picks someone on the team with no seat; a department with no head needs no outcome", () => {
+  assert.deepEqual(changeHead({ to: 6, outcome: "advisor" }), { ok: false, error: "Chiara Rinaldi already heads this department." });
+  assert.deepEqual(changeHead({ to: 7, outcome: "advisor" }), { ok: false, error: "Alessandro Greco is already Team Leader." });
+  assert.deepEqual(changeHead({ to: 99, outcome: "advisor" }), { ok: false, error: "They are not on the team." });
+  const first = changeHead({ to: 1, outcome: null }, []);
+  assert.ok(first.ok);
+  assert.deepEqual(first.value.head, { to: 1, from: [], steppingDown: null });
+  for (const actor of [head, lead, null]) assert.equal(changeHead({ to: 1, outcome: "advisor" }, [6], actor).ok, false, "only the team leader and full access");
+  const sent = checkDepartmentSave({ name: "Aerodynamics", code: "AE" });
+  assert.ok(sent.ok && sent.value.head === null, "a save with no head field changes no head");
 });

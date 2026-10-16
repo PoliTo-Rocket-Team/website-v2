@@ -4,6 +4,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, users } from "@/db/schema";
+import type { RoleType } from "@/lib/dashboard/team";
 import { getCurrentMemberId } from "./get-memberId";
 
 type MemberUser = {
@@ -43,7 +44,7 @@ export type Role = {
   title: string;
   started_at: string;
   leaved_at: string | null;
-  type: "president" | "head" | "lead" | "core" | null;
+  type: RoleType;
   departments?: Partial<MemberDepartment> | null;
   divisions?: Partial<MemberDivision> | null;
 };

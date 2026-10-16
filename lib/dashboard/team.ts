@@ -1,3 +1,4 @@
+import type { positionTypeEnum } from "@/db/schema/public";
 import type { DepartmentMembers } from "./department-members";
 import type { DivisionMembers } from "./division-members";
 import type { WholeTeamMembers } from "./team-members";
@@ -112,8 +113,12 @@ export function homeFirst(memberships: Memberships): readonly DivisionMembership
   return [...memberships].sort((a, b) => Number(b.divisionId === home) - Number(a.divisionId === home));
 }
 
-/** The role types the `roles` table holds. */
-export type RoleType = "president" | "head" | "lead" | "core" | null;
+/**
+ * The role types the `roles` table holds (`position_type`). An `advisor` role
+ * (issue #253) is what someone holds after handing over a role and staying in
+ * the team: it leads nothing and heads nothing, so it counts as neither.
+ */
+export type RoleType = (typeof positionTypeEnum.enumValues)[number] | null;
 
 /**
  * What a role of `type` makes its holder in the division it is in: a lead or
@@ -438,8 +443,9 @@ function divisionName(org: OrgChart, divisionId: number): string {
 
 /**
  * A role beyond every division's reach: the team leader, a board seat, a
- * department head (wherever its row is kept), any other role kept on a
- * department, or any other role kept on the team. "Leaves the team" ends
+ * department head (wherever its row is kept), an Advisor role kept on a
+ * department or on the team, any other role kept on a department, or any
+ * other role kept on the team. "Leaves the team" ends
  * these too, and no division lead or department head reaches them.
  */
 export type RoleBeyondDivisions =
@@ -448,6 +454,8 @@ export type RoleBeyondDivisions =
   /** Null department when the row names none on the chart (`headDepartmentOf`). */
   | { readonly kind: "head"; readonly departmentId: number | null }
   | { readonly kind: "department"; readonly departmentId: number }
+  /** An Advisor role (issue #253) kept on a department (a former head's) or on the whole team (null: a former team leader's). */
+  | { readonly kind: "advisor"; readonly departmentId: number | null }
   | { readonly kind: "team"; readonly title: string };
 
 /** One active `roles` row with where it sits, as both data sources read it. */
@@ -479,6 +487,7 @@ export function roleBeyondDivisions(role: RoleSeat, org: OrgChart): RoleBeyondDi
   if (seat !== null) return { kind: "board", seat };
   if (role.type === "head") return { kind: "head", departmentId: headDepartmentOf(role, org) };
   if (role.divisionId !== null) return null;
+  if (role.type === "advisor") return { kind: "advisor", departmentId: role.departmentId };
   if (role.departmentId !== null) return { kind: "department", departmentId: role.departmentId };
   return { kind: "team", title: role.title.trim() };
 }
@@ -534,6 +543,8 @@ export function beyondTitle(role: RoleBeyondDivisions, org: OrgChart): string {
     }
     case "department":
       return org.departments.find((d) => d.id === role.departmentId)?.name ?? "Department";
+    case "advisor":
+      return "Advisor";
     default:
       return beyondLabel(role, org);
   }
@@ -553,6 +564,10 @@ function beyondLabel(role: RoleBeyondDivisions, org: OrgChart): string {
     case "department": {
       const name = org.departments.find((d) => d.id === role.departmentId)?.name;
       return name ? `in ${name}` : "in a department";
+    }
+    case "advisor": {
+      const name = org.departments.find((d) => d.id === role.departmentId)?.name;
+      return name ? `an advisor in ${name}` : "an advisor to the team";
     }
     case "team":
       return role.title === "" ? "on the board" : role.title;

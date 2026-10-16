@@ -85,7 +85,7 @@ test("only the department's head, the team leader or full access may create, edi
 });
 
 test("an open division always keeps a lead: an edit or a create with none is refused", () => {
-  const both = plan({ oldLeads: [{ personId: 1, outcome: "member" }, { personId: 2, outcome: "member" }] });
+  const both = plan({ oldLeads: [{ personId: 1, via: "removed", outcome: "member" }, { personId: 2, via: "removed", outcome: "member" }] });
   assert.deepEqual(both, { ok: false, error: "A division needs at least one lead." });
   assert.equal(plan({ name: "Flight Dynamics", code: "FD" }, { kind: "new", departmentId: 1 }).ok, false);
 });
@@ -118,19 +118,34 @@ test("each outcome for an old lead is planned as chosen, within the rules", () =
   const result = plan({
     newLeads: [3],
     oldLeads: [
-      { personId: 1, outcome: "leave-team" },
-      { personId: 2, outcome: "leave-division" },
+      { personId: 1, via: "removed", outcome: "leave-team" },
+      { personId: 2, via: "removed", outcome: "leave-division" },
     ],
   });
   assert.ok(result.ok);
   assert.deepEqual([result.plan.leaveTeam, result.plan.leaveDivision, result.plan.demote], [[1], [2], []]);
-  assert.match((plan({ oldLeads: [{ personId: 1, outcome: "leave-division" }] }) as { error: string }).error, /only division/);
-  assert.equal(plan({ oldLeads: [{ personId: 3, outcome: "member" }] }).ok, false, "only a lead is an old lead");
+  assert.match((plan({ oldLeads: [{ personId: 1, via: "removed", outcome: "leave-division" }] }) as { error: string }).error, /only division/);
+  assert.equal(plan({ oldLeads: [{ personId: 3, via: "removed", outcome: "member" }] }).ok, false, "only a lead is an old lead");
+});
+
+test("a replaced lead hands the division over: an advisor in it or Alumni, never a member (#253)", () => {
+  const advises = plan({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "advisor" }] });
+  assert.ok(advises.ok);
+  assert.deepEqual([advises.plan.advise, advises.plan.demote, advises.plan.leaveTeam], [[1], [], []]);
+  assert.deepEqual(divisionRowWrites(advises.plan, 1, [{ id: 101, memberId: 1, type: "lead" }]).end, [101], "the lead row ends; the Advisor role starts beside it");
+  const leaves = plan({ newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome: "leave" }] });
+  assert.ok(leaves.ok);
+  assert.deepEqual([leaves.plan.advise, leaves.plan.leaveTeam], [[], [1]]);
+  for (const outcome of ["member", "leave-division", "leave-team"]) {
+    assert.equal(checkDivisionSave({ ...keep, newLeads: [3], oldLeads: [{ personId: 1, via: "replaced", outcome }] }).ok, false, `no ${outcome} on a hand-over`);
+  }
+  assert.ok(checkDivisionSave({ ...keep, oldLeads: [{ personId: 1, via: "removed", outcome: "member" }] }).ok, "Remove keeps its three outcomes");
+  assert.deepEqual(plan({ oldLeads: [{ personId: 1, via: "replaced", outcome: "advisor" }] }), { ok: false, error: "Only a new lead can replace an old one." });
 });
 
 test("Leaves the team for an old lead follows the shared rule: someone also in another department is the team leader's", () => {
   const away = [...team.slice(0, 1).map((p) => ({ ...p, memberships: membershipsOf([...p.memberships, { divisionId: 3, role: "member", since: "2025-10-01" }]) })), ...team.slice(1)];
-  const save = { ...keep, newLeads: [3], oldLeads: [{ personId: 1, outcome: "leave-team" as const }] };
+  const save = { ...keep, newLeads: [3], oldLeads: [{ personId: 1, via: "removed" as const, outcome: "leave-team" as const }] };
   const refused = planDivisionSave({ actor: head, org, subject: missionAnalysis, save, team: away });
   assert.deepEqual(refused, { ok: false, error: "Also in Design & Manufacturing, so only the team leader can do this" });
   assert.ok(planDivisionSave({ actor: { kind: "team" }, org, subject: missionAnalysis, save, team: away }).ok);
@@ -152,17 +167,17 @@ const planWithHead = (save: Partial<DivisionSave>, subject: DivisionSubject = mi
   planDivisionSave({ actor: { kind: "team" }, org, subject, save: { ...keep, ...save }, team: headLeads });
 
 test("a seat holder who leads a division may leave it, even when it is their only division", () => {
-  const result = planWithHead({ newLeads: [3], oldLeads: [{ personId: 6, outcome: "leave-division" }] });
+  const result = planWithHead({ newLeads: [3], oldLeads: [{ personId: 6, via: "removed", outcome: "leave-division" }] });
   assert.ok(result.ok);
   assert.deepEqual(result.plan.leaveDivision, [6]);
 });
 
 test("every division write touches only lead and member rows: a seat kept on the division stays the seat", () => {
-  const leaves = planWithHead({ newLeads: [3], oldLeads: [{ personId: 6, outcome: "leave-division" }] });
+  const leaves = planWithHead({ newLeads: [3], oldLeads: [{ personId: 6, via: "removed", outcome: "leave-division" }] });
   assert.ok(leaves.ok);
   assert.deepEqual(divisionRowWrites(leaves.plan, 1, seatRows), { end: [105], toLead: [103], toMember: [] }, "her lead row ends, her head row stays");
 
-  const stays = planWithHead({ oldLeads: [{ personId: 6, outcome: "member" }] });
+  const stays = planWithHead({ oldLeads: [{ personId: 6, via: "removed", outcome: "member" }] });
   assert.ok(stays.ok);
   assert.deepEqual(divisionRowWrites(stays.plan, 1, seatRows).toMember, [105], "only the lead row becomes a member's");
 
