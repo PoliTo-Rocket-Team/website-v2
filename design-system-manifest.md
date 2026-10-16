@@ -241,6 +241,14 @@ leaves it. Clicking About, or Enter on it, still goes to `/about/the-team`. It f
 The PRT mark only (`prt-mark-white.svg`, 32px tall) on the left and the menu icon on the
 right. There is no Sign in on the bar: it is in the menu.
 
+**Account menu** (board 01b, issue #261, `nav-account.tsx`): signed in, the bar's end is a
+38px round avatar at every width (the photo, else initials on `accent`), with no name text;
+on phones it sits beside the menu icon. Its accessible name is "Account menu". It opens the
+repo's Radix dropdown below it, aligned right: a `panel` card with a `hairline` edge, the full
+name and team email as header, then Dashboard (`text-2`) and Log out (`danger`). While open
+the avatar wears a 2px `accent` ring. Signed in, the sidebar has no foot. Signed out nothing
+changes. Log out is the one shared sign-out (`components/use-sign-out.ts`).
+
 **Menu** (board 24b, `nav-menu.tsx`): a sidebar from the right, 330px wide and full height,
 `.glass-sidebar` (ink at 70% under the 200deg sheen, blur 32px, a 1px left edge, a shadow onto
 the page). The page behind dims (`ground` at 55% and a slight blur). Top: the mark and a close
