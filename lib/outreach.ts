@@ -488,6 +488,15 @@ export function trackRecordShowing<P extends Pick<OutreachPost, "date">>(posts: 
   return { featured: cards.featured, news: [...cards.news.slice(0, -1), edited] };
 }
 
+/**
+ * The one news card a phone shows (board 24): the first. The page switch
+ * names the edited post's card instead when it is a news card (issue #294),
+ * so the editor still sees it in Phone mode; the public page names none.
+ */
+export function phoneNewsCard<P extends Pick<OutreachPost, "date">>(cards: TrackRecord<P>, edited?: P): P | undefined {
+  return edited !== undefined && cards.news.includes(edited) ? edited : cards.news[0];
+}
+
 /** The first address two posts share, or null. Two posts with one address would hide one of them. */
 export function sharedSlug(posts: readonly OutreachPost[]): string | null {
   const seen = new Set<string>();

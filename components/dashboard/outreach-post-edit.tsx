@@ -209,6 +209,7 @@ function CardPage({
         <Latest
           cards={trackRecordShowing(posts, view)}
           tags={published.tags}
+          edited={view}
           frame={(post, node, layout) => (
             <CardInPlace edited={post === view} onEdit={onEditCard} className={layout}>
               {node}

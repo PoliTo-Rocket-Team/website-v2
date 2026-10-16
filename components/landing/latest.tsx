@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { Photo } from "@/components/outreach/photo";
 import { CopyText } from "@/components/project-page/parts";
-import { dayMonthYear, slugOf, type TrackRecord } from "@/lib/outreach";
+import { dayMonthYear, phoneNewsCard, slugOf, type TrackRecord } from "@/lib/outreach";
 import type { OutreachTag, PostView } from "@/lib/outreach-types";
 import { RocketArrow } from "./rocket-arrow";
 
@@ -116,19 +116,24 @@ export function Latest<P extends TrackRecordPost>({
   cards,
   tags,
   frame,
+  edited,
 }: {
   /** Null when no post is published: the section then shows no cards. */
   cards: TrackRecord<P> | null;
   tags: readonly OutreachTag[];
   frame?: TrackRecordFrame<P>;
+  /** The post being edited, when the edit shell draws the section: a phone then shows its news card. */
+  edited?: P;
 }) {
   const awardTags = awardTagNames(tags);
+  const onPhone = cards === null ? undefined : phoneNewsCard(cards, edited);
   const place = (post: P, layout: string, card: (layout: string) => ReactNode) =>
     frame === undefined ? card(layout) : frame(post, card(FILLS_FRAME), layout);
   return (
     // Board 24 below md: 20px sides, 56px top and bottom, 26px heading, one
-    // column: the featured card (photo 150px tall) and only the first news
-    // card. The other two news cards are desktop-only.
+    // column: the featured card (photo 150px tall) and one news card, the
+    // first (in the edit shell, the edited post's). The others are
+    // desktop-only.
     // Board 21 from lg: the section fits one 1440 x 900 screen below the
     // navbar, so the gaps around the cards are 40px and the cards row is
     // 560px tall.
@@ -158,11 +163,11 @@ export function Latest<P extends TrackRecordPost>({
               <FeaturedCard post={cards.featured} awardTags={awardTags} layout={layout} />
             ))}
 
-            {/* List: on phones only the first news card shows. */}
+            {/* List: on phones only one news card shows. */}
             <div className="flex flex-col gap-5 lg:gap-3">
               {cards.news.map((post, i) => (
                 <Fragment key={i}>
-                  {place(post, `flex-1 md:flex ${i === 0 ? "flex" : "hidden"}`, (layout) => (
+                  {place(post, `flex-1 md:flex ${post === onPhone ? "flex" : "hidden"}`, (layout) => (
                     <NewsCard post={post} awardTags={awardTags} layout={layout} />
                   ))}
                 </Fragment>

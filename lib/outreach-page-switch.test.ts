@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { outreachRecord, slugOf, trackRecordShowing, withEdited } from "./outreach";
+import { outreachRecord, phoneNewsCard, slugOf, trackRecordShowing, withEdited } from "./outreach";
 import type { IsoDate, OutreachPost } from "./outreach-types";
 
 // The edit shell's page switch (issue #294): the Outreach list and the home
@@ -37,6 +37,17 @@ test("an edited post older than the four newest takes the last news card's place
   const draft = dated("Expo", "2024-09-30");
   const home = trackRecordShowing(withEdited(published, slugOf(published[4]), draft), draft);
   assert.deepEqual([home.featured, ...home.news].map((p) => p.title), ["Award night", "Summit", "School visit", "Expo"]);
+});
+
+test("in Phone mode the edited post's news card is the one a phone shows; the public page keeps the first", () => {
+  const draft = dated("Expo", "2024-09-30");
+  const home = trackRecordShowing(withEdited(published, slugOf(published[4]), draft), draft);
+  assert.equal(phoneNewsCard(home, draft), draft, "even in the last news card's place");
+  assert.equal(phoneNewsCard(home), home.news[0]);
+
+  const featured = dated("Award night", "2026-02-10");
+  const top = trackRecordShowing(withEdited(published, slugOf(published[0]), featured), featured);
+  assert.equal(phoneNewsCard(top, featured), top.news[0], "a featured post leaves the phone rule as it is");
 });
 
 test("the only post is the featured card", () => {
