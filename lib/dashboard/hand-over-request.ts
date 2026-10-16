@@ -155,6 +155,42 @@ export function handOverOfferOf(
   };
 }
 
+// A request that lapsed ----------------------------------------------------------
+
+/**
+ * Whether a waiting request has lapsed: its sender left the team, or the role
+ * My profile offers them is no longer the one it hands over (removed as lead,
+ * a division or department closed, made a head). A lapsed request is closed,
+ * never answered: nobody sees it, and it blocks no new send.
+ */
+export function hasLapsed(request: HandOverRequest, team: readonly TeamPerson[]): boolean {
+  const sender = team.find((p) => p.id === request.fromId);
+  const offered = sender ? roleToHandOver(sender) : null;
+  return offered === null || !sameRole(offered, request.role);
+}
+
+/** Someone's roles as the hand-over rules read them: the divisions they are in and how, and every role beyond them. */
+function rolesKey(person: TeamPerson | undefined): string {
+  if (!person) return "";
+  const memberships = person.memberships.map((m) => `${m.divisionId}:${m.role}`).sort();
+  const beyond = person.beyond.map((b) => JSON.stringify(b)).sort();
+  return JSON.stringify([memberships, beyond]);
+}
+
+/**
+ * The waiting requests a change to the team closes as lapsed: each whose
+ * sender's roles it changed, and each that had lapsed already. A request is
+ * for the roles its sender held when they sent it, so any change to them
+ * closes it for good: it never comes back with its old successor, even once
+ * the sender holds the role again, and they send a new one if they still want
+ * to. The database closes them the same way, from a trigger on `roles`
+ * (drizzle/0029_hand_over_requests_lapse.sql).
+ */
+export function lapsedBy(waiting: readonly HandOverRequest[], before: readonly TeamPerson[], after: readonly TeamPerson[]): number[] {
+  const changed = (id: number) => rolesKey(before.find((p) => p.id === id)) !== rolesKey(after.find((p) => p.id === id));
+  return waiting.filter((r) => changed(r.fromId) || hasLapsed(r, after)).map((r) => r.id);
+}
+
 // Send for confirmation (board 55d) --------------------------------------------
 
 /** What "Send for confirmation" sends: the role, who takes over, and what the sender does next. */
@@ -176,31 +212,37 @@ export function checkHandOverSend(input: unknown): Checked<HandOverSend> {
   return result.success ? { ok: true, value: result.data } : { ok: false, error: "Pick who takes over and what you do next." };
 }
 
+/** "Send for confirmation" as planned: the request to store, and the sender's lapsed requests it closes first. */
+export type HandOverSendPlan = { readonly send: HandOverSend; readonly lapsed: readonly number[] };
+
 /**
  * "Send for confirmation" as the rules allow it, or the first reason it is
  * refused: the sender holds the role My profile offers them, has no request
- * waiting, picks someone who may take over, and someone may confirm it. What
- * it answers is stored as waiting; no role changes.
+ * waiting that still stands, picks someone who may take over, and someone may
+ * confirm it. What it answers is stored as waiting; no role changes. A request
+ * of theirs that lapsed (`hasLapsed`) never blocks it: the send closes it.
  */
 export function planHandOverSend(input: {
   readonly senderId: number;
   readonly send: HandOverSend;
   readonly team: readonly TeamPerson[];
   readonly org: OrgChart;
-  readonly waiting: boolean;
-}): Checked<HandOverSend> {
-  const { senderId, send, team, org, waiting } = input;
+  /** The requests still waiting for an answer; only the sender's are read. */
+  readonly waiting: readonly HandOverRequest[];
+}): Checked<HandOverSendPlan> {
+  const { senderId, send, team, org } = input;
   const sender = team.find((p) => p.id === senderId);
   const role = sender ? roleToHandOver(sender) : null;
   if (role === null || !sameRole(role, send.role)) return { ok: false, error: "You hold no role to hand over from here." };
-  if (waiting) return { ok: false, error: "Your hand-over is already waiting for confirmation." };
+  const theirs = input.waiting.filter((r) => r.fromId === senderId);
+  if (theirs.some((r) => !hasLapsed(r, team))) return { ok: false, error: "Your hand-over is already waiting for confirmation." };
   if (!successorsFor(role, senderId, team, org).some((s) => s.id === send.to)) {
     return { ok: false, error: `Pick someone from ${role.kind === "lead" ? "your division" : "your department"}.` };
   }
   if (approverIdsOf(role, senderId, team, org).length === 0) {
     return { ok: false, error: `Nobody can confirm it: ${role.kind === "lead" ? "your department has no head" : "the team has no team leader"}.` };
   }
-  return { ok: true, value: send };
+  return { ok: true, value: { send, lapsed: theirs.map((r) => r.id) } };
 }
 
 // Confirm and Decline (board 62c) ----------------------------------------------
@@ -212,11 +254,10 @@ export function isHandOverAnswer(value: unknown): value is HandOverAnswer {
   return typeof value === "string" && (HAND_OVER_ANSWERS as readonly string[]).includes(value);
 }
 
-/** Whether the request is one `viewerId` answers, while its sender still holds the role. */
+/** Whether the request is one `viewerId` answers: it has not lapsed, and they are the next level up. */
 export function answersRequest(viewerId: number | null, request: HandOverRequest, team: readonly TeamPerson[], org: OrgChart): boolean {
-  if (viewerId === null) return false;
-  const sender = team.find((p) => p.id === request.fromId);
-  return sender !== undefined && holdsRole(sender, request.role) && approverIdsOf(request.role, request.fromId, team, org).includes(viewerId);
+  if (viewerId === null || hasLapsed(request, team)) return false;
+  return approverIdsOf(request.role, request.fromId, team, org).includes(viewerId);
 }
 
 /**

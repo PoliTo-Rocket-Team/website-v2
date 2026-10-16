@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { handOverRequests } from "@/db/schema";
-import { runAuditQuery } from "@/lib/db-audit";
+import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import type { DashboardIdentity } from "./database";
 import {
   checkHandOverSend,
@@ -90,7 +90,8 @@ export async function readHandOverOffer(identity: DashboardIdentity): Promise<Ha
 /**
  * "Send for confirmation" (board 55d): the request is stored as waiting, and
  * no role changes. The table keeps one waiting request per person
- * (`hand_over_requests_one_waiting`), so a second send is refused.
+ * (`hand_over_requests_one_waiting`), so a second send is refused, and a
+ * request of theirs that lapsed is closed in the same write (`hasLapsed`).
  */
 export async function sendHandOver(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
   const memberId = identity.memberId;
@@ -98,18 +99,27 @@ export async function sendHandOver(identity: DashboardIdentity, input: unknown):
   const checked = checkHandOverSend(input);
   if (!checked.ok) return refused(checked.error);
   const [snapshot, waiting] = await Promise.all([readTeamSnapshot(), readWaitingHandOvers({ fromId: memberId })]);
-  const planned = planHandOverSend({ senderId: memberId, send: checked.value, team: teamPeopleOf(snapshot), org: snapshot.org, waiting: waiting.length > 0 });
+  const planned = planHandOverSend({ senderId: memberId, send: checked.value, team: teamPeopleOf(snapshot), org: snapshot.org, waiting });
   if (!planned.ok) return refused(planned.error);
-  const { role, to, outcome } = planned.value;
-  await runAuditQuery((db) =>
-    db.insert(handOverRequests).values({
-      fromId: memberId,
-      role: role.kind,
-      divisionId: role.kind === "lead" ? role.divisionId : null,
-      deptId: role.kind === "head" ? role.departmentId : null,
-      toId: to,
-      outcome,
-    }),
-  );
+  const { send, lapsed } = planned.value;
+  const request = {
+    fromId: memberId,
+    role: send.role.kind,
+    divisionId: send.role.kind === "lead" ? send.role.divisionId : null,
+    deptId: send.role.kind === "head" ? send.role.departmentId : null,
+    toId: send.to,
+    outcome: send.outcome,
+  };
+  if (lapsed.length === 0) {
+    await runAuditQuery((db) => db.insert(handOverRequests).values(request));
+    return written(null);
+  }
+  await runAuditBatch((db) => [
+    db
+      .update(handOverRequests)
+      .set({ decision: "lapsed", decidedAt: new Date().toISOString() })
+      .where(and(inArray(handOverRequests.id, [...lapsed]), isNull(handOverRequests.decision))),
+    db.insert(handOverRequests).values(request),
+  ]);
   return written(null);
 }

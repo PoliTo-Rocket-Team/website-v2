@@ -308,8 +308,11 @@ function readHandOver(value: unknown): DummyHandOver | null {
   if (!isHandOverOutcome(outcome) || typeof sentAt !== "string" || Number.isNaN(Date.parse(sentAt))) return null;
   let answer: DummyHandOver["answered"] = null;
   if (answered !== null) {
-    if (!isRecord(answered) || (answered.answer !== "confirmed" && answered.answer !== "declined") || !Number.isInteger(answered.by)) return null;
-    answer = { answer: answered.answer, by: answered.by as number };
+    if (!isRecord(answered)) return null;
+    if (answered.answer === "lapsed") answer = { answer: "lapsed" };
+    else if ((answered.answer === "confirmed" || answered.answer === "declined") && Number.isInteger(answered.by)) {
+      answer = { answer: answered.answer, by: answered.by as number };
+    } else return null;
   }
   return { id: id as number, fromId: fromId as number, role, toId: toId as number, outcome, sentAt, answered: answer };
 }

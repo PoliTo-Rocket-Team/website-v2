@@ -103,7 +103,8 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, editedRoster } from "./team-pages";
+import { dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, dummyTeamPeople, editedRoster } from "./team-pages";
+import { closingLapsedHandOvers } from "./hand-overs";
 
 // The test developer's side of the dashboard data interface: every answer is
 // built from the arrays in ./team.ts and ./applications.ts, with no database,
@@ -827,7 +828,7 @@ function leftTeamDashboard(
  * The dashboard as the test developer sees it, looking as `viewer`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
- * their Team page edits in `teamEdits` (./edits.ts), and the changes on their
+ * their Team page edits in `teamEditsStore` (./edits.ts), and the changes on their
  * own pages in `own` (./own.ts), starting from the own applications
  * `ownStart` names. Other writes check what was sent as the database side
  * does, store nothing, and answer what the page shows next. The team leader
@@ -840,17 +841,19 @@ export function dummyDashboardData(
   viewer: TestViewer,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
-  teamEdits: TeamEditsStore = NO_TEAM_EDITS,
+  teamEditsStore: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
   partnerEdits: DummyPartnerEditsStore = NO_PARTNER_EDITS_STORE,
   faqEdits: DummyFaqEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
-  if (viewer !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
-    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEdits, own);
+  if (viewer !== "non-member" && teamEditsStore.current.movedToAlumni[personFor[viewer].id] !== undefined) {
+    return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEditsStore, own);
   }
-  const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEdits.current);
+  const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEditsStore.current);
+  // Every save that changes a sender's roles closes their waiting hand-over, as the database's trigger does (issue #262).
+  const teamEdits = closingLapsedHandOvers(teamEditsStore, (edits) => dummyTeamPeople(edits, team.applications));
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
   const person = teamPersonFor(viewer);
   const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;

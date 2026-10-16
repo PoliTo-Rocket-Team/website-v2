@@ -261,8 +261,13 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
   - **The approver's row (board 62c):** the request is the top row of "Needs your attention" on
     their Overview, on an accent background: "<person> wants to hand over <role> to <successor>",
     then "Sent <when> · <first name> then becomes an advisor, without access" (or "then leaves the
-    team"), with **Decline** and **Confirm**. A request whose sender no longer holds the role
-    shows no row.
+    team"), with **Decline** and **Confirm**.
+  - **A request lapses** when its sender's roles change before anyone answers it: removed as
+    lead, a division or department closed, made a head, or any other change to which roles they
+    hold (a title edit is not one). A lapsed request is closed for good: nobody sees or answers
+    it, it never blocks the sender's next Send for confirmation, and it never comes back with its
+    old successor, even when they hold the role again. Nobody is notified; the sender sends a new
+    one if they still want to.
   - **Confirm** runs the hand-over at once with the chosen successor and outcome: the successor
     holds the role and its access (a lead's successor leads the division; a head's successor
     gets a head role on the department and keeps every role they hold). A sender who chose

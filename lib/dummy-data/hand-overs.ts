@@ -1,6 +1,7 @@
-import type { HandOverRequest } from "@/lib/dashboard/hand-over-request";
+import type { TeamPerson } from "@/lib/dashboard/division-edit";
+import { lapsedBy, type HandOverRequest } from "@/lib/dashboard/hand-over-request";
 import type { HandOverAnswered } from "@/lib/dashboard/notices";
-import type { TeamEdits } from "./edits";
+import type { TeamEdits, TeamEditsStore } from "./edits";
 
 // The dummy team's hand-overs sent from My profile (issue #262), as
 // `hand_over_requests` rows would hold them: one waiting for Chiara Rinaldi,
@@ -8,9 +9,12 @@ import type { TeamEdits } from "./edits";
 // board 62c's row; and those the test developer sent or answered, kept in the
 // Team pages' edits cookie (./edits.ts).
 
-/** A request and, once the next level up answered it, how and by whom. */
+/**
+ * A request and how it closed: answered by the next level up, and by whom, or
+ * lapsed when its sender's roles changed first (`lapsedBy`); null while it waits.
+ */
 export type DummyHandOver = HandOverRequest & {
-  readonly answered: { readonly answer: HandOverAnswered; readonly by: number } | null;
+  readonly answered: { readonly answer: HandOverAnswered; readonly by: number } | { readonly answer: "lapsed" } | null;
 };
 
 const seeded: readonly DummyHandOver[] = [
@@ -41,6 +45,28 @@ export function waitingHandOvers(all: readonly DummyHandOver[]): HandOverRequest
 export function withDummyHandOver(edits: TeamEdits, handOver: DummyHandOver): TeamEdits {
   const others = edits.handOvers.filter((h) => h.id !== handOver.id);
   return { ...edits, handOvers: [...others, handOver] };
+}
+
+/** The edits with each waiting request in `ids` closed as lapsed. */
+export function withLapsedHandOvers(edits: TeamEdits, ids: readonly number[]): TeamEdits {
+  return waitingHandOvers(dummyHandOversOf(edits))
+    .filter((h) => ids.includes(h.id))
+    .reduce((next, h) => withDummyHandOver(next, { ...h, answered: { answer: "lapsed" } }), edits);
+}
+
+/**
+ * The Team pages' edits store, closing on every save the waiting requests
+ * whose sender's roles that save changed (`lapsedBy`), as the database's
+ * trigger on `roles` closes them. `teamOf` reads the team the edits make.
+ */
+export function closingLapsedHandOvers(store: TeamEditsStore, teamOf: (edits: TeamEdits) => readonly TeamPerson[]): TeamEditsStore {
+  return {
+    current: store.current,
+    save: (next) => {
+      const lapsed = lapsedBy(waitingHandOvers(dummyHandOversOf(next)), teamOf(store.current), teamOf(next));
+      return store.save(withLapsedHandOvers(next, lapsed));
+    },
+  };
 }
 
 /** The id the next request takes. */

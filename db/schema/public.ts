@@ -447,7 +447,12 @@ export const handOverOutcomeEnum = pgEnum("hand_over_outcome", ["advisor", "leav
 /** The role a lead or head hands over from My profile: never the team leader's (board 77i). */
 export const handOverRoleEnum = pgEnum("hand_over_role", ["lead", "head"]);
 
-export const handOverDecisionEnum = pgEnum("hand_over_decision", ["confirmed", "declined"]);
+/**
+ * How a hand-over request closed: answered by the next level up, or lapsed
+ * when its sender's roles changed before anyone answered (drizzle/0029,
+ * `hasLapsed` in lib/dashboard/hand-over-request.ts).
+ */
+export const handOverDecisionEnum = pgEnum("hand_over_decision", ["confirmed", "declined", "lapsed"]);
 
 /**
  * A hand-over a division lead or a department head sent from My profile

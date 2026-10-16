@@ -7,6 +7,8 @@ import {
   checkHandOverSend,
   handOverAttentionFor,
   handOverOfferOf,
+  hasLapsed,
+  lapsedBy,
   planHandOverAnswer,
   planHandOverSend,
   roleToHandOver,
@@ -89,17 +91,17 @@ test("the offer names the role, who may take over from the unit, and who confirm
 
 test("Send for confirmation is stored as asked and changes no role; the rules refuse the rest", () => {
   const send = { role: { kind: "lead", divisionId: 1 }, to: SARA, outcome: "advisor" } as const;
-  assert.deepEqual(planHandOverSend({ senderId: MARCO, send, team, org, waiting: false }), { ok: true, value: send });
+  assert.deepEqual(planHandOverSend({ senderId: MARCO, send, team, org, waiting: [] }), { ok: true, value: { send, lapsed: [] } });
   // Planning reads the team and writes nothing: Marco still leads, Sara is still a member.
   assert.equal(team.find((p) => p.id === MARCO)!.memberships[0].role, "lead");
   assert.equal(team.find((p) => p.id === SARA)!.memberships[0].role, "member");
-  assert.equal(planHandOverSend({ senderId: MARCO, send, team, org, waiting: true }).ok, false, "one request waits at a time");
-  assert.equal(planHandOverSend({ senderId: MARCO, send: { ...send, to: RICCARDO }, team, org, waiting: false }).ok, false, "not in the division");
-  assert.equal(planHandOverSend({ senderId: MARCO, send: { ...send, to: MARCO }, team, org, waiting: false }).ok, false, "not themselves");
-  assert.equal(planHandOverSend({ senderId: SARA, send, team, org, waiting: false }).ok, false, "a member holds no role to hand over");
-  assert.equal(planHandOverSend({ senderId: MARCO, send: { ...send, role: { kind: "lead", divisionId: 2 } }, team, org, waiting: false }).ok, false, "not their division");
+  assert.equal(planHandOverSend({ senderId: MARCO, send, team, org, waiting: [leadRequest] }).ok, false, "one request waits at a time");
+  assert.equal(planHandOverSend({ senderId: MARCO, send: { ...send, to: RICCARDO }, team, org, waiting: [] }).ok, false, "not in the division");
+  assert.equal(planHandOverSend({ senderId: MARCO, send: { ...send, to: MARCO }, team, org, waiting: [] }).ok, false, "not themselves");
+  assert.equal(planHandOverSend({ senderId: SARA, send, team, org, waiting: [] }).ok, false, "a member holds no role to hand over");
+  assert.equal(planHandOverSend({ senderId: MARCO, send: { ...send, role: { kind: "lead", divisionId: 2 } }, team, org, waiting: [] }).ok, false, "not their division");
   const headless = team.filter((p) => p.id !== CHIARA);
-  assert.equal(planHandOverSend({ senderId: MARCO, send, team: headless, org, waiting: false }).ok, false, "nobody could confirm it");
+  assert.equal(planHandOverSend({ senderId: MARCO, send, team: headless, org, waiting: [] }).ok, false, "nobody could confirm it");
   assert.equal(checkHandOverSend({ role: { kind: "lead", divisionId: 1 }, to: SARA }).ok, false, "nothing picked for them");
   assert.equal(checkHandOverSend({ role: { kind: "team-leader" }, to: SARA, outcome: "advisor" }).ok, false);
 });
@@ -177,4 +179,28 @@ test("the approver's row reads as board 62c, as the top rows, and only for them"
 test("when a request was sent reads in the team's time zone", () => {
   assert.equal(sentWhen("2026-10-15T22:30:00Z", new Date("2026-10-16T06:00:00Z")), "today", "00:30 in Rome is the same day");
   assert.equal(sentWhen("2026-10-02T10:00:00Z", now), "2 Oct");
+});
+
+test("a request whose sender's roles changed lapses: nobody answers it, it blocks no send, and any role change closes it", () => {
+  const removed = team.map((p) => (p.id === MARCO ? { ...p, memberships: member(1) } : p));
+  assert.ok(hasLapsed(leadRequest, removed), "removed as lead");
+  assert.ok(!hasLapsed(leadRequest, team));
+  // Made head of Structures while he still leads: My profile now offers the department, so the lead request lapsed.
+  const madeHead = team.map((p) => (p.id === MARCO ? { ...p, beyond: [{ kind: "head" as const, departmentId: 2 }] } : p));
+  assert.ok(hasLapsed(leadRequest, madeHead));
+  assert.equal(planHandOverAnswer({ viewerId: CHIARA, request: leadRequest, answer: "decline", team: madeHead, org }).ok, false, "nobody answers it");
+  const headSend = { role: { kind: "head", departmentId: 2 }, to: RICCARDO, outcome: "leave" } as const;
+  assert.deepEqual(
+    planHandOverSend({ senderId: MARCO, send: headSend, team: madeHead, org, waiting: [leadRequest, headRequest] }),
+    { ok: true, value: { send: headSend, lapsed: [leadRequest.id] } },
+    "the send closes his lapsed request and reads nobody else's",
+  );
+
+  // A change to the sender's roles closes the request for good, so making him lead again brings nothing back.
+  assert.deepEqual(lapsedBy([leadRequest, headRequest], team, removed), [leadRequest.id]);
+  const joined = team.map((p) => (p.id === MARCO ? { ...p, memberships: membershipsOf([...lead(1), ...member(3)]) } : p));
+  assert.deepEqual(lapsedBy([leadRequest], team, joined), [leadRequest.id], "any change to his roles");
+  const others = team.map((p) => (p.id === SARA ? { ...p, memberships: member(3) } : p));
+  assert.deepEqual(lapsedBy([leadRequest], team, others), [], "a change to someone else's roles closes nothing");
+  assert.deepEqual(lapsedBy([leadRequest], team, team.filter((p) => p.id !== MARCO)), [leadRequest.id], "the sender left the team");
 });

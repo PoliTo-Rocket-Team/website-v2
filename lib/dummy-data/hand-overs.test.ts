@@ -135,3 +135,23 @@ test("a head's hand-over goes to the team leader, and Confirm makes the successo
   assert.deepEqual(roster.find((e) => e.id === CHIARA)?.placement.role, "divisions");
   assert.deepEqual(store.current.advisors[CHIARA], { place: { kind: "department", departmentId: AERODYNAMICS }, access: "ends" });
 });
+
+test("a hand-over whose sender is removed as lead lapses: it blocks no new send and never comes back", async () => {
+  const { store, as } = preview();
+  await as("division-lead").sendHandOver(send);
+  const id = store.current.handOvers[0].id;
+  const division = { name: "Mission Analysis", code: "MA", newLeads: [], oldLeads: [], members: [], emails: [] };
+  await as("department-head").teamWrites!.saveDivision(MISSION_ANALYSIS, { ...division, oldLeads: [{ personId: MARCO, via: "removed", outcome: "member" }] });
+  assert.deepEqual(store.current.handOvers.find((h) => h.id === id)?.answered, { answer: "lapsed" }, "closed by the save that changed his role");
+  const marcoRow = (rows: readonly { title: string }[]) => rows.some((row) => row.title.startsWith("Marco Bianchi wants"));
+  assert.ok(!marcoRow((await as("department-head").overview()).attention));
+
+  // Made lead again, the old request stays closed: no row with its old successor, nothing waiting on My profile.
+  await as("department-head").teamWrites!.saveDivision(MISSION_ANALYSIS, { ...division, newLeads: [MARCO] });
+  assert.equal(roleIn(store.current, MARCO, MISSION_ANALYSIS), "lead");
+  assert.ok(!marcoRow((await as("department-head").overview()).attention), "it never comes back");
+  assert.equal((await as("division-lead").myProfile())?.handOver?.waiting, null);
+  assert.equal((await as("department-head").answerHandOver(id, "confirm")).ok, false, "nobody can answer it");
+  assert.deepEqual(await as("division-lead").sendHandOver({ ...send, to: PIETRO }), { ok: true, value: null }, "a new send is not blocked");
+  assert.equal((await as("division-lead").myProfile())?.handOver?.waiting?.to, "Pietro Ricci");
+});

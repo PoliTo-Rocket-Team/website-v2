@@ -81,13 +81,14 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type TeamEdits } from "./edits";
-import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver } from "./hand-overs";
+import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver, withLapsedHandOvers } from "./hand-overs";
 import { withDummyNotices } from "./notices";
 import {
   answerNoticeOf,
   checkHandOverSend,
   handOverAttentionFor,
   handOverOfferOf,
+  hasLapsed,
   planHandOverAnswer,
   planHandOverSend,
   type HandOverAnswerPlan,
@@ -535,6 +536,11 @@ function teamPeople(team: readonly RosterEntry[], edits: TeamEdits): TeamPerson[
     const candidate = candidateOf(entry, edits);
     return { id: entry.id, name: entry.name, emails: candidate.emails, memberships: candidate.memberships, beyond: beyondOf(entry, edits) };
   });
+}
+
+/** Everyone on the team `edits` make, as the hand-over rules read them (lib/dashboard/hand-over-request.ts). */
+export function dummyTeamPeople(edits: TeamEdits, current: readonly DummyApplication[] = baseApplications): TeamPerson[] {
+  return teamPeople(editedRoster(edits, dummyJoiners(current)), edits);
 }
 
 /** The Applications page's move, as the dummy dashboard runs it: Confirm join on the Members page is that move. */
@@ -1086,7 +1092,7 @@ export function dummyHandOverPages(
   const { org } = dummyOrg(edits);
   const all = dummyHandOversOf(edits);
   const waiting = waitingHandOvers(all);
-  const mine = waiting.find((h) => h.fromId === self) ?? null;
+  const mine = waiting.find((h) => h.fromId === self && !hasLapsed(h, team)) ?? null;
   return {
     offer: () => {
       const person = team.find((p) => p.id === self);
@@ -1097,11 +1103,12 @@ export function dummyHandOverPages(
       if (self === null) return refused("This page is for team members.");
       const checked = checkHandOverSend(input);
       if (!checked.ok) return refused(checked.error);
-      const planned = planHandOverSend({ senderId: self, send: checked.value, team, org, waiting: mine !== null });
+      const planned = planHandOverSend({ senderId: self, send: checked.value, team, org, waiting });
       if (!planned.ok) return refused(planned.error);
-      const { role, to, outcome } = planned.value;
+      const { send, lapsed } = planned.value;
       // The dummy team is seen from DUMMY_NOW, so a request is sent then too.
-      await save(withDummyHandOver(edits, { id: nextHandOverId(all), fromId: self, role, toId: to, outcome, sentAt: DUMMY_NOW, answered: null }));
+      const request = { id: nextHandOverId(all), fromId: self, role: send.role, toId: send.to, outcome: send.outcome, sentAt: DUMMY_NOW, answered: null };
+      await save(withDummyHandOver(withLapsedHandOvers(edits, lapsed), request));
       return written(null);
     },
     async answerHandOver(requestId, answer) {
