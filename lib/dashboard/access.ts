@@ -131,6 +131,17 @@ export const DASHBOARD_PAGES = [
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
   },
   {
+    key: "projects",
+    label: "Projects",
+    href: "/dashboard/projects",
+    // Board 75 (issue #297): the site-content rule Outreach, Partners, Alumni
+    // and FAQ follow (maySiteContent, lib/content/gate.ts), placed first in
+    // the Content group as board 75 lists it.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    seatPlace: { "team-leader": "content" },
+  },
+  {
     key: "outreach",
     label: "Outreach",
     href: "/dashboard/outreach",

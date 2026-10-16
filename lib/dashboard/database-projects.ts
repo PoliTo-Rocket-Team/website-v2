@@ -1,13 +1,14 @@
 import "server-only";
 
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { projects, projectVersions } from "@/db/schema";
+import { logs, projects, projectVersions, users } from "@/db/schema";
 import type { ContentStore } from "@/lib/content/editor";
 import { publicItems, versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import { isProjectRecord } from "@/lib/project-content/check";
+import type { EditStamp } from "@/lib/project-content/edited";
 import type { ProjectRecord } from "@/lib/project-content/record";
 import { written } from "./write";
 
@@ -71,6 +72,36 @@ export async function cachedPublishedProjects(): Promise<ProjectRecord[] | null>
     if (isUndefinedTable(error)) return null;
     throw error;
   }
+}
+
+/**
+ * When each project's versions were last written and by whom (board 75's
+ * "edited by" line, issue #297), read off the audit log that every write
+ * here leaves. Moving a card writes `projects`, not its versions, so it is
+ * not an edit. Someone whose account was anonymized is named by no one.
+ */
+export async function readProjectStamps(): Promise<ReadonlyMap<number, EditStamp>> {
+  const projectId = sql<string>`${logs.newData} ->> 'project_id'`;
+  const rows = await getDb()
+    .selectDistinctOn([projectId], {
+      projectId,
+      at: logs.changedAt,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      anonymizedAt: users.anonymizedAt,
+    })
+    .from(logs)
+    .leftJoin(users, eq(users.id, logs.changedBy))
+    .where(and(eq(logs.schemaName, "public"), eq(logs.tableName, "project_versions"), inArray(logs.operation, ["INSERT", "UPDATE"])))
+    .orderBy(projectId, desc(logs.changedAt));
+  return new Map(
+    rows.flatMap((row) => {
+      const id = Number(row.projectId);
+      if (!Number.isSafeInteger(id)) return [];
+      const name = row.anonymizedAt === null ? [row.firstName, row.lastName].filter(Boolean).join(" ") : "";
+      return [[id, { at: new Date(row.at).toISOString(), by: name === "" ? null : name }] as const];
+    }),
+  );
 }
 
 function versionValues(projectId: number, version: Versioned<ProjectRecord>) {

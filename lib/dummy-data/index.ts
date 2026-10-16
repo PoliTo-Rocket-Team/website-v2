@@ -15,7 +15,7 @@ import { dummyFaqNow, dummyFaqStore, type DummyFaqEditsStore } from "./faqs";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { dummyOutreachStore, dummyPhotoFiles, NO_OUTREACH_EDITS_STORE, type DummyOutreachEditsStore } from "./outreach";
 import { projectEditor } from "@/lib/project-content/editor";
-import { dummyProjectStore, type DummyProjectEditsStore } from "./projects";
+import { dummyProjectHistory, dummyProjectStore, type DummyProjectEditsStore } from "./projects";
 import {
   checklistProgress,
   divisionShortName,
@@ -1094,7 +1094,8 @@ export function dummyDashboardData(
     // Seen from the dummy team's moment, so a question saved here reads "Today".
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
     outreach: outreachEditor(dummyViewer(viewer, holders), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
-    projects: projectEditor(dummyViewer(viewer, holders), dummyProjectStore(projectEdits)),
+    // Seen from the dummy team's moment; the test developer's saves are edits by the person they sign in as.
+    projects: projectEditor(dummyViewer(viewer, holders), dummyProjectStore(projectEdits), dummyProjectHistory(projectEdits, person?.name ?? null)),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {

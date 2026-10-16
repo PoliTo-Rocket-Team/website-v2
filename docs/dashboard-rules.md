@@ -37,6 +37,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Projects | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it first under Content |
 | Partners | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Alumni | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | FAQ | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
@@ -76,7 +77,7 @@ An admin column comes later. **Planned**, no issue yet.
   IT lead keep boards 40 and 46.
   - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
     (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
-    is Partners, Alumni, then FAQ. Each content page adds its own row there.
+    is Projects, Outreach, Partners, Alumni, then FAQ. Each content page adds its own row there.
   - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
     the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
     the orders waiting for a decision (one row, naming the oldest, with Review) and the approved
@@ -143,10 +144,10 @@ An admin column comes later. **Planned**, no issue yet.
   the page read one rule, and the page answers "not found" to everyone else.
   - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
     `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni, Partners and FAQ pages.
+    the Alumni, Projects, Outreach, Partners and FAQ pages.
 - **Content** is the team leader's sidebar group of the pages that change the public site:
-  Partners, Alumni, then FAQ (boards 72, 76 and 79). Everyone else who reaches them sees them under
-  Team. Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
+  Projects, Outreach, Partners, Alumni, then FAQ (boards 72, 74, 75, 76 and 79). Everyone else who
+  reaches them sees them under Team. Projects, Outreach, Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
   may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
   `lib/content/gate.ts`). See "6. Site content".
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
@@ -717,6 +718,24 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's question changes stay in their own cookie
   until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
   shows the questions as they were before the switch.
+
+### Projects page (#297, board 75)
+
+- The Projects page shows every stored project as its home card, drawn as Home draws it, at about
+  0.85 scale and three per row from 1024px, in site order. A draft shows its draft.
+- Over each card: a drag grip, the status (Published, Draft or Draft changes) and the "edited by"
+  line: when the project's versions were last saved and by whom ("Edited 12 Sep by Giulia
+  Rossi"). While its draft changes one part of the page only, the line names it ("Launch history
+  edited today by Marco Bianchi"). The database side reads it from the audit log; an anonymized
+  account names no one. Moving a card is not an edit.
+- Under each card: Edit page opens the project on its page (board 75b); View on site opens the
+  public page in a new tab, and only a published project has one.
+- Dragging a card, or the arrow keys on its grip, sets the site order. It is saved at once, and
+  the home Projects section, /projects and each page's next-project card follow it.
+- Only the full admins and holders of site-content access reach the page; everyone else gets the
+  dashboard's not found.
+- Previews never touch a database: a test developer's new order stays in their own cookie until
+  they sign out, and their saves read as edited today by the person they signed in as.
 
 ### Project pages (#298, boards 75b and 75c)
 

@@ -7,7 +7,7 @@ import { refused, type WriteResult } from "@/lib/dashboard/write";
 import { readProjectFields } from "@/lib/project-content/fields";
 import type { ProjectRecord } from "@/lib/project-content/record";
 
-// The project editor's writes (board 75c, issue #298). Each opens the
+// The project editor's writes (boards 75 and 75c, issues #297 and #298). Each opens the
 // dashboard as the page did; the projects editor checks the site-content gate
 // and the fields again, and writes to the database or, for a test developer,
 // to their cookie. The database write refreshes the cached public read; every
@@ -28,6 +28,16 @@ export async function saveProject(projectId: number, step: PublishStep, input: u
   const opening = await openDashboard();
   if (opening.kind !== "open") return refused("Sign in again to make changes.");
   const result = await opening.data.projects.saveFields(projectId, step, fields);
+  if (result.ok) refreshPublicProjects();
+  return result;
+}
+
+/** The cards dragged into a new order on the Projects page (board 75, issue #297): the site order Home and /projects follow. */
+export async function reorderProjects(projectIds: readonly number[]): Promise<WriteResult<null>> {
+  if (!Array.isArray(projectIds) || !projectIds.every(Number.isSafeInteger)) return refused("Unknown projects.");
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return refused("Sign in again to make changes.");
+  const result = await opening.data.projects.setSiteOrder(projectIds);
   if (result.ok) refreshPublicProjects();
   return result;
 }
