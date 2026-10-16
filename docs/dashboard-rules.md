@@ -77,7 +77,7 @@ An admin column comes later. **Planned**, no issue yet.
   IT lead keep boards 40 and 46.
   - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
     (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
-    is Projects, Outreach, Partners, Alumni, then FAQ. Each content page adds its own row there.
+    is Projects, Outreach, Partners, Alumni, FAQ, then Team page. Each content page adds its own row there.
   - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
     the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
     the orders waiting for a decision (one row, naming the oldest, with Review) and the approved
@@ -144,10 +144,10 @@ An admin column comes later. **Planned**, no issue yet.
   the page read one rule, and the page answers "not found" to everyone else.
   - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
     `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni, Projects, Outreach, Partners and FAQ pages.
+    the Alumni, Projects, Outreach, Partners, FAQ and Team page pages.
 - **Content** is the team leader's sidebar group of the pages that change the public site:
-  Projects, Outreach, Partners, Alumni, then FAQ (boards 72, 74, 75, 76 and 79). Everyone else who
-  reaches them sees them under Team. Projects, Outreach, Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
+  Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80). Everyone else who
+  reaches them sees them under Team. Projects, Outreach, Partners, FAQ and Team page follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
   may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
   `lib/content/gate.ts`). See "6. Site content".
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
