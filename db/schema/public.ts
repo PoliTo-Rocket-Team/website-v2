@@ -84,6 +84,21 @@ export const accessLevelTypeEnum = pgEnum("access_level_type", [
   "edit",
 ]);
 
+// Site content with drafts (issue #256, lib/content/versioned.ts): each
+// content item keeps the version the public site shows and an optional
+// working draft, one row each. Every content type's version table reuses it.
+export const contentVersionEnum = pgEnum("content_version", [
+  "published",
+  "draft",
+]);
+
+export const partnerTierEnum = pgEnum("partner_tier", ["main", "media"]);
+
+export const partnerLogoKindEnum = pgEnum("partner_logo_kind", [
+  "wordmark",
+  "mark",
+]);
+
 export const members = pgTable("members", {
   memberId: serial("member_id").primaryKey(),
   prtEmail: text("prt_email"),
@@ -519,6 +534,95 @@ export const scopes = pgTable(
       table.target,
       table.deptId,
       table.divisionId,
+    ),
+  }),
+);
+
+// The partners on /partners and the home logo strip (issue #256, boards 76
+// and 76b). A partner is its place in the site order; what it shows lives in
+// its versions: a published one, a draft, or both. Removing a partner removes
+// its versions.
+export const partners = pgTable("partners", {
+  id: serial("id").primaryKey(),
+  siteOrder: integer("site_order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+export const partnerVersions = pgTable(
+  "partner_versions",
+  {
+    id: serial("id").primaryKey(),
+    partnerId: integer("partner_id")
+      .references(() => partners.id, { onDelete: "cascade" })
+      .notNull(),
+    version: contentVersionEnum("version").notNull(),
+    name: text("name").notNull(),
+    tier: partnerTierEnum("tier").notNull(),
+    /** A file in public/design/sponsors/, or the logo's public Blob URL. */
+    logoUrl: text("logo_url").notNull(),
+    logoWidth: integer("logo_width").notNull(),
+    logoHeight: integer("logo_height").notNull(),
+    logoKind: partnerLogoKindEnum("logo_kind").notNull(),
+    /** Measured on upload: too dark for the page, so the site draws it white. */
+    logoDark: boolean("logo_dark").notNull(),
+    website: text("website"),
+    oneLiner: text("one_liner").notNull(),
+    about: text("about"),
+    support: text("support"),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneOfEachVersion: unique("partner_versions_partner_version_unique").on(
+      table.partnerId,
+      table.version,
+    ),
+  }),
+);
+
+// The questions at the bottom of /apply (issue #258, boards 79 and 79b). A
+// question is its place in the site order; what it says lives in its
+// versions, as a partner's does: a published one, a draft, or both. Removing
+// a question removes its versions.
+export const faqs = pgTable("faqs", {
+  id: serial("id").primaryKey(),
+  siteOrder: integer("site_order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+});
+
+export const faqVersions = pgTable(
+  "faq_versions",
+  {
+    id: serial("id").primaryKey(),
+    faqId: integer("faq_id")
+      .references(() => faqs.id, { onDelete: "cascade" })
+      .notNull(),
+    version: contentVersionEnum("version").notNull(),
+    question: text("question").notNull(),
+    /** One string per paragraph, at least one. */
+    answer: text("answer").array().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    oneOfEachVersion: unique("faq_versions_faq_version_unique").on(
+      table.faqId,
+      table.version,
+    ),
+    // The panel's limit (lib/faq/faq.ts, FAQ_QUESTION_MAX), counted as characters.
+    questionLength: check(
+      "faq_versions_question_length",
+      sql`char_length(${table.question}) between 1 and 120`,
+    ),
+    answered: check(
+      "faq_versions_answered",
+      sql`cardinality(${table.answer}) >= 1`,
     ),
   }),
 );

@@ -105,6 +105,17 @@ export const DASHBOARD_PAGES = [
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
   },
   {
+    key: "partners",
+    label: "Partners",
+    href: "/dashboard/partners",
+    // Boards 76 and 76b (issue #256): the Alumni rule (maySiteContent,
+    // lib/content/gate.ts), placed as Alumni is: under Content for the team
+    // leader, ahead of Alumni as board 76 lists them.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
+    seatPlace: { "team-leader": "content" },
+  },
+  {
     key: "alumni",
     label: "Alumni",
     href: "/dashboard/alumni",
@@ -114,6 +125,17 @@ export const DASHBOARD_PAGES = [
     reach: { "operations-lead": "team" },
     siteContent: "team",
     // The team leader's sidebar groups it under Content (board 72, issue #252).
+    seatPlace: { "team-leader": "content" },
+  },
+  {
+    key: "faq",
+    label: "FAQ",
+    href: "/dashboard/faq",
+    // Boards 79 and 79b (issue #258): the site-content rule Partners and
+    // Alumni follow (maySiteContent, lib/content/gate.ts), placed after
+    // Alumni, under Content for the team leader, as board 79 lists them.
+    reach: { "operations-lead": "team" },
+    siteContent: "team",
     seatPlace: { "team-leader": "content" },
   },
   {

@@ -1,6 +1,7 @@
 import type { Applicant } from "@/app/actions/get-applicant";
 import type { ApplyPosition } from "@/db/types";
 import type { PrivatePathname } from "@/lib/storage/pathname";
+import type { Faq } from "./page";
 import type { Recruitment } from "./positions";
 import type { NewApplication, SubmitDeps } from "./submit";
 
@@ -13,6 +14,8 @@ import type { NewApplication, SubmitDeps } from "./submit";
 export interface ApplyData {
   /** The positions /apply lists: public ones only. */
   publicPositions(): Promise<ApplyPosition[]>;
+  /** The questions at the bottom of /apply: the published ones, in site order (issue #258). */
+  faqs(): Promise<readonly Faq[]>;
   /** One position, deleted or not, with the recruitment switch, read fresh; null when no position has the id. */
   position(id: number): Promise<{ position: ApplyPosition; recruitment: Recruitment } | null>;
   /** The signed-in applicant, or null when nobody is signed in. */

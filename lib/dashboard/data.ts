@@ -1,5 +1,7 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
+import type { FaqEditor } from "@/lib/faq/editor";
+import type { PartnerEditor } from "@/lib/partners-editor";
 import type { DashboardLanding, NavCounts } from "./access";
 import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
@@ -161,6 +163,21 @@ export interface DashboardData {
    * only the team leader may, and any number of people may hold it.
    */
   setApproveOrders(input: unknown): Promise<WriteResult<null>>;
+
+  /**
+   * Boards 76 and 76b (issue #256): the partners and their writes, behind the
+   * site-content gate (lib/content/gate.ts). Each side brings its own store:
+   * the database, or a test developer's cookie over the dummy partners.
+   */
+  readonly partners: PartnerEditor;
+
+  /**
+   * Boards 79 and 79b (issue #258): the questions on /apply and their writes,
+   * behind the same gate. Each side brings its own store and clock: the
+   * database and the time now, or a test developer's cookie over the dummy
+   * questions, seen from the dummy team's moment.
+   */
+  readonly faqs: FaqEditor;
 
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;

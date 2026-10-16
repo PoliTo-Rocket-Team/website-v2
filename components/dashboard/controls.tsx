@@ -3,6 +3,7 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { Check, ChevronDown, Search, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // The small controls of the recruitment pages (boards 41, 41b, 41c): the
@@ -43,7 +44,10 @@ export function Toggle({
 /**
  * "All 18 · Open 6 · Closed 12": one choice, each with its count. With
  * `phone="chips"` the choices are separate pills below md, as the Dashboard v2
- * phone boards draw them (57m, 58m).
+ * phone boards draw them (57m, 58m). `children` sit inside the same frame,
+ * after the choices: board 71's "All departments" select (a `look="inset"`
+ * FilterMenu). With them the frame wraps below md, so the select never
+ * scrolls out of sight on a phone.
  */
 export function Segmented<T extends string>({
   label,
@@ -51,19 +55,21 @@ export function Segmented<T extends string>({
   value,
   onChange,
   phone = "segmented",
+  children,
 }: {
   label: string;
   options: readonly { readonly value: T; readonly label: string; readonly count: number }[];
   value: T;
   onChange: (value: T) => void;
   phone?: "segmented" | "chips";
+  children?: ReactNode;
 }) {
   const chips = phone === "chips";
   return (
     <div
       role="group"
       aria-label={label}
-      className={`flex max-w-full overflow-x-auto ${
+      className={`flex max-w-full overflow-x-auto ${children ? "flex-wrap items-center gap-y-0.5 md:flex-nowrap" : ""} ${
         chips ? "gap-2 md:gap-0 md:rounded-lg md:border md:border-hairline md:bg-panel/60 md:p-0.5" : "rounded-lg border border-hairline bg-panel/60 p-0.5"
       }`}
     >
@@ -84,14 +90,21 @@ export function Segmented<T extends string>({
           </button>
         );
       })}
+      {children}
     </div>
   );
 }
 
+/** A box on its own, a round chip (phone boards 63m to 65m), or a segment inside a `Segmented` frame (board 71). */
+const FILTER_LOOK = {
+  box: "h-8 rounded-lg px-3",
+  chip: "h-8 rounded-full bg-panel/60 px-3",
+  inset: "h-7 shrink-0 rounded-md bg-white-5 px-2.5 md:ml-1",
+} as const;
+
 /**
- * "All departments ⌄": one of a list, or all of them (`null`). As a `chip`
- * it is the round pill phone boards 63m to 65m draw, with an icon before
- * the label.
+ * "All departments ⌄": one of a list, or all of them (`null`). Its `look`
+ * picks the frame (`FILTER_LOOK`); a chip carries an icon before the label.
  */
 export function FilterMenu({
   allLabel,
@@ -100,7 +113,7 @@ export function FilterMenu({
   onChange,
   label,
   icon: Icon,
-  chip = false,
+  look = "box",
 }: {
   allLabel: string;
   options: readonly { readonly value: string; readonly label: string }[];
@@ -109,16 +122,14 @@ export function FilterMenu({
   /** What a screen reader hears for the trigger, before the current choice. */
   label?: string;
   icon?: LucideIcon;
-  chip?: boolean;
+  look?: keyof typeof FILTER_LOOK;
 }) {
   const current = options.find((o) => o.value === value)?.label ?? allLabel;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={label ? `${label}: ${current}` : undefined}
-        className={`flex h-8 min-w-0 max-w-full items-center gap-2 border border-hairline px-3 text-[13px] text-prt-text transition-colors duration-300 ease-out hover:border-border-strong data-[state=open]:border-border-strong ${
-          chip ? "rounded-full bg-panel/60" : "rounded-lg"
-        } ${FOCUS}`}
+        className={`flex min-w-0 max-w-full items-center gap-2 border border-hairline text-[13px] text-prt-text transition-colors duration-300 ease-out hover:border-border-strong data-[state=open]:border-border-strong ${FILTER_LOOK[look]} ${FOCUS}`}
       >
         {Icon && <Icon aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-2" strokeWidth={1.75} />}
         <span className="truncate">{current}</span>

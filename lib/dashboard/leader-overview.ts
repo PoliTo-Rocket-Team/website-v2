@@ -1,41 +1,17 @@
 import type { PersonRecord } from "./division-members";
 import type { Order } from "./orders";
-import { divisionShortName, type AttentionItem, type DepartmentSummary, type Stat } from "./overview";
+import type { AttentionItem, DepartmentSummary, Stat } from "./overview";
 import type { OrgChart } from "./team";
 import { shortDate } from "./write";
 
 // The team leader's Overview (board 72, issue #252): what both sides of the
 // data interface compute the same way. "Needs your attention" holds the
-// orders waiting for their decision, the approved orders not ordered yet and
-// the positions closing soon; the orders rows show counts and items, never a
-// price. The Departments panel counts each department's people, heads and
-// what waits there.
-
-/** How many days ahead a position counts as closing soon. */
-export const CLOSING_SOON_DAYS = 7;
-
-/** An open position with the day it closes, as the attention row names it. */
-export type ClosingPosition = {
-  /** What `/dashboard/positions?position=` opens. */
-  readonly ref: string;
-  readonly title: string;
-  /** "Electronics" */
-  readonly department: string;
-  /** "Avionics Software Division" */
-  readonly division: string;
-  readonly applications: number;
-  /** ISO date, "2026-10-14"; null for a position with no closing day. */
-  readonly closesOn: string | null;
-};
+// orders waiting for their decision and the approved orders not ordered yet;
+// those rows show counts and items, never a price. The Departments panel
+// counts each department's people, heads and what waits there.
 
 const TEAM_TIME_ZONE = "Europe/Rome";
 const isoDay = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: TEAM_TIME_ZONE });
-
-/** Whole days from today in Turin to `isoDate`: 0 today, 1 tomorrow, negative once past. */
-export function daysUntil(isoDate: string, now: Date): number {
-  const today = Date.parse(`${isoDay.format(now)}T00:00:00Z`);
-  return Math.round((Date.parse(`${isoDate}T00:00:00Z`) - today) / 86_400_000);
-}
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -50,22 +26,15 @@ function itemsLine(items: readonly string[]): string {
   return items.length > ITEMS_NAMED ? `${named} and ${items.length - ITEMS_NAMED} more` : named;
 }
 
-function closesIn(days: number): string {
-  if (days === 0) return "closes today";
-  if (days === 1) return "closes tomorrow";
-  return `closes in ${days} days`;
-}
-
 /**
  * "Needs your attention" for the team leader (board 72), in this order: one
  * row for every order waiting for a decision, naming the oldest; one row for
- * every approved order not ordered yet, naming the items; then each open
- * position closing within CLOSING_SOON_DAYS, soonest first. A row with
- * nothing to say is left out.
+ * every approved order not ordered yet, naming the items. Positions keep no
+ * closing day, so no position row joins them. A row with nothing to say is
+ * left out.
  */
 export function leaderAttention(input: {
   readonly orders: readonly Pick<Order, "status" | "item" | "requestedBy" | "requestedOn">[];
-  readonly positions: readonly ClosingPosition[];
   readonly now: Date;
 }): AttentionItem[] {
   const { now } = input;
@@ -88,21 +57,6 @@ export function leaderAttention(input: {
       title: approved.length === 1 ? "1 approved order is not ordered yet" : `${approved.length} approved orders are not ordered yet`,
       detail: itemsLine(approved.map((o) => o.item)),
       action: { label: "Open", href: "/dashboard/orders" },
-    });
-  }
-  const closing = input.positions
-    .flatMap((p) => {
-      if (p.closesOn === null) return [];
-      const days = daysUntil(p.closesOn, now);
-      return days >= 0 && days <= CLOSING_SOON_DAYS ? [{ p, days }] : [];
-    })
-    .sort((a, b) => a.days - b.days || a.p.title.localeCompare(b.p.title));
-  for (const { p, days } of closing) {
-    items.push({
-      kind: "closing-position",
-      title: `${p.title} ${closesIn(days)}`,
-      detail: `${p.department} · ${divisionShortName(p.division)} · ${plural(p.applications, "application", "applications")} so far`,
-      action: { label: "Open", href: `/dashboard/positions?position=${p.ref}` },
     });
   }
   return items;

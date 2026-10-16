@@ -3,6 +3,11 @@ import { canSwitchRecruitmentAs, switchRecruitment } from "@/lib/apply/recruitme
 import { landingAfterLeaving, type NavCounts } from "@/lib/dashboard/access";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
 import { formatEuro, waitingOrders, type ApproveOrdersChange } from "@/lib/dashboard/orders";
+import { partnerEditor } from "@/lib/partners-editor";
+import { dummyLogoFiles, dummyPartnerStore, NO_PARTNER_EDITS_STORE, type DummyPartnerEditsStore } from "./partners";
+import { faqEditor } from "@/lib/faq/editor";
+import { NO_CONTENT_EDITS_STORE } from "./content-edits";
+import { dummyFaqNow, dummyFaqStore, type DummyFaqEditsStore } from "./faqs";
 import {
   checklistProgress,
   divisionShortName,
@@ -433,18 +438,7 @@ function leaderOverview(team: Team, edits: TeamEdits, notices: DummyNotices): Te
       departments: org.departments.length,
     }),
     attention: [
-      ...leaderAttention({
-        orders,
-        positions: open.map((p) => ({
-          ref: p.slug,
-          title: p.title,
-          department: departmentOf(p.divisionId).name,
-          division: divisionOf(p.divisionId).name,
-          applications: applicationsTo([p], team).length,
-          closesOn: p.closesOn ?? null,
-        })),
-        now: NOW,
-      }),
+      ...leaderAttention({ orders, now: NOW }),
       ...dummyNoticeAttention(me, notices, NOW),
     ],
     departments: departmentSummaries(
@@ -848,6 +842,8 @@ export function dummyDashboardData(
   teamEdits: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
+  partnerEdits: DummyPartnerEditsStore = NO_PARTNER_EDITS_STORE,
+  faqEdits: DummyFaqEditsStore = NO_CONTENT_EDITS_STORE,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
   if (viewer !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
@@ -1003,6 +999,11 @@ export function dummyDashboardData(
       await keepApproveOrders(result.value);
       return written(null);
     },
+
+    // Behind the same site-content gate as the database side; changes live in the test developer's cookie.
+    partners: partnerEditor(dummyViewer(viewer, holders), dummyPartnerStore(partnerEdits), dummyLogoFiles),
+    // Seen from the dummy team's moment, so a question saved here reads "Today".
+    faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person))),
     async saveLinkedin(text) {

@@ -47,6 +47,12 @@ export const TEST_DEVELOPER_EDITS_COOKIE = "prt_test_developer_edits";
 /** What a test developer changed on their own pages (lib/dummy-data/own.ts); cleared on sign out. */
 export const TEST_DEVELOPER_OWN_COOKIE = "prt_test_developer_own";
 
+/** What a test developer changed on the partners (lib/dummy-data/partners.ts); cleared on sign out. */
+export const TEST_DEVELOPER_CONTENT_COOKIE = "prt_test_developer_content";
+
+/** What a test developer changed on the questions at the bottom of /apply (lib/dummy-data/faqs.ts); cleared on sign out. Its own cookie, so each content type has the whole cookie's room. */
+export const TEST_DEVELOPER_FAQ_COOKIE = "prt_test_developer_faq";
+
 /**
  * Which own applications the test developer starts with (lib/dummy-data/own.ts):
  * "none" or "withdrawn" after a sign-in with that `applications` value, absent otherwise.
@@ -131,5 +137,7 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url, TEST_DEVELOPER_EDITS_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_OWN_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_CONTENT_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_FAQ_COOKIE),
   );
 }

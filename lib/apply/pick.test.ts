@@ -26,6 +26,7 @@ function databaseSpy() {
   };
   const side: ApplyData = {
     publicPositions: db("getDb"),
+    faqs: db("getDb"),
     position: db("getDb"),
     applicant: db("getDb"),
     hasApplied: db("getDb"),

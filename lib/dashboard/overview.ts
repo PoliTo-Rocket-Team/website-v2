@@ -35,8 +35,7 @@ export type AttentionKind =
   | "no-photo"
   | "notice"
   | "orders-to-decide"
-  | "approved-orders"
-  | "closing-position";
+  | "approved-orders";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };

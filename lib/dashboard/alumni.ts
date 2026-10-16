@@ -3,7 +3,7 @@ import type { FounderMark } from "@/lib/about/alumni-types";
 import { refused, written, type WriteResult } from "./write";
 
 // The dashboard's Alumni page (boards 78, 78b and 78c, issue #257): everyone
-// the public Alumni page can list, filled in from the team's roles, the
+// the public Alumni page can list who has left the team (#271), filled in from the team's roles, the
 // one-time import and the advisors added here. An editor fixes how someone
 // shows (name, founder mark, photo, per-year role text, shown or hidden) or
 // adds an external advisor. A fix is an alumni entry: it never writes a
@@ -85,12 +85,14 @@ export function alumnusRow(a: Alumnus): AlumnusRow {
 }
 
 /**
- * Board 78's rows: everyone the page can list, but never someone who asked to
- * be removed. The latest years first, then by name.
+ * Board 78's rows: everyone the page can list who has left the team, but
+ * never someone who asked to be removed. A member who still holds a role is
+ * managed on Members, not here (#271). The latest years first, then by name.
+ * The year and group filters come from these rows only.
  */
 export function alumniDirectory(alumni: readonly Alumnus[], thisYear: number): AlumniDirectory {
   const rows = alumni
-    .filter((a) => !a.removed)
+    .filter((a) => !a.removed && !a.onTeam)
     .map(alumnusRow)
     .sort((a, b) => b.to - a.to || b.from - a.from || a.name.localeCompare(b.name));
   return {

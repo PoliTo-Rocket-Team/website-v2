@@ -13,13 +13,15 @@ export const metadata: Metadata = {
 // the first paint (issue #163). It reads no request data: the positions come
 // from the environment's side (lib/apply/open.ts), which on the database is
 // the cached public read the dashboard refreshes when a position or the
-// recruitment switch changes. In dummy mode, a request carrying `?open=` or
+// recruitment switch changes. The questions are read the same way, and a
+// question write refreshes their cached read (issue #258). In dummy mode, a request carrying `?open=` or
 // the dummy recruitment cookie is sent to ./dummy-state by proxy.ts instead.
 export default async function ApplyPage() {
-  const listing = applyListing(await plainApplyData().publicPositions());
+  const data = plainApplyData();
+  const [positions, faqs] = await Promise.all([data.publicPositions(), data.faqs()]);
   return (
     <ApplyFrame>
-      <ApplyContent listing={listing} />
+      <ApplyContent listing={applyListing(positions)} faqs={faqs} />
     </ApplyFrame>
   );
 }

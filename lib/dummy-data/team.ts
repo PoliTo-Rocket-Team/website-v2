@@ -285,11 +285,6 @@ export type DummyPosition = {
   /** The role's own question on the application form. */
   readonly question: string;
   readonly requiresMotivationLetter: boolean;
-  /**
-   * The day the role stops taking applications, where one is set: the team
-   * leader's "closes in 5 days" row (board 72, issue #252).
-   */
-  readonly closesOn?: string;
 };
 
 /**
@@ -325,7 +320,7 @@ export const positions = [
   { id: 2, title: "Flight Simulator Developer", slug: "2-flight-simulator-developer", divisionId: 1, open: false, updatedAt: "2026-09-08T15:00:00+02:00", question: "Which languages do you write simulations in?", requiresMotivationLetter: false },
   { id: 9, title: "Structural Engineer", slug: "9-structural-engineer", divisionId: 4, open: true, updatedAt: "2026-10-02T10:30:00+02:00", question: "Have you used FEM software, and which?", requiresMotivationLetter: false },
   { id: 3, title: "Recovery Systems Engineer", slug: "3-recovery-systems-engineer", divisionId: 6, open: true, updatedAt: "2026-09-09T12:00:00+02:00", question: "Have you designed or packed a parachute before?", requiresMotivationLetter: false },
-  { id: 5, title: "Firmware Developer", slug: "5-firmware-developer", divisionId: 10, open: true, updatedAt: "2026-10-09T11:00:00+02:00", question: "Which microcontrollers have you written firmware for?", requiresMotivationLetter: false, closesOn: "2026-10-14" },
+  { id: 5, title: "Firmware Developer", slug: "5-firmware-developer", divisionId: 10, open: true, updatedAt: "2026-10-09T11:00:00+02:00", question: "Which microcontrollers have you written firmware for?", requiresMotivationLetter: false },
   { id: 7, title: "Safety Officer", slug: "7-safety-officer", divisionId: 13, open: true, updatedAt: "2026-10-06T14:10:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
   { id: 10, title: "Graphic Designer", slug: "10-graphic-designer", divisionId: 11, open: false, updatedAt: "2026-08-10T10:00:00+02:00", question: "Share a link to your portfolio.", requiresMotivationLetter: false },
   { id: 4, title: "Trajectory Analyst", slug: "4-trajectory-analyst", divisionId: 1, open: true, updatedAt: "2026-10-05T16:45:00+02:00", question: "Which tools have you used for trajectory work?", requiresMotivationLetter: false },

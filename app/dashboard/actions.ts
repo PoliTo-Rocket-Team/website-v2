@@ -9,6 +9,11 @@ import type { InterviewSlot } from "@/lib/dashboard/my-applications";
 import { openDashboard } from "@/lib/dashboard/open";
 import type { Order } from "@/lib/dashboard/orders";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
+import { isPublishStep, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import type { Partner, PartnerTier } from "@/lib/partners";
+import type { MeasuredLogo } from "@/lib/partners-editor";
+import { PARTNER_FIELDS, type PartnerFields } from "@/lib/partners-fields";
+import type { FaqFields, FaqVersion } from "@/lib/faq/faq";
 
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
@@ -96,6 +101,78 @@ export async function decideOrder(orderId: number, decision: unknown): Promise<W
 export async function markOrdered(orderId: number): Promise<WriteResult<Order>> {
   if (!Number.isSafeInteger(orderId)) return refused("Unknown request.");
   return write("orders", (data) => data.markOrdered(orderId));
+}
+
+// The Partners page (boards 76 and 76b, issue #256). Each write also passes
+// the site-content gate inside the data interface (lib/content/gate.ts).
+
+/** The panel measures a picked logo, so it can say whether the site draws it white before it is saved. */
+export async function measurePartnerLogo(form: FormData): Promise<WriteResult<MeasuredLogo>> {
+  const logo = await uploadOf(form, "logo");
+  if (logo === null) return refused("Choose a logo.");
+  return write("partners", (data) => data.partners.measure(logo));
+}
+
+/** Save draft or Publish on a partner; `partnerId` null is New partner. */
+export async function savePartner(partnerId: number | null, step: PublishStep, form: FormData): Promise<WriteResult<ContentItem<Partner>>> {
+  if (partnerId !== null && !Number.isSafeInteger(partnerId)) return refused("Unknown partner.");
+  if (!isPublishStep(step)) return refused("Save a draft or publish.");
+  const fields = textFields(form, PARTNER_FIELDS) as PartnerFields;
+  const result = await write("partners", async (data) => data.partners.save(partnerId, step, fields, await uploadOf(form, "logo")));
+  if (result.ok) refreshPublicPartners();
+  return result;
+}
+
+export async function removePartner(partnerId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(partnerId)) return refused("Unknown partner.");
+  const result = await write("partners", (data) => data.partners.remove(partnerId));
+  if (result.ok) refreshPublicPartners();
+  return result;
+}
+
+/** A tier's partners in their new order, as dragged. */
+export async function reorderPartners(tier: PartnerTier, partnerIds: readonly number[]): Promise<WriteResult<null>> {
+  if ((tier !== "main" && tier !== "media") || !Array.isArray(partnerIds) || !partnerIds.every(Number.isSafeInteger)) {
+    return refused("Unknown partners.");
+  }
+  const result = await write("partners", (data) => data.partners.reorder(tier, partnerIds));
+  if (result.ok) refreshPublicPartners();
+  return result;
+}
+
+/** The two pages that show partners render again with the new list (the cached read is refreshed by the write). */
+function refreshPublicPartners(): void {
+  revalidatePath("/partners");
+  revalidatePath("/");
+}
+
+// The FAQ page (boards 79 and 79b, issue #258), behind the same site-content
+// gate. /apply is prerendered whole (issue #163), so each write renders it
+// again; the write itself refreshes the cached read of the questions.
+
+/** Save draft or Publish on a question; `faqId` null is New question. The answer is one `answer` field per paragraph box. */
+export async function saveFaq(faqId: number | null, step: PublishStep, form: FormData): Promise<WriteResult<ContentItem<FaqVersion>>> {
+  if (faqId !== null && !Number.isSafeInteger(faqId)) return refused("Unknown question.");
+  if (!isPublishStep(step)) return refused("Save a draft or publish.");
+  const fields: FaqFields = { question: String(form.get("question") ?? ""), answer: form.getAll("answer").map(String) };
+  const result = await write("faq", (data) => data.faqs.save(faqId, step, fields));
+  if (result.ok) revalidatePath("/apply");
+  return result;
+}
+
+export async function removeFaq(faqId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(faqId)) return refused("Unknown question.");
+  const result = await write("faq", (data) => data.faqs.remove(faqId));
+  if (result.ok) revalidatePath("/apply");
+  return result;
+}
+
+/** Every question in its new order, as dragged. */
+export async function reorderFaqs(faqIds: readonly number[]): Promise<WriteResult<null>> {
+  if (!Array.isArray(faqIds) || !faqIds.every(Number.isSafeInteger)) return refused("Unknown questions.");
+  const result = await write("faq", (data) => data.faqs.reorder(faqIds));
+  if (result.ok) revalidatePath("/apply");
+  return result;
 }
 
 export async function saveLinkedin(text: string): Promise<WriteResult<string | null>> {

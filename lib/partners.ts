@@ -1,27 +1,28 @@
-// The Team's partners, one record read by the Partners page (/partners,
-// boards 31, 31b, 31m) and the landing page's logo strip. Partners move to the
-// database and the dashboard later, so every field is a plain value a form
-// can fill. A fact a partner does not have is an absent key: no website
-// (Magicar), no text of their own (JEToP).
+// The Team's partners. Since issue #256 they live in the database and the
+// dashboard edits them (boards 76 and 76b); /partners (boards 31, 31b, 31m)
+// and the landing page's logo strip read the published ones in site order
+// (lib/partners-public.ts). This file keeps their shape, the text limits the
+// dashboard enforces, and the record below: the partners as they were before
+// the switch, carried into the database by migration 0023
+// (lib/partners-import.ts) and served where there is no database (previews).
+// A fact a partner does not have is an absent key: no website (Magicar), no
+// text of their own (JEToP).
 //
-// Order is the live partners page's order, and both surfaces keep it.
 // The about and support texts are the live page's, shortened to the limits
 // below (Huey's card-size ruling on #107) with their meaning and facts kept;
-// the one-liners are board 31's.
-//
-// Adding a partner: one entry here, the logo in public/design/sponsors/, then
-// `pnpm logos:check`, which measures the logo and fails until `darkLogo`
-// matches the measurement, and `pnpm partners:check`, which fails while a
-// text is over its limit.
+// the one-liners are board 31's. `pnpm logos:check` measures each logo in the
+// record and `pnpm partners:check` counts each text.
 
 import type { HeaderStats } from "./about/types";
 import { university } from "./about/university";
+import { textLength } from "./content/text";
 
-/** A logo file in public/design/sponsors/, given as its path from the site root. */
+/** A logo file in public/design/sponsors/, given as its path from the site root: the record's logos. */
 export type LogoSrc = `/design/sponsors/${string}.png`;
 
 export type PartnerLogo = {
-  src: LogoSrc;
+  /** A file in public/design/sponsors/ (the record's), or its public Blob URL (uploaded in the dashboard). */
+  src: string;
   /** The file's own pixels: its true shape before it loads. */
   width: number;
   height: number;
@@ -29,16 +30,26 @@ export type PartnerLogo = {
   kind: "wordmark" | "mark";
   /**
    * Too dark to read on the dark page, so it is drawn all white with a CSS
-   * filter. Set from `pnpm logos:check`, never by eye.
+   * filter. Set from the measurement (`measureLogo`, lib/logo-luminance.ts),
+   * never by eye: on upload in the dashboard, by `pnpm logos:check` for the record.
    */
   darkLogo: boolean;
 };
 
+/**
+ * A logo's kind from its shape: a mark is about as tall as it is wide (the
+ * Sòphia mark is 1.1:1, JEToP's 0.76:1), a wordmark is wider (Mul2's is
+ * 1.7:1). Every logo in the record reads this way.
+ */
+export function logoKindOf(width: number, height: number): PartnerLogo["kind"] {
+  return width / height < 1.5 ? "mark" : "wordmark";
+}
+
 export type PartnerTier = "main" | "media";
 
-/** The partner's own text: about them, then what they do for the Team. */
+/** The partner's own text: about them, then what they do for the Team. Each is optional (board 76b); a partner with neither has no story. */
 export type PartnerStory = {
-  about: string;
+  about?: string;
   support?: string;
 };
 
@@ -57,8 +68,8 @@ export type Partner = {
  * The most characters (Unicode code points) each partner text may hold.
  * Every desktop card has one fixed height, sized in
  * components/partners/partner-card.tsx for an about and a support text at
- * these limits, so a longer text would spill out of its card. The future
- * dashboard's form reads the same numbers.
+ * these limits, so a longer text would spill out of its card. The
+ * dashboard's edit panel and its server check read the same numbers.
  */
 export const PARTNER_TEXT_LIMITS = {
   oneLiner: 80,
@@ -76,10 +87,8 @@ export type TextOverLimit = {
   limit: number;
 };
 
-/** The length a limit counts: code points, so "ò" is one character. */
-export function textLength(text: string): number {
-  return [...text].length;
-}
+// The length a limit counts is shared by every content editor (lib/content/text.ts).
+export { textLength };
 
 /** Every text of this partner that is over its limit; empty when all fit. */
 export function textsOverLimit(partner: Partner): TextOverLimit[] {
@@ -100,7 +109,7 @@ export function textsOverLimit(partner: Partner): TextOverLimit[] {
  * `next build` (which renders both pages that import this file) and
  * `pnpm partners:check` fail on it.
  */
-function withinTextLimits(list: readonly Partner[]): readonly Partner[] {
+function withinTextLimits<P extends Partner>(list: readonly P[]): readonly P[] {
   const over = list.flatMap(textsOverLimit);
   if (over.length > 0) {
     const lines = over.map((o) => `  ${o.partner}: ${o.field} is ${o.length} characters, limit ${o.limit}`);
@@ -109,7 +118,8 @@ function withinTextLimits(list: readonly Partner[]): readonly Partner[] {
   return list;
 }
 
-export const partners: readonly Partner[] = withinTextLimits([
+/** The partners before the switch to the database (issue #256), in their site order. */
+export const partners: readonly (Partner & { logo: { src: LogoSrc } })[] = withinTextLimits([
   {
     name: "Sòphia High Tech",
     logo: { src: "/design/sponsors/color-sophia.png", width: 514, height: 463, kind: "mark", darkLogo: false },
@@ -263,8 +273,8 @@ export const partners: readonly Partner[] = withinTextLimits([
   },
 ]);
 
-export function partnersOf(tier: PartnerTier): readonly Partner[] {
-  return partners.filter((p) => p.tier === tier);
+export function partnersOf(list: readonly Partner[], tier: PartnerTier): readonly Partner[] {
+  return list.filter((p) => p.tier === tier);
 }
 
 /** The Partners page's own copy (boards 31 and 31m). */
@@ -288,13 +298,13 @@ export const partnersPage = {
 } as const;
 
 /**
- * The header's four figures. The partner counts come from the record, and the
- * budget split from Politecnico's share on the Our University page, so the
- * two pages never disagree.
+ * The header's four figures. The partner counts come from the published
+ * partners, and the budget split from Politecnico's share on the Our
+ * University page, so the two pages never disagree.
  */
-export function partnerStats(): HeaderStats {
-  const main = partnersOf("main").length;
-  const media = partnersOf("media").length;
+export function partnerStats(list: readonly Partner[]): HeaderStats {
+  const main = partnersOf(list, "main").length;
+  const media = partnersOf(list, "media").length;
   const politecnico = university.support.share;
   return [
     { value: String(main), label: { text: main === 1 ? "PARTNER" : "PARTNERS" } },

@@ -128,6 +128,13 @@ export type Alumnus = {
   readonly photo: string | null;
   readonly shown: boolean;
   readonly removed: boolean;
+  /**
+   * A member who still holds a role (one with no `leftAt`). The public page
+   * lists them in their years like anyone else; the dashboard's Alumni list
+   * leaves them out, as current members are managed on Members (#271).
+   * Imported people and advisors are never on the team.
+   */
+  readonly onTeam: boolean;
   /** Oldest year first, then in group order. */
   readonly lines: NonEmpty<AlumnusLine>;
 };
@@ -251,7 +258,8 @@ export function alumniOf(record: AlumniRecord, currentYear: number): Alumnus[] {
     const recordName = person?.name ?? kept;
     const lines = nonEmpty(memberLines(roles, record.units, currentYear, entry?.fixes ?? []));
     if (!recordName || lines === null) return [];
-    return [alumnus(`m${memberId}`, "member", recordName, person?.email ?? null, entry ?? NO_ENTRY, lines)];
+    const onTeam = roles.some((r) => r.leftAt === null);
+    return [alumnus(`m${memberId}`, "member", recordName, person?.email ?? null, entry ?? NO_ENTRY, lines, onTeam)];
   });
 
   const others = record.entries.flatMap((entry): Alumnus[] => {
@@ -262,7 +270,7 @@ export function alumniOf(record: AlumniRecord, currentYear: number): Alumnus[] {
         ? importedLines(record.imported.filter((l) => l.entryId === entry.id), entry.fixes)
         : advisorLines(who, entry.fixes),
     );
-    return lines === null ? [] : [alumnus(`e${entry.id}`, who.kind, who.name, null, entry, lines)];
+    return lines === null ? [] : [alumnus(`e${entry.id}`, who.kind, who.name, null, entry, lines, false)];
   });
 
   return [...members, ...others];
@@ -275,6 +283,7 @@ function alumnus(
   email: string | null,
   entry: Pick<AlumniEntry, "name" | "founder" | "photo" | "shown" | "removed">,
   lines: NonEmpty<AlumnusLine>,
+  onTeam: boolean,
 ): Alumnus {
   return {
     key,
@@ -286,6 +295,7 @@ function alumnus(
     photo: entry.photo,
     shown: entry.shown,
     removed: entry.removed,
+    onTeam,
     lines,
   };
 }

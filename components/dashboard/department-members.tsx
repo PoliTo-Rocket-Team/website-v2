@@ -154,7 +154,7 @@ export function DepartmentMembersView({ page, editable }: { page: DepartmentMemb
           </div>
           <div className="md:hidden">
             <FilterMenu
-              chip
+              look="chip"
               icon={Layers}
               label="Division"
               allLabel={options[0].label}

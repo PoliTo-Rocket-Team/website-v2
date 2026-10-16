@@ -44,7 +44,7 @@ export function DivisionTabs({
       </div>
       <div className="md:hidden">
         <FilterMenu
-          chip
+          look="chip"
           icon={Layers}
           label={words.menu}
           allLabel={words.all}

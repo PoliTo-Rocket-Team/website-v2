@@ -36,5 +36,6 @@ export default function ApplyDummyStatePage({ searchParams }: { searchParams: Se
 async function LiveApplyContent({ searchParams }: { searchParams: SearchParams }) {
   const { open } = await searchParams;
   const data = await openApplyData(typeof open === "string" ? open : null);
-  return <ApplyContent listing={applyListing(await data.publicPositions())} />;
+  const [positions, faqs] = await Promise.all([data.publicPositions(), data.faqs()]);
+  return <ApplyContent listing={applyListing(positions)} faqs={faqs} />;
 }

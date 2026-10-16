@@ -28,7 +28,9 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Partners | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| FAQ | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | The IT lead only |
@@ -58,17 +60,14 @@ An admin column comes later. **Planned**, no issue yet.
   IT lead keep boards 40 and 46.
   - **Sidebar:** Overview and Team tree, then RECRUITMENT (Positions, Applications), TEAM
     (Members, Access, Orders) and CONTENT. CONTENT holds the content pages that exist; today that
-    is Alumni. Each content page adds its own row there.
+    is Partners, Alumni, then FAQ. Each content page adds its own row there.
   - **Overview (board 72):** four figures: new applications, open positions, orders waiting for
     the team leader's decision, and the team's size. "Needs your attention" lists, in this order:
-    the orders waiting for a decision (one row, naming the oldest, with Review), the approved
-    orders not ordered yet (one row, naming up to three items, with Open), and each open position
-    that closes within 7 days, soonest first. Stored notices follow. The orders rows show counts
-    and items, never a price. A Departments panel lists each department with its head, its
+    the orders waiting for a decision (one row, naming the oldest, with Review) and the approved
+    orders not ordered yet (one row, naming up to three items, with Open). Stored notices follow.
+    The orders rows show counts and items, never a price. A Departments panel lists each department with its head, its
     divisions and people, and its new applications and open positions. Recent activity has no
     Activity log link.
-  - **Gap:** positions keep no closing day in the database, so no position reads as closing soon
-    there. Only the dummy data sets one.
   - **Members, List view (board 73):** the whole team, with an "All departments" select, an
     "All divisions" select (the chosen department's divisions), and a search over name, email and
     phone. Heads and leads come first: the team leader, the board seats, department heads,
@@ -121,7 +120,12 @@ An admin column comes later. **Planned**, no issue yet.
   the page read one rule, and the page answers "not found" to everyone else.
   - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
     `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni page.
+    the Alumni, Partners and FAQ pages.
+- **Content** is the team leader's sidebar group of the pages that change the public site:
+  Partners, Alumni, then FAQ (boards 72, 76 and 79). Everyone else who reaches them sees them under
+  Team. Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
+  may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
+  `lib/content/gate.ts`). See "6. Site content".
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -499,3 +503,52 @@ and 67m).
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and
   tables become stacked cards.
+
+## 6. Site content
+
+These rules come from #256 (boards 76 and 76b). Partners is the first content editor; Outreach,
+Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
+
+- Every content item keeps the version the public site shows and, beside it, an optional working
+  draft. "Save draft" never reaches the public site; "Publish" makes the draft the public version.
+  A new item saved as a draft is not on the site at all.
+- The list shows Published or Draft. The panel says "Draft changes" for a published item with a
+  draft.
+- Partners are grouped Main, then Media, each with its count. Dragging a row, or Move up and Move
+  down in its menu, sets its place within its tier; /partners and the home logo strip follow that
+  order.
+- While a side panel is open on a screen 1280px or wider, the website column and the drag grip
+  are hidden and the logo box narrows, so names and one lines keep their room (#244). A row still
+  drags by itself, and its menu still moves it.
+- The panel enforces the text limits of `PARTNER_TEXT_LIMITS` (one line 80, about 220, support
+  160, counted as characters, so "ò" is one) with a live counter, and the server refuses a text
+  over its limit.
+- A logo is an 8-bit PNG of at most 1 MB. It is measured on upload: one too dark for the page is
+  saved with the dark flag, and the panel and the public pages draw it white.
+- Remove asks "are you sure" first. It removes the partner and its draft at once.
+- Previews never touch a database: a test developer's partner changes stay in a cookie in their
+  own browser until they sign out, and a logo they upload is not kept. The public pages there show
+  the partners as they were before the switch.
+
+### FAQ (#258, boards 79 and 79b)
+
+- The FAQ page lists the questions at the bottom of /apply in site order, under the columns
+  Question (with the answer's first paragraph under it), Updated and Status. Updated says "Today"
+  for a version written that day in Turin, else the day ("12 Sep"). Status says Published, Draft
+  or Draft changes.
+- Dragging a row, or Move up and Move down in its menu, sets its place. The order is saved at
+  once, and /apply follows it for every published question; a draft takes its place there when
+  it is published.
+- While a side panel is open on a screen 1280px or wider, the Updated column is hidden.
+- The edit panel shows the status and, for a question on /apply, its place there ("3 of 11 on the
+  Apply page"). The question is at most 120 characters, with a live counter. The answer is one box
+  per paragraph: a box drags by its grip (or moves with the arrow keys on it), × removes it, and
+  Add paragraph adds one. A blank box is left out; an answer with no paragraph is refused. The
+  server refuses the same, and a paragraph over 1,500 characters.
+- "On the Apply page" shows the open question as the /apply accordion draws it opened, as it is
+  being typed.
+- Remove asks "are you sure" first, and removes the question and its draft at once.
+- Every write renders /apply again (it is prerendered whole, #163).
+- Previews never touch a database: a test developer's question changes stay in their own cookie
+  until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
+  shows the questions as they were before the switch.

@@ -45,6 +45,8 @@ Call sites, by action:
 | Delete account (type DELETE) | `ConfirmDialog` in [account-parts.tsx](../components/dashboard/account-parts.tsx) |
 | Cancel order request | `ConfirmDialog` in [division-orders.tsx](../components/dashboard/division-orders.tsx) |
 | Remove access | `ConfirmDialog` in [division-access.tsx](../components/dashboard/division-access.tsx) |
+| Remove partner | `ConfirmDialog` in [partners.tsx](../components/dashboard/partners.tsx) |
+| Remove question | `ConfirmDialog` in [faq.tsx](../components/dashboard/faq.tsx) |
 
 ## When this applies
 

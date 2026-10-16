@@ -55,6 +55,10 @@ import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./datab
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { databaseTeamWrites, findForAdd, findPeople, readDivisionMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
+import { blobLogoFiles, databasePartnerStore } from "./database-partners";
+import { partnerEditor } from "@/lib/partners-editor";
+import { faqEditor } from "@/lib/faq/editor";
+import { databaseFaqStore } from "./database-faqs";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
@@ -331,9 +335,8 @@ async function teamOverview(identity: Identity): Promise<TeamOverview> {
 
 /**
  * Board 72 (issue #252): the team leader's figures, what waits for their
- * decision, and the Departments panel, across the team. Positions keep no
- * closing day in the database, so no position reads as closing soon here;
- * the database holds no activity feed, so that reads empty.
+ * decision, and the Departments panel, across the team. The database holds
+ * no activity feed, so that reads empty.
  */
 async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
   const [positions, snapshot, notices] = await Promise.all([
@@ -355,7 +358,7 @@ async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
       people: records.length,
       departments: snapshot.org.departments.length,
     }),
-    attention: [...leaderAttention({ orders, positions: [], now: new Date() }), ...notices],
+    attention: [...leaderAttention({ orders, now: new Date() }), ...notices],
     departments: departmentSummaries(records, snapshot.org, positions),
     people: records.length,
     activity: [],
@@ -741,6 +744,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
       }),
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),
+    partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
+    faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
     ...self,
     // Their applications stay theirs, so they say where the dashboard opens next (#227).
     async leaveTeam(reason, removeFromAlumni) {

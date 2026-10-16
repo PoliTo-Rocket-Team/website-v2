@@ -11,7 +11,13 @@ through their own picker. Why previews and `next dev` run on dummy data is
 1. **One interface.** `DashboardData` in [lib/dashboard/data.ts](../lib/dashboard/data.ts) holds
    every read and write a dashboard page makes: `overview()`, `members()`, `positions()`,
    `moveApplication()`, `deleteAccount()`, and so on, plus `teamWrites` for the Team pages. A new
-   page adds one method here and to both implementations.
+   page adds one method here and to both implementations. A site-content page adds one editor
+   instead (`partners`, issue #256): `contentEditor` in [lib/content/editor.ts](../lib/content/editor.ts)
+   holds the site-content gate, the draft and publish step and the site order, and each side hands
+   it its own store ([lib/dashboard/database-partners.ts](../lib/dashboard/database-partners.ts),
+   [lib/dummy-data/partners.ts](../lib/dummy-data/partners.ts)). The FAQ editor (`faqs`, issue
+   #258) does the same, and the dummy side keeps every content type's changes the one way,
+   [lib/dummy-data/content-edits.ts](../lib/dummy-data/content-edits.ts), each in its own cookie.
 
 2. **Two implementations.** `dummyDashboardData(kind, …)` in
    [lib/dummy-data/index.ts](../lib/dummy-data/index.ts) answers from the dummy arrays for one
