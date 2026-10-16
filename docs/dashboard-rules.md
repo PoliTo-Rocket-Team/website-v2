@@ -655,3 +655,24 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Previews never touch a database: a test developer's question changes stay in their own cookie
   until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
   shows the questions as they were before the switch.
+
+### Team page visual layer (#283, epic #259)
+
+- The Team page's edits are one visual layer laid on the page the team's roles build (ADR 0015):
+  who a spot shows, the name, role, photo and LinkedIn on the page, hidden people, added leaders,
+  department names, hidden and added departments, division leads added, removed or reordered, the
+  intro text and the group photo. The team email is never edited.
+- An edit is kept to a spot (the team leader, a place on the arc, a head block, a division lead
+  row), never to a person or a role. When the real team changes and a spot is gone, its edit stays
+  in the layer and the page skips it; it shows again if the spot comes back. Only the editor or
+  Reset to team removes an edit.
+- An added leader sits at either end of the arc or right after a neighbour, in `OrgChart.leaders`
+  reading order. The arc holds at most eight; adding a ninth is refused.
+- The layer has a published version and an optional draft. Save draft and Reset to team change
+  only the draft; Publish changes what `/about/the-team` shows. Reset to team removes every edit
+  except the intro text and the group photo.
+- Writes follow the site-content rule, and none writes a role, division, department, scope or
+  member.
+- Previews never touch a database: a test developer's layer stays in their own cookie until they
+  sign out, laid on the dummy team in the editor. The public Team page there shows the dummy team
+  with no layer.

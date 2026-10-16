@@ -190,6 +190,13 @@
       "when": 1792144062924,
       "tag": "0026_advisor_role",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792151179860,
+      "tag": "0027_team_page_layer",
+      "breakpoints": true
     }
   ]
 }

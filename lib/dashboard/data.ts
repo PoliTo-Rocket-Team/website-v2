@@ -1,5 +1,6 @@
 import type { Recruitment } from "@/lib/apply/positions";
 import type { RecruitmentControl, SwitchRecruitmentResult } from "@/lib/apply/recruitment-switch";
+import type { TeamPageEditor } from "@/lib/about/team-page-editor";
 import type { FaqEditor } from "@/lib/faq/editor";
 import type { PartnerEditor } from "@/lib/partners-editor";
 import type { DashboardLanding, NavCounts } from "./access";
@@ -188,6 +189,15 @@ export interface DashboardData {
    * questions, seen from the dummy team's moment.
    */
   readonly faqs: FaqEditor;
+
+  /**
+   * The Team page's visual layer (issue #283): Save draft, Publish and Reset
+   * to team, behind the same gate. It writes the layer alone, never a role,
+   * division, department, scope or member. Each side brings its own store and
+   * its own roles: the database's, or a test developer's cookie laid on the
+   * dummy team.
+   */
+  readonly teamPage: TeamPageEditor;
 
   /** Board 55: a team member's own profile. */
   myProfile(): Promise<MyProfile | null>;
