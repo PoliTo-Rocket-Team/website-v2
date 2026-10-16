@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { SectionHead } from "@/components/about/section-head";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,19 @@ function displayOf(i: number, everyone: boolean): string {
   return "hidden";
 }
 
-function List({ posts }: { posts: readonly PostCardData[] }) {
-  const [everyone, setEveryone] = useState(false);
+/**
+ * Wraps one post card in the dashboard's edit shell (issue #294); `layout`
+ * holds the classes that place the card in its grid cell.
+ */
+export type PostCardFrame = (post: PostCardData, card: ReactNode, layout: string) => ReactNode;
+
+type Framing = { frame?: PostCardFrame; keepInView?: PostCardData };
+
+const CARD_LAYOUT = "flex w-full";
+
+function List({ posts, frame, keepInView }: { posts: readonly PostCardData[] } & Framing) {
+  // A card the editor must see opens the list past "Show N more".
+  const [everyone, setEveryone] = useState(() => keepInView !== undefined && posts.indexOf(keepInView) >= FIRST.phone);
   const count = posts.length;
   const moreOnPhone = count - FIRST.phone;
   const moreOnDesktop = count - FIRST.desktop;
@@ -40,8 +51,12 @@ function List({ posts }: { posts: readonly PostCardData[] }) {
     <>
       <ul className="mt-6 grid gap-4 md:mt-10 md:grid-cols-2 md:gap-x-6 md:gap-y-8 lg:grid-cols-3">
         {posts.map((p, i) => (
-          <li key={p.slug} className={displayOf(i, everyone)}>
-            <PostCard post={p} className="flex w-full" />
+          <li key={i} className={displayOf(i, everyone)}>
+            {frame === undefined ? (
+              <PostCard post={p} className={CARD_LAYOUT} />
+            ) : (
+              frame(p, <PostCard post={p} className={CARD_LAYOUT} />, CARD_LAYOUT)
+            )}
           </li>
         ))}
       </ul>
@@ -63,7 +78,12 @@ function List({ posts }: { posts: readonly PostCardData[] }) {
   );
 }
 
-export function Posts({ title, posts, years }: { title: string; posts: readonly PostCardData[]; years: readonly number[] }) {
+export function Posts({
+  title,
+  posts,
+  years,
+  ...framing
+}: { title: string; posts: readonly PostCardData[]; years: readonly number[] } & Framing) {
   const [year, setYear] = useState(ALL);
   return (
     <section className="px-5 pt-section md:px-16">
@@ -87,11 +107,11 @@ export function Posts({ title, posts, years }: { title: string; posts: readonly 
             </TabsList>
           </div>
           <TabsContent value={ALL}>
-            <List posts={posts} />
+            <List posts={posts} {...framing} />
           </TabsContent>
           {years.map((y) => (
             <TabsContent key={y} value={String(y)}>
-              <List posts={posts.filter((p) => p.year === y)} />
+              <List posts={posts.filter((p) => p.year === y)} {...framing} />
             </TabsContent>
           ))}
         </Tabs>

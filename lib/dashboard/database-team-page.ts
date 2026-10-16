@@ -12,7 +12,7 @@ import { written } from "./write";
 // The database side of the Team page's visual layer (issue #283): the
 // editor's store and the public read /about/the-team makes. The layer is one
 // document, so the store holds one item at most, kept as one row per
-// version in `team_page_layer_versions` (migration 0027). Writes touch that
+// version in `team_page_layer_versions` (migration 0034). Writes touch that
 // table alone, through runAuditQuery or runAuditBatch so the audit trigger
 // logs who made them, then refresh the public read
 // (.patterns/audited-mutations.md).

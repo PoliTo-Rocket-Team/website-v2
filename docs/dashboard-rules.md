@@ -9,9 +9,12 @@ built yet is marked **Planned**.
 
 ## 1. Who sees what
 
-The five people:
+The six people:
 
 - **Non-member**: signed in, not on the team (an applicant).
+- **Alumni**: signed in, every role ended, and on the Alumni record (#317). An alumnus holds no
+  access: leaving ends every role and grant, and any access row left over gives nothing. To get
+  access again they are added back with a role.
 - **Member**: on the team.
 - **Division lead**: leads one or more divisions.
 - **Department head**: heads a department and all its divisions.
@@ -25,27 +28,35 @@ them. A former team leader who became an advisor keeps full access through an ac
 
 An admin column comes later. **Planned**, no issue yet.
 
-| Sidebar item or page | Non-member | Member | Division lead | Department head | Full access |
-|---|---|---|---|---|---|
-| My applications | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application | Yes, only with at least one application |
-| Overview | Yes, only with at least one application | Yes | Yes | Yes | Yes |
-| Team tree | No | Yes | Yes | Yes | Yes |
-| Positions | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
-| Applications | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
-| Members | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
-| Partners | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| Alumni | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| FAQ | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| Access | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
-| Orders | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
-| Activity log | No | No | No | No | The IT lead only |
-| My account | User menu only | No | No | No | No |
-| My profile | No | User menu only | User menu only | User menu only | User menu only |
-| Sign out | User menu only | User menu only | User menu only | User menu only | User menu only |
+| Sidebar item or page | Non-member | Alumni | Member | Division lead | Department head | Full access |
+|---|---|---|---|---|---|---|
+| My applications | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown | Yes, only while one is shown |
+| Overview | Yes | Yes | Yes | Yes | Yes | Yes |
+| My alumni | No | Yes | No | No | No | No |
+| Team tree | No | No | Yes | Yes | Yes | Yes |
+| Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
+| Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
+| Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
+| Partners | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| Alumni | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| FAQ | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| Access | No | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
+| Orders | No | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
+| Activity log | No | No | No | No | No | The IT lead only |
+| My account | User menu only | User menu only | No | No | No | No |
+| My profile | No | No | User menu only | User menu only | User menu only | User menu only |
+| Sign out | User menu only | User menu only | User menu only | User menu only | User menu only | User menu only |
 
-- **My applications** shows for everyone, but only when they have at least one application.
-- A non-member with no application lands on the My applications empty state, with a
-  "See open positions" button (#179).
+- **An application is shown** while it is being decided (received, in review, at its interview),
+  and until one month after its latest decision: accept, reject, another team taking the person,
+  join, or withdraw. After an accept, the join is the latest decision. Then it leaves the Overview
+  and My applications, for everyone; the data stays (Owner decision, #317). A decision from before
+  its time was stored (`rejected_at`, migration 0030) counts as past the month.
+- **My applications** shows for everyone, but only while one of their applications is shown.
+  With none shown, its address opens the Overview.
+- **Every viewer lands on the Overview** (#317). A non-member with nothing shown sees their name,
+  their sign-in address and "No applications right now" (board 50f). Before #317 they landed on
+  the My applications empty state (#179).
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
   #238). Three seats hold it:
   - the **team leader**: the role of type `president`;
@@ -89,11 +100,18 @@ An admin column comes later. **Planned**, no issue yet.
   - **Positions and Applications:** as the operations lead's, with "All departments" and "All
     divisions" selects, as on the department head's boards 63 and 64. New position lists every
     division of the team.
-- **Overview** is for members, division leads, department heads and the operations lead, and for
-  a non-member with at least one application, withdrawn ones included (boards 50e and 50e-m,
-  #211). A non-member whose only applications are withdrawn stays on the Overview: the "Your
-  applications" panel shows one line, "No open applications.", with its "Open My applications"
-  link, and the withdrawn applications stay under Past on My applications (Owner decision, #227).
+- **Overview** is for everyone. A non-member's lists their shown applications (boards 50e and
+  50e-m, #211) or says there are none (board 50f); a withdrawn application is never a row there,
+  and stays under Past on My applications (Owner decision, #227). Neither a non-member's nor an
+  alumnus's Overview lists open positions (Owner decision, #317).
+- **An alumnus's Overview** (board 56, #317) reads "Former member · {last unit} · {years}" from
+  their ended roles, then a card that says whether the Alumni page lists them, with "Open My
+  alumni". Their shown applications follow it.
+- **My alumni** (board 56b, #317): "Show me on the Alumni page" is the person's own request, the
+  same one the leave-time box "Remove my name from the Alumni page" records (#257); an editor's
+  Hidden on board 78 is not theirs to undo. The photo is the one the Alumni page shows, checked as
+  on board 78b. The role history lists each academic year from the team's roles, read-only: a
+  wrong entry is the team leader's to fix on the Alumni page.
 - **Team tree** is for members and up.
 - **Positions** and **Applications**: a division lead sees their own divisions. A department head
   sees all divisions in their department and picks one with division tabs. The operations
@@ -131,7 +149,7 @@ An admin column comes later. **Planned**, no issue yet.
   Team. Partners and FAQ follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
   may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
   `lib/content/gate.ts`). See "6. Site content".
-- **My account** (non-member) and **My profile** (member and up) open from the user menu only,
+- **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
 - The PRT logo links to the site home. There is no "back to site" button.
@@ -237,8 +255,49 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
 - The person who takes over keeps every role they already hold.
 - A lead taken off with Remove and no replacement is not a hand-over: Remove keeps its three
   outcomes (see Divisions below).
-- **Planned:** a role holder's own request from My profile, which the next level up confirms
-  (board 55d), is #262.
+- **A role holder's own request from My profile** (#262, boards 55d and 62c; Owner decisions of
+  2026-10-16):
+  - A division lead and a department head see **Hand over your role** on My profile in place of
+    "Leave the team". A member with no role, and the team leader, keep "Leave the team" (the team
+    leader hands over from the Team Leader box, board 77i). The server refuses Leave the team
+    for a lead or a head.
+  - Someone who leads a division and heads a department hands over the department. Someone who
+    leads two divisions hands over the oldest one.
+  - The dialog asks two things, with nothing picked at first: **1. Who takes over**, a select of
+    the people in their unit (everyone else in the lead's division, a co-lead included; everyone
+    in a division of the head's department who does not head it already), and **2. After you
+    hand it over**: Become an advisor ("Stay in <unit> with the Advisor role, without the lead
+    role. Your access ends.") or Leave the team.
+  - **Send for confirmation** stores a **pending hand-over** and changes no role and no access.
+    One request waits per person; My profile then shows that it waits, for whom, and what they do
+    next. It is refused when nobody could confirm it (no head in the department, or no team
+    leader).
+  - **Who confirms:** the next level up. A head of the lead's department confirms a division
+    lead's request; the team leader confirms a department head's. Nobody answers their own
+    request. Only they see the request, and the server refuses Confirm and Decline from
+    everyone else, full access included.
+  - **The approver's row (board 62c):** the request is the top row of "Needs your attention" on
+    their Overview, on an accent background: "<person> wants to hand over <role> to <successor>",
+    then "Sent <when> · <first name> then becomes an advisor, without access" (or "then leaves the
+    team"), with **Decline** and **Confirm**.
+  - **A request lapses** when its sender's roles change before anyone answers it: removed as
+    lead, a division or department closed, made a head, or any other change to which roles they
+    hold (a title edit is not one). A lapsed request is closed for good: nobody sees or answers
+    it, it never blocks the sender's next Send for confirmation, and it never comes back with its
+    old successor, even when they hold the role again. Nobody is notified; the sender sends a new
+    one if they still want to.
+  - **Confirm** runs the hand-over at once with the chosen successor and outcome: the successor
+    holds the role and its access (a lead's successor leads the division; a head's successor
+    gets a head role on the department and keeps every role they hold). A sender who chose
+    Become an advisor keeps only the Advisor role in their unit, and **every access row they held
+    is removed**; one who chose Leave the team leaves, as Leaves the team does. Confirm is
+    refused when the successor is no longer in the unit; Decline still answers it.
+  - **Decline** changes no role. The sender may send a new request.
+  - **Both answers notify the sender:** a notice under "Needs your attention" on their Overview
+    ("<approver> confirmed your hand-over" or "declined"). A sender who is now an advisor reads it
+    on their member Overview, above board 52's panels.
+  - **Gap:** a sender who chose Leave the team is off the team once it is confirmed. Their notice
+    is stored, but the applicant's pages show no notices.
 
 ### Members page
 
@@ -307,12 +366,14 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
 - Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
   and every access ends, after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
-  recruitment manager are told. The person moves to Alumni.
+  recruitment manager are told. The person moves to Alumni. A division lead or a department head
+  hands their role over instead (see Handing over a role).
   - The lead of each division the person was in gets a notice under "Needs your attention" on
     their Overview, until they dismiss it (#201).
   - **Gap:** the recruitment manager is not told; the dashboard has none yet. Tracked in #194.
-- Someone with no active role left (they left, or were moved to Alumni) signs in as a non-member
-  and sees the applicant's pages (#201).
+- Someone with no active role left (they left, or were moved to Alumni) signs in as an alumnus
+  when the Alumni record knows them, else as a non-member (#201, #317). Either way they open on
+  their Overview.
 - Delete account: the person types DELETE. It closes the sign-in. The data is kept at least one
   year, then anonymized for statistics. The Privacy Policy must say so (#122). A non-member may
   also withdraw their open applications in the same dialog.
@@ -596,8 +657,10 @@ and 67m).
 ## 5. Data and testing
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
-  developer" switch, with six people: team leader, operations lead, department head, division
-  lead, member and non-member. The operations lead there sits in the operations lead's seat, so
+  developer" switch, with seven people: team leader, operations lead, department head, division
+  lead, member, alumni and non-member. The alumni viewer is a former member with three years of
+  ended roles, an Alumni entry, one application decided within the last month and one decided
+  before it (#317). The operations lead there sits in the operations lead's seat, so
   they have full access and do not decide orders; the team leader decides orders and gives
   "Approve orders" (#247), and sees boards 72 to 73c (#252). "Approve orders" given or removed
   there is kept until sign out, so after switching to the member it went to, that member reaches

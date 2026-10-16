@@ -2,9 +2,9 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
-import { MyApplicationsView, NoApplicationsView } from "@/components/dashboard/my-applications";
+import { MyApplicationsView } from "@/components/dashboard/my-applications";
 import { canReach } from "@/lib/dashboard/access";
-import { hasNotApplied } from "@/lib/dashboard/my-applications";
+import { hasNoneShown } from "@/lib/dashboard/my-applications";
 import { openDashboard } from "@/lib/dashboard/open";
 import { chooseInterviewSlot, withdrawApplication } from "../actions";
 
@@ -13,8 +13,10 @@ export const metadata: Metadata = {
 };
 
 // Boards 50 and 53 (issue #169): the viewer's own applications. Every viewer
-// kind reaches it (lib/dashboard/access.ts, issue #183). Someone who has not
-// applied yet gets the empty page with the way to /apply (issue #179).
+// kind reaches it (lib/dashboard/access.ts, issue #183), but only while one
+// of their applications is shown (issue #317): the sidebar lists it only
+// then, and with none shown the page opens their Overview instead, where
+// board 50f says why.
 export default function MyApplicationsPage() {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
@@ -31,7 +33,7 @@ async function LiveApplications() {
   if (!canReach(data.viewer, "my-applications")) notFound();
   const applications = await data.myApplications();
   if (applications === null) notFound();
-  if (hasNotApplied(applications)) return <NoApplicationsView />;
+  if (hasNoneShown(applications)) redirect("/dashboard");
   return (
     <MyApplicationsView applications={applications} withdrawApplication={withdrawApplication} chooseInterviewSlot={chooseInterviewSlot} />
   );

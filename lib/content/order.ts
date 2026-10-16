@@ -1,5 +1,4 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import type { ContentItem } from "./versioned";
 
 // The site order of content items (issue #256): an editor drags rows within
 // one group (a partner tier, say), and the public pages follow. One number
@@ -20,9 +19,9 @@ export function nextSiteOrder(items: readonly { readonly siteOrder: number }[]):
  * Refused unless `ids` names each item of the group exactly once: a list the
  * editor saw before someone else added or removed an item is stale.
  */
-export function reorderedSlots<T>(
-  items: readonly ContentItem<T>[],
-  inGroup: (item: ContentItem<T>) => boolean,
+export function reorderedSlots<I extends SiteSlot>(
+  items: readonly I[],
+  inGroup: (item: I) => boolean,
   ids: readonly number[],
 ): WriteResult<SiteSlot[]> {
   const group = items.filter(inGroup);

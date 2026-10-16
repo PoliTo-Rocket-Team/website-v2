@@ -5,6 +5,7 @@ import { canReach, type DashboardLanding, type DashboardPageKey } from "@/lib/da
 import type { DashboardData } from "@/lib/dashboard/data";
 import type { YourDetails } from "@/lib/dashboard/details";
 import type { AccessGrant } from "@/lib/dashboard/division-access";
+import { isHandOverAnswer } from "@/lib/dashboard/hand-over-request";
 import type { InterviewSlot } from "@/lib/dashboard/my-applications";
 import { openDashboard } from "@/lib/dashboard/open";
 import type { Order } from "@/lib/dashboard/orders";
@@ -15,6 +16,8 @@ import type { Partner, PartnerTier } from "@/lib/partners";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { PARTNER_FIELDS, type PartnerFields } from "@/lib/partners-fields";
 import type { FaqFields, FaqVersion } from "@/lib/faq/faq";
+import { readPostFields } from "@/lib/outreach-post-fields";
+import type { OutreachTag, PhotoSrc, PostItem } from "@/lib/outreach-types";
 
 // The dashboard's writes (issues #145 and #169). Each one opens the dashboard as the
 // page did, checks the viewer reaches the page the write belongs to, and
@@ -194,6 +197,51 @@ export async function resetTeamPageLayer(): Promise<WriteResult<Versioned<TeamPa
   return write("team-page", (data) => data.teamPage.reset());
 }
 
+// The Edit post panel (boards 74c, 74d and 74h, issue #290). The site-content
+// gate inside the outreach editor (lib/outreach-editor.ts) decides who may
+// write, as it decides who opens the post page. The writes refresh the cached
+// published read themselves; the pages that show posts render again.
+
+async function contentWrite<T>(run: (data: DashboardData) => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
+  const opening = await openDashboard();
+  return opening.kind === "open" ? run(opening.data) : refused("Sign in again to make changes.");
+}
+
+function refreshPublicOutreach(): void {
+  revalidatePath("/outreach", "layout");
+  revalidatePath("/");
+}
+
+/** Save draft or Publish on a post, or on a new one (`postId` null, board 74f), with the panel's fields. */
+export async function saveOutreachPost(postId: number | null, step: PublishStep, input: unknown): Promise<WriteResult<PostItem>> {
+  if (postId !== null && !Number.isSafeInteger(postId)) return refused("Unknown post.");
+  if (!isPublishStep(step)) return refused("Save a draft or publish.");
+  const fields = readPostFields(input);
+  if (fields === null) return refused("Reload the page and try again.");
+  const result = await contentWrite((data) => data.outreach.savePost(postId, step, fields));
+  if (result.ok) refreshPublicOutreach();
+  return result;
+}
+
+/** A tag typed at the end of the tag list (Enter adds it); every post can pick it from then on. */
+export async function addOutreachTag(name: string): Promise<WriteResult<OutreachTag>> {
+  const result = await contentWrite((data) => data.outreach.addTag(String(name ?? "")));
+  if (result.ok) refreshPublicOutreach();
+  return result;
+}
+
+/** A photo picked in the Photos section (issue #291), stored at once so the page can show it; a save puts it on the post. */
+export async function uploadOutreachPhoto(form: FormData): Promise<WriteResult<PhotoSrc>> {
+  const photo = await uploadOf(form, "photo");
+  if (photo === null) return refused("Choose a photo.");
+  return contentWrite((data) => data.outreach.uploadPhoto(photo));
+}
+
+/** A photo removed before a save used it: its file goes, unless a post version shows it. */
+export async function discardOutreachPhoto(src: string): Promise<WriteResult<null>> {
+  return contentWrite((data) => data.outreach.discardPhoto(String(src ?? "")));
+}
+
 export async function saveLinkedin(text: string): Promise<WriteResult<string | null>> {
   return write("my-profile", (data) => data.saveLinkedin(String(text)));
 }
@@ -210,7 +258,45 @@ export async function removePhoto(): Promise<WriteResult<null>> {
 
 export async function leaveTeam(reason: string, removeFromAlumni: boolean): Promise<WriteResult<DashboardLanding>> {
   const result = await write("my-profile", (data) => data.leaveTeam(String(reason ?? ""), removeFromAlumni === true));
-  // Off the team, the sidebar and every page change to the applicant's (issue #201).
+  // Off the team, the sidebar and every page change to an alumnus's (issues #201, #317).
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/**
+ * My alumni's switch (board 56b, issue #317). The Overview's card reads it
+ * again; the public Alumni page follows its cache tag (./database-alumni.ts).
+ */
+export async function setMyAlumniShown(shown: boolean): Promise<WriteResult<null>> {
+  if (typeof shown !== "boolean") return refused("Check the switch.");
+  const result = await write("my-alumni", (data) => data.setMyAlumniShown(shown));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** My alumni's photo: the one the Alumni page shows beside their name. */
+export async function uploadMyAlumniPhoto(form: FormData): Promise<WriteResult<null>> {
+  const photo = await uploadOf(form, "photo");
+  if (photo === null) return refused("Choose a photo.");
+  return write("my-alumni", (data) => data.setMyAlumniPhoto(photo));
+}
+
+export async function removeMyAlumniPhoto(): Promise<WriteResult<null>> {
+  return write("my-alumni", (data) => data.setMyAlumniPhoto(null));
+}
+
+/** "Send for confirmation" on My profile (board 55d, issue #262): the hand-over waits; no role changes. */
+export async function sendHandOver(input: unknown): Promise<WriteResult<null>> {
+  const result = await write("my-profile", (data) => data.sendHandOver(input));
+  if (result.ok) revalidatePath("/dashboard/profile");
+  return result;
+}
+
+/** Decline or Confirm on the Overview (board 62c): Confirm hands the role over, so every page reads again. */
+export async function answerHandOver(requestId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown hand-over.");
+  if (!isHandOverAnswer(answer)) return refused("Choose Decline or Confirm.");
+  const result = await write("overview", (data) => data.answerHandOver(requestId, answer));
   if (result.ok) revalidatePath("/dashboard", "layout");
   return result;
 }

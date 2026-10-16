@@ -7,6 +7,7 @@ import { teamPageFromRoles } from "@/lib/about/team-roles";
 import { NO_CONTENT_EDITS } from "./content-edits";
 import { NO_EDITS } from "./edits";
 import { dummyDashboardData } from "./index";
+import { NO_OUTREACH_EDITS } from "./outreach";
 import { NO_OWN_CHANGES } from "./own";
 import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
@@ -62,6 +63,7 @@ function dashboard(jar: DummyTeamPageLayerEditsStore, viewer: "operations-lead" 
     "sample",
     untouched("partners", NO_CONTENT_EDITS),
     untouched("the FAQ", NO_CONTENT_EDITS),
+    untouched("Outreach", NO_OUTREACH_EDITS),
     jar,
   );
 }

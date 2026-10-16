@@ -6,8 +6,8 @@ import { ownApplicationsStartOf, type OwnApplicationsStart } from "@/lib/dummy-d
 // person or an agent can sign in as a test developer: no Google, no account
 // and no database session, only a cookie naming which viewer they look as
 // (team leader, operations lead, department head, division lead, member,
-// non-member). The dashboard then
-// reads the dummy data in lib/dummy-data/ instead of the database.
+// alumni, non-member). The dashboard then reads the dummy data in
+// lib/dummy-data/ instead of the database.
 //
 // Production never offers it and never accepts it: every path asks
 // `testDeveloperOn()` first, at request time, so a cookie set elsewhere is
@@ -55,6 +55,8 @@ export const TEST_DEVELOPER_FAQ_COOKIE = "prt_test_developer_faq";
 
 /** What a test developer saved, published or reset on the Team page's visual layer (lib/dummy-data/team-page.ts); cleared on sign out. Its own cookie, as the FAQ's. */
 export const TEST_DEVELOPER_TEAM_PAGE_COOKIE = "prt_test_developer_team_page";
+/** What a test developer changed on the Outreach posts, summit and tags (lib/dummy-data/outreach.ts); cleared on sign out. Its own cookie, as the questions have. */
+export const TEST_DEVELOPER_OUTREACH_COOKIE = "prt_test_developer_outreach";
 
 /**
  * Which own applications the test developer starts with (lib/dummy-data/own.ts):
@@ -143,5 +145,6 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url, TEST_DEVELOPER_CONTENT_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_FAQ_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_TEAM_PAGE_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_OUTREACH_COOKIE),
   );
 }

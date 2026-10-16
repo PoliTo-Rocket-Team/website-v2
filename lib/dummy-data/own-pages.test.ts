@@ -12,6 +12,7 @@ import {
   type OwnApplicationsStart,
   type OwnChanges,
 } from "./own";
+import { ownApplicationsOf } from "./own-applications";
 import { DEFAULT_DUMMY_RECRUITMENT, dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
 
@@ -60,7 +61,7 @@ test("a non-member signed in with applications=none has an empty My applications
   const data = open("non-member");
   const mine = await data.myApplications();
   assert.deepEqual([mine?.active, mine?.past], [[], []]);
-  assert.equal(await data.hasOwnApplications(), false);
+  assert.equal(await data.hasShownApplications(), false);
   assert.equal((await data.myAccount())?.openApplications, 0);
 
   // Position 1 is the sample set's interview; with none sent, it is open to them.
@@ -79,8 +80,35 @@ test("a non-member signed in with applications=withdrawn has only withdrawn appl
   assert.ok(mine.past.length > 0);
   assert.ok(mine.past.every((p) => p.outcome.kind === "withdrawn"));
   // They have applied, so the Overview stays theirs (lib/dashboard/access.ts).
-  assert.equal(await data.hasOwnApplications(), true);
+  assert.equal(await data.hasShownApplications(), true);
   assert.equal((await data.myAccount())?.openApplications, 0);
+});
+
+test("the Alumni test viewer lists only the application decided within the last month, and keeps the older one stored (issue #317)", async () => {
+  const { open } = browser();
+  const data = open("alumni");
+  assert.equal(data.viewer.kind, "alumni");
+  const mine = (await data.myApplications())!;
+  assert.deepEqual([...mine.active, ...mine.past].map((a) => a.id), [501]);
+  assert.equal(await data.hasShownApplications(), true);
+  assert.deepEqual(
+    ownApplicationsOf("alumni", "sample").map((a) => a.id),
+    [501, 502],
+  );
+});
+
+test("the Alumni test viewer has ended roles and an Alumni entry, and My alumni's switch takes them off the Alumni page and back (issue #317)", async () => {
+  const { open } = browser();
+  const me = (await open("alumni").myAlumni())!;
+  assert.deepEqual(me.history.map((h) => h.year), ["2024 – 25", "2023 – 24", "2022 – 23"]);
+  const listed = async () => (await open("operations-lead").alumni()).rows.some((r) => r.name === me.name);
+  assert.equal(await listed(), true);
+  assert.deepEqual(await open("alumni").setMyAlumniShown(false), { ok: true, value: null });
+  assert.equal((await open("alumni").myAlumni())?.askedOff, true);
+  assert.equal(await listed(), false);
+  assert.deepEqual(await open("alumni").setMyAlumniShown(true), { ok: true, value: null });
+  assert.equal(await listed(), true);
+  assert.equal((await open("member").setMyAlumniShown(false)).ok, false);
 });
 
 test("an accepted application cannot be withdrawn", async () => {
@@ -109,7 +137,7 @@ for (const [kind, who] of [["division-lead", "a division lead"], ["operations-le
   test(`${who} who applied sees their own application, picks a time and withdraws it (issue #183)`, async () => {
     const { open } = browser();
     const card = (await open(kind).myApplications())!.active.find((a) => a.stage.kind === "interview")!;
-    assert.equal(await open(kind).hasOwnApplications(), true);
+    assert.equal(await open(kind).hasShownApplications(), true);
     const offered = card.stage.kind === "interview" ? card.stage.interview.slots : [];
     const pick = offered[0];
     assert.deepEqual(await open(kind).chooseInterviewSlot(card.id, pick.id), { ok: true, value: pick });
@@ -186,22 +214,23 @@ test("a member's Your details save keeps the LinkedIn they just changed and the 
   assert.equal(after.details.phone, "+39 340 999 0000");
 });
 
-test("a member who leaves shows in Alumni and comes back as an applicant, still signed in (issue #201)", async () => {
+test("a member who leaves shows in Alumni and comes back as an alumnus, still signed in (issues #201, #317)", async () => {
   const { open } = browser();
   const me = (await open("member").myProfile())!;
-  // The write names the page their dashboard now opens on, the one /dashboard would redirect to (issue #227).
-  assert.deepEqual(await open("member").leaveTeam("Graduating this term.", false), { ok: true, value: "/dashboard/my-applications" });
+  // The write names the page their dashboard now opens on: their Overview, as every viewer's (issue #317).
+  assert.deepEqual(await open("member").leaveTeam("Graduating this term.", false), { ok: true, value: "/dashboard" });
 
   const { rows } = await open("operations-lead").alumni();
   assert.ok(rows.some((r) => r.name === me.name));
 
   const after = open("member");
-  assert.equal(after.viewer.kind, "non-member");
+  assert.equal(after.viewer.kind, "alumni");
   assert.equal(after.viewer.name, me.name);
+  assert.equal((await after.myAlumni())?.name, me.name);
   assert.equal(await after.myProfile(), null);
   const account = (await after.myAccount())!;
   assert.deepEqual([account.name, account.signIn.email], [me.name, me.signIn.email]);
-  assert.equal(await after.hasOwnApplications(), false);
+  assert.equal(await after.hasShownApplications(), false);
   assert.equal((await after.leaveTeam("", false)).ok, false);
 });
 
@@ -213,10 +242,10 @@ test("a member who ticks Remove my name from the Alumni page is not on it after 
   assert.ok(!rows.some((r) => r.name === me.name));
 });
 
-test("someone the lead moves to alumni also comes back as an applicant", async () => {
+test("someone the lead moves to alumni also comes back as an alumnus", async () => {
   const { open } = browser();
   assert.equal(await open("operations-lead").teamWrites!.moveToAlumni(2, { from: 2023, to: 2026, reason: null }), true);
-  assert.equal(open("division-lead").viewer.kind, "non-member");
+  assert.equal(open("division-lead").viewer.kind, "alumni");
   assert.equal(await open("division-lead").divisionAccess(), null);
 });
 

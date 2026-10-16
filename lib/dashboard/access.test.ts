@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canReach, DASHBOARD_PAGES, dashboardLandingFor, landingAfterLeaving, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
+import { canReach, DASHBOARD_PAGES, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
+import { maySiteContent } from "@/lib/content/gate";
 import { FULL_ACCESS_SEATS, testDeveloperStanding as kindOnly, type FullAccessSeat, type ViewerKind, type ViewerStanding } from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
@@ -8,8 +9,8 @@ function shape(viewer: ViewerKind | ViewerStanding, facts: SidebarFacts) {
   return sidebarFor(typeof viewer === "string" ? kindOnly(viewer) : viewer, facts).map((section) => [section.label, section.items.map((item) => item.label)]);
 }
 
-const withApplications: SidebarFacts = { counts: {}, hasOwnApplications: true };
-const withoutApplications: SidebarFacts = { counts: {}, hasOwnApplications: false };
+const withApplications: SidebarFacts = { counts: {}, hasShownApplications: true };
+const withoutApplications: SidebarFacts = { counts: {}, hasShownApplications: false };
 
 test("a non-member who has applied sees Overview and My applications (board 50e)", () => {
   assert.deepEqual(shape("non-member", withApplications), [[null, ["Overview", "My applications"]]]);
@@ -27,15 +28,23 @@ test("a division lead's sidebar is Overview, Team tree, then Recruitment and My 
   ]);
 });
 
-test("a member sees My applications only once they have applied; a non-member always does, alone until they apply (issue #179)", () => {
+test("with no application shown, a member and a non-member see no My applications; a non-member sees Overview alone (board 50f, issue #317)", () => {
   assert.deepEqual(shape("member", withoutApplications), [[null, ["Overview", "Team tree"]]]);
   assert.deepEqual(sidebarFor(kindOnly("non-member"), withoutApplications), [
-    {
-      group: "main",
-      label: null,
-      items: [{ key: "my-applications", label: "My applications", href: "/dashboard/my-applications", count: null }],
-    },
+    { group: "main", label: null, items: [{ key: "overview", label: "Overview", href: "/dashboard", count: null }] },
   ]);
+});
+
+test("an alumnus sees Overview and My alumni, and My applications only while one is shown (boards 56, 56b, issue #317)", () => {
+  assert.deepEqual(shape("alumni", withoutApplications), [[null, ["Overview", "My alumni"]]]);
+  assert.deepEqual(shape("alumni", withApplications), [[null, ["Overview", "My alumni", "My applications"]]]);
+  assert.equal(userMenuPageFor("alumni")?.label, "My account");
+});
+
+test("an alumnus reaches Overview, My alumni and My applications, and no other page (issue #317)", () => {
+  const reached = DASHBOARD_PAGES.map((page) => page.key).filter((key) => canReach(kindOnly("alumni"), key));
+  assert.deepEqual(reached, ["overview", "my-alumni", "my-applications", "my-account"]);
+  for (const kind of ["operations-lead", "member", "non-member"] as const) assert.equal(canReach(kindOnly(kind), "my-alumni"), false, kind);
 });
 
 test("a division lead sees My applications only once they have applied (issue #183)", () => {
@@ -52,8 +61,8 @@ test("the operations lead sees My applications only once they have applied, and 
 const fullAccess = (seat: FullAccessSeat | null): ViewerStanding => ({ kind: "operations-lead", seat, siteContent: false, approveOrders: false });
 
 test("the team leader, the operations lead and the IT lead reach every page of the team (issue #238)", () => {
-  // My account is the applicant's page, and the Activity log is the IT lead's alone (below).
-  const teamPages = DASHBOARD_PAGES.map((p) => p.key).filter((key) => key !== "my-account" && key !== "activity-log");
+  // My account and My alumni are pages off the team, and the Activity log is the IT lead's alone (below).
+  const teamPages = DASHBOARD_PAGES.map((p) => p.key).filter((key) => key !== "my-account" && key !== "my-alumni" && key !== "activity-log");
   for (const seat of FULL_ACCESS_SEATS) {
     for (const key of teamPages) assert.equal(canReach(fullAccess(seat), key), true, `${seat} ${key}`);
   }
@@ -64,7 +73,7 @@ test("the team leader's sidebar is board 72's: Team holds Members, Access and Or
     [null, ["Overview", "Team tree"]],
     ["Recruitment", ["Positions", "Applications"]],
     ["Team", ["Members", "Access", "Orders"]],
-    ["Content", ["Partners", "Alumni", "FAQ"]],
+    ["Content", ["Outreach", "Partners", "Alumni", "FAQ"]],
   ]);
 });
 
@@ -75,7 +84,7 @@ test("the operations lead's and the IT lead's sidebars keep Partners, Alumni and
       [
         [null, ["Overview", "Team tree"]],
         ["Recruitment", ["Positions", "Applications"]],
-        ["Team", ["Members", "Partners", "Alumni", "FAQ", "Access", "Orders"]],
+        ["Team", ["Members", "Outreach", "Partners", "Alumni", "FAQ", "Access", "Orders"]],
       ],
       String(seat),
     );
@@ -113,8 +122,29 @@ test("the Alumni page is for full admins and site-content access, never from a l
   }
   assert.deepEqual(shape({ kind: "member", siteContent: true, approveOrders: false }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
-    ["Team", ["Partners", "Alumni", "FAQ"]],
+    ["Team", ["Outreach", "Partners", "Alumni", "FAQ"]],
   ]);
+});
+
+test("the Outreach page is for whoever the site-content gate admits, never from a lead's role, and sits in the team leader's Content group (issue #289)", () => {
+  const reaches: readonly [ViewerStanding, boolean][] = [
+    [fullAccess("team-leader"), true],
+    [fullAccess("operations-lead"), true],
+    [fullAccess("it-lead"), true],
+    [{ kind: "department-head", siteContent: false, approveOrders: false }, false],
+    [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
+    [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", siteContent: false, approveOrders: true }, false],
+    [{ kind: "member", siteContent: true, approveOrders: false }, true],
+    [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
+  ];
+  for (const [viewer, reached] of reaches) {
+    assert.equal(canReach(viewer, "outreach"), reached, JSON.stringify(viewer));
+    assert.equal(maySiteContent(viewer), reached, `the page and the gate agree: ${JSON.stringify(viewer)}`);
+  }
+  const content = sidebarFor(fullAccess("team-leader"), withoutApplications).find((s) => s.group === "content");
+  assert.equal(content?.items.find((item) => item.key === "outreach")?.href, "/dashboard/outreach");
+  assert.equal(pageTitleFor("/dashboard/outreach/iress-3rd-edition"), "Outreach");
 });
 
 test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue #270)", () => {
@@ -142,21 +172,8 @@ test("a lead who also holds \"Approve orders\" keeps Orders where their role put
   ]);
 });
 
-test("/dashboard sends only a non-member who has not applied to My applications", () => {
-  assert.equal(dashboardLandingFor("non-member", false), "/dashboard/my-applications");
-  assert.equal(dashboardLandingFor("non-member", true), null);
-  for (const kind of ["member", "division-lead", "operations-lead"] as const) {
-    assert.equal(dashboardLandingFor(kind, false), null, kind);
-  }
-});
-
-test("someone who leaves the team goes straight to where /dashboard would send them as a non-member", () => {
-  assert.equal(landingAfterLeaving(false), "/dashboard/my-applications");
-  assert.equal(landingAfterLeaving(true), "/dashboard");
-});
-
 test("My profile and My account are in the user menu, never the sidebar", () => {
-  for (const kind of ["operations-lead", "division-lead", "member", "non-member"] as const) {
+  for (const kind of ["operations-lead", "division-lead", "member", "alumni", "non-member"] as const) {
     const labels = sidebarFor(kindOnly(kind), withApplications).flatMap((section) => section.items.map((item) => item.label));
     assert.ok(!labels.includes("My profile") && !labels.includes("My account"), kind);
   }

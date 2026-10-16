@@ -28,6 +28,7 @@ import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { canReach } from "./access";
 import type { DashboardIdentity } from "./database";
+import { readHandOverOffer } from "./database-hand-over";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
   columnsFromDetails,
@@ -39,6 +40,7 @@ import {
 } from "./details";
 import {
   canWithdraw,
+  isShownAt,
   OPEN_STATUSES,
   pickableSlot,
   placeOf,
@@ -50,10 +52,12 @@ import {
   type InterviewSlot,
   type MyApplications,
   type PastApplication,
+  type StoredApplication,
 } from "./my-applications";
 import { fileSize } from "./recruitment";
 import {
   checkPhoto,
+  HAND_OVER_FIRST,
   leaveReason,
   normalizeLinkedin,
   type DeleteAccount,
@@ -62,6 +66,7 @@ import {
   type MyProfile,
 } from "./self";
 import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
+import { isOffTeam } from "./viewer";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The viewer's own pages read from and written to the database (boards 50 to
@@ -95,11 +100,12 @@ async function readLeaveState(memberId: number): Promise<LeaveState> {
 
 async function readProfile(identity: DashboardIdentity): Promise<MyProfile | null> {
   const memberId = identity.memberId;
-  if (identity.kind === "non-member" || memberId === null) return null;
-  const [[member], details, leave] = await Promise.all([
+  if (isOffTeam(identity.kind) || memberId === null) return null;
+  const [[member], details, leave, handOver] = await Promise.all([
     getDb().select({ prt_email: members.prtEmail }).from(members).where(eq(members.memberId, memberId)).limit(1),
     readDetails(identity.userId),
     readLeaveState(memberId),
+    readHandOverOffer(identity),
   ]);
   const role = identity.role;
   const linkedin = identity.linkedin === null ? null : normalizeLinkedin(identity.linkedin);
@@ -112,6 +118,7 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
     signIn: { provider: "google", email: identity.email },
     leave,
     details,
+    handOver,
   };
 }
 
@@ -170,7 +177,7 @@ function removeFromAlumni(db: ReturnType<typeof getDb>, memberId: number) {
 /**
  * Board 55b: every role the member still holds ends today, so the Alumni page
  * lists them, and the reason is kept. Their access grants go, so they come
- * back as an applicant, and the lead of each division they were in gets a
+ * back as an alumnus holding none (issue #317), and the lead of each division they were in gets a
  * notice on their dashboard (issue #201), all in one batch. Their sign-in,
  * users row and member row stay. With the box ticked, the Alumni page stops
  * listing them (issue #257).
@@ -179,6 +186,8 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
   const memberId = identity.memberId;
   if (memberId === null) return refused("This page is for team members.");
   if ((await readLeaveState(memberId)) === "left") return refused("You already left the team.");
+  // A lead or head leaves through "Hand over your role", which the next level up confirms (issue #262).
+  if ((await readHandOverOffer(identity)) !== null) return refused(HAND_OVER_FIRST);
   const why = leaveReason(reason);
   const notices = await memberLeftNoticesFor(memberId, why);
   await runAuditBatch((db) => [
@@ -199,7 +208,7 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
 }
 
 async function readAccount(identity: DashboardIdentity): Promise<MyAccount | null> {
-  if (identity.kind !== "non-member") return null;
+  if (!isOffTeam(identity.kind)) return null;
   const [details, open] = await Promise.all([
     readDetails(identity.userId),
     getDb()
@@ -221,9 +230,9 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
   };
 }
 
-/** An applicant edits every field on My account; anyone on the team edits only My profile's. */
+/** Someone off the team edits every field on My account; anyone on the team edits only My profile's. */
 function detailsEditorOf(identity: DashboardIdentity): DetailsEditor {
-  return identity.kind === "non-member" ? "applicant" : "member";
+  return isOffTeam(identity.kind) ? "applicant" : "member";
 }
 
 async function saveDetails(identity: DashboardIdentity, input: unknown): Promise<WriteResult<YourDetails>> {
@@ -249,7 +258,7 @@ async function saveDetails(identity: DashboardIdentity, input: unknown): Promise
 async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount): Promise<WriteResult<null>> {
   if (typeof options.withdrawOpenApplications !== "boolean" || typeof options.removeFromAlumni !== "boolean") return refused("Check the form.");
   const { userId, memberId } = identity;
-  const withdraw = options.withdrawOpenApplications && identity.kind === "non-member";
+  const withdraw = options.withdrawOpenApplications && isOffTeam(identity.kind);
   const { applicationIds, fileIds } = withdraw
     ? withdrawnOnDelete(
         await getDb()
@@ -344,12 +353,32 @@ async function leadsOf(divisionIds: readonly number[]): Promise<Map<number, stri
   );
 }
 
+type StoredColumns = {
+  status: StoredApplication["status"];
+  applied_at: string;
+  withdrawn_at: string | null;
+  accepted_at: string | null;
+  rejected_at: string | null;
+  joined_at: string | null;
+};
+
+function storedOf(r: StoredColumns): StoredApplication {
+  return {
+    status: r.status,
+    appliedAt: r.applied_at,
+    withdrawnAt: r.withdrawn_at,
+    acceptedAt: r.accepted_at,
+    rejectedAt: r.rejected_at,
+    joinedAt: r.joined_at,
+  };
+}
+
 async function readMyApplications(identity: DashboardIdentity): Promise<MyApplications | null> {
   if (!canReach(identity, "my-applications")) return null;
   const db = getDb();
   const cvFiles = alias(applicationFiles, "cv_files");
   const letterFiles = alias(applicationFiles, "letter_files");
-  const [rows, [me]] = await Promise.all([
+  const [stored, [me]] = await Promise.all([
     db
       .select({
         id: applications.id,
@@ -363,6 +392,8 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
         applied_at: applications.appliedAt,
         status: applications.status,
         withdrawn_at: applications.withdrawnAt,
+        accepted_at: applications.acceptedAt,
+        rejected_at: applications.rejectedAt,
         joined_at: applications.joinedAt,
         answers: applications.customAnswers,
         cv_name: applications.cvName,
@@ -382,6 +413,9 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
       .orderBy(desc(applications.appliedAt), desc(applications.id)),
     db.select({ first_name: users.firstName }).from(users).where(eq(users.id, identity.userId)).limit(1),
   ]);
+  // Only what the one-month rule shows (issue #317); the rest stays stored.
+  const now = new Date();
+  const rows = stored.filter((r) => isShownAt(storedOf(r), now));
   if (rows.length === 0) return { firstName: me?.first_name ?? identity.name, email: identity.email, active: [], past: [] };
 
   const interviewing = rows.filter((r) => (r.status === "pending" || r.status === "interview") && r.withdrawn_at === null);
@@ -418,7 +452,7 @@ async function readMyApplications(identity: DashboardIdentity): Promise<MyApplic
             chosen: slots.find((s) => s.id === chosenId) ?? null,
           };
     const where = placeOf(
-      { status: r.status, appliedAt: r.applied_at, withdrawnAt: r.withdrawn_at, joinedAt: r.joined_at },
+      storedOf(r),
       interview,
       identity.role?.startedAt ?? null,
     );

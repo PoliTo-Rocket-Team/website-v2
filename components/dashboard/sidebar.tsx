@@ -14,6 +14,7 @@ import {
   Inbox,
   KeyRound,
   LayoutGrid,
+  Megaphone,
   Network,
   ShoppingCart,
   Users,
@@ -32,6 +33,8 @@ const ICONS: Readonly<Record<DashboardPageKey, LucideIcon>> = {
   applications: Inbox,
   members: Users,
   alumni: GraduationCap,
+  "my-alumni": GraduationCap,
+  outreach: Megaphone,
   partners: Handshake,
   faq: CircleHelp,
   // Not listed until the Team page editor lands (issue #283).

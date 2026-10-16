@@ -2,7 +2,7 @@ import "server-only";
 
 import { del, get, put } from "@vercel/blob";
 import { getVercelOidcToken } from "@vercel/oidc";
-import type { PublicPathname } from "./pathname";
+import { publicStoreHost, type PublicPathname, type PublicStoreHost } from "./pathname";
 
 // The public Vercel Blob store (prt-public): profile photos for the public
 // Team page, served straight from their public URL. It authenticates with the
@@ -14,6 +14,12 @@ async function credentials() {
   const storeId = process.env.PUBLIC_BLOB_STORE_ID;
   if (!storeId) throw new Error("PUBLIC_BLOB_STORE_ID is not set: the public file store is not configured.");
   return { access: "public", oidcToken: await getVercelOidcToken(), storeId } as const;
+}
+
+/** The host this deployment's public store serves its files from; null while the store is not configured. */
+export function ownPublicStoreHost(): PublicStoreHost | null {
+  const storeId = process.env.PUBLIC_BLOB_STORE_ID;
+  return storeId ? publicStoreHost(storeId) : null;
 }
 
 /** Stores a new file and returns its public URL. Refuses to overwrite: every pathname is written once. */

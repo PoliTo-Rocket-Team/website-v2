@@ -75,8 +75,8 @@ export type MyApplications = {
   readonly past: readonly PastApplication[];
 };
 
-/** Nothing sent yet: no application in progress and none over (issue #179). */
-export function hasNotApplied(mine: MyApplications): boolean {
+/** Nothing shown: none sent yet (issue #179), or every one a month past its decision (issue #317). */
+export function hasNoneShown(mine: MyApplications): boolean {
   return mine.active.length === 0 && mine.past.length === 0;
 }
 
@@ -88,8 +88,81 @@ export type StoredApplication = {
   readonly status: "received" | "pending" | "interview" | "accepted" | "rejected" | "accepted_by_another_team" | "joined";
   readonly appliedAt: string;
   readonly withdrawnAt: string | null;
+  readonly acceptedAt: string | null;
+  /** When it was rejected or another team took the person (`rejected_at`, drizzle/0030). */
+  readonly rejectedAt: string | null;
   readonly joinedAt: string | null;
 };
+
+/**
+ * When an application's latest decision was made: still being decided
+ * (received, in review, at its interview), or decided at a time, or decided
+ * with no time on record (decided before the time was stored, issue #317).
+ * A withdrawal is the applicant's decision; a join after an accept is the
+ * latest decision.
+ */
+export type LatestDecision =
+  | { readonly kind: "undecided" }
+  | { readonly kind: "decided"; readonly at: string }
+  | { readonly kind: "decided-unrecorded" };
+
+function decidedAt(...times: readonly (string | null)[]): LatestDecision {
+  const known = times.filter((t): t is string => t !== null).sort((a, b) => Date.parse(a) - Date.parse(b));
+  const latest = known[known.length - 1];
+  return latest === undefined ? { kind: "decided-unrecorded" } : { kind: "decided", at: latest };
+}
+
+export function latestDecisionOf(application: StoredApplication): LatestDecision {
+  if (application.withdrawnAt !== null) return { kind: "decided", at: application.withdrawnAt };
+  switch (application.status) {
+    case "received":
+    case "pending":
+    case "interview":
+      return { kind: "undecided" };
+    case "accepted":
+      return decidedAt(application.acceptedAt);
+    case "joined":
+      return decidedAt(application.acceptedAt, application.joinedAt);
+    case "rejected":
+    case "accepted_by_another_team":
+      return decidedAt(application.rejectedAt);
+  }
+}
+
+/**
+ * One calendar month after `iso`, in UTC; a day the next month lacks falls
+ * on its last day (31 Jan gives 28 or 29 Feb).
+ */
+export function oneMonthAfter(iso: string): Date {
+  const at = new Date(iso);
+  const year = at.getUTCFullYear();
+  const month = at.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(
+    Date.UTC(year, month, Math.min(at.getUTCDate(), lastDay), at.getUTCHours(), at.getUTCMinutes(), at.getUTCSeconds(), at.getUTCMilliseconds()),
+  );
+}
+
+/**
+ * Whether the Overview and My applications list an application at `now`
+ * (Owner decision, issue #317): while it is being decided, and until one
+ * month after its latest decision, that moment included. A decision with no
+ * time on record is past the month. A hidden application stays stored.
+ */
+export function isShownAt(application: StoredApplication, now: Date): boolean {
+  const decision = latestDecisionOf(application);
+  switch (decision.kind) {
+    case "undecided":
+      return true;
+    case "decided-unrecorded":
+      return false;
+    case "decided":
+      return now.getTime() <= oneMonthAfter(decision.at).getTime();
+  }
+}
+
+/** What the panel under "No applications right now" says (board 50f). */
+export const SHOWN_FOR_A_MONTH = "Each application stays on your Overview until a month after its decision.";
 
 /** Where one application lists on My applications: still in progress, or over. */
 export type ApplicationPlace =

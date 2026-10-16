@@ -16,12 +16,14 @@ import { parseDummyState, serializeDummyState, type DummyStateStore } from "@/li
 import { parsePartnerEdits, serializePartnerEdits, type DummyPartnerEditsStore } from "@/lib/dummy-data/partners";
 import { parseFaqEdits, serializeFaqEdits, type DummyFaqEditsStore } from "@/lib/dummy-data/faqs";
 import { parseTeamPageLayerEdits, serializeTeamPageLayerEdits, type DummyTeamPageLayerEditsStore } from "@/lib/dummy-data/team-page";
+import { parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEditsStore } from "@/lib/dummy-data/outreach";
 import {
   TEST_DEVELOPER_APPLICATIONS_COOKIE,
   TEST_DEVELOPER_CONTENT_COOKIE,
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_FAQ_COOKIE,
   TEST_DEVELOPER_TEAM_PAGE_COOKIE,
+  TEST_DEVELOPER_OUTREACH_COOKIE,
   TEST_DEVELOPER_COOKIE_MAX_AGE_S,
   TEST_DEVELOPER_EDITS_COOKIE,
   TEST_DEVELOPER_OWN_COOKIE,
@@ -53,6 +55,7 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
         ownApplicationsStartOf(jar.get(TEST_DEVELOPER_APPLICATIONS_COOKIE)?.value),
         dummyPartnerEditsIn(jar),
         dummyFaqEditsIn(jar),
+        dummyOutreachEditsIn(jar),
         dummyTeamPageEditsIn(jar),
       ),
       true,
@@ -126,6 +129,14 @@ function dummyTeamPageEditsIn(jar: Jar): DummyTeamPageLayerEditsStore {
   return {
     current: parseTeamPageLayerEdits(jar.get(TEST_DEVELOPER_TEAM_PAGE_COOKIE)?.value),
     save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_TEAM_PAGE_COOKIE, serializeTeamPageLayerEdits(next)),
+  };
+}
+
+/** Changes to the Outreach posts, summit and tags (issue #287, lib/dummy-data/outreach.ts); the public pages never read them. */
+function dummyOutreachEditsIn(jar: Jar): DummyOutreachEditsStore {
+  return {
+    current: parseOutreachEdits(jar.get(TEST_DEVELOPER_OUTREACH_COOKIE)?.value),
+    save: async (next) => setDummyCookie(jar, TEST_DEVELOPER_OUTREACH_COOKIE, serializeOutreachEdits(next)),
   };
 }
 
