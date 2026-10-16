@@ -1,11 +1,11 @@
 import { contentEditor, type ContentEditor, type ContentStore } from "@/lib/content/editor";
 import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { textLength } from "@/lib/content/text";
-import { publicItems, versionRows, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
+import { publicItems, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
 import { checkPostFields, postCheckResult, type PostFields } from "./outreach-post-fields";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { checkPhotoSources, checkPhotoUpload, type PhotoFiles } from "./outreach-photos";
+import { checkPhotoSources, checkPhotoUpload, freeingPhotoFiles, photosNoLongerShown, type PhotoFiles } from "./outreach-photos";
 import type { OutreachContent, OutreachFeature, OutreachPost, OutreachTag, PhotoSrc } from "./outreach-types";
 
 // The Outreach content as the dashboard keeps it (issue #287): the posts, each
@@ -103,7 +103,7 @@ export interface OutreachEditor {
 
 export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, files: PhotoFiles): OutreachEditor {
   const allowed = maySiteContent(viewer);
-  const posts = contentEditor(viewer, store.posts);
+  const posts = contentEditor(viewer, freeingPhotoFiles(store.posts, files));
   return {
     posts: {
       ...posts,
@@ -130,10 +130,7 @@ export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, fil
     async discardPhoto(src) {
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
       if (!files.owns(src)) return written(null);
-      const used = (await store.posts.list()).some((item) =>
-        versionRows(item.version).some((row) => row.content.photos.some((p) => p.src === src)),
-      );
-      if (!used) await files.drop([src]);
+      await files.drop(photosNoLongerShown([src], await store.posts.list()));
       return written(null);
     },
 

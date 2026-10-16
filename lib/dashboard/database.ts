@@ -750,7 +750,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     ...databaseDivisionPages(identity),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
-    outreach: outreachEditor(identity, databaseOutreachStore, blobPhotoFiles),
+    outreach: outreachEditor(identity, databaseOutreachStore, blobPhotoFiles()),
     ...self,
     // Their applications stay theirs, so they say where the dashboard opens next (#227).
     async leaveTeam(reason, removeFromAlumni) {

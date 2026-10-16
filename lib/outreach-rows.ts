@@ -11,7 +11,7 @@ import {
   type OutreachPhoto,
   type OutreachPost,
 } from "./outreach-types";
-import { storedPhotoPathname } from "./outreach-photos";
+import { isPhotoSrc } from "./outreach-photos";
 import type { Copy } from "./projects";
 
 // An Outreach post version and the summit as their rows hold them (db/schema,
@@ -140,9 +140,13 @@ function bodyBlockOf(value: unknown): BodyBlock | null {
   return null;
 }
 
-/** A photo of the site or an uploaded one in the public store; a preview's data URL is never stored. */
+/**
+ * A photo of the site or an uploaded one; a preview's data URL is never
+ * stored. Which store an uploaded file may come from, a save decides
+ * (`checkPhotoSources`), so a row holds only what a save let through.
+ */
 export function isStoredPhotoSrc(src: unknown): src is `/outreach/${string}` | `https://${string}` {
-  return typeof src === "string" && (src.startsWith("/outreach/") || storedPhotoPathname(src) !== null);
+  return isPhotoSrc(src) && !src.startsWith("data:");
 }
 
 function photoOf(value: unknown): OutreachPhoto | null {
