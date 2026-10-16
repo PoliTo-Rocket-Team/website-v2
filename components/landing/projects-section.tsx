@@ -47,7 +47,8 @@ export function ProjectsSection({ cards, frame }: { cards: readonly HomeCardView
           </Link>
         </div>
 
-        <SwipeRow label="Projects" className="mt-6 md:mt-14 md:grid md:gap-8 lg:grid-cols-3 lg:gap-4">
+        {/* Below md the row's own 24px top room is the gap to the cards. */}
+        <SwipeRow label="Projects" className="md:mt-14 md:grid md:gap-8 lg:grid-cols-3 lg:gap-4">
           {cards.map((p) =>
             frame === undefined ? (
               <HomeProjectCard key={p.num} project={p} />

@@ -12,6 +12,9 @@ import { Children, useEffect, useRef, useState, type ReactNode } from "react";
 // clip edge sits below the cards' whole shadow (`.glass-project`: 16px down,
 // 40px blur, so 56px), not across it, where it drew a hard line (issue #50).
 // The dots pull back up by the extra 36px, so they stay 20px under the cards.
+// The clip's top edge sits 24px above the cards too, so the edit shell's Edit
+// card chip, which rides 20px over a card's top edge (board 75d), is not cut
+// off. That room is empty and is the row's gap above its cards on phones.
 export function SwipeRow({
   children,
   label,
@@ -57,7 +60,7 @@ export function SwipeRow({
         ref={rowRef}
         role="group"
         aria-label={label}
-        className={`-mx-5 flex snap-x snap-mandatory scroll-px-5 gap-[10px] -mb-9 overflow-x-auto overflow-y-hidden px-5 pb-14 [scrollbar-width:none] md:mx-0 md:mb-0 md:overflow-visible md:px-0 md:pb-0 [&::-webkit-scrollbar]:hidden ${className ?? ""}`}
+        className={`-mx-5 flex snap-x snap-mandatory scroll-px-5 gap-[10px] -mb-9 overflow-x-auto overflow-y-hidden px-5 pb-14 pt-6 [scrollbar-width:none] md:mx-0 md:mb-0 md:overflow-visible md:px-0 md:pb-0 md:pt-0 [&::-webkit-scrollbar]:hidden ${className ?? ""}`}
       >
         {children}
       </div>
