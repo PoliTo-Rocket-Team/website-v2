@@ -151,6 +151,12 @@ export interface DashboardData {
    */
   decideOrder(orderId: number, input: unknown): Promise<WriteResult<Order>>;
   /**
+   * Mark as ordered (board 70c, `checkMarkOrdered`, ./orders.ts): an approved
+   * request becomes Ordered. Refused for anyone who does not decide orders, and
+   * for a request in any state but Approved. Answers the request as it now reads.
+   */
+  markOrdered(orderId: number): Promise<WriteResult<Order>>;
+  /**
    * Give or remove "Approve orders" (`checkApproveOrdersChange`, ./orders.ts):
    * only the team leader may, and any number of people may hold it.
    */

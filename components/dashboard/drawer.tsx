@@ -13,6 +13,9 @@ export const PANEL_GHOST_BUTTON = `inline-flex h-11 items-center justify-center 
 /** The paper footer button: the panel's main action. */
 export const PANEL_PRIMARY_BUTTON = `inline-flex h-11 items-center justify-center rounded-full bg-prt-text px-4 text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-70 ${FOCUS}`;
 
+/** The red filled footer button: Reject order, the last step of a rejection (board 70e). */
+export const PANEL_DANGER_FILLED_BUTTON = `inline-flex h-11 items-center justify-center rounded-full bg-danger px-4 text-[14px] font-semibold text-prt-text transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60 ${FOCUS}`;
+
 /** The red outlined footer button: Cancel request (board 61c). */
 export const PANEL_DANGER_BUTTON = `inline-flex h-11 items-center justify-center rounded-full border border-danger/50 px-4 text-[14px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60 ${FOCUS}`;
 
@@ -31,7 +34,9 @@ export function SidePanel({
   title,
   detail,
   leading,
+  action,
   footer,
+  footerLayout = "pair",
   children,
 }: {
   open: boolean;
@@ -40,8 +45,12 @@ export function SidePanel({
   detail?: string;
   /** Beside the title, before it: the person's avatar on the member panels (boards 61f, 61g). */
   leading?: ReactNode;
+  /** A small action beside the close button: Edit on an order whose footer is busy deciding (board 70b). */
+  action?: ReactNode;
   /** The pinned actions; none for a panel that only shows. */
   footer?: ReactNode;
+  /** Two buttons of equal width, or a row where each button sizes itself: Reject, Ask for changes, Approve (board 70b). */
+  footerLayout?: "pair" | "row";
   children: ReactNode;
 }) {
   return (
@@ -66,6 +75,7 @@ export function SidePanel({
                 {detail && <p className="mt-0.5 truncate text-[13px] text-prt-muted">{detail}</p>}
               </div>
             </div>
+            {action}
             <DialogClose
               aria-label="Close"
               className={`-mr-2 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text md:flex ${FOCUS}`}
@@ -75,7 +85,9 @@ export function SidePanel({
           </header>
           {children}
           {footer && (
-            <footer className="grid shrink-0 grid-cols-2 gap-3 border-t border-hairline px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-7">
+            <footer
+              className={`${footerLayout === "pair" ? "grid grid-cols-2" : "flex"} shrink-0 gap-3 border-t border-hairline px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-7`}
+            >
               {footer}
             </footer>
           )}

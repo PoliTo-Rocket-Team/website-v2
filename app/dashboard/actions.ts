@@ -81,6 +81,23 @@ export async function cancelOrder(orderId: number): Promise<WriteResult<null>> {
   return write("orders", (data) => data.cancelOrder(orderId));
 }
 
+/**
+ * Approve, Reject or Ask for changes (boards 70b, 70d and 70e), after the
+ * page asked "are you sure". The data interface checks the decision with
+ * `checkDecision` (lib/dashboard/orders.ts): the right to decide, a waiting
+ * request, a note on Ask for changes.
+ */
+export async function decideOrder(orderId: number, decision: unknown): Promise<WriteResult<Order>> {
+  if (!Number.isSafeInteger(orderId)) return refused("Unknown request.");
+  return write("orders", (data) => data.decideOrder(orderId, decision));
+}
+
+/** Mark as ordered (board 70c), after the page asked "are you sure"; checked with `checkMarkOrdered`. */
+export async function markOrdered(orderId: number): Promise<WriteResult<Order>> {
+  if (!Number.isSafeInteger(orderId)) return refused("Unknown request.");
+  return write("orders", (data) => data.markOrdered(orderId));
+}
+
 export async function saveLinkedin(text: string): Promise<WriteResult<string | null>> {
   return write("my-profile", (data) => data.saveLinkedin(String(text)));
 }

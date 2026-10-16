@@ -25,13 +25,15 @@ export const positionTypeEnum = pgEnum("position_type", [
 ]);
 
 // Dashboard v2 orders (issue #172, drizzle/0010): the team leader can send a
-// request back for changes, and the lead can cancel one.
+// request back for changes, and the lead can cancel one. An approved request
+// is marked `ordered` once it is placed with the shop (issue #247, drizzle/0019).
 export const orderStatusEnum = pgEnum("status", [
   "pending",
   "accepted",
   "rejected",
   "changes_requested",
   "cancelled",
+  "ordered",
 ]);
 
 export const applicationStatusEnum = pgEnum("application_status", [
@@ -52,7 +54,8 @@ export const scopeTypeEnum = pgEnum("scope_type", [
   "department",
   "division",
   "website",
-  // A team-wide grant in no unit: "Approve orders" (issue #233, drizzle/0017).
+  // A team-wide grant in no unit: "Approve orders" (issue #233, drizzle/0017),
+  // or an area given across the whole team (issue #247, drizzle/0019).
   "team",
 ]);
 
@@ -421,7 +424,7 @@ export const dashboardNotices = pgTable("dashboard_notices", {
 // The Alumni page (issue #257). The page is built from the roles; an entry
 // holds only how one person shows on it, so a fix never writes a role, a
 // division or access. A member's entry is keyed by their member row and made
-// on the first fix; an imported person's (drizzle/0020) and an external
+// on the first fix; an imported person's (drizzle/0021) and an external
 // advisor's (board 78c) hold the name they were imported or added with.
 export const alumniEntryKindEnum = pgEnum("alumni_entry_kind", [
   "member",
@@ -466,7 +469,7 @@ export const alumniEntries = pgTable("alumni_entries", {
   ),
 }));
 
-/** One line of an imported year (drizzle/0020): the group and role the old page gave, in its order. */
+/** One line of an imported year (drizzle/0021): the group and role the old page gave, in its order. */
 export const alumniImportedRoles = pgTable("alumni_imported_roles", {
   id: serial("id").primaryKey(),
   entryId: integer("entry_id")

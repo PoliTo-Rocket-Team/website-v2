@@ -302,11 +302,12 @@ function personById(id: number): DummyPerson {
 
 /** The team member each other viewer signs in as. */
 export const personFor = {
+  "team-leader": personById(14),
   "operations-lead": personById(1),
   "department-head": personById(15),
   "division-lead": personById(2),
   member: personById(5),
-} as const satisfies Readonly<Record<"operations-lead" | "department-head" | "division-lead" | "member", DummyPerson>>;
+} as const satisfies Readonly<Record<"team-leader" | "operations-lead" | "department-head" | "division-lead" | "member", DummyPerson>>;
 
 // In board 41's order. How many applications each has, and how many are new,
 // comes from ./applications.ts, never from a number kept here. Ids make the

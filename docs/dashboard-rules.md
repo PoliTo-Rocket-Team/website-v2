@@ -87,8 +87,9 @@ An admin column comes later. **Planned**, no issue yet.
   with site-content access, which the full admins can give to anyone. A division lead or
   department head gets nothing from their role here (Owner decision, #234). The sidebar item and
   the page read one rule, and the page answers "not found" to everyone else.
-  - **Gap:** the full admins' Access page has no site-content area yet, so site-content access
-    cannot be given there. Tracked in #247.
+  - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
+    `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
+    the Alumni page.
 - **My account** (non-member) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -381,12 +382,21 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
 
 #### Full access
 
-These rules come from #238.
+These rules come from #238 and #247 (boards 71 and 71b).
 
-- Full access holds every area at Can edit across the whole team: "YOUR ACCESS · the whole team".
-- The page works as a head's does, across every department: department tabs ("All departments"
-  first) narrow the table, and the "Where" field lists each department, whole, and each of its
-  divisions. The heads and division leads show first, with their role's access, locked.
+- Full access holds every area at Can edit across the whole team, Alumni included: "YOUR ACCESS ·
+  Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
+  team leader.
+- Above the table: Everyone, Full access and Approve orders tabs, each with its count, and an "All
+  departments" select. The other full-access seats show first ("Full access · Whole team", "With
+  the role", locked), then the heads and division leads with their role's access, locked.
+- Give access picks a person from the whole team and a Where: the whole team (a `team` scope row
+  in no unit, which covers every department and any added later), one department, or one division.
+  The areas are Positions, Applications, Members, Alumni and Orders, each at Can view or Can edit.
+  Alumni is given to the whole team only.
+- **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
+  it from anyone else. The operations lead and the IT lead give every other access. The Activity
+  log is never given: it stays the IT lead's.
 - The delegation limit still holds: no area above the viewer's own level, and no lead's role
   access changes here.
 
@@ -395,7 +405,12 @@ These rules come from #238.
 These rules come from the Owner decisions of 2026-10-11 on #233 (boards 61 to 61d, 61m, 67, 67b
 and 67m).
 
-- The statuses are Waiting, Approved, Changes requested and Rejected.
+- The statuses are Waiting, Approved, Ordered, Changes requested and Rejected.
+- **Ordered** follows Approved and nothing else (#247, board 70c). An approved order shows "Approved
+  by you on {date}" (or the approver's name) and a "Mark as ordered" button. The people who decide
+  orders (the team leader and the holders of "Approve orders") mark an order as ordered, and only
+  an approved one; the server refuses it from anyone else and from any other status. Ordered is
+  final: nobody edits, decides or cancels it. Its pill is grey.
 - **Who sees.** Anyone with any Orders access sees every order in the team, in every
   department. A person with no Orders access does not see the page.
   - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
@@ -416,10 +431,13 @@ and 67m).
   can give **"Approve orders"** to any number of people, from their Access page; there is no
   limit on how many hold it. Only the team leader gives or removes it. The server refuses a
   decision from anyone else, and a decision on a request that is not waiting.
-  - **Gap:** the team leader's Access page, where "Approve orders" is given, and the buttons to
-    approve, reject or ask for changes are not built yet; the server rules are. Tracked in #247.
-- Approve, reject, ask for changes and cancel each ask "are you sure" first. Asking for changes
-  needs a reason, which shows on Changes requested with "Edit and send again".
+- **Deciding on the page** (#247, boards 70 to 70e). A waiting order opened by someone who decides
+  shows Reject, Ask for changes and Approve; Edit moves to the panel's head. While a panel is open
+  the Department column is hidden. Ask for changes opens a "What should change" note, which is
+  required; the requester sees it and can edit and send the request again. Reject opens a "Why
+  (optional)" note; the requester sees the reason, and a rejected request can never be edited or
+  sent again: they make a new one.
+- Approve, reject, ask for changes, mark as ordered and cancel each ask "are you sure" first.
 - **The table.** No tabs. The Department · Division and Status column headers each have a filter.
   The department filter is a list of departments with checkboxes, each with its divisions nested;
   ticking a department ticks all its divisions. Clear and Apply sit at the foot. Departments are
@@ -436,9 +454,10 @@ and 67m).
 ## 5. Data and testing
 
 - Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
-  developer" switch, with five people: non-member, member, division lead, department head and
-  operations lead. The operations lead there sits in the operations lead's seat, so they have
-  full access and do not decide orders.
+  developer" switch, with six people: team leader, operations lead, department head, division
+  lead, member and non-member. The operations lead there sits in the operations lead's seat, so
+  they have full access and do not decide orders; the team leader decides orders and gives
+  "Approve orders" (#247).
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
 - On a phone, popups become bottom sheets, side panels become full pages with a back arrow, and

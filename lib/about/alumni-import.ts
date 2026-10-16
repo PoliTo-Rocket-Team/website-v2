@@ -13,7 +13,7 @@ import type { Photo } from "./types";
 // 2024–25's advisors come from the Team page's record (lib/about/team.ts):
 // the roles hold no advisors, so they are imported as that year's Advisors.
 //
-// drizzle/0020_alumni_import.sql wrote this data into the database once; the
+// drizzle/0021_alumni_import.sql wrote this data into the database once; the
 // dummy data reads it from here. Fixes from the dashboard never change it.
 
 /** Someone in an imported group, with the role they held that year. */

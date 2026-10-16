@@ -38,7 +38,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
-import { testDeveloperStanding, type DashboardViewer, type ViewerKind } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, testDeveloperStanding, type DashboardViewer, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { departmentCode, divisionLabel, positionText } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
@@ -48,6 +48,7 @@ import {
   dummyCancelOrder,
   dummyDecideOrder,
   dummyEditOrder,
+  dummyMarkOrdered,
   dummyOrdersIn,
   dummyOrdersPage,
   dummyPlaceOrder,
@@ -226,19 +227,19 @@ function headDepartment() {
   return { ...department, divisions: own, divisionIds: own.map((d) => d.id) as number[] };
 }
 
-/** Who a test developer signed in as `kind` is: the dashboard's user card and the navbar show this name. */
-export function dummyViewer(kind: ViewerKind): DashboardViewer {
-  if (kind === "non-member") {
-    return { ...testDeveloperStanding(kind), name: applicant.name, role: "Applicant", session: "test-developer" };
+/** Who a test developer signed in as `viewer` is: the dashboard's user card and the navbar show this name. */
+export function dummyViewer(viewer: TestViewer): DashboardViewer {
+  if (viewer === "non-member") {
+    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", session: "test-developer" };
   }
-  const person = personFor[kind];
-  return { ...testDeveloperStanding(kind), name: person.name, role: person.title, session: "test-developer" };
+  const person = personFor[viewer];
+  return { ...testDeveloperStanding(viewer), name: person.name, role: person.title, session: "test-developer" };
 }
 
 /** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
-export function dummyNavViewer(kind: ViewerKind): NavViewer {
-  if (kind === "non-member") return { name: applicant.name, email: applicant.email, photoUrl: null, session: "test-developer" };
-  const person = personFor[kind];
+export function dummyNavViewer(viewer: TestViewer): NavViewer {
+  if (viewer === "non-member") return { name: applicant.name, email: applicant.email, photoUrl: null, session: "test-developer" };
+  const person = personFor[viewer];
   return { name: person.name, email: teamEmailOf(person), photoUrl: null, session: "test-developer" };
 }
 
@@ -730,8 +731,8 @@ function applicationsPage(kind: ViewerKind, team: Team, onTeam: readonly RosterE
 }
 
 /** The person the viewer is on the team; null for the applicant. */
-function teamPersonFor(kind: ViewerKind): DummyPerson | null {
-  return kind === "non-member" ? null : personFor[kind];
+function teamPersonFor(viewer: TestViewer): DummyPerson | null {
+  return viewer === "non-member" ? null : personFor[viewer];
 }
 
 const notOnTeam = "This page is for team members.";
@@ -765,28 +766,32 @@ function leftTeamDashboard(
 }
 
 /**
- * The dashboard as the test developer sees it, looking as `kind`, with the
+ * The dashboard as the test developer sees it, looking as `viewer`, with the
  * recruitment switch read from and kept in `recruitment` (./recruitment.ts),
  * their Positions and Applications changes in `changes` (./state.ts), and
  * their Team page edits in `teamEdits` (./edits.ts), and the changes on their
  * own pages in `own` (./own.ts), starting from the own applications
  * `ownStart` names. Other writes check what was sent as the database side
- * does, store nothing, and answer what the page shows next.
+ * does, store nothing, and answer what the page shows next. The team leader
+ * (issue #247) is full access, the `operations-lead` kind, so every page but
+ * Access and Orders reads as the operations lead's; on those two they are
+ * themselves: the one who decides orders and gives "Approve orders".
  */
 export function dummyDashboardData(
-  kind: ViewerKind,
+  viewer: TestViewer,
   recruitment: DummyRecruitmentStore,
   changes: DummyStateStore,
   teamEdits: TeamEditsStore = NO_TEAM_EDITS,
   own: OwnChangesStore = NO_OWN_STORE,
   ownStart: OwnApplicationsStart = "sample",
 ): DashboardData {
-  if (kind !== "non-member" && teamEdits.current.movedToAlumni[personFor[kind].id] !== undefined) {
-    return leftTeamDashboard(kind, personFor[kind], recruitment, changes, teamEdits, own);
+  const kind = kindOfTestViewer(viewer);
+  if (viewer !== "non-member" && kind !== "non-member" && teamEdits.current.movedToAlumni[personFor[viewer].id] !== undefined) {
+    return leftTeamDashboard(kind, personFor[viewer], recruitment, changes, teamEdits, own);
   }
   const team = withDivisionEdits(teamOf(recruitment.current, changes.current), teamEdits.current);
   const change = (c: DummyChange) => changes.save(applyDummyChange(changes.current, c));
-  const person = teamPersonFor(kind);
+  const person = teamPersonFor(viewer);
   const accessKind = kind === "operations-lead" || kind === "division-lead" || kind === "department-head" ? kind : null;
   const canSwitch = canSwitchRecruitmentAs(kind);
   // The team as the test developer left it: who was moved to alumni, who joined.
@@ -817,7 +822,7 @@ export function dummyDashboardData(
   }
 
   return {
-    viewer: dummyViewer(kind),
+    viewer: dummyViewer(viewer),
     navCounts: async () => navCountsFor(kind, team),
     hasOwnApplications: async () => ownApplicationsOf(kind, ownStart).length > 0,
     overview: async () => overviewFor(kind, team, dummyNoticesOf(teamEdits.current)),
@@ -903,6 +908,7 @@ export function dummyDashboardData(
     cancelOrder: async (id) => (accessKind === null || person === null ? refused(noOrders) : dummyCancelOrder(accessKind, person, id)),
     decideOrder: async (id, input) =>
       accessKind === null || person === null ? refused(noOrders) : dummyDecideOrder(accessKind, person, id, input),
+    markOrdered: async (id) => (accessKind === null || person === null ? refused(noOrders) : dummyMarkOrdered(accessKind, person, id)),
     setApproveOrders: async (input) =>
       person === null ? refused(notOnTeam) : dummySetApproveOrders(person, teamRoster.map((e) => e.id), input),
 

@@ -9,7 +9,7 @@ import { Check, ChevronsUpDown, LogOut, UserRound } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { MenuPage } from "@/lib/dashboard/access";
-import { VIEWER_KINDS, VIEWER_KIND_LABELS, type DashboardViewer } from "@/lib/dashboard/viewer";
+import { TEST_VIEWER_LABELS, TEST_VIEWERS, testViewerOf, type DashboardViewer } from "@/lib/dashboard/viewer";
 import { testDeveloperSignInHref } from "@/lib/test-developer";
 import { useSignOut } from "@/components/use-sign-out";
 import { Avatar } from "./avatar";
@@ -110,15 +110,15 @@ function UserDropdown({
       {viewer.session === "test-developer" && (
         <>
           <DropdownMenuPrimitive.Label className={`${VIEW_AS_LABEL} px-2.5 pb-1.5 pt-1.5`}>View as</DropdownMenuPrimitive.Label>
-          {VIEWER_KINDS.map((kind) => (
+          {TEST_VIEWERS.map((kind) => (
             <DropdownMenuPrimitive.Item key={kind} asChild>
               <a
                 href={testDeveloperSignInHref(kind, pathname)}
-                aria-current={kind === viewer.kind ? "true" : undefined}
+                aria-current={kind === testViewerOf(viewer) ? "true" : undefined}
                 className={`${ITEM} justify-between text-text-2 data-[highlighted]:text-prt-text`}
               >
-                {VIEWER_KIND_LABELS[kind]}
-                {kind === viewer.kind && <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />}
+                {TEST_VIEWER_LABELS[kind]}
+                {kind === testViewerOf(viewer) && <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />}
               </a>
             </DropdownMenuPrimitive.Item>
           ))}
@@ -190,15 +190,15 @@ export function UserSheet({
             {viewer.session === "test-developer" && (
               <div className="mt-2 border-t border-hairline pt-3">
                 <p className={`${VIEW_AS_LABEL} px-3 pb-1`}>View as</p>
-                {VIEWER_KINDS.map((kind) => (
+                {TEST_VIEWERS.map((kind) => (
                   <a
                     key={kind}
                     href={testDeveloperSignInHref(kind, pathname)}
-                    aria-current={kind === viewer.kind ? "true" : undefined}
+                    aria-current={kind === testViewerOf(viewer) ? "true" : undefined}
                     className={`${SHEET_ROW} justify-between text-text-2 hover:text-prt-text`}
                   >
-                    {VIEWER_KIND_LABELS[kind]}
-                    {kind === viewer.kind && <Check aria-hidden className="h-4 w-4 text-accent" strokeWidth={2} />}
+                    {TEST_VIEWER_LABELS[kind]}
+                    {kind === testViewerOf(viewer) && <Check aria-hidden className="h-4 w-4 text-accent" strokeWidth={2} />}
                   </a>
                 ))}
               </div>
