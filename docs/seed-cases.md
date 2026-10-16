@@ -4,7 +4,7 @@ The dummy set that `pnpm db:seed` loads into a local database and into each prev
 
 ## How the seed runs
 
-- `pnpm db:seed` runs [db/seed.ts](../db/seed.ts). It checks the target first, then runs every module in [db/seed/registry.ts](../db/seed/registry.ts) in one transaction: each module's reset (last module first), then each module's insert (in order). Running it twice leaves the same rows.
+- `pnpm db:seed` runs [db/seed.ts](../db/seed.ts). It checks the target first, then runs every module in [db/seed/registry.ts](../db/seed/registry.ts) in one transaction: each module's reset (last module first), then each module's insert (in order). Running it twice leaves the same rows, including columns a default or a trigger fills. It leaves the audit table `logs` empty.
 - `pnpm db:seed --check` runs the target check alone and writes nothing.
 - The check reads `DATABASE_URL` and allows only two targets:
   - a local database (`localhost`, `127.x.x.x` or `::1`);

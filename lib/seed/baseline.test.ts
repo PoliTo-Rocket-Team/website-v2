@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { test } from "node:test";
+import { is, SQL } from "drizzle-orm";
+import { getTableConfig, PgDialect, PgTable } from "drizzle-orm/pg-core";
 import { TESTER_KEYS, TESTERS } from "../dev-tester";
-import { baseline, BASELINE_AUTH_RESET, BASELINE_SQL_PATH, BASELINE_TABLES } from "../../db/seed/baseline";
+import * as schema from "../../db/schema";
+import {
+  baseline,
+  BASELINE_AUDIT_CLEAR,
+  BASELINE_AUTH_RESET,
+  BASELINE_SQL_PATH,
+  BASELINE_TABLES,
+  SEED_TRIGGERS,
+} from "../../db/seed/baseline";
 import { SEED_MODULES } from "../../db/seed/registry";
 import type { SeedTx } from "../../db/seed/tx";
 
@@ -47,5 +58,74 @@ test("the reset deletes the testers' sign-in rows, then empties and renumbers ev
     BASELINE_AUTH_RESET,
     `TRUNCATE ${BASELINE_TABLES.join(", ")} RESTART IDENTITY CASCADE`,
     seedSql,
+    BASELINE_AUDIT_CLEAR,
   ]);
+});
+
+// A database default or trigger that reads the clock or a random source gives
+// each run a different value. The tests below read the schema and the
+// migrations, so a new such column or trigger fails here before it reaches a
+// second seed run.
+
+const VOLATILE = /\b(now|clock_timestamp|statement_timestamp|transaction_timestamp|random|gen_random_uuid|uuid_generate_v\d)\s*\(|\b(current_timestamp|current_date|current_time|localtimestamp|localtime)\b/i;
+
+function volatileDefaults(table: PgTable): string[] {
+  const dialect = new PgDialect();
+  return getTableConfig(table).columns
+    .filter((column) => is(column.default, SQL) && VOLATILE.test(dialect.sqlToQuery(column.default).sql))
+    .map((column) => column.name);
+}
+
+const tablesByName = new Map(
+  (Object.values(schema) as unknown[])
+    .flatMap((value) => (is(value, PgTable) ? [value] : []))
+    .map((table) => {
+      const { name, schema: owner } = getTableConfig(table);
+      return [owner ? `${owner}."${name}"` : name, table] as const;
+    }),
+);
+
+test("every insert in db/seed.sql sets each column whose default reads the clock or a random source", () => {
+  const inserts = [...code.matchAll(/\bINSERT\s+INTO\s+([a-z_."]+)\s*\(([^)]*)\)/gi)];
+  assert.ok(inserts.length > 0);
+  for (const [, tableName, columnList] of inserts) {
+    const table = tablesByName.get(tableName);
+    assert.ok(table, `${tableName} is not a table in db/schema`);
+    const listed = columnList.split(",").map((column) => column.trim().replace(/"/g, ""));
+    for (const column of volatileDefaults(table)) {
+      assert.ok(listed.includes(column), `an insert into ${tableName} leaves ${column} to its clock or random default`);
+    }
+  }
+});
+
+test("the check knows the clock defaults it guards", () => {
+  assert.ok(volatileDefaults(schema.members).includes("nda_signed_at"));
+  assert.ok(volatileDefaults(schema.users).includes("created_at"));
+  assert.ok(volatileDefaults(schema.logs).includes("changed_at"));
+});
+
+function liveTriggers(): Set<string> {
+  const folder = resolve(process.cwd(), "drizzle");
+  const live = new Set<string>();
+  for (const file of readdirSync(folder).filter((name) => name.endsWith(".sql")).sort()) {
+    const migration = readFileSync(resolve(folder, file), "utf8").replace(/--.*$/gm, "");
+    // In file order, so a migration that drops and re-creates a trigger keeps it.
+    for (const [, verb, name] of migration.matchAll(/\b(CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+(?:IF\s+EXISTS\s+)?"?([a-z_]+)"?/gi)) {
+      if (verb.toUpperCase() === "CREATE") live.add(name);
+      else live.delete(name);
+    }
+  }
+  return live;
+}
+
+test("every trigger the migrations leave is one the seed handles", () => {
+  assert.deepEqual([...liveTriggers()].sort(), Object.keys(SEED_TRIGGERS).sort());
+});
+
+test("after the testers' sign-in rows, db/seed.sql sets their trigger-set updated_at back to a fixed time", () => {
+  const afterAuth = code.slice(code.indexOf('INSERT INTO better_auth."user"'));
+  assert.match(
+    afterAuth,
+    /UPDATE users SET updated_at = '[^']+'::timestamptz\s+WHERE id LIKE '7e57e500-0000-4000-8000-00000000000_'/,
+  );
 });

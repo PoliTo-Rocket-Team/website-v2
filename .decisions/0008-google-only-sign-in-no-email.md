@@ -22,7 +22,7 @@ Who may do what in the dashboard is in the dashboard rules doc, [docs/dashboard-
 
 **Sign-in is Google only, the site never sends email, and where someone must be told, the UI tells the actor to email them.**
 
-1. **Google is the only sign-in.** No email and password, so no verification or reset emails. The test developer and the local seeded testers of [0009](./0009-previews-and-dev-use-dummy-data.md) are review tools that production never offers, not sign-ins.
+1. **Google is the only sign-in.** No email and password, so no verification or reset emails. The test developer and the local seeded testers of [0009](./0009-previews-and-dev-use-dummy-data.md) (restated in [0015](./0015-previews-read-their-own-seeded-branch.md)) are review tools that production never offers, not sign-ins.
 2. **The site has no email service.** No code sends an email.
 3. **The actor sends the email.** Where a person must be told something (an interview offer, the NDA, a rejection after acceptance), the page tells the person acting to email them, and gives them what they need to do it.
 
