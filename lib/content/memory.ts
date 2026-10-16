@@ -8,13 +8,13 @@ import type { ContentItem } from "./versioned";
  * preview keeps a test developer's changes in a cookie that can fill up
  * (lib/dummy-data/partners.ts). A refused write changes nothing.
  */
-export function memoryContentStore<T>(
-  seed: readonly ContentItem<T>[],
-  keep: (items: readonly ContentItem<T>[]) => Promise<string | null> = async () => null,
-): ContentStore<T> {
-  let items: readonly ContentItem<T>[] = seed;
+export function memoryContentStore<T extends D, D = T>(
+  seed: readonly ContentItem<T, D>[],
+  keep: (items: readonly ContentItem<T, D>[]) => Promise<string | null> = async () => null,
+): ContentStore<T, D> {
+  let items: readonly ContentItem<T, D>[] = seed;
   let lastId = items.reduce((last, item) => Math.max(last, item.id), 0);
-  async function apply<V>(next: readonly ContentItem<T>[], value: V) {
+  async function apply<V>(next: readonly ContentItem<T, D>[], value: V) {
     const error = await keep(next);
     if (error !== null) return { ok: false as const, error };
     items = next;

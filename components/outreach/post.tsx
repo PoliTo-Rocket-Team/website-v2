@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Award, Instagram, Linkedin } from "lucide-react";
+import { ArrowUpRight, Award, ImagePlus } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import { CopyText } from "@/components/project-page/parts";
 import {
@@ -10,7 +11,17 @@ import {
   shortMonthYear,
   slugOf,
 } from "@/lib/outreach";
-import type { BodyBlock, Channel, ChannelName, OutreachPhoto, OutreachPost } from "@/lib/outreach-types";
+import {
+  CHANNEL_LABELS,
+  UNTITLED_POST,
+  type BodyBlock,
+  type Channel,
+  type ChannelName,
+  type OutreachPhoto,
+  type OutreachPost,
+  type OutreachDraft,
+} from "@/lib/outreach-types";
+import { CHANNEL_ICONS } from "./channel-icons";
 import { Photo } from "./photo";
 
 // Boards 33 and 33m: one outreach post, Medium-style. Everything shares one
@@ -22,12 +33,35 @@ import { Photo } from "./photo";
 
 const width = "mx-auto max-w-[1116px]";
 
-export function PostHeader({ post }: { post: OutreachPost }) {
+/** The parts of a post page an editor outlines as blocks (board 74b). */
+export type PostPart = "details" | "cover" | "text" | "photos" | "channels";
+
+/**
+ * Wraps each part of the page, as the dashboard's edit shell does to outline
+ * it; the public page passes none and draws the parts as they are.
+ */
+export type PostFrame = (part: PostPart, node: ReactNode) => ReactNode;
+
+const bare: PostFrame = (_, node) => node;
+
+/**
+ * The editor's page (`hints`) says what goes in a part that is still blank,
+ * as a new post opens (board 74f): "ADD A PLACE", "Untitled post", the lead's
+ * hint and an empty cover box. The public page only ever draws whole posts.
+ */
+type PostPartsProps = { post: OutreachDraft; frame?: PostFrame; hints?: boolean };
+
+const LEAD_HINT = "Add a lead: one or two sentences under the title.";
+
+export function PostHeader({ post, frame = bare, hints = false }: PostPartsProps) {
   const date = longDate(post.date);
   const minutes = readingMinutes(post.body);
+  const hasText = post.body.some((b) => b.text.trim() !== "");
+  const title = post.title.trim();
+  const lead = post.lead.trim();
   const dot = <span aria-hidden className="text-dim">·</span>;
-  return (
-    <header className={width}>
+  const details = (
+    <>
       <Link
         href="/outreach"
         className="group inline-flex items-center gap-2 text-[14px] text-text-2 transition-colors duration-300 ease-out hover:text-accent"
@@ -39,32 +73,73 @@ export function PostHeader({ post }: { post: OutreachPost }) {
         <time dateTime={post.date} className="text-accent">
           <CopyText copy={date} />
         </time>
-        {post.place !== undefined && (
+        {post.place !== undefined ? (
           <>
             {dot}
             <span>
               <CopyText copy={{ text: post.place.toUpperCase(), phone: post.place.split(",")[0].toUpperCase() }} />
             </span>
           </>
+        ) : (
+          hints && (
+            <>
+              {dot}
+              <span className="text-dim">ADD A PLACE</span>
+            </>
+          )
         )}
-        {dot}
-        <span>{minutes} MIN READ</span>
-        <ul className="flex basis-full gap-2 font-display tracking-normal md:ml-1 md:basis-auto">
-          {post.tags.map((t) => (
-            <li key={t} className="rounded-full border border-white-10 px-3 py-1 text-[11px] leading-none text-text-2">
-              {t}
-            </li>
-          ))}
-        </ul>
+        {hasText && (
+          <>
+            {dot}
+            <span>{minutes} MIN READ</span>
+          </>
+        )}
+        {post.tags.length > 0 && (
+          <ul className="flex basis-full gap-2 font-display tracking-normal md:ml-1 md:basis-auto">
+            {post.tags.map((t) => (
+              <li key={t} className="rounded-full border border-white-10 px-3 py-1 text-[11px] leading-none text-text-2">
+                {t}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-      <h1 className="mt-4 text-[30px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-5 md:text-[56px] md:leading-[1.05]">
-        {post.title}
+      <h1
+        className={`mt-4 text-[30px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-5 md:text-[56px] md:leading-[1.05] ${title === "" ? "text-dim" : ""}`}
+      >
+        {title === "" ? UNTITLED_POST : post.title}
       </h1>
-      <p className="mt-4 max-w-[760px] text-[16px] leading-[1.55] text-text-2 md:mt-5 md:text-[20px]">{post.lead}</p>
-      <div className="relative mt-8 aspect-[3/2] overflow-hidden rounded-xl md:mt-12 md:aspect-[9/5]">
-        <Photo photo={post.photos[0]} sizes="(min-width: 1246px) 1116px, 100vw" priority />
+      {(lead !== "" || hints) && (
+        <p className={`mt-4 max-w-[760px] text-[16px] leading-[1.55] md:mt-5 md:text-[20px] ${lead === "" ? "text-dim" : "text-text-2"}`}>
+          {lead === "" ? LEAD_HINT : post.lead}
+        </p>
+      )}
+    </>
+  );
+  const cover = post.photos[0];
+  return (
+    <header className={width}>
+      {frame("details", details)}
+      <div className="mt-8 md:mt-12">
+        {frame(
+          "cover",
+          <div className="relative aspect-[3/2] overflow-hidden rounded-xl md:aspect-[9/5]">
+            {cover === undefined ? <NoCover /> : <Photo photo={cover} sizes="(min-width: 1246px) 1116px, 100vw" priority />}
+          </div>,
+        )}
       </div>
     </header>
+  );
+}
+
+/** The cover's place while a draft has no photo yet (board 74f). */
+function NoCover() {
+  return (
+    <div className="glass-card flex h-full flex-col items-center justify-center rounded-xl px-6 text-center">
+      <ImagePlus aria-hidden className="h-7 w-7 text-text-2" strokeWidth={1.5} />
+      <p className="mt-3 text-[15px] font-semibold text-prt-text">Add a cover photo</p>
+      <p className="mt-1 text-[12px] text-prt-muted">The first photo is also the card photo on the Outreach list</p>
+    </div>
   );
 }
 
@@ -91,10 +166,15 @@ function Block({ block }: { block: BodyBlock }) {
   }
 }
 
-const platform: Record<ChannelName, { label: string; Icon: typeof Instagram; account: string }> = {
-  instagram: { label: "Instagram", Icon: Instagram, account: "politorocketteam" },
-  linkedin: { label: "LinkedIn", Icon: Linkedin, account: "PoliTo Rocket Team" },
-};
+/** Our account's name on each channel: the Instagram handle, the team's name elsewhere. */
+const ourAccount = (name: ChannelName) => (name === "instagram" ? "politorocketteam" : "PoliTo Rocket Team");
+
+/** What the card calls the channel, and its link out ("View on Instagram"; a plain link has no platform). */
+function platformOf(name: ChannelName): { label: string; link: string } {
+  return name === "other"
+    ? { label: "Link", link: "Open the original" }
+    : { label: CHANNEL_LABELS[name], link: `View on ${CHANNEL_LABELS[name]}` };
+}
 
 function initialsOf(name: string): string {
   return name
@@ -110,8 +190,10 @@ function initialsOf(name: string): string {
  * account, the platform, the photo on Instagram, the caption's start and a
  * link out.
  */
-function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Channel; post: OutreachPost }) {
-  const { label, Icon, account } = platform[name];
+function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Channel; post: OutreachDraft }) {
+  const { label, link } = platformOf(name);
+  const Icon = CHANNEL_ICONS[name];
+  const account = ourAccount(name);
   const ours = channel.account === undefined;
   return (
     <article className="glass-card overflow-hidden rounded-xl">
@@ -133,7 +215,7 @@ function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Chan
         </div>
         <Icon aria-hidden className="h-4 w-4 shrink-0 text-text-2" strokeWidth={1.75} />
       </div>
-      {name === "instagram" && (
+      {name === "instagram" && post.photos.length > 0 && (
         <div className="relative h-[200px] lg:h-[220px]">
           <Photo photo={post.photos[0]} sizes="(min-width: 1024px) 300px, 100vw" />
         </div>
@@ -146,7 +228,7 @@ function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Chan
           rel="noopener noreferrer"
           className="group mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-prt-text transition-colors duration-300 ease-out hover:text-accent"
         >
-          View on {label}
+          {link}
           <ArrowUpRight aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
         </a>
       </div>
@@ -175,30 +257,42 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
   );
 }
 
-export function PostBody({ post }: { post: OutreachPost }) {
+export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) {
   const channels = channelsOf(post);
   const more = post.photos.slice(1);
   return (
     <div className={`${width} mt-10 grid gap-y-14 md:mt-14 lg:grid-cols-[minmax(0,760px)_300px] lg:gap-x-14 lg:gap-y-24`}>
-      <article className="space-y-5 text-[16px] leading-[1.75] text-text-2 md:text-[17px] md:leading-[1.8] lg:col-start-1 lg:row-start-1">
-        {post.body.map((b, i) => (
-          <Block key={i} block={b} />
-        ))}
-      </article>
+      <div className="lg:col-start-1 lg:row-start-1">
+        {frame(
+          "text",
+          <article className="space-y-5 text-[16px] leading-[1.75] text-text-2 md:text-[17px] md:leading-[1.8]">
+            {post.body.map((b, i) => (
+              <Block key={i} block={b} />
+            ))}
+            {hints && post.body.length === 0 && <p className="text-dim">Add the post&apos;s text: paragraphs, headings and highlights.</p>}
+          </article>,
+        )}
+      </div>
 
       {more.length > 0 && (
         <div className="lg:col-span-2 lg:row-start-2">
           <h2 className="sr-only">Photos</h2>
-          <PhotoGrid photos={more} />
+          {frame("photos", <PhotoGrid photos={more} />)}
         </div>
       )}
 
       <aside aria-label="Original posts" className="lg:col-start-2 lg:row-start-1">
-        <div className="space-y-3 lg:sticky lg:top-[96px]">
-          <p className="font-mono text-[10px] tracking-[0.2em] text-dim">ORIGINAL POSTS</p>
-          {channels.map(({ name, channel }) => (
-            <ChannelCard key={name} name={name} channel={channel} post={post} />
-          ))}
+        <div className="lg:sticky lg:top-[96px]">
+          {frame(
+            "channels",
+            <div className="space-y-3">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-dim">ORIGINAL POSTS</p>
+              {channels.map(({ name, channel }) => (
+                <ChannelCard key={name} name={name} channel={channel} post={post} />
+              ))}
+              {hints && channels.length === 0 && <p className="text-[13px] leading-[1.5] text-dim">Add the Instagram or LinkedIn post.</p>}
+            </div>,
+          )}
         </div>
       </aside>
     </div>
