@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { test } from "node:test";
+import { SCOPE_ROWS } from "../db/seed/access";
+import { ROLE_ROWS, TESTER_AUTH_ROWS, TESTER_MEMBER, USER_ROWS } from "../db/seed/people";
+import { DEPARTMENT } from "../db/seed/structure";
 import { VIEWER_KINDS } from "./dashboard/viewer";
 import { TESTER_KEYS, TESTERS, isTesterKey, testerSignInOn } from "./dev-tester";
 import { testDeveloperSignIn } from "./test-developer";
@@ -50,22 +51,20 @@ test("both sign-ins offer a department head (issue #230)", () => {
   assert.match(signIn.headers.get("Set-Cookie") ?? "", /prt_test_developer=department-head;/);
 });
 
-test("db/seed.sql seeds the department head tester with a head role in Aerodynamics and no scope row", () => {
-  const seed = readFileSync(resolve(process.cwd(), "db/seed.sql"), "utf8");
-  assert.ok(seed.includes("(904, (SELECT id FROM departments WHERE code = 'AER'), NULL, 'Head of Aerodynamics', '2025-10-01'::date, NULL, 'head')"));
-  assert.ok(!/\(904, '(division|department|org)'/.test(seed));
+test("the seed gives the department head tester a head role in Aerodynamics and no scope row", () => {
+  const memberId = TESTER_MEMBER["department-head"];
+  const held = ROLE_ROWS.rows.filter((r) => r.memberId === memberId);
+  assert.deepEqual(
+    held.map((r) => [r.type, r.deptId, r.divisionId ?? null, r.title, r.leavedAt ?? null]),
+    [["head", DEPARTMENT.aerodynamics, null, "Head of Aerodynamics", null]],
+  );
+  assert.ok(!SCOPE_ROWS.rows.some((s) => s.memberId === memberId));
 });
 
-test("db/seed.sql seeds every tester in better_auth.user and public.users", () => {
-  const seed = readFileSync(resolve(process.cwd(), "db/seed.sql"), "utf8");
-  const authInsert = seed.indexOf('INSERT INTO better_auth."user"');
-  assert.notEqual(authInsert, -1);
-  const publicUsers = seed.slice(0, authInsert);
-  const authUsers = seed.slice(authInsert);
+test("the seed puts every tester in better_auth.user and public.users", () => {
   for (const key of TESTER_KEYS) {
     const { id, email } = TESTERS[key];
-    const row = `'${id}', '${email}'`;
-    assert.ok(publicUsers.includes(`(${row}`), `public.users row for ${key}`);
-    assert.ok(authUsers.includes(`(${row}`), `better_auth.user row for ${key}`);
+    assert.ok(USER_ROWS.rows.some((u) => u.id === id && u.email === email), `public.users row for ${key}`);
+    assert.ok(TESTER_AUTH_ROWS.rows.some((u) => u.id === id && u.email === email), `better_auth.user row for ${key}`);
   }
 });

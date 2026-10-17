@@ -45,8 +45,10 @@ made stale. Client components import the action functions directly.
 6. **Call the actions from the client.** The dashboard's client components import them from
    [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the
    arguments and writes through the dashboard data interface
-   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): a test developer's write changes only a
-   cookie, an account's goes through `runAuditQuery` in
+   ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): where no database is configured, a test
+   developer's write changes only a cookie; where one is (a preview reads the seeded `preview`
+   branch), the test developer is read as the viewer's seeded person, and `runAuditQuery` or
+   `runAuditBatch` saves the write as that person on a preview and refuses it anywhere else (ADR 0016). An account's write goes through `runAuditQuery` in
    [lib/dashboard/database.ts](../lib/dashboard/database.ts) after a scope check. The client shows
    the change at once (`useOptimistic`) and a toast when the write is refused (see
    [client-form-submit.md](./client-form-submit.md)).
@@ -73,11 +75,15 @@ writes (issue #256) pass the site-content gate in `contentEditor`
 page editor's Save draft and Publish (issue #321) send the layer's rows and every advisor write in
 one `runAuditBatch` through
 [lib/dashboard/database-team-page-store.ts](../lib/dashboard/database-team-page-store.ts), so the
-two land together or not at all. A test
-developer's write goes to the dummy side, which checks the same rules and stores nothing. The
+two land together or not at all. Where no database is configured, a test developer's write goes to
+the dummy side, which checks the same rules and stores nothing; where one is, `runAuditQuery`
+and `runAuditBatch` both ask `auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts)
+(through [lib/db-audit.ts](../lib/db-audit.ts)), which logs the write under the viewer's seeded
+person on a preview and refuses it before it is sent in production and under `next dev`
+(`testDeveloperMayWrite`, ADR 0016). The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
-position or application before it writes through `runAuditQuery`, and a test developer's dummy
+position or application before it writes through `runAuditQuery` or `runAuditBatch`, and a test developer's dummy
 side keeps the change in a cookie and writes no row. An application move (issue #171) first asks
 `applyMove` in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) whether
 it is legal, and each update is guarded on the status it was read in. Confirm join is one

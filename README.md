@@ -42,7 +42,7 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 - `pnpm deploy` - Deploy the app to Vercel
 - `pnpm db:generate` - Generate Drizzle migrations from the TypeScript schema
 - `pnpm db:migrate` - Apply Drizzle migrations in `drizzle/`
-- `pnpm db:seed` - Seed the database using [`db/seed.sql`](db/seed.sql)
+- `pnpm db:seed` - Seed a local database or a preview branch with the dummy set; it refuses any other target ([`docs/seed-cases.md`](docs/seed-cases.md))
 
 ## Database Workflow
 
@@ -50,7 +50,7 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 - Generate SQL with `pnpm db:generate`.
 - Review the generated migration in [`drizzle/`](drizzle).
 - Apply it with `pnpm db:migrate`.
-- Refresh fixture data in [`db/seed.sql`](db/seed.sql) when needed.
+- Add or change seed data through a module in [`db/seed`](db/seed) and list its cases in [`docs/seed-cases.md`](docs/seed-cases.md).
 
 ## Vercel Deployment
 
@@ -120,7 +120,7 @@ answer 404. Sign-in there stays Google only.
 | Tester Operations Lead | `operations-lead` | In Operations; org-level `edit` on `positions` | `/dashboard`, including the site-wide recruitment switch |
 
 The testers' ids, emails and names live in `lib/dev-tester.ts` and
-`db/seed.sql`; nothing comes from `.env`. The gate is `testerSignInOn()` in
+`db/seed/people.ts`; nothing comes from `.env`. The gate is `testerSignInOn()` in
 `lib/dev-tester.ts`, and `lib/dev-tester.test.ts` proves it is off outside
 `next dev`.
 

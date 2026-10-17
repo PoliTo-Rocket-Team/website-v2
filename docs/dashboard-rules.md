@@ -666,14 +666,19 @@ and 67m).
 
 ## 5. Data and testing
 
-- Previews, and `next dev` without a database, run on dummy data. They offer the "Sign in as test
+- A preview with a database reads the shared, seeded `preview` branch (ADR 0016): a test
+  developer there is read as the viewer's seeded person, and their writes are saved to that
+  branch as that person until the next preview build re-seeds it; outside a preview they are
+  refused.
+  The dummy data, and the cookie that keeps a test developer's changes, apply only where no
+  database is configured (`next dev` without one). Both offer the "Sign in as test
   developer" switch, with seven people: team leader, operations lead, department head, division
   lead, member, alumni and non-member. The alumni viewer is a former member with three years of
   ended roles, an Alumni entry, one application decided within the last month and one decided
   before it (#317). The operations lead there sits in the operations lead's seat, so
   they have full access and do not decide orders; the team leader decides orders and gives
-  "Approve orders" (#247), and sees boards 72 to 73c (#252). "Approve orders" given or removed
-  there is kept until sign out, so after switching to the member it went to, that member reaches
+  "Approve orders" (#247), and sees boards 72 to 73c (#252). On dummy data, "Approve orders" given or
+  removed is kept until sign out, so after switching to the member it went to, that member reaches
   Orders and decides there (#270).
   Production never does. The sign-in link takes `applications=none` (no applications yet) or
   `applications=withdrawn` (only withdrawn ones) to start the viewer from those states.
@@ -702,9 +707,12 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - A logo is an 8-bit PNG of at most 1 MB. It is measured on upload: one too dark for the page is
   saved with the dark flag, and the panel and the public pages draw it white.
 - Remove asks "are you sure" first. It removes the partner and its draft at once.
-- Previews never touch a database: a test developer's partner changes stay in a cookie in their
-  own browser until they sign out, and a logo they upload is not kept. The public pages there show
-  the partners as they were before the switch.
+- On a preview with a database, a test developer reads the seeded `preview` branch as the
+  viewer's seeded person, and their partner changes are saved there as that person until the
+  next preview build re-seeds it (ADR 0016). Only where no database is
+  configured do their partner changes stay in a cookie in their own browser until they sign out,
+  and a logo they upload is not kept; the public pages there show the partners as they were
+  before the switch.
 
 ### FAQ (#258, boards 79 and 79b)
 
@@ -725,9 +733,12 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   being typed.
 - Remove asks "are you sure" first, and removes the question and its draft at once.
 - Every write renders /apply again (it is prerendered whole, #163).
-- Previews never touch a database: a test developer's question changes stay in their own cookie
-  until they sign out, seen from the dummy team's moment, so a change reads "Today". /apply there
-  shows the questions as they were before the switch.
+- On a preview with a database, a test developer reads the seeded `preview` branch as the
+  viewer's seeded person, and their question changes are saved there as that person until the
+  next preview build re-seeds it (ADR 0016). Only where no database is
+  configured do their question changes stay in their own cookie until they sign out, seen from
+  the dummy team's moment, so a change reads "Today"; /apply there shows the questions as they
+  were before the switch.
 
 ### Projects page (#297, board 75)
 
@@ -753,9 +764,10 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   it, and its address has no page, until it is published.
 - Only the full admins and holders of site-content access reach the page or use New project;
   everyone else gets the dashboard's not found.
-- Previews never touch a database: a test developer's new order and new projects stay in their
-  own cookie until they sign out, and their saves read as edited today by the person they signed
-  in as.
+- On a preview with the seeded `preview` branch, a test developer's new order and new projects
+  are saved there as the viewer's seeded person until the next preview build re-seeds it (ADR
+  0016). Only where no database is configured do they stay in their own cookie until they sign
+  out, and their saves read as edited today by the person they signed in as.
 
 ### Project pages (#298 and #299, boards 75b and 75c)
 
@@ -813,8 +825,10 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   published page as it is; Publish puts the changes on the public page.
 - Only the full admins and holders of site-content access open the editor or save; everyone else
   gets the dashboard's not found.
-- Previews never touch a database: a test developer's project changes stay in their own cookie
-  until they sign out. The public pages there show the projects as they were before the switch.
+- On a preview with the seeded `preview` branch, a test developer's project changes are saved
+  there as the viewer's seeded person until the next preview build re-seeds it (ADR 0016). Only
+  where no database is configured do they stay in their own cookie until they sign out; the
+  public pages there show the projects as they were before the switch.
   A photo uploaded there is shown on the page while the editor is open, but the cookie holds
   only a few kilobytes, so a save with a real photo is refused with the preview's "full" message.
 
@@ -835,9 +849,12 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   except the intro text and the group photo.
 - Writes follow the site-content rule, and none writes a role, division, department, scope or
   member.
-- Previews never touch a database: a test developer's layer stays in their own cookie until they
-  sign out, laid on the dummy team in the editor. The public Team page there shows the dummy team
-  with no layer.
+- On a preview with the seeded `preview` branch (ADR 0016), the public Team page shows the seeded
+  published layer and advisors. A test developer's layer writes there are saved to the
+  `preview` branch as the viewer's seeded person, until the next preview build re-seeds it
+  (ADR 0016). Only a preview with no database keeps a test developer's layer in
+  their own cookie until they sign out, laid on the dummy team in the editor; its public Team page
+  shows the dummy team with no layer.
 - The editor (boards 80, 80b and 80h, #284) is "Team page" under Content, at
   `/dashboard/team-page`: the real page under the shared edit shell, with the "Visual changes
   only" tag and Reset to team on the bar. The team leader and each leader on the arc open the Edit
@@ -868,5 +885,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   they advised: the advisor leaves the Team page and an Alumni entry in the Advisors group takes
   their name, role, years and photo. It writes the advisor tables and that one `alumni_entries`
   row, never a role, division, department, scope or member. Reset to team never changes the
-  advisors. Previews keep a test developer's advisors in their own cookie over today's advisors;
-  End advising there adds to their Alumni changes.
+  advisors. On a preview with the seeded `preview` branch, a test developer's advisor changes and
+  End advising are saved there as the viewer's seeded person until the next preview build
+  re-seeds it (ADR 0016). Only a preview with no
+  database keeps a test developer's advisors in their own cookie over today's advisors; End
+  advising there adds to their Alumni changes.

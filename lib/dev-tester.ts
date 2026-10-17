@@ -42,7 +42,7 @@ export type Tester = {
   readonly sees: string;
 };
 
-// Seeded by db/seed.sql; the ids and emails there must match these.
+// Seeded by db/seed/people.ts, which reads these ids and emails.
 export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
   applicant: {
     key: "applicant",

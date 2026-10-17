@@ -19,7 +19,7 @@ import {
 } from "@/db/schema";
 import type { Recruitment } from "@/lib/apply/positions";
 import { canSwitchRecruitment, switchRecruitment } from "@/lib/apply/recruitment-switch";
-import { getCurrentUserId } from "@/lib/current-user";
+import { getCurrentUser } from "@/lib/current-user";
 import { runAuditQuery } from "@/lib/db-audit";
 import { canReach, LANDING_AFTER_LEAVING, type NavCounts } from "./access";
 import { isShownAt } from "./my-applications";
@@ -768,16 +768,17 @@ function roleLabelOf(identity: Identity): string {
 /** The signed-in account's dashboard, or null when nobody is signed in or there is no database. */
 export async function openDatabaseDashboard(): Promise<DashboardData | null> {
   if (!isDatabaseConfigured()) return null;
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
-  const identity = await readIdentity(userId);
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const identity = await readIdentity(user.id);
   if (!identity) return null;
 
   const viewer: DashboardViewer = {
     ...standingOf(identity),
     name: identity.name,
     role: roleLabelOf(identity),
-    session: "account",
+    // A test developer read as a seeded person signs out as a test developer.
+    session: user.session,
   };
   const self = databaseSelfPages(identity);
   return {

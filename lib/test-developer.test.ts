@@ -14,7 +14,13 @@ import {
   testDeveloperSignInHref,
   testDeveloperSignOut,
   testDeveloperViewer,
+  auditWriterOf,
+  testDeveloperMayWrite,
+  testDeveloperStandIn,
+  TestDeveloperWriteRefused,
 } from "./test-developer";
+import { TEST_VIEWERS } from "./dashboard/viewer";
+import { TEST_VIEWER_PEOPLE } from "./test-viewer-people";
 
 const PRODUCTION = { NODE_ENV: "production", VERCEL_ENV: "production" };
 const PREVIEW = { NODE_ENV: "production", VERCEL_ENV: "preview" };
@@ -147,4 +153,54 @@ test("sign-out clears the cookie and the dummy team's changes, and goes to /logi
   assert.match(cleared[1] ?? "", new RegExp(`^${TEST_DEVELOPER_STATE_COOKIE}=;.*Max-Age=0`));
   assert.match(cleared[2] ?? "", new RegExp(`^${TEST_DEVELOPER_EDITS_COOKIE}=;.*Max-Age=0`));
   assert.match(cleared[4] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=;.*Max-Age=0`));
+});
+
+const DB = "postgresql://app@ep-cool-darkness-123456-pooler.eu-central-1.aws.neon.tech/neondb";
+
+test("on a preview with its seeded database, each viewer is read as its seeded person", () => {
+  for (const viewer of TEST_VIEWERS) {
+    assert.deepEqual(
+      testDeveloperStandIn(viewer, { ...PREVIEW, DATABASE_URL: DB }),
+      { viewer, userId: TEST_VIEWER_PEOPLE[viewer] },
+      viewer,
+    );
+  }
+  assert.equal(testDeveloperStandIn("not-a-viewer", { ...PREVIEW, DATABASE_URL: DB }), null);
+  assert.equal(testDeveloperStandIn(undefined, { ...PREVIEW, DATABASE_URL: DB }), null);
+});
+
+test("a test developer is read as no one where pages read the dummy arrays or the gate is off", () => {
+  assert.equal(testDeveloperStandIn("member", PREVIEW), null, "preview with no database: the dummy dashboard serves it");
+  assert.equal(testDeveloperStandIn("member", LOCAL_DEV), null, "next dev with no database");
+  assert.equal(testDeveloperStandIn("member", { ...PRODUCTION, DATABASE_URL: DB }), null, "production");
+  assert.equal(testDeveloperStandIn("member", { NODE_ENV: "production", DATABASE_URL: DB }), null, "local production build");
+});
+
+test("an audited write by an account is logged under it, in every environment", () => {
+  for (const env of [PREVIEW, PRODUCTION, LOCAL_DEV]) {
+    assert.equal(auditWriterOf({ session: "account", id: "u1" }, env), "u1");
+    assert.equal(auditWriterOf(null, env), null);
+  }
+});
+
+test("on a preview, a test developer's write is logged under the seeded person the viewer switch resolves to (ADR 0016)", () => {
+  assert.equal(testDeveloperMayWrite(PREVIEW), true);
+  for (const viewer of TEST_VIEWERS) {
+    const standIn = testDeveloperStandIn(viewer, { ...PREVIEW, DATABASE_URL: DB });
+    assert.ok(standIn, viewer);
+    assert.equal(auditWriterOf({ session: "test-developer", id: standIn.userId }, PREVIEW), TEST_VIEWER_PEOPLE[viewer], viewer);
+  }
+});
+
+test("in production, under next dev and on any other Vercel environment, a test developer's write is refused before it is sent", () => {
+  const user = { session: "test-developer", id: TEST_VIEWER_PEOPLE.member } as const;
+  for (const [name, env] of [
+    ["production", PRODUCTION],
+    ["next dev", LOCAL_DEV],
+    ["local production build", { NODE_ENV: "production" }],
+    ["development Vercel environment", { NODE_ENV: "production", VERCEL_ENV: "development" }],
+  ] as const) {
+    assert.equal(testDeveloperMayWrite(env), false, name);
+    assert.throws(() => auditWriterOf(user, env), TestDeveloperWriteRefused, name);
+  }
 });
