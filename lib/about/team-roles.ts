@@ -1,5 +1,14 @@
 import type { PersonRecord } from "@/lib/dashboard/division-members";
-import { BOARD_SEAT_TITLES, BOARD_SEATS, divisionLabel, roleIn, type OrgChart as TeamOrg, type RosterEntry } from "@/lib/dashboard/team";
+import {
+  BOARD_SEAT_TITLES,
+  BOARD_SEATS,
+  DEPARTMENT_KINDS,
+  divisionLabel,
+  roleIn,
+  type DepartmentKind,
+  type OrgChart as TeamOrg,
+  type RosterEntry,
+} from "@/lib/dashboard/team";
 import {
   applyLayer,
   ARC_LEADERS,
@@ -12,7 +21,7 @@ import {
   type TeamPageLayer,
 } from "./team-layer";
 import { byName, personOf, titleOf, type TeamPerson } from "./team-person";
-import type { DepartmentGroup, Member, TeamPage, UpTo } from "./types";
+import type { DepartmentGroup, GroupMember, Member, TeamPage, UpTo } from "./types";
 
 // The Team page built from the team's roles (issue #282, ADR 0015): who
 // leads, every department and every core member come from the roles the
@@ -51,6 +60,45 @@ export function teamPeopleOf(roster: readonly RosterEntry[], records: readonly P
 export const SLIDE_MEMBERS = 10;
 export const SLIDES = 5;
 
+/** A slide's heading, by the kind of department its people come from (boards 26, 26e, 26f, 26m; issue #325). */
+export const SLIDE_NAMES: Readonly<Record<DepartmentKind, string>> = { technical: "Technical Departments", operations: "Operations" };
+
+/**
+ * One place on a carousel slide: a head with the division leads drawn under
+ * them, or a division lead drawn at a head's level, as Operations draws its
+ * divisions (board 26).
+ */
+export type CarouselPlace<H, L> = { readonly kind: "head"; readonly head: H; readonly leads: readonly L[] } | { readonly kind: "division"; readonly lead: L };
+
+/** One carousel slide, before it is drawn: the kind it groups and its places, at most ten. */
+export type CarouselSlide<H, L> = { readonly kind: DepartmentKind; readonly places: readonly CarouselPlace<H, L>[] };
+
+type KindedDepartment<H, L> = { readonly kind: DepartmentKind; readonly heads: readonly H[]; readonly leads: readonly L[] };
+
+/** A department's places: a technical head over their division leads; an operations head beside them. */
+function placesOf<H, L>(department: KindedDepartment<H, L>): CarouselPlace<H, L>[] {
+  if (department.kind === "technical") return department.heads.map((head) => ({ kind: "head", head, leads: department.leads }));
+  return [
+    ...department.heads.map((head): CarouselPlace<H, L> => ({ kind: "head", head, leads: [] })),
+    ...department.leads.map((lead): CarouselPlace<H, L> => ({ kind: "division", lead })),
+  ];
+}
+
+/**
+ * The departments carousel (ADR 0015, amended by issue #325): the heads
+ * grouped by their department's kind, "Technical Departments" first, then
+ * "Operations", each in department order. A kind fills slides of up to ten
+ * places; the carousel keeps at most five slides.
+ */
+export function carouselOf<H, L>(departments: readonly KindedDepartment<H, L>[]): CarouselSlide<H, L>[] {
+  return DEPARTMENT_KINDS.flatMap((kind) => {
+    const places = departments.filter((d) => d.kind === kind).flatMap((d) => placesOf(d));
+    const slides: CarouselSlide<H, L>[] = [];
+    for (let i = 0; i < places.length; i += SLIDE_MEMBERS) slides.push({ kind, places: places.slice(i, i + SLIDE_MEMBERS) });
+    return slides;
+  }).slice(0, SLIDES);
+}
+
 /** The first `n` items as an `UpTo`, or null for an empty list. */
 function upTo<T, N extends number>(list: readonly T[], n: N): UpTo<T, N> | null {
   return list.length === 0 ? null : (list.slice(0, n) as unknown as UpTo<T, N>);
@@ -82,7 +130,7 @@ function departmentsOf(roles: TeamRoles): BuiltDepartment[] {
           .sort(byName)
           .map((p, n) => ({ spot: `lead:${division.id}:${n}` as const, person: p, division: divisionLabel(division.name) })),
       );
-    return [{ id: department.id, name: department.name, heads, leads }];
+    return [{ id: department.id, name: department.name, kind: department.kind, heads, leads }];
   });
 }
 
@@ -97,10 +145,9 @@ export function teamBuildOf(roles: TeamRoles): TeamBuild {
   const leaderPerson = roles.people.filter((p) => p.placement.role === "team-leader").sort(byName)[0];
   const arc = arcOf(roles.people);
   const departments = departmentsOf(roles);
-  const carousel = departments
-    .flatMap((d) => d.heads.map((head) => [head.person, ...d.leads.map((l) => l.person)]))
-    .slice(0, SLIDES * SLIDE_MEMBERS)
-    .flat();
+  const carousel = carouselOf(departments).flatMap((slide) =>
+    slide.places.flatMap((place) => (place.kind === "head" ? [place.head.person, ...place.leads.map((l) => l.person)] : [place.lead.person])),
+  );
   const shown = new Set([leaderPerson, ...arc.slice(0, ARC_LEADERS).map((l) => l.person), ...carousel].map((p) => p?.id));
   const core = roles.people
     .filter((p) => !shown.has(p.id))
@@ -119,29 +166,28 @@ export function teamBuildOf(roles: TeamRoles): TeamBuild {
   };
 }
 
-/**
- * A slide's heading: "All departments" when every head fits on one, else
- * the first and last department on it ("Aerodynamics to Electronics").
- */
-function slideName(departments: readonly string[], slides: number): string {
-  if (slides === 1) return "All departments";
-  const first = departments[0];
-  const last = departments[departments.length - 1];
-  return first === last ? first : `${first} to ${last}`;
-}
-
-/** The heads in department order, filled into slides of up to ten, at most five slides. */
+/** The shown departments as carousel slides, each named by its kind. */
 function slidesOf(departments: readonly ShownDepartment[]): DepartmentGroup[] {
-  const heads = departments.flatMap((d) => d.heads.map((head) => ({ department: d.name, head: head.shown })));
-  const chunks: (typeof heads)[] = [];
-  for (let i = 0; i < heads.length && chunks.length < SLIDES; i += SLIDE_MEMBERS) chunks.push(heads.slice(i, i + SLIDE_MEMBERS));
-  return chunks.map((chunk) => ({
-    name: slideName([...new Set(chunk.map((h) => h.department))], chunks.length),
+  return carouselOf(departments).map((slide) => ({
+    name: SLIDE_NAMES[slide.kind],
     members: upTo(
-      chunk.map((h) => h.head),
+      slide.places.map((place): GroupMember =>
+        place.kind === "head"
+          ? { ...place.head.shown, leads: place.leads.map((l) => l.shown) }
+          : { ...place.lead.shown, kind: "division" },
+      ),
       SLIDE_MEMBERS,
     )!,
   }));
+}
+
+/**
+ * Where each member of the carousel comes from, in the order the slides draw
+ * them: a head's spot, or null for a division lead drawn at a head's level,
+ * which the editor reaches through its head.
+ */
+export function carouselSpotsOf(departments: readonly ShownDepartment[]): (ShownDepartment["heads"][number]["at"] | null)[] {
+  return carouselOf(departments).flatMap((slide) => slide.places.map((place) => (place.kind === "head" ? place.head.at : null)));
 }
 
 /** `page` with the layer's intro text and group photo, where it sets them. */

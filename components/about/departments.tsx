@@ -187,7 +187,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
       >
         {groups.map((g, i) => (
           <div
-            key={g.name}
+            key={`${i}-${g.name}`}
             ref={(el) => {
               slides.current[i] = el;
             }}
@@ -217,7 +217,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
           <div className="flex items-center gap-2">
             {groups.map((g, i) => (
               <button
-                key={g.name}
+                key={`${i}-${g.name}`}
                 type="button"
                 aria-label={`Show ${g.name}`}
                 aria-current={i === current ? "true" : undefined}
@@ -250,7 +250,7 @@ export function Departments({ departments, frames = {} }: { departments: Departm
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
-        <SectionHead title={departments.title} intro={departments.intro} align="centre" />
+        <SectionHead eyebrow={departments.eyebrow} title={departments.title} intro={departments.intro} align="centre" />
         <div className="mt-10 lg:mt-14">
           <Carousel groups={departments.groups} label={departments.title} frames={frames} />
         </div>

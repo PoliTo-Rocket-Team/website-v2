@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useId, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { Building2, ChevronDown, Lock, Pencil, Repeat, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { closeDepartment, createDepartment, saveDepartment } from "@/app/dashboard/team-actions";
@@ -14,7 +14,7 @@ import {
 } from "@/lib/dashboard/department-edit";
 import { steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
-import { divisionLabel, type OrgChart } from "@/lib/dashboard/team";
+import { DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart } from "@/lib/dashboard/team";
 import type { StructureDepartment, StructureDivision, TeamStructure } from "@/lib/dashboard/team-structure";
 import { initialsOf } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
@@ -48,7 +48,7 @@ export type DepartmentDrawerTarget =
 /** The chart the edit view shows, as the department rules read it. */
 function orgOf(structure: TeamStructure): OrgChart {
   return {
-    departments: structure.departments.map((d) => ({ id: d.id, name: d.name, code: d.code })),
+    departments: structure.departments.map((d) => ({ id: d.id, name: d.name, code: d.code, kind: d.kind })),
     divisions: structure.departments.flatMap((d) => d.divisions.map((v) => ({ id: v.id, name: v.name, departmentId: d.id, code: v.code }))),
   };
 }
@@ -152,10 +152,44 @@ function NameAndCode({
   );
 }
 
-/** Board 77d: the name, a 2 or 3 letter code, and its one head, picked from the team. */
+/** What each kind reads as in the panels, and the Team page slide it puts the head on (issue #325). */
+const KIND_LABELS: Readonly<Record<DepartmentKind, string>> = { technical: "Technical", operations: "Operations" };
+const KIND_SLIDES: Readonly<Record<DepartmentKind, string>> = { technical: "Technical Departments", operations: "Operations" };
+
+/** Technical or Operations, one choice of two (issue #325): which slide of the Team page's departments carousel its head sits on. */
+function KindField({ value, onChange }: { value: DepartmentKind; onChange: (kind: DepartmentKind) => void }) {
+  const labelId = useId();
+  return (
+    <section className="mt-6">
+      <h3 id={labelId} className={`mb-2.5 ${SECTION_LABEL}`}>
+        Kind
+      </h3>
+      <div role="radiogroup" aria-labelledby={labelId} className="grid h-11 grid-cols-2 gap-1 rounded-[10px] border border-white-10 bg-white-5 p-1">
+        {DEPARTMENT_KINDS.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            role="radio"
+            aria-checked={value === kind}
+            onClick={() => onChange(kind)}
+            className={`rounded-md text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
+              value === kind ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"
+            }`}
+          >
+            {KIND_LABELS[kind]}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-[12px] text-prt-muted">The Team page shows its head on the {KIND_SLIDES[value]} slide.</p>
+    </section>
+  );
+}
+
+/** Board 77d: the name, a 2 or 3 letter code, its kind, and its one head, picked from the team. */
 function NewDepartment({ open, structure, onClose }: { open: boolean; structure: TeamStructure; onClose: () => void }) {
   const [name, setName] = useState("");
   const [rawCode, setCode] = useState("");
+  const [kind, setKind] = useState<DepartmentKind>("technical");
   const [head, setHead] = useState<TeamPick | null>(null);
   const [picking, setPicking] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
@@ -178,7 +212,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
   const confirm = () =>
     startTransition(async () => {
       if (!head) return;
-      const result = await createDepartment({ name, code, heads: [head.id] });
+      const result = await createDepartment({ name, code, kind, heads: [head.id] });
       if (!result.ok) {
         toast.error("Could not create the department", { description: result.error });
         return;
@@ -208,6 +242,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
       <form id="new-department-form" noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <PanelBody>
           <NameAndCode name={name} code={rawCode} nameError={nameError} codeError={codeError} showErrors={showErrors} onName={setName} onCode={setCode} />
+          <KindField value={kind} onChange={setKind} />
           <section className="mt-6">
             <h3 className={SECTION_LABEL}>
               Head
@@ -264,7 +299,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
         onOpenChange={setConfirming}
         icon={<Building2 className="h-5 w-5" strokeWidth={1.75} />}
         title={`Create ${stored} Department?`}
-        description={`It opens with the code ${code}. ${head?.name ?? "The head"} becomes its head and keeps their divisions.`}
+        description={`It opens with the code ${code}, as a ${KIND_LABELS[kind].toLowerCase()} department. ${head?.name ?? "The head"} becomes its head and keeps their divisions.`}
         cancelLabel="Back"
         confirmLabel="Create department"
         pending={pending}
@@ -282,7 +317,7 @@ function PlusIcon() {
   );
 }
 
-/** Board 77e: name and code, the head, and the divisions as read-only rows; Close department and Save changes. */
+/** Board 77e: name and code, its kind, the head, and the divisions as read-only rows; Close department and Save changes. */
 function EditDepartment({
   open,
   department,
@@ -298,6 +333,7 @@ function EditDepartment({
 }) {
   const [name, setName] = useState(department.name);
   const [rawCode, setCode] = useState(department.code ?? "");
+  const [kind, setKind] = useState<DepartmentKind>(department.kind);
   const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [openDivision, setOpenDivision] = useState<number | null>(department.divisions[0]?.id ?? null);
@@ -315,12 +351,13 @@ function EditDepartment({
   const stored = storedDepartmentName(name);
   const nameChanged = stored !== department.name;
   const codeChanged = code !== normalizeDepartmentCode(department.code ?? "");
+  const kindChanged = kind !== department.kind;
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setShowErrors(true);
     if (!valid) return;
-    if (!nameChanged && !codeChanged && newHead === null) {
+    if (!nameChanged && !codeChanged && !kindChanged && newHead === null) {
       onClose();
       return;
     }
@@ -334,7 +371,7 @@ function EditDepartment({
 
   const confirm = () =>
     startTransition(async () => {
-      const result = await saveDepartment(department.id, { name, code, head: newHead === null ? null : { to: newHead.id, outcome: headOutcome } });
+      const result = await saveDepartment(department.id, { name, code, kind, head: newHead === null ? null : { to: newHead.id, outcome: headOutcome } });
       if (!result.ok) {
         toast.error("Could not save the department", { description: result.error });
         return;
@@ -353,6 +390,7 @@ function EditDepartment({
       </>,
     );
   }
+  if (kindChanged) lines.push(`It becomes a ${KIND_LABELS[kind].toLowerCase()} department, on the ${KIND_SLIDES[kind]} slide of the Team page.`);
   if (newHead !== null) lines.push(`${newHead.name} becomes Head of ${stored} and keeps their divisions.`);
   if (newHead !== null && head !== null && headOutcome !== null) {
     lines.push(`${head.name} ${steppingDownLine(steppingDown({ kind: "head", departmentId: department.id }, headOutcome), stored)}.`);
@@ -379,6 +417,7 @@ function EditDepartment({
       <form id={`department-${department.id}-form`} noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <PanelBody>
           <NameAndCode name={name} code={rawCode} nameError={nameError} codeError={codeError} showErrors={showErrors} onName={setName} onCode={setCode} />
+          <KindField value={kind} onChange={setKind} />
           <section className="mt-6">
             <h3 className={SECTION_LABEL}>Head</h3>
             {newHead === null ? (

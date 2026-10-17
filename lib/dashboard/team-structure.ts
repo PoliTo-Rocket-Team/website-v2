@@ -1,7 +1,7 @@
 import { mayManageDepartments } from "./department-edit";
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
-import { divisionLabel, roleIn, type Joining, type OrgChart, type TeamActor } from "./team";
+import { divisionLabel, roleIn, type DepartmentKind, type Joining, type OrgChart, type TeamActor } from "./team";
 import { mayHandOverTeamLeader } from "./hand-over";
 import type { FullAccessSeat, ViewerStanding } from "./viewer";
 
@@ -39,6 +39,8 @@ export type StructureDepartment = {
   /** "Aerodynamics" */
   readonly name: string;
   readonly code: string | null;
+  /** The Team page slide its head sits on (issue #325); Edit department sets it. */
+  readonly kind: DepartmentKind;
   readonly head: (StructurePerson & { readonly divisions: readonly string[] }) | null;
   /** Everyone in it, head included, each once. */
   readonly size: number;
@@ -146,6 +148,7 @@ export function teamStructure(input: {
       id: department.id,
       name: department.name,
       code: department.code ?? null,
+      kind: department.kind,
       head: head ? { ...person(head), divisions: headDivisions } : null,
       size: (head ? 1 : 0) + inDepartment.size,
       divisionsEditable: editable,

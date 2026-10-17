@@ -24,9 +24,9 @@ const member = (divisionId: number) => inDivisions([{ divisionId, role: "member"
 
 const org: TeamRoles["org"] = {
   departments: [
-    { id: 1, name: "Aerodynamics" },
-    { id: 2, name: "Recovery" },
-    { id: 3, name: "Electronics" },
+    { id: 1, name: "Aerodynamics", kind: "technical" },
+    { id: 2, name: "Recovery", kind: "technical" },
+    { id: 3, name: "Electronics", kind: "technical" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis Division", departmentId: 1 },
@@ -108,7 +108,7 @@ test("photo, LinkedIn and team email come from the member record; none of them i
 
 test("the arc keeps at most eight leaders; slides hold ten heads each, at most five", () => {
   const seats = Array.from({ length: 10 }, (_, i) => person(100 + i, `Seat ${String(i).padStart(2, "0")}`, seat("chief-engineer")));
-  const departments = Array.from({ length: 56 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}` }));
+  const departments = Array.from({ length: 56 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}`, kind: "technical" as const }));
   const heads = departments.map((d, i) => person(200 + i, `Head ${String(i).padStart(2, "0")}`, head(d.id)));
   const page = teamPageFromRoles({ org: { departments, divisions: [] }, people: [...people, ...seats, ...heads] }, team)!;
   assert.equal(page.orgChart.leaders.length, 8);
@@ -116,7 +116,61 @@ test("the arc keeps at most eight leaders; slides hold ten heads each, at most f
     page.departments.groups.map((g) => g.members.length),
     [10, 10, 10, 10, 10],
   );
-  assert.equal(page.departments.groups[0].name, "Department 0 to Department 9");
+  assert.ok(page.departments.groups.every((g) => g.name === "Technical Departments"));
+});
+
+test("the carousel groups heads by their department's kind: Technical Departments first, then Operations (issue #325)", () => {
+  // Operations comes first by id; its slide still follows the technical one.
+  const kinded: TeamRoles["org"] = {
+    departments: [{ id: 0, name: "Operations", kind: "operations" }, ...org.departments],
+    divisions: [...org.divisions, { id: 40, name: "Logistics Division", departmentId: 0 }, { id: 41, name: "Safety Division", departmentId: 0 }],
+  };
+  const operationsPeople = [
+    person(20, "Rocco Bellon", head(0), { pageTitle: "Head of Operations" }),
+    person(21, "Ettore De Bartolo", lead(40)),
+    person(22, "Asmaa Jamai", lead(41)),
+  ];
+  const page = teamPageFromRoles({ org: kinded, people: [...people, ...operationsPeople] }, team)!;
+  const [technical, operations] = page.departments.groups;
+  assert.ok(operations);
+  assert.deepEqual(
+    page.departments.groups.map((g) => g.name),
+    ["Technical Departments", "Operations"],
+  );
+  assert.deepEqual(
+    technical.members.map((m) => m.name),
+    ["Chiara Rinaldi", "Irene Galli"],
+  );
+  // An operations head stands beside their divisions' leads, each drawn at a head's level (board 26).
+  assert.deepEqual(
+    operations.members.map((m) => (m.kind === "head" ? [m.name, m.role, m.leads.length] : [m.name, m.division])),
+    [
+      ["Rocco Bellon", "Head of Operations", 0],
+      ["Ettore De Bartolo", "Logistics"],
+      ["Asmaa Jamai", "Safety"],
+    ],
+  );
+  // Everyone the carousel draws is left out of the core members.
+  assert.ok(!page.coreMembers.members.some((m) => operationsPeople.some((p) => p.name === m.name)));
+});
+
+test("a kind with more than ten places fills more slides under the same heading, at most five in all (boards 26e, 26f)", () => {
+  const departments = [
+    ...Array.from({ length: 35 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}`, kind: "technical" as const })),
+    { id: 2000, name: "Operations", kind: "operations" as const },
+  ];
+  const heads = departments.map((d, i) => person(200 + i, `Head ${String(i).padStart(2, "0")}`, head(d.id)));
+  const page = teamPageFromRoles({ org: { departments, divisions: [] }, people: [...people, ...heads] }, team)!;
+  assert.deepEqual(
+    page.departments.groups.map((g) => [g.name, g.members.length]),
+    [
+      ["Technical Departments", 10],
+      ["Technical Departments", 10],
+      ["Technical Departments", 10],
+      ["Technical Departments", 5],
+      ["Operations", 1],
+    ],
+  );
 });
 
 test("roles that cannot fill the page build nothing, so the page keeps its record", () => {

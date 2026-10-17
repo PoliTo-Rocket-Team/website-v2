@@ -124,6 +124,9 @@ INSERT INTO departments (name, started_at, closed_at, code) VALUES
 ('Operations', '2022-10-01'::date, NULL, 'OPS'),
 ('Research and Development', '2023-09-01'::date, NULL, 'RND');
 
+-- Operations sits on the Team page's "Operations" slide; the rest are technical (issue #325).
+UPDATE departments SET kind = 'operations' WHERE code = 'OPS';
+
 -- Insert Divisions (2 per subteam = 4 total)
 INSERT INTO divisions (dept_id, name, started_at, closed_at, code) VALUES
 (1, 'Test Bench', '2022-09-01'::date, NULL, 'TBE'),

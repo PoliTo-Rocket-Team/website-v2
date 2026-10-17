@@ -19,7 +19,7 @@ import { isTeamLeader, standingIn, viewerKindOf, viewerStandingOf, viewerUnitsOf
 // Advisor role, which leads nothing and heads nothing.
 
 const org: OrgChart = {
-  departments: [{ id: 1, name: "Aerodynamics", code: "AE" }],
+  departments: [{ id: 1, name: "Aerodynamics", code: "AE", kind: "technical" }],
   divisions: [{ id: 1, name: "Mission Analysis Division", departmentId: 1, code: "MA" }],
 };
 

@@ -77,7 +77,7 @@ test("boards 26e and 26f: five groups each take their own grid in the carousel",
 
 test("the role build fills at most five carousel slides of up to ten heads", () => {
   const org: TeamRoles["org"] = {
-    departments: range(52).map((id) => ({ id, name: `Department ${id}` })),
+    departments: range(52).map((id) => ({ id, name: `Department ${id}`, kind: "technical" as const })),
     divisions: range(52).map((id) => ({ id: 1000 + id, name: `Division ${id}`, departmentId: id })),
   };
   const person = (id: number, name: string, placement: Placement): TeamPerson => ({
