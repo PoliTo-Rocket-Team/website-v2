@@ -3,14 +3,7 @@ import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ApplyPosition } from "./types";
-import { getCurrentMemberId } from "./get-memberId";
-import {
-  getEditableDivisionsForScope,
-  getScopeInfoForCurrentUser,
-  getScopeInfoForMember,
-  isEmptyScopeInfo,
-} from "./get-member-scopes";
-import type { Division } from "@/db/types";
+import { getScopeInfoForCurrentUser } from "./get-member-scopes";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applyPositions,
@@ -117,15 +110,6 @@ async function queryRecruitment(): Promise<Recruitment> {
   }
 }
 
-async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
-  "use cache";
-
-  cacheTag(POSITIONS_CACHE_TAG);
-  cacheLife("weeks");
-
-  return queryPositionSnapshot();
-}
-
 // The public read: the positions and the recruitment switch under one tag, so
 // a position edit and the dashboard switch (#121) both refresh /apply with
 // updateTag(PUBLIC_POSITIONS_CACHE_TAG).
@@ -145,112 +129,11 @@ async function getPublicSnapshotCached(): Promise<{
   return { positions, recruitment };
 }
 
-function toApplyPosition(
-  position: PositionSnapshotRow,
-  canEdit?: boolean,
-): ApplyPosition {
+function toApplyPosition(position: PositionSnapshotRow): ApplyPosition {
   return {
     ...position,
     div_code: position.div_code ?? "",
     dept_code: position.dept_code ?? "",
-    canEdit,
-  };
-}
-
-function filterPositionSnapshotByScope(
-  positions: PositionSnapshotRow[],
-  departmentIds: number[],
-  divisionIds: number[],
-): PositionSnapshotRow[] {
-  if (!departmentIds.length && !divisionIds.length) {
-    return [];
-  }
-
-  const departmentIdSet = new Set(departmentIds);
-  const divisionIdSet = new Set(divisionIds);
-
-  return positions.filter(
-    (position) =>
-      (position.division_id !== null &&
-        divisionIdSet.has(position.division_id)) ||
-      departmentIdSet.has(position.dept_id),
-  );
-}
-
-function mapPositionsWithEditScope(
-  positions: PositionSnapshotRow[],
-  scopeInfo: Awaited<ReturnType<typeof getScopeInfoForMember>>,
-): ApplyPosition[] {
-  return positions.map((position) => {
-    const canEdit =
-      scopeInfo.hasAdminEdit ||
-      scopeInfo.hasOrgEdit ||
-      (position.division_id !== null &&
-        scopeInfo.editableDivisionIds.has(position.division_id)) ||
-      scopeInfo.editableDepartmentIds.has(position.dept_id);
-
-    return toApplyPosition(position, canEdit);
-  });
-}
-
-export async function getPositionsByMemberScope(): Promise<{
-  positions: ApplyPosition[];
-}> {
-  const memberId = await getCurrentMemberId();
-
-  if (!memberId) {
-    return { positions: [] };
-  }
-
-  const scopeInfo = await getScopeInfoForMember(memberId, "positions");
-  if (isEmptyScopeInfo(scopeInfo)) {
-    return { positions: [] };
-  }
-
-  const hasFullVisibility = scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess;
-  const departmentIds = Array.from(scopeInfo.departmentIds);
-  const divisionIds = Array.from(scopeInfo.divisionIds);
-  const allPositions = await getAllPositionSnapshotCached();
-  const visiblePositions = hasFullVisibility
-    ? allPositions
-    : filterPositionSnapshotByScope(allPositions, departmentIds, divisionIds);
-
-  if (!hasFullVisibility && visiblePositions.length === 0) {
-    return { positions: [] };
-  }
-
-  return {
-    positions: mapPositionsWithEditScope(visiblePositions, scopeInfo),
-  };
-}
-
-export async function getPositionsPageData(): Promise<{
-  editableDivisions: Division[];
-  positions: ApplyPosition[];
-}> {
-  const scopeInfo = await getScopeInfoForCurrentUser("positions");
-  if (isEmptyScopeInfo(scopeInfo)) {
-    return {
-      editableDivisions: [],
-      positions: [],
-    };
-  }
-
-  const hasFullVisibility = scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess;
-  const departmentIds = Array.from(scopeInfo.departmentIds);
-  const divisionIds = Array.from(scopeInfo.divisionIds);
-
-  const [allPositions, editableDivisions] = await Promise.all([
-    getAllPositionSnapshotCached(),
-    getEditableDivisionsForScope(scopeInfo),
-  ]);
-  const positions = hasFullVisibility
-    ? allPositions
-    : filterPositionSnapshotByScope(allPositions, departmentIds, divisionIds);
-
-  return {
-    editableDivisions,
-    positions: mapPositionsWithEditScope(positions, scopeInfo),
   };
 }
 

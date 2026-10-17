@@ -69,9 +69,7 @@ session cookie; server code reads the user id from that cookie, then turns the m
    (`readPositionRows` in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts),
    which reads the viewer's reach from the dashboard identity rather than from `ScopeInfo`)
 
-   Call sites: `getPositionsByMemberScope` and `getPositionsPageData` (which also sets a per-row
-   `canEdit`) in [get-apply-positions.ts](../app/actions/get-apply-positions.ts), neither imported
-   by any page since issue #142, and the file route
+   Call site: the file route
    [docs/applications/[r2key]/[filename]/route.ts](../app/(legacy)/docs/applications/[r2key]/[filename]/route.ts),
    which returns 401 with no user, lets applicants read their own files, and otherwise checks
    `ScopeInfo`, returning 403 when access fails.
