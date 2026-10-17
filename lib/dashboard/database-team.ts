@@ -20,6 +20,7 @@ import {
   users,
 } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { publicPathname } from "@/lib/storage/pathname";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { alumniMove } from "./alumni-move";
@@ -791,7 +792,7 @@ async function setMemberPhoto(identity: DashboardIdentity, personId: number, div
   const url =
     photo === null ? null : (await uploadPublicFile(publicPathname("photo", `${personId}-${randomUUID()}.jpg`), photo.bytes, photo.contentType)).url;
   await runAuditQuery((db) => db.update(members).set({ picture: url }).where(eq(members.memberId, personId)));
-  if (old !== null) await deletePublicFile(old).catch(() => undefined);
+  if (old !== null) await deleteBestEffort({ store: "public", area: "member-photo", pathname: old, remove: deletePublicFile });
   done();
   return written(null);
 }

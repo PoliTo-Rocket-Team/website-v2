@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 import { departments, divisions, logs, orders, roles, scopes, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import {
@@ -681,7 +682,7 @@ async function placeOrder(
     const [placed] = (await readOrderRows({ orderId: row.id })).flatMap((r) => orderOf(r, identity.memberId));
     return written(placed);
   } catch (error) {
-    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
     throw error;
   }
 }
@@ -728,12 +729,12 @@ async function editOrder(
         .returning({ id: orders.id }),
     );
   } catch (error) {
-    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
     throw error;
   }
   // The team leader answered between the read and the write: nothing saved, so the new quote points nowhere.
   if (changed.length === 0) {
-    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
     return refused(ORDER_CHANGED);
   }
   const [edited] = (await readOrderRows({ orderId })).flatMap((r) => orderOf(r, identity.memberId));
