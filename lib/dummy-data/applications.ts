@@ -126,7 +126,7 @@ const featured: readonly Featured[] = [
     appliedAt: "2026-09-30T11:00:00+02:00",
     cvBytes: 412 * 1024,
     state: { stage: "interview", offered: [OFFERED[0]], booked: null },
-    answer: { question: "Share a link to your portfolio.", answer: "behance.net/giuliarossi" },
+    answer: { question: "Share a link to your portfolio.", answer: "vimeo.com/giuliarossi" },
   },
 ];
 
