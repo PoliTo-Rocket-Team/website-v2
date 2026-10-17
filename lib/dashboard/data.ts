@@ -212,18 +212,18 @@ export interface DashboardData {
 
   /**
    * The Team page's visual layer (issue #283): Save draft, Publish and Reset
-   * to team, behind the same gate. It writes the layer alone, never a role,
-   * division, department, scope or member. Each side brings its own store and
-   * its own roles: the database's, or a test developer's cookie laid on the
-   * dummy team.
+   * to team, behind the same gate. Save draft and Publish write the layer and
+   * the advisor list together, in one step (issue #321); Reset to team writes
+   * the layer alone. None writes a role, division, department, scope or
+   * member. Each side brings its own store and its own roles: the database's,
+   * or a test developer's cookies laid on the dummy team.
    */
   readonly teamPage: TeamPageEditor;
 
   /**
    * The Team page's advisors (issue #286): added by hand, never from roles,
-   * behind the same gate. Save draft and Publish write the advisor list
-   * alone; End advising also adds the advisor to the Alumni page's Advisors
-   * group. Reset to team never reaches them. Each side brings its own store:
+   * behind the same gate. The editor saves them with the layer (`teamPage`);
+   * End advising also adds the advisor to the Alumni page's Advisors group. Reset to team never reaches them. Each side brings its own store:
    * the database's, or a test developer's cookie over today's advisors.
    */
   readonly teamAdvisors: AdvisorEditor;

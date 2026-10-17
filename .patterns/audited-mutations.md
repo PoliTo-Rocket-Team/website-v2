@@ -77,7 +77,11 @@ writes (issue #256) pass the site-content gate in `contentEditor`
 [lib/dashboard/database-partners.ts](../lib/dashboard/database-partners.ts) writes and calls
 `updateTag(PARTNERS_CACHE_TAG)`; the question writes (issue #258) do the same through
 [lib/dashboard/database-faqs.ts](../lib/dashboard/database-faqs.ts) and `updateTag(FAQS_CACHE_TAG)`, and the Team page's visual layer (issue #283) through
-[lib/dashboard/database-team-page.ts](../lib/dashboard/database-team-page.ts) and `updateTag(TEAM_PAGE_LAYER_CACHE_TAG)`. A test
+[lib/dashboard/database-team-page.ts](../lib/dashboard/database-team-page.ts) and `updateTag(TEAM_PAGE_LAYER_CACHE_TAG)`. The Team
+page editor's Save draft and Publish (issue #321) send the layer's rows and every advisor write in
+one `runAuditBatch` through
+[lib/dashboard/database-team-page-store.ts](../lib/dashboard/database-team-page-store.ts), so the
+two land together or not at all. A test
 developer's write goes to the dummy side, which checks the same rules and stores nothing. The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the

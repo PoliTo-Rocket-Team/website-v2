@@ -8,6 +8,7 @@ import { written } from "@/lib/dashboard/write";
 import {
   ADVISORS_CHANGED,
   advisorEditor,
+  advisorsAfter,
   advisorRowsOf,
   publicAdvisors,
   teamPageStatus,
@@ -28,12 +29,13 @@ const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", si
 const lead: ViewerStanding = { kind: "member", siteContent: false, approveOrders: false };
 const THIS_YEAR = 2026;
 
-/** An advisor store in memory, and the Alumni entries End advising added. */
-function storeOver(seed: readonly ContentItem<AdvisorVersion>[] = importedAdvisors()) {
-  const content = memoryContentStore(seed);
+/** An advisor store in memory, which `keep` may refuse a list to, and the Alumni entries End advising added. */
+function storeOver(seed: readonly ContentItem<AdvisorVersion>[] = importedAdvisors(), keep?: (items: readonly ContentItem<AdvisorVersion>[]) => Promise<string | null>) {
+  const content = memoryContentStore(seed, keep);
   const alumni: AlumniAdvisor[] = [];
   const store: AdvisorStore = {
     ...content,
+    saveAll: async (writes) => content.replace(advisorsAfter(await content.list(), writes)),
     async endAdvising(id, entry) {
       const removed = await content.remove(id);
       if (!removed.ok) return removed;
@@ -122,6 +124,25 @@ test("Save draft with nothing changed writes nothing, and a list that misses or 
   const unnamed = await editor.save("publish", [{ ...rows[0], fields: { ...rows[0].fields, name: " " } }, ...rows.slice(1)]);
   assert.equal(unnamed.ok, false);
   assert.deepEqual(await store.list(), before);
+});
+
+test("a save writes no advisor when any write in the list fails, and goes to the store as one write", async () => {
+  const seed = importedAdvisors();
+  // The store fails once the list holds more than one new advisor: the second write of two.
+  const { store, editor } = storeOver(seed, async (items) => (items.length > seed.length + 1 ? "The store failed." : null));
+  const rows = advisorRowsOf(seed);
+  const newAdvisor = (name: string): AdvisorRow => ({ id: null, fields: { name, role: "Propulsion", standing: "specialist", photo: null, linkedin: "", email: "" } });
+  const edited = [{ ...rows[0], fields: { ...rows[0].fields, role: "Faculty Advisor, Structures" } }, ...rows.slice(1), newAdvisor("Prof. Ada Rossi"), newAdvisor("Prof. Bea Neri")];
+
+  assert.deepEqual(await editor.save("publish", edited), { ok: false, error: "The store failed." });
+  assert.deepEqual(await store.list(), seed, "neither the edit nor the first new advisor is written");
+
+  // The editor never writes advisors one by one.
+  const fail = async (): Promise<never> => assert.fail("an advisor written outside the one save");
+  let writes = 0;
+  const counting: AdvisorStore = { ...store, create: fail, update: fail, saveAll: async (all) => (writes++, store.saveAll(all)) };
+  assert.ok((await advisorEditor(admin, counting, async () => THIS_YEAR).save("publish", edited.slice(0, -1))).ok);
+  assert.equal(writes, 1);
 });
 
 test("End advising takes the advisor off the Team page at once and adds their Alumni entry with role, years and photo", async () => {
