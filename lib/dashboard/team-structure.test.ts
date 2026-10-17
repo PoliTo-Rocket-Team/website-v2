@@ -72,7 +72,7 @@ test("a division lead and anyone else edit no structure, and get no Edit button"
   assert.equal(build(null), null);
   assert.deepEqual(editableDivisionIds({ kind: "lead", divisionIds: [1] }, org), []);
   assert.equal(showsTreeEdit({ kind: "division-lead", siteContent: false, approveOrders: false }), false);
-  assert.equal(showsTreeEdit({ kind: "member", siteContent: false, approveOrders: false }), false);
+  assert.equal(showsTreeEdit({ kind: "member", areaGrant: false, siteContent: false, approveOrders: false }), false);
   assert.equal(showsTreeEdit({ kind: "department-head", siteContent: false, approveOrders: false }), true);
   assert.equal(showsTreeEdit({ kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false }), true);
 });

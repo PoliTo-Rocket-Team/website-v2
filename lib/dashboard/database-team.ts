@@ -76,7 +76,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { isOffTeam, seatOf } from "./viewer";
+import { isOffTeam, readsAsDivisionLead, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -115,7 +115,7 @@ import { refused, written, type Upload, type WriteResult } from "./write";
  * several divisions starts on the one their primary role is in.
  */
 export function leadDivisionId(identity: DashboardIdentity): number | null {
-  if (identity.kind !== "division-lead") return null;
+  if (!readsAsDivisionLead(identity)) return null;
   return identity.role?.divisionId ?? identity.divisionIds[0] ?? null;
 }
 
@@ -139,7 +139,7 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
     return departmentId === null ? [] : [departmentId];
   });
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
-  if (identity.kind !== "division-lead" || identity.divisionIds.length === 0) return null;
+  if (!readsAsDivisionLead(identity) || identity.divisionIds.length === 0) return null;
   return { kind: "lead", divisionIds: identity.divisionIds };
 }
 

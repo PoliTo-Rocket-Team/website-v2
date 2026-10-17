@@ -90,7 +90,19 @@ export type ViewerStanding =
       readonly siteContent: boolean;
       readonly approveOrders: boolean;
     }
-  | { readonly kind: Exclude<ViewerKind, OffTeamKind | "operations-lead">; readonly siteContent: boolean; readonly approveOrders: boolean };
+  | { readonly kind: "department-head" | "division-lead"; readonly siteContent: boolean; readonly approveOrders: boolean }
+  | {
+      readonly kind: "member";
+      /**
+       * They hold an area grant in a division or department (issue #160): it
+       * opens the pages a division lead reaches, over the units the grants
+       * name, and makes them no division lead. What they may change there
+       * follows the grant's area and level (`mayChange`).
+       */
+      readonly areaGrant: boolean;
+      readonly siteContent: boolean;
+      readonly approveOrders: boolean;
+    };
 
 /**
  * Who a test developer looks as (issue #141): one of the viewer kinds, the
@@ -129,6 +141,8 @@ export function testDeveloperStanding(viewer: TestViewer, approveOrders = false)
       return { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders };
     case "operations-lead":
       return { kind: viewer, seat: "operations-lead", siteContent: false, approveOrders };
+    case "member":
+      return { kind: viewer, areaGrant: false, siteContent: false, approveOrders };
     default:
       return { kind: viewer, siteContent: false, approveOrders };
   }
@@ -147,9 +161,21 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
       return { kind: viewer.kind, siteContent: false, approveOrders: false };
     case "operations-lead":
       return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
+    case "member":
+      return { kind: viewer.kind, areaGrant: viewer.areaGrant, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
     default:
       return { kind: viewer.kind, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
   }
+}
+
+/**
+ * Whether the viewer reads the division pages a lead reads (Positions,
+ * Applications, Members, Access, Orders) over the units they cover: a
+ * division lead, or a member holding an area grant (issue #160). Reading is
+ * all it decides; a recruitment change checks `mayChange`.
+ */
+export function readsAsDivisionLead(viewer: ViewerStanding): boolean {
+  return viewer.kind === "division-lead" || (viewer.kind === "member" && viewer.areaGrant);
 }
 
 /** The full-access seat the viewer holds; null for anyone else, and for full access from a scope row alone. */
@@ -200,6 +226,19 @@ export function initialsOf(name: string): string {
  */
 export type ScopeKind = "admin" | "org" | "department" | "division" | "website" | "team";
 
+/** `scopes.target`: the area a row is on; `all` covers every area. */
+export type ScopeTarget = "all" | "positions" | "applications" | "members" | "orders" | "faq" | "blog" | "logs" | "approve_orders";
+
+/** `scopes.access_level`: Can view or Can edit (docs/dashboard-rules.md, "Access"). */
+export type AccessLevel = "view" | "edit";
+
+/** One scope row as the viewer reads it: its kind, its area and its level. */
+export type ScopeRef = {
+  readonly scope: ScopeKind;
+  readonly target: ScopeTarget;
+  readonly level: AccessLevel;
+};
+
 /** One of a member's active roles, as the viewer reads it. */
 export type ActiveRoleRef = {
   readonly type: RoleType;
@@ -211,7 +250,7 @@ export type ActiveRoleRef = {
 
 /** The scope rows and every active role that decide a real member's viewer kind. */
 export type MemberAccess = {
-  readonly scopes: readonly ScopeKind[];
+  readonly scopes: readonly ScopeRef[];
   /** Every role they hold now; none when every role they held has ended. */
   readonly activeRoles: readonly ActiveRoleRef[];
   /**
@@ -244,17 +283,18 @@ export function fullAccessSeatOf(activeRoles: readonly ActiveRoleRef[]): FullAcc
  * (issue #317). Full access,
  * the `operations-lead` kind, comes from a full-access seat (issue #238) or
  * from an org-wide or admin scope row; a role of type `head` is a department
- * head's (issue #230); a department or division scope, or a lead role in any
- * division, is a division lead's; anyone else on the team is a member.
+ * head's (issue #230); a lead role in any division is a division lead's;
+ * anyone else on the team is a member. A department or division scope row is
+ * an area grant, at any area and level: it makes nobody a division lead
+ * (issue #160).
  */
 export function viewerKindOf(access: MemberAccess | null): ViewerKind {
   if (access === null) return "non-member";
   if (access.activeRoles.length === 0) return access.onAlumniRecord === true ? "alumni" : "non-member";
   if (fullAccessSeatOf(access.activeRoles) !== null) return "operations-lead";
-  if (access.scopes.some((s) => s === "admin" || s === "org")) return "operations-lead";
+  if (access.scopes.some((s) => s.scope === "admin" || s.scope === "org")) return "operations-lead";
   if (access.activeRoles.some((r) => r.type === "head")) return "department-head";
-  const leadsSomething = access.activeRoles.some((r) => r.type === "lead");
-  if (access.scopes.some((s) => s === "department" || s === "division") || leadsSomething) return "division-lead";
+  if (access.activeRoles.some((r) => r.type === "lead")) return "division-lead";
   return "member";
 }
 
@@ -279,23 +319,27 @@ export function ledDivisionIds(access: MemberAccess): number[] {
 
 /**
  * A real account's standing: its viewer kind, its full-access seat,
- * site-content access from a `website` scope row, and "Approve orders" from a
- * `team` one (`unitRowsOf` leaves no other `team` row).
+ * site-content access from a `website` scope row, "Approve orders" from a
+ * `team` one (`unitRowsOf` leaves no other `team` row), and, for a member,
+ * whether a `division` or `department` row gives them an area grant.
  */
 export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const kind = viewerKindOf(access);
   // Off the team, scope rows that outlived the roles reach nothing (issue #201).
   if (isOffTeam(kind)) return { kind, siteContent: false, approveOrders: false };
   if (access === null) return { kind: "non-member", siteContent: false, approveOrders: false };
-  const siteContent = access.scopes.includes("website");
-  const approveOrders = access.scopes.includes("team");
+  const siteContent = access.scopes.some((s) => s.scope === "website");
+  const approveOrders = access.scopes.some((s) => s.scope === "team");
   if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, approveOrders };
+  if (kind === "member") {
+    const areaGrant = access.scopes.some((s) => s.scope === "division" || s.scope === "department");
+    return { kind, areaGrant, siteContent, approveOrders };
+  }
   return { kind, siteContent, approveOrders };
 }
 
-/** A scope row as `readIdentity` reads it: which unit it opens. */
-export type ScopeUnitRow = {
-  readonly scope: ScopeKind;
+/** A scope row as `readIdentity` reads it: which unit it opens, on which area, at which level. */
+export type ScopeUnitRow = ScopeRef & {
   readonly divisionId: number | null;
   readonly deptId: number | null;
 };
@@ -308,14 +352,75 @@ export type ScopeUnitRow = {
  * unit and stays as it is (it opens the Orders page, issue #270); so does
  * every other row.
  */
-export function unitRowsOf(
-  rows: readonly (ScopeUnitRow & { readonly target: string })[],
-  openDepartmentIds: readonly number[],
-): ScopeUnitRow[] {
+export function unitRowsOf(rows: readonly ScopeUnitRow[], openDepartmentIds: readonly number[]): ScopeUnitRow[] {
   return rows.flatMap((row): ScopeUnitRow[] =>
     row.scope === "team" && row.target !== "approve_orders"
-      ? openDepartmentIds.map((deptId) => ({ scope: "department", divisionId: null, deptId }))
-      : [{ scope: row.scope, divisionId: row.divisionId, deptId: row.deptId }],
+      ? openDepartmentIds.map((deptId) => ({ scope: "department", target: row.target, level: row.level, divisionId: null, deptId }))
+      : [{ scope: row.scope, target: row.target, level: row.level, divisionId: row.divisionId, deptId: row.deptId }],
+  );
+}
+
+/**
+ * An area grant (docs/dashboard-rules.md, "Access"): one area at one level, in
+ * one division or across one department. A `team` row on an area reaches here
+ * as a grant in every open department (`unitRowsOf`).
+ */
+export type AreaGrant = {
+  readonly target: ScopeTarget;
+  readonly level: AccessLevel;
+  readonly unit: { readonly kind: "division"; readonly divisionId: number } | { readonly kind: "department"; readonly departmentId: number };
+};
+
+/** The area grants among the scope rows: each `division` or `department` row that names its unit. */
+export function areaGrantsOf(rows: readonly ScopeUnitRow[]): AreaGrant[] {
+  return rows.flatMap((row): AreaGrant[] => {
+    if (row.scope === "division" && row.divisionId !== null) {
+      return [{ target: row.target, level: row.level, unit: { kind: "division", divisionId: row.divisionId } }];
+    }
+    if (row.scope === "department" && row.deptId !== null) {
+      return [{ target: row.target, level: row.level, unit: { kind: "department", departmentId: row.deptId } }];
+    }
+    return [];
+  });
+}
+
+/** The areas whose changes `mayChange` decides: the recruitment pages' (issue #160). */
+export type ChangeArea = "positions" | "applications";
+
+/** The division a change lands in, with its department. */
+export type DivisionUnit = {
+  readonly divisionId: number;
+  readonly departmentId: number;
+};
+
+/** What decides whether a viewer may change an area in a division: their kind, active roles and area grants. */
+export type ChangeAuthority = {
+  readonly kind: ViewerKind;
+  readonly roles: readonly ScopedRole[];
+  readonly grants: readonly AreaGrant[];
+};
+
+/**
+ * Whether the viewer may change `area` in the division (issue #160): full
+ * access anywhere; a lead role in the division or a head role over its
+ * department; else a grant on that area (or on every area) at Can edit that
+ * covers the division. A grant at Can view, or on another area, shows the
+ * page and changes nothing (docs/dashboard-rules.md, "Access").
+ */
+export function mayChange(authority: ChangeAuthority, area: ChangeArea, unit: DivisionUnit): boolean {
+  if (authority.kind === "operations-lead") return true;
+  if (isOffTeam(authority.kind)) return false;
+  const byRole = authority.roles.some(
+    (r) =>
+      (r.divisionId === unit.divisionId && divisionRoleOf(r.type) === "lead") ||
+      (r.type === "head" && r.departmentId === unit.departmentId),
+  );
+  if (byRole) return true;
+  return authority.grants.some(
+    (g) =>
+      (g.target === area || g.target === "all") &&
+      g.level === "edit" &&
+      (g.unit.kind === "division" ? g.unit.divisionId === unit.divisionId : g.unit.departmentId === unit.departmentId),
   );
 }
 
