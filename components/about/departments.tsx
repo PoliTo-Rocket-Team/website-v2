@@ -12,7 +12,9 @@ import { SectionHead } from "./section-head";
 // dimmed. On phones the current group sits at the left edge with the next one
 // peeking in from the screen edge. From lg each group is as wide as its grid,
 // the current one sits in the middle of the content column and its
-// neighbours peek in at the column's edges, one column gap away.
+// neighbours peek in at the column's edges, one column gap away. Where the
+// column is too narrow for that (from lg to about 1250px wide), the group
+// shrinks so a neighbour still shows at least one gap wide on each side.
 // Arrows and dots below, and the arrow keys on the focused carousel, step it;
 // a swipe or a trackpad scrolls it natively and the dots follow. Nothing
 // folds away: every head and lead is always shown.
@@ -100,6 +102,9 @@ function Group({ group, offset, frames }: { group: DepartmentGroup; offset: numb
   );
 }
 
+/** How much of a neighbouring group always shows from lg, px. */
+const MIN_PEEK = GAP;
+
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[]; label: string; frames: DepartmentFrames }) {
@@ -161,13 +166,17 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
   const arrow =
     "flex h-11 w-11 items-center justify-center rounded-full border text-prt-text transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 disabled:cursor-default disabled:border-white-5 disabled:text-dim";
 
-  // The column gap, between the groups as inside them; and, from lg, the
-  // first and last groups' widths, so the scroller can pad each end by half
-  // the column less half that group and the end groups centre too.
+  // The column gap, between the groups as inside them. From lg: the widest a
+  // group may be, the column less a gap and a peek on each side; and each
+  // end's padding, half the column less half that end group as shown, so
+  // the end groups centre too.
+  const fit = `(100cqw - ${2 * (GAP + MIN_PEEK)}px)`;
+  const endPad = (group: DepartmentGroup) => `calc(50cqw - min(${groupLayout(group).width}px, ${fit}) / 2)`;
   const spacing: Vars = {
     "--gap": `${GAP}px`,
-    "--first": `${groupLayout(groups[0]).width}px`,
-    "--last": `${groupLayout(groups[count - 1]).width}px`,
+    "--fit": `calc${fit}`,
+    "--pad-start": endPad(groups[0]),
+    "--pad-end": endPad(groups[count - 1]),
   };
 
   return (
@@ -182,7 +191,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
         aria-label={label}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:gap-[var(--gap)] lg:pl-[calc(50cqw-var(--first)/2)] lg:pr-[calc(50cqw-var(--last)/2)] lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
+        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:gap-[var(--gap)] lg:pl-[var(--pad-start)] lg:pr-[var(--pad-end)] lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
       >
         {groups.map((g, i) => (
           <div
@@ -194,7 +203,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
             aria-roledescription="slide"
             aria-label={`${i + 1} of ${count}: ${g.name}`}
             style={gridVars(g)}
-            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:w-[var(--w)] lg:max-w-none lg:snap-center lg:pr-0 ${
+            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:w-[min(var(--w),var(--fit))] lg:max-w-none lg:snap-center lg:pr-0 ${
               i === current ? "opacity-100" : "opacity-[0.35]"
             }`}
           >
