@@ -56,14 +56,15 @@ Server Component renders it.
    holds a full snapshot; the caller filters it by the viewer's scope after the cache hit:
 
    ```ts
-   async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
+   async function getPublicSnapshotCached() {
      "use cache";
-     cacheTag(POSITIONS_CACHE_TAG);
+     cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
      cacheLife("weeks");
-     return queryAllPositionSnapshot();
+     const [positions, recruitment] = await Promise.all([queryPositionSnapshot(), queryRecruitment()]);
+     return { positions, recruitment };
    }
    ```
-   Call sites: `getAllPositionSnapshotCached` and `getPublicSnapshotCached` (the positions
+   Call sites: `getPublicSnapshotCached` (the positions
    plus the recruitment switch, filtered by `isPublic` from
    [lib/apply/positions.ts](../lib/apply/positions.ts) after the cache hit) in
    [get-apply-positions.ts](../app/actions/get-apply-positions.ts), and
@@ -92,23 +93,18 @@ Better Auth's own tables are read by Better Auth, not by these helpers. Writes f
 
 ## Known inconsistencies (not the pattern)
 
-- **`"use server"` on read modules.** [get-applications.ts](../app/actions/get-applications.ts) and
-  [get-user-scope.ts](../app/actions/get-user-scope.ts) carry `"use server"`, which also exposes
-  their exports as callable Server Action endpoints. The other read modules use only
+- **`"use server"` on a read module.** [get-user-scope.ts](../app/actions/get-user-scope.ts)
+  carries `"use server"`, which also exposes its exports as callable Server Action endpoints. The other read modules use only
   `"server-only"`. A read helper does not need `"use server"`.
 - **Member directory is not cached.** ADR 0003 names the member directory as the read to cache
   (and names `unstable_cache` + `revalidateTag`). [get-members.ts](../app/actions/get-members.ts)
   queries every member row on each call with no cache, and the code that does cache uses
   `"use cache"` + `updateTag` instead. [members-list.tsx](../components/members-list.tsx) imports
   it into a client component, with the call commented out.
-- **Schema-error fallback.** [get-applications.ts](../app/actions/get-applications.ts) catches
-  errors that mention `application_files` columns and re-runs the query without them. It guards
-  against those columns being missing; migration `0005`, which adds them, is not in the Drizzle
-  journal (see [schema-migrations.md](./schema-migrations.md)). Do not copy it into new reads.
 - **Missing-table fallback for the recruitment switch.** `queryRecruitment` in
   [get-apply-positions.ts](../app/actions/get-apply-positions.ts) catches Postgres error `42P01`
   (undefined table) and returns the default, recruitment on. Every other error still throws. It
   exists because no deploy runs migrations, so a database can serve the new code before
   `0005_recruitment_setting` and `0006_recruitment_setting_row` reach it. Its fallback equals the
   default row `0006` inserts, so the cached answer is the same either way. Remove it once both
-  migrations are applied on every database. Like the entry above, do not copy it into new reads.
+  migrations are applied on every database. Do not copy it into new reads.

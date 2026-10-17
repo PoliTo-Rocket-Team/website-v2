@@ -20,7 +20,7 @@ import {
   type ApproveOrdersAccess,
   type HeldAccess,
 } from "./division-access";
-import { unitRowsOf, viewerStandingOf, viewerUnitsOf, type FullAccessSeat } from "./viewer";
+import { unitRowsOf, viewerStandingOf, viewerUnitsOf, type FullAccessSeat, type ScopeTarget } from "./viewer";
 
 const msa = { id: 1, name: "Mission Analysis Division" };
 const aoa = { id: 2, name: "Optimization and Analysis Division" };
@@ -300,28 +300,30 @@ test("an Alumni grant gives the person Alumni page reach, through the site-conte
   assert.deepEqual(row, { scope: "website", target: "all", deptId: null, divisionId: null });
   const member = { type: null, divisionId: 1, fullAccess: null } as const;
   assert.equal(canReach(viewerStandingOf({ scopes: [], activeRoles: [member] }), "alumni"), false);
-  assert.equal(canReach(viewerStandingOf({ scopes: [row.scope], activeRoles: [member] }), "alumni"), true);
+  assert.equal(canReach(viewerStandingOf({ scopes: [{ scope: row.scope, target: "all", level: "view" }], activeRoles: [member] }), "alumni"), true);
 });
 
 test("an area given across the whole team opens its pages in every open department", () => {
   const row = grantRowOf(WHOLE_TEAM_PLACE, "positions");
   assert.deepEqual(row, { scope: "team", target: "positions", deptId: null, divisionId: null });
-  const units = unitRowsOf([{ ...row, divisionId: null, deptId: null }], [1, 2, 5]);
+  const units = unitRowsOf([{ scope: "team", target: "positions", level: "edit", divisionId: null, deptId: null }], [1, 2, 5]);
   assert.deepEqual(viewerUnitsOf(units, []).departmentIds, [1, 2, 5]);
+  // Each department's row keeps the area and its level (issue #160).
+  assert.deepEqual(units[0], { scope: "department", target: "positions", level: "edit", divisionId: null, deptId: 1 });
   // "Approve orders" is a team row too, in no unit: it opens no department's pages.
-  assert.deepEqual(unitRowsOf([{ scope: "team", target: "approve_orders", divisionId: null, deptId: null }], [1, 2]), [
-    { scope: "team", divisionId: null, deptId: null },
+  assert.deepEqual(unitRowsOf([{ scope: "team", target: "approve_orders", level: "view", divisionId: null, deptId: null }], [1, 2]), [
+    { scope: "team", target: "approve_orders", level: "view", divisionId: null, deptId: null },
   ]);
 });
 
 test("a member whose only access is \"Approve orders\" reaches the Orders page, and nothing else it adds (issue #270)", () => {
   const member = { type: null, divisionId: 1, fullAccess: null } as const;
-  const standingFrom = (target: string) => {
-    const units = unitRowsOf([{ scope: "team", target, divisionId: null, deptId: null }], [1, 2]);
-    return viewerStandingOf({ scopes: units.map((u) => u.scope), activeRoles: [member] });
+  const standingFrom = (target: ScopeTarget) => {
+    const units = unitRowsOf([{ scope: "team", target, level: "view", divisionId: null, deptId: null }], [1, 2]);
+    return viewerStandingOf({ scopes: units, activeRoles: [member] });
   };
   const holder = standingFrom("approve_orders");
-  assert.deepEqual(holder, { kind: "member", siteContent: false, approveOrders: true });
+  assert.deepEqual(holder, { kind: "member", areaGrant: false, siteContent: false, approveOrders: true });
   assert.equal(canReach(holder, "orders"), true);
   assert.equal(canReach(holder, "members"), false);
   // An area given across the whole team is no "Approve orders".

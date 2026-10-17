@@ -69,8 +69,6 @@ catches type fallout.
   (`0005_recruitment_setting`, issue #119) emitted those statements again; they were cut from
   that file by hand, and its snapshot (`meta/0005_snapshot.json`) now holds them, so later
   generates no longer repeat them. The journal's `0005` tag is `0005_recruitment_setting`.
-  [get-applications.ts](../app/actions/get-applications.ts) carries a fallback query for when these
-  columns are missing.
 - **`0005` is written defensively** (`IF NOT EXISTS`, `DO $$ ... EXCEPTION WHEN duplicate_object`),
   unlike the generated files.
 - **No audit trigger on `application_files`.** It was created after `0002` and `0005` adds none.

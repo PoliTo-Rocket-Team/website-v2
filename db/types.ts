@@ -26,7 +26,6 @@ export type ApplyPosition = Prettify<
     dept_id: number;
     dept_name: string;
     dept_code: string;
-    canEdit?: boolean;
   }
 >;
 

@@ -321,7 +321,9 @@ export const personFor = {
 // comes from ./applications.ts, never from a number kept here. Ids make the
 // codes (`positionCode`), so the closed Flight Simulator Developer is id 2:
 // AER-MSA-002, as board 34b's placeholder of the same role, so one role shows
-// one code on `/apply?open=0` and on its own page (issue #157).
+// one code on `/apply?open=0` and on its own page (issue #157). The other
+// closed one, Video Editor, has a title no placeholder uses, so it is never
+// listed there under a second code (issue #162).
 export const positions = [
   { id: 1, title: "Mission Analyst", slug: "1-mission-analyst", divisionId: 1, open: true, updatedAt: "2026-10-07T11:20:00+02:00", question: "Tell us about a simulation you built.", requiresMotivationLetter: true },
   { id: 8, title: "Aerodynamicist", slug: "8-aerodynamicist", divisionId: 2, open: true, updatedAt: "2026-10-04T09:40:00+02:00", question: "Which CFD or wind tunnel work have you done?", requiresMotivationLetter: false },
@@ -330,7 +332,7 @@ export const positions = [
   { id: 3, title: "Recovery Systems Engineer", slug: "3-recovery-systems-engineer", divisionId: 6, open: true, updatedAt: "2026-09-09T12:00:00+02:00", question: "Have you designed or packed a parachute before?", requiresMotivationLetter: false },
   { id: 5, title: "Firmware Developer", slug: "5-firmware-developer", divisionId: 10, open: true, updatedAt: "2026-10-09T11:00:00+02:00", question: "Which microcontrollers have you written firmware for?", requiresMotivationLetter: false },
   { id: 7, title: "Safety Officer", slug: "7-safety-officer", divisionId: 13, open: true, updatedAt: "2026-10-06T14:10:00+02:00", question: "Have you worked with safety procedures before?", requiresMotivationLetter: true },
-  { id: 10, title: "Graphic Designer", slug: "10-graphic-designer", divisionId: 11, open: false, updatedAt: "2026-08-10T10:00:00+02:00", question: "Share a link to your portfolio.", requiresMotivationLetter: false },
+  { id: 10, title: "Video Editor", slug: "10-video-editor", divisionId: 11, open: false, updatedAt: "2026-08-10T10:00:00+02:00", question: "Share a link to your portfolio.", requiresMotivationLetter: false },
   { id: 4, title: "Trajectory Analyst", slug: "4-trajectory-analyst", divisionId: 1, open: true, updatedAt: "2026-10-05T16:45:00+02:00", question: "Which tools have you used for trajectory work?", requiresMotivationLetter: false },
   { id: 6, title: "CFD Analyst", slug: "6-cfd-analyst", divisionId: 1, open: true, updatedAt: "2026-09-30T09:15:00+02:00", question: "Which CFD or wind tunnel work have you done?", requiresMotivationLetter: false },
 ] as const satisfies readonly DummyPosition[];

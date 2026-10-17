@@ -3,7 +3,16 @@ import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import type { ContentStore } from "@/lib/content/editor";
 import { nextSiteOrder } from "@/lib/content/order";
 import { textLength } from "@/lib/content/text";
-import { afterStep, editorVersion, publicVersion, statusOf, type ContentItem, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
+import {
+  afterStep,
+  editorVersion,
+  publicVersion,
+  statusOf,
+  type ContentItem,
+  type ContentStatus,
+  type PublishStep,
+  type Versioned,
+} from "@/lib/content/versioned";
 import { checkAdvisor, type NewAdvisor } from "@/lib/dashboard/alumni";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
@@ -230,12 +239,20 @@ const isRow = (value: unknown): value is AdvisorRow =>
 /** An ended advisor as the Alumni page's Advisors group keeps them: name, role, years, and the photo the Team page showed. */
 export type AlumniAdvisor = NewAdvisor & { readonly photo: PersonPhoto | null };
 
+/** One write a Save draft or Publish makes: a new advisor at a site order, or a stored one's new versions. */
+export type AdvisorWrite =
+  | { readonly kind: "create"; readonly version: Versioned<AdvisorVersion>; readonly siteOrder: number }
+  | { readonly kind: "update"; readonly id: number; readonly version: Versioned<AdvisorVersion> };
+
 /**
- * Where the advisors are kept. Beside the content store's writes, End
+ * Where the advisors are kept. Beside the content store's writes, a Save
+ * draft or Publish lands every write of the list in one step, and End
  * advising takes the advisor off the list and adds their Alumni entry in one
  * step, so the two pages never disagree about them.
  */
 export interface AdvisorStore extends ContentStore<AdvisorVersion> {
+  /** Every write lands, or none does: a refusal or a failure leaves the advisors as they were. */
+  saveAll(writes: readonly AdvisorWrite[]): Promise<WriteResult<null>>;
   endAdvising(id: number, alumni: AlumniAdvisor): Promise<WriteResult<null>>;
 }
 
@@ -277,6 +294,42 @@ function placedOf(rows: readonly AdvisorRow[]): WriteResult<{ id: number | null;
   return written(out);
 }
 
+/**
+ * The writes a Save draft or Publish of the panel's rows makes over the
+ * stored advisors `items`: none for an advisor already as the rows have them.
+ * Refused when the rows are not ones the editor sends, do not name every
+ * stored advisor once (advisors leave only by End advising), or hold a row
+ * the panel would refuse. Nothing is written here.
+ */
+export function advisorWritesOf(items: readonly AdvisorItem[], step: PublishStep, rows: unknown): WriteResult<AdvisorWrite[]> {
+  if (!Array.isArray(rows) || rows.length > 200 || !rows.every(isRow)) return refused(ADVISORS_CHANGED);
+  const ids = rows.flatMap((r) => (r.id === null ? [] : [r.id]));
+  const stored = new Map(items.map((item) => [item.id, item]));
+  if (ids.length !== items.length || new Set(ids).size !== ids.length || !ids.every((id) => stored.has(id))) return refused(ADVISORS_CHANGED);
+  const placed = placedOf(rows);
+  if (!placed.ok) return placed;
+
+  let siteOrder = nextSiteOrder(items);
+  return written(
+    placed.value.flatMap(({ id, version }): AdvisorWrite[] => {
+      const current = id === null ? undefined : stored.get(id);
+      if (current === undefined) return [{ kind: "create", version: afterStep(null, version, step), siteOrder: siteOrder++ }];
+      const v = current.version;
+      const unchanged =
+        step === "publish" ? v.state === "published" && v.draft === null && sameVersion(v.published, version) : sameVersion(editorVersion(v), version);
+      return unchanged ? [] : [{ kind: "update", id: current.id, version: afterStep(v, version, step) }];
+    }),
+  );
+}
+
+/** The advisors once every write has landed, as a store kept in memory holds them: each new advisor takes the next id. */
+export function advisorsAfter(items: readonly AdvisorItem[], writes: readonly AdvisorWrite[]): AdvisorItem[] {
+  let lastId = items.reduce((last, item) => Math.max(last, item.id), 0);
+  const updates = new Map(writes.flatMap((w) => (w.kind === "update" ? [[w.id, w.version] as const] : [])));
+  const created = writes.flatMap((w) => (w.kind === "create" ? [{ id: ++lastId, siteOrder: w.siteOrder, version: w.version }] : []));
+  return [...items.map((item) => ({ ...item, version: updates.get(item.id) ?? item.version })), ...created];
+}
+
 export function advisorEditor(viewer: ViewerStanding, store: AdvisorStore, thisYear: () => Promise<number>): AdvisorEditor {
   const allowed = maySiteContent(viewer);
   const listed = async () => [...(await store.list())];
@@ -286,29 +339,10 @@ export function advisorEditor(viewer: ViewerStanding, store: AdvisorStore, thisY
 
     async save(step, rows) {
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
-      if (!Array.isArray(rows) || rows.length > 200 || !rows.every(isRow)) return refused(ADVISORS_CHANGED);
-      const items = await listed();
-      // Advisors leave only by End advising, so the rows name every stored advisor once.
-      const ids = rows.flatMap((r) => (r.id === null ? [] : [r.id]));
-      const stored = new Map(items.map((item) => [item.id, item]));
-      if (ids.length !== items.length || new Set(ids).size !== ids.length || !ids.every((id) => stored.has(id))) return refused(ADVISORS_CHANGED);
-      const placed = placedOf(rows);
-      if (!placed.ok) return placed;
-
-      let siteOrder = nextSiteOrder(items);
-      for (const { id, version } of placed.value) {
-        const current = id === null ? null : stored.get(id)!;
-        if (current !== null) {
-          const v = current.version;
-          const unchanged =
-            step === "publish" ? v.state === "published" && v.draft === null && sameVersion(v.published, version) : sameVersion(editorVersion(v), version);
-          if (unchanged) continue;
-        }
-        const result =
-          current === null ? await store.create(afterStep(null, version, step), siteOrder++) : await store.update(current.id, afterStep(current.version, version, step));
-        if (!result.ok) return result;
-      }
-      return written(await listed());
+      const writes = advisorWritesOf(await listed(), step, rows);
+      if (!writes.ok) return writes;
+      const saved = await store.saveAll(writes.value);
+      return saved.ok ? written(await listed()) : saved;
     },
 
     async end(id, years) {

@@ -11,7 +11,9 @@ import { NO_OUTREACH_EDITS } from "./outreach";
 import { NO_OWN_CHANGES } from "./own";
 import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
+import { advisorRowsOf } from "@/lib/about/advisors";
 import {
+  dummyAdvisorSeed,
   dummyTeamPageLayerSeed,
   dummyTeamRoles,
   parseTeamPageLayerEdits,
@@ -49,7 +51,10 @@ function untouched<T>(name: string, current: T) {
   };
 }
 
-const edited: TeamPageLayer = { ...NO_TEAM_LAYER, leader: { role: "President" }, spots: { "head:1:0": { name: "Chiara R." } } };
+/** Today's advisors as the panel holds them: a save that leaves them as they are. */
+const seedRows = advisorRowsOf(dummyAdvisorSeed());
+
+const edited: TeamPageLayer ={ ...NO_TEAM_LAYER, leader: { role: "President" }, spots: { "head:1:0": { name: "Chiara R." } } };
 
 /** The dummy dashboard of a full-access test developer whose only writable store is the Team page cookie. */
 function dashboard(jar: DummyTeamPageLayerEditsStore, viewer: "operations-lead" | "division-lead" = "operations-lead") {
@@ -70,7 +75,7 @@ function dashboard(jar: DummyTeamPageLayerEditsStore, viewer: "operations-lead" 
 
 test("on previews the layer lives in the test developer's cookie, and the dummy side lays it on the dummy team", async () => {
   const jar = cookie();
-  assert.ok((await dashboard(jar).teamPage.save("save-draft", edited)).ok);
+  assert.ok((await dashboard(jar).teamPage.save("save-draft", edited, seedRows)).ok);
   assert.ok(jar.value !== undefined, "kept in the cookie");
 
   // The next request reads the cookie back and lays the draft on the dummy team.
@@ -79,7 +84,7 @@ test("on previews the layer lives in the test developer's cookie, and the dummy 
   assert.equal(opened?.page.orgChart.leader.role, "President");
   assert.ok(opened?.page.departments.groups[0].members.some((m) => m.name === "Chiara R."));
 
-  assert.ok((await dashboard(jar).teamPage.save("publish", edited)).ok);
+  assert.ok((await dashboard(jar).teamPage.save("publish", edited, seedRows)).ok);
   assert.equal((await dashboard(jar).teamPage.open())?.status, "published");
   assert.ok((await dashboard(jar).teamPage.reset()).ok);
   const reset = await dashboard(jar).teamPage.open();
@@ -91,7 +96,7 @@ test("no Team page write touches anything but the layer's cookie, and a viewer w
   const jar = cookie();
   const lead = dashboard(jar, "division-lead").teamPage;
   assert.equal(await lead.open(), null);
-  assert.equal((await lead.save("publish", edited)).ok, false);
+  assert.equal((await lead.save("publish", edited, seedRows)).ok, false);
   assert.equal((await lead.reset()).ok, false);
   assert.equal(jar.value, undefined);
 });

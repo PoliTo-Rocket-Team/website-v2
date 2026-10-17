@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 import { departments, divisions, logs, orders, roles, scopes, users } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { privatePathname, type PrivatePathname } from "@/lib/storage/pathname";
 import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-store";
 import {
@@ -32,7 +33,7 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "./division-access";
-import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
+import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, readsAsDivisionLead, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
   checkApproveOrdersChange,
@@ -84,7 +85,7 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
  */
 async function leadDivisions(identity: DashboardIdentity): Promise<Extract<AccessUnit, { kind: "division" }> | null> {
   const memberId = identity.memberId;
-  if (identity.kind !== "division-lead" || memberId === null || identity.divisionIds.length === 0) return null;
+  if (!readsAsDivisionLead(identity) || memberId === null || identity.divisionIds.length === 0) return null;
   const rows = await getDb()
     .select({ id: divisions.id, name: divisions.name })
     .from(divisions)
@@ -149,7 +150,7 @@ async function readTeamUnit(): Promise<AccessUnit> {
 async function accessUnitOf(identity: DashboardIdentity): Promise<AccessUnit | null> {
   if (identity.memberId === null) return null;
   if (identity.kind === "operations-lead") return readTeamUnit();
-  if (identity.kind === "division-lead") return leadDivisions(identity);
+  if (readsAsDivisionLead(identity)) return leadDivisions(identity);
   const department = await readHeadDepartment(identity);
   if (department === null) return null;
   return { kind: "department", department: { id: department.id, name: department.name }, divisions: department.divisions };
@@ -682,7 +683,7 @@ async function placeOrder(
     const [placed] = (await readOrderRows({ orderId: row.id })).flatMap((r) => orderOf(r, identity.memberId));
     return written(placed);
   } catch (error) {
-    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
     throw error;
   }
 }
@@ -729,12 +730,12 @@ async function editOrder(
         .returning({ id: orders.id }),
     );
   } catch (error) {
-    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
     throw error;
   }
   // The team leader answered between the read and the write: nothing saved, so the new quote points nowhere.
   if (changed.length === 0) {
-    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    if (pathname !== null) await deleteBestEffort({ store: "private", area: "order-quote", pathname, remove: deletePrivateFile });
     return refused(ORDER_CHANGED);
   }
   const [edited] = (await readOrderRows({ orderId })).flatMap((r) => orderOf(r, identity.memberId));

@@ -639,21 +639,6 @@ export function reachesDivision(actor: TeamActor, divisionId: number, org: OrgCh
   return actor.departmentIds.includes(departmentOfDivision(org, divisionId)?.id ?? -1);
 }
 
-/**
- * The rows of someone's roles a division lead's Members edits reach (Save,
- * Promote; issue #185): the ones in any division the lead leads, not only
- * their first, and never one outside them. Null when no row is in reach, or
- * the actor is no division lead.
- */
-export function rowsALeadReaches<R>(actor: TeamActor, rows: readonly R[], divisionOf: (row: R) => number | null): R[] | null {
-  if (actor.kind !== "lead") return null;
-  const reached = rows.filter((row) => {
-    const divisionId = divisionOf(row);
-    return divisionId !== null && actor.divisionIds.includes(divisionId);
-  });
-  return reached.length > 0 ? reached : null;
-}
-
 /** The line under a lead's Members header: "Leads are changed by the Head of Aerodynamics". */
 export function leadsChangedBy(divisionId: number, org: OrgChart): string {
   const department = departmentOfDivision(org, divisionId);
