@@ -9,11 +9,24 @@ import {
   type ContentStatus,
   type PublishStep,
   type Versioned,
+  versionRows,
 } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
+import { checkPhotoUpload, type CheckedPhoto } from "@/lib/outreach-photos";
 import { advisorWritesOf, type AdvisorItem, type AdvisorWrite } from "./advisors";
-import { applyLayer, ARC_FULL, ARC_LEADERS, isTeamPageLayer, leadersOnArc, NO_TEAM_LAYER, resetLayer, type TeamBuild, type TeamPageLayer } from "./team-layer";
+import {
+  applyLayer,
+  ARC_FULL,
+  ARC_LEADERS,
+  isTeamPageLayer,
+  layerPhotos,
+  leadersOnArc,
+  NO_TEAM_LAYER,
+  resetLayer,
+  type TeamBuild,
+  type TeamPageLayer,
+} from "./team-layer";
 import { editedTeamPage } from "./team-page-edit";
 import {
   emptySectionOf,
@@ -25,7 +38,7 @@ import {
   type TeamPageSection,
   type TeamRoles,
 } from "./team-roles";
-import type { TeamPage } from "./types";
+import type { PersonPhoto, TeamPage } from "./types";
 
 // The Team page's visual layer as the editor reads and writes it (issue
 // #283): one document in the shared content store (lib/content/), with a
@@ -35,9 +48,14 @@ import type { TeamPage } from "./types";
 // Save draft and Publish write the layer and the advisor list (./advisors.ts)
 // together, in one step of the store, so the live page never shows a new
 // layer with old advisors (issue #321); Reset to team writes the layer alone.
-// None of them writes a role, division, department, scope or member. Both
-// sides of the dashboard data interface build it, each with its own store
-// and its own roles.
+// None of them writes a role, division, department, scope or member. A photo
+// picked with Replace photo (issue #323) is stored the moment it is cropped,
+// behind the same gate, and reaches the page only when Save draft or Publish
+// carries its src. Once a write lands, each uploaded photo it left unused by
+// every stored layer version and advisor row is deleted, best-effort, so a
+// failed delete never fails the write. Both sides of the dashboard data
+// interface build it, each with its own store, its own roles and its own
+// photo files.
 
 /** The layer the public page lays on: the published version, or none. */
 export function publishedLayer(items: readonly ContentItem<TeamPageLayer>[]): TeamPageLayer {
@@ -86,6 +104,33 @@ export interface TeamPageStore {
   save(layer: Versioned<TeamPageLayer>, advisors: readonly AdvisorWrite[]): Promise<WriteResult<null>>;
 }
 
+/**
+ * Where a photo uploaded from Replace photo is kept: the public store on the
+ * database side, a stand-in on previews. Either way `put` answers a src the
+ * layer and the advisor rows take: a `/team/` path or an `https://` URL.
+ */
+export interface TeamPagePhotos {
+  put(photo: CheckedPhoto): Promise<PersonPhoto>;
+  /**
+   * Deletes the files of these photos that `put` stored; any other photo (a
+   * `/team/` path, a member's own picture) is left alone. A failed delete is
+   * logged, never thrown: the write it follows has already landed.
+   */
+  drop(photos: readonly PersonPhoto[]): Promise<void>;
+}
+
+/** Every photo the stored layer versions and advisor versions show. */
+export function photosInUse(layer: readonly ContentItem<TeamPageLayer>[], advisors: readonly AdvisorItem[]): Set<PersonPhoto> {
+  const layers = layer.flatMap((item) => versionRows(item.version).flatMap((row) => layerPhotos(row.content)));
+  const rows = advisors.flatMap((item) => versionRows(item.version).flatMap((row) => row.content.photo ?? []));
+  return new Set([...layers, ...rows]);
+}
+
+/** Of the photos in use before a write, those no stored version uses after it, so their files may go. */
+export function photosNoLongerUsed(before: ReadonlySet<PersonPhoto>, after: ReadonlySet<PersonPhoto>): PersonPhoto[] {
+  return [...before].filter((photo) => !after.has(photo));
+}
+
 /** What a Save draft or Publish answers: the layer's versions and the advisors, as stored. */
 export type TeamPageSaved = { readonly layer: Versioned<TeamPageLayer>; readonly advisors: readonly AdvisorItem[] };
 
@@ -96,6 +141,8 @@ export interface TeamPageEditor {
   save(step: PublishStep, layer: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>>;
   /** Reset to team (board 80h): a draft with every edit gone except the intro text and the group photo. */
   reset(): Promise<WriteResult<Versioned<TeamPageLayer>>>;
+  /** A photo cropped in a panel's Replace photo, stored at once; answers the src a save puts on the person or advisor. */
+  uploadPhoto(photo: Upload): Promise<WriteResult<PersonPhoto>>;
 }
 
 export const NOT_A_LAYER = "The page changed in a way it cannot keep. Reload and try again.";
@@ -129,7 +176,13 @@ export function layerRefusal(build: TeamBuild, base: TeamPage, layer: TeamPageLa
   return null;
 }
 
-export function teamPageEditor(viewer: ViewerStanding, store: TeamPageStore, roles: () => Promise<TeamRoles>, base: TeamPage): TeamPageEditor {
+export function teamPageEditor(
+  viewer: ViewerStanding,
+  store: TeamPageStore,
+  roles: () => Promise<TeamRoles>,
+  base: TeamPage,
+  photos: TeamPagePhotos,
+): TeamPageEditor {
   const editor = contentEditor(viewer, store.layer);
   /** The one document's id; null before the first save. */
   const documentId = async () => (await store.layer.list())[0]?.id ?? null;
@@ -153,14 +206,28 @@ export function teamPageEditor(viewer: ViewerStanding, store: TeamPageStore, rol
       if (refusal !== null) return refused(refusal);
       const writes = advisorWritesOf(await store.advisors(), step, advisors);
       if (!writes.ok) return writes;
-      const version = afterStep((await store.layer.list())[0]?.version ?? null, layer, step);
+      const items = await store.layer.list();
+      const before = photosInUse(items, await store.advisors());
+      const version = afterStep(items[0]?.version ?? null, layer, step);
       const saved = await store.save(version, writes.value);
-      return saved.ok ? written({ layer: version, advisors: await store.advisors() }) : saved;
+      if (!saved.ok) return saved;
+      const advisorsNow = await store.advisors();
+      await photos.drop(photosNoLongerUsed(before, photosInUse(await store.layer.list(), advisorsNow)));
+      return written({ layer: version, advisors: advisorsNow });
     },
 
     async reset() {
+      const advisors = await store.advisors();
+      const before = photosInUse(await store.layer.list(), advisors);
       const result = await editor.save(await documentId(), "save-draft", async (current) => written(resetLayer(current ?? NO_TEAM_LAYER)));
+      if (result.ok) await photos.drop(photosNoLongerUsed(before, photosInUse(await store.layer.list(), advisors)));
       return versionOf(result);
+    },
+
+    async uploadPhoto(upload) {
+      if (!maySiteContent(viewer)) return refused(SITE_CONTENT_REFUSAL);
+      const photo = checkPhotoUpload(upload);
+      return photo.ok ? written(await photos.put(photo.value)) : photo;
     },
   };
 }
