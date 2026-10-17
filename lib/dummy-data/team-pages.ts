@@ -76,6 +76,7 @@ import {
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
 import { kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { grantActors, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
@@ -455,9 +456,11 @@ function myDepartment(kind: TestViewer): number | null {
 /**
  * Who `kind` acts as on the Members page: the operations lead reaches the
  * team, a department head their department (issue #235), a division lead
- * their division; nobody else acts there.
+ * their division, and the member holding a test grant the divisions where it
+ * lets them change Members (issue #351); nobody else acts there.
  */
-function actorOf(kind: TestViewer): TeamActor | null {
+function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): TeamActor | null {
+  if (kind === "member" && grant !== null) return grantActors(grant, org).changing;
   if (!canReach(testDeveloperStanding(kind), "members")) return null;
   if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
@@ -559,12 +562,13 @@ function writesFor(
   save: (next: TeamEdits) => Promise<void>,
   joiners: readonly DummyJoiner[],
   move: DummyMove,
+  grant: TestGrant | null,
 ): TeamWrites {
   const team = editedRoster(edits, joiners);
   const { org, closed } = dummyOrg(edits);
   const find = (id: number) => team.find((e) => e.id === id);
   const thisYear = new Date().getUTCFullYear();
-  const actor = actorOf(kind);
+  const actor = actorOf(kind, org, grant);
   const changeOf = (id: number): MemberChange => edits.members[id] ?? { pageTitle: find(id)?.pageTitle ?? null, roles: {} };
   const withChange = (id: number, change: MemberChange): TeamEdits => ({ ...edits, members: { ...edits.members, [id]: change } });
   /** Someone in a division the actor reaches, never the actor. */
@@ -945,7 +949,9 @@ function writesFor(
 /**
  * The Team pages as `kind` sees them, with `edits` laid over the arrays,
  * `current` the applications as the test developer left them and `move` the
- * Applications page's move, which Confirm join runs.
+ * Applications page's move, which Confirm join runs. `grant` is the member's
+ * test grant (./test-grant.ts): the Members page then lists every division it
+ * covers and offers changes only where it lets them change (issue #351).
  */
 export function dummyTeamPages(
   kind: TestViewer,
@@ -954,12 +960,15 @@ export function dummyTeamPages(
   current: readonly DummyApplication[] = baseApplications,
   move: DummyMove = NO_MOVE,
   openPositionsIn: (divisionId: number) => number = () => 0,
+  grant: TestGrant | null = null,
 ): Pick<DashboardData, "members" | "findForAdd" | "findPeople" | "alumni" | "teamTree" | "teamStructure" | "teamWrites"> {
   const self = SELF_ID[kind];
   const joiners = dummyJoiners(current);
-  const actor = actorOf(kind);
   const { org } = dummyOrg(edits);
-  const reach = actor?.kind === "lead" ? actor.divisionIds : [];
+  const actor = actorOf(kind, org, grant);
+  // Who the page reads as: the actor, or for a test grant every division it covers, whatever its level.
+  const viewing = kind === "member" && grant !== null ? grantActors(grant, org).viewing : actor;
+  const reach = viewing?.kind === "lead" ? viewing.divisionIds : [];
   // As the database lists them (`readJoining`): people not on the team yet. A
   // member joins from the Applications page (board 58h2) or from Add member.
   const joiningIn = (team: readonly RosterEntry[], division: number): Joining[] =>
@@ -986,7 +995,7 @@ export function dummyTeamPages(
         });
         return page === null ? NO_MEMBERS : { scope: "department", ...page };
       }
-      if (actor === null || reach.length === 0) return NO_MEMBERS;
+      if (reach.length === 0) return NO_MEMBERS;
       const division = reach.find((id) => id === divisionId) ?? reach[0];
       const page = divisionMembers({
         records: team.map((entry) => recordOf(entry, edits)),
@@ -1032,7 +1041,7 @@ export function dummyTeamPages(
         openPositions: Object.fromEntries(ids.map((id) => [id, openPositionsIn(id)])),
       });
     },
-    teamWrites: writesFor(kind, edits, save, joiners, move),
+    teamWrites: writesFor(kind, edits, save, joiners, move, grant),
   };
 }
 

@@ -1,6 +1,7 @@
 import { callbackPath } from "@/lib/auth-callback";
 import { isTestViewer, type TestViewer } from "@/lib/dashboard/viewer";
 import { ownApplicationsStartOf, type OwnApplicationsStart } from "@/lib/dummy-data/own";
+import { testGrantOf } from "@/lib/dummy-data/test-grant";
 
 // Test developer sign-in (issue #141). On previews and under `next dev`, a
 // person or an agent can sign in as a test developer: no Google, no account
@@ -70,6 +71,12 @@ export const TEST_DEVELOPER_PROJECTS_COOKIE = "prt_test_developer_projects";
  */
 export const TEST_DEVELOPER_APPLICATIONS_COOKIE = "prt_test_developer_applications";
 
+/**
+ * The Members grant the member viewer holds (lib/dummy-data/test-grant.ts,
+ * issue #351): set by a sign-in with that `grant` value, absent otherwise.
+ */
+export const TEST_DEVELOPER_GRANT_COOKIE = "prt_test_developer_grant";
+
 /** The test view a test developer cookie names, or null when the gate is off or the value is not one. */
 export function testDeveloperViewer(
   cookieValue: string | null | undefined,
@@ -114,16 +121,20 @@ function redirect(to: string, url: URL, ...cookies: string[]): Response {
 }
 
 /**
- * GET /api/test-developer/sign-in?viewer=<kind>[&applications=none|withdrawn][&cb=<path>]:
+ * GET /api/test-developer/sign-in?viewer=<kind>[&applications=none|withdrawn][&grant=<grant>][&cb=<path>]:
  * sets the cookie and goes to `cb`, else the dashboard. `applications=none`
  * starts the viewer with no own applications, `applications=withdrawn` with
- * only withdrawn ones; without it the sample set is back. 404 when the gate is off, 400 for a viewer that is not one of TEST_VIEWERS.
+ * only withdrawn ones; without it the sample set is back. `grant` gives the
+ * member one of TEST_GRANTS (issue #351); without it, or for any other
+ * viewer, they hold none. 404 when the gate is off, 400 for a viewer that is
+ * not one of TEST_VIEWERS.
  */
 export function testDeveloperSignIn(url: URL, env: GateEnv = processGateEnv()): Response {
   if (!testDeveloperOn(env)) return notFound();
   const viewer = url.searchParams.get("viewer");
   if (!isTestViewer(viewer)) return new Response("Unknown viewer", { status: 400 });
   const start = ownApplicationsStartOf(url.searchParams.get("applications"));
+  const grant = viewer === "member" ? testGrantOf(url.searchParams.get("grant")) : null;
   return redirect(
     callbackPath(url.searchParams.get("cb")),
     url,
@@ -131,6 +142,9 @@ export function testDeveloperSignIn(url: URL, env: GateEnv = processGateEnv()): 
     start !== "sample"
       ? cookieHeader(start, TEST_DEVELOPER_COOKIE_MAX_AGE_S, url, TEST_DEVELOPER_APPLICATIONS_COOKIE)
       : cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
+    grant !== null
+      ? cookieHeader(grant, TEST_DEVELOPER_COOKIE_MAX_AGE_S, url, TEST_DEVELOPER_GRANT_COOKIE)
+      : cookieHeader("", 0, url, TEST_DEVELOPER_GRANT_COOKIE),
   );
 }
 
@@ -148,6 +162,7 @@ export function testDeveloperSignOut(url: URL, env: GateEnv = processGateEnv()):
     cookieHeader("", 0, url, TEST_DEVELOPER_EDITS_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_OWN_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_APPLICATIONS_COOKIE),
+    cookieHeader("", 0, url, TEST_DEVELOPER_GRANT_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_CONTENT_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_FAQ_COOKIE),
     cookieHeader("", 0, url, TEST_DEVELOPER_TEAM_PAGE_COOKIE),
