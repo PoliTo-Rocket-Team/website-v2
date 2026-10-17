@@ -55,8 +55,8 @@ its own seeded database, and dummy data is left for runs with none, is
    The interface checks it again and answers `written(value)` or `refused(error)`
    ([lib/dashboard/write.ts](../lib/dashboard/write.ts)). On the dummy side a test developer's
    write changes only a cookie in their own browser, set in `open.ts`. On the database side
-   `runAuditQuery` ([lib/db-audit.ts](../lib/db-audit.ts)) refuses it before it is sent
-   (`auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts)); the database is never
+   `runAuditQuery` and `runAuditBatch` ([lib/db-audit.ts](../lib/db-audit.ts)) both refuse it
+   before it is sent (`auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts)); the database is never
    changed.
 
 6. **The public `/apply` pages pick the same way.** `pickApplyData` in

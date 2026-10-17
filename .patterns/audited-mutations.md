@@ -78,7 +78,8 @@ one `runAuditBatch` through
 [lib/dashboard/database-team-page-store.ts](../lib/dashboard/database-team-page-store.ts), so the
 two land together or not at all. Where no database is configured, a test developer's write goes to
 the dummy side, which checks the same rules and stores nothing; where one is, `runAuditQuery`
-refuses it before it is sent. The
+and `runAuditBatch` both refuse it before it is sent (each asks `auditWriterOf` in
+[lib/test-developer.ts](../lib/test-developer.ts), through [lib/db-audit.ts](../lib/db-audit.ts)). The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
 position or application before it writes through `runAuditQuery`, and a test developer's dummy
