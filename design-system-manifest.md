@@ -79,10 +79,12 @@ Rules:
   radial fades (`hero.tsx`, `navbar.tsx`), the `.hero-type` gradient (`app/globals.css`), the
   `RocketArrow` grey hull and fin fills (`rocket-arrow.tsx`; its ring and nose use
   `fill-prt-text` and `fill-accent`), and the page sky grain (one octave of pixel-fine grey SVG
-  noise in soft-light blend at 60%, with no threshold, so it reads as even film grain, not as
-  specks, and keeps the sky's tone; matched by eye to board 21 at 100% and 200%), and the
+  noise at frequency 1.8 in soft-light blend at 70%, with no threshold, so it reads as even
+  film grain, not as specks, and keeps the sky's tone; matched to board 21, and the same at
+  1x and 2x, issue #89), and the
   board 21 spec values for the liquid glass utilities, the navbar bar and the panel that
-  hangs from it included (`.page-sky-grain`, `.glass-*` in `app/globals.css`), and the
+  hangs from it included, with the white noise dither on `.glass-card` and `.glass-info`
+  taken off their white fill (`.page-sky-grain`, `.glass-*` in `app/globals.css`), and the
   /login rocket flame's warm ramp `#FF7A2E`, `#FFD2A6`, `#FFE6CC` and white beside the accent
   (board 36, `components/login/rocket-flame.tsx`, issue #159).
   A new exception needs the same kind of comment.
@@ -144,6 +146,10 @@ Rules:
   Each edge is a gradient ring on `::before`, cut out with a mask. A project card's edge
   brightens on hover through a second ring on `::after`. `.glass-linked` gives a `.glass-info`
   card that links to its page the same brighter edge on hover and on keyboard focus.
+  `.glass-card` and `.glass-info` lay a pixel-fine white noise dither over their fill: the blur
+  averages the sky's own dither away, and without it the sky inside shows one-level tone
+  steps. The dither's mean is taken off the white fill, so the tone above holds on average
+  (issue #89).
 - The navbar is `.glass-bar`: a full-width bar fixed to the top edge, not floating (no side
   margins, no radius). Fill `rgba(10,10,10,.35)` under the 200deg sheen, blur 24px, a 1px
   bottom edge white 8% to 25% to 8% (brightest in the middle), shadow `0 8px 24px` black
@@ -274,10 +280,10 @@ tile cut from the approved background, with the soft diagonal streaks baked onto
 the board's 16% strength, blurred so it holds no compression blocks and stored lossless. It
 repeats down the page (`max(100%, 1440px) auto repeat-y`), so it shows no seam at any page
 height. `.page-sky-grain` is the fine film grain, a
-stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain. It
+stitched SVG noise tile in soft-light blend at 70% (the exception above), kept apart because webp compression drops grain. It
 is film texture only. The streak tile carries its own 8 x 8 ordered dither, so its dark
-gradients show no bands; the grain cannot do that job, since its noise renders flat on a 1x
-screen (issue #87). On top
+gradients show no bands; the grain is random noise and is not the layer that removes banding
+(issue #87). On top
 sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
 `wholePixels`): a fractional box under 3px renders as a dash, not a dot. Its stars are also
 kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. The stars
