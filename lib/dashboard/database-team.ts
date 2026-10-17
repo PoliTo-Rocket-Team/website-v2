@@ -77,7 +77,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { isOffTeam, mayChange, readsAsDivisionLead, seatOf } from "./viewer";
+import { coveredDivisionIds, isOffTeam, mayChange, readsAsDivisionLead, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -125,7 +125,8 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
  * ./team.ts): the team for the operations lead or the team leader, a head for
  * their departments, else a division lead over each division where
  * `mayChange` lets them change the Members area: a lead role there, or a
- * Members (or every-area) grant at Can edit that covers it (issue #342). A
+ * Members (or every-area) grant at Can edit that covers it (issue #342); a
+ * grant across a department covers each of its divisions (issue #351). A
  * grant at Can view, or on another area, changes nobody. Null for anyone
  * else. Every Members write checks this actor, directly or through
  * `actingOn`.
@@ -141,7 +142,8 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
  * Who the viewer reads the Members page as: `readActor`, except that a member
  * holding an area grant reads as a division lead over the units it covers,
  * whatever its area and level (`readsAsDivisionLead`). Reading is all it
- * decides; no write takes this actor.
+ * decides; no write takes this actor, and the page's actions follow
+ * `readActor` (issue #351).
  */
 async function readViewingActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
   return actorOf(identity, org, () => readsAsDivisionLead(identity));
@@ -162,7 +164,8 @@ async function actorOf(identity: DashboardIdentity, org: OrgChart, leads: (divis
     return departmentId === null ? [] : [departmentId];
   });
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
-  const divisionIds = identity.divisionIds.filter(leads);
+  // A grant across a department covers each of its divisions (issue #351).
+  const divisionIds = coveredDivisionIds(identity, org.divisions).filter(leads);
   return divisionIds.length === 0 ? null : { kind: "lead", divisionIds };
 }
 
@@ -354,17 +357,19 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
  * The Members page of a division lead (boards 61e to 61h2): one of the
  * divisions they reach, `divisionId` or the first, with everyone in it, the
  * people waiting for Confirm NDA and the accepted applicants joining. A head
- * gets their department's page instead.
+ * gets their department's page instead. Which divisions it lists follows the
+ * viewing reach; what the page offers to change follows `readActor`, so a
+ * grant at Can view shows the people and no action (issue #351).
  */
 export async function readDivisionMembers(identity: DashboardIdentity, divisionId: number | null): Promise<MemberDirectory> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readViewingActor(identity, snapshot.org);
-  if (actor === null || actor.kind === "team") return NO_MEMBERS;
-  if (actor.kind === "head") return readDepartmentMembers(identity, actor, snapshot);
-  const reach = reachOf(identity, actor, snapshot.org);
+  const viewing = await readViewingActor(identity, snapshot.org);
+  if (viewing === null || viewing.kind === "team") return NO_MEMBERS;
+  if (viewing.kind === "head") return readDepartmentMembers(identity, viewing, snapshot);
+  const reach = reachOf(identity, viewing, snapshot.org);
   const division = reach.find((id) => id === divisionId) ?? reach[0];
   if (division === undefined) return NO_MEMBERS;
-  const [joining, waiting] = await Promise.all([readJoining(division), readWaiting(division)]);
+  const [joining, waiting, actor] = await Promise.all([readJoining(division), readWaiting(division), readActor(identity, snapshot.org)]);
   const page = divisionMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,

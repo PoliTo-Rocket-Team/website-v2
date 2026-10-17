@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { TestDeveloperSignIn } from "@/components/test-developer-sign-in";
 import {
   TEST_DEVELOPER_APPLICATIONS_COOKIE,
+  TEST_DEVELOPER_GRANT_COOKIE,
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_EDITS_COOKIE,
   TEST_DEVELOPER_STATE_COOKIE,
@@ -108,6 +109,17 @@ test("sign-in with applications=none starts the viewer with none; a plain sign-i
   // View as links carry no `applications`, so switching viewer clears it.
   const plain = testDeveloperSignIn(new URL(`https://preview.example.org${testDeveloperSignInHref("non-member")}`), PREVIEW);
   assert.match(plain.headers.getSetCookie()[1] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=;.*Max-Age=0`));
+});
+
+test("sign-in with a grant gives it to the member only; View as drops it (issue #351)", () => {
+  const grantCookie = (query: string) =>
+    testDeveloperSignIn(new URL(`https://preview.example.org/api/test-developer/sign-in?${query}`), PREVIEW)
+      .headers.getSetCookie()
+      .find((c) => c.startsWith(`${TEST_DEVELOPER_GRANT_COOKIE}=`)) ?? "";
+  assert.match(grantCookie("viewer=member&grant=members-view"), new RegExp(`^${TEST_DEVELOPER_GRANT_COOKIE}=members-view;`));
+  assert.match(grantCookie("viewer=division-lead&grant=members-view"), /=;.*Max-Age=0/);
+  assert.match(grantCookie("viewer=member&grant=everything"), /=;.*Max-Age=0/);
+  assert.match(grantCookie(new URL(`https://x.org${testDeveloperSignInHref("member")}`).search.slice(1)), /=;.*Max-Age=0/);
 });
 
 test("sign-in with applications=withdrawn starts the viewer with only withdrawn applications (issue #227)", () => {

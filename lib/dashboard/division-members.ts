@@ -6,6 +6,7 @@ import {
   leadsChangedBy,
   matchesQuery,
   mayLeaveTeam,
+  reachesDivision,
   removalFrom,
   roleIn,
   type DivisionRole,
@@ -114,6 +115,12 @@ export type DivisionMembers = {
   readonly waiting: readonly WaitingPerson[];
   /** Accepted applicants waiting for Confirm join (board 59). */
   readonly joining: readonly Joining[];
+  /**
+   * Whether the viewer may change people in this division: the actor they
+   * change people as reaches it (`mayChange` on the Members area, issue
+   * #351). False shows the page with no Add member and no row action.
+   */
+  readonly editable: boolean;
 };
 
 /** One person as a data source holds them. */
@@ -170,15 +177,23 @@ function byRoleThenName(a: DivisionPerson, b: DivisionPerson): number {
   return Number(b.role === "lead") - Number(a.role === "lead") || a.name.localeCompare(b.name);
 }
 
+/** A row's actions where the viewer may not change the division: none is offered (issue #351). */
+const VIEW_ONLY: { readonly leave: Permission; readonly removal: Removal } = {
+  leave: { allowed: false, reason: "You can view this division, not change it" },
+  removal: { kind: "not-in-reach" },
+};
+
 /**
  * The division's page as `actor` sees it: everyone in `divisionId`, this
- * division first in their list, with what the actor may do to each.
+ * division first in their list, with what the actor may do to each. `actor`
+ * is who the viewer changes people as; null, or one that does not reach the
+ * division, leaves every row with no action (issue #351).
  */
 export function divisionMembers(input: {
   readonly records: readonly PersonRecord[];
   readonly org: OrgChart;
   readonly divisionId: number;
-  readonly actor: TeamActor;
+  readonly actor: TeamActor | null;
   readonly selfId: number | null;
   readonly reach: readonly number[];
   readonly waiting: readonly WaitingPerson[];
@@ -187,6 +202,7 @@ export function divisionMembers(input: {
   const { org, divisionId, actor } = input;
   const division = org.divisions.find((d) => d.id === divisionId);
   if (!division) return null;
+  const changer = actor !== null && reachesDivision(actor, divisionId, org) ? actor : null;
   const people = input.records.flatMap((record): DivisionPerson[] => {
     const role = roleIn(record.memberships, divisionId);
     if (role === null) return [];
@@ -209,8 +225,9 @@ export function divisionMembers(input: {
         details: record.details,
         nda: record.nda,
         self: record.id === input.selfId,
-        leave: mayLeaveTeam(actor, standing, org),
-        removal: removalFrom(actor, standing, divisionId, org),
+        ...(changer === null
+          ? VIEW_ONLY
+          : { leave: mayLeaveTeam(changer, standing, org), removal: removalFrom(changer, standing, divisionId, org) }),
       },
     ];
   });
@@ -229,6 +246,7 @@ export function divisionMembers(input: {
     people: people.sort(byRoleThenName),
     waiting: input.waiting,
     joining: input.joining,
+    editable: changer !== null,
   };
 }
 

@@ -85,6 +85,7 @@ import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { checkPhoto, HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
+import type { TestGrant } from "./test-grant";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
@@ -262,8 +263,10 @@ function headDepartment() {
  * and the navbar show this name. Their standing carries "Approve orders" when
  * the person they look as is one of `holders` (issue #270), so a grant the
  * team leader gave opens Orders once the test developer switches to them.
+ * The member holding a test grant (./test-grant.ts) holds an area grant, as
+ * a member with a scope row does (issue #351).
  */
-export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersHolding[]): DashboardViewer {
+export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersHolding[], grant: TestGrant | null = null): DashboardViewer {
   if (viewer === "non-member") {
     return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", session: "test-developer" };
   }
@@ -272,7 +275,9 @@ export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersH
   }
   const person = personFor[viewer];
   const approveOrders = holders.some((h) => h.personId === person.id);
-  return { ...testDeveloperStanding(viewer, approveOrders), name: person.name, role: person.title, session: "test-developer" };
+  const standing = testDeveloperStanding(viewer, approveOrders);
+  const withGrant = standing.kind === "member" && grant !== null ? { ...standing, areaGrant: true } : standing;
+  return { ...withGrant, name: person.name, role: person.title, session: "test-developer" };
 }
 
 /** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
@@ -922,8 +927,11 @@ export function dummyDashboardData(
   teamPageEdits: DummyTeamPageLayerEditsStore = NO_CONTENT_EDITS_STORE,
   advisorEdits: DummyAdvisorEditsStore = NO_CONTENT_EDITS_STORE,
   projectEdits: DummyProjectEditsStore = NO_CONTENT_EDITS_STORE,
+  testGrant: TestGrant | null = null,
 ): DashboardData {
   const kind = kindOfTestViewer(viewer);
+  // Only the member holds a test grant (./test-grant.ts, issue #351).
+  const grant = viewer === "member" ? testGrant : null;
   if (viewer !== "alumni" && viewer !== "non-member" && teamEditsStore.current.movedToAlumni[personFor[viewer].id] !== undefined) {
     return leftTeamDashboard(viewer, personFor[viewer], recruitment, changes, teamEditsStore, own);
   }
@@ -976,7 +984,7 @@ export function dummyDashboardData(
   }
 
   return {
-    viewer: dummyViewer(viewer, holders),
+    viewer: dummyViewer(viewer, holders, grant),
     navCounts: async () => navCountsFor(kind, team),
     hasShownApplications: async () => {
       const mine = myApplications();
@@ -1005,6 +1013,7 @@ export function dummyDashboardData(
       switchRecruitment(next, { maySwitch: async () => canSwitch, save: recruitment.save, refresh: () => {} }),
     ...dummyTeamPages(viewer, teamEdits.current, teamEdits.save, team.applications, moveApplication, (divisionId) =>
       team.positions.filter((p) => p.divisionId === divisionId && p.open).length,
+      grant,
     ),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team, teamRoster),

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { canReach } from "./access";
 import {
   areaGrantsOf,
+  coveredDivisionIds,
   fullAccessSeatOf,
   headDivisionsOf,
   isTeamLeader,
@@ -120,6 +121,21 @@ test("a head sees every open division of their department and none from another"
     headDivisionsOf(2, divisions).map((d) => d.id),
     [4],
   );
+});
+
+test("a Members edit grant across a department reaches, and changes, every division of it (issue #351)", () => {
+  const divisions = [
+    { id: 1, departmentId: 1 },
+    { id: 2, departmentId: 1 },
+    { id: 3, departmentId: 2 },
+  ];
+  const rows = [{ scope: "department" as const, target: "members" as const, level: "edit" as const, divisionId: null, deptId: 1 }];
+  const covered = coveredDivisionIds(viewerUnitsOf(rows, []), divisions);
+  assert.deepEqual(covered, [1, 2]);
+  const authority: ChangeAuthority = { kind: "member", roles: [], grants: areaGrantsOf(rows) };
+  assert.ok(covered.every((divisionId) => mayChange(authority, "members", { divisionId, departmentId: 1 })));
+  // The divisions a viewer names come first, each once.
+  assert.deepEqual(coveredDivisionIds({ divisionIds: [3, 2], departmentIds: [1] }, divisions), [3, 2, 1]);
 });
 
 test("a head role covers its department with no department scope row (issues #184, #230)", () => {

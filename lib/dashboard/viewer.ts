@@ -454,6 +454,20 @@ export function viewerUnitsOf(scopeRows: readonly ScopeUnitRow[], roles: readonl
   return { divisionIds: [...new Set(divisionIds)], departmentIds: [...new Set(departmentIds)] };
 }
 
+/**
+ * Every division the viewer's units cover (issue #351): each division they
+ * name, in their order, then each division of a department they name. A grant
+ * across a whole department reaches every division of it, so a page that
+ * lists divisions finds them all.
+ */
+export function coveredDivisionIds(
+  units: ViewerUnits,
+  divisions: readonly { readonly id: number; readonly departmentId: number | null }[],
+): number[] {
+  const inDepartments = divisions.flatMap((d) => (d.departmentId !== null && units.departmentIds.includes(d.departmentId) ? [d.id] : []));
+  return [...new Set([...units.divisionIds, ...inDepartments])];
+}
+
 /** A division as the org tables hold it. */
 export type OrgDivisionRow = {
   readonly id: number;
