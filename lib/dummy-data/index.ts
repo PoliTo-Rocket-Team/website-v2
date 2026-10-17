@@ -15,7 +15,7 @@ import { dummyFaqNow, dummyFaqStore, type DummyFaqEditsStore } from "./faqs";
 import { team as teamRecord } from "@/lib/about/team";
 import { teamPageEditor } from "@/lib/about/team-page-editor";
 import { advisorEditor } from "@/lib/about/advisors";
-import { dummyAdvisorStore, dummyTeamPageStore, dummyTeamRoles, type DummyAdvisorEditsStore, type DummyTeamPageLayerEditsStore } from "./team-page";
+import { dummyAdvisorStore, dummyTeamPagePhotos, dummyTeamPageStore, dummyTeamRoles, type DummyAdvisorEditsStore, type DummyTeamPageLayerEditsStore } from "./team-page";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { dummyOutreachStore, dummyPhotoFiles, NO_OUTREACH_EDITS_STORE, type DummyOutreachEditsStore } from "./outreach";
 import { projectEditor } from "@/lib/project-content/editor";
@@ -1105,6 +1105,7 @@ export function dummyDashboardData(
       dummyTeamPageStore(teamPageEdits, advisorEdits),
       async () => dummyTeamRoles(teamEdits.current),
       teamRecord,
+      dummyTeamPagePhotos,
     ),
     // The advisors live in their own cookie; End advising adds to the Alumni edits, on the dummy clock's year.
     teamAdvisors: advisorEditor(dummyViewer(viewer, holders), dummyAdvisorStore(advisorEdits, teamEdits), async () => DUMMY_ALUMNI_YEAR),

@@ -66,6 +66,7 @@ import { teamPageEditor } from "@/lib/about/team-page-editor";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
 import { databaseTeamPageStore } from "./database-team-page-store";
+import { blobTeamPagePhotos } from "./database-team-page-photos";
 import { advisorEditor } from "@/lib/about/advisors";
 import { databaseAdvisorStore } from "./database-team-advisors";
 import { blobPhotoFiles, databaseOutreachStore } from "./database-outreach";
@@ -810,7 +811,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     ...databaseDivisionPages(identity),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
-    teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord),
+    teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord, blobTeamPagePhotos),
     teamAdvisors: advisorEditor(identity, databaseAdvisorStore, currentAcademicYearStart),
     outreach: outreachEditor(identity, databaseOutreachStore, blobPhotoFiles()),
     projects: projectEditor(identity, databaseProjectStore, { stamps: readProjectStamps, now: () => new Date() }, blobProjectPhotoFiles()),

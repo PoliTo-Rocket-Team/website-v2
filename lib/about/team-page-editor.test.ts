@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { memoryContentStore } from "@/lib/content/memory";
 import { statusOf, type ContentItem } from "@/lib/content/versioned";
 import { VIEWER_KINDS, type ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused } from "@/lib/dashboard/write";
-import { dummyTeamRoles } from "@/lib/dummy-data/team-page";
-import { advisorRowsOf, type AdvisorRow, type AdvisorVersion } from "./advisors";
+import { dummyTeamPagePhotos, dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { advisorRowsOf, publicAdvisors, withAdvisors, type AdvisorRow, type AdvisorVersion } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
 import { addLeader, applyLayer, NO_TEAM_LAYER, type AddedDepartment, type TeamPageLayer } from "./team-layer";
 import { hideHead } from "./team-page-add";
@@ -32,7 +33,7 @@ function editorOver(viewer: ViewerStanding, seed: ContentItem<TeamPageLayer>[] =
   const layer = memoryContentStore(seed);
   const advisors = memoryContentStore<AdvisorVersion>(importedAdvisors());
   const store = memoryTeamPageStore(layer, advisors);
-  return { layer, advisors, store, editor: teamPageEditor(viewer, store, async () => roles, team) };
+  return { layer, advisors, store, editor: teamPageEditor(viewer, store, async () => roles, team, dummyTeamPagePhotos) };
 }
 
 /** The advisors as the panel holds them, unchanged. */
@@ -204,7 +205,7 @@ test("when the advisors are refused, or the store fails, the stored layer and ad
   const layer = memoryContentStore<TeamPageLayer>([]);
   const seed = importedAdvisors();
   const full = memoryContentStore<AdvisorVersion>(seed, async (items) => (items.length > seed.length + 1 ? "The store failed." : null));
-  const failing = teamPageEditor(admin, memoryTeamPageStore(layer, full), async () => roles, team);
+  const failing = teamPageEditor(admin, memoryTeamPageStore(layer, full), async () => roles, team, dummyTeamPagePhotos);
   const newAdvisor = (name: string): AdvisorRow => ({ id: null, fields: { name, role: "Propulsion", standing: "specialist", photo: null, linkedin: "", email: "" } });
   const result = await failing.save("publish", renamed, [...advisorRowsOf(seed), newAdvisor("Prof. Ada Rossi"), newAdvisor("Prof. Bea Neri")]);
   assert.deepEqual(result, refused("The store failed."));
@@ -221,7 +222,7 @@ test("the editor writes through the store's one save: never the layer or advisor
     advisors: async () => importedAdvisors(),
     save: async () => (saves++, refused("The database is down.")),
   };
-  const editor = teamPageEditor(admin, store, async () => roles, team);
+  const editor = teamPageEditor(admin, store, async () => roles, team, dummyTeamPagePhotos);
   assert.deepEqual(await editor.save("publish", renamed, advisorRowsOf(importedAdvisors())), refused("The database is down."));
   assert.equal(saves, 1);
 });
@@ -242,4 +243,55 @@ test("the database side of Save draft and Publish sends the layer and the adviso
   assert.doesNotMatch(source, /@\/db\/schema|\bsql`|from "drizzle-orm"/);
   assert.equal([...source.matchAll(/runAuditBatch\(/g)].length, 1);
   assert.match(source, /runAuditBatch\(\(db\) => \[\.\.\.layerVersionWrites\(db, layer\), \.\.\.advisorWriteQueries\(db, advisors\)\]\)/);
+});
+
+// Replace photo's upload (issue #323): stored only past the site-content
+// gate, and answered as a src the layer and the advisor rows both keep.
+
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]);
+const STORED = "https://abc123.public.blob.vercel-storage.com/photos/team-page-1.jpg";
+
+function recordingPhotos() {
+  const put: string[] = [];
+  return {
+    put,
+    photos: {
+      put: async (photo: { contentType: string }) => {
+        put.push(photo.contentType);
+        return STORED as `https://${string}`;
+      },
+    },
+  };
+}
+
+test("an uploaded photo is refused without the site-content permission, and stores no file", async () => {
+  const files = recordingPhotos();
+  const viewer: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false };
+  const editor = teamPageEditor(viewer, editorOver(viewer).store, async () => roles, team, files.photos);
+  assert.deepEqual(await editor.uploadPhoto({ name: "photo.jpg", contentType: "image/jpeg", bytes: JPEG }), refused(SITE_CONTENT_REFUSAL));
+  assert.deepEqual(files.put, []);
+});
+
+test("an uploaded photo is stored and saved on a person and an advisor, and shows on the page after Publish", async () => {
+  const files = recordingPhotos();
+  const { store } = editorOver(siteContent);
+  const editor = teamPageEditor(siteContent, store, async () => roles, team, files.photos);
+
+  const notPhoto = await editor.uploadPhoto({ name: "notes.txt", contentType: "image/jpeg", bytes: new Uint8Array([1, 2, 3]) });
+  assert.equal(notPhoto.ok, false, "bytes that are no photo are refused");
+  assert.deepEqual(files.put, []);
+
+  const uploaded = await editor.uploadPhoto({ name: "photo.jpg", contentType: "image/jpeg", bytes: JPEG });
+  assert.ok(uploaded.ok);
+  assert.equal(uploaded.value, STORED);
+  assert.deepEqual(files.put, ["image/jpeg"]);
+
+  const [first, ...rest] = await rowsOf(store);
+  const rows = [{ ...first, fields: { ...first.fields, photo: uploaded.value } }, ...rest];
+  const published = await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: uploaded.value } }, rows);
+  assert.ok(published.ok, "the layer and the advisor rows take the uploaded src");
+  // As /about/the-team reads it (./team-data.ts): the published layer, then the published advisors.
+  const live = withAdvisors(await publicPage(store), publicAdvisors(await store.advisors()));
+  assert.equal(live.orgChart.leader.photo, STORED);
+  assert.equal(live.advisors.people[0]?.photo, STORED);
 });

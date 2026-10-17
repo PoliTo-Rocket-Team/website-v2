@@ -1,7 +1,7 @@
 import { advisorsAfter, isAdvisorVersion, type AdvisorItem, type AdvisorStore, type AdvisorVersion } from "@/lib/about/advisors";
 import { importedAdvisors } from "@/lib/about/advisors-import";
 import { isTeamPageLayer, type TeamPageLayer } from "@/lib/about/team-layer";
-import type { TeamPageStore } from "@/lib/about/team-page-editor";
+import type { TeamPagePhotos, TeamPageStore } from "@/lib/about/team-page-editor";
 import { memoryTeamPageStore } from "@/lib/about/team-page-memory";
 import { teamPeopleOf, type TeamRoles } from "@/lib/about/team-roles";
 import type { ContentItem } from "@/lib/content/versioned";
@@ -88,3 +88,15 @@ export function dummyAdvisorStore(edits: DummyAdvisorEditsStore, team: TeamEdits
     },
   };
 }
+
+/** What an uploaded Team page photo becomes on a preview: one photo of the site's own. */
+export const PREVIEW_TEAM_PHOTO = "/team/preview-upload.webp";
+
+/**
+ * A preview stores no files (issue #323): the photo is checked as the
+ * database side checks it, nothing is written to Blob, and the page shows
+ * the stand-in, which fits the test developer's cookie.
+ */
+export const dummyTeamPagePhotos: TeamPagePhotos = {
+  put: async () => PREVIEW_TEAM_PHOTO,
+};
