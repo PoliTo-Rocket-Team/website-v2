@@ -12,14 +12,18 @@ import {
   type AccessPlace,
   type AccessTarget,
 } from "@/lib/dashboard/division-access";
-import { TEAM_LEADER, TESTER_MEMBER } from "./people";
+import { PROPULSION_HEAD, TEAM_LEADER, TESTER_MEMBER, TWO_DIVISION_MEMBER } from "./people";
+import { publicMember } from "./public-team";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DEPARTMENT, DIVISION, DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 
-/** Holds "Approve orders" and no other grant (issue #270). */
-export const APPROVE_ORDERS_ONLY = 24;
-/** Holds Alumni access: site-content access (issue #234). */
-export const ALUMNI_EDITOR = 36;
+// Grants are private, so every one is invented (issue #326); each goes to
+// someone on the public team whose role fits it.
+
+/** Holds "Approve orders" and no other grant (issue #270): a core member of Information Technology. */
+export const APPROVE_ORDERS_ONLY = publicMember("Claudia Sanna");
+/** Holds Alumni access: site-content access (issue #234). A core member of Communications. */
+export const ALUMNI_EDITOR = publicMember("Francesco Guerrini");
 
 function department(id: number): AccessPlace {
   const row = DEPARTMENT_ROWS.rows.find((d) => d.id === id);
@@ -47,12 +51,12 @@ function scopeRow({ memberId, givenBy, place, target, level }: Grant) {
 
 /** The grants, as the Access page gives them. */
 export const GRANTS: readonly Grant[] = [
-  { memberId: 7, givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "members", level: "view" },
-  { memberId: 9, givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "orders", level: "edit" },
-  { memberId: 14, givenBy: 2, place: department(DEPARTMENT.propulsion), target: "applications", level: "edit" },
-  { memberId: 30, givenBy: 4, place: department(DEPARTMENT.structures), target: "positions", level: "view" },
-  { memberId: 28, givenBy: TESTER_MEMBER["division-lead"], place: division(DIVISION.missionAnalysis), target: "positions", level: "edit" },
-  { memberId: 22, givenBy: 26, place: division(DIVISION.flightControl), target: "members", level: "view" },
+  { memberId: publicMember("Luca Beccaria"), givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "members", level: "view" },
+  { memberId: publicMember("Ettore De Bartolo"), givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "orders", level: "edit" },
+  { memberId: publicMember("Fabio Zeloni"), givenBy: PROPULSION_HEAD, place: department(DEPARTMENT.propulsion), target: "applications", level: "edit" },
+  { memberId: publicMember("Dante Casaglia"), givenBy: TWO_DIVISION_MEMBER, place: department(DEPARTMENT.structures), target: "positions", level: "view" },
+  { memberId: publicMember("Aurelio Amato"), givenBy: publicMember("Maria Angelica Fullone Penna"), place: division(DIVISION.missionAnalysis), target: "positions", level: "edit" },
+  { memberId: publicMember("Federico Saviano"), givenBy: publicMember("Nicola Montagner"), place: division(DIVISION.flightControl), target: "members", level: "view" },
   { memberId: ALUMNI_EDITOR, givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "alumni", level: "edit" },
 ];
 
@@ -61,9 +65,9 @@ export const SCOPE_ROWS = rowsOf(scopes, [
   // "Approve orders" is a `team` row on `approve_orders`, always at edit (./database-division.ts).
   { memberId: APPROVE_ORDERS_ONLY, givenBy: TEAM_LEADER, scope: "team", target: "approve_orders", accessLevel: "edit" },
   // The local testers' rows (issue #129): the division-lead tester edits all
-  // of Mission Analysis; the operations-lead tester edits positions team-wide,
-  // the access the recruitment switch checks.
-  { memberId: TESTER_MEMBER["division-lead"], scope: "division", target: "all", accessLevel: "edit", divisionId: DIVISION.missionAnalysis },
+  // of Test Bench; the operations-lead tester edits positions team-wide, the
+  // access the recruitment switch checks.
+  { memberId: TESTER_MEMBER["division-lead"], scope: "division", target: "all", accessLevel: "edit", divisionId: DIVISION.testBench },
   { memberId: TESTER_MEMBER["operations-lead"], scope: "org", target: "positions", accessLevel: "edit" },
 ]);
 

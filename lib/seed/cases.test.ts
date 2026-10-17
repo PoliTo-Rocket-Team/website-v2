@@ -75,7 +75,7 @@ test("the seed holds one waiting and one confirmed hand-over, and the department
   const [waiting] = waitingHandOversOf(data);
   const head = memberOfUser(data, TEST_VIEWER_PEOPLE["department-head"]);
   const [row] = handOverAttentionFor(head, [waiting], teamOf(data), orgOf(data), new Date("2026-10-16T12:00:00Z"));
-  assert.equal(row?.title, "Tommaso Ferrari wants to hand over Optimization and Analysis lead to Chiara Santoro");
+  assert.equal(row?.title, "Tester Division Lead wants to hand over Test Bench lead to Tester Member");
   assert.deepEqual(row?.action, { answerHandOver: waiting.id });
   for (const viewer of ["team-leader", "division-lead", "member"] as const) {
     assert.deepEqual(handOverAttentionFor(memberOfUser(data, TEST_VIEWER_PEOPLE[viewer]), [waiting], teamOf(data), orgOf(data), new Date()), [], viewer);
@@ -161,7 +161,8 @@ test("every key the seed sets is unique", () => {
   unique(data.users.map((u) => u.id), "a user id");
   unique(data.users.flatMap((u) => (u.member == null ? [] : [u.member])), "a user's member");
   unique(data.users.map((u) => u.email), "an email");
-  unique(data.alumniEntries.map((e) => e.memberId), "an alumni entry's member");
+  unique(data.alumniEntries.map((e) => e.id), "an alumni entry id");
+  unique(data.alumniEntries.flatMap((e) => (e.memberId == null ? [] : [e.memberId])), "an alumni entry's member");
   unique(
     data.scopes.map((s) => [s.memberId, s.scope, s.target, s.deptId ?? null, s.divisionId ?? null].join("/")),
     "a grant",
@@ -191,9 +192,16 @@ test("every reference the seed makes resolves to a seeded row", () => {
     if (s.divisionId != null) assert.ok(divisions.has(s.divisionId));
   }
   for (const e of data.alumniEntries) {
+    if (e.kind !== "member") {
+      // An imported person is named on the entry and is no member (drizzle/0021).
+      assert.ok(e.memberId == null && e.recordName != null, `alumni entry ${e.id}`);
+      continue;
+    }
     assert.ok(memberIds.has(e.memberId ?? undefined), `alumni entry ${e.id}`);
     assert.ok(!data.roles.some((r) => r.memberId === e.memberId && isActive(r)), `alumni entry ${e.id} is someone on the team`);
   }
+  const entryIds = new Set(data.alumniEntries.map((e) => e.id));
+  for (const line of data.alumniImportedRoles) assert.ok(entryIds.has(line.entryId), `imported line ${line.position}`);
 });
 
 // Orders, recruitment, partners and FAQ (issue #305).

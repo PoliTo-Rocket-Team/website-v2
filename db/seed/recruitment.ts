@@ -6,6 +6,8 @@
 // one at least: new, in review, interview (times offered, and one booked),
 // accepted (waiting for the NDA, and with the NDA arrived), joined, rejected
 // (by this team, and by another team taking the person) and withdrawn.
+// Applications and their answers are private, so every applicant is an
+// invented person (issue #326).
 
 import { applications, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
 import { TESTERS } from "@/lib/dev-tester";
@@ -99,7 +101,7 @@ export const POSITION_ROWS = rowsOf(applyPositions, [
     ["Control systems engineering knowledge", "Mathematical modeling and simulation skills", "Understanding of guidance and navigation principles"],
     ["Experience with aerospace control systems", "MATLAB/Simulink proficiency", "Kalman filtering and state estimation", "PID and advanced control algorithms", "Real-time control system implementation"],
     ["What control theory concepts are you most experienced with?", "Describe your experience with flight control systems"]),
-  position(14, D.recovery, "Recovery Engineer", "Design and implement recovery systems for safe rocket retrieval after flight. You will work on parachute systems, recovery electronics, landing predictions, and ensure successful rocket recovery for reuse and data collection.",
+  position(14, D.recoverySystems, "Recovery Engineer", "Design and implement recovery systems for safe rocket retrieval after flight. You will work on parachute systems, recovery electronics, landing predictions, and ensure successful rocket recovery for reuse and data collection.",
     ["Understanding of parachute and recovery system design", "Knowledge of aerodynamics and flight mechanics", "Experience with mechanical design and analysis"],
     ["Aerospace engineering background", "Experience with recovery system testing", "Simulation and modeling software proficiency", "Understanding of materials and textiles", "Safety and reliability analysis experience"],
     ["What types of recovery systems have you worked with?", "How do you approach recovery system reliability and safety?"]),
@@ -123,7 +125,7 @@ export const POSITION_ROWS = rowsOf(applyPositions, [
     ["Fluid mechanics and thermodynamics knowledge", "Understanding of pumps, valves, and fluid systems", "Experience with pressure systems and fluid flow analysis"],
     ["Rocket propulsion and liquid rocket engine experience", "CFD analysis and simulation skills", "High-pressure system design and safety", "Materials compatibility with propellants", "Testing and validation of fluid systems"],
     ["What experience do you have with fluid systems design?", "Describe your knowledge of rocket propellant handling"]),
-  position(20, D.liquidSystems, "Test Engineer", "Lead testing operations for liquid rocket engine systems. You will plan test procedures, operate test equipment, collect and analyze test data, and ensure safe execution of propulsion system testing.",
+  position(20, D.testBench, "Test Engineer", "Lead testing operations for liquid rocket engine systems. You will plan test procedures, operate test equipment, collect and analyze test data, and ensure safe execution of propulsion system testing.",
     ["Experience with test planning and execution", "Understanding of instrumentation and data acquisition", "Knowledge of safety procedures for hazardous testing"],
     ["Rocket propulsion testing experience", "High-pressure and cryogenic system testing", "Data analysis and statistical methods", "Test automation and control systems", "Regulatory compliance and safety standards"],
     ["What types of propulsion testing have you been involved with?", "How do you ensure safety during hazardous testing operations?"]),
@@ -140,7 +142,7 @@ export const POSITION_ROWS = rowsOf(applyPositions, [
     status: false,
     divisionId: D.liquidSystems,
     title: "Feed Systems Engineer",
-    description: "Design the propellant feed lines of the first liquid engine with the Liquid Systems Architecture division.",
+    description: "Design the propellant feed lines of the first liquid engine with the Liquid System Architecture division.",
     requiredSkills: ["Fluid mechanics fundamentals"],
     desirableSkills: ["Experience with pressure systems"],
     customQuestions: [],
@@ -203,7 +205,7 @@ function application(
   };
 }
 
-/** The applicant who joined the team through position 23: member 32, now a Feed Systems Engineer. */
+/** The applicant who joined the team through position 23: member 32, an invented Feed Systems Engineer who left in 2023–24. */
 export const JOINED_APPLICANT = "1c111111-1111-1111-1111-111111111111";
 
 /** Where each application stands, named for the case it holds. */

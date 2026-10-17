@@ -1,4 +1,4 @@
-// The cases the typed seed holds (issues #304, #305, #308, #310 and #311), each with the check that
+// The cases the typed seed holds (issues #304, #305, #308, #310, #311 and #326), each with the check that
 // proves it from the seeded rows. docs/seed-cases.md lists the same cases; a
 // test runs every check and fails when the page and this list differ.
 
@@ -7,6 +7,7 @@ import {
   applicationStatusEnum,
   orderStatusEnum,
   type alumniEntries,
+  type alumniImportedRoles,
   type applications,
   type applyPositions,
   type departments,
@@ -70,7 +71,7 @@ import {
   type TestViewer,
   type ViewerStanding,
 } from "@/lib/dashboard/viewer";
-import { ALUMNI_ENTRY_ROWS } from "./alumni";
+import { ALUMNI_ENTRY_ROWS, ALUMNI_IMPORTED_ROLE_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
 import { FAQ_ROWS, FAQ_VERSION_ROWS } from "./faq";
 import { HAND_OVER_ROWS } from "./hand-overs";
@@ -108,6 +109,7 @@ export type SeedData = {
   readonly roles: readonly InferInsertModel<typeof roles>[];
   readonly scopes: readonly InferInsertModel<typeof scopes>[];
   readonly alumniEntries: readonly InferInsertModel<typeof alumniEntries>[];
+  readonly alumniImportedRoles: readonly InferInsertModel<typeof alumniImportedRoles>[];
   readonly orders: readonly InferInsertModel<typeof orders>[];
   readonly positions: readonly InferInsertModel<typeof applyPositions>[];
   readonly applications: readonly InferInsertModel<typeof applications>[];
@@ -138,6 +140,7 @@ export const SEED_DATA: SeedData = {
   roles: ROLE_ROWS.rows,
   scopes: SCOPE_ROWS.rows,
   alumniEntries: ALUMNI_ENTRY_ROWS.rows,
+  alumniImportedRoles: ALUMNI_IMPORTED_ROLE_ROWS.rows,
   orders: ORDER_ROWS.rows,
   positions: POSITION_ROWS.rows,
   applications: APPLICATION_ROWS.rows,
@@ -240,23 +243,28 @@ export function alumniRecordOf(data: SeedData): AlumniRecord {
         ? []
         : [{ memberId: u.member, name: [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || null, email: u.email }],
     ),
-    entries: data.alumniEntries.flatMap((e) =>
-      e.kind !== "member" || e.memberId == null
-        ? []
-        : [
-            {
-              id: e.id!,
-              who: { kind: "member" as const, memberId: e.memberId, keptName: e.recordName ?? null },
-              name: e.name ?? null,
-              founder: e.founder == null ? null : e.founder === "founder" ? ("founder" as const) : ("co-founder" as const),
-              photo: e.photo ?? null,
-              shown: e.shown ?? true,
-              removed: (e.removedAt ?? null) !== null,
-              fixes: [],
-            },
-          ],
-    ),
-    imported: [],
+    entries: data.alumniEntries.flatMap((e) => {
+      const who =
+        e.kind === "member" && e.memberId != null
+          ? { kind: "member" as const, memberId: e.memberId, keptName: e.recordName ?? null }
+          : e.kind === "imported" && e.recordName != null
+            ? { kind: "imported" as const, name: e.recordName }
+            : null;
+      if (who === null) return [];
+      return [
+        {
+          id: e.id!,
+          who,
+          name: e.name ?? null,
+          founder: e.founder == null ? null : e.founder === "founder" ? ("founder" as const) : ("co-founder" as const),
+          photo: e.photo ?? null,
+          shown: e.shown ?? true,
+          removed: (e.removedAt ?? null) !== null,
+          fixes: [],
+        },
+      ];
+    }),
+    imported: data.alumniImportedRoles.map((r) => ({ entryId: r.entryId, year: r.year, group: r.groupName, role: r.role, position: r.position })),
   };
 }
 
@@ -644,6 +652,12 @@ export type SeedCase = {
   readonly area: SeedArea;
   /** The situation in plain words. */
   readonly case: string;
+  /**
+   * Where its rows come from (issue #326): `public`, the data the site
+   * already publishes; `invented`, at least one invented row, because the
+   * public data has no example of the case or the data is private.
+   */
+  readonly data: "public" | "invented";
   /** How to find the rows. */
   readonly rows: string;
   /** The issues or boards whose pages show it, as markdown links. */
@@ -660,6 +674,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "structure",
     case: "A closed division, kept as a name, with nobody in it now",
+    data: "invented",
     rows: "`divisions` code `HYB`",
     exercisedBy: `${issue(251)}, ${issue(257)}`,
     holds: (data) =>
@@ -670,6 +685,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "structure",
     case: "An open division with nobody in it",
+    data: "invented",
     rows: "`divisions` code `PLI`",
     exercisedBy: issue(251),
     holds: (data) => openDivisions(data).some((d) => !data.roles.some((r) => r.divisionId === d.id)),
@@ -677,6 +693,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "One team leader",
+    data: "public",
     rows: "`roles` type `president`, member 1",
     exercisedBy: `${issue(247)}, ${issue(252)}`,
     holds: (data) => data.roles.filter((r) => r.type === "president" && isActive(r)).length === 1,
@@ -684,6 +701,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "A Project Manager and a Chief Engineer, the two board seats, so the roles fill every section of the Team page",
+    data: "public",
     rows: "`roles` titled by the seat, members 52 and 53",
     exercisedBy: `${issue(282)}, ${issue(311)}`,
     holds: (data) => {
@@ -698,6 +716,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "One operations lead and one IT lead, the two full-access seats",
+    data: "invented",
     rows: "`roles.full_access`, members 903 and 11",
     exercisedBy: `${issue(238)}, ${issue(252)}`,
     holds: (data) =>
@@ -708,6 +727,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "A head in every open department",
+    data: "invented",
     rows: "`roles` type `head`",
     exercisedBy: issue(252),
     holds: (data) =>
@@ -718,6 +738,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "A lead in every open division that has people",
+    data: "invented",
     rows: "`roles` type `lead` with a `division_id`",
     exercisedBy: `${issue(251)}, ${issue(252)}`,
     holds: (data) =>
@@ -728,6 +749,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "Members with no lead role",
+    data: "public",
     rows: "`roles` type `core`",
     exercisedBy: issue(252),
     holds: (data) => data.roles.filter((r) => r.type === "core" && isActive(r)).length >= 10,
@@ -735,7 +757,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "A member in two divisions at once",
-    rows: "`roles` of member 15",
+    data: "public",
+    rows: "`roles` of member 4",
     exercisedBy: `${issue(251)}, ${issue(252)}`,
     holds: (data) =>
       [...onTeam(data)].some(
@@ -745,6 +768,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "An advisor in a division, a former lead who stayed",
+    data: "invented",
     rows: "`roles` type `advisor`, member 43",
     exercisedBy: `${issue(251)}, ${issue(253)}`,
     holds: (data) =>
@@ -759,6 +783,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "A team-level advisor: the former team leader, in no department or division",
+    data: "invented",
     rows: "`roles` type `advisor`, member 40",
     exercisedBy: `${issue(253)}, ${issue(257)}`,
     holds: (data) =>
@@ -774,6 +799,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "people",
     case: "One seeded person per test viewer, read as that viewer",
+    data: "invented",
     rows: "`TEST_VIEWER_PEOPLE` in `db/seed/people.ts`",
     exercisedBy: issue(247),
     holds: (data) => TEST_VIEWERS.every((viewer) => resolvesTo(data, viewer)),
@@ -781,7 +807,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "alumni",
     case: "People who left in each year from 2021–22 to 2025–26",
-    rows: "`roles.leaved_at`, members 40–51",
+    data: "invented",
+    rows: "`roles.leaved_at`, members 32 and 41–51",
     exercisedBy: `${issue(257)}, ${issue(271)}`,
     holds: (data) => {
       const years = new Set(leftInYear(data).values());
@@ -791,7 +818,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "alumni",
     case: "A founder and a co-founder mark",
-    rows: "`alumni_entries.founder`, members 41 and 42",
+    data: "public",
+    rows: "`alumni_entries.founder` of the imported entries 3 (Fabio Meloni), 4 and 5",
     exercisedBy: issue(257),
     holds: (data) => {
       const marks = alumniOfSeed(data).map((a) => a.founder);
@@ -801,6 +829,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "alumni",
     case: "A hidden alumnus",
+    data: "invented",
     rows: "`alumni_entries` member 47, `shown` false",
     exercisedBy: issue(257),
     holds: (data) => alumniOfSeed(data).some((a) => !a.shown && !a.removed && !listed(a)),
@@ -808,6 +837,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "alumni",
     case: "An alumnus whose account is deleted and anonymized, with the Alumni entry kept",
+    data: "invented",
     rows: "`users` and `members` 48, `alumni_entries` member 48",
     exercisedBy: `${issue(191)}, ${issue(257)}`,
     holds: (data) =>
@@ -820,6 +850,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "alumni",
     case: "An alumnus who asked to be removed from the Alumni page",
+    data: "invented",
     rows: "`alumni_entries` member 49, `removed_at` set",
     exercisedBy: issue(257),
     holds: (data) => alumniOfSeed(data).some((a) => a.removed && !listed(a)),
@@ -827,6 +858,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "alumni",
     case: "A name fixed for the Alumni page",
+    data: "invented",
     rows: "`alumni_entries` member 50, `name` set",
     exercisedBy: issue(257),
     holds: (data) => alumniOfSeed(data).some((a) => listed(a) && a.name !== a.recordName),
@@ -834,6 +866,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "alumni",
     case: "A former member read as the alumni test viewer: every role ended, an Alumni entry kept",
+    data: "invented",
     rows: "`TEST_VIEWER_PEOPLE` alumni, member 50",
     exercisedBy: issue(317),
     holds: (data) => {
@@ -847,27 +880,31 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "access",
     case: "Grants across the whole team",
-    rows: "`scopes` scope `team`, members 7 and 9",
+    data: "invented",
+    rows: "`scopes` scope `team`, members 22 and 23",
     exercisedBy: issue(247),
     holds: (data) => data.scopes.some((s) => s.scope === "team" && (UNIT_TARGETS as readonly string[]).includes(s.target)),
   },
   {
     area: "access",
     case: "Grants in one department",
-    rows: "`scopes` scope `department`, members 14 and 30",
+    data: "invented",
+    rows: "`scopes` scope `department`, members 12 and 131",
     exercisedBy: issue(247),
     holds: (data) => data.scopes.some((s) => s.scope === "department" && s.deptId != null),
   },
   {
     area: "access",
     case: "Grants in one division",
-    rows: "`scopes` scope `division`, members 28 and 22",
+    data: "invented",
+    rows: "`scopes` scope `division`, members 117 and 139",
     exercisedBy: issue(247),
     holds: (data) => data.scopes.some((s) => s.scope === "division" && s.divisionId != null),
   },
   {
     area: "access",
     case: "Grants at view and at edit",
+    data: "invented",
     rows: "`scopes.access_level`",
     exercisedBy: issue(247),
     holds: (data) => (["view", "edit"] as const).every((level) => data.scopes.some((s) => (s.accessLevel ?? "view") === level)),
@@ -875,7 +912,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "access",
     case: "A member who holds \"Approve orders\" and nothing else",
-    rows: "`scopes` target `approve_orders`, member 24",
+    data: "invented",
+    rows: "`scopes` target `approve_orders`, member 124",
     exercisedBy: issue(270),
     holds: (data) =>
       data.scopes.some((s) => {
@@ -888,13 +926,15 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "access",
     case: "Alumni access, given across the whole team",
-    rows: "`scopes` scope `website`, member 36",
+    data: "invented",
+    rows: "`scopes` scope `website`, member 144",
     exercisedBy: `${issue(247)}, ${issue(257)}`,
     holds: (data) => data.scopes.some((s) => s.scope === "website"),
   },
   {
     area: "orders",
     case: "An order in every status: waiting, changes requested, rejected, approved, ordered and cancelled",
+    data: "invented",
     rows: "`orders` 1–7",
     exercisedBy: `${issue(172)}, ${issue(247)}`,
     holds: (data) => orderStatusEnum.enumValues.every((status) => data.orders.some((o) => o.status === status)),
@@ -902,6 +942,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "orders",
     case: "Orders made for divisions in different departments",
+    data: "invented",
     rows: "`orders.division_id`",
     exercisedBy: `${issue(233)}, ${issue(247)}`,
     holds: (data) => orderDepartments(data).size >= 5,
@@ -909,7 +950,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "orders",
     case: "An order approved by the member who holds \"Approve orders\" and nothing else",
-    rows: "`orders` 5, `reviewed_by` member 24",
+    data: "invented",
+    rows: "`orders` 5, `reviewed_by` member 124",
     exercisedBy: issue(270),
     holds: (data) =>
       data.orders.some(
@@ -919,6 +961,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "recruitment",
     case: "Recruitment is on",
+    data: "invented",
     rows: "`recruitment_setting.is_open`",
     exercisedBy: issue(119),
     holds: (data) => data.recruitmentSetting.length === 1 && data.recruitmentSetting[0].isOpen === true,
@@ -926,6 +969,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "recruitment",
     case: "Open and closed positions",
+    data: "invented",
     rows: "`apply_positions.status`; closed: 13, 18 and 23",
     exercisedBy: `${issue(119)}, ${issue(171)}`,
     holds: (data) => [true, false].every((open) => data.positions.some((p) => p.status === open && !p.isDeleted)),
@@ -933,6 +977,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "recruitment",
     case: "An application in every stage: new, in review, interview, accepted, joined, rejected and withdrawn",
+    data: "invented",
     rows: "`applications`, `interview_slots`",
     exercisedBy: `${issue(169)}, ${issue(171)}`,
     holds: (data) => APPLICATION_STAGES.every((stage) => data.applications.some((a) => stageOf(data, a) === stage)),
@@ -940,6 +985,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "recruitment",
     case: "An application in every stored status, \"accepted by another team\" among them",
+    data: "invented",
     rows: "`applications.status`",
     exercisedBy: issue(171),
     holds: (data) => applicationStatusEnum.enumValues.every((status) => data.applications.some((a) => a.status === status)),
@@ -947,6 +993,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "recruitment",
     case: "An interview with times offered and none booked, and one the applicant booked",
+    data: "invented",
     rows: "`interview_slots` of applications 5 and 6",
     exercisedBy: `${issue(169)}, ${issue(186)}`,
     holds: (data) => {
@@ -958,6 +1005,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "recruitment",
     case: "Accepted applications waiting for the signed NDA, and with the NDA arrived",
+    data: "invented",
     rows: "`applications` 3 and 1",
     exercisedBy: issue(171),
     holds: (data) => {
@@ -968,6 +1016,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "recruitment",
     case: "The local applicant tester holds applications to act on",
+    data: "invented",
     rows: "`applications` 24 and 25",
     exercisedBy: `${issue(129)}, ${issue(169)}`,
     holds: (data) => {
@@ -978,6 +1027,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "partners",
     case: "Main and media partners on the public pages",
+    data: "public",
     rows: "`partner_versions.tier`",
     exercisedBy: issue(256),
     holds: (data) => (["main", "media"] as const).every((tier) => publicItems(partnerItemsOf(data)).some((p) => p.tier === tier)),
@@ -985,6 +1035,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "partners",
     case: "A published partner with draft changes",
+    data: "invented",
     rows: "`partner_versions` of partner 3 (EvoMisure)",
     exercisedBy: issue(256),
     holds: (data) => partnerItemsOf(data).some((item) => statusOf(item.version) === "draft-changes"),
@@ -992,6 +1043,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "partners",
     case: "A draft partner, never published, so the public pages do not show it",
+    data: "invented",
     rows: "`partner_versions` of partner 14",
     exercisedBy: issue(256),
     holds: (data) => {
@@ -1002,6 +1054,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "partners",
     case: "A published partner with no website",
+    data: "public",
     rows: "`partner_versions` of partner 10 (Magicar)",
     exercisedBy: issue(256),
     holds: (data) => publicItems(partnerItemsOf(data)).some((p) => p.website === undefined),
@@ -1009,6 +1062,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "partners",
     case: "A published partner with a dark logo, drawn white",
+    data: "public",
     rows: "`partner_versions.logo_dark`, partners 11 and 12",
     exercisedBy: issue(256),
     holds: (data) => publicItems(partnerItemsOf(data)).some((p) => p.logo.darkLogo),
@@ -1016,6 +1070,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "faq",
     case: "Published questions on /apply",
+    data: "public",
     rows: "`faq_versions` version `published`",
     exercisedBy: issue(258),
     holds: (data) => publicItems(faqItemsOf(data)).length >= 2,
@@ -1023,6 +1078,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "faq",
     case: "A published question with a draft change that /apply does not show",
+    data: "invented",
     rows: "`faq_versions` of question 3",
     exercisedBy: issue(258),
     holds: (data) =>
@@ -1036,6 +1092,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "Every tag in the tag list on at least one published post, Award the one award tag",
+    data: "public",
     rows: "`outreach_tags`, `outreach_post_tags.tag_name`",
     exercisedBy: `${issue(287)}, ${issue(290)}`,
     holds: (data) => {
@@ -1048,6 +1105,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "Every channel type on a published post: Instagram, LinkedIn, YouTube, Facebook, X, TikTok and Other link",
+    data: "invented",
     rows: "`outreach_post_versions.channels` of post 14",
     exercisedBy: `${issue(290)}, ${issue(278)}`,
     holds: (data) => {
@@ -1058,6 +1116,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "A post first shared by another account",
+    data: "public",
     rows: "`outreach_post_versions.channels` `account`, posts 3, 5 and 14",
     exercisedBy: issue(290),
     holds: (data) => publicItems(outreachItemsOf(data)).some((p) => Object.values(p.channels).some((c) => c?.account !== undefined)),
@@ -1065,6 +1124,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "Published posts enough for the home Track record's featured card and three news cards",
+    data: "public",
     rows: "`outreach_post_versions` version `published`",
     exercisedBy: `${issue(293)}, ${issue(289)}`,
     holds: (data) => trackRecord(publicItems(outreachItemsOf(data)))?.news.length === 3,
@@ -1072,6 +1132,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "Every photo with alt text, and a post with several photos for the photo grid",
+    data: "invented",
     rows: "`outreach_post_versions.photos`, post 14",
     exercisedBy: issue(291),
     holds: (data) =>
@@ -1081,6 +1142,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "A published post with draft changes that the public pages do not show",
+    data: "invented",
     rows: "`outreach_post_versions` of post 4 (IAC 2024, Milan)",
     exercisedBy: `${issue(287)}, ${issue(290)}`,
     holds: (data) =>
@@ -1091,6 +1153,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "A new post saved as a draft before it is whole, never published, so the public pages do not show it",
+    data: "invented",
     rows: "`outreach_post_versions` of post 15",
     exercisedBy: issue(292),
     holds: (data) => {
@@ -1103,6 +1166,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "outreach",
     case: "The featured summit, published, with its editions",
+    data: "public",
     rows: "`outreach_summit_versions` version `published`",
     exercisedBy: `${issue(287)}, ${issue(289)}`,
     holds: (data) => (outreachSummitOf(data)?.published.editions.length ?? 0) >= 1,
@@ -1110,6 +1174,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "projects",
     case: "Published projects on /projects, the home Projects cards and their pages, in site order",
+    data: "invented",
     rows: "`project_versions` version `published`, projects 1–4",
     exercisedBy: `${issue(295)}, ${issue(299)}`,
     holds: (data) =>
@@ -1118,6 +1183,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "projects",
     case: "A published project with draft changes that its pages do not show",
+    data: "invented",
     rows: "`project_versions` of project 2 (VES)",
     exercisedBy: `${issue(297)}, ${issue(298)}`,
     holds: (data) =>
@@ -1133,6 +1199,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "projects",
     case: "A published project with no rocket model of its own, so its card and its page draw the placeholder rocket",
+    data: "invented",
     rows: "`project_versions` of project 4 (Galileo)",
     exercisedBy: `${issue(296)}, ${issue(301)}`,
     holds: (data) =>
@@ -1144,7 +1211,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "hand-overs",
     case: "A division lead's hand-over waiting for the head of their department, on the department-head test viewer's Overview",
-    rows: "`hand_over_requests` 2, member 20 to member 29",
+    data: "invented",
+    rows: "`hand_over_requests` 2, member 902 to member 901",
     exercisedBy: issue(262),
     holds: (data) => {
       const waiting = waitingHandOversOf(data);
@@ -1161,13 +1229,15 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "hand-overs",
     case: "A confirmed hand-over: the lead became an advisor in the division and their access ended",
-    rows: "`hand_over_requests` 1, member 43 to member 16",
+    data: "invented",
+    rows: "`hand_over_requests` 1, member 43 to member 10",
     exercisedBy: `${issue(253)}, ${issue(262)}`,
     holds: (data) => data.handOvers.some((row) => row.outcome === "advisor" && confirmedAsWritten(data, row)),
   },
   {
     area: "team-page",
     case: "The team leader's photo replaced on the page",
+    data: "invented",
     rows: "`team_page_layer_versions` published, `leader.photo`",
     exercisedBy: `${issue(283)}, ${issue(284)}`,
     holds: (data) => {
@@ -1178,7 +1248,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "team-page",
     case: "A head's role text changed on the page",
-    rows: "`team_page_layer_versions` published, `spots` `head:4:0`, member 8",
+    data: "invented",
+    rows: "`team_page_layer_versions` published, `spots` `head:4:0`, member 6",
     exercisedBy: `${issue(283)}, ${issue(285)}`,
     holds: (data) => {
       const { build, layer, shown } = teamPageOfSeed(data);
@@ -1191,7 +1262,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "team-page",
     case: "A leader added on the arc between the Project Manager and the Chief Engineer",
-    rows: "`team_page_layer_versions` published, `addedLeaders` 1, member 21",
+    data: "public",
+    rows: "`team_page_layer_versions` published, `addedLeaders` 1, member 3",
     exercisedBy: `${issue(283)}, ${issue(285)}`,
     holds: (data) => {
       const { build, layer, shown } = teamPageOfSeed(data);
@@ -1209,7 +1281,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "team-page",
     case: "A division lead hidden from the page",
-    rows: "`team_page_layer_versions` published, `spots` `lead:9:0`, member 23",
+    data: "invented",
+    rows: "`team_page_layer_versions` published, `spots` `lead:9:0`, member 17",
     exercisedBy: `${issue(283)}, ${issue(285)}`,
     holds: (data) => {
       const { build, shown } = teamPageOfSeed(data);
@@ -1222,7 +1295,8 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "team-page",
     case: "A division lead added to a department whose one division has nobody in it",
-    rows: "`team_page_layer_versions` published, `departments` 8 `addedLeads`, member 25",
+    data: "invented",
+    rows: "`team_page_layer_versions` published, `departments` 8 `addedLeads`, member 183",
     exercisedBy: `${issue(283)}, ${issue(285)}`,
     holds: (data) => {
       const { build, shown } = teamPageOfSeed(data);
@@ -1235,6 +1309,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   {
     area: "team-page",
     case: "The intro text and the group photo's caption changed, which Reset to team keeps",
+    data: "invented",
     rows: "`team_page_layer_versions` published, `intro` and `groupPhoto`",
     exercisedBy: `${issue(283)}, ${issue(284)}`,
     holds: (data) => {
@@ -1254,8 +1329,9 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "team-page",
-    case: "One principal advisor and several specialists, each published",
-    rows: "`team_page_advisors` 1–5",
+    case: "Principal advisors and several specialists, each published",
+    data: "public",
+    rows: "`team_page_advisors` 1–11",
     exercisedBy: `${issue(286)}`,
     holds: (data) => {
       const items = teamAdvisorItemsOf(data);
@@ -1263,7 +1339,7 @@ export const SEED_CASES: readonly SeedCase[] = [
       return (
         items.length === data.teamPageAdvisors.length &&
         items.every((item) => item.version.state === "published" && item.version.draft === null) &&
-        shown.filter((a) => a.standing === "principal").length === 1 &&
+        shown.filter((a) => a.standing === "principal").length >= 1 &&
         shown.filter((a) => a.standing === "specialist").length >= 2
       );
     },
@@ -1272,5 +1348,5 @@ export const SEED_CASES: readonly SeedCase[] = [
 
 /** The case's row in docs/seed-cases.md. */
 export function caseDocRow(c: SeedCase): string {
-  return `| ${c.area} | ${c.case} | ${c.rows} | ${c.exercisedBy} |`;
+  return `| ${c.area} | ${c.case} | ${c.data} | ${c.rows} | ${c.exercisedBy} |`;
 }

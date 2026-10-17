@@ -15,18 +15,21 @@ export function seedUserId(memberId: number): string {
 
 /** The seeded team leader since 2025–26, by member id. */
 export const SEEDED_TEAM_LEADER = 1;
+/** The seeded head of Propulsion, whose department holds the waiting hand-over, by member id. */
+export const SEEDED_DEPARTMENT_HEAD = 2;
 /** The seeded alumnus whose name an editor fixed for the Alumni page, by member id. */
 export const SEEDED_RENAMED_ALUMNUS = 50;
 
 /**
  * The seeded person each test viewer is, by user id: the team leader, the
+ * head of Propulsion, who answers the waiting hand-over (issue #326), the
  * alumnus whose name was fixed for the Alumni page (every role ended, an
  * Alumni entry kept; issue #317), and the local tester of each other kind.
  */
 export const TEST_VIEWER_PEOPLE: Readonly<Record<TestViewer, string>> = {
   "team-leader": seedUserId(SEEDED_TEAM_LEADER),
   "operations-lead": TESTERS["operations-lead"].id,
-  "department-head": TESTERS["department-head"].id,
+  "department-head": seedUserId(SEEDED_DEPARTMENT_HEAD),
   "division-lead": TESTERS["division-lead"].id,
   member: TESTERS.member.id,
   alumni: seedUserId(SEEDED_RENAMED_ALUMNUS),
