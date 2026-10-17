@@ -811,7 +811,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     ...databaseDivisionPages(identity),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
-    teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord, blobTeamPagePhotos),
+    teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord, blobTeamPagePhotos()),
     teamAdvisors: advisorEditor(identity, databaseAdvisorStore, currentAcademicYearStart),
     outreach: outreachEditor(identity, databaseOutreachStore, blobPhotoFiles()),
     projects: projectEditor(identity, databaseProjectStore, { stamps: readProjectStamps, now: () => new Date() }, blobProjectPhotoFiles()),

@@ -311,6 +311,22 @@ export function resetLayer(layer: TeamPageLayer): TeamPageLayer {
   return { ...NO_TEAM_LAYER, intro: layer.intro, groupPhoto: layer.groupPhoto };
 }
 
+/**
+ * Every person photo the layer sets: on the team leader, on a spot, and on
+ * each person it added. The group photo is not one: it is always a photo of
+ * the site's own, never an upload.
+ */
+export function layerPhotos(layer: TeamPageLayer): PersonPhoto[] {
+  const people: readonly { readonly photo?: PersonPhoto }[] = [
+    layer.leader,
+    ...Object.values(layer.spots).flatMap((edit) => edit ?? []),
+    ...layer.addedLeaders,
+    ...Object.values(layer.departments).flatMap((edit) => edit?.addedLeads ?? []),
+    ...layer.addedDepartments.flatMap((d) => [d.head, ...d.leads]),
+  ];
+  return people.flatMap((person) => person.photo ?? []);
+}
+
 /** Every id the things the editor added hold, in one list: one id names one thing. */
 function addedIds(layer: TeamPageLayer): number[] {
   return [

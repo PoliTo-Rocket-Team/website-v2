@@ -7,14 +7,17 @@ import { statusOf, type ContentItem } from "@/lib/content/versioned";
 import { VIEWER_KINDS, type ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused } from "@/lib/dashboard/write";
 import { dummyTeamPagePhotos, dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { publicStoreHost } from "@/lib/storage/pathname";
 import { advisorRowsOf, publicAdvisors, withAdvisors, type AdvisorRow, type AdvisorVersion } from "./advisors";
 import { importedAdvisors } from "./advisors-import";
 import { addLeader, applyLayer, NO_TEAM_LAYER, type AddedDepartment, type TeamPageLayer } from "./team-layer";
 import { hideHead } from "./team-page-add";
-import { HEADS_FULL, publicTeamPage, SECTION_EMPTY, teamPageEditor, type TeamPageStore } from "./team-page-editor";
+import { HEADS_FULL, publishedLayer, publicTeamPage, SECTION_EMPTY, teamPageEditor, type TeamPageStore } from "./team-page-editor";
 import { memoryTeamPageStore } from "./team-page-memory";
+import { publicStoreTeamPagePhotos } from "./team-page-photos";
 import { team } from "./team";
 import { HEADS_SHOWN_MAX, headsShown, teamBuildOf, teamPageFromRoles } from "./team-roles";
+import type { PersonPhoto } from "./types";
 
 // The Team page's visual layer and advisors as the editor saves them (issues
 // #283 and #321): Save draft never reaches the public page, Publish does,
@@ -260,6 +263,7 @@ function recordingPhotos() {
         put.push(photo.contentType);
         return STORED as `https://${string}`;
       },
+      drop: async () => {},
     },
   };
 }
@@ -294,4 +298,72 @@ test("an uploaded photo is stored and saved on a person and an advisor, and show
   const live = withAdvisors(await publicPage(store), publicAdvisors(await store.advisors()));
   assert.equal(live.orgChart.leader.photo, STORED);
   assert.equal(live.advisors.people[0]?.photo, STORED);
+});
+
+// A replaced upload's file (issue #323): deleted once the write lands and no
+// stored layer version or advisor row uses it, through deleteBestEffort, so a
+// failed delete never fails the save.
+
+const OWN_HOST = publicStoreHost("store_Own123");
+const ownUrl = (pathname: string) => `https://own123.public.blob.vercel-storage.com/${pathname}` as `https://${string}`;
+const MEMBER_PICTURE = ownUrl("photos/member-7.jpg");
+
+function storePhotos(remove: (pathname: string) => Promise<void>) {
+  let n = 0;
+  return publicStoreTeamPagePhotos(OWN_HOST, { upload: async (pathname) => ({ url: ownUrl(pathname) }), remove }, () => String(++n));
+}
+
+async function uploaded(editor: ReturnType<typeof teamPageEditor>) {
+  const result = await editor.uploadPhoto({ name: "photo.jpg", contentType: "image/jpeg", bytes: JPEG });
+  assert.ok(result.ok);
+  return result.value;
+}
+
+test("a replaced uploaded photo's file is deleted after the write lands, once no stored version or advisor row uses it", async () => {
+  const removed: string[] = [];
+  const { store } = editorOver(siteContent);
+  const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async (pathname) => {
+    removed.push(pathname);
+    assert.notEqual(publishedLayer(await store.layer.list()).leader.photo, ownUrl(pathname), "deleted only after the write landed");
+  }));
+  const [a, b, c, d] = [await uploaded(editor), await uploaded(editor), await uploaded(editor), await uploaded(editor)];
+  const withAdvisorPhoto = async (photo: PersonPhoto) => {
+    const [first, ...rest] = await rowsOf(store);
+    return [{ ...first, fields: { ...first.fields, photo } }, ...rest];
+  };
+
+  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: a } }, await withAdvisorPhoto(MEMBER_PICTURE))).ok);
+  assert.deepEqual(removed, []);
+
+  // A draft replaces both, but the published version still shows them.
+  assert.ok((await editor.save("save-draft", { ...NO_TEAM_LAYER, leader: { photo: b } }, await withAdvisorPhoto(c))).ok);
+  assert.deepEqual(removed, [], "the published version still uses them");
+
+  // Publish: the leader's upload goes; the member's own picture is never this editor's to delete.
+  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: b } }, await withAdvisorPhoto(c))).ok);
+  assert.deepEqual(removed, ["photos/team-page-1.jpg"]);
+
+  // Reset to team drops a draft's upload the published version never showed.
+  assert.ok((await editor.save("save-draft", { ...NO_TEAM_LAYER, leader: { photo: d } }, await rowsOf(store))).ok);
+  assert.deepEqual(removed, ["photos/team-page-1.jpg"], "the published version still shows b");
+  assert.ok((await editor.reset()).ok);
+  assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-4.jpg"]);
+});
+
+test("a failed delete of a replaced photo never fails the save, and logs one line naming the Team page's area", async (t) => {
+  const log = t.mock.method(console, "error", () => {});
+  const { store } = editorOver(siteContent);
+  const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async (pathname) => {
+    throw new Error(`Blob is down for ${pathname}`);
+  }));
+  const [a, b] = [await uploaded(editor), await uploaded(editor)];
+  assert.ok((await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: a } }, await rowsOf(store))).ok);
+
+  const replaced = await editor.save("publish", { ...NO_TEAM_LAYER, leader: { photo: b } }, await rowsOf(store));
+  assert.ok(replaced.ok, "the save stands");
+  assert.equal(publishedLayer(await store.layer.list()).leader.photo, b);
+  assert.deepEqual(
+    log.mock.calls.map((call) => call.arguments),
+    [["Blob delete failed (store: public, area: team-photo): Blob is down for [file]"]],
+  );
 });

@@ -95,8 +95,10 @@ export const PREVIEW_TEAM_PHOTO = "/team/preview-upload.webp";
 /**
  * A preview stores no files (issue #323): the photo is checked as the
  * database side checks it, nothing is written to Blob, and the page shows
- * the stand-in, which fits the test developer's cookie.
+ * the stand-in, which fits the test developer's cookie. With no file
+ * stored, there is none to delete either.
  */
 export const dummyTeamPagePhotos: TeamPagePhotos = {
   put: async () => PREVIEW_TEAM_PHOTO,
+  drop: async () => {},
 };
