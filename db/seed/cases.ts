@@ -187,7 +187,13 @@ export function standingOfUser(data: SeedData, userId: string): ViewerStanding |
   const openDepartmentIds = data.departments.filter((d) => (d.closedAt ?? null) === null).map((d) => d.id!);
   const scopeRows = data.scopes
     .filter((s) => s.memberId === memberId)
-    .map((s) => ({ scope: s.scope as ScopeKind, target: s.target, divisionId: s.divisionId ?? null, deptId: s.deptId ?? null }));
+    .map((s) => ({
+      scope: s.scope as ScopeKind,
+      target: s.target,
+      level: s.accessLevel ?? "view",
+      divisionId: s.divisionId ?? null,
+      deptId: s.deptId ?? null,
+    }));
   const activeRoles = data.roles
     .filter((r) => r.memberId === memberId && isActive(r))
     .map((r) => ({
@@ -196,7 +202,7 @@ export function standingOfUser(data: SeedData, userId: string): ViewerStanding |
       fullAccess: r.fullAccess == null ? null : SEAT_OF_FLAG[r.fullAccess],
     }));
   const onAlumniRecord = activeRoles.length === 0 && alumnusOf(data, memberId) !== undefined;
-  return viewerStandingOf({ scopes: unitRowsOf(scopeRows, openDepartmentIds).map((s) => s.scope), activeRoles, onAlumniRecord });
+  return viewerStandingOf({ scopes: unitRowsOf(scopeRows, openDepartmentIds), activeRoles, onAlumniRecord });
 }
 
 /** Whether the seeded person reads as the test viewer: the same kind and the same full-access seat. */
