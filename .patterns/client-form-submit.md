@@ -2,7 +2,7 @@
 
 How a client form is built and submitted today: a `"use client"` component composes
 `components/ui/` primitives, keeps field state in `useState`, validates on submit, calls an auth
-client method or a server action passed in as a prop, and reports the result with a `sonner` toast.
+client method or a server action, and reports the result with a `sonner` toast.
 
 ## The shape
 
@@ -22,31 +22,37 @@ client method or a server action passed in as a prop, and reports the result wit
 
 3. **Call the backend.** The one auth control, the Google button in
    [login-form.tsx](../components/login-form.tsx), calls `signIn.social` from
-   [lib/auth-client.ts](../lib/auth-client.ts). Data forms call a server action they got as a prop
-   (`onAddPosition` in [add-position-dialog.tsx](../components/add-position-dialog.tsx); the
-   handlers in [apply-positions-list.tsx](../components/apply-positions-list.tsx)). See
+   [lib/auth-client.ts](../lib/auth-client.ts). Data forms import a server action and call it
+   (`createPosition` and `editPosition` from
+   [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts) in
+   [new-position-drawer.tsx](../components/dashboard/new-position-drawer.tsx)). See
    [audited-mutations.md](./audited-mutations.md) for the action side.
 
 4. **Toast the outcome.** `toast.success` / `toast.error` from `sonner`, rendered by the single
-   `<Toaster />` in [app/layout.tsx](../app/layout.tsx). Data forms pass a `description` and a
-   `duration`, and show `err.message` when the error is an `Error`:
+   `<Toaster />` in [app/layout.tsx](../app/layout.tsx). The dashboard actions answer a
+   `WriteResult` ([lib/dashboard/write.ts](../lib/dashboard/write.ts)) instead of throwing, so the
+   form toasts the refusal it gets back and clears the loading flag in `finally`
+   ([new-position-drawer.tsx](../components/dashboard/new-position-drawer.tsx)):
 
    ```ts
-   } catch (error) {
-     console.error("Failed to create position:", error);
-     toast.error("Failed to create position", {
-       description: error instanceof Error ? error.message
-         : "Please try again or contact support if the problem persists.",
-       duration: 5000,
-     });
+   try {
+     const result = await createPosition(checked.position);
+     if (!result.ok) {
+       toast.error(result.error);
+       return;
+     }
+     toast.success(`${checked.position.title} is saved as ${result.value.code}`);
+     close(false);
    } finally {
-     setIsSubmitting(false);
+     setSubmitting(false);
    }
    ```
 
-5. **Update local state on success.** List components keep a local copy of the server data
-   (`useState(initialPositions)`, re-synced in `useEffect`) and patch it after the action resolves,
-   instead of reloading the page.
+5. **Show the change at once.** A control that flips a saved value shows the new value with
+   `useOptimistic` inside a transition, and a refusal flips it back with a toast
+   (`useOptimisticSwitch` in [positions.tsx](../components/dashboard/positions.tsx)). The server
+   write refreshes the cache tags, so the page re-renders with the saved rows instead of
+   reloading.
 
 ## When this applies
 
@@ -57,15 +63,16 @@ Any interactive form or control that submits to the server, in `components/`. Th
 
 - Better Auth's client returns errors as values (`{ data, error }`) or through `onError`, not by
   throwing. A plain `try/catch` alone would miss these.
-- Server actions do throw, so data forms wrap them in `try/catch/finally` to clear the loading flag.
+- The dashboard actions return a refusal as a value, but an unexpected server error still throws,
+  so data forms clear the loading flag in `finally`.
 
 ## Known inconsistencies (not the pattern)
 
-- **Two validation helpers.** Auth forms use `zod` with per-field errors. The position forms
-  ([add-position-dialog.tsx](../components/add-position-dialog.tsx),
-  [position-edit-form.tsx](../components/position-edit-form.tsx)) use the hand-rolled
-  `createValidationRules` + `validateAndShowErrors` in [lib/validation.ts](../lib/validation.ts),
-  which only toasts and keeps no per-field errors. Neither is shared with the server.
+- **Two validation helpers.** The application form uses `zod`, shared with its server action. The
+  position drawer ([new-position-drawer.tsx](../components/dashboard/new-position-drawer.tsx))
+  uses the hand-written `checkNewPosition` / `checkPositionContent` in
+  [lib/dashboard/new-position.ts](../lib/dashboard/new-position.ts), which keep per-field errors
+  and run again on the server.
 - **Loading flag reset.** Auth forms reset loading by hand in each branch; data forms use
   `finally`.
 - **Mixed primitive styles.** Most `components/ui/` files use `React.forwardRef` (older shadcn);

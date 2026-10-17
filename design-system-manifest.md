@@ -186,8 +186,8 @@ Rules:
   not use `motion-reduce:animate-none` for this: it loses to the `data-[state]` variants.
   `DialogOverlay` follows this rule; the shared `DialogContent` export does not. It still
   exit-animates (`data-[state=closed]:animate-out`), and its open animation is not under
-  `motion-safe:` (`components/ui/dialog.tsx`). Only the older dialogs use it
-  (`add-position-dialog.tsx`, `file-preview-dialog.tsx`); do not use it on a redesigned page.
+  `motion-safe:` (`components/ui/dialog.tsx`). No component uses it now; do not use it on a
+  redesigned page.
 - Every WebGL canvas starts hidden with `opacity-0` on its wrapper and is revealed by
   `RevealOnFirstFrame` after the second frame. This stops the white flash
   (`reveal-on-first-frame.tsx`, `handoff-hero-rocket.md` §9).
