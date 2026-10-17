@@ -2,8 +2,9 @@
 // and 1–17 keep the numbers the old SQL seed used. The divisions the Team
 // page names (lib/about/team.ts) carry its names; Recovery's two are its
 // Recovery Systems and Parachutes (issue #326). Division 18 is closed and
-// kept as a name; division 19 is open with nobody in it. Test Bench is on no
-// public page, so the local testers work in it (./people.ts).
+// kept as a name; division 19 is open with nobody in it. Test Bench holds the
+// public Test Engineers; team.ts names no lead for it, so a local tester
+// holds that seat (./people.ts).
 
 import { departments, divisions } from "@/db/schema";
 import { rowsOf, tableSeedModule } from "./rows";

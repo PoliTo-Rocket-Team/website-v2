@@ -14,7 +14,8 @@
 // team; none of it writes a role, so Reset to team (board 80h) brings back
 // the roles build with the intro text and the group photo kept. The advisors
 // are today's (lib/about/advisors-import.ts), each published, as
-// drizzle/0035 imports them.
+// drizzle/0035 imports them, except that an advisor's real email is swapped
+// for an invented one on a reserved domain: emails stay private.
 
 import { teamPageAdvisors, teamPageAdvisorVersions, teamPageLayerVersions } from "@/db/schema";
 import { importedAdvisors } from "@/lib/about/advisors-import";
@@ -78,8 +79,17 @@ export const TEAM_PAGE_LAYER: TeamPageLayer = {
 
 export const TEAM_PAGE_LAYER_ROWS = rowsOf(teamPageLayerVersions, [{ version: "published", layer: TEAM_PAGE_LAYER, updatedAt: PUBLISHED }]);
 
+/** An invented address for advisor `id`, on a domain reserved for examples (RFC 2606). */
+export const seededAdvisorEmail = (id: number) => `advisor-${id}@example.com`;
+
+/** The advisor as the seed writes them: their real email, if any, swapped for an invented one. */
+function withInventedEmail(item: AdvisorItem): AdvisorItem {
+  if (item.version.state !== "published" || item.version.published.email === undefined) return item;
+  return { ...item, version: { ...item.version, published: { ...item.version.published, email: seededAdvisorEmail(item.id) } } };
+}
+
 /** Today's advisors, each published with no draft, in the record's order and standing. */
-export const TEAM_PAGE_ADVISOR_ITEMS: readonly AdvisorItem[] = importedAdvisors();
+export const TEAM_PAGE_ADVISOR_ITEMS: readonly AdvisorItem[] = importedAdvisors().map(withInventedEmail);
 
 export const TEAM_PAGE_ADVISOR_ROWS = rowsOf(
   teamPageAdvisors,

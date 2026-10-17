@@ -12,8 +12,8 @@
 // stayed as an advisor in their division, and people whose last role ended
 // in each academic year from 2021–22 to 2025–26. The alumni seed
 // (./alumni.ts) adds how they show on the Alumni page. The local testers
-// work in Test Bench and Research and Development, which no public page
-// staffs. The applicants' user ids keep the numbers the old SQL seed used;
+// take seats lib/about/team.ts leaves empty: the Test Bench lead and the
+// head of Research and Development. The applicants' user ids keep the numbers the old SQL seed used;
 // the recruitment module names them.
 
 import { betterAuthUsers, members, roles, users } from "@/db/schema";
@@ -334,8 +334,9 @@ export const ROLE_ROWS = rowsOf(roles, [
   { memberId: RENAMED_ALUMNUS, deptId: operations, divisionId: D.logistics, title: "Procurement Coordinator", startedAt: "2023-10-01", leavedAt: "2025-09-30", type: "core" },
   { memberId: REMOVED_ALUMNUS, deptId: operations, divisionId: D.communications, title: "Video Editor", startedAt: "2024-10-01", leavedAt: "2026-06-30", type: "core" },
 
-  // The local testers (issue #129): Test Bench and Research and Development
-  // hold no one the site publishes, so the testers' seats take no one's place.
+  // The local testers (issue #129). The public Test Engineers work in Test
+  // Bench too (./public-team.ts), but team.ts names no Test Bench lead and no
+  // head of Research and Development, so the testers' seats take no one's place.
   { memberId: TESTER_MEMBER.member, deptId: propulsion, divisionId: D.testBench, title: "Test Bench Engineer", startedAt: "2025-10-01", type: "core" },
   { memberId: TESTER_MEMBER["division-lead"], deptId: propulsion, divisionId: D.testBench, title: "Test Bench Lead", startedAt: "2025-10-01", type: "lead" },
   { memberId: TESTER_MEMBER["operations-lead"], deptId: operations, title: "Operations Lead", startedAt: "2025-10-01", type: "lead", fullAccess: "operations_lead" },

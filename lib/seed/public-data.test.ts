@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { importedAdvisors } from "../about/advisors-import";
+import type { AdvisorItem } from "../about/advisors";
 import { importedEntries, importedFounders } from "../about/alumni-import";
 import { team } from "../about/team";
 import { versionRows, type ContentItem } from "../content/versioned";
@@ -123,8 +124,15 @@ test("everyone on the seeded team is someone lib/about/team.ts names, a local te
 
 // Advisors and alumni.
 
+/** An advisor item without the email, which the seed invents. */
+const withoutEmail = (item: AdvisorItem) => {
+  if (item.version.state !== "published") return item;
+  const { email: _, ...published } = item.version.published;
+  return { ...item, version: { ...item.version, published } };
+};
+
 test("the seeded advisors are the ones lib/about/advisors-import.ts imports", () => {
-  assert.deepEqual(teamAdvisorItemsOf(data), importedAdvisors());
+  assert.deepEqual(teamAdvisorItemsOf(data).map(withoutEmail), importedAdvisors().map(withoutEmail));
 });
 
 test("the Alumni page's imported years, founder and co-founders are the ones lib/about/alumni-import.ts imports", () => {
@@ -198,11 +206,16 @@ function isReservedDomain(domain: string): boolean {
 }
 
 test("every seeded email is on a reserved test domain", () => {
+  const advisorEmails = teamAdvisorItemsOf(data).flatMap((item) =>
+    [item.version.state === "published" ? item.version.published : null, item.version.draft].flatMap((v) => (v?.email === undefined ? [] : [v.email])),
+  );
   const emails = [
     ...data.users.map((u) => u.email),
     ...data.members.flatMap((m) => (m.prtEmail == null ? [] : [m.prtEmail])),
+    ...advisorEmails,
   ];
   assert.ok(emails.length > 100);
+  assert.ok(advisorEmails.length > 0);
   for (const email of emails) {
     const domain = email.split("@")[1] ?? "";
     assert.ok(isReservedDomain(domain), `${email} is not on a reserved test domain`);
@@ -217,7 +230,7 @@ test("no seeded email, phone number, PoliTo id, application, order or grant is c
     ...team.advisors.people,
   ].flatMap((p) => (p.email === undefined ? [] : [p.email.toLowerCase()]));
   assert.ok(publicEmails.length > 0);
-  const privateRows = JSON.stringify([data.users, data.members, data.applications, data.orders, data.scopes, data.handOvers]).toLowerCase();
+  const privateRows = JSON.stringify([data.users, data.members, data.applications, data.orders, data.scopes, data.handOvers, data.teamPageAdvisorVersions]).toLowerCase();
   for (const email of publicEmails) assert.ok(!privateRows.includes(email), `${email} is copied into the seed`);
   // Phone numbers and PoliTo ids follow the seed's own patterns, made from the member id.
   for (const m of data.members) if (m.mobileNumber != null) assert.equal(m.mobileNumber, `+39 3${String(m.memberId).padStart(9, "0")}`);
