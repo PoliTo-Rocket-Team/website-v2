@@ -149,7 +149,7 @@ function TreeCard({
           {person?.self && " · you"}
         </span>
         {subtitle && (
-          <span className={`mt-0.5 line-clamp-2 block text-[11px] leading-[1.25] ${onPath ? "text-accent" : "text-prt-muted"}`}>
+          <span className={`mt-0.5 line-clamp-2 text-[11px] leading-[1.25] ${onPath ? "text-accent" : "text-prt-muted"}`}>
             {subtitle}
           </span>
         )}
