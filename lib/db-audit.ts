@@ -8,8 +8,9 @@ export { getCurrentUserId } from "@/lib/current-user";
 
 /**
  * Who the next write is logged under. Every signed-in write goes through
- * this file, so this is where a test developer's write is refused before it
- * is sent (lib/test-developer.ts, ADR 0016).
+ * this file, so this is where a test developer's write is logged under their
+ * seeded person on a preview, and refused before it is sent anywhere else
+ * (lib/test-developer.ts, ADR 0016).
  */
 async function writerId(): Promise<string | null> {
   return auditWriterOf(await getCurrentUser());

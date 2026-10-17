@@ -27,7 +27,7 @@ session cookie; server code reads the user id from that cookie, then turns the m
    their data: the dummy arrays in `lib/dummy-data/` for a test developer where no database is
    configured, else the database rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts))
    of the signed-in account, or of the viewer's seeded person for a test developer, whose writes
-   are refused ([lib/db-audit.ts](../lib/db-audit.ts)). With no session
+   are saved as that person on a preview and refused anywhere else ([lib/db-audit.ts](../lib/db-audit.ts)). With no session
    token it is `signed-out`, and the page sends the visitor to `/login`. With a token but no
    account it is `account-unresolved`, and the shell shows a sign-out screen: `/login` would send
    a token holder back to `/dashboard`, so a redirect there would loop. The viewer's kind and

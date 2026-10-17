@@ -12,7 +12,9 @@ import { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
 // alumni, non-member). Where the pages read the dummy arrays
 // (lib/dummy-data/mode.ts), the dashboard reads them too. Where they read a
 // database, as on a preview with its seeded database (issue #307), the
-// test developer is read as that viewer's seeded person and may not write.
+// test developer is read as that viewer's seeded person. On a preview that
+// person may write to the shared preview database, which the next preview
+// build wipes and re-seeds; under `next dev` they may not (ADR 0016).
 //
 // Production never offers it and never accepts it: every path asks
 // `testDeveloperOn()` first, at request time, so a cookie set elsewhere is
@@ -102,8 +104,8 @@ function processStandInEnv(): StandInEnv {
  * #307, ADR 0016): the seeded person of the viewer the cookie names
  * (lib/test-viewer-people.ts). Null where the gate is off, where the pages
  * read the dummy arrays (the dummy dashboard serves the viewer there), or
- * when the cookie names no viewer. A stand-in reads; it never writes
- * (lib/db-audit.ts refuses its writes).
+ * when the cookie names no viewer. Whether a stand-in may also write is
+ * `testDeveloperMayWrite` (lib/db-audit.ts asks it through `auditWriterOf`).
  */
 export function testDeveloperStandIn(
   cookieValue: string | null | undefined,
@@ -114,22 +116,37 @@ export function testDeveloperStandIn(
   return viewer === null ? null : { viewer, userId: TEST_VIEWER_PEOPLE[viewer] };
 }
 
-/** A write a test developer tried on a database: refused, because their changes never reach one (ADR 0016). */
+/**
+ * Whether a test developer read as a seeded person may write to the database
+ * (ADR 0016, amendment of 2026-10-17): only on a Vercel preview, whose shared
+ * `preview` database the next preview build wipes and re-seeds. Refused in
+ * production (where the gate is off anyway), on any other Vercel
+ * environment, and under `next dev`, where the database may be a real one.
+ */
+export function testDeveloperMayWrite(env: GateEnv = processGateEnv()): boolean {
+  return env.VERCEL_ENV === "preview";
+}
+
+/** A write a test developer tried on a database outside a preview: refused (ADR 0016). */
 export class TestDeveloperWriteRefused extends Error {
   constructor() {
-    super("A test developer's changes never reach the database; sign in with an account to change it.");
+    super("A test developer's changes reach the database only on a preview; sign in with an account to change it.");
     this.name = "TestDeveloperWriteRefused";
   }
 }
 
 /**
  * The user id an audited write is logged under (lib/db-audit.ts): the
- * account's, or none when nobody is signed in. A test developer read as a
- * seeded person is refused before any write is sent.
+ * account's, or none when nobody is signed in. A test developer's write is
+ * logged under the seeded person the viewer switch resolves to where
+ * `testDeveloperMayWrite` allows it, and refused before it is sent elsewhere.
  */
-export function auditWriterOf(user: { readonly session: ViewerSession; readonly id: string } | null): string | null {
+export function auditWriterOf(
+  user: { readonly session: ViewerSession; readonly id: string } | null,
+  env: GateEnv = processGateEnv(),
+): string | null {
   if (user === null) return null;
-  if (user.session === "test-developer") throw new TestDeveloperWriteRefused();
+  if (user.session === "test-developer" && !testDeveloperMayWrite(env)) throw new TestDeveloperWriteRefused();
   return user.id;
 }
 

@@ -15,6 +15,7 @@ import {
   testDeveloperSignOut,
   testDeveloperViewer,
   auditWriterOf,
+  testDeveloperMayWrite,
   testDeveloperStandIn,
   TestDeveloperWriteRefused,
 } from "./test-developer";
@@ -175,8 +176,31 @@ test("a test developer is read as no one where pages read the dummy arrays or th
   assert.equal(testDeveloperStandIn("member", { NODE_ENV: "production", DATABASE_URL: DB }), null, "local production build");
 });
 
-test("an audited write is logged under the account, and a test developer's write is refused before it is sent", () => {
-  assert.equal(auditWriterOf({ session: "account", id: "u1" }), "u1");
-  assert.equal(auditWriterOf(null), null);
-  assert.throws(() => auditWriterOf({ session: "test-developer", id: TEST_VIEWER_PEOPLE.member }), TestDeveloperWriteRefused);
+test("an audited write by an account is logged under it, in every environment", () => {
+  for (const env of [PREVIEW, PRODUCTION, LOCAL_DEV]) {
+    assert.equal(auditWriterOf({ session: "account", id: "u1" }, env), "u1");
+    assert.equal(auditWriterOf(null, env), null);
+  }
+});
+
+test("on a preview, a test developer's write is logged under the seeded person the viewer switch resolves to (ADR 0016)", () => {
+  assert.equal(testDeveloperMayWrite(PREVIEW), true);
+  for (const viewer of TEST_VIEWERS) {
+    const standIn = testDeveloperStandIn(viewer, { ...PREVIEW, DATABASE_URL: DB });
+    assert.ok(standIn, viewer);
+    assert.equal(auditWriterOf({ session: "test-developer", id: standIn.userId }, PREVIEW), TEST_VIEWER_PEOPLE[viewer], viewer);
+  }
+});
+
+test("in production, under next dev and on any other Vercel environment, a test developer's write is refused before it is sent", () => {
+  const user = { session: "test-developer", id: TEST_VIEWER_PEOPLE.member } as const;
+  for (const [name, env] of [
+    ["production", PRODUCTION],
+    ["next dev", LOCAL_DEV],
+    ["local production build", { NODE_ENV: "production" }],
+    ["development Vercel environment", { NODE_ENV: "production", VERCEL_ENV: "development" }],
+  ] as const) {
+    assert.equal(testDeveloperMayWrite(env), false, name);
+    assert.throws(() => auditWriterOf(user, env), TestDeveloperWriteRefused, name);
+  }
 });

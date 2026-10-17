@@ -9,7 +9,8 @@ import { TEST_DEVELOPER_COOKIE, testDeveloperStandIn } from "@/lib/test-develope
 /**
  * The signed-in person, as much as the pages need of it. `session` says how:
  * a real account, or a test developer read as a seeded person (issue #307),
- * who has no name of its own here and may never write.
+ * who has no name of its own here and writes only on a preview
+ * (`testDeveloperMayWrite` in lib/test-developer.ts).
  */
 export type CurrentUser =
   | { readonly session: "account"; readonly id: string; readonly name: string }

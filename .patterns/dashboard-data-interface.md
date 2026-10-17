@@ -55,9 +55,10 @@ its own seeded database, and dummy data is left for runs with none, is
    The interface checks it again and answers `written(value)` or `refused(error)`
    ([lib/dashboard/write.ts](../lib/dashboard/write.ts)). On the dummy side a test developer's
    write changes only a cookie in their own browser, set in `open.ts`. On the database side
-   `runAuditQuery` and `runAuditBatch` ([lib/db-audit.ts](../lib/db-audit.ts)) both refuse it
-   before it is sent (`auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts)); the database is never
-   changed.
+   `runAuditQuery` and `runAuditBatch` ([lib/db-audit.ts](../lib/db-audit.ts)) both ask
+   `auditWriterOf` in [lib/test-developer.ts](../lib/test-developer.ts): on a preview the write is
+   saved to the shared `preview` branch as the viewer's seeded person, and in production and under
+   `next dev` it is refused before it is sent (`testDeveloperMayWrite`, ADR 0016).
 
 6. **The public `/apply` pages pick the same way.** `pickApplyData` in
    [lib/apply/pick.ts](../lib/apply/pick.ts) takes the dummy side when `dummyDataOn`
@@ -91,9 +92,10 @@ It does not apply to the legacy route group, whose pages still call `app/actions
 - A domain rule written only inside `database.ts` leaves the dummy side free to do something else,
   so a preview shows a flow production does not have. Put the rule in a shared module and call it
   from both sides.
-- A test developer's write must not reach the database. On the dummy side their changes go to
-  cookies, which keeps each reviewer's changes in their own browser. On the database side the write
-  is refused in `lib/db-audit.ts`, because every preview shares one seeded database.
+- A test developer's write reaches no database but a preview's `preview` branch. On the dummy side
+  their changes go to cookies, which keeps each reviewer's changes in their own browser. On the
+  database side `lib/db-audit.ts` saves the write as the viewer's seeded person only on a preview,
+  whose shared branch the next preview build wipes and re-seeds, and refuses it anywhere else.
 
 ## Known inconsistencies (not the pattern)
 

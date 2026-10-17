@@ -843,8 +843,9 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Writes follow the site-content rule, and none writes a role, division, department, scope or
   member.
 - On a preview with the seeded `preview` branch (ADR 0016), the public Team page shows the seeded
-  published layer and advisors. A test developer's layer writes there are refused before they
-  reach the database (ADR 0016). Only a preview with no database keeps a test developer's layer in
+  published layer and advisors. A test developer's layer writes there are saved to the
+  `preview` branch as the viewer's seeded person, until the next preview build re-seeds it
+  (ADR 0016). Only a preview with no database keeps a test developer's layer in
   their own cookie until they sign out, laid on the dummy team in the editor; its public Team page
   shows the dummy team with no layer.
 - The editor (boards 80, 80b and 80h, #284) is "Team page" under Content, at
