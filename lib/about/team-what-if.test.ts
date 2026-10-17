@@ -51,7 +51,7 @@ test("board 26b: eight leaders sit on one symmetric arc, four each side of the t
 test("board 26d: nine technical departments fill three columns, three rows", () => {
   const layout = groupLayout(group("Technical Departments", range(9).map(headWithLeads)));
   assert.equal(layout.columns, 3);
-  assert.equal(layout.width, 1164);
+  assert.equal(layout.width, 960);
   assert.equal(Math.ceil(9 / layout.columns), 3);
 });
 
@@ -64,14 +64,14 @@ test("boards 26e and 26f: five groups each take their own grid in the carousel",
     group("Software", range(5).map(divisionAsHead)),
   ];
   const layouts = groups.map(groupLayout);
-  // Heads with leads take three columns; single people two narrower ones, centred.
+  // Heads with leads take three columns; single people two.
   assert.deepEqual(
     layouts.map((l) => l.columns),
     [3, 2, 2, 2, 2],
   );
   assert.deepEqual(
-    layouts.map((l) => l.width),
-    [1164, 752, 752, 752, 752],
+    layouts.map((l) => Math.round(l.width)),
+    [960, 627, 627, 627, 627],
   );
 });
 

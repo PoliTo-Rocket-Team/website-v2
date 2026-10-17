@@ -3,14 +3,16 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { DepartmentGroup, Departments as DepartmentsData, DivisionLead, GroupMember } from "@/lib/about/types";
-import { groupLayout } from "./group-layout";
+import { GAP, groupLayout } from "./group-layout";
 import { Avatar, Contacts, PersonCell } from "./person";
 import { SectionHead } from "./section-head";
 
 // Boards 26, 26d, 26e, 26f and 26m, "Departments": a carousel of groups,
-// sideways on the platform's own scroll with snap. The current group sits in
-// the middle; on phones at the left edge with the next one peeking in,
-// dimmed. From lg only the current group shows, with chevrons at the edges.
+// sideways on the platform's own scroll with snap, the groups not in view
+// dimmed. On phones the current group sits at the left edge with the next one
+// peeking in from the screen edge. From lg each group is as wide as its grid,
+// the current one sits in the middle of the content column and its
+// neighbours peek in at the column's edges, one column gap away.
 // Arrows and dots below, and the arrow keys on the focused carousel, step it;
 // a swipe or a trackpad scrolls it natively and the dots follow. Nothing
 // folds away: every head and lead is always shown.
@@ -52,7 +54,7 @@ function Member({ member }: { member: GroupMember }) {
         fallback="mark-to-initials"
       />
       {leads.length > 0 && (
-        <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-5 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5">
+        <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-3 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5">
           {leads.map((l, i) => (
             <Lead key={`${l.division}-${l.name}-${i}`} lead={l} />
           ))}
@@ -75,15 +77,18 @@ export type DepartmentFrames = {
   readonly heading?: (heading: ReactNode) => ReactNode;
 };
 
+/** A group's grid, as the CSS custom properties its slide sets for itself and its grid. */
+function gridVars(group: DepartmentGroup): Vars {
+  const { columns, width } = groupLayout(group);
+  return { "--cols": columns, "--w": `${width}px` };
+}
+
 function Group({ group, offset, frames }: { group: DepartmentGroup; offset: number; frames: DepartmentFrames }) {
-  const { columns, gap, width } = groupLayout(group);
-  const grid: Vars = { "--cols": columns, "--gap": `${gap}px`, "--w": `${width}px` };
   const heading = <h3 className="text-[20px] font-bold tracking-[-0.02em] lg:text-center lg:text-[30px]">{group.name}</h3>;
   return (
     <>
       {frames.heading?.(heading) ?? heading}
       <div
-        style={grid}
         className="mt-5 grid grid-cols-1 gap-y-6 lg:mx-auto lg:mt-10 lg:max-w-[var(--w)] lg:grid-cols-[repeat(var(--cols),minmax(0,1fr))] lg:gap-x-[var(--gap)] lg:gap-y-16"
       >
         {group.members.map((m, i) => {
@@ -156,26 +161,20 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
   const arrow =
     "flex h-11 w-11 items-center justify-center rounded-full border text-prt-text transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 disabled:cursor-default disabled:border-white-5 disabled:text-dim";
 
-  // From lg one group fills the content column, with no neighbour peeking in;
-  // a large chevron at each edge of the column steps to the next or previous
-  // group, as on the old site.
-  const peek =
-    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-colors duration-200 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
+  // The column gap, between the groups as inside them; and, from lg, the
+  // first and last groups' widths, so the scroller can pad each end by half
+  // the column less half that group and the end groups centre too.
+  const spacing: Vars = {
+    "--gap": `${GAP}px`,
+    "--first": `${groupLayout(groups[0]).width}px`,
+    "--last": `${groupLayout(groups[count - 1]).width}px`,
+  };
 
   return (
-    <div className="relative [container-type:inline-size]">
-      {current < count - 1 && (
-        <button type="button" aria-label="Next group" onClick={() => go(current + 1)} className={`${peek} right-0`}>
-          <ChevronRight aria-hidden className="h-11 w-11" strokeWidth={1.25} />
-        </button>
-      )}
-      {current > 0 && (
-        <button type="button" aria-label="Previous group" onClick={() => go(current - 1)} className={`${peek} left-0`}>
-          <ChevronLeft aria-hidden className="h-11 w-11" strokeWidth={1.25} />
-        </button>
-      )}
+    <div style={spacing} className="relative [container-type:inline-size]">
       {/* Bleeds to the screen edge on phones, so the next group peeks in
-          from the edge; from lg each group fills the content column. */}
+          from the edge; from lg the groups sit one column gap apart in the
+          content column, so the neighbours peek in at its edges. */}
       <div
         ref={scroller}
         role="region"
@@ -183,7 +182,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
         aria-label={label}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:gap-0 lg:px-0 lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
+        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:gap-[var(--gap)] lg:pl-[calc(50cqw-var(--first)/2)] lg:pr-[calc(50cqw-var(--last)/2)] lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
       >
         {groups.map((g, i) => (
           <div
@@ -194,7 +193,8 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
             role="group"
             aria-roledescription="slide"
             aria-label={`${i + 1} of ${count}: ${g.name}`}
-            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:w-[100cqw] lg:max-w-none lg:snap-center lg:px-[72px] ${
+            style={gridVars(g)}
+            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:w-[var(--w)] lg:max-w-none lg:snap-center lg:pr-0 ${
               i === current ? "opacity-100" : "opacity-[0.35]"
             }`}
           >

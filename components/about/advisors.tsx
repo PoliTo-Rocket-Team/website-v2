@@ -1,19 +1,19 @@
 import type { ReactNode } from "react";
 import type { Advisors as AdvisorsData } from "@/lib/about/types";
-import { HEAD_GAP, gridWidth } from "./group-layout";
+import { GAP, gridWidth } from "./group-layout";
 import { PersonCell } from "./person";
 import { SectionHead } from "./section-head";
 
 // Boards 26 and 26m, "Advisors": from lg the same person cells as the
-// department heads, three columns filled row by row; below lg one column with
+// department heads, three columns filled row by row on the boards' 960px grid; below lg one column with
 // 56px photos. A principal advisor's role is in accent, a specialist's in grey.
 // The advisors are added by hand (issue #286); with none the page leaves the
 // section out, unless the Team page editor frames it (board 80c) so one can be
 // added.
 
 const grid: Record<`--${string}`, string> = {
-  "--gap": `${HEAD_GAP}px`,
-  "--w": `${gridWidth(3, HEAD_GAP)}px`,
+  "--gap": `${GAP}px`,
+  "--w": `${gridWidth(3)}px`,
 };
 
 export function Advisors({ advisors, frame }: { advisors: AdvisorsData; frame?: (section: ReactNode) => ReactNode }) {
