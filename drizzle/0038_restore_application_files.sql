@@ -1,3 +1,9 @@
+-- Application files and the two file columns on applications (epic #260).
+-- These statements first lived in 0005_restore_application_files.sql, which
+-- had no journal entry, so the migrator never ran it: databases built from the
+-- journal alone (the shared preview branch, a fresh local one) lacked them,
+-- and the seed's applications insert failed there. Every statement is guarded,
+-- so a database that already has them is left unchanged.
 CREATE TABLE IF NOT EXISTS "application_files" (
   "id" serial PRIMARY KEY NOT NULL,
   "r2_key" text NOT NULL,
@@ -15,7 +21,11 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-ALTER TABLE "application_files" ADD CONSTRAINT "application_files_r2_key_unique" UNIQUE("r2_key");
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'application_files_r2_key_unique') THEN
+  ALTER TABLE "application_files" ADD CONSTRAINT "application_files_r2_key_unique" UNIQUE("r2_key");
+ END IF;
+END $$;
 --> statement-breakpoint
 ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "cv_file_id" integer;
 --> statement-breakpoint

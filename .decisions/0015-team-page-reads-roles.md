@@ -1,7 +1,7 @@
 ---
 id: 0015
 title: "The public Team page is built from the team's roles; presentation changes go in a separate visual layer"
-status: accepted
+status: amended-in-part by [0016](0016-previews-read-their-own-seeded-branch.md)
 date: 2026-10-16
 tags: [team, about, dashboard, content]
 ---
@@ -24,7 +24,7 @@ Owner decision, 2026-10-16, on the Team page design (epic #259, https://github.c
 2. **Departments.** Every open department's head, with the leads of that department's divisions under them, in department and division order. Heads fill carousel slides of up to ten, at most five slides.
 3. **Core members.** Everyone else with an active role, by name, with the title their role carries in the dashboard.
 4. **Contacts.** Photo from `members.picture`, LinkedIn from `users.linkedin`, team email from `members.prt_email`. A missing value is an absent key, so the page draws the PRT mark or initials and no empty link.
-5. **Read path.** The page reads the cached team snapshot (tag `team-roster`); every role write refreshes it. Previews and dummy mode read the dummy team (ADR 0009), never a database.
+5. **Read path.** The page reads the cached team snapshot (tag `team-roster`); every role write refreshes it. A preview with a database reads the seeded `preview` branch, like every other page there ([ADR 0016](0016-previews-read-their-own-seeded-branch.md)); the dummy team serves the page only where no database is configured.
 6. **The rest of the page.** The advisors are a hand-added list stored apart from roles (the `team_page_advisors` store, `lib/about/advisors.ts`), seeded from the hand-typed record; the page shows the published list. The intro text and the group photo come from the visual layer; while the layer leaves one empty, the page keeps the hand-typed one. Only the header figures and "In numbers" stay hand-typed in `lib/about/team.ts`.
 
 **Binding constraints.**
@@ -39,3 +39,7 @@ Owner decision, 2026-10-16, on the Team page design (epic #259, https://github.c
 - The "Gap" line for #189 in `docs/dashboard-rules.md` is removed.
 
 Followed today: the builder is [lib/about/team-roles.ts](../lib/about/team-roles.ts); the page's read is [lib/about/team-data.ts](../lib/about/team-data.ts); the snapshot is [lib/dashboard/team-database.ts](../lib/dashboard/team-database.ts); the visual layer is [lib/about/team-layer.ts](../lib/about/team-layer.ts), saved and published through [lib/about/team-page-editor.ts](../lib/about/team-page-editor.ts) (#283), and it holds the intro text and the group photo; the advisors are [lib/about/advisors.ts](../lib/about/advisors.ts), stored in `team_page_advisors` through [lib/dashboard/database-team-advisors.ts](../lib/dashboard/database-team-advisors.ts) (#286).
+
+## Amendment, 2026-10-17
+
+Decision 5 first read "Previews and dummy mode read the dummy team (ADR 0009), never a database." [ADR 0016](0016-previews-read-their-own-seeded-branch.md) superseded 0009: previews read the seeded `preview` branch, and the dummy arrays serve a page only where no database is configured (its Decision 5). Decision 5 above now says the same for the Team page, so the page reads roles on a preview with a database, and the seed fills the roles it reads. The rest of this record is unchanged.

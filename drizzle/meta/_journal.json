@@ -267,6 +267,13 @@
       "when": 1792171198027,
       "tag": "0037_projects_audit_and_import",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792171258027,
+      "tag": "0038_restore_application_files",
+      "breakpoints": true
     }
   ]
 }

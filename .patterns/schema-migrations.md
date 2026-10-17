@@ -52,31 +52,32 @@ express (functions, triggers, data fixes) goes in hand-written migration files i
 ## When this applies
 
 Any change to a table, enum, index, trigger or function. Setup and the Neon branch workflow are in
-[README.md](../README.md). There are no migration tests; `pnpm exec tsc --noEmit` is the check that
+[README.md](../README.md). No test runs the migrations against a server; `pnpm exec tsc --noEmit` is the check that
 catches type fallout.
 
 ## Why it is not obvious
 
 - Drizzle's migrator applies only files listed in `meta/_journal.json`. A `.sql` file in `drizzle/`
-  without a journal entry is never run.
+  without a journal entry is never run. [lib/seed/journal.test.ts](../lib/seed/journal.test.ts)
+  fails when a seed insert names a column no journaled migration creates.
 - The audit trigger in `0002` is attached by a one-time loop over the tables that existed then
   (`public` and `better_auth`, minus `logs`). A table created by a later migration gets no
   `audit_row_changes` trigger unless that migration adds one.
 
 ## Known inconsistencies (not the pattern)
 
-- **`0005_restore_application_files` is not in the journal.**
-  [0005_restore_application_files.sql](../drizzle/0005_restore_application_files.sql) creates
-  `application_files` and the `cv_file_id` / `cover_letter_file_id` columns, but it has no
-  journal entry, so `pnpm db:migrate` skips it. The next `pnpm db:generate` after it
-  (`0005_recruitment_setting`, issue #119) emitted those statements again; they were cut from
-  that file by hand, and its snapshot (`meta/0005_snapshot.json`) now holds them, so later
-  generates no longer repeat them. The journal's `0005` tag is `0005_recruitment_setting`.
-  [get-applications.ts](../app/actions/get-applications.ts) carries a fallback query for when these
-  columns are missing.
-- **`0005` is written defensively** (`IF NOT EXISTS`, `DO $$ ... EXCEPTION WHEN duplicate_object`),
-  unlike the generated files.
-- **No audit trigger on `application_files`.** It was created after `0002` and `0005` adds none.
+- **`application_files` arrived late in the journal.** Its statements first sat in an unjournaled
+  `0005_restore_application_files.sql`, which `pnpm db:migrate` skipped. The next
+  `pnpm db:generate` (`0005_recruitment_setting`, issue #119) emitted them again; they were cut
+  from that file by hand, and its snapshot (`meta/0005_snapshot.json`) holds them, so later
+  generates do not repeat them. The file is now journaled as
+  [0038_restore_application_files.sql](../drizzle/0038_restore_application_files.sql) (epic #260),
+  so a database built from the journal alone gets the table and the `cv_file_id` /
+  `cover_letter_file_id` columns. [get-applications.ts](../app/actions/get-applications.ts) still
+  carries a fallback query for when these columns are missing.
+- **`0038` is written defensively** (`IF NOT EXISTS`, guarded `DO $$` blocks), unlike the generated
+  files, so a database that already has those objects is left unchanged.
+- **No audit trigger on `application_files`.** It was created after `0002` and `0038` adds none.
 - **Missing workflow.** README describes a `db_migrate.yml` workflow that runs migrations on pushes
   to `dev` and `main`. No such file is in `.github/workflows/`.
 - **Connection string.** ADR [0003](../.decisions/0003-neon-direct-pooled.md) reserves the unpooled

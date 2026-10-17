@@ -36,6 +36,8 @@ Decided 2026-10-16 by the project owner (Owner decision), recorded in the amendm
 - Decision 5 (never in production) and the constraint that every dummy or test developer gate is false in production stand as Decision 7 and the binding constraints below.
 - The constraint "a test developer's changes never reach a database" stands unchanged. Previews now have a database, and the test developer may still not write to it.
 
+**What happens to ADR 0015.** [ADR 0015](0015-team-page-reads-roles.md) Decision 5 said previews and dummy mode read the dummy team, never a database. With Decision 5 here, a preview with a database builds the Team page from the seeded `preview` branch, and the dummy team serves it only where no database is configured. 0015 is amended in part to say so; its other decisions stand.
+
 **Binding constraints.**
 - Never seed or migrate production or any database other than a local one or the `preview` branch, and never let the `preview` branch hold production data.
 - Every gate that turns dummy data, the test developer or tester sign-in on is false in production.
