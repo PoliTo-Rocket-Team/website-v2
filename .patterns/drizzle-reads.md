@@ -56,14 +56,15 @@ Server Component renders it.
    holds a full snapshot; the caller filters it by the viewer's scope after the cache hit:
 
    ```ts
-   async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
+   async function getPublicSnapshotCached() {
      "use cache";
-     cacheTag(POSITIONS_CACHE_TAG);
+     cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
      cacheLife("weeks");
-     return queryAllPositionSnapshot();
+     const [positions, recruitment] = await Promise.all([queryPositionSnapshot(), queryRecruitment()]);
+     return { positions, recruitment };
    }
    ```
-   Call sites: `getAllPositionSnapshotCached` and `getPublicSnapshotCached` (the positions
+   Call sites: `getPublicSnapshotCached` (the positions
    plus the recruitment switch, filtered by `isPublic` from
    [lib/apply/positions.ts](../lib/apply/positions.ts) after the cache hit) in
    [get-apply-positions.ts](../app/actions/get-apply-positions.ts), and
