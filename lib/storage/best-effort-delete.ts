@@ -13,7 +13,8 @@ export type DeleteArea =
   | "order-quote"
   | "member-photo"
   | "alumni-photo"
-  | "partner-logo";
+  | "partner-logo"
+  | "post-photo";
 
 /** One delete to run: the file, and the store call that removes it. */
 export type BestEffortDelete<P extends string> = {
