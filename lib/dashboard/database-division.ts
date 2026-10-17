@@ -35,7 +35,7 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "./division-access";
-import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
+import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, readsAsDivisionLead, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
   checkApproveOrdersChange,
@@ -82,7 +82,7 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 
 /** The one division a lead's Access and Orders pages are about; null for anyone else. */
 async function leadDivision(identity: DashboardIdentity): Promise<{ id: number; name: string } | null> {
-  if (identity.kind !== "division-lead" || identity.memberId === null) return null;
+  if (!readsAsDivisionLead(identity) || identity.memberId === null) return null;
   const roleDivision = identity.role?.divisionId ?? null;
   const id = roleDivision !== null && identity.divisionIds.includes(roleDivision) ? roleDivision : identity.divisionIds[0];
   if (id === undefined) return null;
@@ -142,7 +142,7 @@ async function accessUnitOf(identity: DashboardIdentity): Promise<{ unit: Access
   if (identity.memberId === null) return null;
   // Full access holds every area at Can edit across the team (issue #238), Alumni included (#247).
   if (identity.kind === "operations-lead") return { unit: await readTeamUnit(), held: FULL_HELD_ACCESS };
-  if (identity.kind === "division-lead") {
+  if (readsAsDivisionLead(identity)) {
     const division = await leadDivision(identity);
     if (division === null) return null;
     return { unit: { kind: "division", division }, held: await readHeld(identity.memberId, division.id) };

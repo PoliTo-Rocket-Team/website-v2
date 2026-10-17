@@ -211,7 +211,7 @@ test("a save carries only photos the version had or this side uploaded; uploads 
 
   const jpeg = { name: "a.jpg", contentType: "image/jpeg", bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]) };
   assert.deepEqual(await editor.uploadPhoto(jpeg), { ok: true, value: UPLOADED });
-  const member: ViewerStanding = { kind: "member", siteContent: false, approveOrders: false };
+  const member: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false };
   assert.equal((await projectEditor(member, memoryContentStore(importedProjects()), undefined, files).uploadPhoto(jpeg)).ok, false);
 });
 

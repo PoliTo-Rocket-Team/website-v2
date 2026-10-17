@@ -3,8 +3,9 @@ import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } fro
 // Which viewer reaches which dashboard page, and where the page sits for that
 // viewer (Dashboard v2 boards 51b, 52 and 56; the operations lead keeps boards
 // 40 to 46). One row per page: a new page adds one row. A viewer whose kind is
-// missing from a row's `reach` does not reach the page, unless the row names a
-// `siteContent` place and they hold site-content access, or an
+// missing from a row's `reach` does not reach the page, unless the row names an
+// `areaGrant` place and they are a member holding an area grant (issue #160),
+// a `siteContent` place and they hold site-content access, or an
 // `approveOrders` place and they hold "Approve orders". A row that names a
 // `seat` is reached by that full-access seat alone (issue #238). The
 // `operations-lead` kind is full access: the team leader, the operations lead
@@ -46,6 +47,8 @@ type PageRow = {
   readonly label: string;
   readonly href: `/dashboard${string}`;
   readonly reach: Readonly<Partial<Record<ViewerKind, NavPlace>>>;
+  /** Where the page shows for a member who holds an area grant (issue #160): where it shows for a division lead. */
+  readonly areaGrant?: NavPlace;
   /** Where the page shows for a viewer whose kind does not reach it but who holds site-content access. */
   readonly siteContent?: NavPlace;
   /** Where the page shows for a viewer whose kind does not reach it but who holds "Approve orders". */
@@ -116,12 +119,14 @@ export const DASHBOARD_PAGES = [
     label: "Positions",
     href: "/dashboard/positions",
     reach: { "operations-lead": "recruitment", "department-head": "recruitment", "division-lead": "recruitment" },
+    areaGrant: "recruitment",
   },
   {
     key: "applications",
     label: "Applications",
     href: "/dashboard/applications",
     reach: { "operations-lead": "recruitment", "department-head": "recruitment", "division-lead": "recruitment" },
+    areaGrant: "recruitment",
   },
   {
     key: "members",
@@ -129,6 +134,7 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/members",
     // A department head's Members page holds every division of the department (issue #235).
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
+    areaGrant: "my-division",
   },
   {
     key: "projects",
@@ -205,6 +211,7 @@ export const DASHBOARD_PAGES = [
     // A department head's Access page is here (issue #230); full access gives
     // access across the whole team (issue #238).
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
+    areaGrant: "my-division",
   },
   {
     key: "orders",
@@ -212,6 +219,7 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/orders",
     // Every order in the team, for anyone with Orders access (issue #233).
     reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
+    areaGrant: "my-division",
     // "Approve orders" is a grant across the whole team, so the page sits
     // under Team, as it does for full access (issue #270).
     approveOrders: "team",
@@ -278,7 +286,11 @@ function placeOf(page: PageRow, viewer: ViewerStanding): NavPlace | undefined {
   if (page.seat !== undefined && seat !== page.seat) return undefined;
   const reached = page.reach[viewer.kind];
   if (reached === undefined) {
-    return (viewer.siteContent ? page.siteContent : undefined) ?? (viewer.approveOrders ? page.approveOrders : undefined);
+    return (
+      (viewer.kind === "member" && viewer.areaGrant ? page.areaGrant : undefined) ??
+      (viewer.siteContent ? page.siteContent : undefined) ??
+      (viewer.approveOrders ? page.approveOrders : undefined)
+    );
   }
   return (seat === null ? undefined : page.seatPlace?.[seat]) ?? reached;
 }

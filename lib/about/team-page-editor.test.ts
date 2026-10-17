@@ -17,7 +17,7 @@ import { teamBuildOf, teamPageFromRoles } from "./team-roles";
 
 const roles = dummyTeamRoles();
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
-const siteContent: ViewerStanding = { kind: "member", siteContent: true, approveOrders: false };
+const siteContent: ViewerStanding = { kind: "member", areaGrant: false, siteContent: true, approveOrders: false };
 
 const renamed: TeamPageLayer = { ...NO_TEAM_LAYER, leader: { role: "President" }, intro: "Edited intro." };
 

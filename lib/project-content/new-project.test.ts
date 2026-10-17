@@ -20,7 +20,7 @@ import { homeCardOf, listingOf, pageRecordOf, publishedPageOf, type ProjectRecor
 // a new project draws the shared placeholder rocket on its card and page.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
-const member: ViewerStanding = { kind: "member", siteContent: false, approveOrders: false } as ViewerStanding;
+const member: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false } as ViewerStanding;
 
 const mark3: NewProject = { name: "VES Mark III", slug: "ves-mark-iii", kind: "vehicle" };
 
