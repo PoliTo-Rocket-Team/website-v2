@@ -111,3 +111,15 @@ test("a cookie this code did not write reads as no edits", () => {
   assert.deepEqual(parseTeamPageLayerEdits(encodeURIComponent(JSON.stringify(forged))), NO_CONTENT_EDITS);
   assert.deepEqual(parseTeamPageLayerEdits("not json"), NO_CONTENT_EDITS);
 });
+
+test("the preview's Team page draws the Technical Departments slide, then Operations with its divisions at a head's level (boards 26, 26m)", () => {
+  const groups = teamPageFromRoles(dummyTeamRoles(), team)!.departments.groups;
+  assert.deepEqual(
+    groups.map((g) => g.name),
+    ["Technical Departments", "Operations"],
+  );
+  assert.ok(groups[0].members.every((m) => m.kind === "head" && m.role !== "Head of Operations"));
+  const [operationsHead, ...divisions] = groups[1]!.members;
+  assert.ok(operationsHead.kind === "head" && operationsHead.leads.length === 0);
+  assert.ok(divisions.length > 0 && divisions.every((m) => m.kind === "division"));
+});

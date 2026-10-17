@@ -133,7 +133,13 @@ An admin column comes later. **Planned**, no issue yet.
 - **Members** and **Access** are for division leads and up, scoped to their divisions. A lead of
   more than one division picks which one Members shows (#231). **Orders** shows every order in
   the team; see "4. Orders".
-  - **Gap:** a lead of more than one division sees only one on Access. Tracked in #185.
+  - A lead of more than one division sees one Access list covering all their divisions, with an
+    "All divisions" select that filters it to one, as the team leader's Access page filters
+    departments (board 71). There is no picker and there are no tabs. A lead of one division sees
+    no select (Owner decision, #185).
+  - Access a lead gives goes in the division of the person they edit, only in a division they
+    lead, and only up to what they hold there. Members edits reach people in any division the
+    lead leads, never one outside them (#185).
   - A department head's Members page holds every division of their department (#235).
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
@@ -220,8 +226,9 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.
-- **Gap:** My profile and Access still show one division per person (the home division, or the
-  oldest one a lead leads). Tracked in #185.
+- My profile shows every division the person is in, one role per line, the home division first.
+  Access places each person in one division of the lead's: the one they lead there, else their
+  oldest (#185).
 
 ### Handing over a role
 
@@ -440,12 +447,14 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - Only the team leader and full access create, edit or close a department. A department head
   never can, not even their own. The server refuses everyone else.
 - **New department** (board 77d) needs a name, a code of 2 or 3 letters no other open department
-  uses, and exactly one head, picked from the team. The head keeps their divisions. Someone who
+  uses, a kind (Technical, picked first, or Operations; #325), and exactly one head, picked from
+  the team. The kind picks the slide of the public Team page's departments carousel the head sits
+  on (ADR 0015). The head keeps their divisions. Someone who
   already holds a seat (the team leader, a board seat, another department's head) cannot be
   picked. Divisions are added after, with Add division.
-- **Edit department** (board 77e) shows the name, the code, the head, and the divisions as rows
-  that open to list their people, lead first, read-only. Save changes stores a new name or code,
-  after an "are you sure" that lists each change.
+- **Edit department** (board 77e) shows the name, the code, the kind, the head, and the divisions
+  as rows that open to list their people, lead first, read-only. Save changes stores a new name,
+  code or kind, after an "are you sure" that lists each change.
 - **Change head** (board 77e, #253), under the head in Edit department, picks the new head from
   the team. As in New department, someone who already holds a seat cannot be picked, and the
   new head keeps their divisions. The head they replace gets "What happens to {name}?":

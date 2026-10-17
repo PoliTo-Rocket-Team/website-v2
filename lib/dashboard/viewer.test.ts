@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { canReach } from "./access";
 import {
   areaGrantsOf,
+  coveredDivisionIds,
   fullAccessSeatOf,
   headDivisionsOf,
   isTeamLeader,
@@ -120,6 +121,21 @@ test("a head sees every open division of their department and none from another"
     headDivisionsOf(2, divisions).map((d) => d.id),
     [4],
   );
+});
+
+test("a Members edit grant across a department reaches, and changes, every division of it (issue #351)", () => {
+  const divisions = [
+    { id: 1, departmentId: 1 },
+    { id: 2, departmentId: 1 },
+    { id: 3, departmentId: 2 },
+  ];
+  const rows = [{ scope: "department" as const, target: "members" as const, level: "edit" as const, divisionId: null, deptId: 1 }];
+  const covered = coveredDivisionIds(viewerUnitsOf(rows, []), divisions);
+  assert.deepEqual(covered, [1, 2]);
+  const authority: ChangeAuthority = { kind: "member", roles: [], grants: areaGrantsOf(rows) };
+  assert.ok(covered.every((divisionId) => mayChange(authority, "members", { divisionId, departmentId: 1 })));
+  // The divisions a viewer names come first, each once.
+  assert.deepEqual(coveredDivisionIds({ divisionIds: [3, 2], departmentIds: [1] }, divisions), [3, 2, 1]);
 });
 
 test("a head role covers its department with no department scope row (issues #184, #230)", () => {
@@ -294,4 +310,39 @@ test("division leads, department heads and full access change recruitment as bef
     assert.equal(mayChange({ kind: "member", roles: [{ type: "advisor", divisionId: MSA, departmentId: MSA_DEPARTMENT }], grants: [] }, area, inMsa), false);
     assert.equal(mayChange({ kind: "alumni", roles: [], grants: [grantIn(area, "edit")] }, area, inMsa), false);
   }
+});
+
+test("a Members page change takes a lead or head role, full access, or a Members grant at Can edit covering the division (issue #342)", () => {
+  // A view-only Members grant, or a Can-edit grant on another area, changes nobody.
+  assert.equal(mayChange(memberWith(grantIn("members", "view")), "members", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("applications", "edit")), "members", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("positions", "edit")), "members", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("all", "view")), "members", inMsa), false);
+  // A Can-edit Members grant changes people in the division it covers, and in no other.
+  assert.equal(mayChange(memberWith(grantIn("members", "edit")), "members", inMsa), true);
+  assert.equal(mayChange(memberWith(grantIn("all", "edit")), "members", inMsa), true);
+  assert.equal(mayChange(memberWith({ target: "members", level: "edit", unit: { kind: "department", departmentId: MSA_DEPARTMENT } }), "members", inMsa), true);
+  assert.equal(mayChange(memberWith(grantIn("members", "edit", OTHER_DIVISION)), "members", inMsa), false);
+  assert.equal(mayChange(memberWith({ target: "members", level: "edit", unit: { kind: "department", departmentId: OTHER_DEPARTMENT } }), "members", inMsa), false);
+  // Lead, head and full access change people; a member role alone does not.
+  const lead: ChangeAuthority = { kind: "division-lead", roles: [{ type: "lead", divisionId: MSA, departmentId: MSA_DEPARTMENT }], grants: [] };
+  const head: ChangeAuthority = { kind: "department-head", roles: [{ type: "head", divisionId: null, departmentId: MSA_DEPARTMENT }], grants: [] };
+  assert.equal(mayChange(lead, "members", inMsa), true);
+  assert.equal(mayChange(head, "members", inMsa), true);
+  assert.equal(mayChange({ kind: "operations-lead", roles: [], grants: [] }, "members", inMsa), true);
+  assert.equal(mayChange(memberWith(), "members", inMsa), false);
+});
+
+test("a lead of several divisions changes people in each division they lead, and in no other (issues #185, #342)", () => {
+  const both: ChangeAuthority = {
+    kind: "division-lead",
+    roles: [
+      { type: "lead", divisionId: MSA, departmentId: MSA_DEPARTMENT },
+      { type: "lead", divisionId: OTHER_DIVISION, departmentId: OTHER_DEPARTMENT },
+    ],
+    grants: [],
+  };
+  assert.equal(mayChange(both, "members", inMsa), true);
+  assert.equal(mayChange(both, "members", { divisionId: OTHER_DIVISION, departmentId: OTHER_DEPARTMENT }), true);
+  assert.equal(mayChange(both, "members", { divisionId: 9, departmentId: OTHER_DEPARTMENT }), false);
 });

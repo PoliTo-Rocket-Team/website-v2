@@ -8,7 +8,7 @@ import { parseAlumnusKey, type EntryChange, type RoleFix } from "@/lib/about/alu
 import { MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, type NewAdvisor } from "@/lib/dashboard/alumni";
 import { parseMemberDetails, type MemberDetails } from "@/lib/dashboard/details";
 import type { AdvisorPlace, SteppingDown } from "@/lib/dashboard/hand-over";
-import { LEAVE_REASONS, type Departure, type DivisionRole } from "@/lib/dashboard/team";
+import { DEPARTMENT_KINDS, LEAVE_REASONS, type DepartmentKind, type Departure, type DivisionRole } from "@/lib/dashboard/team";
 import { isHandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { RequestedRole } from "@/lib/dashboard/hand-over-request";
 import type { DummyHandOver } from "./hand-overs";
@@ -57,6 +57,12 @@ export type DummyDivisionEdit = {
 export type DummyDepartmentEdit = {
   readonly name: string;
   readonly code: string | null;
+  /**
+   * The Team page slide its head sits on (issue #325). Absent on an edit saved
+   * before departments had a kind: the kind ./team.ts starts it with, or
+   * technical for one the test developer created.
+   */
+  readonly kind?: DepartmentKind;
   /** The day it closed; null while it is open. */
   readonly closedOn: string | null;
   /**
@@ -265,12 +271,19 @@ function readDivision(value: unknown): DummyDivisionEdit | null {
 
 function readDepartment(value: unknown): DummyDepartmentEdit | null {
   if (!isRecord(value)) return null;
-  const { name, code, closedOn, headId } = value;
+  const { name, code, kind, closedOn, headId } = value;
   if (typeof name !== "string" || name.trim() === "") return null;
   if (code !== null && typeof code !== "string") return null;
+  if (kind !== undefined && !DEPARTMENT_KINDS.includes(kind as DepartmentKind)) return null;
   if (closedOn !== null && !isDay(closedOn)) return null;
   if (headId !== null && !(Number.isInteger(headId) && (headId as number) > 0)) return null;
-  return { name: name.slice(0, 80), code: code === null ? null : code.slice(0, 3), closedOn, headId: headId as number | null };
+  return {
+    name: name.slice(0, 80),
+    code: code === null ? null : code.slice(0, 3),
+    ...(kind !== undefined && { kind: kind as DepartmentKind }),
+    closedOn,
+    headId: headId as number | null,
+  };
 }
 
 function readAdvisorPlace(value: unknown): AdvisorPlace | null {

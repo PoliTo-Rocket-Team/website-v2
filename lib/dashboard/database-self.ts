@@ -61,6 +61,7 @@ import {
   HAND_OVER_FIRST,
   leaveReason,
   normalizeLinkedin,
+  profileRolesOf,
   type DeleteAccount,
   type LeaveState,
   type MyAccount,
@@ -108,11 +109,11 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
     readLeaveState(memberId),
     readHandOverOffer(identity),
   ]);
-  const role = identity.role;
   const linkedin = identity.linkedin === null ? null : normalizeLinkedin(identity.linkedin);
   return {
     name: identity.name,
-    role: [role?.title ?? "Member", role?.divisionName].filter(Boolean).join(" · "),
+    // Every division they are in, not only the one a single-division page names (issue #185).
+    roles: profileRolesOf(identity.role, identity.roles),
     teamEmail: member?.prt_email ?? null,
     linkedin: linkedin === null ? null : linkedin.ok ? linkedin.value : identity.linkedin,
     photoUrl: identity.picture,

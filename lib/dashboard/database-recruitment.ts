@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
-import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { getDb } from "@/db/client";
 import {
   applicationFiles,
@@ -227,7 +227,6 @@ async function reachablePositionIds(identity: Identity): Promise<Set<number>> {
 async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
   if (!(await mayChangePosition(identity, "positions", positionId))) throw new DashboardRefused(`position ${positionId}`);
   await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
 }
 
@@ -254,7 +253,6 @@ async function createPosition(identity: Identity, input: unknown): Promise<Write
       })
       .returning({ id: applyPositions.id }),
   );
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
   return written({ id: row.id, code: newPositionCode(division, row.id) });
 }
@@ -277,7 +275,6 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
       })
       .where(eq(applyPositions.id, positionId)),
   );
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
   return written(null);
 }

@@ -77,19 +77,35 @@ test("a department head's Overview has a row per division of their department (b
     overview.divisions.map((d) => [d.name, d.leads]),
     [
       ["Mission Analysis Division", ["Marco Bianchi", "Pietro Ricci"]],
-      ["Optimization and Analysis Division", ["Paolo Conti"]],
+      ["Optimization and Analysis Division", ["Marco Bianchi", "Paolo Conti"]],
     ],
   );
 });
 
+test("the lead of two divisions has one Access list over both, and gives access in each person's own division (#185)", async () => {
+  const { data } = session("division-lead");
+  const access = (await data.divisionAccess())!;
+  assert.equal(access.unit.kind, "division");
+  if (access.unit.kind !== "division") return;
+  assert.deepEqual(access.unit.divisions.map((d) => d.division.name), ["Mission Analysis Division", "Optimization and Analysis Division"]);
+  assert.ok(access.grants.some((g) => g.person.name === "Sara Fontana"), "a grant in Optimization and Analysis is listed too");
+  // Sara Fontana is in Optimization and Analysis (2), Sara Conti in Mission Analysis (1).
+  const given = await data.saveAccess({ personId: 32, areas: { positions: "edit" } });
+  assert.ok(given.ok && given.value.every((g) => g.place.kind === "division" && g.place.division.id === 2));
+  assert.equal((await data.saveAccess({ personId: 32, where: 1, areas: { positions: "edit" } })).ok, false);
+  assert.equal((await data.saveAccess({ personId: 38, where: 3, areas: { positions: "view" } })).ok, false, "Design & Manufacturing is not theirs");
+});
+
 test("Access lists the other leads with their role's access, never the viewer (boards 60 and 65)", async () => {
   const lead = (await session("division-lead").data.divisionAccess())!;
-  assert.deepEqual(lead.roleAccess.map((r) => r.person.name), ["Pietro Ricci"]);
+  // The lead of two divisions sees the other leads of both (#185).
+  assert.deepEqual(lead.roleAccess.map((r) => r.person.name), ["Pietro Ricci", "Paolo Conti"]);
   assert.ok(lead.grants.every((g) => g.place.kind === "division"));
 
   const head = (await session("department-head").data.divisionAccess())!;
   assert.equal(head.unit.kind, "department");
-  assert.deepEqual(head.roleAccess.map((r) => r.person.name).sort(), ["Marco Bianchi", "Paolo Conti", "Pietro Ricci"]);
+  // One role row per division a lead leads: Marco leads both of the department's (#185).
+  assert.deepEqual(head.roleAccess.map((r) => r.person.name).sort(), ["Marco Bianchi", "Marco Bianchi", "Paolo Conti", "Pietro Ricci"]);
   assert.ok(head.grants.some((g) => g.place.kind === "department"), "a grant across the whole department");
   assert.ok(head.grants.every((g) => g.person.standing === "member"));
 });

@@ -71,12 +71,12 @@ catches type fallout.
   `pnpm db:generate` (`0005_recruitment_setting`, issue #119) emitted them again; they were cut
   from that file by hand, and its snapshot (`meta/0005_snapshot.json`) holds them, so later
   generates do not repeat them. The file is now journaled as
-  [0038_restore_application_files.sql](../drizzle/0038_restore_application_files.sql) (epic #260),
+  [0039_restore_application_files.sql](../drizzle/0039_restore_application_files.sql) (epic #260),
   so a database built from the journal alone gets the table and the `cv_file_id` /
   `cover_letter_file_id` columns.
-- **`0038` is written defensively** (`IF NOT EXISTS`, guarded `DO $$` blocks), unlike the generated
+- **`0039` is written defensively** (`IF NOT EXISTS`, guarded `DO $$` blocks), unlike the generated
   files, so a database that already has those objects is left unchanged.
-- **No audit trigger on `application_files`.** It was created after `0002` and `0038` adds none.
+- **No audit trigger on `application_files`.** It was created after `0002` and `0039` adds none.
 - **Missing workflow.** README describes a `db_migrate.yml` workflow that runs migrations on pushes
   to `dev` and `main`. No such file is in `.github/workflows/`.
 - **Connection string.** ADR [0003](../.decisions/0003-neon-direct-pooled.md) reserves the unpooled

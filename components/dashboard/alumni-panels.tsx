@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
-import { AlertTriangle, ChevronDown, Info, Lock, Upload } from "lucide-react";
+import { AlertTriangle, ChevronDown, Info, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
 import { addAdvisor, fixAlumnus, setAlumnusPhoto } from "@/app/dashboard/team-actions";
@@ -13,7 +13,7 @@ import { FIRST_ALUMNI_YEAR, MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, yearTab, type Alum
 import { Avatar } from "./avatar";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, GroupLabel, inputClass } from "./field";
-import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
+import { PhotoPicker } from "./photo-picker";
 
 // The Alumni page's two panels (issue #257): the fix panel (board 78b),
 // where an editor changes how one person shows on the public Alumni page,
@@ -22,9 +22,6 @@ import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
 // divisions stay as the team record has them.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-
-/** The accent text button that picks a photo ("Replace photo", "Upload photo"). */
-const PHOTO_BUTTON = `inline-flex items-center gap-1.5 rounded-md text-[14px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover disabled:cursor-wait disabled:opacity-60 ${FOCUS}`;
 
 /** "2022-23", as the panel's year rows print a year. */
 function yearLine(start: number): string {
@@ -36,50 +33,6 @@ const FOUNDER_OPTIONS: readonly { value: FounderMark | null; label: string }[] =
   { value: "co-founder", label: "Co-founder" },
   { value: "founder", label: "Founder" },
 ];
-
-/** A file input kept off screen, and the square crop it opens (the member photo's flow, board 61g). */
-function PhotoPicker({
-  label,
-  pending,
-  onCropped,
-}: {
-  label: string;
-  pending: boolean;
-  onCropped: (square: File) => Promise<boolean> | boolean;
-}) {
-  const [cropping, setCropping] = useState<File | null>(null);
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <input
-        ref={input}
-        type="file"
-        accept={PHOTO_ACCEPT}
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = "";
-          if (file) setCropping(file);
-        }}
-      />
-      <button type="button" disabled={pending} onClick={() => input.current?.click()} className={PHOTO_BUTTON}>
-        <Upload aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-        {label}
-      </button>
-      <PhotoCropDialog
-        file={cropping}
-        onOpenChange={(next) => !next && setCropping(null)}
-        onChooseAnother={() => input.current?.click()}
-        onSave={async (square) => {
-          if (await onCropped(square)) setCropping(null);
-        }}
-        pending={pending}
-      />
-    </>
-  );
-}
 
 /** The accent switch on board 78's rows and in the fix panel. */
 export function AlumniSwitch({

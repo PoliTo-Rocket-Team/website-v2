@@ -172,7 +172,7 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
  * Whether the viewer reads the division pages a lead reads (Positions,
  * Applications, Members, Access, Orders) over the units they cover: a
  * division lead, or a member holding an area grant (issue #160). Reading is
- * all it decides; a recruitment change checks `mayChange`.
+ * all it decides; a recruitment or Members change checks `mayChange`.
  */
 export function readsAsDivisionLead(viewer: ViewerStanding): boolean {
   return viewer.kind === "division-lead" || (viewer.kind === "member" && viewer.areaGrant);
@@ -384,8 +384,8 @@ export function areaGrantsOf(rows: readonly ScopeUnitRow[]): AreaGrant[] {
   });
 }
 
-/** The areas whose changes `mayChange` decides: the recruitment pages' (issue #160). */
-export type ChangeArea = "positions" | "applications";
+/** The areas whose changes `mayChange` decides: the recruitment pages' (issue #160) and the Members page's (issue #342). */
+export type ChangeArea = "positions" | "applications" | "members";
 
 /** The division a change lands in, with its department. */
 export type DivisionUnit = {
@@ -401,7 +401,7 @@ export type ChangeAuthority = {
 };
 
 /**
- * Whether the viewer may change `area` in the division (issue #160): full
+ * Whether the viewer may change `area` in the division (issues #160, #342): full
  * access anywhere; a lead role in the division or a head role over its
  * department; else a grant on that area (or on every area) at Can edit that
  * covers the division. A grant at Can view, or on another area, shows the
@@ -452,6 +452,20 @@ export function viewerUnitsOf(scopeRows: readonly ScopeUnitRow[], roles: readonl
     if (role.type === "head" && role.departmentId !== null) departmentIds.push(role.departmentId);
   }
   return { divisionIds: [...new Set(divisionIds)], departmentIds: [...new Set(departmentIds)] };
+}
+
+/**
+ * Every division the viewer's units cover (issue #351): each division they
+ * name, in their order, then each division of a department they name. A grant
+ * across a whole department reaches every division of it, so a page that
+ * lists divisions finds them all.
+ */
+export function coveredDivisionIds(
+  units: ViewerUnits,
+  divisions: readonly { readonly id: number; readonly departmentId: number | null }[],
+): number[] {
+  const inDepartments = divisions.flatMap((d) => (d.departmentId !== null && units.departmentIds.includes(d.departmentId) ? [d.id] : []));
+  return [...new Set([...units.divisionIds, ...inDepartments])];
 }
 
 /** A division as the org tables hold it. */

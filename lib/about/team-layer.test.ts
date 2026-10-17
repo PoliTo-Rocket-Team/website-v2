@@ -34,8 +34,8 @@ const member = (divisionId: number) => inDivisions([{ divisionId, role: "member"
 
 const org: TeamRoles["org"] = {
   departments: [
-    { id: 1, name: "Aerodynamics" },
-    { id: 2, name: "Recovery" },
+    { id: 1, name: "Aerodynamics", kind: "technical" },
+    { id: 2, name: "Recovery", kind: "technical" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis Division", departmentId: 1 },
@@ -110,7 +110,7 @@ test("applyLayer shows each edit at its spot, and nothing else moves", () => {
   assert.ok(page !== null);
   assert.equal(page.header.intro, "A new intro.");
   assert.deepEqual(page.coreMembers.groupPhoto, { src: "/team/team-2026.jpg", alt: "The team in 2026" });
-  assert.equal(page.departments.groups[0].name, "All departments");
+  assert.equal(page.departments.groups[0].name, "Technical Departments");
   // Core members are not editable: Sofia Neri shown on the arc is still a core member, from the roles.
   assert.ok(page.coreMembers.members.some((m) => m.name === "Sofia Neri"));
   assert.deepEqual(teamPageFromRoles(roles(), team, edited)?.coreMembers.members, teamPageFromRoles(roles(), team)?.coreMembers.members);

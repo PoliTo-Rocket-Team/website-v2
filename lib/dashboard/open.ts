@@ -26,11 +26,13 @@ import {
 } from "@/lib/dummy-data/team-page";
 import { parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEditsStore } from "@/lib/dummy-data/outreach";
 import { parseProjectEdits, serializeProjectEdits, type DummyProjectEditsStore } from "@/lib/dummy-data/projects";
+import { testGrantOf } from "@/lib/dummy-data/test-grant";
 import {
   TEST_DEVELOPER_APPLICATIONS_COOKIE,
   TEST_DEVELOPER_CONTENT_COOKIE,
   TEST_DEVELOPER_COOKIE,
   TEST_DEVELOPER_FAQ_COOKIE,
+  TEST_DEVELOPER_GRANT_COOKIE,
   TEST_DEVELOPER_TEAM_PAGE_COOKIE,
   TEST_DEVELOPER_ADVISORS_COOKIE,
   TEST_DEVELOPER_OUTREACH_COOKIE,
@@ -71,6 +73,7 @@ export const openDashboard = cache(async (): Promise<DashboardOpening> => {
         dummyTeamPageEditsIn(jar),
         dummyAdvisorEditsIn(jar),
         dummyProjectEditsIn(jar),
+        testGrantOf(jar.get(TEST_DEVELOPER_GRANT_COOKIE)?.value),
       ),
       true,
     );

@@ -16,7 +16,7 @@ import type { PhotoChoice } from "@/lib/about/team-page-edit";
 import { CONTENT_FOCUS, useDragOrder, type DragRow } from "./content-parts";
 import { PANEL_PRIMARY_BUTTON } from "./drawer";
 import { Field, inputClass } from "./field";
-import { PANEL_HINT, TeamPanel } from "./team-panel-parts";
+import { PANEL_HINT, PhotoChoices, TeamPanel } from "./team-panel-parts";
 
 // The Advisors panel (board 80d, issue #286), opened from the Advisors
 // block's "Edit advisors": principal advisors, then specialists, each group
@@ -315,7 +315,7 @@ function StandingSwitch({ value, onChange }: { value: AdvisorStanding; onChange:
   );
 }
 
-/** "Replace photo" with the photos the site already holds, and the row's own action beside it. */
+/** "Replace photo" with the photos the site already holds or an upload, and the row's own action beside it. */
 function AdvisorPhoto({
   name,
   photo,
@@ -351,27 +351,15 @@ function AdvisorPhoto({
         {children}
       </div>
       {choosing && (
-        <div role="group" aria-label={`Photos on the site for ${name}`} className="mt-3 grid grid-cols-6 gap-2.5 rounded-xl border border-hairline p-3">
-          {choices.map((choice) => {
-            const on = choice.src === photo;
-            return (
-              <button
-                key={choice.src}
-                type="button"
-                aria-pressed={on}
-                aria-label={`Photo of ${choice.label}`}
-                title={choice.label}
-                onClick={() => {
-                  onChange(choice.src);
-                  setChoosing(false);
-                }}
-                className={`justify-self-center rounded-full ring-offset-2 ring-offset-panel transition-shadow duration-300 ease-out ${on ? "ring-2 ring-accent" : "hover:ring-1 hover:ring-border-strong"} ${CONTENT_FOCUS}`}
-              >
-                <Avatar person={{ name: choice.label, photo: choice.src }} sizeClass="h-11 w-11" sizes="44px" fallback="initials" />
-              </button>
-            );
-          })}
-        </div>
+        <PhotoChoices
+          choices={choices}
+          selected={photo}
+          label={`Photos on the site for ${name}`}
+          onPick={(src) => {
+            onChange(src);
+            setChoosing(false);
+          }}
+        />
       )}
     </div>
   );

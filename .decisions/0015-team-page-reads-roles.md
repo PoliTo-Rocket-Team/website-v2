@@ -16,19 +16,21 @@ Issue #189 asked which route makes the public Team page show the title saved on 
 
 Owner decision, 2026-10-16, on the Team page design (epic #259, https://github.com/PoliTo-Rocket-Team/website-v2/issues/259): the page's people come from the team's roles by default, and an editor on the real page changes only what the page shows.
 
+Owner decision, 2026-10-17, on the Team page layout (issue #325, https://github.com/PoliTo-Rocket-Team/website-v2/issues/325): the rendered page matches the approved boards 26, 26b, 26d, 26e, 26f and 26m. Each department carries a kind, Technical or Operations, and the departments carousel groups heads by kind into the "Technical Departments" and "Operations" slides of those boards, not one "All departments" slide. Item 2 below is amended to say so.
+
 ## Decision
 
 **Route A: the page reads roles. Presentation is a visual layer on top of the role build, never a write to roles.**
 
 1. **Who leads.** The team leader (the `president` role), then the board seats (Project Manager, Chief Engineer) on the arc, in the Team tree's seat order. The arc keeps the `OrgChart.leaders` reading order and its cap of eight.
-2. **Departments.** Every open department's head, with the leads of that department's divisions under them, in department and division order. Heads fill carousel slides of up to ten, at most five slides.
+2. **Departments.** Every open department's head and the leads of that department's divisions, grouped by the department's kind (amended 2026-10-17, issue #325). Each department has a kind, `technical` or `operations` (the `departments.kind` column; the team leader sets it on New department and Edit department, boards 77d and 77e). Technical departments come first, on slides headed "Technical Departments": each head with their division leads under them. Operations departments follow, on slides headed "Operations": each head with no leads under them, then each division lead drawn at a head's level, as board 26 draws Operations. Within a kind, departments and divisions keep their order. A kind fills slides of up to ten places, so a kind with more than ten takes more slides under the same heading; the carousel keeps at most five slides. The first version of this item filled slides of ten heads in department order regardless of kind, headed "All departments" when one slide held every head.
 3. **Core members.** Everyone else with an active role, by name, with the title their role carries in the dashboard.
 4. **Contacts.** Photo from `members.picture`, LinkedIn from `users.linkedin`, team email from `members.prt_email`. A missing value is an absent key, so the page draws the PRT mark or initials and no empty link.
 5. **Read path.** The page reads the cached team snapshot (tag `team-roster`); every role write refreshes it. A preview with a database reads the seeded `preview` branch, like every other page there ([ADR 0016](0016-previews-read-their-own-seeded-branch.md)); the dummy team serves the page only where no database is configured.
 6. **The rest of the page.** The advisors are a hand-added list stored apart from roles (the `team_page_advisors` store, `lib/about/advisors.ts`), seeded from the hand-typed record; the page shows the published list. The intro text and the group photo come from the visual layer; while the layer leaves one empty, the page keeps the hand-typed one. Only the header figures and "In numbers" stay hand-typed in `lib/about/team.ts`.
 
 **Binding constraints.**
-- Never write roles, divisions, departments, access or member records to change what the Team page shows; that is the visual layer's job.
+- Never write roles, divisions, departments, access or member records to change what the Team page shows; that is the visual layer's job. One exception (amended 2026-10-17, Owner decision on issue #325): a department's kind is an attribute of the department, set on New department and Edit department, and it is the one departments field that places a head on the Team page, by choosing the slide (item 2). Every other presentation change stays in the visual layer.
 - Never add hand-typed people to the role build; a person the page shows beyond the roles comes from the visual layer.
 - When the roles cannot fill a section the page always draws (no team leader, no board seat, no department head, no core member), the page reads the hand-typed record whole, never a mix of the two.
 

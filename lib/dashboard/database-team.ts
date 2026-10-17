@@ -77,7 +77,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { isOffTeam, readsAsDivisionLead, seatOf } from "./viewer";
+import { coveredDivisionIds, isOffTeam, mayChange, readsAsDivisionLead, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -100,7 +100,7 @@ import {
   type TeamPerson,
   type TeamSearch,
 } from "./division-edit";
-import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -121,12 +121,36 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
 }
 
 /**
- * Who the viewer acts as on the Members page (`TeamActor`, ./team.ts): the
- * team for the operations lead or the team leader, a head for their
- * departments, a division lead for the divisions their roles and scopes
- * cover. Null for anyone else.
+ * Who the viewer changes people as on the Members page (`TeamActor`,
+ * ./team.ts): the team for the operations lead or the team leader, a head for
+ * their departments, else a division lead over each division where
+ * `mayChange` lets them change the Members area: a lead role there, or a
+ * Members (or every-area) grant at Can edit that covers it (issue #342); a
+ * grant across a department covers each of its divisions (issue #351). A
+ * grant at Can view, or on another area, changes nobody. Null for anyone
+ * else. Every Members write checks this actor, directly or through
+ * `actingOn`.
  */
 async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
+  return actorOf(identity, org, (divisionId) => {
+    const division = org.divisions.find((d) => d.id === divisionId);
+    return division !== undefined && mayChange(identity, "members", { divisionId, departmentId: division.departmentId });
+  });
+}
+
+/**
+ * Who the viewer reads the Members page as: `readActor`, except that a member
+ * holding an area grant reads as a division lead over the units it covers,
+ * whatever its area and level (`readsAsDivisionLead`). Reading is all it
+ * decides; no write takes this actor, and the page's actions follow
+ * `readActor` (issue #351).
+ */
+async function readViewingActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
+  return actorOf(identity, org, () => readsAsDivisionLead(identity));
+}
+
+/** The team or a head, as their roles say; else a division lead over the divisions their units cover that `leads` keeps. */
+async function actorOf(identity: DashboardIdentity, org: OrgChart, leads: (divisionId: number) => boolean): Promise<TeamActor | null> {
   if (identity.memberId === null || isOffTeam(identity.kind)) return null;
   if (identity.kind === "operations-lead") return { kind: "team" };
   const rows = await getDb()
@@ -140,8 +164,9 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
     return departmentId === null ? [] : [departmentId];
   });
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
-  if (!readsAsDivisionLead(identity) || identity.divisionIds.length === 0) return null;
-  return { kind: "lead", divisionIds: identity.divisionIds };
+  // A grant across a department covers each of its divisions (issue #351).
+  const divisionIds = coveredDivisionIds(identity, org.divisions).filter(leads);
+  return divisionIds.length === 0 ? null : { kind: "lead", divisionIds };
 }
 
 /** The divisions a division lead's Members page lists, the one it opens on first. A head's page is their department's. */
@@ -332,17 +357,19 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
  * The Members page of a division lead (boards 61e to 61h2): one of the
  * divisions they reach, `divisionId` or the first, with everyone in it, the
  * people waiting for Confirm NDA and the accepted applicants joining. A head
- * gets their department's page instead.
+ * gets their department's page instead. Which divisions it lists follows the
+ * viewing reach; what the page offers to change follows `readActor`, so a
+ * grant at Can view shows the people and no action (issue #351).
  */
 export async function readDivisionMembers(identity: DashboardIdentity, divisionId: number | null): Promise<MemberDirectory> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
-  if (actor === null || actor.kind === "team") return NO_MEMBERS;
-  if (actor.kind === "head") return readDepartmentMembers(identity, actor, snapshot);
-  const reach = reachOf(identity, actor, snapshot.org);
+  const viewing = await readViewingActor(identity, snapshot.org);
+  if (viewing === null || viewing.kind === "team") return NO_MEMBERS;
+  if (viewing.kind === "head") return readDepartmentMembers(identity, viewing, snapshot);
+  const reach = reachOf(identity, viewing, snapshot.org);
   const division = reach.find((id) => id === divisionId) ?? reach[0];
   if (division === undefined) return NO_MEMBERS;
-  const [joining, waiting] = await Promise.all([readJoining(division), readWaiting(division)]);
+  const [joining, waiting, actor] = await Promise.all([readJoining(division), readWaiting(division), readActor(identity, snapshot.org)]);
   const page = divisionMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -409,19 +436,20 @@ function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
 }
 
 /**
- * The person's active roles when the viewer may change them: anyone on the
- * team for the operations lead, someone in the lead's own division for a
- * division lead; never the viewer. Null otherwise.
+ * The person's active roles in the divisions the viewer changes people in
+ * (`actor`, from `readActor`): every role for the team, and for a head or a
+ * division lead the roles in the divisions they reach, each division a lead
+ * of several included (issues #185, #342); never the viewer. Null when none
+ * is left.
  */
-async function rolesTheViewerChanges(identity: DashboardIdentity, personId: number): Promise<ActiveRole[] | null> {
-  if (personId === identity.memberId) return null;
+async function rolesTheViewerChanges(identity: DashboardIdentity, actor: TeamActor | null, personId: number): Promise<ActiveRole[] | null> {
+  if (personId === identity.memberId || actor === null) return null;
   const active = await activeRoles(personId);
   if (active.length === 0) return null;
-  if (identity.kind === "operations-lead") return active;
-  const division = leadDivisionId(identity);
-  if (division === null) return null;
-  const inDivision = active.filter((r) => r.division_id === division);
-  return inDivision.length > 0 ? inDivision : null;
+  if (actor.kind === "team") return active;
+  const { org } = await readTeamSnapshot();
+  const reached = active.filter((r) => r.division_id !== null && reachesDivision(actor, r.division_id, org));
+  return reached.length > 0 ? reached : null;
 }
 
 const ROLE_TYPE: Readonly<Record<EditableRole, "lead" | "core">> = { "division-lead": "lead", member: "core" };
@@ -434,18 +462,15 @@ function done(): true {
 const today = () => new Date().toISOString().slice(0, 10);
 
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
-  const active = await rolesTheViewerChanges(identity, personId);
-  if (active === null) return false;
-  // The panel's role is the role in one division: the lead's own, or for the
-  // operations lead the person's home division. Their other divisions keep
-  // their roles (issue #229).
+  const { org } = await readTeamSnapshot();
+  const actor = await readActor(identity, org);
+  const active = await rolesTheViewerChanges(identity, actor, personId);
+  if (actor === null || active === null) return false;
+  // The panel's role is the role in one division: the home one among those
+  // the viewer reaches. Their other divisions keep their roles (issue #229).
   const division = homeDivision(membershipsOfActive(active));
-  if (edit.role !== null && division !== null) {
-    // Changing who leads a division is the head's, never a division lead's (#231).
-    const { org } = await readTeamSnapshot();
-    const actor = await readActor(identity, org);
-    if (actor === null || !mayChangeDivision(actor, division, org).allowed) return false;
-  }
+  // Changing who leads a division is the head's, never a division lead's (#231).
+  if (edit.role !== null && division !== null && !mayChangeDivision(actor, division, org).allowed) return false;
   const divisionRoles = active.filter((r) => r.division_id === division && (r.type === "lead" || r.type === "core"));
   const target = edit.role === null ? active : divisionRoles;
   if (target.length === 0) return false;
@@ -468,15 +493,14 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
  * `promotingLead` says, never a member.
  */
 async function promote(identity: DashboardIdentity, personId: number, promotion: Promotion): Promise<boolean> {
-  const division = leadDivisionId(identity);
   const leadId = identity.memberId;
-  if (identity.kind !== "division-lead" || division === null || leadId === null) return false;
+  if (identity.kind !== "division-lead" || leadId === null) return false;
   const { org } = await readTeamSnapshot();
   const actor = await readActor(identity, org);
-  if (actor === null || !mayChangeDivision(actor, division, org).allowed) return false;
-  const active = await rolesTheViewerChanges(identity, personId);
-  const theirs = active?.find((r) => r.division_id === division && r.type === "core");
-  if (!theirs) return false;
+  // Their member role in a division the lead leads, whichever of the lead's divisions it is (issue #185).
+  const theirs = (await rolesTheViewerChanges(identity, actor, personId))?.find((r) => r.type === "core");
+  const division = theirs?.division_id ?? null;
+  if (actor === null || !theirs || division === null || !mayChangeDivision(actor, division, org).allowed) return false;
   const myRoles = await activeRoles(leadId);
   const mine = myRoles.find((r) => r.division_id === division && r.type === "lead");
   const stepping = promotingLead(promotion, division);
@@ -984,7 +1008,6 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
 }
 
 function refreshPositions() {
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
 }
 
@@ -1040,19 +1063,19 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const actor = await readActor(identity, snapshot.org);
   const planned = planDepartmentCreate({ actor, org: snapshot.org, save: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, headId } = planned.value;
+  const { name, code, kind, headId } = planned.value;
   // The batch cannot read one write's result in the next, so the department id is taken first.
   const next = await getDb().execute(sql`select nextval(pg_get_serial_sequence('departments', 'id'))::int as id`);
   const departmentId = Number((next.rows[0] as { id: number }).id);
   await runAuditBatch((db) => [
-    db.insert(departments).values({ id: departmentId, name, code }),
+    db.insert(departments).values({ id: departmentId, name, code, kind }),
     db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: today() }),
   ]);
   done();
   return written(departmentId);
 }
 
-/** Edit department's Save changes (board 77e): the name and the code; a new name reaches the head's title too. */
+/** Edit department's Save changes (board 77e): the name, the code and the kind; a new name reaches the head's title too. */
 async function saveDepartment(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkDepartmentSave(input);
   if (!checked.ok) return refused(checked.error);
@@ -1062,14 +1085,14 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const headIds = [...new Set(snapshot.roles.filter((r) => r.leaved_at === null && isHeadRow(r)).map((r) => r.member_id))];
   const planned = planDepartmentSave({ actor, org: snapshot.org, departmentId, save: checked.value, team: teamPeopleOf(snapshot), headIds });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, nameChanged, head } = planned.value;
+  const { name, code, kind, nameChanged, head } = planned.value;
   const on = today();
   const stepping = head?.steppingDown ?? null;
   const replaced = head === null || stepping === null ? [] : await Promise.all(head.from.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
   await runAuditBatch((db) => [
     db
       .update(departments)
-      .set({ name, code })
+      .set({ name, code, kind })
       .where(and(eq(departments.id, departmentId), isNull(departments.closedAt))),
     ...(nameChanged
       ? [

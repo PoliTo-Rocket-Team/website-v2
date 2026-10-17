@@ -3,10 +3,8 @@ import {
   canGiveApproveOrders,
   checkRemoveAllAccess,
   checkSaveAccess,
-  FULL_HELD_ACCESS,
   NO_APPROVE_ORDERS,
   placesOf,
-  ROLE_HELD_ACCESS,
   samePlace,
   UNIT_TARGETS,
   WHOLE_TEAM_PLACE,
@@ -25,7 +23,7 @@ import {
   type UnitTarget,
 } from "@/lib/dashboard/division-access";
 import type { FullAccessSeat } from "@/lib/dashboard/viewer";
-import { homeFirst, ledDivisionOf, membershipsIn, type DivisionMembership, type RosterEntry } from "@/lib/dashboard/team";
+import { homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type RosterEntry } from "@/lib/dashboard/team";
 import type { ApproveOrdersChange } from "@/lib/dashboard/orders";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { TeamEdits } from "./edits";
@@ -33,8 +31,9 @@ import { departments, divisions, people, personFor, type DummyPerson } from "./t
 
 // The Access pages for the test developer (boards 60 to 60m, issues #145 and
 // #213; the department head's Access, boards 65 and 65b, issue #230); their
-// Orders page is ./orders.ts. The division lead is Marco Bianchi, Mission Analysis, who leads
-// it with Pietro Ricci; the department head is Chiara Rinaldi, Aerodynamics;
+// Orders page is ./orders.ts. The division lead is Marco Bianchi, who leads Mission Analysis
+// with Pietro Ricci and Optimization and Analysis with Paolo Conti, so his
+// Access page lists both divisions in one list (issue #185); the department head is Chiara Rinaldi, Aerodynamics;
 // the operations lead, Giulia Rossi, has full access across the team (#238),
 // and so does the team leader, Alessandro Greco, who alone gives "Approve
 // orders" (boards 71 and 71b, issue #247).
@@ -165,11 +164,17 @@ function departmentUnit(departmentId: number, closed: ReadonlySet<number> = new 
   };
 }
 
+/** What a lead holds in their divisions ("Your access" on board 60): the same areas in each one they lead. */
+function leadHeld(viewer: DummyPerson): readonly HeldAccess[] {
+  return UNIT_TARGETS.flatMap((target) =>
+    heldAccess.filter((h) => h.personId === viewer.id && h.target === target).map((h) => ({ target, level: h.level })),
+  );
+}
+
 /**
  * The unit a viewer's Access page is about: the whole team for full access,
- * a lead's division, a head's department; null when their place is none of
- * these. A lead of several divisions gets the oldest they lead until #185
- * gives them all.
+ * every open division a lead leads, home first (issue #185), a head's
+ * department; null when their place is none of these.
  */
 function unitOf(kind: AccessViewerKind, viewer: DummyPerson, closed: ReadonlySet<number>): AccessUnit | null {
   const placement = viewer.placement;
@@ -178,8 +183,11 @@ function unitOf(kind: AccessViewerKind, viewer: DummyPerson, closed: ReadonlySet
     return { kind: "team", departments: byName.map((d) => departmentUnit(d.id, closed)) };
   }
   if (kind === "division-lead") {
-    const divisionId = ledDivisionOf(placement);
-    return divisionId === null ? null : { kind: "division", division: accessDivision(divisionId) };
+    const held = leadHeld(viewer);
+    const [first, ...rest] = ledDivisionsOf(placement)
+      .filter((id) => !closed.has(id))
+      .map((id) => ({ division: accessDivision(id), held }));
+    return first === undefined ? null : { kind: "division", divisions: [first, ...rest] };
   }
   if (placement.role === "head") return { kind: "department", ...departmentUnit(placement.departmentId, closed) };
   return null;
@@ -188,7 +196,7 @@ function unitOf(kind: AccessViewerKind, viewer: DummyPerson, closed: ReadonlySet
 function unitDivisionIds(unit: AccessUnit): readonly number[] {
   switch (unit.kind) {
     case "division":
-      return [unit.division.id];
+      return unit.divisions.map((d) => d.division.id);
     case "department":
       return unit.divisions.map((d) => d.id);
     case "team":
@@ -232,14 +240,6 @@ function placeOf(unit: AccessUnit, place: DummyPlace): AccessPlace | null {
       if ("divisionId" in place) return p.kind === "division" && p.division.id === place.divisionId;
       return p.kind === "department" && p.department.id === place.departmentId;
     }) ?? null
-  );
-}
-
-function heldBy(viewer: DummyPerson, unit: AccessUnit): readonly HeldAccess[] {
-  if (unit.kind === "team") return FULL_HELD_ACCESS;
-  if (unit.kind === "department") return ROLE_HELD_ACCESS;
-  return UNIT_TARGETS.flatMap((target) =>
-    heldAccess.filter((h) => h.personId === viewer.id && h.target === target).map((h) => ({ target, level: h.level })),
   );
 }
 
@@ -313,7 +313,6 @@ export function dummyAccessPage(
   const ordered = [...roleAccess].sort((a, b) => Number(b.place.kind === "team") - Number(a.place.kind === "team"));
   return {
     unit,
-    held: heldBy(viewer, unit),
     roleAccess: ordered,
     grants,
     people: [...onTeam.values()],

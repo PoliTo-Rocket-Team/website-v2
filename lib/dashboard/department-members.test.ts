@@ -9,8 +9,8 @@ import { membershipsOf, type OrgChart } from "./team";
 // Analysis (1) and Optimization (2); Structures holds Design & Manufacturing (3).
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics" },
-    { id: 2, name: "Structures" },
+    { id: 1, name: "Aerodynamics", kind: "technical" },
+    { id: 2, name: "Structures", kind: "technical" },
   ],
   divisions: [
     { id: 1, name: "Mission Analysis Division", departmentId: 1, code: "MA" },

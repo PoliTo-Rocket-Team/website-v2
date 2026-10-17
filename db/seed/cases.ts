@@ -395,7 +395,7 @@ export function rocketsOf(record: ProjectRecord): { card: string; page: string |
 /** The open org chart, as the team snapshot reads it (lib/dashboard/team-database.ts). */
 export function orgOf(data: SeedData): OrgChart {
   return {
-    departments: data.departments.filter((d) => (d.closedAt ?? null) === null).map((d) => ({ id: d.id!, name: d.name, code: d.code ?? null })),
+    departments: data.departments.filter((d) => (d.closedAt ?? null) === null).map((d) => ({ id: d.id!, name: d.name, code: d.code ?? null, kind: d.kind ?? "technical" })),
     divisions: data.divisions
       .filter((d) => (d.closedAt ?? null) === null)
       .flatMap((d) => (d.deptId == null ? [] : [{ id: d.id!, name: d.name, departmentId: d.deptId, code: d.code ?? null }])),

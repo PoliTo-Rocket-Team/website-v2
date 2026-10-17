@@ -30,12 +30,12 @@ export type DummyPerson = {
 };
 
 export const departments = [
-  { id: 1, name: "Aerodynamics", code: "AE" },
-  { id: 2, name: "Structures", code: "ST" },
-  { id: 3, name: "Recovery", code: "RC" },
-  { id: 4, name: "Controls and Systems", code: "CS" },
-  { id: 5, name: "Electronics", code: "EL" },
-  { id: 6, name: "Operations", code: "OP" },
+  { id: 1, name: "Aerodynamics", code: "AE", kind: "technical" },
+  { id: 2, name: "Structures", code: "ST", kind: "technical" },
+  { id: 3, name: "Recovery", code: "RC", kind: "technical" },
+  { id: 4, name: "Controls and Systems", code: "CS", kind: "technical" },
+  { id: 5, name: "Electronics", code: "EL", kind: "technical" },
+  { id: 6, name: "Operations", code: "OP", kind: "operations" },
 ] as const satisfies readonly DummyDepartment[];
 
 export const divisions = [
@@ -121,7 +121,8 @@ const M = "Member";
 /** This year's roster. Ids 1 to 12 are the people the Overview names. */
 export const people: readonly DummyPerson[] = ([
   [1, "Giulia Rossi", head(6), "Operations Lead", 2022, { hasPhoto: true, access: ["All pages · edit"] }],
-  [2, "Marco Bianchi", lead(1), "Mission Analysis Lead", 2023, { hasPhoto: true, pageTitle: "Mission Analysis Lead", program: "Aerospace Eng.", study: "MSc · year 1", access: ["Positions · edit", "Applications · edit"] }],
+  // Leads two divisions (issue #185): Mission Analysis, his home one, and Optimization and Analysis with Paolo Conti.
+  [2, "Marco Bianchi", divisionsOf([1, "lead", 2023], [2, "lead", 2025]), "Mission Analysis Lead", 2023, { hasPhoto: true, pageTitle: "Mission Analysis Lead", program: "Aerospace Eng.", study: "MSc · year 1", access: ["Positions · edit", "Applications · edit"], titles: { 2: "Optimization and Analysis Lead" } }],
   // Also in Design & Manufacturing, in another department (board 61e's "Structures" chip).
   [3, "Sofia Neri", divisionsOf([1, "member", 2024], [3, "member", 2025]), M, 2024, { pageTitle: "Mission Analyst", program: "Aerospace Eng.", study: "BSc · year 3", titles: { 3: "CAD Engineer" } }],
   [4, "Luca Marino", member(1), M, 2024, { program: "Physics", study: "MSc · year 2", access: ["Positions · edit"] }],

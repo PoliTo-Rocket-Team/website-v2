@@ -47,7 +47,8 @@ export const DEPARTMENT_ROWS = rowsOf(departments, [
   { id: DEPARTMENT.recovery, name: "Recovery", startedAt: "2022-06-01", closedAt: null, code: "RCV" },
   { id: DEPARTMENT.controls, name: "Controls and Systems", startedAt: "2022-05-01", closedAt: null, code: "CAS" },
   { id: DEPARTMENT.electronics, name: "Electronics", startedAt: "2022-04-01", closedAt: null, code: "ELT" },
-  { id: DEPARTMENT.operations, name: "Operations", startedAt: "2021-10-01", closedAt: null, code: "OPS" },
+  // Operations sits on the Team page's "Operations" slide; the rest keep the default kind, technical (issue #325).
+  { id: DEPARTMENT.operations, name: "Operations", startedAt: "2021-10-01", closedAt: null, code: "OPS", kind: "operations" },
   { id: DEPARTMENT.research, name: "Research and Development", startedAt: "2023-09-01", closedAt: null, code: "RND" },
 ]);
 

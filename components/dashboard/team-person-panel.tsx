@@ -9,6 +9,7 @@ import { CONTENT_FOCUS } from "./content-parts";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { Toggle } from "./controls";
+import { PhotoChoices } from "./team-panel-parts";
 
 // The Edit person panel (board 80b, issue #284): 480px beside the Team page
 // under the edit shell, for the team leader or a leader on the arc. It
@@ -181,27 +182,14 @@ export function TeamPersonPanel({
             </button>
           </div>
           {choosing && (
-            <div role="group" aria-label="Photos on the site" className="mt-3 grid grid-cols-6 gap-2.5 rounded-xl border border-hairline p-3">
-              {photoChoices.map((choice) => {
-                const on = choice.src === fields.photo;
-                return (
-                  <button
-                    key={choice.src}
-                    type="button"
-                    aria-pressed={on}
-                    aria-label={`Photo of ${choice.label}`}
-                    title={choice.label}
-                    onClick={() => {
-                      set("photo", choice.src);
-                      setChoosing(false);
-                    }}
-                    className={`justify-self-center rounded-full ring-offset-2 ring-offset-panel transition-shadow duration-300 ease-out ${on ? "ring-2 ring-accent" : "hover:ring-1 hover:ring-border-strong"} ${CONTENT_FOCUS}`}
-                  >
-                    <Avatar person={{ name: choice.label, photo: choice.src }} sizeClass="h-11 w-11" sizes="44px" fallback="initials" />
-                  </button>
-                );
-              })}
-            </div>
+            <PhotoChoices
+              choices={photoChoices}
+              selected={fields.photo}
+              onPick={(src) => {
+                set("photo", src);
+                setChoosing(false);
+              }}
+            />
           )}
         </div>
 

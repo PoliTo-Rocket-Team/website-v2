@@ -23,6 +23,15 @@ import { CAVOUR_HDRI } from "./cavour-assets";
 import { holdCardSetup } from "./scene-schedule";
 import { useClearGlassBarOver } from "./glass-bar";
 import { webglSupported } from "./webgl";
+import {
+  HIDDEN,
+  heldFrameShown,
+  revealAfterLost,
+  revealOnShow,
+  step,
+  type Stage,
+  type StageEvent,
+} from "@/lib/hero-stage";
 
 // Three.js hero stage: the code-built Cavour (rocket-cavour.tsx) horizontal,
 // nose right, matching the static render's framing (nose ~95% across, plume
@@ -316,72 +325,8 @@ function FrameDriver({ rate, clock }: { rate: DrawRate; clock: SceneClock }) {
 /** What the hero's phase clock waits for before the drive-in may start. */
 export type RocketStatus = "ready" | "unavailable";
 
-/**
- * Which canvas the hero shows. A canvas exists only while the stage names
- * one, and every new canvas gets a new id used as its React key, so React
- * builds a fresh <canvas> element with a fresh WebGL context: a canvas whose
- * context is gone is never shown again (issue #77; the cards do the same,
- * rocket-card-stage.tsx).
- *  - "hidden":      the page is hidden, or not shown yet: no canvas
- *  - "unavailable": no rocket for this page load: no WebGL, or the scene
- *                   failed to load
- *  - "warming":     the canvas loads and compiles its scene, still invisible
- *  - "ready":       the canvas has drawn the scene
- */
-type Stage =
-  | { kind: "hidden" }
-  | { kind: "unavailable" }
-  | { kind: "warming" | "ready"; canvas: number; reveal: Reveal };
-
-/**
- * How a new canvas comes into view (issue #111).
- *  - "at-once":         RevealOnFirstFrame shows it as it draws: the first
- *                       load, or a showing with no frame held
- *  - "fade":            it replaces a lost canvas after the rocket has drawn,
- *                       so it fades in once drawn, never a pop
- *  - "over-last-frame": a return with the rocket's last frame held: the frame
- *                       shows at once, and the canvas takes its place in one
- *                       paint once drawn, with no transition. Both show the
- *                       parked rocket, plume off, so the swap is not seen.
- */
-type Reveal = "at-once" | "fade" | "over-last-frame";
-
 /** The fade in of a canvas that replaces a lost one. */
 const FADE_IN = "motion-safe:transition-opacity motion-safe:duration-200 motion-safe:ease-out";
-
-type StageEvent =
-  /** The page is shown (first load, or shown again): mount a new canvas. */
-  | { type: "shown"; canvas: number; reveal: Reveal }
-  /** The page is shown, and this browser cannot draw WebGL. */
-  | { type: "unsupported" }
-  /** Next hid the page (cacheComponents): drop the canvas. */
-  | { type: "hidden" }
-  /** The canvas has compiled and drawn its scene. */
-  | { type: "warm"; canvas: number }
-  /**
-   * The canvas's context is lost: drop it and mount `next` in its place. A
-   * lost context draws nothing, so no frame is held for it.
-   */
-  | { type: "lost"; canvas: number; next: number; reveal: Exclude<Reveal, "over-last-frame"> }
-  /** The scene failed to load: no rocket for this page load. */
-  | { type: "failed"; canvas: number };
-
-const HIDDEN: Stage = { kind: "hidden" };
-
-// Each canvas event moves only the canvas it names, so a late report from a
-// canvas that is already gone changes nothing.
-function step(stage: Stage, e: StageEvent): Stage {
-  if (stage.kind === "unavailable") return stage;
-  if (e.type === "hidden") return HIDDEN;
-  if (e.type === "shown") {
-    return stage.kind === "hidden" ? { kind: "warming", canvas: e.canvas, reveal: e.reveal } : stage;
-  }
-  if (e.type === "unsupported") return stage.kind === "hidden" ? { kind: "unavailable" } : stage;
-  if (stage.kind === "hidden" || stage.canvas !== e.canvas) return stage;
-  if (e.type === "lost") return { kind: "warming", canvas: e.next, reveal: e.reveal };
-  if (e.type === "failed") return { kind: "unavailable" };
-  return stage.kind === "warming" ? { ...stage, kind: "ready" } : stage;
-}
 
 type Props = {
   /** Where the entrance is: the plume burns full during "drive". */
@@ -480,8 +425,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
     // is just the type; nothing renders here.
     if (stageNow.current.kind === "hidden") {
       if (webglSupported()) {
-        const reveal = lastFrame.isHeld ? "over-last-frame" : "at-once";
-        send({ type: "shown", canvas: ++canvasIds.current, reveal });
+        send({ type: "shown", canvas: ++canvasIds.current, reveal: revealOnShow(lastFrame.isHeld) });
       } else report({ type: "unsupported" }, "unavailable");
     }
     return () => {
@@ -509,9 +453,10 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   const canvas = live ? stage.canvas : null;
   const reveal = live ? stage.reveal : null;
   // The held frame shows from the first paint of a return until the new
-  // canvas has drawn. Then, in the same paint, the frame goes and the canvas
-  // shows: a return has no animation (Huey's ruling on issue #111).
-  const frameShown = stage.kind === "warming" && reveal === "over-last-frame";
+  // canvas has drawn, a canvas that replaces a lost one included (#113).
+  // Then, in the same paint, the frame goes and the canvas shows: a return
+  // has no animation (owner decision on issue #111).
+  const frameShown = heldFrameShown(stage);
   const canvasShow =
     reveal === "fade"
       ? `${FADE_IN} ${ready ? "opacity-100" : "opacity-0"}`
@@ -577,7 +522,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
                   type: "lost",
                   canvas,
                   next: ++canvasIds.current,
-                  reveal: drawnBefore.current ? "fade" : "at-once",
+                  reveal: revealAfterLost(lastFrame.isHeld, drawnBefore.current),
                 })
               }
             />

@@ -1,5 +1,5 @@
 import { textLength } from "@/lib/content/text";
-import { BOARD_SEATS, type BoardSeat } from "@/lib/dashboard/team";
+import { BOARD_SEATS, type BoardSeat, type DepartmentKind } from "@/lib/dashboard/team";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { personOf, type TeamPerson } from "./team-person";
 import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, Photo } from "./types";
@@ -126,6 +126,8 @@ export type BuiltLead = { readonly spot: LeadSpot; readonly person: TeamPerson; 
 export type BuiltDepartment = {
   readonly id: number;
   readonly name: string;
+  /** The carousel slide its heads sit on (issue #325). */
+  readonly kind: DepartmentKind;
   readonly heads: readonly BuiltHead[];
   readonly leads: readonly BuiltLead[];
 };
@@ -149,6 +151,8 @@ export type Shown<R, T> = { readonly at: R; readonly shown: T };
 export type ShownDepartment = {
   readonly at: DepartmentRef;
   readonly name: string;
+  /** The carousel slide its heads sit on (issue #325); a department the editor added is technical. */
+  readonly kind: DepartmentKind;
   readonly heads: readonly Shown<HeadSpot | AddedRef, DepartmentHead>[];
   readonly leads: readonly Shown<LeadRef, DivisionLead>[];
 };
@@ -261,7 +265,7 @@ function departmentOf(build: TeamBuild, layer: TeamPageLayer, department: BuiltD
     const role = spot?.role ?? built.title ?? `Head of ${name}`;
     return [{ at: built.spot, shown: { kind: "head", ...shownPerson(build, built.person, spot), role, leads: leads.map((l) => l.shown) } }];
   });
-  return { at: department.id, name, heads, leads };
+  return { at: department.id, name, kind: department.kind, heads, leads };
 }
 
 function addedDepartmentOf(build: TeamBuild, added: AddedDepartment): ShownDepartment | null {
@@ -272,6 +276,7 @@ function addedDepartmentOf(build: TeamBuild, added: AddedDepartment): ShownDepar
   return {
     at: addedRef(added.id),
     name: added.name,
+    kind: "technical",
     heads: [{ at: addedRef(added.id), shown: { kind: "head", ...head, role, leads: leads.map((l) => l.shown) } }],
     leads,
   };
@@ -309,6 +314,22 @@ export function leadersOnArc(build: TeamBuild, layer: TeamPageLayer): number {
 /** Reset to team (board 80h): every edit goes, except the intro text and the group photo. */
 export function resetLayer(layer: TeamPageLayer): TeamPageLayer {
   return { ...NO_TEAM_LAYER, intro: layer.intro, groupPhoto: layer.groupPhoto };
+}
+
+/**
+ * Every person photo the layer sets: on the team leader, on a spot, and on
+ * each person it added. The group photo is not one: it is always a photo of
+ * the site's own, never an upload.
+ */
+export function layerPhotos(layer: TeamPageLayer): PersonPhoto[] {
+  const people: readonly { readonly photo?: PersonPhoto }[] = [
+    layer.leader,
+    ...Object.values(layer.spots).flatMap((edit) => edit ?? []),
+    ...layer.addedLeaders,
+    ...Object.values(layer.departments).flatMap((edit) => edit?.addedLeads ?? []),
+    ...layer.addedDepartments.flatMap((d) => [d.head, ...d.leads]),
+  ];
+  return people.flatMap((person) => person.photo ?? []);
 }
 
 /** Every id the things the editor added hold, in one list: one id names one thing. */

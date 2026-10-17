@@ -20,7 +20,15 @@ export type LeaderSlot = "leader" | number;
 /** Wraps one person on the chart: the Team page editor outlines them (board 80, issue #284). */
 export type LeaderFrame = (slot: LeaderSlot, person: ReactNode) => ReactNode;
 
-const unframed: LeaderFrame = (_slot, person) => person;
+/**
+ * One person's photo and label, as the chart draws them inside their place.
+ * Unframed (the public page) they sit straight in it, the markup boards 26
+ * and 26m were built on (issue #325); the editor's frame gets them as one
+ * centred column, so its outline wraps the person and the place is unchanged.
+ */
+function framed(frame: LeaderFrame | undefined, slot: LeaderSlot, person: ReactNode): ReactNode {
+  return frame === undefined ? person : frame(slot, <div className="flex flex-col items-center">{person}</div>);
+}
 
 /**
  * The Team page editor's Add leader affordances (board 80e, issue #285): a
@@ -134,7 +142,7 @@ function University({ university }: { university: OrgChartData["university"] }) 
 }
 
 /** The arc, from xl. Every position is measured from the centre of the circle round the team leader. */
-function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: readonly Leader[]; frame: LeaderFrame; onAdd: AddLeader | null }) {
+function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: readonly Leader[]; frame?: LeaderFrame; onAdd: AddLeader | null }) {
   const nodes = arcLayout(leaders.length);
   const centreY = LEADER_PHOTO / 2 + CENTRE_BELOW_PHOTO;
   // The lowest leader's photo, then room for its name, role and icons.
@@ -156,15 +164,16 @@ function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: reado
         ))}
       </svg>
 
-      <div className="absolute left-1/2 top-0 -translate-x-1/2">
-        {frame(
+      <div className="absolute left-1/2 top-0 flex -translate-x-1/2 flex-col items-center">
+        {framed(
+          frame,
           "leader",
-          <div className="flex flex-col items-center">
+          <>
             <Avatar person={leader} sizeClass="h-[176px] w-[176px]" sizes="176px" fallback="mark" />
             <div className="mt-5">
               <LeaderLabel leader={leader} size="top" />
             </div>
-          </div>,
+          </>,
         )}
       </div>
 
@@ -172,17 +181,22 @@ function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: reado
         const n = nodes[i];
         const px = `${n.photo}px`;
         return (
-          <div key={i} className="absolute -translate-x-1/2" style={{ left: `calc(50% + ${n.x}px)`, top: centreY + n.y - n.photo / 2 }}>
-            {frame(
+          <div
+            key={i}
+            className="absolute flex -translate-x-1/2 flex-col items-center"
+            style={{ left: `calc(50% + ${n.x}px)`, top: centreY + n.y - n.photo / 2 }}
+          >
+            {framed(
+              frame,
               i,
-              <div className="flex flex-col items-center">
+              <>
                 <span className="block" style={{ width: px, height: px }}>
                   <Avatar person={l} sizeClass="h-full w-full" sizes={px} fallback="mark" />
                 </span>
                 <div className="mt-[18px]">
                   <LeaderLabel leader={l} size="arc" />
                 </div>
-              </div>,
+              </>,
             )}
           </div>
         );
@@ -194,17 +208,18 @@ function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: reado
 }
 
 /** Board 26m's tree, below xl: the leader, a rule branching to the grid, then the others. */
-function Tree({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: readonly Leader[]; frame: LeaderFrame; onAdd: AddLeader | null }) {
+function Tree({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: readonly Leader[]; frame?: LeaderFrame; onAdd: AddLeader | null }) {
   return (
     <div className="flex flex-col items-center">
-      {frame(
+      {framed(
+        frame,
         "leader",
-        <div className="flex flex-col items-center">
+        <>
           <Avatar person={leader} sizeClass="h-[120px] w-[120px]" sizes="120px" fallback="mark" />
           <div className="mt-3">
             <LeaderLabel leader={leader} size="top" />
           </div>
-        </div>,
+        </>,
       )}
       {/* A line down from the leader, a rule across to the first row's
           outer columns, and a short drop to each. */}
@@ -215,22 +230,23 @@ function Tree({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: read
           className="col-span-2 mx-[25%] block h-4 border-x border-t border-white-10 md:col-span-4 md:mx-[12.5%]"
         />
         {leaders.map((l, i) => (
-          <div key={i} className="mt-2 flex justify-center pb-8">
-            {frame(
+          <div key={i} className="mt-2 flex flex-col items-center pb-8">
+            {framed(
+              frame,
               i,
-              <div className="flex flex-col items-center">
+              <>
                 <Avatar person={l} sizeClass="h-24 w-24" sizes="96px" fallback="mark" />
                 <div className="mt-3">
                   <LeaderLabel leader={l} size="grid" />
                 </div>
-              </div>,
+              </>,
             )}
           </div>
         ))}
         {/* The grid has no gaps to click between: the editor adds after the
             last leader here, and the panel's Place field moves them. */}
         {onAdd !== null && (
-          <div className="mt-2 flex justify-center pb-8">
+          <div className="mt-2 flex flex-col items-center pb-8">
             <AddLeaderCircle label={gapLabel(leaders, leaders.length)} sizeClass="h-24 w-24" onClick={() => onAdd(leaders.length)} />
           </div>
         )}
@@ -241,10 +257,11 @@ function Tree({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: read
 
 export function OrgChart({
   chart,
-  frame = unframed,
+  frame,
   onAdd = null,
 }: {
   chart: OrgChartData;
+  /** The editor's outline round each person; none (the public page) draws the chart as boards 26 and 26m. */
   frame?: LeaderFrame;
   /** The editor's Add leader affordances; null (the public page, or a full arc) draws none. */
   onAdd?: AddLeader | null;

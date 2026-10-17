@@ -21,12 +21,13 @@ import { fileSize } from "@/lib/dashboard/recruitment";
 import {
   checkPhoto,
   normalizeLinkedin,
+  profileRolesOf,
   type DeleteAccount,
   type LeaveState,
   type MyAccount,
   type MyProfile,
 } from "@/lib/dashboard/self";
-import { homeDivisionOf, membershipsIn, roleIn } from "@/lib/dashboard/team";
+import { homeDivisionOf, homeFirst, membershipsIn, roleIn } from "@/lib/dashboard/team";
 import { testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { dummyApplyPosition } from "./apply";
@@ -63,6 +64,21 @@ export function teamEmailOf(person: DummyPerson): string {
   return signInOf(person).teamEmail;
 }
 
+/**
+ * Every division the person is in, home first, as My profile lists them
+ * (issue #185): the home one carries their title, each other one reads by its
+ * role. A seat or a head, in no division, has their title alone.
+ */
+function dummyProfileRoles(person: DummyPerson): MyProfile["roles"] {
+  const home = homeDivisionOf(person.placement);
+  const sources = homeFirst(membershipsIn(person.placement)).map((m) => ({
+    title: m.divisionId === home ? person.title : null,
+    type: m.role === "lead" ? ("lead" as const) : ("core" as const),
+    divisionName: divisions.find((d) => d.id === m.divisionId)?.name ?? null,
+  }));
+  return sources.length === 0 ? [{ title: person.title, division: null }] : profileRolesOf(null, sources);
+}
+
 export function dummyMyProfile(
   kind: TestViewer,
   person: DummyPerson,
@@ -70,13 +86,11 @@ export function dummyMyProfile(
   leave: LeaveState,
   handOver: HandOverOffer | null,
 ): MyProfile {
-  // My profile names one division, their home one, until #231 lists them all.
-  const division = divisions.find((d) => d.id === homeDivisionOf(person.placement));
   const login = signInOf(person);
   const details = dummyDetails(kind, changes);
   return {
     name: person.name,
-    role: division ? `${person.title} · ${division.name}` : person.title,
+    roles: dummyProfileRoles(person),
     teamEmail: login.teamEmail,
     linkedin: details.linkedin === "" ? null : details.linkedin,
     photoUrl: null,

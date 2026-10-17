@@ -14,6 +14,7 @@ import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 import { isPublishStep, type ContentItem, type PublishStep, type Versioned } from "@/lib/content/versioned";
 import type { TeamPageLayer } from "@/lib/about/team-layer";
 import type { TeamPageSaved } from "@/lib/about/team-page-editor";
+import type { PersonPhoto } from "@/lib/about/types";
 import type { Partner, PartnerTier } from "@/lib/partners";
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { PARTNER_FIELDS, type PartnerFields } from "@/lib/partners-fields";
@@ -195,6 +196,17 @@ export async function saveTeamPage(step: PublishStep, layer: unknown, advisors: 
 /** Reset to team (board 80h): a draft with every edit gone except the intro text and the group photo. */
 export async function resetTeamPageLayer(): Promise<WriteResult<Versioned<TeamPageLayer>>> {
   return write("team-page", (data) => data.teamPage.reset());
+}
+
+/**
+ * A photo cropped in Replace photo on a Team page panel (issue #323), stored
+ * at once so the page can show it; Save draft or Publish puts it on the
+ * person or advisor. Nothing renders again: no saved page shows it yet.
+ */
+export async function uploadTeamPagePhoto(form: FormData): Promise<WriteResult<PersonPhoto>> {
+  const photo = await uploadOf(form, "photo");
+  if (photo === null) return refused("Choose a photo.");
+  return write("team-page", (data) => data.teamPage.uploadPhoto(photo));
 }
 
 /** End advising: the advisor leaves the Team page and joins the Alumni page's Advisors group for `years`. */

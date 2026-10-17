@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { arcLayout } from "@/components/about/arc-layout";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyTeamRoles } from "@/lib/dummy-data/team-page";
+import { dummyTeamPagePhotos, dummyTeamRoles } from "@/lib/dummy-data/team-page";
 import { team } from "./team";
 import { applyLayer, ARC_LEADERS, nextAddedId, NO_TEAM_LAYER, type AddedRef, type TeamPageLayer } from "./team-layer";
 import { arcVisualOrder, readingIndexOfGap } from "./arc-order";
@@ -117,7 +117,7 @@ test("added departments, division leads and head-block edits show on the page, a
 
   const store = memoryContentStore<TeamPageLayer>([]);
   const advisors = memoryContentStore(importedAdvisors());
-  const editor = teamPageEditor(siteContent, memoryTeamPageStore(store, advisors), async () => roles, team);
+  const editor = teamPageEditor(siteContent, memoryTeamPageStore(store, advisors), async () => roles, team, dummyTeamPagePhotos);
   assert.ok((await editor.save("publish", layer, advisorRowsOf(await advisors.list()))).ok);
   const page = publicTeamPage(roles, team, await store.list());
   const heads = page.departments.groups.flatMap((g) => g.members);

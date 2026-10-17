@@ -5,8 +5,8 @@ import { boxOf, layoutTeamTree, rowWidth } from "./tree-layout";
 
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics" },
-    { id: 2, name: "Operations" },
+    { id: 1, name: "Aerodynamics", kind: "technical" },
+    { id: 2, name: "Operations", kind: "technical" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis Division", departmentId: 1 },
@@ -143,4 +143,10 @@ test("the viewer's path runs from the leader down to their row, and the canvas o
   const head = boxOf(layout, 4)!;
   assert.ok(layout.focus && layout.focus.x <= head.x && layout.focus.y === head.y);
   assert.ok(layout.focus.x + layout.focus.w < boxOf(layout, 9)!.x);
+});
+
+test("the team leader's canvas opens on the top of the tree down to its lowest row", () => {
+  const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 1));
+  const lowest = Math.max(...layout.nodes.map((n) => n.y + n.h));
+  assert.ok(layout.focus && layout.focus.y === 0 && layout.focus.y + layout.focus.h >= lowest);
 });

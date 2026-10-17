@@ -9,8 +9,8 @@ import { membershipsOf, type OrgChart } from "./team";
 // Optimization (2); Structures holds Design & Manufacturing (3).
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics" },
-    { id: 2, name: "Structures" },
+    { id: 1, name: "Aerodynamics", kind: "technical" },
+    { id: 2, name: "Structures", kind: "technical" },
   ],
   divisions: [
     { id: 1, name: "Mission Analysis Division", departmentId: 1, code: "MA" },
@@ -83,4 +83,20 @@ test("Add member's field finds a member by name or by either email, and says whe
   assert.deepEqual(lookupForAdd("new.person@studenti.polito.it", team, [], 1, org), { kind: "new-email", email: "new.person@studenti.polito.it" });
   assert.deepEqual(lookupForAdd("Elena@x.it", team, ["elena@x.it"], 1, org), { kind: "waiting", email: "elena@x.it" });
   assert.deepEqual(lookupForAdd("p", team, [], 1, org), { kind: "none" });
+});
+
+// Issue #351: the page offers a change only where the viewer may make it.
+test("a viewer who changes nobody in the division sees its people with no action on any row", () => {
+  for (const actor of [null, { kind: "lead" as const, divisionIds: [2] }]) {
+    const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
+    assert.equal(page.editable, false);
+    assert.deepEqual(page.people.map((p) => p.name), ["Marco Bianchi", "Davide Russo"], "viewing is unchanged");
+    assert.ok(page.people.every((p) => p.removal.kind === "not-in-reach" && !p.leave.allowed));
+  }
+});
+
+test("a viewer who may change the division gets the row actions their actor allows", () => {
+  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2] }, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
+  assert.equal(page.editable, true);
+  assert.equal(page.people.find((p) => p.name === "Davide Russo")!.removal.kind, "offered");
 });

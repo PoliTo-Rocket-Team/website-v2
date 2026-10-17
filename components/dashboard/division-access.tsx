@@ -33,7 +33,10 @@ import {
   areaRule,
   canChangePerson,
   departmentOfPlace,
+  heldIn,
   heldLevel,
+  heldLines,
+  holdsAny,
   holdsApproveOrders,
   holdsEveryArea,
   homePlace,
@@ -42,6 +45,7 @@ import {
   placeLine,
   placesHeldBy,
   placesOf,
+  roleDivision,
   samePlace,
   SEAT_LABELS,
   shortUnitName,
@@ -49,6 +53,7 @@ import {
   unitLine,
   WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
+  type AccessDivision,
   type AccessGrant,
   type AccessLevel,
   type AccessPage,
@@ -62,7 +67,7 @@ import {
   type RoleAccess,
   type SaveAccess,
 } from "@/lib/dashboard/division-access";
-import { ALL_DEPARTMENTS_LABEL, divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
+import { ALL_DEPARTMENTS_LABEL, ALL_DIVISIONS_LABEL, divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -108,15 +113,31 @@ function personOfRow(row: Row): AccessPerson {
   return row.kind === "role" ? row.role.person : row.access.person;
 }
 
-function rowKey(row: Row): string {
-  return `${row.kind}-${personOfRow(row).id}`;
+/** The division a row names and files under: a role row's own, else the person's. */
+function divisionOfRow(row: Row): AccessDivision | null {
+  return row.kind === "role" ? roleDivision(row.role) : row.access.person.division;
 }
 
-/** "Lead · Mission Analysis", "Member" on a lead's page, "Member · Mission Analysis" on a head's or a team page (boards 60 and 65). */
-function standingLine(person: AccessPerson, unit: AccessUnit): string {
+/** A role row per division a lead leads, a grants row per person. */
+function rowKey(row: Row): string {
+  return row.kind === "role" ? `role-${row.role.person.id}-${placeKey(row.role.place)}` : `grants-${row.access.person.id}`;
+}
+
+/** Whether the page lists more than one division of a lead's, so every row names its division (issue #185). */
+function severalDivisions(unit: AccessUnit): boolean {
+  return unit.kind !== "division" || unit.divisions.length > 1;
+}
+
+/**
+ * "Lead · Mission Analysis", "Member" on a one-division lead's page, "Member ·
+ * Mission Analysis" on a head's, a team page or a lead's page of several divisions (boards 60 and 65).
+ */
+function standingLine(row: Row, unit: AccessUnit): string {
+  const person = personOfRow(row);
   const label = PERSON_STANDING_LABELS[person.standing];
-  const showDivision = person.division !== null && (person.standing === "lead" || unit.kind !== "division");
-  return showDivision ? `${label} · ${shortUnitName(person.division!.name)}` : label;
+  const division = divisionOfRow(row);
+  const showDivision = division !== null && (person.standing === "lead" || severalDivisions(unit));
+  return showDivision ? `${label} · ${shortUnitName(division.name)}` : label;
 }
 
 /** The line under a name: a role row names its seat or the department it heads (board 71), anyone else their standing. */
@@ -126,12 +147,13 @@ function personLine(row: Row, unit: AccessUnit): string {
     if (role.place.kind === "team" && "seat" in role) return SEAT_LABELS[role.seat];
     if (role.place.kind === "department") return `Head of ${role.place.department.name}`;
   }
-  return standingLine(personOfRow(row), unit);
+  return standingLine(row, unit);
 }
 
-/** "your division", "your department", "the whole team": who the page gives access to. */
+/** "your division", "your divisions", "your department", "the whole team": who the page gives access to. */
 function unitWords(unit: AccessUnit): string {
-  return unit.kind === "team" ? "the whole team" : `your ${unit.kind}`;
+  if (unit.kind === "team") return "the whole team";
+  return unit.kind === "division" && unit.divisions.length > 1 ? "your divisions" : `your ${unit.kind}`;
 }
 
 /** Whether a row shows under a team page's tab (board 71). */
@@ -156,16 +178,16 @@ function introOf(access: AccessPage): string {
 
 /** The department a row belongs to on a team page (issue #238): its division's, else the department its access is in. */
 function rowDepartment(row: Row, unit: AccessUnit): string | null {
-  const person = personOfRow(row);
+  const division = divisionOfRow(row);
   const place: AccessPlace | undefined =
-    person.division !== null ? { kind: "division", division: person.division } : row.kind === "role" ? row.role.place : row.access.grants[0]?.place;
+    division !== null ? { kind: "division", division } : row.kind === "role" ? row.role.place : row.access.grants[0]?.place;
   return place === undefined ? null : (departmentOfPlace(unit, place)?.name ?? null);
 }
 
 /** Whether the viewer may change anything of this person's access, in any place they hold it. */
 function changeableIn(access: AccessPage, grants: readonly AccessGrant[], person: AccessPerson): boolean {
   return placesHeldBy(access.unit, grants, person.id).some((place) =>
-    canChangePerson(access.held, person, areaLevelsOf(grants, person.id, place)),
+    canChangePerson(heldIn(access.unit, place), person, areaLevelsOf(grants, person.id, place)),
   );
 }
 
@@ -173,6 +195,9 @@ function changeableIn(access: AccessPage, grants: readonly AccessGrant[], person
 // 65b, 65c and 65m (a department head, issue #230): what the viewer holds, the
 // other leads with the access their role gives (locked), one row per person
 // the unit shared access with, and the Give access and Edit access drawers.
+// A lead of several divisions sees them all in one list with an "All
+// divisions" select, as board 71 filters departments (issue #185); a grant
+// they give is in the division of the person it goes to.
 // A head's page has division tabs, starting on All divisions, and a Where
 // field in the drawers. A full-access page (issue #238) is the same across
 // the whole team: department tabs, starting on All departments, and a Where
@@ -195,21 +220,21 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
     ...access.roleAccess.map((role): Row => ({ kind: "role", role })),
     ...accessByPerson(grants, holders).map((row): Row => ({ kind: "grants", access: row })),
   ];
-  // Each row's tab: its division on a head's page, its department on a team page.
-  const tabOf = (row: Row): string | null => (unit.kind === "team" ? rowDepartment(row, unit) : (personOfRow(row).division?.name ?? null));
+  // Each row's tab: its division on a head's or a lead's page, its department on a team page.
+  const tabOf = (row: Row): string | null => (unit.kind === "team" ? rowDepartment(row, unit) : (divisionOfRow(row)?.name ?? null));
+  // A lead of one division gets null here: no tabs and no select.
   const divisionOptions =
-    unit.kind === "department"
+    unit.kind === "team"
       ? divisionTabs(
-          unit.divisions.map((d) => d.name),
+          unit.departments.map((d) => d.department.name),
           allRows.map(tabOf),
+          ALL_DEPARTMENTS_LABEL,
         )
-      : unit.kind === "team"
-        ? divisionTabs(
-            unit.departments.map((d) => d.department.name),
-            allRows.map(tabOf),
-            ALL_DEPARTMENTS_LABEL,
-          )
-        : null;
+      : divisionTabs(
+          unit.kind === "department" ? unit.divisions.map((d) => d.name) : unit.divisions.map((d) => d.division.name),
+          allRows.map(tabOf),
+        );
+  const holds = holdsAny(unit);
   const tabsOver = unit.kind === "team" ? "department" : "division";
   const inDepartment = allRows.filter((row) => inDivisionTab(tabOf(row), divisionTab));
   const rows = inDepartment.filter((row) => inAccessTab(row, accessTab));
@@ -235,7 +260,7 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
         intro={introOf(access)}
         phone="bar"
         action={
-          access.held.length > 0 && access.people.length > 0 ? (
+          holds && access.people.length > 0 ? (
             <button type="button" onClick={() => setOpen({ kind: "give" })} className={PRIMARY_PILL}>
               <UserPlus aria-hidden className="hidden h-4 w-4 md:block" strokeWidth={2} />
               <Plus aria-hidden className="h-4 w-4 md:hidden" strokeWidth={2} />
@@ -247,17 +272,30 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
       />
 
       {/* On phones the division pill comes first (board 65m); from md the tabs sit under Your access (board 65). */}
-      {divisionOptions && unit.kind !== "team" && (
+      {divisionOptions && unit.kind === "department" && (
         <div className="md:hidden">
           <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} over={tabsOver} />
         </div>
       )}
 
-      {access.held.length > 0 && <YourAccess access={access} drawerOpen={open.kind !== "none"} />}
+      {holds && <YourAccess access={access} drawerOpen={open.kind !== "none"} />}
 
-      {divisionOptions && unit.kind !== "team" && (
+      {divisionOptions && unit.kind === "department" && (
         <div className="mt-5 hidden md:block">
           <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} over={tabsOver} />
+        </div>
+      )}
+
+      {/* A lead of several divisions: one list, and the team page's filter over their divisions (board 71's pattern, issue #185). */}
+      {divisionOptions && unit.kind === "division" && (
+        <div className="mt-5 flex">
+          <FilterMenu
+            label="Division"
+            allLabel={ALL_DIVISIONS_LABEL}
+            value={divisionTab}
+            onChange={setDivisionTab}
+            options={divisionOptions.flatMap((o) => (o.division === null ? [] : [{ value: o.division, label: o.label }]))}
+          />
         </div>
       )}
 
@@ -345,54 +383,71 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
  * "Edit", the short level the phone cards use (issue #227).
  */
 function YourAccess({ access, drawerOpen }: { access: AccessPage; drawerOpen: boolean }) {
-  // Full access holds every area at Can edit: one "Every area" chip, and "Approve orders" for whoever decides orders (board 71).
-  const every = access.unit.kind === "team" && holdsEveryArea(access.held);
+  // One line per set of areas: a lead who holds different areas in each of their divisions reads one line per division (issue #185).
+  const lines = heldLines(access.unit);
   const approves = access.approveOrders.yours;
-  const cards = [
-    ...(every
-      ? [{ key: "every", name: "Every area", level: ACCESS_LEVEL_SHORT_LABELS.edit }]
-      : access.held.map((h) => ({ key: h.target, name: ACCESS_TARGET_LABELS[h.target], level: ACCESS_LEVEL_SHORT_LABELS[h.level] }))),
-    ...(approves ? [{ key: "approve-orders", name: "Approve orders", level: "Decide" }] : []),
-  ];
   return (
     <section aria-label="Your access" className="mt-6 max-md:mt-4">
       <h2 className={`${EYEBROW} md:hidden`}>Your access</h2>
-      {/* One line of cards, each as wide as its name needs, so "Applications" stays whole at 390. */}
-      <ul className="mt-2.5 flex gap-2 md:hidden">
-        {cards.map((c) => (
-          <li key={c.key} className={`${PANEL} min-w-0 flex-auto rounded-[10px] px-2 py-2`}>
-            <span className="block truncate text-[12px] font-semibold">{c.name}</span>
-            <span className="block truncate text-[11px] text-prt-muted">{c.level}</span>
-          </li>
-        ))}
-      </ul>
+      {lines.map((line, i) => {
+        // Full access holds every area at Can edit: one "Every area" chip, and "Approve orders" for whoever decides orders (board 71).
+        const every = access.unit.kind === "team" && holdsEveryArea(line.held);
+        const decides = approves && i === 0;
+        const cards = [
+          ...(every
+            ? [{ key: "every", name: "Every area", level: ACCESS_LEVEL_SHORT_LABELS.edit }]
+            : line.held.map((h) => ({ key: h.target, name: ACCESS_TARGET_LABELS[h.target], level: ACCESS_LEVEL_SHORT_LABELS[h.level] }))),
+          ...(decides ? [{ key: "approve-orders", name: "Approve orders", level: "Decide" }] : []),
+        ];
+        return (
+          <div key={line.where} className="md:hidden">
+            {lines.length > 1 && <p className="mt-2.5 truncate text-[12px] text-prt-muted">{line.where}</p>}
+            {/* One line of cards, each as wide as its name needs, so "Applications" stays whole at 390. */}
+            <ul className="mt-2.5 flex gap-2">
+              {cards.map((c) => (
+                <li key={c.key} className={`${PANEL} min-w-0 flex-auto rounded-[10px] px-2 py-2`}>
+                  <span className="block truncate text-[12px] font-semibold">{c.name}</span>
+                  <span className="block truncate text-[11px] text-prt-muted">{c.level}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
       <div className={`${PANEL} hidden px-4 py-3 md:block`}>
-        <h2 className="flex items-baseline gap-2">
-          <span className={EYEBROW}>Your access</span>
-          <span className="text-[13px] text-prt-text">· {access.unit.kind === "team" ? "Full access, whole team" : unitLine(access.unit)}</span>
-        </h2>
-        <ul className="mt-1.5 flex flex-wrap gap-1.5">
-          {every ? (
-            <li>
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[12px] bg-white-5 px-2 py-0.5 text-[12px]">
-                <ShieldCheck aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={1.75} />
-                <span className="text-prt-text">Every area</span>
-                <LevelLabel level="edit" short={false} />
-              </span>
-            </li>
-          ) : (
-            access.held.map((h) => (
-              <li key={h.target}>
-                <AreaChip target={h.target} level={h.level} iconTone="text-accent" shortLevel={drawerOpen} />
-              </li>
-            ))
-          )}
-          {approves && (
-            <li>
-              <ApproveOrdersChip iconTone="text-accent" />
-            </li>
-          )}
-        </ul>
+        {lines.map((line, i) => {
+          const every = access.unit.kind === "team" && holdsEveryArea(line.held);
+          return (
+            <div key={line.where} className={i > 0 ? "mt-3" : undefined}>
+              <h2 className="flex items-baseline gap-2">
+                <span className={EYEBROW}>Your access</span>
+                <span className="text-[13px] text-prt-text">· {access.unit.kind === "team" ? "Full access, whole team" : line.where}</span>
+              </h2>
+              <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                {every ? (
+                  <li>
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[12px] bg-white-5 px-2 py-0.5 text-[12px]">
+                      <ShieldCheck aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={1.75} />
+                      <span className="text-prt-text">Every area</span>
+                      <LevelLabel level="edit" short={false} />
+                    </span>
+                  </li>
+                ) : (
+                  line.held.map((h) => (
+                    <li key={h.target}>
+                      <AreaChip target={h.target} level={h.level} iconTone="text-accent" shortLevel={drawerOpen} />
+                    </li>
+                  ))
+                )}
+                {approves && i === 0 && (
+                  <li>
+                    <ApproveOrdersChip iconTone="text-accent" />
+                  </li>
+                )}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -655,6 +710,12 @@ function AccessTable({
   );
 }
 
+/** On a lead's page, the place a person's access is in: their division there, else the lead's first (issue #185). */
+function divisionPlaceOf(unit: Extract<AccessUnit, { kind: "division" }>, person: AccessPerson | undefined): AccessPlace {
+  const division = person?.division ?? unit.divisions[0].division;
+  return { kind: "division", division };
+}
+
 /** "Aerodynamics · both divisions, and any added later" under Whole department (board 65b). */
 function wholeDepartmentLine(unit: AccessDepartmentUnit): string {
   const n = unit.divisions.length;
@@ -694,9 +755,11 @@ function AccessDrawer({
   // Give access opens on the first person who has no access yet; Edit access on the first place the person holds any.
   const firstFree = grantable.find((p) => !grants.some((g) => g.person.id === p.id) && !holdsApproveOrders(access, p.id)) ?? grantable[0];
   const [personId, setPersonId] = useState<number | undefined>(editing?.id ?? firstFree?.id);
-  const [place, setPlace] = useState<AccessPlace>(() =>
-    editing ? (placesHeldBy(unit, grants, editing.id)[0] ?? homePlace(unit)) : homePlace(unit),
-  );
+  const [place, setPlace] = useState<AccessPlace>(() => {
+    const first = editing ?? firstFree;
+    if (unit.kind === "division") return divisionPlaceOf(unit, first);
+    return editing ? (placesHeldBy(unit, grants, editing.id)[0] ?? homePlace(unit)) : homePlace(unit);
+  });
   const [areas, setAreas] = useState<AreaLevels>(() => (personId === undefined ? {} : areaLevelsOf(grants, personId, place)));
   const [approves, setApproves] = useState(() => personId !== undefined && holdsApproveOrders(access, personId));
   const [submitting, setSubmitting] = useState(false);
@@ -708,12 +771,16 @@ function AccessDrawer({
 
   const person = access.people.find((p) => p.id === personId);
   const current = personId === undefined ? {} : areaLevelsOf(grants, personId, place);
+  const held = heldIn(unit, place);
   // The areas the place offers that the viewer holds, and any other the person holds there, which shows locked.
-  const shown = targetsAt(place).filter((t) => heldLevel(access.held, t) !== null || current[t] !== undefined);
+  const shown = targetsAt(place).filter((t) => heldLevel(held, t) !== null || current[t] !== undefined);
 
   const choosePerson = (id: number) => {
+    // On a lead's page the place follows the person: their division (issue #185).
+    const at = unit.kind === "division" ? divisionPlaceOf(unit, access.people.find((p) => p.id === id)) : place;
     setPersonId(id);
-    setAreas(areaLevelsOf(grants, id, place));
+    setPlace(at);
+    setAreas(areaLevelsOf(grants, id, at));
     setApproves(holdsApproveOrders(access, id));
     setError(undefined);
   };
@@ -739,10 +806,9 @@ function AccessDrawer({
     setError(undefined);
     setSubmitting(true);
     try {
-      // A lead's division is their only place, so their page sends none; only the team leader sends "Approve orders".
-      const where = unit.kind === "division" ? {} : { where: placeKey(place) };
+      // Only the team leader sends "Approve orders".
       const approve = canGiveApprove ? { approveOrders: approves } : {};
-      const result = await actions.saveAccess({ personId, ...where, areas, ...approve });
+      const result = await actions.saveAccess({ personId, where: placeKey(place), areas, ...approve });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -772,9 +838,9 @@ function AccessDrawer({
   const removable =
     editing !== null &&
     (canGiveApprove || !holdsApproveOrders(access, editing.id)) &&
-    placesHeldBy(unit, grants, editing.id).every((held) => {
-      const levels = areaLevelsOf(grants, editing.id, held);
-      return ACCESS_TARGETS.every((t) => levels[t] === undefined || areaRule(access.held, editing, t, levels[t]).changeable);
+    placesHeldBy(unit, grants, editing.id).every((at) => {
+      const levels = areaLevelsOf(grants, editing.id, at);
+      return ACCESS_TARGETS.every((t) => levels[t] === undefined || areaRule(heldIn(unit, at), editing, t, levels[t]).changeable);
     });
 
   return (
@@ -860,7 +926,7 @@ function AccessDrawer({
                   target={target}
                   placeName={placeLine(place)}
                   level={areas[target] ?? null}
-                  rule={person ? areaRule(access.held, person, target, current[target] ?? null) : { changeable: false }}
+                  rule={person ? areaRule(held, person, target, current[target] ?? null) : { changeable: false }}
                   onChange={(level) => setArea(target, level)}
                 />
               </li>

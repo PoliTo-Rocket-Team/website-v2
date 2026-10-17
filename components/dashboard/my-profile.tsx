@@ -11,6 +11,7 @@ import {
   DELETE_MEMBER_ACCOUNT_COPY,
   MAX_LEAVE_REASON,
   normalizeLinkedin,
+  profileRoleLine,
   type LeaveState,
   type MyProfile,
 } from "@/lib/dashboard/self";
@@ -235,7 +236,11 @@ function DetailsCard({ profile, saveLinkedin }: { profile: MyProfile; saveLinked
     <Card title="Details" meta={<span className="md:hidden"><EditPill onClick={() => setEditing(true)} /></span>}>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 px-5 py-5 md:hidden">
         <DetailValue label="Name" value={profile.name} />
-        <DetailValue label="Role" value={profile.role.split(" · ")[0]} />
+        {/* One role reads by its title (board 55m); several name each division (issue #185). */}
+        <DetailValue
+          label={profile.roles.length === 1 ? "Role" : "Roles"}
+          value={profile.roles.length === 1 ? profile.roles[0].title : profile.roles.map(profileRoleLine).join(", ")}
+        />
         <DetailValue label="Team email" value={profile.teamEmail} />
         <DetailValue label="LinkedIn" value={saved || null} />
       </dl>
@@ -314,7 +319,7 @@ function LinkedinForm({
     <form noValidate onSubmit={submit} className="px-6 py-5">
       <div className="grid grid-cols-2 gap-x-4 gap-y-5">
         <Locked label="Name" hint="set by your lead" value={profile.name} />
-        <Locked label="Role" hint="set by your lead" value={profile.role} />
+        <Locked label={profile.roles.length === 1 ? "Role" : "Roles"} hint="set by your lead" value={profile.roles.map(profileRoleLine)} />
         {profile.teamEmail && <Locked label="Team email" hint="shown on the site" value={profile.teamEmail} icon={<Mail aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />} />}
         <Field label="LinkedIn" hint="optional" error={error} className={profile.teamEmail ? "" : "col-start-2"}>
           {(id, describedBy) => (
@@ -396,18 +401,24 @@ function LinkedinDrawer({
   );
 }
 
-function Locked({ label, hint, value, icon }: { label: string; hint: string; value: string; icon?: ReactNode }) {
+/** A field the person cannot change: one locked line per value, so each role of several reads whole (issue #185). */
+function Locked({ label, hint, value, icon }: { label: string; hint: string; value: string | readonly string[]; icon?: ReactNode }) {
+  const lines = typeof value === "string" ? [value] : value;
   return (
     <div className="min-w-0">
       <p className="mb-2 text-[13px] leading-snug text-prt-text">
         {label}
         <span className="ml-1.5 text-prt-muted">{hint}</span>
       </p>
-      <p className={LOCKED_INPUT}>
-        {icon}
-        <span className="truncate">{value}</span>
-        <Lock aria-label="Locked" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-      </p>
+      <div className="flex flex-col gap-2">
+        {lines.map((line) => (
+          <p key={line} className={LOCKED_INPUT}>
+            {icon}
+            <span className="truncate">{line}</span>
+            <Lock aria-label="Locked" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          </p>
+        ))}
+      </div>
     </div>
   );
 }

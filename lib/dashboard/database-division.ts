@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/db/client";
 import { departments, divisions, logs, orders, roles, scopes, users } from "@/db/schema";
@@ -13,10 +13,8 @@ import {
   canGiveApproveOrders,
   checkRemoveAllAccess,
   checkSaveAccess,
-  FULL_HELD_ACCESS,
   grantRowOf,
   NO_APPROVE_ORDERS,
-  ROLE_HELD_ACCESS,
   UNIT_TARGETS,
   WHOLE_TEAM_PLACE,
   type AccessDepartment,
@@ -68,8 +66,8 @@ import { refused, written, type Upload, type WriteResult } from "./write";
 // The Access pages of a division lead and a department head, and the Orders
 // page, read from and written to the database (boards 43 and 44, issue #145;
 // Dashboard v2 boards 60 to 61d, issue #172; boards 65 and 65b, issue #230;
-// boards 61 to 67b, issue #233). A lead's Access division is the one their
-// lead role sits in, else the first division their scopes cover; a head's
+// boards 61 to 67b, issue #233). A lead's Access page covers every division
+// their roles and scopes cover, in one list (issue #185); a head's
 // department is their role's; full access covers the whole team (issue
 // #238). Orders shows every order in the team and checks
 // each write against the viewer's scope on the server. Reads follow
@@ -80,18 +78,24 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
   return [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email;
 }
 
-/** The one division a lead's Access and Orders pages are about; null for anyone else. */
-async function leadDivision(identity: DashboardIdentity): Promise<{ id: number; name: string } | null> {
-  if (!readsAsDivisionLead(identity) || identity.memberId === null) return null;
-  const roleDivision = identity.role?.divisionId ?? null;
-  const id = roleDivision !== null && identity.divisionIds.includes(roleDivision) ? roleDivision : identity.divisionIds[0];
-  if (id === undefined) return null;
-  const [row] = await getDb()
+/**
+ * Every open division a lead's Access page covers (issue #185), the one their
+ * primary role sits in first, then the rest by name, each with what the lead
+ * holds there; null for anyone else, or a lead with no open division.
+ */
+async function leadDivisions(identity: DashboardIdentity): Promise<Extract<AccessUnit, { kind: "division" }> | null> {
+  const memberId = identity.memberId;
+  if (!readsAsDivisionLead(identity) || memberId === null || identity.divisionIds.length === 0) return null;
+  const rows = await getDb()
     .select({ id: divisions.id, name: divisions.name })
     .from(divisions)
-    .where(and(eq(divisions.id, id), isNull(divisions.closedAt)))
-    .limit(1);
-  return row ?? null;
+    .where(and(inArray(divisions.id, identity.divisionIds), isNull(divisions.closedAt)))
+    .orderBy(asc(divisions.name));
+  const first = identity.role?.divisionId ?? null;
+  const ordered = [...rows.filter((r) => r.id === first), ...rows.filter((r) => r.id !== first)];
+  const led = await Promise.all(ordered.map(async (division) => ({ division, held: await readHeld(memberId, division.id) })));
+  const [head, ...rest] = led;
+  return head === undefined ? null : { kind: "division", divisions: [head, ...rest] };
 }
 
 function isUnitTarget(value: string): value is UnitTarget {
@@ -137,23 +141,19 @@ async function readTeamUnit(): Promise<AccessUnit> {
   return { kind: "team", departments: (await readOrgUnits()).map(({ id, name, divisions }) => ({ department: { id, name }, divisions })) };
 }
 
-/** The unit the viewer's Access page is about, and what they hold there; null for anyone with no such page. */
-async function accessUnitOf(identity: DashboardIdentity): Promise<{ unit: AccessUnit; held: readonly HeldAccess[] } | null> {
+/**
+ * The unit the viewer's Access page is about, and with it what they hold
+ * (`heldIn`): full access holds every area at Can edit across the team (issue
+ * #238), a head's role every unit area across their department (board 65), a
+ * lead what they hold in each division; null for anyone with no such page.
+ */
+async function accessUnitOf(identity: DashboardIdentity): Promise<AccessUnit | null> {
   if (identity.memberId === null) return null;
-  // Full access holds every area at Can edit across the team (issue #238), Alumni included (#247).
-  if (identity.kind === "operations-lead") return { unit: await readTeamUnit(), held: FULL_HELD_ACCESS };
-  if (readsAsDivisionLead(identity)) {
-    const division = await leadDivision(identity);
-    if (division === null) return null;
-    return { unit: { kind: "division", division }, held: await readHeld(identity.memberId, division.id) };
-  }
+  if (identity.kind === "operations-lead") return readTeamUnit();
+  if (readsAsDivisionLead(identity)) return leadDivisions(identity);
   const department = await readHeadDepartment(identity);
   if (department === null) return null;
-  // A head's role holds every area at Can edit across their department (board 65).
-  return {
-    unit: { kind: "department", department: { id: department.id, name: department.name }, divisions: department.divisions },
-    held: ROLE_HELD_ACCESS,
-  };
+  return { kind: "department", department: { id: department.id, name: department.name }, divisions: department.divisions };
 }
 
 /** A lead or head role leads; so does the team leader's, whose access comes with the role and never changes on Access. */
@@ -180,14 +180,13 @@ function unitDepartmentsOf(unit: AccessUnit): readonly AccessDepartmentUnit[] {
  * ones), and the people the viewer may give access to.
  */
 async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage | null> {
-  const found = await accessUnitOf(identity);
-  if (found === null || identity.memberId === null) return null;
-  const { unit, held } = found;
+  const unit = await accessUnitOf(identity);
+  if (unit === null || identity.memberId === null) return null;
   const me = identity.memberId;
   const db = getDb();
   const giver = alias(users, "giver");
   const unitDepartments = unitDepartmentsOf(unit);
-  const unitDivisions = unit.kind === "division" ? [unit.division] : unitDepartments.flatMap((d) => d.divisions);
+  const unitDivisions = unit.kind === "division" ? unit.divisions.map((d) => d.division) : unitDepartments.flatMap((d) => d.divisions);
   const divisionIds = unitDivisions.map((d) => d.id);
   const departmentIds = unitDepartments.map((d) => d.department.id);
   const departmentById = (id: number | null) => unitDepartments.find((d) => d.department.id === id)?.department ?? null;
@@ -243,7 +242,9 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
               ? inArray(roles.divisionId, divisionIds)
               : or(inArray(roles.divisionId, divisionIds.length ? divisionIds : [-1]), and(inArray(roles.deptId, departmentIds), eq(roles.type, "head"))),
         ),
-      ),
+      )
+      // Oldest first, so someone in two of a lead's divisions is placed in their older one (issue #185).
+      .orderBy(asc(roles.startedAt)),
     // Whether the viewer decides orders: "Your access" on a team page carries the chip (board 71).
     unit.kind === "team"
       ? db
@@ -349,7 +350,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       ? { canGive: canGiveApproveOrders(seatOf(identity)), yours: isTeamLeader(identity) || mineApproves.length > 0, holders }
       : NO_APPROVE_ORDERS;
 
-  return { unit, held, roleAccess, grants, people, approveOrders };
+  return { unit, roleAccess, grants, people, approveOrders };
 }
 
 /**

@@ -191,11 +191,21 @@ export function membershipsIn(placement: Placement): Memberships {
   return placement.memberships;
 }
 
+/**
+ * Which slide of the Team page's departments carousel a department's head
+ * sits on (issue #325, ADR 0015): "Technical Departments", heads with their
+ * division leads under them, or "Operations", the head beside their
+ * divisions' leads. Set on New department and Edit department.
+ */
+export const DEPARTMENT_KINDS = ["technical", "operations"] as const;
+export type DepartmentKind = (typeof DEPARTMENT_KINDS)[number];
+
 export type OrgDepartment = {
   readonly id: number;
   readonly name: string;
   /** The short code Edit department shows: "AE" (issue #251). Null where none is set. */
   readonly code?: string | null;
+  readonly kind: DepartmentKind;
 };
 export type OrgDivision = {
   readonly id: number;
@@ -238,10 +248,16 @@ export function homeDivisionOf(placement: Placement): number | null {
   return placement.role === "divisions" ? homeDivision(placement.memberships) : null;
 }
 
+/** Every division someone leads, the home one first (issue #185); none for a seat, a head or a member. */
+export function ledDivisionsOf(placement: Placement): number[] {
+  return homeFirst(membershipsIn(placement))
+    .filter((m) => m.role === "lead")
+    .map((m) => m.divisionId);
+}
+
 /**
- * The oldest division someone leads; null when they lead none. Pages scoped
- * to one led division (Access, Orders) read it until #230, #231 and #233 give
- * them every division.
+ * The oldest division someone leads; null when they lead none. The dummy
+ * Orders page, scoped to one led division, reads it.
  */
 export function ledDivisionOf(placement: Placement): number | null {
   return membershipsIn(placement).find((m) => m.role === "lead")?.divisionId ?? null;
