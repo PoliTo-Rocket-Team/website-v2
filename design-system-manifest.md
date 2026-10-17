@@ -277,7 +277,7 @@ height. `.page-sky-grain` is the fine film grain, a
 stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain. It
 is film texture only. The streak tile carries its own 8 x 8 ordered dither, so its dark
 gradients show no bands; the grain cannot do that job, since its noise renders flat on a 1x
-screen (issue #88). On top
+screen (issue #87). On top
 sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
 `wholePixels`): a fractional box under 3px renders as a dash, not a dot. Its stars are also
 kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. The stars
@@ -438,9 +438,10 @@ lock and "This position is not accepting applications right now.", with no butto
 questions are the same accordion, a plus that turns to a minus.
 
 **/partners** (boards 31, 31b and 31m, issue #107, `app/partners/page.tsx`,
-`components/partners/`): the About page header with four figures counted from the partners
-(2 x 2 on phones), the main partners, the media partners, then "Become a partner". There is no
-apply band: the footer sits in the sky. The partners are the published ones in the site order
+`components/partners/`): the About page header with four figures (2 x 2 on phones), the main
+partners, the media partners, then "Become a partner". Two figures count the main and media
+partners; two show the budget split, read from Politecnico's share on the Our University page
+(`partnerStats` in `lib/partners.ts`). There is no apply band: the footer sits in the sky. The partners are the published ones in the site order
 the dashboard sets (issue #256), as the landing strip reads them. Each group is a centred
 heading over glass partner cards (`.glass-card`, `partner-card.tsx`): one column on phones, two
 from md and three from lg, a short row centred. A card holds the logo, the name, the one-liner
