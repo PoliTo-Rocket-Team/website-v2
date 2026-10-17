@@ -9,6 +9,7 @@ import { TEST_VIEWERS } from "../dashboard/viewer";
 import { TESTERS } from "../dev-tester";
 import { checkFaqFields, fieldsOf as faqFields } from "../faq/faq";
 import { checkPartnerFields, fieldsOf as partnerFields } from "../partners-fields";
+import { checkProjectFields, fieldsOf as projectFields } from "../project-content/fields";
 import { publicOutreach } from "../outreach-editor";
 import { importedOutreach } from "../outreach-import";
 import { checkPostFields, draftOfFields, postFieldsOf } from "../outreach-post-fields";
@@ -28,6 +29,7 @@ import {
   outreachSummitOf,
   outreachTagsOf,
   partnerItemsOf,
+  projectItemsOf,
   publishedTeamPageLayerOf,
   resolvesTo,
   SEED_AREAS,
@@ -328,6 +330,19 @@ test("every seeded partner and question version passes the editor's own checks",
     for (const { content } of versionRows(item.version)) {
       const checked = checkFaqFields(faqFields(content));
       assert.ok(checked.ok, `question ${item.id}: ${JSON.stringify(checked)}`);
+    }
+  }
+});
+
+// Projects (issue #310).
+
+test("every seeded project version saves as the editor opens it, so a reviewer can edit and publish it", () => {
+  const items = projectItemsOf(data);
+  assert.equal(items.length, data.projects.length);
+  for (const item of items) {
+    for (const { kind, content } of versionRows(item.version)) {
+      const checked = checkProjectFields(projectFields(content), content);
+      assert.ok(checked.ok, `project ${item.id} ${kind}: ${JSON.stringify(checked)}`);
     }
   }
 });

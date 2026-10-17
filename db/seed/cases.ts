@@ -1,4 +1,4 @@
-// The cases the typed seed holds (issues #304, #305, #308 and #311), each with the check that
+// The cases the typed seed holds (issues #304, #305, #308, #310 and #311), each with the check that
 // proves it from the seeded rows. docs/seed-cases.md lists the same cases; a
 // test runs every check and fails when the page and this list differ.
 
@@ -24,6 +24,8 @@ import {
   type outreachTags,
   type partners,
   type partnerVersions,
+  type projects,
+  type projectVersions,
   type recruitmentSetting,
   type roles,
   type scopes,
@@ -47,6 +49,9 @@ import type { SummitVersions } from "@/lib/outreach-editor";
 import { draftFromColumns, outreachPostOf, postFromColumns, summitFromColumns } from "@/lib/outreach-rows";
 import { CHANNEL_NAMES, type OutreachDraft, type OutreachTag, type PostItem, type PostVersions } from "@/lib/outreach-types";
 import type { Partner } from "@/lib/partners";
+import { isProjectRecord } from "@/lib/project-content/check";
+import type { ProjectRecord } from "@/lib/project-content/record";
+import { rocketModelOf } from "@/lib/rocket-model";
 import { partnerFromColumns } from "@/lib/partners-rows";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
 import type { TeamPerson } from "@/lib/dashboard/division-edit";
@@ -78,6 +83,7 @@ import {
   OUTREACH_TAG_ROWS,
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
+import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
 import { MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
 import { APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
@@ -117,6 +123,8 @@ export type SeedData = {
   readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
   readonly outreachPostTags: readonly InferInsertModel<typeof outreachPostTags>[];
   readonly outreachSummitVersions: readonly InferInsertModel<typeof outreachSummitVersions>[];
+  readonly projects: readonly InferInsertModel<typeof projects>[];
+  readonly projectVersions: readonly InferInsertModel<typeof projectVersions>[];
   readonly teamPageLayerVersions: readonly InferInsertModel<typeof teamPageLayerVersions>[];
   readonly teamPageAdvisors: readonly InferInsertModel<typeof teamPageAdvisors>[];
   readonly teamPageAdvisorVersions: readonly InferInsertModel<typeof teamPageAdvisorVersions>[];
@@ -145,6 +153,8 @@ export const SEED_DATA: SeedData = {
   outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
   outreachPostTags: OUTREACH_POST_TAG_ROWS.rows,
   outreachSummitVersions: OUTREACH_SUMMIT_ROWS.rows,
+  projects: PROJECT_ROWS.rows,
+  projectVersions: PROJECT_VERSION_ROWS.rows,
   teamPageLayerVersions: TEAM_PAGE_LAYER_ROWS.rows,
   teamPageAdvisors: TEAM_PAGE_ADVISOR_ROWS.rows,
   teamPageAdvisorVersions: TEAM_PAGE_ADVISOR_VERSION_ROWS.rows,
@@ -350,6 +360,27 @@ export function faqItemsOf(data: SeedData): ContentItem<FaqVersion>[] {
       content: { question: v.question, answer: v.answer as unknown as FaqVersion["answer"], updatedAt: v.updatedAt! },
     })),
   );
+}
+
+/**
+ * The projects read back from their version rows, the way
+ * lib/dashboard/database-projects.ts reads them: a row that is not a whole
+ * project record is a fault, so it throws.
+ */
+export function projectItemsOf(data: SeedData): ContentItem<ProjectRecord>[] {
+  return itemsOf(
+    data.projects,
+    data.projectVersions.map((v) => {
+      if (!isProjectRecord(v.content)) throw new Error(`project ${v.projectId} holds a ${v.version} version that is not a project record`);
+      return { itemId: v.projectId, kind: v.version, content: v.content };
+    }),
+  );
+}
+
+/** The rocket a project's home card and its page's panel draw: its own model, or the placeholder. */
+export function rocketsOf(record: ProjectRecord): { card: string; page: string | null } {
+  const slot = record.hero.visual?.rocket;
+  return { card: rocketModelOf(record.card.rocket), page: slot === undefined ? null : rocketModelOf(slot.own?.model) };
 }
 
 // Hand-overs (issue #308), read through the hand-over rules
@@ -584,6 +615,7 @@ export type SeedArea =
   | "partners"
   | "faq"
   | "outreach"
+  | "projects"
   | "hand-overs"
   | "team-page";
 
@@ -597,6 +629,7 @@ export const SEED_AREAS: readonly SeedArea[] = [
   "partners",
   "faq",
   "outreach",
+  "projects",
   "hand-overs",
   "team-page",
 ];
@@ -1067,6 +1100,40 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`outreach_summit_versions` version `published`",
     exercisedBy: `${issue(287)}, ${issue(289)}`,
     holds: (data) => (outreachSummitOf(data)?.published.editions.length ?? 0) >= 1,
+  },
+  {
+    area: "projects",
+    case: "Published projects on /projects, the home Projects cards and their pages, in site order",
+    rows: "`project_versions` version `published`, projects 1–4",
+    exercisedBy: `${issue(295)}, ${issue(299)}`,
+    holds: (data) =>
+      JSON.stringify(publicItems(projectItemsOf(data)).map((p) => p.slug)) === JSON.stringify(["cavour", "ves", "efesto", "galileo"]),
+  },
+  {
+    area: "projects",
+    case: "A published project with draft changes that its pages do not show",
+    rows: "`project_versions` of project 2 (VES)",
+    exercisedBy: `${issue(297)}, ${issue(298)}`,
+    holds: (data) =>
+      projectItemsOf(data).some(
+        (item) =>
+          item.version.state === "published" &&
+          item.version.draft !== null &&
+          item.version.draft.teaser !== item.version.published.teaser &&
+          item.version.draft.hero.intro.text !== item.version.published.hero.intro.text &&
+          publicItems([item])[0] === item.version.published,
+      ),
+  },
+  {
+    area: "projects",
+    case: "A published project with no rocket model of its own, so its card and its page draw the placeholder rocket",
+    rows: "`project_versions` of project 4 (Galileo)",
+    exercisedBy: `${issue(296)}, ${issue(301)}`,
+    holds: (data) =>
+      publicItems(projectItemsOf(data)).some((p) => {
+        const rockets = rocketsOf(p);
+        return rockets.card === "placeholder" && rockets.page === "placeholder";
+      }),
   },
   {
     area: "hand-overs",
