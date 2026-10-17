@@ -1,6 +1,9 @@
 // The structure seed (issue #304): every department and division. Ids 1–8
-// and 1–17 keep the numbers the old SQL seed used. Division 18 is closed and
-// kept as a name; division 19 is open with nobody in it.
+// and 1–17 keep the numbers the old SQL seed used. The divisions the Team
+// page names (lib/about/team.ts) carry its names; Recovery's two are its
+// Recovery Systems and Parachutes (issue #326). Division 18 is closed and
+// kept as a name; division 19 is open with nobody in it. Test Bench is on no
+// public page, so the local testers work in it (./people.ts).
 
 import { departments, divisions } from "@/db/schema";
 import { rowsOf, tableSeedModule } from "./rows";
@@ -29,7 +32,7 @@ export const DIVISION = {
   groundStation: 10,
   firmware: 11,
   hardware: 12,
-  recovery: 13,
+  recoverySystems: 13,
   safety: 14,
   logistics: 15,
   communications: 16,
@@ -38,6 +41,7 @@ export const DIVISION = {
   hybridMotors: 18,
   /** Open, and nobody holds a role in it. */
   payload: 19,
+  parachutes: 20,
 } as const;
 
 export const DEPARTMENT_ROWS = rowsOf(departments, [
@@ -54,18 +58,19 @@ export const DEPARTMENT_ROWS = rowsOf(departments, [
 
 export const DIVISION_ROWS = rowsOf(divisions, [
   { id: DIVISION.testBench, deptId: DEPARTMENT.propulsion, name: "Test Bench", startedAt: "2022-09-01", closedAt: null, code: "TBE" },
-  { id: DIVISION.liquidSystems, deptId: DEPARTMENT.propulsion, name: "Liquid Systems Architecture", startedAt: "2021-10-01", closedAt: null, code: "LSA" },
+  { id: DIVISION.liquidSystems, deptId: DEPARTMENT.propulsion, name: "Liquid System Architecture", startedAt: "2021-10-01", closedAt: null, code: "LSA" },
   { id: DIVISION.thrustChamber, deptId: DEPARTMENT.propulsion, name: "Thrust Chamber Assembly", startedAt: "2022-09-01", closedAt: null, code: "TCA" },
-  { id: DIVISION.designManufacturing, deptId: DEPARTMENT.structures, name: "Design and Manufacturing", startedAt: "2021-10-01", closedAt: null, code: "DAM" },
-  { id: DIVISION.structuralAnalysis, deptId: DEPARTMENT.structures, name: "Structural Analysis", startedAt: "2022-09-01", closedAt: null, code: "SAN" },
+  { id: DIVISION.designManufacturing, deptId: DEPARTMENT.structures, name: "Design & Manufacturing", startedAt: "2021-10-01", closedAt: null, code: "DAM" },
+  { id: DIVISION.structuralAnalysis, deptId: DEPARTMENT.structures, name: "Structures Analysis", startedAt: "2022-09-01", closedAt: null, code: "SAN" },
   { id: DIVISION.missionAnalysis, deptId: DEPARTMENT.aerodynamics, name: "Mission Analysis", startedAt: "2022-09-01", closedAt: null, code: "MSA" },
   { id: DIVISION.optimization, deptId: DEPARTMENT.aerodynamics, name: "Optimization and Analysis", startedAt: "2022-09-01", closedAt: null, code: "AOA" },
   { id: DIVISION.flightControl, deptId: DEPARTMENT.controls, name: "Flight Control Systems", startedAt: "2022-09-01", closedAt: null, code: "FCS" },
-  { id: DIVISION.engineControl, deptId: DEPARTMENT.controls, name: "Engine Control & Systems", startedAt: "2022-09-01", closedAt: null, code: "ECS" },
+  { id: DIVISION.engineControl, deptId: DEPARTMENT.controls, name: "Engine Control System", startedAt: "2022-09-01", closedAt: null, code: "ECS" },
   { id: DIVISION.groundStation, deptId: DEPARTMENT.electronics, name: "Ground Station", startedAt: "2022-09-01", closedAt: null, code: "GNS" },
   { id: DIVISION.firmware, deptId: DEPARTMENT.electronics, name: "Firmware", startedAt: "2022-09-01", closedAt: null, code: "FMW" },
   { id: DIVISION.hardware, deptId: DEPARTMENT.electronics, name: "Hardware", startedAt: "2022-09-01", closedAt: null, code: "HDW" },
-  { id: DIVISION.recovery, deptId: DEPARTMENT.recovery, name: "Recovery", startedAt: "2022-09-01", closedAt: null, code: "RCV" },
+  { id: DIVISION.recoverySystems, deptId: DEPARTMENT.recovery, name: "Recovery Systems", startedAt: "2022-09-01", closedAt: null, code: "RCV" },
+  { id: DIVISION.parachutes, deptId: DEPARTMENT.recovery, name: "Parachutes", startedAt: "2022-09-01", closedAt: null, code: "PAR" },
   { id: DIVISION.safety, deptId: DEPARTMENT.operations, name: "Safety", startedAt: "2022-09-01", closedAt: null, code: "SFT" },
   { id: DIVISION.logistics, deptId: DEPARTMENT.operations, name: "Logistics", startedAt: "2022-09-01", closedAt: null, code: "LGS" },
   { id: DIVISION.communications, deptId: DEPARTMENT.operations, name: "Communications", startedAt: "2022-09-01", closedAt: null, code: "CMS" },

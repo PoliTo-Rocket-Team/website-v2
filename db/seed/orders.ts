@@ -2,11 +2,14 @@
 // #247), one in every status, made for divisions in different departments.
 // Each requester holds a role in the division the order is for; every answer
 // is the team leader's, except one approval by the member who holds
-// "Approve orders" alone (issue #270).
+// "Approve orders" alone (issue #270). Orders are private, so every one is
+// invented (issue #326); each requester is someone on the public team or a
+// local tester.
 
 import { orders } from "@/db/schema";
 import { APPROVE_ORDERS_ONLY } from "./access";
 import { TESTER_MEMBER, TEAM_LEADER } from "./people";
+import { publicMember } from "./public-team";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DIVISION } from "./structure";
 
@@ -14,7 +17,7 @@ export const ORDER_ROWS = rowsOf(orders, [
   {
     id: 1,
     status: "pending",
-    requester: 14,
+    requester: publicMember("Beatrice La Motta"),
     divisionId: DIVISION.testBench,
     name: "Pressure transducers",
     description: "https://shop.example.com/pressure-transducer",
@@ -28,10 +31,10 @@ export const ORDER_ROWS = rowsOf(orders, [
     id: 2,
     status: "pending",
     requester: TESTER_MEMBER["division-lead"],
-    divisionId: DIVISION.missionAnalysis,
-    name: "Flight simulator licence",
-    description: "https://shop.example.com/academic",
-    reason: "Trajectory runs for the next launch campaign.",
+    divisionId: DIVISION.testBench,
+    name: "Load cell",
+    description: "https://shop.example.com/load-cell",
+    reason: "Thrust readings on the test stand for the next hot fire.",
     quantity: 1,
     price: "240.00",
     quoteName: null,
@@ -40,7 +43,7 @@ export const ORDER_ROWS = rowsOf(orders, [
   {
     id: 3,
     status: "changes_requested",
-    requester: 17,
+    requester: publicMember("Carlo Ricciardi"),
     divisionId: DIVISION.designManufacturing,
     name: "Carbon fibre prepreg",
     description: "https://shop.example.com/carbon-fibre-prepreg",
@@ -56,8 +59,8 @@ export const ORDER_ROWS = rowsOf(orders, [
   {
     id: 4,
     status: "rejected",
-    requester: 27,
-    divisionId: DIVISION.recovery,
+    requester: publicMember("Ludovica Cassella"),
+    divisionId: DIVISION.recoverySystems,
     name: "Spare drogue parachute",
     description: "https://shop.example.com/drogue",
     reason: "A backup for the test drops.",
@@ -72,7 +75,7 @@ export const ORDER_ROWS = rowsOf(orders, [
   {
     id: 5,
     status: "accepted",
-    requester: 13,
+    requester: publicMember("Arda Bildik"),
     divisionId: DIVISION.hardware,
     name: "PCB batch",
     description: "https://shop.example.com/pcb-batch",
@@ -87,7 +90,7 @@ export const ORDER_ROWS = rowsOf(orders, [
   {
     id: 6,
     status: "ordered",
-    requester: 7,
+    requester: publicMember("Ettore De Bartolo"),
     divisionId: DIVISION.logistics,
     name: "Transport cases",
     description: "https://shop.example.com/cases",
@@ -102,7 +105,7 @@ export const ORDER_ROWS = rowsOf(orders, [
   {
     id: 7,
     status: "cancelled",
-    requester: 26,
+    requester: publicMember("Nicola Montagner"),
     divisionId: DIVISION.flightControl,
     name: "IMU evaluation board",
     description: "https://shop.example.com/imu-eval",
