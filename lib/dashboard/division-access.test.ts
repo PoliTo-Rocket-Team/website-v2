@@ -12,6 +12,7 @@ import {
   NO_APPROVE_ORDERS,
   placeKey,
   placesOf,
+  roleDivision,
   WHOLE_TEAM_PLACE,
   type AccessGrant,
   type AccessPerson,
@@ -366,4 +367,12 @@ test("a lead of two divisions gives access in the division of the person they ed
   assert.deepEqual(heldLines(twoDivisions).map((l) => l.where), ["Mission Analysis Division", "Optimization and Analysis Division"]);
   const same: AccessUnit = { kind: "division", divisions: [{ division: msa, held }, { division: aoa, held }] };
   assert.deepEqual(heldLines(same).map((l) => l.where), ["Mission Analysis, Optimization and Analysis"]);
+});
+
+test("a lead of two divisions has a role row in each, each in its own division, not their primary one", () => {
+  const marco: AccessPerson = { id: 2, name: "Marco Bianchi", standing: "lead", division: msa };
+  assert.equal(roleDivision({ person: marco, place: { kind: "division", division: msa } }), msa);
+  assert.equal(roleDivision({ person: marco, place: { kind: "division", division: aoa } }), aoa);
+  // A head's role is in a department: the row stays with the person's own division, if any.
+  assert.equal(roleDivision({ person: marco, place: { kind: "department", department: aerodynamics } }), msa);
 });

@@ -45,6 +45,7 @@ import {
   placeLine,
   placesHeldBy,
   placesOf,
+  roleDivision,
   samePlace,
   SEAT_LABELS,
   shortUnitName,
@@ -52,6 +53,7 @@ import {
   unitLine,
   WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
+  type AccessDivision,
   type AccessGrant,
   type AccessLevel,
   type AccessPage,
@@ -111,6 +113,11 @@ function personOfRow(row: Row): AccessPerson {
   return row.kind === "role" ? row.role.person : row.access.person;
 }
 
+/** The division a row names and files under: a role row's own, else the person's. */
+function divisionOfRow(row: Row): AccessDivision | null {
+  return row.kind === "role" ? roleDivision(row.role) : row.access.person.division;
+}
+
 /** A role row per division a lead leads, a grants row per person. */
 function rowKey(row: Row): string {
   return row.kind === "role" ? `role-${row.role.person.id}-${placeKey(row.role.place)}` : `grants-${row.access.person.id}`;
@@ -125,10 +132,12 @@ function severalDivisions(unit: AccessUnit): boolean {
  * "Lead · Mission Analysis", "Member" on a one-division lead's page, "Member ·
  * Mission Analysis" on a head's, a team page or a lead's page of several divisions (boards 60 and 65).
  */
-function standingLine(person: AccessPerson, unit: AccessUnit): string {
+function standingLine(row: Row, unit: AccessUnit): string {
+  const person = personOfRow(row);
   const label = PERSON_STANDING_LABELS[person.standing];
-  const showDivision = person.division !== null && (person.standing === "lead" || severalDivisions(unit));
-  return showDivision ? `${label} · ${shortUnitName(person.division!.name)}` : label;
+  const division = divisionOfRow(row);
+  const showDivision = division !== null && (person.standing === "lead" || severalDivisions(unit));
+  return showDivision ? `${label} · ${shortUnitName(division.name)}` : label;
 }
 
 /** The line under a name: a role row names its seat or the department it heads (board 71), anyone else their standing. */
@@ -138,7 +147,7 @@ function personLine(row: Row, unit: AccessUnit): string {
     if (role.place.kind === "team" && "seat" in role) return SEAT_LABELS[role.seat];
     if (role.place.kind === "department") return `Head of ${role.place.department.name}`;
   }
-  return standingLine(personOfRow(row), unit);
+  return standingLine(row, unit);
 }
 
 /** "your division", "your divisions", "your department", "the whole team": who the page gives access to. */
@@ -169,9 +178,9 @@ function introOf(access: AccessPage): string {
 
 /** The department a row belongs to on a team page (issue #238): its division's, else the department its access is in. */
 function rowDepartment(row: Row, unit: AccessUnit): string | null {
-  const person = personOfRow(row);
+  const division = divisionOfRow(row);
   const place: AccessPlace | undefined =
-    person.division !== null ? { kind: "division", division: person.division } : row.kind === "role" ? row.role.place : row.access.grants[0]?.place;
+    division !== null ? { kind: "division", division } : row.kind === "role" ? row.role.place : row.access.grants[0]?.place;
   return place === undefined ? null : (departmentOfPlace(unit, place)?.name ?? null);
 }
 
@@ -212,7 +221,7 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
     ...accessByPerson(grants, holders).map((row): Row => ({ kind: "grants", access: row })),
   ];
   // Each row's tab: its division on a head's or a lead's page, its department on a team page.
-  const tabOf = (row: Row): string | null => (unit.kind === "team" ? rowDepartment(row, unit) : (personOfRow(row).division?.name ?? null));
+  const tabOf = (row: Row): string | null => (unit.kind === "team" ? rowDepartment(row, unit) : (divisionOfRow(row)?.name ?? null));
   // A lead of one division gets null here: no tabs and no select.
   const divisionOptions =
     unit.kind === "team"

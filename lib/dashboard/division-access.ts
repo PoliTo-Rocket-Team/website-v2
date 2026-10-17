@@ -306,6 +306,15 @@ export type RoleAccess =
   | { readonly person: AccessPerson; readonly place: Exclude<AccessPlace, { kind: "team" }> }
   | { readonly person: AccessPerson; readonly place: { readonly kind: "team" }; readonly seat: FullAccessSeat };
 
+/**
+ * The division a role row stands in: the one the role leads, else the
+ * person's own. A lead of two divisions has a role row in each, and each
+ * names and files under its own division, never the person's primary one (issue #185).
+ */
+export function roleDivision(role: RoleAccess): AccessDivision | null {
+  return role.place.kind === "division" ? role.place.division : role.person.division;
+}
+
 /** The seat under a full-access person's name (board 71): "Operations lead", "IT lead". */
 export const SEAT_LABELS: Readonly<Record<FullAccessSeat, string>> = {
   "team-leader": "Team leader",
