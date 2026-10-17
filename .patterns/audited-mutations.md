@@ -47,8 +47,8 @@ made stale. Client components import the action functions directly.
    arguments and writes through the dashboard data interface
    ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): where no database is configured, a test
    developer's write changes only a cookie; where one is (a preview reads the seeded `preview`
-   branch), the test developer is read as the viewer's seeded person, and `runAuditQuery` saves
-   the write as that person on a preview and refuses it anywhere else (ADR 0016). An account's write goes through `runAuditQuery` in
+   branch), the test developer is read as the viewer's seeded person, and `runAuditQuery` or
+   `runAuditBatch` saves the write as that person on a preview and refuses it anywhere else (ADR 0016). An account's write goes through `runAuditQuery` in
    [lib/dashboard/database.ts](../lib/dashboard/database.ts) after a scope check. The client shows
    the change at once (`useOptimistic`) and a toast when the write is refused (see
    [client-form-submit.md](./client-form-submit.md)).
@@ -83,7 +83,7 @@ person on a preview and refuses it before it is sent in production and under `ne
 (`testDeveloperMayWrite`, ADR 0016). The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
-position or application before it writes through `runAuditQuery`, and a test developer's dummy
+position or application before it writes through `runAuditQuery` or `runAuditBatch`, and a test developer's dummy
 side keeps the change in a cookie and writes no row. An application move (issue #171) first asks
 `applyMove` in [lib/dashboard/application-flow.ts](../lib/dashboard/application-flow.ts) whether
 it is legal, and each update is guarded on the status it was read in. Confirm join is one
