@@ -464,7 +464,7 @@ figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
 26px heading, "Become a partner", then the logos at half size (25px, the Sophia mark 38px) in
 a 56px marquee. Full-colour logos,
 never greyscale. Right-to-left loop, 40s, paused on hover and off screen, still under reduced motion,
-edges faded with a mask. Each logo is a link (`partners.tsx`, HANDOFF).
+edges faded with a mask. A logo links to the partner's website when it has one; a partner with no website shows a plain logo (`partners.tsx`, HANDOFF).
 Dark logos (issue #107): a logo whose alpha-weighted luminance gives under 3:1 contrast against
 `ground` (`darkLogo`) is drawn all white with `brightness(0) invert(1)`, here and on /partners
 (`components/partners/partner-logo.tsx`). There is no plate behind it and no recoloured file:
