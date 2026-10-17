@@ -11,6 +11,7 @@ import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import type { Partner } from "@/lib/partners";
 import type { LogoFiles } from "@/lib/partners-editor";
 import { partnerColumns, partnerFromColumns } from "@/lib/partners-rows";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { parsePublicPathname, publicPathname } from "@/lib/storage/pathname";
 import { written } from "./write";
@@ -102,7 +103,7 @@ function storedLogoPathname(src: string) {
 
 async function dropFiles(pathnames: readonly ReturnType<typeof unusedLogoFiles>[number][]): Promise<void> {
   // A file left behind costs storage only; the write already landed.
-  await Promise.all(pathnames.map((p) => deletePublicFile(p).catch(() => undefined)));
+  await Promise.all(pathnames.map((p) => deleteBestEffort({ store: "public", area: "partner-logo", pathname: p, remove: deletePublicFile })));
 }
 
 function versionValues(partnerId: number, version: Versioned<Partner>) {

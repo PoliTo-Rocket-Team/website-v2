@@ -111,8 +111,8 @@ test("the Alumni page is for full admins and site-content access, never from a l
     [{ kind: "operations-lead", seat: "operations-lead", siteContent: false, approveOrders: false }, true],
     [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
-    [{ kind: "member", siteContent: false, approveOrders: false }, false],
-    [{ kind: "member", siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", areaGrant: false, siteContent: false, approveOrders: false }, false],
+    [{ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, true],
     [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, reached] of reaches) {
@@ -120,7 +120,7 @@ test("the Alumni page is for full admins and site-content access, never from a l
     assert.equal(canReach(viewer, "alumni"), reached, JSON.stringify(viewer));
     assert.equal(listed, reached, JSON.stringify(viewer));
   }
-  assert.deepEqual(shape({ kind: "member", siteContent: true, approveOrders: false }, withoutApplications), [
+  assert.deepEqual(shape({ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
     ["Team", ["Projects", "Outreach", "Partners", "Alumni", "FAQ", "Team page"]],
   ]);
@@ -134,8 +134,8 @@ test("the Outreach and Team page pages are for whoever the site-content gate adm
     [{ kind: "department-head", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
-    [{ kind: "member", siteContent: false, approveOrders: true }, false],
-    [{ kind: "member", siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", areaGrant: false, siteContent: false, approveOrders: true }, false],
+    [{ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, true],
     [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, reached] of reaches) {
@@ -150,7 +150,7 @@ test("the Outreach and Team page pages are for whoever the site-content gate adm
 });
 
 test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue #270)", () => {
-  const holder: ViewerStanding = { kind: "member", siteContent: false, approveOrders: true };
+  const holder: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: true };
   assert.equal(canReach(holder, "orders"), true);
   assert.deepEqual(shape(holder, withoutApplications), [
     [null, ["Overview", "Team tree"]],
@@ -163,7 +163,7 @@ test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue
 
 test("a member with no \"Approve orders\" and no Orders access does not reach Orders (issue #270)", () => {
   assert.equal(canReach(kindOnly("member"), "orders"), false);
-  assert.equal(canReach({ kind: "member", siteContent: true, approveOrders: false }, "orders"), false);
+  assert.equal(canReach({ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, "orders"), false);
   assert.equal(canReach(kindOnly("non-member"), "orders"), false);
 });
 

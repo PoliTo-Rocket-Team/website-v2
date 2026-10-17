@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
-import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { getDb } from "@/db/client";
 import {
   applicationFiles,
@@ -51,6 +51,7 @@ import {
   type PositionsPage,
 } from "./recruitment";
 import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
+import { mayChange, readsAsDivisionLead, type ChangeArea, type DivisionUnit } from "./viewer";
 import { refused, written, type WriteResult } from "./write";
 
 // The Positions and Applications pages read from and written to the database
@@ -63,8 +64,32 @@ import { refused, written, type WriteResult } from "./write";
 type Identity = DashboardIdentity;
 type DbStatus = (typeof applications.$inferSelect)["status"];
 
+/** Whether the viewer reads the recruitment pages: a lead, a head, full access, or a member holding an area grant. */
 function isLead(identity: Identity): boolean {
-  return identity.kind === "operations-lead" || identity.kind === "department-head" || identity.kind === "division-lead";
+  return identity.kind === "operations-lead" || identity.kind === "department-head" || readsAsDivisionLead(identity);
+}
+
+/** The division a position is in, with its department; null for a deleted position or a closed unit. */
+async function positionUnit(positionId: number): Promise<DivisionUnit | null> {
+  const [row] = await getDb()
+    .select({ divisionId: divisions.id, departmentId: departments.id })
+    .from(applyPositions)
+    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .where(and(eq(applyPositions.id, positionId), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Whether the viewer may change `area` on the position (issue #160): they
+ * reach it, and their role or an area grant at Can edit lets them change that
+ * area in its division (`mayChange`, ./viewer.ts).
+ */
+async function mayChangePosition(identity: Identity, area: ChangeArea, positionId: number): Promise<boolean> {
+  if (!(await reachablePositionIds(identity)).has(positionId)) return false;
+  const unit = await positionUnit(positionId);
+  return unit !== null && mayChange(identity, area, unit);
 }
 
 // Positions -------------------------------------------------------------------
@@ -136,7 +161,11 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
   });
 }
 
-/** The open divisions a viewer may post a role in: every one for the operations lead, else those their figures cover. */
+/**
+ * The open divisions a viewer may post a role in: every one for the operations
+ * lead, else those their role or a Positions grant at Can edit lets them
+ * change (`mayChange`, issue #160).
+ */
 async function readPostableDivisions(identity: Identity): Promise<DivisionChoice[]> {
   if (!isLead(identity)) return [];
   const rows = await getDb()
@@ -153,10 +182,7 @@ async function readPostableDivisions(identity: Identity): Promise<DivisionChoice
     .where(and(isNull(divisions.closedAt), isNull(departments.closedAt)))
     .orderBy(asc(departments.name), asc(divisions.name));
   return rows
-    .filter(
-      (r) =>
-        identity.kind === "operations-lead" || identity.divisionIds.includes(r.id) || identity.departmentIds.includes(r.dept_id),
-    )
+    .filter((r) => mayChange(identity, "positions", { divisionId: r.id, departmentId: r.dept_id }))
     .map((r) => ({ id: r.id, name: r.name, department: r.dept_name, deptCode: r.dept_code ?? "", divCode: r.div_code ?? "" }));
 }
 
@@ -198,9 +224,8 @@ async function reachablePositionIds(identity: Identity): Promise<Set<number>> {
 }
 
 async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
-  if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
+  if (!(await mayChangePosition(identity, "positions", positionId))) throw new DashboardRefused(`position ${positionId}`);
   await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
 }
 
@@ -227,13 +252,12 @@ async function createPosition(identity: Identity, input: unknown): Promise<Write
       })
       .returning({ id: applyPositions.id }),
   );
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
   return written({ id: row.id, code: newPositionCode(division, row.id) });
 }
 
 async function editPosition(identity: Identity, positionId: number, input: unknown): Promise<WriteResult<null>> {
-  if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
+  if (!(await mayChangePosition(identity, "positions", positionId))) throw new DashboardRefused(`position ${positionId}`);
   const checked = checkPositionContent(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
   const { position } = checked;
@@ -250,7 +274,6 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
       })
       .where(eq(applyPositions.id, positionId)),
   );
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
   return written(null);
 }
@@ -481,7 +504,7 @@ async function readApplicationFor(identity: Identity, applicationId: number) {
     .from(applications)
     .where(and(eq(applications.id, applicationId), isNull(applications.withdrawnAt)))
     .limit(1);
-  if (!row || row.position_id === null || !(await reachablePositionIds(identity)).has(row.position_id)) {
+  if (!row || row.position_id === null || !(await mayChangePosition(identity, "applications", row.position_id))) {
     throw new DashboardRefused(`application ${applicationId}`);
   }
   return row;

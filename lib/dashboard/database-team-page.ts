@@ -61,10 +61,15 @@ export async function cachedTeamPageLayer(): Promise<ContentItem<TeamPageLayer>[
   }
 }
 
+/** The writes that make the document's rows exactly `version`'s, for a batch (one transaction) that may hold other writes too. */
+export function layerVersionWrites(db: ReturnType<typeof getDb>, version: Versioned<TeamPageLayer>) {
+  const values = versionRows(version).map(({ kind, content }) => ({ version: kind, layer: content, updatedAt: new Date().toISOString() }));
+  return [db.delete(teamPageLayerVersions), db.insert(teamPageLayerVersions).values(values)] as const;
+}
+
 /** The document's rows become exactly `version`'s. */
 async function writeVersions(version: Versioned<TeamPageLayer>): Promise<ContentItem<TeamPageLayer>> {
-  const values = versionRows(version).map(({ kind, content }) => ({ version: kind, layer: content, updatedAt: new Date().toISOString() }));
-  await runAuditBatch((db) => [db.delete(teamPageLayerVersions), db.insert(teamPageLayerVersions).values(values)]);
+  await runAuditBatch((db) => [...layerVersionWrites(db, version)]);
   updateTag(TEAM_PAGE_LAYER_CACHE_TAG);
   return { ...DOCUMENT, version };
 }

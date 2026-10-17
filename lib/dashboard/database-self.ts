@@ -23,6 +23,7 @@ import {
 } from "@/db/schema";
 import { positionCode } from "@/lib/apply/positions";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { parsePrivatePathname, parsePublicPathname, publicPathname } from "@/lib/storage/pathname";
 import { deletePrivateFile } from "@/lib/storage/private-store";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
@@ -155,7 +156,7 @@ async function setPhoto(identity: DashboardIdentity, photo: Upload | null): Prom
     ({ url } = await uploadPublicFile(publicPathname("photo", `${memberId}-${randomUUID()}.${ext}`), photo.bytes, photo.contentType));
   }
   await runAuditQuery((db) => db.update(members).set({ picture: url }).where(eq(members.memberId, memberId)));
-  if (old !== null) await deletePublicFile(old).catch(() => undefined);
+  if (old !== null) await deleteBestEffort({ store: "public", area: "member-photo", pathname: old, remove: deletePublicFile });
   return written(null);
 }
 
@@ -311,7 +312,7 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
 
   for (const file of files) {
     const pathname = parsePrivatePathname(file.pathname);
-    if (pathname !== null) await deletePrivateFile(pathname).catch(() => undefined);
+    if (pathname !== null) await deleteBestEffort({ store: "private", area: "delete-account", pathname, remove: deletePrivateFile });
   }
   return written(null);
 }

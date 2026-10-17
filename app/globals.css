@@ -170,7 +170,8 @@
    #87). Instead the tile is a smooth field under an 8 x 8 ordered (Bayer)
    dither of one level, which reads as one even tone at any scale. 1800 is a
    multiple of 8, so the dither runs on across the tile's wrap. The grain
-   cannot do this job: on a 1x screen its noise renders flat.
+   is not the layer for this job: it is random noise, not a one-level
+   ordered dither.
    .page-sky-grain is the fine film grain, a separate stitched SVG noise tile:
    webp compression drops the grain from the streak tile. It is one octave
    of pixel-fine grey noise in soft-light blend, with no threshold: it
