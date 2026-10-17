@@ -77,7 +77,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { isOffTeam, readsAsDivisionLead, seatOf } from "./viewer";
+import { isOffTeam, mayChange, readsAsDivisionLead, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -100,7 +100,7 @@ import {
   type TeamPerson,
   type TeamSearch,
 } from "./division-edit";
-import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -121,12 +121,34 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
 }
 
 /**
- * Who the viewer acts as on the Members page (`TeamActor`, ./team.ts): the
- * team for the operations lead or the team leader, a head for their
- * departments, a division lead for the divisions their roles and scopes
- * cover. Null for anyone else.
+ * Who the viewer changes people as on the Members page (`TeamActor`,
+ * ./team.ts): the team for the operations lead or the team leader, a head for
+ * their departments, else a division lead over each division where
+ * `mayChange` lets them change the Members area: a lead role there, or a
+ * Members (or every-area) grant at Can edit that covers it (issue #342). A
+ * grant at Can view, or on another area, changes nobody. Null for anyone
+ * else. Every Members write checks this actor, directly or through
+ * `actingOn`.
  */
 async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
+  return actorOf(identity, org, (divisionId) => {
+    const division = org.divisions.find((d) => d.id === divisionId);
+    return division !== undefined && mayChange(identity, "members", { divisionId, departmentId: division.departmentId });
+  });
+}
+
+/**
+ * Who the viewer reads the Members page as: `readActor`, except that a member
+ * holding an area grant reads as a division lead over the units it covers,
+ * whatever its area and level (`readsAsDivisionLead`). Reading is all it
+ * decides; no write takes this actor.
+ */
+async function readViewingActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
+  return actorOf(identity, org, () => readsAsDivisionLead(identity));
+}
+
+/** The team or a head, as their roles say; else a division lead over the divisions their units cover that `leads` keeps. */
+async function actorOf(identity: DashboardIdentity, org: OrgChart, leads: (divisionId: number) => boolean): Promise<TeamActor | null> {
   if (identity.memberId === null || isOffTeam(identity.kind)) return null;
   if (identity.kind === "operations-lead") return { kind: "team" };
   const rows = await getDb()
@@ -140,8 +162,8 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
     return departmentId === null ? [] : [departmentId];
   });
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
-  if (!readsAsDivisionLead(identity) || identity.divisionIds.length === 0) return null;
-  return { kind: "lead", divisionIds: identity.divisionIds };
+  const divisionIds = identity.divisionIds.filter(leads);
+  return divisionIds.length === 0 ? null : { kind: "lead", divisionIds };
 }
 
 /** The divisions a division lead's Members page lists, the one it opens on first. A head's page is their department's. */
@@ -336,7 +358,7 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
  */
 export async function readDivisionMembers(identity: DashboardIdentity, divisionId: number | null): Promise<MemberDirectory> {
   const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const actor = await readViewingActor(identity, snapshot.org);
   if (actor === null || actor.kind === "team") return NO_MEMBERS;
   if (actor.kind === "head") return readDepartmentMembers(identity, actor, snapshot);
   const reach = reachOf(identity, actor, snapshot.org);
@@ -409,19 +431,21 @@ function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
 }
 
 /**
- * The person's active roles when the viewer may change them: anyone on the
- * team for the operations lead, someone in the lead's own division for a
- * division lead; never the viewer. Null otherwise.
+ * The person's active roles in the divisions the viewer changes people in
+ * (`readActor`): every role for the team, and for a head or a division lead
+ * the roles in the divisions they reach, each division a lead of several
+ * included (issues #185, #342); never the viewer. Null when none is left.
  */
 async function rolesTheViewerChanges(identity: DashboardIdentity, personId: number): Promise<ActiveRole[] | null> {
   if (personId === identity.memberId) return null;
   const active = await activeRoles(personId);
   if (active.length === 0) return null;
-  if (identity.kind === "operations-lead") return active;
-  const division = leadDivisionId(identity);
-  if (division === null) return null;
-  const inDivision = active.filter((r) => r.division_id === division);
-  return inDivision.length > 0 ? inDivision : null;
+  const { org } = await readTeamSnapshot();
+  const actor = await readActor(identity, org);
+  if (actor === null) return null;
+  if (actor.kind === "team") return active;
+  const reached = active.filter((r) => r.division_id !== null && reachesDivision(actor, r.division_id, org));
+  return reached.length > 0 ? reached : null;
 }
 
 const ROLE_TYPE: Readonly<Record<EditableRole, "lead" | "core">> = { "division-lead": "lead", member: "core" };
@@ -984,7 +1008,6 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
 }
 
 function refreshPositions() {
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
 }
 

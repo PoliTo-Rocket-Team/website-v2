@@ -17,7 +17,6 @@ made stale. Client components import the action functions directly.
    async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
      if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
      await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
-     updateTag(POSITIONS_CACHE_TAG);
      updateTag(PUBLIC_POSITIONS_CACHE_TAG);
    }
    ```
