@@ -5,6 +5,7 @@ The dummy set that `pnpm db:seed` loads into a local database and into the one N
 ## How the seed runs
 
 - `pnpm db:seed` runs [db/seed.ts](../db/seed.ts). It checks the target first, then runs every module in [db/seed/registry.ts](../db/seed/registry.ts) in one transaction: each module's reset (last module first), then each module's insert (in order). Running it twice leaves the same rows, including columns a default or a trigger fills. It leaves the audit table `logs` empty.
+- The seed sends each value the way drizzle maps it, as the app does: a json or jsonb value is encoded once, so an array is stored as an array ([db/seed/connection.ts](../db/seed/connection.ts)).
 - `pnpm db:seed --check` runs the target check alone and writes nothing.
 - The check reads `DATABASE_URL` and allows only these targets:
   - a local database (`localhost`, `127.x.x.x` or `::1`);
