@@ -47,7 +47,9 @@ export type Asking =
   | { readonly kind: "remove"; readonly person: DivisionPerson; readonly divisionId: number; readonly short: string }
   | { readonly kind: "leave"; readonly person: DivisionPerson };
 
-export function DivisionMembersView({ page, editable }: { page: DivisionMembers; editable: boolean }) {
+export function DivisionMembersView({ page, editable: writes }: { page: DivisionMembers; editable: boolean }) {
+  // The page offers a change only where the viewer may make it (issue #351): a grant at Can view shows the people and no action.
+  const editable = writes && page.editable;
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);

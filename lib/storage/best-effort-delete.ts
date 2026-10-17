@@ -14,7 +14,8 @@ export type DeleteArea =
   | "member-photo"
   | "alumni-photo"
   | "partner-logo"
-  | "post-photo";
+  | "post-photo"
+  | "team-photo";
 
 /** One delete to run: the file, and the store call that removes it. */
 export type BestEffortDelete<P extends string> = {

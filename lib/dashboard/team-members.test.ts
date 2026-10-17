@@ -18,8 +18,8 @@ import {
 
 const org: OrgChart = {
   departments: [
-    { id: 1, name: "Aerodynamics" },
-    { id: 2, name: "Structures" },
+    { id: 1, name: "Aerodynamics", kind: "technical" },
+    { id: 2, name: "Structures", kind: "technical" },
   ],
   divisions: [
     { id: 10, name: "Mission Analysis Division", departmentId: 1, code: "MA" },

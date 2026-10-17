@@ -191,11 +191,21 @@ export function membershipsIn(placement: Placement): Memberships {
   return placement.memberships;
 }
 
+/**
+ * Which slide of the Team page's departments carousel a department's head
+ * sits on (issue #325, ADR 0015): "Technical Departments", heads with their
+ * division leads under them, or "Operations", the head beside their
+ * divisions' leads. Set on New department and Edit department.
+ */
+export const DEPARTMENT_KINDS = ["technical", "operations"] as const;
+export type DepartmentKind = (typeof DEPARTMENT_KINDS)[number];
+
 export type OrgDepartment = {
   readonly id: number;
   readonly name: string;
   /** The short code Edit department shows: "AE" (issue #251). Null where none is set. */
   readonly code?: string | null;
+  readonly kind: DepartmentKind;
 };
 export type OrgDivision = {
   readonly id: number;

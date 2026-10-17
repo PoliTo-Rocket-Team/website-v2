@@ -101,6 +101,10 @@ export const contentVersionEnum = pgEnum("content_version", [
 
 export const partnerTierEnum = pgEnum("partner_tier", ["main", "media"]);
 
+// Which slide of the Team page's departments carousel a department's head
+// sits on: "Technical Departments" or "Operations" (issue #325, ADR 0015).
+export const departmentKindEnum = pgEnum("department_kind", ["technical", "operations"]);
+
 export const partnerLogoKindEnum = pgEnum("partner_logo_kind", [
   "wordmark",
   "mark",
@@ -175,6 +179,7 @@ export const departments = pgTable("departments", {
     .notNull(),
   closedAt: date("closed_at", { mode: "string" }),
   code: text("code"),
+  kind: departmentKindEnum("kind").default("technical").notNull(),
 });
 
 export const divisions = pgTable("divisions", {

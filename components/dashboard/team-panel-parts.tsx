@@ -2,17 +2,21 @@
 
 import { useState, type ReactNode } from "react";
 import { ChevronDown, Lock, TriangleAlert, Upload, X } from "lucide-react";
+import { toast } from "sonner";
+import { uploadTeamPagePhoto } from "@/app/dashboard/actions";
 import { Avatar } from "@/components/about/person";
 import type { PhotoChoice } from "@/lib/about/team-page-edit";
 import { personOf, type TeamPerson } from "@/lib/about/team-person";
 import type { PersonPhoto } from "@/lib/about/types";
 import { CONTENT_FOCUS } from "./content-parts";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { PhotoPicker } from "./photo-picker";
 
 // The pieces the Team page editor's Add leader and Edit a head block panels
 // share (boards 80f and 80g, issue #285): the 480px panel beside the page, its
 // "TEAM PAGE · <section>" header, the amber visual-only note, a team member
-// picker, the photo from their profile or another one the site holds, and
+// picker, the photo from their profile, another one the site holds or an
+// uploaded one (issue #323), and
 // LinkedIn beside the locked team email.
 
 export const PANEL_HINT = "mt-1.5 text-[12px] leading-snug text-prt-muted";
@@ -113,7 +117,7 @@ export function PersonSelect({
 
 /**
  * "Photo from their profile" (boards 80f, 80g): the person's own photo, or
- * another the site already holds; "Use another photo" opens the choices and
+ * another the site already holds or an uploaded one; "Use another photo" opens the choices and
  * "Use their own photo" goes back.
  */
 export function PhotoField({
@@ -159,28 +163,85 @@ export function PhotoField({
         )}
       </div>
       {choosing && (
-        <div role="group" aria-label="Photos on the site" className="mt-3 grid grid-cols-6 gap-2.5 rounded-xl border border-hairline p-3">
-          {choices.map((choice) => {
-            const on = choice.src === photo;
-            return (
-              <button
-                key={choice.src}
-                type="button"
-                aria-pressed={on}
-                aria-label={`Photo of ${choice.label}`}
-                title={choice.label}
-                onClick={() => {
-                  onChange(choice.src);
-                  setChoosing(false);
-                }}
-                className={`justify-self-center rounded-full ring-offset-2 ring-offset-panel transition-shadow duration-300 ease-out ${on ? "ring-2 ring-accent" : "hover:ring-1 hover:ring-border-strong"} ${CONTENT_FOCUS}`}
-              >
-                <Avatar person={{ name: choice.label, photo: choice.src }} sizeClass="h-11 w-11" sizes="44px" fallback="initials" />
-              </button>
-            );
-          })}
-        </div>
+        <PhotoChoices
+          choices={choices}
+          selected={photo}
+          onPick={(src) => {
+            onChange(src);
+            setChoosing(false);
+          }}
+        />
       )}
+    </div>
+  );
+}
+
+/** The panels' small accent link, for the upload under the choices. */
+const UPLOAD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-semibold text-accent transition-colors duration-300 ease-out hover:text-accent-hover disabled:cursor-wait disabled:opacity-60 ${CONTENT_FOCUS}`;
+
+/**
+ * What Replace photo opens: the photos the site already holds, and under them
+ * "Upload a photo" (issue #323), which crops a new one square as the Alumni
+ * panels do and stores it at once. The picked or uploaded src goes to
+ * `onPick`; the panel's Save, then Save draft or Publish, keeps it.
+ */
+export function PhotoChoices({
+  choices,
+  selected,
+  onPick,
+  label = "Photos on the site",
+}: {
+  choices: readonly PhotoChoice[];
+  selected: PersonPhoto | null;
+  onPick: (src: PersonPhoto) => void;
+  label?: string;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const upload = async (square: File): Promise<boolean> => {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.set("photo", square);
+      const result = await uploadTeamPagePhoto(form);
+      if (!result.ok) {
+        toast.error("Could not upload the photo", { description: result.error });
+        return false;
+      }
+      onPick(result.value);
+      return true;
+    } finally {
+      setUploading(false);
+    }
+  };
+  return (
+    <div className="mt-3 rounded-xl border border-hairline p-3">
+      <div role="group" aria-label={label} className="grid grid-cols-6 gap-2.5">
+        {choices.map((choice) => {
+          const on = choice.src === selected;
+          return (
+            <button
+              key={choice.src}
+              type="button"
+              aria-pressed={on}
+              aria-label={`Photo of ${choice.label}`}
+              title={choice.label}
+              onClick={() => onPick(choice.src)}
+              className={`justify-self-center rounded-full ring-offset-2 ring-offset-panel transition-shadow duration-300 ease-out ${on ? "ring-2 ring-accent" : "hover:ring-1 hover:ring-border-strong"} ${CONTENT_FOCUS}`}
+            >
+              <Avatar person={{ name: choice.label, photo: choice.src }} sizeClass="h-11 w-11" sizes="44px" fallback="initials" />
+            </button>
+          );
+        })}
+      </div>
+      <div className={choices.length > 0 ? "mt-3 border-t border-hairline pt-3" : undefined}>
+        <PhotoPicker
+          label={uploading ? "Uploading…" : "Upload a photo"}
+          pending={uploading}
+          onCropped={upload}
+          buttonClass={UPLOAD_LINK}
+          iconClass="h-3.5 w-3.5"
+        />
+      </div>
     </div>
   );
 }

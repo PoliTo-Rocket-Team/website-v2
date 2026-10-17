@@ -78,6 +78,7 @@ import {
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
 import { kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { grantActors, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
@@ -127,7 +128,10 @@ export type DummyClosedDivision = {
 function departmentStates(edits: TeamEdits): DummyDepartmentState[] {
   const all = new Map<number, DummyDepartmentState>();
   for (const d of departments) all.set(d.id, { ...d, closedOn: null });
-  for (const [id, edit] of Object.entries(edits.departments)) all.set(Number(id), { id: Number(id), name: edit.name, code: edit.code, closedOn: edit.closedOn });
+  for (const [id, edit] of Object.entries(edits.departments)) {
+    const kind = edit.kind ?? all.get(Number(id))?.kind ?? "technical";
+    all.set(Number(id), { id: Number(id), name: edit.name, code: edit.code, kind, closedOn: edit.closedOn });
+  }
   return [...all.values()].sort((a, b) => a.id - b.id);
 }
 
@@ -454,9 +458,12 @@ function myDepartment(kind: TestViewer): number | null {
 /**
  * Who `kind` acts as on the Members page: the operations lead reaches the
  * team, a department head their department (issue #235), a division lead
- * every division they lead (issue #185); nobody else acts there.
+ * every division they lead (issue #185), and the member holding a test grant
+ * the divisions where it lets them change Members (issue #351); nobody else
+ * acts there.
  */
-function actorOf(kind: TestViewer): TeamActor | null {
+function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): TeamActor | null {
+  if (kind === "member" && grant !== null) return grantActors(grant, org).changing;
   if (!canReach(testDeveloperStanding(kind), "members")) return null;
   if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
@@ -562,12 +569,13 @@ function writesFor(
   save: (next: TeamEdits) => Promise<void>,
   joiners: readonly DummyJoiner[],
   move: DummyMove,
+  grant: TestGrant | null,
 ): TeamWrites {
   const team = editedRoster(edits, joiners);
   const { org, closed } = dummyOrg(edits);
   const find = (id: number) => team.find((e) => e.id === id);
   const thisYear = new Date().getUTCFullYear();
-  const actor = actorOf(kind);
+  const actor = actorOf(kind, org, grant);
   const changeOf = (id: number): MemberChange => edits.members[id] ?? { pageTitle: find(id)?.pageTitle ?? null, roles: {} };
   const withChange = (id: number, change: MemberChange): TeamEdits => ({ ...edits, members: { ...edits.members, [id]: change } });
   /** Someone in a division the actor reaches, never the actor. */
@@ -650,7 +658,7 @@ function writesFor(
   /** The department as the edits keep it, before this write. */
   const departmentEdit = (departmentId: number) => {
     const department = org.departments.find((d) => d.id === departmentId)!;
-    return edits.departments[departmentId] ?? { name: department.name, code: department.code ?? null, closedOn: null, headId: null };
+    return edits.departments[departmentId] ?? { name: department.name, code: department.code ?? null, kind: department.kind, closedOn: null, headId: null };
   };
 
   return {
@@ -694,8 +702,8 @@ function writesFor(
       const planned = planDepartmentCreate({ actor, org, save: checked.value, team: teamPeople(team, edits) });
       if (!planned.ok) return refused(planned.error);
       const id = Math.max(99, ...departmentStates(edits).map((d) => d.id)) + 1;
-      const { name, code, headId } = planned.value;
-      await save({ ...edits, departments: { ...edits.departments, [id]: { name, code, closedOn: null, headId } } });
+      const { name, code, kind, headId } = planned.value;
+      await save({ ...edits, departments: { ...edits.departments, [id]: { name, code, kind, closedOn: null, headId } } });
       return written(id);
     },
     async saveDepartment(departmentId, input) {
@@ -703,9 +711,9 @@ function writesFor(
       if (!checked.ok) return refused(checked.error);
       const planned = planDepartmentSave({ actor, org, departmentId, save: checked.value, team: teamPeople(team, edits), headIds: headsOf(departmentId) });
       if (!planned.ok) return refused(planned.error);
-      const { name, code, head } = planned.value;
+      const { name, code, kind, head } = planned.value;
       const before = departmentEdit(departmentId);
-      let next: TeamEdits = { ...edits, departments: { ...edits.departments, [departmentId]: { ...before, name, code, headId: head?.to ?? before.headId } } };
+      let next: TeamEdits = { ...edits, departments: { ...edits.departments, [departmentId]: { ...before, name, code, kind, headId: head?.to ?? before.headId } } };
       // Change head (issue #253): the head they replace becomes an advisor in this department, or leaves the team.
       const step = head?.steppingDown ?? null;
       for (const id of head !== null && step !== null ? head.from : []) {
@@ -948,7 +956,9 @@ function writesFor(
 /**
  * The Team pages as `kind` sees them, with `edits` laid over the arrays,
  * `current` the applications as the test developer left them and `move` the
- * Applications page's move, which Confirm join runs.
+ * Applications page's move, which Confirm join runs. `grant` is the member's
+ * test grant (./test-grant.ts): the Members page then lists every division it
+ * covers and offers changes only where it lets them change (issue #351).
  */
 export function dummyTeamPages(
   kind: TestViewer,
@@ -957,12 +967,15 @@ export function dummyTeamPages(
   current: readonly DummyApplication[] = baseApplications,
   move: DummyMove = NO_MOVE,
   openPositionsIn: (divisionId: number) => number = () => 0,
+  grant: TestGrant | null = null,
 ): Pick<DashboardData, "members" | "findForAdd" | "findPeople" | "alumni" | "teamTree" | "teamStructure" | "teamWrites"> {
   const self = SELF_ID[kind];
   const joiners = dummyJoiners(current);
-  const actor = actorOf(kind);
   const { org } = dummyOrg(edits);
-  const reach = actor?.kind === "lead" ? actor.divisionIds : [];
+  const actor = actorOf(kind, org, grant);
+  // Who the page reads as: the actor, or for a test grant every division it covers, whatever its level.
+  const viewing = kind === "member" && grant !== null ? grantActors(grant, org).viewing : actor;
+  const reach = viewing?.kind === "lead" ? viewing.divisionIds : [];
   // As the database lists them (`readJoining`): people not on the team yet. A
   // member joins from the Applications page (board 58h2) or from Add member.
   const joiningIn = (team: readonly RosterEntry[], division: number): Joining[] =>
@@ -989,7 +1002,7 @@ export function dummyTeamPages(
         });
         return page === null ? NO_MEMBERS : { scope: "department", ...page };
       }
-      if (actor === null || reach.length === 0) return NO_MEMBERS;
+      if (reach.length === 0) return NO_MEMBERS;
       const division = reach.find((id) => id === divisionId) ?? reach[0];
       const page = divisionMembers({
         records: team.map((entry) => recordOf(entry, edits)),
@@ -1035,7 +1048,7 @@ export function dummyTeamPages(
         openPositions: Object.fromEntries(ids.map((id) => [id, openPositionsIn(id)])),
       });
     },
-    teamWrites: writesFor(kind, edits, save, joiners, move),
+    teamWrites: writesFor(kind, edits, save, joiners, move, grant),
   };
 }
 
@@ -1068,7 +1081,7 @@ function confirmedHandOverEdits(
     }
   } else {
     const department = org.departments.find((d) => d.id === role.departmentId);
-    const before = next.departments[role.departmentId] ?? { name: department?.name ?? "", code: department?.code ?? null, closedOn: null, headId: null };
+    const before = next.departments[role.departmentId] ?? { name: department?.name ?? "", code: department?.code ?? null, kind: department?.kind, closedOn: null, headId: null };
     next = { ...next, departments: { ...next.departments, [role.departmentId]: { ...before, headId: toId } } };
     if (step.kind === "advisor") next = withAdvisor(next, fromId, step);
   }

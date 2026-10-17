@@ -447,12 +447,14 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - Only the team leader and full access create, edit or close a department. A department head
   never can, not even their own. The server refuses everyone else.
 - **New department** (board 77d) needs a name, a code of 2 or 3 letters no other open department
-  uses, and exactly one head, picked from the team. The head keeps their divisions. Someone who
+  uses, a kind (Technical, picked first, or Operations; #325), and exactly one head, picked from
+  the team. The kind picks the slide of the public Team page's departments carousel the head sits
+  on (ADR 0015). The head keeps their divisions. Someone who
   already holds a seat (the team leader, a board seat, another department's head) cannot be
   picked. Divisions are added after, with Add division.
-- **Edit department** (board 77e) shows the name, the code, the head, and the divisions as rows
-  that open to list their people, lead first, read-only. Save changes stores a new name or code,
-  after an "are you sure" that lists each change.
+- **Edit department** (board 77e) shows the name, the code, the kind, the head, and the divisions
+  as rows that open to list their people, lead first, read-only. Save changes stores a new name,
+  code or kind, after an "are you sure" that lists each change.
 - **Change head** (board 77e, #253), under the head in Edit department, picks the new head from
   the team. As in New department, someone who already holds a seat cannot be picked, and the
   new head keeps their divisions. The head they replace gets "What happens to {name}?":
