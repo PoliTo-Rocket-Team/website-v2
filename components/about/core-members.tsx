@@ -20,6 +20,9 @@ import { groupPhotoBlur } from "./team-blur";
 const FIRST_PHONE = 10;
 const FIRST_WIDE = 36;
 
+/** The group photo's box: the board's crop on phones, the wide band from md. */
+const PHOTO_BOX = "relative aspect-[350/210] overflow-hidden rounded-xl md:aspect-[1312/520]";
+
 function MemberRow({ member, hiddenClass }: { member: Member; hiddenClass: string }) {
   return (
     <li className={`items-center gap-3 border-b border-white-10 py-3.5 ${hiddenClass}`}>
@@ -45,7 +48,7 @@ function MemberRow({ member, hiddenClass }: { member: Member; hiddenClass: strin
 
 export function CoreMembers({
   core,
-  photoFrame = (node) => node,
+  photoFrame,
 }: {
   core: CoreMembersData;
   /** Wraps the group photo: the Team page editor outlines it (board 80, issue #284). The list is never framed. */
@@ -58,6 +61,17 @@ export function CoreMembers({
   const searching = query.trim() !== "";
   const shown = searchMembers(core.members, query);
   const everyone = showAll || searching;
+  const photo = (
+    <Image
+      src={core.groupPhoto.src}
+      alt={core.groupPhoto.alt}
+      fill
+      sizes="(min-width: 1440px) 1312px, 100vw"
+      placeholder="blur"
+      blurDataURL={groupPhotoBlur}
+      className="object-cover"
+    />
+  );
 
   /** Rows past the first few stay in the page, hidden, so the list is whole for search engines and "Show all" moves nothing. */
   const hiddenClassOf = (i: number) => {
@@ -71,21 +85,13 @@ export function CoreMembers({
       <div className="mx-auto max-w-[1312px]">
         <SectionHead eyebrow={`${core.eyebrow} · ${total}`} title={core.title} align="left" />
 
-        <div className="mt-6 md:mt-10">
-          {photoFrame(
-            <div className="relative aspect-[350/210] overflow-hidden rounded-xl md:aspect-[1312/520]">
-              <Image
-                src={core.groupPhoto.src}
-                alt={core.groupPhoto.alt}
-                fill
-                sizes="(min-width: 1440px) 1312px, 100vw"
-                placeholder="blur"
-                blurDataURL={groupPhotoBlur}
-                className="object-cover"
-              />
-            </div>,
-          )}
-        </div>
+        {/* The public page draws the photo as the one block it always was
+            (issue #325); only the editor's frame gets a box around it. */}
+        {photoFrame === undefined ? (
+          <div className={`mt-6 md:mt-10 ${PHOTO_BOX}`}>{photo}</div>
+        ) : (
+          <div className="mt-6 md:mt-10">{photoFrame(<div className={PHOTO_BOX}>{photo}</div>)}</div>
+        )}
 
         <div className="mt-6 flex items-center justify-between gap-6 md:mt-10">
           <div className="relative w-full md:max-w-[360px]">

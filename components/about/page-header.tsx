@@ -13,6 +13,9 @@ import type { HeaderStats } from "@/lib/about/types";
 /** The intro's type, so a text box in its place reads the same. */
 export const PAGE_INTRO = "text-[15px] leading-[1.6] text-text-2 md:text-[18px]";
 
+/** Where the intro sits under the title. */
+const INTRO_BOX = "mt-4 max-w-[600px] md:mt-7";
+
 type Figures =
   | { stats?: undefined; statsOnPhone?: undefined }
   | { stats: HeaderStats; statsOnPhone?: "row" | "two-by-two" };
@@ -21,7 +24,7 @@ export function PageHeader({
   eyebrow,
   title,
   intro,
-  introFrame = (node) => node,
+  introFrame,
   stats,
   statsOnPhone = "row",
 }: {
@@ -39,9 +42,13 @@ export function PageHeader({
           <h1 className="mt-4 text-[34px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-6 md:text-[64px] md:leading-[1.03]">
             {title}
           </h1>
-          <div className="mt-4 max-w-[600px] md:mt-7">
-            {introFrame(<p className={PAGE_INTRO}>{intro}</p>)}
-          </div>
+          {/* The public page draws the intro as the one paragraph it always
+              was (issue #325); only the editor's frame gets a box around it. */}
+          {introFrame === undefined ? (
+            <p className={`${INTRO_BOX} ${PAGE_INTRO}`}>{intro}</p>
+          ) : (
+            <div className={INTRO_BOX}>{introFrame(<p className={PAGE_INTRO}>{intro}</p>)}</div>
+          )}
           {stats !== undefined && <Stats stats={stats} onPhone={statsOnPhone} />}
         </header>
       </div>
