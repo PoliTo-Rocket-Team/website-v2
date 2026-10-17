@@ -50,9 +50,12 @@ test("a lead's Save sets titles but never a role, and Promote is refused: only t
   assert.equal(await writes.saveMember(7, { role: null, pageTitle: "Mission Analyst" }), true);
   assert.equal(await writes.saveMember(7, { role: "division-lead", pageTitle: null }), false, "no new lead");
   assert.equal(await writes.saveMember(2, { role: null, pageTitle: null }), false, "never themselves");
+  // Ahmed is only in Optimization and Analysis, the lead's second division (#185); Matteo Riva only in Design & Manufacturing.
+  assert.equal(await writes.saveMember(33, { role: null, pageTitle: "Optimization Analyst" }), true);
+  assert.equal(await writes.saveMember(38, { role: null, pageTitle: "CAD Engineer" }), false, "not a division they lead");
   assert.equal(await writes.promote(7, { mode: "together" }), false);
   assert.equal(await writes.promote(7, { mode: "hand-over", outcome: "advisor" }), false);
-  assert.equal(saved.length, 1);
+  assert.equal(saved.length, 2);
 });
 
 test("the team leader and a head keep their place when the operations lead saves their title", async () => {
@@ -100,10 +103,9 @@ test("Leaves the team follows the permission rule, and the server refuses it oth
   const sofia = page.people.find((p) => p.id === 3)!;
   assert.deepEqual(sofia.leave, { allowed: false, reason: "Also in Design & Manufacturing, so only the team leader can do this" });
   assert.equal(await writes.moveToAlumni(3, { from: 2024, to: 2026, reason: null }), false);
-  // Anna is also in Optimization and Analysis, in Aerodynamics: only its head may.
+  // Anna is also in Optimization and Analysis, which the lead leads too (#185): theirs to move.
   const anna = page.people.find((p) => p.id === 13)!;
-  assert.deepEqual(anna.leave, { allowed: false, reason: "Also in Optimization and Analysis, so only the Head of Aerodynamics can do this" });
-  assert.equal(await writes.moveToAlumni(13, { from: 2025, to: 2026, reason: null }), false);
+  assert.deepEqual(anna.leave, { allowed: true });
   assert.equal(await writes.moveToAlumni(8, { from: 2023, to: 2026, reason: null }), false, "Communications is not theirs");
   assert.equal(await writes.moveToAlumni(9, { from: 2023, to: 2026, reason: null }), false, "nor is another division's lead");
   assert.equal(lead.saved.length, 0);
@@ -124,7 +126,7 @@ test('"Remove from <division>" ends only that division\'s role, and is refused f
   const page = divisionPage(await lead.view.members());
   assert.equal(page.people.find((p) => p.id === 7)?.removal.kind, "only-division");
   assert.equal(await writes.removeFromDivision(7, MISSION_ANALYSIS), false, "Sara is only in Mission Analysis");
-  assert.equal(await writes.removeFromDivision(13, 2), false, "Optimization and Analysis is not the lead's");
+  assert.equal(await writes.removeFromDivision(3, 3), false, "Design & Manufacturing is not the lead's");
   assert.equal(lead.saved.length, 0);
 
   assert.equal(await writes.removeFromDivision(13, MISSION_ANALYSIS), true);

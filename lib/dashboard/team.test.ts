@@ -16,6 +16,7 @@ import {
   membershipsOfRoles,
   NO_MEMBERSHIPS,
   removalFrom,
+  rowsALeadReaches,
   roleIn,
   withJoined,
   withoutDivision,
@@ -275,4 +276,19 @@ test("the years on the team are read as typed, in order and not after this year;
   assert.equal(checkDeparture({ years: "2024 – 2027", reason: null }, 2026).ok, false);
   assert.equal(checkDeparture({ years: "last year", reason: null }, 2026).ok, false);
   assert.equal(checkDeparture({ years: "2024 – 2026", reason: "fired" }, 2026).ok, false);
+});
+
+test("a lead's Members edits reach someone's roles in any division they lead, and never one outside them (#185)", () => {
+  const lead: TeamActor = { kind: "lead", divisionIds: [1, 2] };
+  const rows = [
+    { id: 10, divisionId: 1 },
+    { id: 11, divisionId: 2 },
+    { id: 12, divisionId: 3 },
+    { id: 13, divisionId: null },
+  ];
+  const ids = (found: readonly { id: number }[] | null) => found?.map((r) => r.id) ?? null;
+  assert.deepEqual(ids(rowsALeadReaches(lead, rows, (r) => r.divisionId)), [10, 11], "both of the lead's divisions, not only the first");
+  assert.deepEqual(ids(rowsALeadReaches(lead, [rows[1]], (r) => r.divisionId)), [11], "someone only in the lead's second division");
+  assert.equal(rowsALeadReaches(lead, [rows[2], rows[3]], (r) => r.divisionId), null, "a division they do not lead, or none");
+  assert.equal(rowsALeadReaches({ kind: "head", departmentIds: [1] }, rows, (r) => r.divisionId), null, "no division lead");
 });

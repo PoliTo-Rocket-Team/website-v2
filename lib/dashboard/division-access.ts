@@ -86,13 +86,20 @@ export type AccessDepartmentUnit = {
   readonly divisions: readonly AccessDivision[];
 };
 
+/** One division a lead's Access page covers, and what the lead holds in it ("Your access" on board 60). */
+export type LedDivision = {
+  readonly division: AccessDivision;
+  readonly held: readonly HeldAccess[];
+};
+
 /**
- * The unit an Access page is about: a lead's division, a head's department
+ * The unit an Access page is about: every division a lead leads, never none
+ * (issue #185: one list, as board 71's team page is), a head's department
  * with its open divisions, or, with full access (issue #238), the whole team:
  * every open department with its open divisions, by name.
  */
 export type AccessUnit =
-  | { readonly kind: "division"; readonly division: AccessDivision }
+  | { readonly kind: "division"; readonly divisions: readonly [LedDivision, ...LedDivision[]] }
   | ({ readonly kind: "department" } & AccessDepartmentUnit)
   | { readonly kind: "team"; readonly departments: readonly AccessDepartmentUnit[] };
 
@@ -122,7 +129,7 @@ function departmentPlaces(unit: AccessDepartmentUnit): AccessPlace[] {
 }
 
 /**
- * The places a viewer gives access in: their division; or their whole
+ * The places a viewer gives access in: each division they lead; or their whole
  * department, then each of its divisions; or, from full access, the whole
  * team, then each department in turn, whole and then each of its divisions
  * (board 71b).
@@ -130,7 +137,7 @@ function departmentPlaces(unit: AccessDepartmentUnit): AccessPlace[] {
 export function placesOf(unit: AccessUnit): AccessPlace[] {
   switch (unit.kind) {
     case "division":
-      return [{ kind: "division", division: unit.division }];
+      return unit.divisions.map(({ division }): AccessPlace => ({ kind: "division", division }));
     case "department":
       return departmentPlaces(unit);
     case "team":
@@ -138,7 +145,7 @@ export function placesOf(unit: AccessUnit): AccessPlace[] {
   }
 }
 
-/** The place Give access starts on: the lead's division, the head's whole department, the whole team from full access. */
+/** The place Give access starts on: the lead's first division, the head's whole department, the whole team from full access. */
 export function homePlace(unit: AccessUnit): AccessPlace {
   return placesOf(unit)[0];
 }
@@ -182,9 +189,16 @@ export function placeLine(place: AccessPlace): string {
   }
 }
 
-/** The unit as "Your access" names it (boards 60 and 65): on a team page, "the whole team". */
+/** The unit as "Your access" names it (boards 60 and 65): every division a lead leads; on a team page, "the whole team". */
 export function unitLine(unit: AccessUnit): string {
-  return unit.kind === "team" ? "the whole team" : placeLine(homePlace(unit));
+  switch (unit.kind) {
+    case "team":
+      return "the whole team";
+    case "division":
+      return unit.divisions.length === 1 ? unit.divisions[0].division.name : unit.divisions.map((d) => shortUnitName(d.division.name)).join(", ");
+    case "department":
+      return placeLine(homePlace(unit));
+  }
 }
 
 /** One area the viewer holds in their unit (a chip under "Your access"). */
@@ -198,6 +212,54 @@ export const ROLE_HELD_ACCESS: readonly HeldAccess[] = UNIT_TARGETS.map((target)
 
 /** Full access holds every area at Can edit across the team (issue #238), Alumni included (#234, board 71). */
 export const FULL_HELD_ACCESS: readonly HeldAccess[] = ACCESS_TARGETS.map((target) => ({ target, level: "edit" }));
+
+/**
+ * What the viewer holds in one place of their unit: every area at Can edit
+ * from full access, a head's role areas across their department, or what a
+ * lead holds in that one division; nothing in a place outside the unit.
+ */
+export function heldIn(unit: AccessUnit, place: AccessPlace): readonly HeldAccess[] {
+  switch (unit.kind) {
+    case "team":
+      return FULL_HELD_ACCESS;
+    case "department":
+      return ROLE_HELD_ACCESS;
+    case "division":
+      return place.kind === "division" ? (unit.divisions.find((d) => d.division.id === place.division.id)?.held ?? []) : [];
+  }
+}
+
+/** One line of "Your access": where it holds, and the areas held there. */
+export type HeldLine = {
+  /** "Mission Analysis Division", "Mission Analysis, Optimization and Analysis", "Aerodynamics Department, all divisions", "the whole team" */
+  readonly where: string;
+  readonly held: readonly HeldAccess[];
+};
+
+/**
+ * "Your access", line by line: one for a head's or a team page; on a lead's
+ * page one per set of areas, naming every division that holds that set, so a
+ * lead who holds the same in each division reads one line (issue #185).
+ * Divisions where the lead holds nothing are left out.
+ */
+export function heldLines(unit: AccessUnit): HeldLine[] {
+  if (unit.kind !== "division") return [{ where: unitLine(unit), held: heldIn(unit, homePlace(unit)) }];
+  const keyOf = (held: readonly HeldAccess[]) => ACCESS_TARGETS.map((t) => heldLevel(held, t) ?? "-").join(",");
+  const groups = new Map<string, LedDivision[]>();
+  for (const led of unit.divisions) {
+    if (led.held.length === 0) continue;
+    groups.set(keyOf(led.held), [...(groups.get(keyOf(led.held)) ?? []), led]);
+  }
+  return [...groups.values()].map(([first, ...rest]) => ({
+    where: unitLine({ kind: "division", divisions: [first, ...rest] }),
+    held: first.held,
+  }));
+}
+
+/** Whether the viewer holds anything to give in some place of their unit: Give access and "Your access" show only then. */
+export function holdsAny(unit: AccessUnit): boolean {
+  return placesOf(unit).some((place) => heldIn(unit, place).length > 0);
+}
 
 /** Whether `held` is every area at Can edit: "Your access" then reads "Every area · Can edit" (board 71). */
 export function holdsEveryArea(held: readonly HeldAccess[]): boolean {
@@ -283,8 +345,8 @@ export type ApproveOrdersAccess = {
 export const NO_APPROVE_ORDERS: ApproveOrdersAccess = { canGive: false, yours: false, holders: [] };
 
 export type AccessPage = {
+  /** The unit, and with it what the viewer holds in each of its places (`heldIn`). */
   readonly unit: AccessUnit;
-  readonly held: readonly HeldAccess[];
   /** The other leads of the unit, never the viewer (issue #230). */
   readonly roleAccess: readonly RoleAccess[];
   /** Grants to people who are not leads; a lead's access is in `roleAccess`. */
@@ -413,8 +475,8 @@ function allowed(held: readonly HeldAccess[], person: AccessPerson, place: Acces
 /**
  * What the Give access and Edit access drawers send: the person's areas in
  * one place as they should be, and, from the team leader, whether they hold
- * "Approve orders" (board 71b). `where` is left out on a lead's page: their
- * division is the only place.
+ * "Approve orders" (board 71b). On a lead's page the place is always the
+ * person's division (issue #185), so `where` may be left out there.
  */
 export type SaveAccess = {
   readonly personId: number;
@@ -444,12 +506,12 @@ const saveAccessSchema = z.object({
 
 type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
 
-type AccessFacts = Pick<AccessPage, "unit" | "held" | "people" | "grants" | "approveOrders">;
+type AccessFacts = Pick<AccessPage, "unit" | "people" | "grants" | "approveOrders">;
 
 function outsideUnit(unit: AccessUnit): string {
   switch (unit.kind) {
     case "division":
-      return "You can give access only to people in your division.";
+      return unit.divisions.length === 1 ? "You can give access only to people in your division." : "You can give access only to people in your divisions.";
     case "department":
       return "You can give access only to people in your department.";
     case "team":
@@ -462,7 +524,8 @@ function checkChanges(access: AccessFacts, personId: number, place: AccessPlace,
   if (person === undefined) return { ok: false, error: outsideUnit(access.unit) };
   if (next.alumni !== undefined && place.kind !== "team") return { ok: false, error: "Alumni access is given to the whole team only." };
   const changes = accessChanges(areaLevelsOf(access.grants, personId, place), next);
-  if (!changes.every((c) => allowed(access.held, person, place, c))) {
+  const held = heldIn(access.unit, place);
+  if (!changes.every((c) => allowed(held, person, place, c))) {
     return { ok: false, error: "You can only give or change access you have, up to your own level." };
   }
   return { ok: true, value: { personId, place, changes } };
@@ -488,9 +551,11 @@ function checkApproveOrders(access: AccessFacts, personId: number, holds: boolea
 
 /**
  * Checks a Give access or Edit access Save from the browser against what the
- * viewer holds, who is in their unit, and where they may give access: their
- * division, their department or one of its divisions, or, from full access,
- * the whole team, a department or a division (board 71b). The person's areas
+ * viewer holds, who is in their unit, and where they may give access: on a
+ * lead's page the division of the person they edit, only one the lead leads,
+ * up to what the lead holds there (issue #185); their department or one of its
+ * divisions; or, from full access, the whole team, a department or a division
+ * (board 71b). The person's areas
  * in that place become exactly `areas`; every add, level change and removal
  * that takes must be within the viewer's own level, Alumni goes only to the
  * whole team, and a lead's access is never touched. "Approve orders" changes
@@ -502,8 +567,9 @@ export function checkSaveAccess(access: AccessFacts, input: unknown): Checked<Ac
   const parsed = saveAccessSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the form." };
   const { personId, where } = parsed.data;
-  const place = where === undefined ? homePlace(access.unit) : placesOf(access.unit).find((p) => placeKey(p) === where);
+  const place = placeOfSave(access, personId, where);
   if (place === undefined) return { ok: false, error: `You can give access only inside your ${access.unit.kind}.` };
+  if (!inPersonDivision(access, personId, place)) return { ok: false, error: "You can give access only in the division of the person you edit." };
   const areas: Partial<Record<AccessTarget, AccessLevel>> = {};
   for (const target of ACCESS_TARGETS) {
     const chosen = parsed.data.areas[target];
@@ -515,6 +581,24 @@ export function checkSaveAccess(access: AccessFacts, input: unknown): Checked<Ac
   if (Object.keys(areas).length === 0 && !approves) return { ok: false, error: "Choose at least one area." };
   const checked = checkChanges(access, personId, place, areas);
   return checked.ok ? { ok: true, value: { ...checked.value, approveOrders: approve.value } } : checked;
+}
+
+/** The place a Save names: `where` in the unit; left out, the person's division on a lead's page, else the unit's first place. */
+function placeOfSave(access: AccessFacts, personId: number, where: string | number | undefined): AccessPlace | undefined {
+  if (where !== undefined) return placesOf(access.unit).find((p) => placeKey(p) === where);
+  const division = access.unit.kind === "division" ? access.people.find((p) => p.id === personId)?.division : null;
+  return division ? { kind: "division", division } : homePlace(access.unit);
+}
+
+/**
+ * On a lead's page, whether the place is the division the person is in there
+ * (issue #185); every place passes on a head's or a team page. Someone
+ * outside the unit passes here and is refused by `checkChanges`.
+ */
+function inPersonDivision(access: AccessFacts, personId: number, place: AccessPlace): boolean {
+  if (access.unit.kind !== "division") return true;
+  const person = access.people.find((p) => p.id === personId);
+  return person === undefined || (place.kind === "division" && person.division?.id === place.division.id);
 }
 
 /**

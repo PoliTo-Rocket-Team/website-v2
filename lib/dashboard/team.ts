@@ -238,10 +238,16 @@ export function homeDivisionOf(placement: Placement): number | null {
   return placement.role === "divisions" ? homeDivision(placement.memberships) : null;
 }
 
+/** Every division someone leads, the home one first (issue #185); none for a seat, a head or a member. */
+export function ledDivisionsOf(placement: Placement): number[] {
+  return homeFirst(membershipsIn(placement))
+    .filter((m) => m.role === "lead")
+    .map((m) => m.divisionId);
+}
+
 /**
- * The oldest division someone leads; null when they lead none. Pages scoped
- * to one led division (Access, Orders) read it until #230, #231 and #233 give
- * them every division.
+ * The oldest division someone leads; null when they lead none. The dummy
+ * Orders page, scoped to one led division, reads it.
  */
 export function ledDivisionOf(placement: Placement): number | null {
   return membershipsIn(placement).find((m) => m.role === "lead")?.divisionId ?? null;
@@ -631,6 +637,21 @@ export function reachesDivision(actor: TeamActor, divisionId: number, org: OrgCh
   if (actor.kind === "team") return true;
   if (actor.kind === "lead") return actor.divisionIds.includes(divisionId);
   return actor.departmentIds.includes(departmentOfDivision(org, divisionId)?.id ?? -1);
+}
+
+/**
+ * The rows of someone's roles a division lead's Members edits reach (Save,
+ * Promote; issue #185): the ones in any division the lead leads, not only
+ * their first, and never one outside them. Null when no row is in reach, or
+ * the actor is no division lead.
+ */
+export function rowsALeadReaches<R>(actor: TeamActor, rows: readonly R[], divisionOf: (row: R) => number | null): R[] | null {
+  if (actor.kind !== "lead") return null;
+  const reached = rows.filter((row) => {
+    const divisionId = divisionOf(row);
+    return divisionId !== null && actor.divisionIds.includes(divisionId);
+  });
+  return reached.length > 0 ? reached : null;
 }
 
 /** The line under a lead's Members header: "Leads are changed by the Head of Aerodynamics". */
