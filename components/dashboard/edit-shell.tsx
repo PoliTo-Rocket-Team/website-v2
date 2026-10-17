@@ -434,9 +434,32 @@ function bringIntoView(card: HTMLElement) {
 }
 
 /**
+ * Brings the card back into view each time the frame's page changes width:
+ * opening or closing a panel beside the frame, or a Desktop / Phone switch,
+ * re-lays the page out and moves the card. Height changes are left alone, so
+ * content growing below the card never pulls the page back under the person
+ * scrolling it. The observer is the frame window's own, as the card lives in
+ * that document. Returns the call that stops watching.
+ */
+function keepInViewOnResize(card: HTMLElement): () => void {
+  const view = card.ownerDocument.defaultView;
+  if (view === null || typeof view.ResizeObserver !== "function") return () => {};
+  const page = card.ownerDocument.documentElement;
+  let width = page.clientWidth;
+  const observer = new view.ResizeObserver(() => {
+    if (page.clientWidth === width) return;
+    width = page.clientWidth;
+    bringIntoView(card);
+  });
+  observer.observe(page);
+  return () => observer.disconnect();
+}
+
+/**
  * One card on a page the switch shows (board 75d). The edited item's card is
  * outlined, with an "Edit card" chip that hands back to the content type, and
- * is scrolled into view below the page's navbar when the page opens; every
+ * is scrolled into view below the page's navbar when the page opens, and
+ * again whenever the page changes width while it stays edited; every
  * other card is dimmed. `className` lays the card out where the page puts it;
  * the card fills it. `outline` rounds the outline, 6px outside the card's own
  * corners.
@@ -456,7 +479,10 @@ export function CardInPlace({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (edited && ref.current !== null) bringIntoView(ref.current);
+    const card = ref.current;
+    if (!edited || card === null) return;
+    bringIntoView(card);
+    return keepInViewOnResize(card);
   }, [edited]);
   if (!edited) return <div className={`opacity-40 ${className}`}>{children}</div>;
   return (
