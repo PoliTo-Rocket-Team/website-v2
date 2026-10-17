@@ -100,7 +100,7 @@ import {
   type TeamPerson,
   type TeamSearch,
 } from "./division-edit";
-import { POSITIONS_CACHE_TAG, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
+import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -1008,7 +1008,6 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
 }
 
 function refreshPositions() {
-  updateTag(POSITIONS_CACHE_TAG);
   updateTag(PUBLIC_POSITIONS_CACHE_TAG);
 }
 

@@ -21,7 +21,6 @@ import {
   type RecruitmentControl,
 } from "@/lib/apply/recruitment-switch";
 
-export const POSITIONS_CACHE_TAG = "apply-positions";
 export const PUBLIC_POSITIONS_CACHE_TAG = "public-apply-positions";
 
 export type PositionSnapshotRow = {
