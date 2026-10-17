@@ -144,3 +144,9 @@ test("the viewer's path runs from the leader down to their row, and the canvas o
   assert.ok(layout.focus && layout.focus.x <= head.x && layout.focus.y === head.y);
   assert.ok(layout.focus.x + layout.focus.w < boxOf(layout, 9)!.x);
 });
+
+test("the team leader's canvas opens on the top of the tree down to its lowest row", () => {
+  const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 1));
+  const lowest = Math.max(...layout.nodes.map((n) => n.y + n.h));
+  assert.ok(layout.focus && layout.focus.y === 0 && layout.focus.y + layout.focus.h >= lowest);
+});
