@@ -1,6 +1,7 @@
 import type { ContentStore } from "@/lib/content/editor";
 import { versionRows, type ContentItem } from "@/lib/content/versioned";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { publicFolderOf, publicPathname, publicPathnameOfUrl, type PublicFileKind, type PublicPathname, type PublicStoreHost } from "@/lib/storage/pathname";
 import type { OutreachDraft, PhotoSrc, PostItem, PostStore } from "./outreach-types";
 
@@ -101,7 +102,7 @@ export function publicStorePanelPhotos(
     async drop(srcs) {
       // A file left behind costs storage only; the write already landed.
       const pathnames = srcs.flatMap((src) => pathnameOf(src) ?? []);
-      await Promise.all(pathnames.map((p) => writes.remove(p).catch(() => undefined)));
+      await Promise.all(pathnames.map((pathname) => deleteBestEffort({ store: "public", area: "post-photo", pathname, remove: writes.remove })));
     },
   };
 }

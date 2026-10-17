@@ -92,7 +92,7 @@ export const ownApplications = [
     sent: "2026-09-22T12:00:00+02:00",
     status: { kind: "not-selected", decidedAt: "2026-10-03T11:00:00+02:00" },
     files: [CV],
-    answer: "behance.net/chiaralombardi",
+    answer: "vimeo.com/chiaralombardi",
   },
   {
     id: 201,

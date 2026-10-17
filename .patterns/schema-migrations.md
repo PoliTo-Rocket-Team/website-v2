@@ -73,8 +73,7 @@ catches type fallout.
   generates do not repeat them. The file is now journaled as
   [0038_restore_application_files.sql](../drizzle/0038_restore_application_files.sql) (epic #260),
   so a database built from the journal alone gets the table and the `cv_file_id` /
-  `cover_letter_file_id` columns. [get-applications.ts](../app/actions/get-applications.ts) still
-  carries a fallback query for when these columns are missing.
+  `cover_letter_file_id` columns.
 - **`0038` is written defensively** (`IF NOT EXISTS`, guarded `DO $$` blocks), unlike the generated
   files, so a database that already has those objects is left unchanged.
 - **No audit trigger on `application_files`.** It was created after `0002` and `0038` adds none.

@@ -95,9 +95,9 @@ export const positionText = {
   },
   10: {
     description:
-      "You design the team's posters, social posts and the graphics on the rocket, and keep the team's look the same everywhere.",
+      "You film and edit the team's videos: launch recaps, interviews and short clips for social posts.",
     required: ["A portfolio of your work"],
-    desirable: ["Figma", "Adobe Illustrator"],
+    desirable: ["DaVinci Resolve", "Adobe Premiere Pro"],
     createdAt: "2026-06-01T09:00:00Z",
   },
 } as const satisfies Readonly<Record<(typeof positions)[number]["id"], PositionText>>;

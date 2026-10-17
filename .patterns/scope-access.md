@@ -62,16 +62,18 @@ session cookie; server code reads the user id from that cookie, then turns the m
    division id:
 
    ```ts
-   const scopeInfo = await getScopeInfoForCurrentUser("applications");
-   if (isEmptyScopeInfo(scopeInfo)) {
-     return { applications: [] };
-   }
+   const scoped =
+     identity.kind === "operations-lead"
+       ? rows
+       : rows.filter((r) => identity.divisionIds.includes(r.division_id) || identity.departmentIds.includes(r.dept_id));
+   if (scoped.length === 0) return [];
    ```
-   ([app/actions/get-applications.ts](../app/actions/get-applications.ts))
+   (`readPositionRows` in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts),
+   which reads the viewer's reach from the dashboard identity rather than from `ScopeInfo`)
 
-   Call sites: `getApplicationsByMemberScope`, `getPositionsByMemberScope` and
-   `getPositionsPageData` (which also sets a per-row `canEdit`) in
-   [get-apply-positions.ts](../app/actions/get-apply-positions.ts), and the file route
+   Call sites: `getPositionsByMemberScope` and `getPositionsPageData` (which also sets a per-row
+   `canEdit`) in [get-apply-positions.ts](../app/actions/get-apply-positions.ts), neither imported
+   by any page since issue #142, and the file route
    [docs/applications/[r2key]/[filename]/route.ts](../app/(legacy)/docs/applications/[r2key]/[filename]/route.ts),
    which returns 401 with no user, lets applicants read their own files, and otherwise checks
    `ScopeInfo`, returning 403 when access fails.
@@ -107,8 +109,7 @@ scopes have no tests of their own.
   asks Better Auth's `getSession`, which reads the database. A Server Component cannot set cookies,
   so the cache stays lapsed and every request reads the database until a client call refreshes it.
   With no `DATABASE_URL` the fallback is skipped and the answer is null.
-- **Unguarded mutations.** The legacy position actions in `server-actions.ts` run with no session
-  or scope check. The dashboard's writes are the exception: the recruitment switch's database side
+- **Writes check scope their own way.** The recruitment switch's database side
   (`setRecruitment`) reads `getScopeInfoForCurrentUser("positions")` and refuses unless
   `hasOrgEdit || hasAdminEdit`, and the position and application writes refuse a row outside the
   lead's scope ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts)).

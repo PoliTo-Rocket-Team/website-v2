@@ -65,7 +65,7 @@ import { team as teamRecord } from "@/lib/about/team";
 import { teamPageEditor } from "@/lib/about/team-page-editor";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
-import { databaseTeamPageLayerStore } from "./database-team-page";
+import { databaseTeamPageStore } from "./database-team-page-store";
 import { advisorEditor } from "@/lib/about/advisors";
 import { databaseAdvisorStore } from "./database-team-advisors";
 import { blobPhotoFiles, databaseOutreachStore } from "./database-outreach";
@@ -75,7 +75,7 @@ import { blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { upcomingInterviews } from "./interview-slots";
-import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, isOffTeam, isTeamLeader, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
+import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, isOffTeam, isTeamLeader, readsAsDivisionLead, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -110,9 +110,11 @@ type Identity = {
   role: ActiveRole | null;
   /** Every role they hold now, oldest first (issue #229). */
   roles: readonly ActiveRole[];
-  /** The divisions and departments a lead's figures cover. */
+  /** The divisions and departments a lead's figures cover: their roles' units and their grants'. */
   divisionIds: number[];
   departmentIds: number[];
+  /** Each area grant they hold, with its area and level: what a recruitment change checks (`mayChange`, issue #160). */
+  grants: readonly AreaGrant[];
 } & ViewerStanding;
 
 /** Who the signed-in account is; the page modules beside this one read it. */
@@ -145,12 +147,18 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     picture: user.picture,
   };
   if (user.member_id === null) {
-    return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...viewerStandingOf(null) };
+    return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], ...viewerStandingOf(null) };
   }
 
   const [scopeRows, roleRows] = await Promise.all([
     db
-      .select({ scope: scopes.scope, target: scopes.target, division_id: scopes.divisionId, dept_id: scopes.deptId })
+      .select({
+        scope: scopes.scope,
+        target: scopes.target,
+        level: scopes.accessLevel,
+        division_id: scopes.divisionId,
+        dept_id: scopes.deptId,
+      })
       .from(scopes)
       .where(eq(scopes.memberId, user.member_id)),
     db
@@ -179,15 +187,15 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     ? (await db.select({ id: departments.id }).from(departments).where(isNull(departments.closedAt))).map((d) => d.id)
     : [];
   const unitRows = unitRowsOf(
-    scopeRows.map((s) => ({ scope: s.scope, target: s.target, divisionId: s.division_id, deptId: s.dept_id })),
+    scopeRows.map((s) => ({ scope: s.scope, target: s.target, level: s.level, divisionId: s.division_id, deptId: s.dept_id })),
     openDepartmentIds,
   );
   // Someone with no active role left the team: an alumnus when the Alumni record knows them (issue #317).
   const onAlumniRecord = activeRoles.length === 0 && (await readOwnAlumnus(user.member_id)) !== null;
-  const access = { scopes: unitRows.map((s) => s.scope), activeRoles, onAlumniRecord };
+  const access = { scopes: unitRows, activeRoles, onAlumniRecord };
   const standing = viewerStandingOf(access);
   // Off the team, scope rows that outlived the roles reach nothing.
-  if (isOffTeam(standing.kind)) return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], ...standing };
+  if (isOffTeam(standing.kind)) return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], ...standing };
 
   // Every division they lead and the department they head, plus the units their scopes name.
   const units = viewerUnitsOf(unitRows, activeRoles);
@@ -197,6 +205,7 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     roles: activeRoles,
     divisionIds: [...units.divisionIds],
     departmentIds: [...units.departmentIds],
+    grants: areaGrantsOf(unitRows),
     ...standing,
   };
 }
@@ -691,7 +700,8 @@ function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
     case "division-lead":
       return divisionOverview(identity);
     case "member":
-      return memberOverview(identity);
+      // An area grant opens a lead's division pages, so its Overview too (issue #160).
+      return identity.areaGrant ? divisionOverview(identity) : memberOverview(identity);
     case "non-member":
     case "alumni":
       return Promise.reject(new DashboardRefused("an Overview off the team is built from My applications"));
@@ -716,7 +726,7 @@ async function hasShownApplications(identity: Identity): Promise<boolean> {
 }
 
 async function navCountsOf(identity: Identity): Promise<NavCounts> {
-  if (identity.kind !== "operations-lead" && identity.kind !== "department-head" && identity.kind !== "division-lead") return {};
+  if (identity.kind !== "operations-lead" && identity.kind !== "department-head" && !readsAsDivisionLead(identity)) return {};
   const fresh = (await readPositions(identity)).reduce((sum, p) => sum + p.newApplications, 0);
   return fresh > 0 ? { applications: fresh } : {};
 }
@@ -801,7 +811,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     ...databaseDivisionPages(identity),
     partners: partnerEditor(identity, databasePartnerStore, blobLogoFiles),
     faqs: faqEditor(identity, databaseFaqStore, () => new Date()),
-    teamPage: teamPageEditor(identity, databaseTeamPageLayerStore, databaseTeamRoles, teamRecord),
+    teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord),
     teamAdvisors: advisorEditor(identity, databaseAdvisorStore, currentAcademicYearStart),
     outreach: outreachEditor(identity, databaseOutreachStore, blobPhotoFiles()),
     projects: projectEditor(identity, databaseProjectStore, { stamps: readProjectStamps, now: () => new Date() }, blobProjectPhotoFiles()),

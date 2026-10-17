@@ -347,7 +347,7 @@ function DivisionBox({ division, found, onOpen }: { division: StructureDivision;
   const line = division.lead ? `${division.lead.name} · ${peopleLine(division.size)}` : peopleLine(division.size);
   const body = (
     <>
-      <span className="line-clamp-2 block pr-5 text-[13px] font-semibold leading-tight text-prt-text">{label}</span>
+      <span className="line-clamp-2 pr-5 text-[13px] font-semibold leading-tight text-prt-text">{label}</span>
       <span className="mt-1 block text-[12px] leading-snug text-prt-muted">{line}</span>
     </>
   );

@@ -16,6 +16,7 @@ import {
 } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
 import { runAuditBatch } from "@/lib/db-audit";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { publicPathname } from "@/lib/storage/pathname";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { canReach } from "./access";
@@ -208,7 +209,7 @@ async function setAlumnusPhoto(viewer: ViewerStanding, key: AlumnusKey, photo: U
   if (!uploaded.ok) return uploaded;
   await runAuditBatch((db) => [upsertEntry(db, key, { photo: uploaded.value })]);
   const old = storedPhotoPathname(person.photo);
-  if (old !== null) await deletePublicFile(old).catch(() => undefined);
+  if (old !== null) await deleteBestEffort({ store: "public", area: "alumni-photo", pathname: old, remove: deletePublicFile });
   refreshAlumni();
   return written(null);
 }
@@ -274,7 +275,7 @@ async function setOwnPhoto(identity: DashboardIdentity, photo: Upload | null): P
   if (!uploaded.ok) return uploaded;
   await runAuditBatch((db) => [upsertEntry(db, key, { photo: uploaded.value })]);
   const old = storedPhotoPathname(person?.photo ?? null);
-  if (old !== null) await deletePublicFile(old).catch(() => undefined);
+  if (old !== null) await deleteBestEffort({ store: "public", area: "alumni-photo", pathname: old, remove: deletePublicFile });
   refreshAlumni();
   return written(null);
 }

@@ -4,7 +4,7 @@ import { advisorRowsOf, publicAdvisors, withAdvisors, type AdvisorRow } from "@/
 import { team } from "@/lib/about/team";
 import { NO_TEAM_LAYER, type TeamPageLayer } from "@/lib/about/team-layer";
 import { publicTeamPage } from "@/lib/about/team-page-editor";
-import { NO_CONTENT_EDITS } from "./content-edits";
+import { NO_CONTENT_EDITS, PREVIEW_FULL } from "./content-edits";
 import { NO_EDITS, type TeamEdits } from "./edits";
 import { dummyDashboardData } from "./index";
 import { NO_OUTREACH_EDITS } from "./outreach";
@@ -110,12 +110,37 @@ test("Reset to team leaves the advisors unchanged", async () => {
   const swapped = [rows[1], rows[0], ...rows.slice(2)];
   assert.ok((await open.teamAdvisors.save("save-draft", swapped)).ok);
   const edited: TeamPageLayer = { ...NO_TEAM_LAYER, leader: { role: "President" } };
-  assert.ok((await dashboard(advisors, teamEdits, layer).teamPage.save("save-draft", edited)).ok);
+  assert.ok((await dashboard(advisors, teamEdits, layer).teamPage.save("save-draft", edited, swapped)).ok);
   const before = { cookie: advisors.value, items: await dashboard(advisors, teamEdits, layer).teamAdvisors.list() };
 
   assert.ok((await dashboard(advisors, teamEdits, layer).teamPage.reset()).ok);
   assert.equal(advisors.value, before.cookie);
   assert.deepEqual(await dashboard(advisors, teamEdits, layer).teamAdvisors.list(), before.items);
+});
+
+test("on previews Save draft and Publish keep the layer and the advisors together: when the advisors' cookie is full, neither cookie changes", async () => {
+  const advisors = advisorJar();
+  const teamEdits = teamJar();
+  const layer = layerJar();
+  const rows = advisorRowsOf((await dashboard(advisors, teamEdits, layer).teamAdvisors.list())!);
+  const edited: TeamPageLayer = { ...NO_TEAM_LAYER, leader: { role: "President" } };
+
+  // Together: one save writes both cookies.
+  const saved = await dashboard(advisors, teamEdits, layer).teamPage.save("save-draft", edited, [rows[1], rows[0], ...rows.slice(2)]);
+  assert.ok(saved.ok);
+  assert.ok(layer.value !== undefined && advisors.value !== undefined);
+  const before = { layer: layer.value, advisors: advisors.value };
+
+  // More new advisors than the cookie holds: the layer fits, the advisors do not.
+  const many = Array.from({ length: 40 }, (_, i): AdvisorRow => ({
+    id: null,
+    fields: { name: `Prof. Advisor Number ${i} With A Long Name`, role: "Propulsion and structures counsel", standing: "specialist", photo: null, linkedin: "", email: "" },
+  }));
+  const full = await dashboard(advisors, teamEdits, layer).teamPage.save("publish", { ...edited, leader: { role: "Chair" } }, [...advisorRowsOf(saved.value.advisors), ...many]);
+  assert.deepEqual(full, { ok: false, error: PREVIEW_FULL });
+  assert.equal(layer.value, before.layer, "the layer's cookie is unchanged");
+  assert.equal(advisors.value, before.advisors, "the advisors' cookie is unchanged");
+  assert.equal(teamEdits.saves, 0);
 });
 
 test("the public page on previews shows today's advisors from the seed, never the cookie", () => {

@@ -20,6 +20,7 @@ import {
   users,
 } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
+import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { publicPathname } from "@/lib/storage/pathname";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { alumniMove } from "./alumni-move";
@@ -76,7 +77,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { isOffTeam, seatOf } from "./viewer";
+import { isOffTeam, readsAsDivisionLead, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -115,7 +116,7 @@ import { refused, written, type Upload, type WriteResult } from "./write";
  * several divisions starts on the one their primary role is in.
  */
 export function leadDivisionId(identity: DashboardIdentity): number | null {
-  if (identity.kind !== "division-lead") return null;
+  if (!readsAsDivisionLead(identity)) return null;
   return identity.role?.divisionId ?? identity.divisionIds[0] ?? null;
 }
 
@@ -139,7 +140,7 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
     return departmentId === null ? [] : [departmentId];
   });
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
-  if (identity.kind !== "division-lead" || identity.divisionIds.length === 0) return null;
+  if (!readsAsDivisionLead(identity) || identity.divisionIds.length === 0) return null;
   return { kind: "lead", divisionIds: identity.divisionIds };
 }
 
@@ -791,7 +792,7 @@ async function setMemberPhoto(identity: DashboardIdentity, personId: number, div
   const url =
     photo === null ? null : (await uploadPublicFile(publicPathname("photo", `${personId}-${randomUUID()}.jpg`), photo.bytes, photo.contentType)).url;
   await runAuditQuery((db) => db.update(members).set({ picture: url }).where(eq(members.memberId, personId)));
-  if (old !== null) await deletePublicFile(old).catch(() => undefined);
+  if (old !== null) await deleteBestEffort({ store: "public", area: "member-photo", pathname: old, remove: deletePublicFile });
   done();
   return written(null);
 }
