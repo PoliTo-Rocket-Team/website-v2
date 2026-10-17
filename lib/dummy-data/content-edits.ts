@@ -1,5 +1,4 @@
-import type { ContentStore } from "@/lib/content/editor";
-import { memoryContentStore } from "@/lib/content/memory";
+import { memoryContentStore, type MemoryContentStore } from "@/lib/content/memory";
 import type { ContentItem, Versioned } from "@/lib/content/versioned";
 import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 
@@ -112,6 +111,12 @@ export function contentEditsFrom<T extends D, D = T>(
 
 export const PREVIEW_FULL = "This preview keeps only a few changes. Sign out to start over.";
 
+/** A test developer's store: also says, without keeping anything, whether their cookie can hold a list. */
+export interface DummyContentStore<T> extends MemoryContentStore<T> {
+  /** Why the cookie cannot hold `items` (it is full); null when it can. */
+  refusal(items: readonly ContentItem<T>[]): string | null;
+}
+
 /**
  * The test developer's items: the seed with their edits, in a store that
  * keeps each write in their cookie, and refuses one the cookie cannot hold.
@@ -120,11 +125,14 @@ export function dummyContentStore<T>(
   seed: readonly ContentItem<T>[],
   edits: ContentEditsStore<T>,
   kept?: (version: Versioned<T>) => Versioned<T>,
-): ContentStore<T> {
-  return memoryContentStore(withContentEdits(seed, edits.current), async (items) => {
-    const next = contentEditsOf(seed, items, kept);
-    if (serializeContentEdits(next).length > DUMMY_STATE_COOKIE_BYTES) return PREVIEW_FULL;
-    await edits.save(next);
+): DummyContentStore<T> {
+  const refusal = (items: readonly ContentItem<T>[]) =>
+    serializeContentEdits(contentEditsOf(seed, items, kept)).length > DUMMY_STATE_COOKIE_BYTES ? PREVIEW_FULL : null;
+  const store = memoryContentStore(withContentEdits(seed, edits.current), async (items) => {
+    const refused = refusal(items);
+    if (refused !== null) return refused;
+    await edits.save(contentEditsOf(seed, items, kept));
     return null;
   });
+  return { ...store, refusal };
 }

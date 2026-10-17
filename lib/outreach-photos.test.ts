@@ -26,7 +26,7 @@ import { publicStoreHost } from "@/lib/storage/pathname";
 // anywhere.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
-const member: ViewerStanding = { kind: "member", siteContent: false, approveOrders: false };
+const member: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false };
 
 const PNG = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
 const upload = { name: "photo.png", contentType: "image/png", bytes: PNG };

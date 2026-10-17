@@ -1,20 +1,43 @@
 import { contentEditor, type ContentStore } from "@/lib/content/editor";
-import { editorVersion, publicItems, statusOf, type ContentItem, type ContentStatus, type PublishStep, type Versioned } from "@/lib/content/versioned";
+import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
+import {
+  afterStep,
+  editorVersion,
+  publicItems,
+  statusOf,
+  type ContentItem,
+  type ContentStatus,
+  type PublishStep,
+  type Versioned,
+} from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import { ARC_FULL, ARC_LEADERS, isTeamPageLayer, leadersOnArc, NO_TEAM_LAYER, resetLayer, type TeamBuild, type TeamPageLayer } from "./team-layer";
+import { advisorWritesOf, type AdvisorItem, type AdvisorWrite } from "./advisors";
+import { applyLayer, ARC_FULL, ARC_LEADERS, isTeamPageLayer, leadersOnArc, NO_TEAM_LAYER, resetLayer, type TeamBuild, type TeamPageLayer } from "./team-layer";
 import { editedTeamPage } from "./team-page-edit";
-import { teamBuildOf, teamPageFromRoles, withLayerText, type TeamRoles } from "./team-roles";
+import {
+  emptySectionOf,
+  headsShown,
+  HEADS_SHOWN_MAX,
+  teamBuildOf,
+  teamPageFromRoles,
+  withLayerText,
+  type TeamPageSection,
+  type TeamRoles,
+} from "./team-roles";
 import type { TeamPage } from "./types";
 
 // The Team page's visual layer as the editor reads and writes it (issue
 // #283): one document in the shared content store (lib/content/), with a
 // published version /about/the-team lays on the roles build and an optional
 // draft. Save draft and Reset to team never reach the public page; Publish
-// does. Every write passes the site-content gate (lib/content/gate.ts) first,
-// and the only thing any of them writes is the layer: never a role,
-// division, department, scope or member. Both sides of the dashboard data
-// interface build it, each with its own store and its own roles.
+// does. Every write passes the site-content gate (lib/content/gate.ts) first.
+// Save draft and Publish write the layer and the advisor list (./advisors.ts)
+// together, in one step of the store, so the live page never shows a new
+// layer with old advisors (issue #321); Reset to team writes the layer alone.
+// None of them writes a role, division, department, scope or member. Both
+// sides of the dashboard data interface build it, each with its own store
+// and its own roles.
 
 /** The layer the public page lays on: the published version, or none. */
 export function publishedLayer(items: readonly ContentItem<TeamPageLayer>[]): TeamPageLayer {
@@ -46,26 +69,70 @@ export type TeamPageOpening = {
   readonly base: TeamPage;
 };
 
+/**
+ * Where the Team page's layer and advisors are kept. Save draft and Publish
+ * go through `save` alone, so the layer and the advisors land together.
+ */
+export interface TeamPageStore {
+  /** The layer document: one item at most, none before the first save. Reset to team writes it alone. */
+  readonly layer: ContentStore<TeamPageLayer>;
+  /** Every advisor, as ./advisors.ts keeps them. */
+  advisors(): Promise<readonly AdvisorItem[]>;
+  /**
+   * The layer document's versions become `layer` and every advisor write
+   * lands, in one step: on a refusal or a failure nothing is written, and
+   * the layer and the advisors stay as they were.
+   */
+  save(layer: Versioned<TeamPageLayer>, advisors: readonly AdvisorWrite[]): Promise<WriteResult<null>>;
+}
+
+/** What a Save draft or Publish answers: the layer's versions and the advisors, as stored. */
+export type TeamPageSaved = { readonly layer: Versioned<TeamPageLayer>; readonly advisors: readonly AdvisorItem[] };
+
 export interface TeamPageEditor {
   /** Null for a viewer without site-content access. */
   open(): Promise<TeamPageOpening | null>;
-  /** Save draft or Publish the whole layer, as the editor sent it. */
-  save(step: PublishStep, layer: unknown): Promise<WriteResult<Versioned<TeamPageLayer>>>;
+  /** Save draft or Publish the whole layer and the Advisors panel's rows, as the editor sent them; either both land or neither. */
+  save(step: PublishStep, layer: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>>;
   /** Reset to team (board 80h): a draft with every edit gone except the intro text and the group photo. */
   reset(): Promise<WriteResult<Versioned<TeamPageLayer>>>;
 }
 
 export const NOT_A_LAYER = "The page changed in a way it cannot keep. Reload and try again.";
 
-export function teamPageEditor(
-  viewer: ViewerStanding,
-  store: ContentStore<TeamPageLayer>,
-  roles: () => Promise<TeamRoles>,
-  base: TeamPage,
-): TeamPageEditor {
-  const editor = contentEditor(viewer, store);
+/** Why a save is refused when the layer leaves a section the page always draws empty. */
+export const SECTION_EMPTY: Readonly<Record<TeamPageSection, string>> = {
+  leader: "Keep the team leader on the page.",
+  arc: "Keep at least one leader on the arc.",
+  departments: "Keep at least one department head on the page.",
+  core: "Keep at least one core member on the page.",
+};
+
+export const HEADS_FULL = `The departments area shows up to ${HEADS_SHOWN_MAX} heads.`;
+
+/**
+ * Why the page cannot be drawn as `layer` edits it; null when it can. The
+ * limits bind what the layer does, not what the roles alone do: the roles may
+ * put more than eight on the arc or more heads than the carousel shows (the
+ * page then shows the first ones), and may leave a section empty (the page
+ * then shows the hand-typed record), but the layer may not add past a limit,
+ * and may not empty a section the roles fill, which would bring the
+ * hand-typed record back without a word.
+ */
+export function layerRefusal(build: TeamBuild, base: TeamPage, layer: TeamPageLayer): string | null {
+  if (leadersOnArc(build, layer) > Math.max(ARC_LEADERS, leadersOnArc(build, NO_TEAM_LAYER))) return ARC_FULL;
+  const shown = applyLayer(build, layer);
+  const roles = applyLayer(build, NO_TEAM_LAYER);
+  const empty = emptySectionOf(build, shown, base);
+  if (empty !== null && emptySectionOf(build, roles, base) === null) return SECTION_EMPTY[empty];
+  if (headsShown(shown) > Math.max(HEADS_SHOWN_MAX, headsShown(roles))) return HEADS_FULL;
+  return null;
+}
+
+export function teamPageEditor(viewer: ViewerStanding, store: TeamPageStore, roles: () => Promise<TeamRoles>, base: TeamPage): TeamPageEditor {
+  const editor = contentEditor(viewer, store.layer);
   /** The one document's id; null before the first save. */
-  const documentId = async () => (await store.list())[0]?.id ?? null;
+  const documentId = async () => (await store.layer.list())[0]?.id ?? null;
   const versionOf = (result: WriteResult<ContentItem<TeamPageLayer>>): WriteResult<Versioned<TeamPageLayer>> =>
     result.ok ? written(result.value.version) : result;
 
@@ -79,15 +146,16 @@ export function teamPageEditor(
       return { status: version === null ? null : statusOf(version), layer, page: editedTeamPage(build, base, layer).page, build, base };
     },
 
-    async save(step, layer) {
-      const result = await editor.save(await documentId(), step, async () => {
-        if (!isTeamPageLayer(layer)) return refused(NOT_A_LAYER);
-        // The layer may not put more than eight on the arc; the roles alone may (the page then shows the first eight).
-        const build = teamBuildOf(await roles());
-        const cap = Math.max(ARC_LEADERS, leadersOnArc(build, NO_TEAM_LAYER));
-        return leadersOnArc(build, layer) > cap ? refused(ARC_FULL) : written(layer);
-      });
-      return versionOf(result);
+    async save(step, layer, advisors) {
+      if (!maySiteContent(viewer)) return refused(SITE_CONTENT_REFUSAL);
+      if (!isTeamPageLayer(layer)) return refused(NOT_A_LAYER);
+      const refusal = layerRefusal(teamBuildOf(await roles()), base, layer);
+      if (refusal !== null) return refused(refusal);
+      const writes = advisorWritesOf(await store.advisors(), step, advisors);
+      if (!writes.ok) return writes;
+      const version = afterStep((await store.layer.list())[0]?.version ?? null, layer, step);
+      const saved = await store.save(version, writes.value);
+      return saved.ok ? written({ layer: version, advisors: await store.advisors() }) : saved;
     },
 
     async reset() {

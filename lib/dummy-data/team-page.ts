@@ -1,8 +1,9 @@
-import { isAdvisorVersion, type AdvisorItem, type AdvisorStore, type AdvisorVersion } from "@/lib/about/advisors";
+import { advisorsAfter, isAdvisorVersion, type AdvisorItem, type AdvisorStore, type AdvisorVersion } from "@/lib/about/advisors";
 import { importedAdvisors } from "@/lib/about/advisors-import";
 import { isTeamPageLayer, type TeamPageLayer } from "@/lib/about/team-layer";
+import type { TeamPageStore } from "@/lib/about/team-page-editor";
+import { memoryTeamPageStore } from "@/lib/about/team-page-memory";
 import { teamPeopleOf, type TeamRoles } from "@/lib/about/team-roles";
-import type { ContentStore } from "@/lib/content/editor";
 import type { ContentItem } from "@/lib/content/versioned";
 import { written } from "@/lib/dashboard/write";
 import { dummyContentStore, parseContentEdits, serializeContentEdits, type ContentEdits, type ContentEditsStore } from "./content-edits";
@@ -37,11 +38,6 @@ export function parseTeamPageLayerEdits(value: string | undefined): DummyTeamPag
 
 export const serializeTeamPageLayerEdits = serializeContentEdits<TeamPageLayer>;
 
-/** The test developer's layer: the seed with their edits, kept in their cookie, which refuses a layer too big for it. */
-export function dummyTeamPageLayerStore(edits: DummyTeamPageLayerEditsStore): ContentStore<TeamPageLayer> {
-  return dummyContentStore(dummyTeamPageLayerSeed(), edits);
-}
-
 // The Team page's advisors (issue #286) on previews: the store starts from
 // today's advisors, as the database's migration imports them, and what a test
 // developer adds, edits, reorders or publishes is kept in their own cookie.
@@ -65,11 +61,23 @@ export function parseAdvisorEdits(value: string | undefined): DummyAdvisorEdits 
 
 export const serializeAdvisorEdits = serializeContentEdits<AdvisorVersion>;
 
-/** The test developer's advisors: the seed with their edits, and End advising into their Alumni edits. */
+/**
+ * The test developer's Team page store: the layer and the advisors, each in
+ * its own cookie. A save that either cookie cannot hold is refused before
+ * either is written, so the two never disagree.
+ */
+export function dummyTeamPageStore(layerEdits: DummyTeamPageLayerEditsStore, advisorEdits: DummyAdvisorEditsStore): TeamPageStore {
+  const layer = dummyContentStore(dummyTeamPageLayerSeed(), layerEdits);
+  const advisors = dummyContentStore(dummyAdvisorSeed(), advisorEdits);
+  return memoryTeamPageStore(layer, advisors, (l, a) => layer.refusal(l) ?? advisors.refusal(a));
+}
+
+/** The test developer's advisors: the seed with their edits, a save kept whole or refused whole, and End advising into their Alumni edits. */
 export function dummyAdvisorStore(edits: DummyAdvisorEditsStore, team: TeamEditsStore): AdvisorStore {
   const store = dummyContentStore(dummyAdvisorSeed(), edits);
   return {
     ...store,
+    saveAll: async (writes) => store.replace(advisorsAfter(await store.list(), writes)),
     async endAdvising(id, { name, role, from, to }) {
       const removed = await store.remove(id);
       if (!removed.ok) return removed;

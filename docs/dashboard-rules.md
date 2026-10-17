@@ -130,8 +130,6 @@ An admin column comes later. **Planned**, no issue yet.
   - The head's Overview adds a Divisions panel: one row per division, with its leads, its people,
     and its new applications and open positions (board 62). A row opens that division's tab on
     Positions.
-  - **Gap:** any access grant, even view-only, makes a member act as a division lead on
-    applications. Tracked in #160.
 - **Members** and **Access** are for division leads and up, scoped to their divisions. A lead of
   more than one division picks which one Members shows (#231). **Orders** shows every order in
   the team; see "4. Orders".
@@ -542,6 +540,8 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - There are four areas, each scoped to the lead's division: **Positions**, **Applications**,
   **Members** and **Orders**.
   - Applications at Can edit moves applications between steps and accepts or rejects them.
+  - Positions at Can edit opens, closes, adds and edits positions. A grant at Can view, or on
+    another area, changes neither page, and no grant makes its holder a division lead (#160).
   - Orders at either level shows every order in the team (#233). Orders at Can edit also lets
     them request, edit and cancel the orders of that division. Orders at Can view edits nothing.
     A person with no Orders access does not see the Orders page.

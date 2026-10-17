@@ -186,8 +186,8 @@ Rules:
   not use `motion-reduce:animate-none` for this: it loses to the `data-[state]` variants.
   `DialogOverlay` follows this rule; the shared `DialogContent` export does not. It still
   exit-animates (`data-[state=closed]:animate-out`), and its open animation is not under
-  `motion-safe:` (`components/ui/dialog.tsx`). Only the older dialogs use it
-  (`add-position-dialog.tsx`, `file-preview-dialog.tsx`); do not use it on a redesigned page.
+  `motion-safe:` (`components/ui/dialog.tsx`). No component uses it now; do not use it on a
+  redesigned page.
 - Every WebGL canvas starts hidden with `opacity-0` on its wrapper and is revealed by
   `RevealOnFirstFrame` after the second frame. This stops the white flash
   (`reveal-on-first-frame.tsx`, `handoff-hero-rocket.md` §9).
@@ -274,8 +274,10 @@ tile cut from the approved background, with the soft diagonal streaks baked onto
 the board's 16% strength, blurred so it holds no compression blocks and stored lossless. It
 repeats down the page (`max(100%, 1440px) auto repeat-y`), so it shows no seam at any page
 height. `.page-sky-grain` is the fine film grain, a
-stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain; it
-also dithers the tile's dark gradients so they show no bands. On top
+stitched SVG noise tile in soft-light blend at 60% (the exception above), kept apart because webp compression drops grain. It
+is film texture only. The streak tile carries its own 8 x 8 ordered dither, so its dark
+gradients show no bands; the grain cannot do that job, since its noise renders flat on a 1x
+screen (issue #87). On top
 sits a `Starfield` with no shooting star and whole-pixel star sizes (2 or 3px,
 `wholePixels`): a fractional box under 3px renders as a dash, not a dot. Its stars are also
 kept apart (`minSpacing`, 1.5% on both axes): two stars that touch merge into one dash. Never ship the sky as one tall image. The stars
@@ -435,6 +437,25 @@ the paper "Apply for this role" pill to `/apply/<id>-<title>`; an open placehold
 lock and "This position is not accepting applications right now.", with no button. The
 questions are the same accordion, a plus that turns to a minus.
 
+**/partners** (boards 31, 31b and 31m, issue #107, `app/partners/page.tsx`,
+`components/partners/`): the About page header with four figures (2 x 2 on phones), the main
+partners, the media partners, then "Become a partner". Two figures count the main and media
+partners; two show the budget split, read from Politecnico's share on the Our University page
+(`partnerStats` in `lib/partners.ts`). There is no apply band: the footer sits in the sky. The partners are the published ones in the site order
+the dashboard sets (issue #256), as the landing strip reads them. Each group is a centred
+heading over glass partner cards (`.glass-card`, `partner-card.tsx`): one column on phones, two
+from md and three from lg, a short row centred. A card holds the logo, the name, the one-liner
+and "Visit website". Every desktop card has one fixed height at each width, sized for the
+longest texts `lib/partners.ts` allows, so the cards of a row are equal and nothing moves on
+hover. From md, hover or keyboard focus inside the card swaps the one-liner for the partner's
+own text in the same grid cell, halves the logo and lights the edge in faint accent (board
+31b), over 300ms ease-out, with no transition under reduced motion. On phones there is no
+hover: "Read more" (`read-more.tsx`, the repo's Radix accordion, opening at once) shows the
+same text in the card, which grows to hold it, beside the "Website" link. A partner with no website shows no link; one with no text of its
+own has no swap and no "Read more". "Become a partner" (`become-partner.tsx`) is a
+`.glass-card` box: eyebrow, title and body, then the paper "Write to us" pill, a mail link,
+with the address under it; on phones the pill is full width under the body.
+
 **Inside the team:** four figures, then four `.glass-card` link cards. Phones (board 24):
 figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
 (`inside-team.tsx`).
@@ -443,7 +464,15 @@ figures 2 x 2 with 52px numbers, each under its own hairline; link cards stacked
 26px heading, "Become a partner", then the logos at half size (25px, the Sophia mark 38px) in
 a 56px marquee. Full-colour logos,
 never greyscale. Right-to-left loop, 40s, paused on hover and off screen, still under reduced motion,
-edges faded with a mask. Each logo is a link (`partners.tsx`, HANDOFF).
+edges faded with a mask. A logo links to the partner's website when it has one; a partner with no website shows a plain logo (`partners.tsx`, HANDOFF).
+Dark logos (issue #107): a logo whose alpha-weighted luminance gives under 3:1 contrast against
+`ground` (`darkLogo`) is drawn all white with `brightness(0) invert(1)`, here and on /partners
+(`components/partners/partner-logo.tsx`). There is no plate behind it and no recoloured file:
+the partner's own file is served unchanged. This white drawing is not a recolour under the
+brand-asset rule (Components above). The flag comes from the measurement, never from the eye
+(`measureLogo` in `lib/logo-luminance.ts`): the dashboard sets it when a logo is uploaded, and
+`pnpm logos:check` (`scripts/logos-check.ts`) fails until each `darkLogo` flag in
+`lib/partners.ts` equals the measurement.
 
 **Apply band** (board 21): `bg-accent` (`#FF5E00`) with `public/textures/apply-band.webp` on
 top in multiply at 60%. Eyebrow just "APPLY", with no year, at every width; headline "Build the / next one with us." at
@@ -509,6 +538,6 @@ stacked.
   292px on phones) until the two boards agree.
 - **Between phone and desktop.** Boards 21 and 24 cover 1440px and 390px. From 768px to
   1023px the page uses the desktop layout with the menu in place of the link row.
-- **Subroutes.** `/projects`, the project pages and `/apply` are built (Page rules
-  above). `/about/*`, `/outreach`, `/partners` and the news page are still being designed
-  (HANDOFF "Todo").
+- **Subroutes.** Every page the site links to is built. `/projects`, the project pages,
+  `/apply` and `/partners` have page rules above. The four `/about/*` pages and `/outreach`
+  with its post pages (the news page) are built but have no page rules here yet.

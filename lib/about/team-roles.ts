@@ -75,8 +75,13 @@ export type CarouselSlide<H, L> = { readonly kind: DepartmentKind; readonly plac
 
 type KindedDepartment<H, L> = { readonly kind: DepartmentKind; readonly heads: readonly H[]; readonly leads: readonly L[] };
 
-/** A department's places: a technical head over their division leads; an operations head beside them. */
+/**
+ * A department's places: a technical head over their division leads; an
+ * operations head beside them. Leads come with a head, so a department whose
+ * heads are all hidden shows no one, whatever its kind.
+ */
 function placesOf<H, L>(department: KindedDepartment<H, L>): CarouselPlace<H, L>[] {
+  if (department.heads.length === 0) return [];
   if (department.kind === "technical") return department.heads.map((head) => ({ kind: "head", head, leads: department.leads }));
   return [
     ...department.heads.map((head): CarouselPlace<H, L> => ({ kind: "head", head, leads: [] })),
@@ -199,27 +204,52 @@ export function withLayerText(page: TeamPage, layer: Pick<TeamPageLayer, "intro"
   };
 }
 
-/**
- * The Team page as `shown` lays it out, with the core members of `build`,
- * onto `base` (the hand-typed ./team.ts) for everything else. Null when a
- * section the page always draws is empty: no team leader, no one on the arc,
- * no department head or no one left for core members.
- */
-export function teamPageOf(build: TeamBuild, shown: ShownTeam, base: TeamPage): TeamPage | null {
+/** The most department heads the carousel shows: five slides of ten. */
+export const HEADS_SHOWN_MAX = SLIDES * SLIDE_MEMBERS;
+
+/** How many department heads `shown` puts on the page, before the carousel drops any past `HEADS_SHOWN_MAX`. */
+export function headsShown(shown: ShownTeam): number {
+  return shown.departments.reduce((sum, d) => sum + d.heads.length, 0);
+}
+
+/** A section the page always draws: the team leader, the arc of leaders, the departments area, the core members. */
+export type TeamPageSection = "leader" | "arc" | "departments" | "core";
+
+/** The page `shown` lays out, or the first section the page always draws that it leaves empty. */
+function laidOut(build: TeamBuild, shown: ShownTeam, base: TeamPage): { readonly page: TeamPage } | { readonly empty: TeamPageSection } {
   const leaders = upTo(
     shown.leaders.map((l) => l.shown),
     ARC_LEADERS,
   );
   const groups = upTo(slidesOf(shown.departments), SLIDES);
   const [firstCore, ...restCore] = build.core;
-  if (!shown.leader || !leaders || !groups || !firstCore) return null;
+  if (!shown.leader) return { empty: "leader" };
+  if (!leaders) return { empty: "arc" };
+  if (!groups) return { empty: "departments" };
+  if (!firstCore) return { empty: "core" };
   const page: TeamPage = {
     ...base,
     orgChart: { ...base.orgChart, leader: shown.leader, leaders },
     departments: { ...base.departments, groups },
     coreMembers: { ...base.coreMembers, members: [firstCore, ...restCore] },
   };
-  return withLayerText(page, shown);
+  return { page: withLayerText(page, shown) };
+}
+
+/**
+ * The Team page as `shown` lays it out, with the core members of `build`,
+ * onto `base` (the hand-typed ./team.ts) for everything else. Null when a
+ * section the page always draws is empty (`emptySectionOf`).
+ */
+export function teamPageOf(build: TeamBuild, shown: ShownTeam, base: TeamPage): TeamPage | null {
+  const laid = laidOut(build, shown, base);
+  return "page" in laid ? laid.page : null;
+}
+
+/** The first section the page always draws that `shown` leaves empty: no team leader, no one on the arc, no department head, no one left for core members; null when none is. */
+export function emptySectionOf(build: TeamBuild, shown: ShownTeam, base: TeamPage): TeamPageSection | null {
+  const laid = laidOut(build, shown, base);
+  return "empty" in laid ? laid.empty : null;
 }
 
 /**

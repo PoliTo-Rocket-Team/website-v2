@@ -1,9 +1,9 @@
 # Audited mutations
 
 How the app writes to Postgres today: a `"use server"` module exports one function per mutation,
-runs the Drizzle write through `runAuditQuery` so the audit trigger knows who did it, then
-invalidates the cache tags the write made stale. A Server Component passes the functions down to a
-client component as props.
+which hands the input to a `server-only` write that checks it, runs the Drizzle write through
+`runAuditQuery` so the audit trigger knows who did it, then invalidates the cache tags the write
+made stale. Client components import the action functions directly.
 
 ## The shape
 
@@ -14,42 +14,36 @@ client component as props.
    [0003](../drizzle/0003_logs_changed_by_user_fk.sql)) reads that setting into `logs.changed_by`.
 
    ```ts
-   export async function handleEditPosition(id: number, updatedData: PositionMutation) {
-     await runAuditQuery((db) =>
-       db
-         .update(applyPositions)
-         .set(buildPositionMutation(updatedData))
-         .where(eq(applyPositions.id, id)),
-     );
-     invalidatePositionCaches();
-   }
-   ```
-   ([app/(legacy)/dashboard/positions/server-actions.ts](../app/(legacy)/dashboard/positions/server-actions.ts))
-
-   Return the builder's query unawaited. `runAuditQuery` needs the un-run query so it can batch it.
-
-2. **Map input keys once.** The client sends snake_case (`required_skills`); a `build*` function
-   maps it to the Drizzle camelCase columns (`buildPositionMutation`, `buildNewPositionValues`).
-
-3. **Soft delete.** Deleting a position sets `isDeleted: true`; reads filter it out (see
-   [drizzle-reads.md](./drizzle-reads.md)).
-
-4. **Re-read after insert.** `handleAddPosition` inserts with `.returning({ id })`, then loads the
-   full joined row with `getPositionById` and returns it, so the client can add it to its list.
-
-5. **Invalidate the read tags.** After the write, call `updateTag` on every tag whose snapshot the
-   write changed. The tag names come from the read module:
-
-   ```ts
-   function invalidatePositionCaches() {
+   async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
+     if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
+     await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
      updateTag(POSITIONS_CACHE_TAG);
      updateTag(PUBLIC_POSITIONS_CACHE_TAG);
    }
    ```
+   ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts))
 
-6. **Call the actions from the client.** The legacy list took the actions as props
-   ([components/apply-positions-list.tsx](../components/apply-positions-list.tsx)). The dashboard's
-   client components import them from
+   Return the builder's query unawaited. `runAuditQuery` needs the un-run query so it can batch it.
+
+2. **Check the input on the server.** The write takes `unknown` and checks it before it writes:
+   `checkNewPosition` and `checkPositionContent` in
+   [lib/dashboard/new-position.ts](../lib/dashboard/new-position.ts) turn the drawer's fields into a
+   typed position or a list of errors, and `createPosition` / `editPosition` in
+   [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts) map the typed
+   position to the Drizzle columns.
+
+3. **Soft delete.** A position row carries `isDeleted`; reads filter it out (`readPositionRows` in
+   [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts); see
+   [drizzle-reads.md](./drizzle-reads.md)). No dashboard write deletes a position today.
+
+4. **Return what the client needs.** `createPosition` inserts with `.returning({ id })` and
+   returns the new id and its position code, so the drawer can name the saved role.
+
+5. **Invalidate the read tags.** After the write, call `updateTag` on every tag whose snapshot the
+   write changed, as `setPositionOpen` does above. The tag names come from the read module
+   ([app/actions/get-apply-positions.ts](../app/actions/get-apply-positions.ts)).
+
+6. **Call the actions from the client.** The dashboard's client components import them from
    [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the
    arguments and writes through the dashboard data interface
    ([lib/dashboard/data.ts](../lib/dashboard/data.ts)): a test developer's write changes only a
@@ -60,8 +54,7 @@ client component as props.
 
 ## When this applies
 
-Any write to an app table in `public`. Call sites today: `handleDelete`, `handleEditPosition` and
-`handleAddPosition` in `server-actions.ts` (no page calls them since issue #142), the site-wide
+Any write to an app table in `public`. Call sites today: the site-wide
 recruitment switch (an upsert on `recruitment_setting`, in `saveRecruitment` in
 [lib/dashboard/database.ts](../lib/dashboard/database.ts), called through the dashboard data
 interface's `setRecruitment`), `setPositionOpen`, `createPosition` and `moveApplication` in
@@ -77,7 +70,11 @@ writes (issue #256) pass the site-content gate in `contentEditor`
 [lib/dashboard/database-partners.ts](../lib/dashboard/database-partners.ts) writes and calls
 `updateTag(PARTNERS_CACHE_TAG)`; the question writes (issue #258) do the same through
 [lib/dashboard/database-faqs.ts](../lib/dashboard/database-faqs.ts) and `updateTag(FAQS_CACHE_TAG)`, and the Team page's visual layer (issue #283) through
-[lib/dashboard/database-team-page.ts](../lib/dashboard/database-team-page.ts) and `updateTag(TEAM_PAGE_LAYER_CACHE_TAG)`. A test
+[lib/dashboard/database-team-page.ts](../lib/dashboard/database-team-page.ts) and `updateTag(TEAM_PAGE_LAYER_CACHE_TAG)`. The Team
+page editor's Save draft and Publish (issue #321) send the layer's rows and every advisor write in
+one `runAuditBatch` through
+[lib/dashboard/database-team-page-store.ts](../lib/dashboard/database-team-page-store.ts), so the
+two land together or not at all. A test
 developer's write goes to the dummy side, which checks the same rules and stores nothing. The
 Positions and Applications writes ([app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts))
 leave the scope check to the data interface: its database side checks the viewer reaches the
@@ -114,11 +111,5 @@ automated tests.
 
 ## Known inconsistencies (not the pattern)
 
-- **No access check in the position mutations.** None of the three position actions checks the
-  session or the caller's scope (`handleSetRecruitment` does; copy it). Reads compute `canEdit` from `ScopeInfo` (see [scope-access.md](./scope-access.md)),
-  but a `"use server"` export is a public endpoint, and these accept any `id`. A new mutation should
-  check scope on the server; do not copy this gap.
-- **No server-side validation.** Input is validated only in the client forms
-  ([client-form-submit.md](./client-form-submit.md)). The actions trust the payload.
 - **Anonymous writes skip the batch.** When `getCurrentUserId()` returns `null`, `runAuditQuery`
   runs the query alone, with no error.

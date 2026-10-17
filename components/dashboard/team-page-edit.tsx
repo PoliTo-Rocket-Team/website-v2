@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState, useTransition, type ReactNode } from "r
 import Image from "next/image";
 import { Check, Eye, LogOut, Plus, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
-import { endAdvising, resetTeamPageLayer, saveTeamAdvisors, saveTeamPageLayer } from "@/app/dashboard/actions";
+import { endAdvising, resetTeamPageLayer, saveTeamPage } from "@/app/dashboard/actions";
 import { PAGE_INTRO } from "@/components/about/page-header";
 import { TeamPageView, type TeamPageFrames } from "@/components/about/team-page";
 import { CURRENT_ACADEMIC_YEAR } from "@/lib/about/academic-year-copy";
@@ -386,19 +386,15 @@ export function TeamPageEdit({
     setAdvisorRows(rows);
     setPanel(null);
     startTransition(async () => {
-      const result = await saveTeamPageLayer(step, next);
+      // One write: the layer and the advisors land together, or neither does.
+      const result = await saveTeamPage(step, next, rows);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      setLayerStatus(statusOf(result.value));
-      const saved = await saveTeamAdvisors(step, rows);
-      if (!saved.ok) {
-        toast.error(`Advisors: ${saved.error}`);
-        return;
-      }
-      setAdvisorItems(saved.value);
-      setAdvisorRows(advisorRowsOf(saved.value));
+      setLayerStatus(statusOf(result.value.layer));
+      setAdvisorItems(result.value.advisors);
+      setAdvisorRows(advisorRowsOf(result.value.advisors));
       toast.success(step === "publish" ? "The Team page is published." : "Draft saved. The live Team page stays as it is.");
     });
   };

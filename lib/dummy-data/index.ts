@@ -15,7 +15,7 @@ import { dummyFaqNow, dummyFaqStore, type DummyFaqEditsStore } from "./faqs";
 import { team as teamRecord } from "@/lib/about/team";
 import { teamPageEditor } from "@/lib/about/team-page-editor";
 import { advisorEditor } from "@/lib/about/advisors";
-import { dummyAdvisorStore, dummyTeamPageLayerStore, dummyTeamRoles, type DummyAdvisorEditsStore, type DummyTeamPageLayerEditsStore } from "./team-page";
+import { dummyAdvisorStore, dummyTeamPageStore, dummyTeamRoles, type DummyAdvisorEditsStore, type DummyTeamPageLayerEditsStore } from "./team-page";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { dummyOutreachStore, dummyPhotoFiles, NO_OUTREACH_EDITS_STORE, type DummyOutreachEditsStore } from "./outreach";
 import { projectEditor } from "@/lib/project-content/editor";
@@ -1099,8 +1099,13 @@ export function dummyDashboardData(
     partners: partnerEditor(dummyViewer(viewer, holders), dummyPartnerStore(partnerEdits), dummyLogoFiles),
     // Seen from the dummy team's moment, so a question saved here reads "Today".
     faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
-    // The layer lives in the test developer's cookie and is laid on the dummy team as they edited it.
-    teamPage: teamPageEditor(dummyViewer(viewer, holders), dummyTeamPageLayerStore(teamPageEdits), async () => dummyTeamRoles(teamEdits.current), teamRecord),
+    // The layer and the advisors live in the test developer's cookies; the layer is laid on the dummy team as they edited it.
+    teamPage: teamPageEditor(
+      dummyViewer(viewer, holders),
+      dummyTeamPageStore(teamPageEdits, advisorEdits),
+      async () => dummyTeamRoles(teamEdits.current),
+      teamRecord,
+    ),
     // The advisors live in their own cookie; End advising adds to the Alumni edits, on the dummy clock's year.
     teamAdvisors: advisorEditor(dummyViewer(viewer, holders), dummyAdvisorStore(advisorEdits, teamEdits), async () => DUMMY_ALUMNI_YEAR),
     outreach: outreachEditor(dummyViewer(viewer, holders), dummyOutreachStore(outreachEdits), dummyPhotoFiles),

@@ -160,7 +160,7 @@ test("only full access and site-content access reach the partners and their writ
   const refusedFor: readonly ViewerStanding[] = [
     { kind: "department-head", siteContent: false, approveOrders: false },
     { kind: "division-lead", siteContent: false, approveOrders: false },
-    { kind: "member", siteContent: false, approveOrders: false },
+    { kind: "member", areaGrant: false, siteContent: false, approveOrders: false },
     { kind: "non-member", siteContent: false, approveOrders: false },
   ];
   for (const viewer of refusedFor) {
@@ -173,6 +173,6 @@ test("only full access and site-content access reach the partners and their writ
     assert.equal(logos.stored.length, 0);
     assert.deepEqual(publicItems(await store.list()), record);
   }
-  const member: ViewerStanding = { kind: "member", siteContent: true, approveOrders: false };
+  const member: ViewerStanding = { kind: "member", areaGrant: false, siteContent: true, approveOrders: false };
   assert.ok((await editorOver(importedPartners(), member).editor.list()) !== null);
 });
