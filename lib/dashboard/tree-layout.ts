@@ -41,7 +41,7 @@ export type TreeLayout = {
   readonly edges: readonly TreeEdge[];
   /** The dashed lines to people drawn under another division; none when nobody is in two. */
   readonly links: readonly TreeLink[];
-  /** What the canvas opens on: the viewer's department, or the top of the tree for the leader and board. Null for no place. */
+  /** What the canvas opens on: the viewer's department, or the top of the tree for the leader and board, each down to its lowest row. Null for no place. */
   readonly focus: Box | null;
 };
 
@@ -156,7 +156,7 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
   });
 
   let height = tree.board.length > 0 ? BOARD_Y + CARD.h : LEADER_Y + CARD.h;
-  let focus: Box | null = aboveDepartments ? { x: Math.min(leaderBox.x, boardLeft), y: 0, w: Math.max(CARD.w, boardWidth), h: height } : null;
+  let ownColumn: Box | null = null;
 
   let left = (width - headsWidth) / 2;
   for (const { department, width: columnWidth, leadsWidth, slots } of columns) {
@@ -221,14 +221,16 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
       columnBottom = Math.max(columnBottom, bottom(leadBox) + membersHeight(rows.length));
     });
 
-    if (onDepartment) focus = { x: left, y: HEAD_Y, w: columnWidth, h: columnBottom - HEAD_Y };
+    if (onDepartment) ownColumn = { x: left, y: HEAD_Y, w: columnWidth, h: columnBottom - HEAD_Y };
     height = Math.max(height, columnBottom);
     left += columnWidth + DEPARTMENT_GAP;
   }
 
   const links = linksOf(tree, nodes, starts, targets);
   for (const link of links) height = Math.max(height, ...link.points.map(([, y]) => y + LINK_STEP));
-  return { width, height, nodes, edges, links, focus };
+  // The leader and board open on the top of the tree, down to its lowest row, so the opening view leaves no row cut off.
+  const top: Box | null = aboveDepartments ? { x: Math.min(leaderBox.x, boardLeft), y: 0, w: Math.max(CARD.w, boardWidth), h: height } : null;
+  return { width, height, nodes, edges, links, focus: ownColumn ?? top };
 }
 
 /**

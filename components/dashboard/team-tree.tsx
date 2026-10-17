@@ -192,30 +192,52 @@ const PAD = 48;
 /** Room the zoom controls take at the top of the canvas. */
 const TOP_ROOM = 72;
 const MINIMAP_WIDTH = 184;
+/** The minimap's inset from the canvas edge (bottom-4), its padding and border (p-2, border), and the gap kept above it. */
+const MINIMAP_CHROME = 16 + 2 * 8 + 2 + 16;
 
 const clampZoom = (k: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k));
 
-/** The view that puts `box` in the middle of a `size` canvas at zoom `k`, its top kept clear of the controls. */
-function centredOn(box: Box, size: { w: number; h: number }, k: number): View {
-  const x = size.w / 2 - (box.x + box.w / 2) * k;
-  const middleY = size.h / 2 - (box.y + box.h / 2) * k;
+const minimapHeight = (layout: TreeLayout) => Math.max(24, layout.height * (MINIMAP_WIDTH / layout.width));
+
+/**
+ * Room the minimap takes at the foot of the canvas, the legend beside it being
+ * shorter: the opening view and Fit keep every row above it, so none hides
+ * behind it.
+ */
+const bottomRoom = (layout: TreeLayout) => minimapHeight(layout) + MINIMAP_CHROME;
+
+type Size = { readonly w: number; readonly h: number };
+
+/**
+ * The view that puts `box` in the middle of the clear band of a `size` canvas
+ * at zoom `k`: under the controls and over the `below` room the minimap
+ * takes. A box taller than the band shows from its top.
+ */
+function centredOn(box: Box, size: Size, k: number, below: number): View {
+  const band = size.h - TOP_ROOM - below;
   const topY = TOP_ROOM - box.y * k;
-  return { x, y: box.h * k + TOP_ROOM + PAD > size.h ? topY : Math.max(middleY, topY), k };
+  return { x: size.w / 2 - (box.x + box.w / 2) * k, y: box.h * k > band ? topY : topY + (band - box.h * k) / 2, k };
 }
 
-function fitted(layout: TreeLayout, size: { w: number; h: number }): View {
-  const k = clampZoom(Math.min((size.w - 2 * PAD) / layout.width, (size.h - TOP_ROOM - PAD) / layout.height, 1));
+/** The view the canvas opens on: the focus whole, at 100% or smaller when its rows would not all fit the clear band. */
+function opening(focus: Box, size: Size, below: number): View {
+  return centredOn(focus, size, clampZoom(Math.min(1, (size.h - TOP_ROOM - below) / focus.h)), below);
+}
+
+function fitted(layout: TreeLayout, size: Size, below: number): View {
+  const k = clampZoom(Math.min((size.w - 2 * PAD) / layout.width, (size.h - TOP_ROOM - below) / layout.height, 1));
   return {
     x: (size.w - layout.width * k) / 2,
-    y: TOP_ROOM + (size.h - TOP_ROOM - PAD - layout.height * k) / 2,
+    y: TOP_ROOM + (size.h - TOP_ROOM - below - layout.height * k) / 2,
     k,
   };
 }
 
 function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | null; target: Target | null }) {
   const layout = useMemo(() => layoutTeamTree(tree), [tree]);
+  const below = bottomRoom(layout);
   const frame = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [size, setSize] = useState<Size | null>(null);
   const [view, setView] = useState<View | null>(null);
   const [glide, setGlide] = useState(false);
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
@@ -236,8 +258,8 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
   // Open on the viewer's department, or on the whole tree when they have no place in it.
   useLayoutEffect(() => {
     if (!size || view) return;
-    setView(layout.focus ? centredOn(layout.focus, size, 1) : fitted(layout, size));
-  }, [size, view, layout]);
+    setView(layout.focus ? opening(layout.focus, size, below) : fitted(layout, size, below));
+  }, [size, view, layout, below]);
 
   const moveTo = useCallback((next: (current: View) => View) => {
     setGlide(true);
@@ -250,8 +272,8 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
     if (!target || !size || handled.current === target) return;
     handled.current = target;
     const box = boxOf(layout, target.personId);
-    if (box) moveTo((current) => centredOn(box, size, current.k));
-  }, [target, size, layout, moveTo]);
+    if (box) moveTo((current) => centredOn(box, size, current.k, below));
+  }, [target, size, layout, below, moveTo]);
 
   const zoomAt = useCallback((k: number, at: { x: number; y: number }) => {
     setView((current) => {
@@ -292,7 +314,7 @@ function TreeCanvas({ tree, found, target }: { tree: TeamTree; found: number | n
   };
 
   const fit = () => {
-    if (size) moveTo(() => fitted(layout, size));
+    if (size) moveTo(() => fitted(layout, size, below));
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -427,11 +449,10 @@ function Minimap({
 }: {
   layout: TreeLayout;
   view: View;
-  size: { w: number; h: number };
+  size: Size;
   onCentre: (at: { x: number; y: number }) => void;
 }) {
-  const scale = MINIMAP_WIDTH / layout.width;
-  const height = Math.max(24, layout.height * scale);
+  const height = minimapHeight(layout);
   // The part of the tree in view, cut to the tree's own edges.
   const left = Math.max(0, -view.x / view.k);
   const top = Math.max(0, -view.y / view.k);
