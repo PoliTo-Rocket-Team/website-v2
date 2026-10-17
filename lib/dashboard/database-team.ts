@@ -437,18 +437,17 @@ function membershipsOfActive(active: readonly ActiveRole[]): Memberships {
 
 /**
  * The person's active roles in the divisions the viewer changes people in
- * (`readActor`): every role for the team, and for a head or a division lead
- * the roles in the divisions they reach, each division a lead of several
- * included (issues #185, #342); never the viewer. Null when none is left.
+ * (`actor`, from `readActor`): every role for the team, and for a head or a
+ * division lead the roles in the divisions they reach, each division a lead
+ * of several included (issues #185, #342); never the viewer. Null when none
+ * is left.
  */
-async function rolesTheViewerChanges(identity: DashboardIdentity, personId: number): Promise<ActiveRole[] | null> {
-  if (personId === identity.memberId) return null;
+async function rolesTheViewerChanges(identity: DashboardIdentity, actor: TeamActor | null, personId: number): Promise<ActiveRole[] | null> {
+  if (personId === identity.memberId || actor === null) return null;
   const active = await activeRoles(personId);
   if (active.length === 0) return null;
-  const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
-  if (actor === null) return null;
   if (actor.kind === "team") return active;
+  const { org } = await readTeamSnapshot();
   const reached = active.filter((r) => r.division_id !== null && reachesDivision(actor, r.division_id, org));
   return reached.length > 0 ? reached : null;
 }
@@ -463,18 +462,15 @@ function done(): true {
 const today = () => new Date().toISOString().slice(0, 10);
 
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
-  const active = await rolesTheViewerChanges(identity, personId);
-  if (active === null) return false;
-  // The panel's role is the role in one division: the lead's own, or for the
-  // operations lead the person's home division. Their other divisions keep
-  // their roles (issue #229).
+  const { org } = await readTeamSnapshot();
+  const actor = await readActor(identity, org);
+  const active = await rolesTheViewerChanges(identity, actor, personId);
+  if (actor === null || active === null) return false;
+  // The panel's role is the role in one division: the home one among those
+  // the viewer reaches. Their other divisions keep their roles (issue #229).
   const division = homeDivision(membershipsOfActive(active));
-  if (edit.role !== null && division !== null) {
-    // Changing who leads a division is the head's, never a division lead's (#231).
-    const { org } = await readTeamSnapshot();
-    const actor = await readActor(identity, org);
-    if (actor === null || !mayChangeDivision(actor, division, org).allowed) return false;
-  }
+  // Changing who leads a division is the head's, never a division lead's (#231).
+  if (edit.role !== null && division !== null && !mayChangeDivision(actor, division, org).allowed) return false;
   const divisionRoles = active.filter((r) => r.division_id === division && (r.type === "lead" || r.type === "core"));
   const target = edit.role === null ? active : divisionRoles;
   if (target.length === 0) return false;
@@ -497,15 +493,14 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
  * `promotingLead` says, never a member.
  */
 async function promote(identity: DashboardIdentity, personId: number, promotion: Promotion): Promise<boolean> {
-  const division = leadDivisionId(identity);
   const leadId = identity.memberId;
-  if (identity.kind !== "division-lead" || division === null || leadId === null) return false;
+  if (identity.kind !== "division-lead" || leadId === null) return false;
   const { org } = await readTeamSnapshot();
   const actor = await readActor(identity, org);
-  if (actor === null || !mayChangeDivision(actor, division, org).allowed) return false;
-  const active = await rolesTheViewerChanges(identity, personId);
-  const theirs = active?.find((r) => r.division_id === division && r.type === "core");
-  if (!theirs) return false;
+  // Their member role in a division the lead leads, whichever of the lead's divisions it is (issue #185).
+  const theirs = (await rolesTheViewerChanges(identity, actor, personId))?.find((r) => r.type === "core");
+  const division = theirs?.division_id ?? null;
+  if (actor === null || !theirs || division === null || !mayChangeDivision(actor, division, org).allowed) return false;
   const myRoles = await activeRoles(leadId);
   const mine = myRoles.find((r) => r.division_id === division && r.type === "lead");
   const stepping = promotingLead(promotion, division);

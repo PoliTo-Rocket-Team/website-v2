@@ -49,8 +49,10 @@ import {
   DIVISION_ROLE_OF,
   homeDivision,
   homeDivisionOf,
+  homeFirst,
   inDivisions,
   isIn,
+  ledDivisionsOf,
   mayChangeDivision,
   mayLeaveTeam,
   memberRowOf,
@@ -439,11 +441,11 @@ export function editedAlumniRecord(edits: TeamEdits, joiners: readonly DummyJoin
   });
 }
 
-/** The division a division lead leads; null for every other viewer. */
-function myDivision(kind: TestViewer): number | null {
-  if (kind !== "division-lead") return null;
+/** Every division a division lead leads, the home one first (issue #185); none for every other viewer. */
+function myDivisions(kind: TestViewer): number[] {
+  if (kind !== "division-lead") return [];
   const mine = people.find((p) => p.id === SELF_ID[kind]);
-  return mine ? homeDivisionOf(mine.placement) : null;
+  return mine ? ledDivisionsOf(mine.placement) : [];
 }
 
 /** The department the department head heads; null for every other viewer. */
@@ -456,8 +458,9 @@ function myDepartment(kind: TestViewer): number | null {
 /**
  * Who `kind` acts as on the Members page: the operations lead reaches the
  * team, a department head their department (issue #235), a division lead
- * their division, and the member holding a test grant the divisions where it
- * lets them change Members (issue #351); nobody else acts there.
+ * every division they lead (issue #185), and the member holding a test grant
+ * the divisions where it lets them change Members (issue #351); nobody else
+ * acts there.
  */
 function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): TeamActor | null {
   if (kind === "member" && grant !== null) return grantActors(grant, org).changing;
@@ -465,21 +468,25 @@ function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): Team
   if (kindOfTestViewer(kind) === "operations-lead") return { kind: "team" };
   const department = myDepartment(kind);
   if (department !== null) return { kind: "head", departmentIds: [department] };
-  const division = myDivision(kind);
-  return division === null ? null : { kind: "lead", divisionIds: [division] };
+  const divisions = myDivisions(kind);
+  return divisions.length === 0 ? null : { kind: "lead", divisionIds: divisions };
 }
 
-/** Whether `kind` may change this person from the Members page: the whole team, or the lead's own division; never themselves. */
+/** Whether `kind` may change this person from the Members page: the whole team, or any division the lead leads; never themselves. */
 function mayEdit(kind: TestViewer, entry: RosterEntry): boolean {
   if (!canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
   if (kindOfTestViewer(kind) === "operations-lead") return true;
-  const division = myDivision(kind);
-  return division !== null && isIn(entry.placement, division);
+  return myDivisions(kind).some((division) => isIn(entry.placement, division));
 }
 
-/** The division a drawer's role change is about: the lead's own, or the person's home division for the operations lead. */
+/**
+ * The division a drawer's role change is about: the person's home one among
+ * the lead's divisions, or the person's home division for the operations lead.
+ */
 function drawerDivision(kind: TestViewer, entry: RosterEntry): number | null {
-  return kind === "division-lead" ? myDivision(kind) : homeDivisionOf(entry.placement);
+  if (kind !== "division-lead") return homeDivisionOf(entry.placement);
+  const mine = myDivisions(kind);
+  return homeFirst(membershipsIn(entry.placement)).find((m) => mine.includes(m.divisionId))?.divisionId ?? null;
 }
 
 /** One roster entry as the Members page shows it, with the details and titles the test developer saved. */

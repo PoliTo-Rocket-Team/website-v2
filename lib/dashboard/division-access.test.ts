@@ -7,12 +7,12 @@ import {
   checkRemoveAllAccess,
   checkSaveAccess,
   departmentOfPlace,
-  FULL_HELD_ACCESS,
   grantRowOf,
+  heldLines,
   NO_APPROVE_ORDERS,
   placeKey,
   placesOf,
-  ROLE_HELD_ACCESS,
+  roleDivision,
   WHOLE_TEAM_PLACE,
   type AccessGrant,
   type AccessPerson,
@@ -32,7 +32,6 @@ const sofia: AccessPerson = { id: 3, name: "Sofia Neri", standing: "member", div
 const coLead: AccessPerson = { id: 9, name: "Luca Bianchi", standing: "lead", division: msa };
 const people = [pietro, sofia, coLead];
 
-const divisionUnit: AccessUnit = { kind: "division", division: msa };
 const inMsa: AccessPlace = { kind: "division", division: msa };
 
 function grant(id: number, person: AccessPerson, target: AccessGrant["target"], level: AccessGrant["level"], place = inMsa): AccessGrant {
@@ -45,7 +44,9 @@ const held: HeldAccess[] = [
   { target: "orders", level: "edit" },
 ];
 
-const lead = (grants: AccessGrant[] = []) => ({ unit: divisionUnit, held, people, grants, approveOrders: NO_APPROVE_ORDERS });
+const divisionUnit: AccessUnit = { kind: "division", divisions: [{ division: msa, held }] };
+
+const lead = (grants: AccessGrant[] = []) => ({ unit: divisionUnit, people, grants, approveOrders: NO_APPROVE_ORDERS });
 
 test("one Save gives one person several areas, each at its own level", () => {
   assert.deepEqual(checkSaveAccess(lead(), { personId: 6, areas: { applications: "edit", members: "view", orders: "view" } }), {
@@ -150,9 +151,8 @@ const luca: AccessPerson = { id: 4, name: "Luca Marino", standing: "member", div
 const laura: AccessPerson = { id: 20, name: "Laura Greco", standing: "lead", division: aoa };
 const marco: AccessPerson = { id: 2, name: "Marco Bianchi", standing: "lead", division: msa };
 const headPeople = [sofia, luca, laura, marco];
-const head = (grants: AccessGrant[] = [], heldByHead: readonly HeldAccess[] = ROLE_HELD_ACCESS) => ({
+const head = (grants: AccessGrant[] = []) => ({
   unit: departmentUnit,
-  held: heldByHead,
   people: headPeople,
   grants,
   approveOrders: NO_APPROVE_ORDERS,
@@ -172,11 +172,9 @@ test("a head gives access in the whole department or in one of its divisions", (
   assert.ok(home.ok && home.value.place.kind === "department");
 });
 
-test("a head gives only what they hold, at no higher level, inside their department", () => {
-  const viewOnly: HeldAccess[] = [{ target: "members", level: "view" }];
-  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department-1", areas: { members: "edit" } }).ok, false);
-  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department-1", areas: { orders: "view" } }).ok, false);
-  assert.equal(checkSaveAccess(head([], viewOnly), { personId: 3, where: "department-1", areas: { members: "view" } }).ok, true);
+test("a head gives every unit area their role holds, never Alumni, and only inside their department", () => {
+  assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { members: "edit", orders: "view" } }).ok, true);
+  assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { alumni: "view" } }).ok, false);
   // A division of another department, and a person from another department, are refused.
   assert.equal(checkSaveAccess(head(), { personId: 3, where: 4, areas: { members: "view" } }).ok, false);
   assert.equal(checkSaveAccess(head(), { personId: 44, where: "department-1", areas: { members: "view" } }).ok, false);
@@ -222,7 +220,6 @@ const teamUnit: AccessUnit = {
 const giulio: AccessPerson = { id: 31, name: "Giulio Russo", standing: "member", division: dm };
 const team = (grants: AccessGrant[] = [], approveOrders: ApproveOrdersAccess = NO_APPROVE_ORDERS) => ({
   unit: teamUnit,
-  held: FULL_HELD_ACCESS,
   people: [...headPeople, giulio],
   grants,
   approveOrders,
@@ -345,4 +342,37 @@ test("a holder of Approve orders gets a row of their own, with the chip before t
       ["Sofia Neri", false, 1, "You"],
     ],
   );
+});
+
+// A lead of several divisions (issue #185) ---------------------------------------
+
+test("a lead of two divisions gives access in the division of the person they edit, up to what they hold there", () => {
+  const sara: AccessPerson = { id: 32, name: "Sara Fontana", standing: "member", division: aoa };
+  const viewInAoa: HeldAccess[] = [{ target: "applications", level: "view" }];
+  const twoDivisions: AccessUnit = { kind: "division", divisions: [{ division: msa, held }, { division: aoa, held: viewInAoa }] };
+  const access = { unit: twoDivisions, people: [...people, sara], grants: [], approveOrders: NO_APPROVE_ORDERS };
+  assert.deepEqual(placesOf(twoDivisions).map(placeKey), [1, 2]);
+
+  // Left out, the place is the person's own division, with what the lead holds there.
+  const given = checkSaveAccess(access, { personId: 32, areas: { applications: "view" } });
+  assert.ok(given.ok && given.value.place.kind === "division" && given.value.place.division.id === 2);
+  assert.equal(checkSaveAccess(access, { personId: 32, areas: { applications: "edit" } }).ok, false, "only view in Optimization and Analysis");
+  assert.equal(checkSaveAccess(access, { personId: 6, where: 1, areas: { applications: "edit" } }).ok, true);
+  // Another of the lead's divisions than the person's, a division they do not lead, a person in neither: refused.
+  assert.equal(checkSaveAccess(access, { personId: 32, where: 1, areas: { applications: "view" } }).ok, false);
+  assert.equal(checkSaveAccess(access, { personId: 6, where: 3, areas: { applications: "view" } }).ok, false);
+  assert.equal(checkSaveAccess(access, { personId: 31, where: 2, areas: { applications: "view" } }).ok, false);
+
+  // "Your access" reads one line per set of areas, naming the divisions that hold it.
+  assert.deepEqual(heldLines(twoDivisions).map((l) => l.where), ["Mission Analysis Division", "Optimization and Analysis Division"]);
+  const same: AccessUnit = { kind: "division", divisions: [{ division: msa, held }, { division: aoa, held }] };
+  assert.deepEqual(heldLines(same).map((l) => l.where), ["Mission Analysis, Optimization and Analysis"]);
+});
+
+test("a lead of two divisions has a role row in each, each in its own division, not their primary one", () => {
+  const marco: AccessPerson = { id: 2, name: "Marco Bianchi", standing: "lead", division: msa };
+  assert.equal(roleDivision({ person: marco, place: { kind: "division", division: msa } }), msa);
+  assert.equal(roleDivision({ person: marco, place: { kind: "division", division: aoa } }), aoa);
+  // A head's role is in a department: the row stays with the person's own division, if any.
+  assert.equal(roleDivision({ person: marco, place: { kind: "department", department: aerodynamics } }), msa);
 });

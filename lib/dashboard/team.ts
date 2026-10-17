@@ -248,10 +248,16 @@ export function homeDivisionOf(placement: Placement): number | null {
   return placement.role === "divisions" ? homeDivision(placement.memberships) : null;
 }
 
+/** Every division someone leads, the home one first (issue #185); none for a seat, a head or a member. */
+export function ledDivisionsOf(placement: Placement): number[] {
+  return homeFirst(membershipsIn(placement))
+    .filter((m) => m.role === "lead")
+    .map((m) => m.divisionId);
+}
+
 /**
- * The oldest division someone leads; null when they lead none. Pages scoped
- * to one led division (Access, Orders) read it until #230, #231 and #233 give
- * them every division.
+ * The oldest division someone leads; null when they lead none. The dummy
+ * Orders page, scoped to one led division, reads it.
  */
 export function ledDivisionOf(placement: Placement): number | null {
   return membershipsIn(placement).find((m) => m.role === "lead")?.divisionId ?? null;

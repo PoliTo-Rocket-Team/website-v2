@@ -1,5 +1,6 @@
 import type { YourDetails } from "./details";
 import type { HandOverOffer } from "./hand-over-request";
+import type { RoleType } from "./team";
 
 // The viewer's own pages (issue #145, folded from #146; Dashboard v2 in issue
 // #169): My profile for a team member (board 55) and My account for an
@@ -15,10 +16,49 @@ export type SignIn = {
 /** On the team, or left it from My profile and now on the Alumni list (board 55b). */
 export type LeaveState = "on-team" | "left";
 
+/** One role on My profile: its title and the division it is in; null for a role in no division, such as a head's. */
+export type ProfileRole = {
+  readonly title: string;
+  readonly division: string | null;
+};
+
+/** "Member · Mission Analysis Division", or the title alone for a role in no division. */
+export function profileRoleLine(role: ProfileRole): string {
+  return role.division === null ? role.title : `${role.title} · ${role.division}`;
+}
+
+/** A role row as the profile reads it: its title (empty when none was set), type and division. */
+export type ProfileRoleSource = {
+  readonly title: string | null;
+  readonly type: RoleType;
+  readonly divisionName: string | null;
+};
+
+const UNTITLED: Readonly<Record<NonNullable<RoleType> | "none", string>> = {
+  president: "Team Leader",
+  head: "Head",
+  lead: "Lead",
+  core: "Member",
+  advisor: "Advisor",
+  none: "Member",
+};
+
+/**
+ * Every role the person holds now, one per division they are in (issue
+ * #185): `primary` first, the role a single-division page names, then the
+ * rest in the order given. A role with no title reads by its type. Someone on
+ * the team with no role row reads "Member".
+ */
+export function profileRolesOf<R extends ProfileRoleSource>(primary: R | null, roles: readonly R[]): readonly [ProfileRole, ...ProfileRole[]] {
+  const ordered = primary === null ? roles : [primary, ...roles.filter((r) => r !== primary)];
+  const [first, ...rest] = ordered.map((r): ProfileRole => ({ title: r.title || UNTITLED[r.type ?? "none"], division: r.divisionName }));
+  return first === undefined ? [{ title: UNTITLED.none, division: null }] : [first, ...rest];
+}
+
 export type MyProfile = {
   readonly name: string;
-  /** "Member · Mission Analysis Division" */
-  readonly role: string;
+  /** Every role they hold, one per division they are in, the home one first (issue #185). */
+  readonly roles: readonly [ProfileRole, ...ProfileRole[]];
   /** The team address shown on the site; null when the person has none. */
   readonly teamEmail: string | null;
   readonly linkedin: string | null;
