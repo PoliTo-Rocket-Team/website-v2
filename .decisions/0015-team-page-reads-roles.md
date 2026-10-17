@@ -30,7 +30,7 @@ Owner decision, 2026-10-17, on the Team page layout (issue #325, https://github.
 6. **The rest of the page.** The advisors are a hand-added list stored apart from roles (the `team_page_advisors` store, `lib/about/advisors.ts`), seeded from the hand-typed record; the page shows the published list. The intro text and the group photo come from the visual layer; while the layer leaves one empty, the page keeps the hand-typed one. Only the header figures and "In numbers" stay hand-typed in `lib/about/team.ts`.
 
 **Binding constraints.**
-- Never write roles, divisions, departments, access or member records to change what the Team page shows; that is the visual layer's job.
+- Never write roles, divisions, departments, access or member records to change what the Team page shows; that is the visual layer's job. One exception (amended 2026-10-17, Owner decision on issue #325): a department's kind is an attribute of the department, set on New department and Edit department, and it is the one departments field that places a head on the Team page, by choosing the slide (item 2). Every other presentation change stays in the visual layer.
 - Never add hand-typed people to the role build; a person the page shows beyond the roles comes from the visual layer.
 - When the roles cannot fill a section the page always draws (no team leader, no board seat, no department head, no core member), the page reads the hand-typed record whole, never a mix of the two.
 
