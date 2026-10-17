@@ -24,6 +24,9 @@ import {
 } from "./team-page-add";
 import { editedTeamPage } from "./team-page-edit";
 import { publicTeamPage, teamPageEditor } from "./team-page-editor";
+import { memoryTeamPageStore } from "./team-page-memory";
+import { advisorRowsOf } from "./advisors";
+import { importedAdvisors } from "./advisors-import";
 import { teamBuildOf } from "./team-roles";
 
 // What the Team page editor adds on the page (boards 80e, 80f and 80g, issue
@@ -113,8 +116,9 @@ test("added departments, division leads and head-block edits show on the page, a
   assert.deepEqual(headFieldsOf(build, layer, headSpot)?.leads.map((l) => l.division), edited.leads.map((l) => l.shown.division));
 
   const store = memoryContentStore<TeamPageLayer>([]);
-  const editor = teamPageEditor(siteContent, store, async () => roles, team);
-  assert.ok((await editor.save("publish", layer)).ok);
+  const advisors = memoryContentStore(importedAdvisors());
+  const editor = teamPageEditor(siteContent, memoryTeamPageStore(store, advisors), async () => roles, team);
+  assert.ok((await editor.save("publish", layer, advisorRowsOf(await advisors.list()))).ok);
   const page = publicTeamPage(roles, team, await store.list());
   const heads = page.departments.groups.flatMap((g) => g.members);
   assert.ok(heads.some((m) => m.kind === "head" && m.role === "Chief of Propulsion"));
