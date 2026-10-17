@@ -55,6 +55,7 @@ import {
   type LeaderFields,
 } from "@/lib/about/team-page-add";
 import type { TeamPerson } from "@/lib/about/team-person";
+import { carouselSpotsOf } from "@/lib/about/team-roles";
 import {
   backToTeamRecord,
   editCount,
@@ -200,6 +201,8 @@ export function TeamPageEdit({
   const people = useMemo(() => teamByName(build), [build]);
   /** Every head block in the order the departments' slides draw them. */
   const heads = useMemo(() => (shown?.departments ?? []).flatMap((d) => d.heads.map((h) => h.at)), [shown]);
+  /** Each carousel member's head block, in slide order; null for a division drawn at a head's level (issue #325). */
+  const carouselSpots = useMemo(() => carouselSpotsOf(shown?.departments ?? []), [shown]);
 
   const blocks = useMemo(() => {
     const person = (spot: PersonSpot, role: string) => ({
@@ -307,8 +310,8 @@ export function TeamPageEdit({
     addLeader: adding && arcHasRoom(build, layer) ? addLeader : null,
     departments: {
       member: (index, node) => {
-        const at = heads[index];
-        if (at === undefined) return node;
+        const at = carouselSpots[index];
+        if (at === undefined || at === null) return node;
         return (
           <EditableBlock id={at}>
             {node}

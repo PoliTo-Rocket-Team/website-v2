@@ -33,28 +33,28 @@ async function structureOf(edits: TeamEdits) {
 
 test("New department opens with its one head, who keeps their divisions", async () => {
   const ops = pages("operations-lead");
-  const created = await ops.writes.createDepartment({ name: "Propulsion", code: "pr", heads: [SARA] });
+  const created = await ops.writes.createDepartment({ name: "Propulsion", code: "pr", kind: "technical", heads: [SARA] });
   assert.ok(created.ok);
   const structure = await structureOf(ops.kept());
   const propulsion = structure.departments.find((d) => d.id === created.value)!;
   assert.deepEqual([propulsion.name, propulsion.code, propulsion.head?.id, propulsion.divisions.length], ["Propulsion", "PR", SARA, 0]);
   const mission = structure.departments.find((d) => d.id === AERODYNAMICS)!.divisions.find((d) => d.id === MISSION_ANALYSIS)!;
   assert.ok(mission.page!.people.some((p) => p.id === SARA), "still in Mission Analysis");
-  assert.equal((await ops.writes.createDepartment({ name: "Payload", code: "PL", heads: [] })).ok, false, "no head");
+  assert.equal((await ops.writes.createDepartment({ name: "Payload", code: "PL", kind: "technical", heads: [] })).ok, false, "no head");
 });
 
-test("Edit department stores a new name and code", async () => {
+test("Edit department stores a new name, code and kind", async () => {
   const ops = pages("operations-lead");
-  assert.deepEqual(await ops.writes.saveDepartment(AERODYNAMICS, { name: "Aerodynamics and Flight", code: "af" }), { ok: true, value: null });
+  assert.deepEqual(await ops.writes.saveDepartment(AERODYNAMICS, { name: "Aerodynamics and Flight", code: "af", kind: "operations" }), { ok: true, value: null });
   const aero = (await structureOf(ops.kept())).departments.find((d) => d.id === AERODYNAMICS)!;
-  assert.deepEqual([aero.name, aero.code], ["Aerodynamics and Flight", "AF"]);
+  assert.deepEqual([aero.name, aero.code, aero.kind], ["Aerodynamics and Flight", "AF", "operations"]);
   assert.equal((await pages("operations-lead", ops.kept()).view.teamTree()).departments.find((d) => d.id === AERODYNAMICS)?.name, "Aerodynamics and Flight");
 });
 
 test("a department head manages no department, and the server refuses each department write", async () => {
   const head = pages("department-head");
-  assert.equal((await head.writes.createDepartment({ name: "Propulsion", code: "PR", heads: [SARA] })).ok, false);
-  assert.equal((await head.writes.saveDepartment(AERODYNAMICS, { name: "Aero", code: "AE" })).ok, false);
+  assert.equal((await head.writes.createDepartment({ name: "Propulsion", code: "PR", kind: "technical", heads: [SARA] })).ok, false);
+  assert.equal((await head.writes.saveDepartment(AERODYNAMICS, { name: "Aero", code: "AE", kind: "technical" })).ok, false);
   const fates = { divisions: [{ divisionId: MISSION_ANALYSIS, action: "move", to: STRUCTURES }, { divisionId: OPTIMIZATION, action: "move", to: STRUCTURES }] };
   assert.equal((await head.writes.closeDepartment(AERODYNAMICS, fates)).ok, false);
   assert.equal(head.kept(), NO_EDITS, "nothing is saved");
@@ -156,7 +156,7 @@ test("Leave the team: the head of a closed department leaves the team and appear
 // Change head and the Team Leader box (issue #253): handing a role over.
 
 const TEAM_LEADER = 14;
-const aerodynamics = { name: "Aerodynamics", code: "AE" };
+const aerodynamics = { name: "Aerodynamics", code: "AE", kind: "technical" };
 
 test("Change head: the new head heads the department; the old head is an advisor in it with no access, or on Alumni", async () => {
   const editor = pages("operations-lead");

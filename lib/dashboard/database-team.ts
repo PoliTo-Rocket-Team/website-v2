@@ -1063,19 +1063,19 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const actor = await readActor(identity, snapshot.org);
   const planned = planDepartmentCreate({ actor, org: snapshot.org, save: checked.value, team: teamPeopleOf(snapshot) });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, headId } = planned.value;
+  const { name, code, kind, headId } = planned.value;
   // The batch cannot read one write's result in the next, so the department id is taken first.
   const next = await getDb().execute(sql`select nextval(pg_get_serial_sequence('departments', 'id'))::int as id`);
   const departmentId = Number((next.rows[0] as { id: number }).id);
   await runAuditBatch((db) => [
-    db.insert(departments).values({ id: departmentId, name, code }),
+    db.insert(departments).values({ id: departmentId, name, code, kind }),
     db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: today() }),
   ]);
   done();
   return written(departmentId);
 }
 
-/** Edit department's Save changes (board 77e): the name and the code; a new name reaches the head's title too. */
+/** Edit department's Save changes (board 77e): the name, the code and the kind; a new name reaches the head's title too. */
 async function saveDepartment(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkDepartmentSave(input);
   if (!checked.ok) return refused(checked.error);
@@ -1085,14 +1085,14 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const headIds = [...new Set(snapshot.roles.filter((r) => r.leaved_at === null && isHeadRow(r)).map((r) => r.member_id))];
   const planned = planDepartmentSave({ actor, org: snapshot.org, departmentId, save: checked.value, team: teamPeopleOf(snapshot), headIds });
   if (!planned.ok) return refused(planned.error);
-  const { name, code, nameChanged, head } = planned.value;
+  const { name, code, kind, nameChanged, head } = planned.value;
   const on = today();
   const stepping = head?.steppingDown ?? null;
   const replaced = head === null || stepping === null ? [] : await Promise.all(head.from.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
   await runAuditBatch((db) => [
     db
       .update(departments)
-      .set({ name, code })
+      .set({ name, code, kind })
       .where(and(eq(departments.id, departmentId), isNull(departments.closedAt))),
     ...(nameChanged
       ? [

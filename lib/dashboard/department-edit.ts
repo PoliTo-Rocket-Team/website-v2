@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { TeamPerson } from "./division-edit";
 import { HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown } from "./hand-over";
-import { beyondTitle, divisionLabel, type OrgChart, type TeamActor } from "./team";
+import { beyondTitle, DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart, type TeamActor } from "./team";
 
 // New department, Edit department and Close department (issue #251, boards
 // 77d to 77f): the team leader and full access manage departments, from the
@@ -52,10 +52,11 @@ export function mayManageDepartments(actor: TeamActor | null): boolean {
 
 const ONLY_TEAM = "Only the team leader can change a department.";
 
-/** What New department sends (board 77d): the name, the code and its head, picked from the team. */
+/** What New department sends (board 77d): the name, the code, its kind (issue #325) and its head, picked from the team. */
 export type DepartmentCreate = {
   readonly name: string;
   readonly code: string;
+  readonly kind: DepartmentKind;
   /** Exactly one person; a list, so "none" and "two" are refused by the rule, not lost in the shape. */
   readonly heads: readonly number[];
 };
@@ -68,8 +69,8 @@ export type DepartmentCreate = {
  */
 export type HeadChange = { readonly to: number; readonly outcome: HandOverOutcome | null };
 
-/** What Save changes on Edit department sends (board 77e): the name, the code, and a new head when Change head picked one. */
-export type DepartmentSave = { readonly name: string; readonly code: string; readonly head: HeadChange | null };
+/** What Save changes on Edit department sends (board 77e): the name, the code, its kind (issue #325), and a new head when Change head picked one. */
+export type DepartmentSave = { readonly name: string; readonly code: string; readonly kind: DepartmentKind; readonly head: HeadChange | null };
 
 /** What becomes of one division when its department closes (board 77f). */
 export type DivisionFate =
@@ -100,11 +101,13 @@ function yes<T>(value: T): Checked<T> {
 const id = z.number().int().positive();
 const name = z.string().max(200);
 const code = z.string().max(10).transform(normalizeDepartmentCode);
+const kind = z.enum(DEPARTMENT_KINDS);
 
-const createSchema = z.object({ name, code, heads: z.array(id).max(5) });
+const createSchema = z.object({ name, code, kind, heads: z.array(id).max(5) });
 const saveSchema = z.object({
   name,
   code,
+  kind,
   head: z.object({ to: id, outcome: z.enum(HAND_OVER_OUTCOMES).nullable() }).nullable().default(null),
 });
 const closeSchema = z.object({
@@ -139,7 +142,7 @@ export function checkDepartmentClose(input: unknown): Checked<DepartmentClose> {
 }
 
 /** A checked New department: the department to open and the one person who heads it. */
-export type DepartmentCreatePlan = { readonly name: string; readonly code: string; readonly headId: number };
+export type DepartmentCreatePlan = { readonly name: string; readonly code: string; readonly kind: DepartmentKind; readonly headId: number };
 
 /**
  * New department as the rules allow it (board 77d), or the first reason it is
@@ -166,7 +169,7 @@ export function planDepartmentCreate(input: {
   if (!head) return no("They are not on the team.");
   const [seat] = head.beyond;
   if (seat !== undefined) return no(`${head.name} is already ${beyondTitle(seat, org)}.`);
-  return yes({ name: storedDepartmentName(save.name), code: save.code, headId: head.id });
+  return yes({ name: storedDepartmentName(save.name), code: save.code, kind: save.kind, headId: head.id });
 }
 
 /**
@@ -176,10 +179,11 @@ export function planDepartmentCreate(input: {
  */
 export type HeadChangePlan = { readonly to: number; readonly from: readonly number[]; readonly steppingDown: SteppingDown | null };
 
-/** A checked Edit department save: the name and code as stored, what changed, and the new head, if any. */
+/** A checked Edit department save: the name, code and kind as stored, what changed, and the new head, if any. */
 export type DepartmentSavePlan = {
   readonly name: string;
   readonly code: string;
+  readonly kind: DepartmentKind;
   readonly nameChanged: boolean;
   readonly codeChanged: boolean;
   readonly head: HeadChangePlan | null;
@@ -216,6 +220,7 @@ export function planDepartmentSave(input: {
   return yes({
     name: stored,
     code: save.code,
+    kind: save.kind,
     nameChanged: stored !== department.name,
     codeChanged: save.code !== normalizeDepartmentCode(department.code ?? ""),
     head: head === null ? null : head.value,

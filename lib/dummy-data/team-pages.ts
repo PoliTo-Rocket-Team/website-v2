@@ -125,7 +125,10 @@ export type DummyClosedDivision = {
 function departmentStates(edits: TeamEdits): DummyDepartmentState[] {
   const all = new Map<number, DummyDepartmentState>();
   for (const d of departments) all.set(d.id, { ...d, closedOn: null });
-  for (const [id, edit] of Object.entries(edits.departments)) all.set(Number(id), { id: Number(id), name: edit.name, code: edit.code, closedOn: edit.closedOn });
+  for (const [id, edit] of Object.entries(edits.departments)) {
+    const kind = edit.kind ?? all.get(Number(id))?.kind ?? "technical";
+    all.set(Number(id), { id: Number(id), name: edit.name, code: edit.code, kind, closedOn: edit.closedOn });
+  }
   return [...all.values()].sort((a, b) => a.id - b.id);
 }
 
@@ -644,7 +647,7 @@ function writesFor(
   /** The department as the edits keep it, before this write. */
   const departmentEdit = (departmentId: number) => {
     const department = org.departments.find((d) => d.id === departmentId)!;
-    return edits.departments[departmentId] ?? { name: department.name, code: department.code ?? null, closedOn: null, headId: null };
+    return edits.departments[departmentId] ?? { name: department.name, code: department.code ?? null, kind: department.kind, closedOn: null, headId: null };
   };
 
   return {
@@ -688,8 +691,8 @@ function writesFor(
       const planned = planDepartmentCreate({ actor, org, save: checked.value, team: teamPeople(team, edits) });
       if (!planned.ok) return refused(planned.error);
       const id = Math.max(99, ...departmentStates(edits).map((d) => d.id)) + 1;
-      const { name, code, headId } = planned.value;
-      await save({ ...edits, departments: { ...edits.departments, [id]: { name, code, closedOn: null, headId } } });
+      const { name, code, kind, headId } = planned.value;
+      await save({ ...edits, departments: { ...edits.departments, [id]: { name, code, kind, closedOn: null, headId } } });
       return written(id);
     },
     async saveDepartment(departmentId, input) {
@@ -697,9 +700,9 @@ function writesFor(
       if (!checked.ok) return refused(checked.error);
       const planned = planDepartmentSave({ actor, org, departmentId, save: checked.value, team: teamPeople(team, edits), headIds: headsOf(departmentId) });
       if (!planned.ok) return refused(planned.error);
-      const { name, code, head } = planned.value;
+      const { name, code, kind, head } = planned.value;
       const before = departmentEdit(departmentId);
-      let next: TeamEdits = { ...edits, departments: { ...edits.departments, [departmentId]: { ...before, name, code, headId: head?.to ?? before.headId } } };
+      let next: TeamEdits = { ...edits, departments: { ...edits.departments, [departmentId]: { ...before, name, code, kind, headId: head?.to ?? before.headId } } };
       // Change head (issue #253): the head they replace becomes an advisor in this department, or leaves the team.
       const step = head?.steppingDown ?? null;
       for (const id of head !== null && step !== null ? head.from : []) {
@@ -1062,7 +1065,7 @@ function confirmedHandOverEdits(
     }
   } else {
     const department = org.departments.find((d) => d.id === role.departmentId);
-    const before = next.departments[role.departmentId] ?? { name: department?.name ?? "", code: department?.code ?? null, closedOn: null, headId: null };
+    const before = next.departments[role.departmentId] ?? { name: department?.name ?? "", code: department?.code ?? null, kind: department?.kind, closedOn: null, headId: null };
     next = { ...next, departments: { ...next.departments, [role.departmentId]: { ...before, headId: toId } } };
     if (step.kind === "advisor") next = withAdvisor(next, fromId, step);
   }
