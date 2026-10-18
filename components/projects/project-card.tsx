@@ -35,8 +35,9 @@ function StatusPill({ status }: { status: ProjectStatus }) {
 /**
  * The texture panel. A rocket project shows its live 3D rocket crossing the
  * panel corner to corner, the model its home card draws (a rocket with no
- * model of its own draws the placeholder); an engine's panel is the texture
- * only (issue #381). The card rocket stands nearly upright in its own
+ * model of its own draws the placeholder); an engine draws its own engine
+ * model the same way (issue #382), or with none the texture only. The card
+ * rocket stands nearly upright in its own
  * canvas, so the canvas is turned to lay the vehicle along the panel's
  * diagonal, nose top right.
  */

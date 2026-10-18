@@ -3,7 +3,7 @@
 // (lib/project-content/record.ts, issue #295), and the header counts are
 // derived from their launches.
 
-import { rocketModelOf, type OwnRocketModel, type RocketModel } from "@/lib/rocket-model";
+import { rocketModelOf, type OwnEngineModel, type OwnRocketModel, type RocketModel } from "@/lib/rocket-model";
 
 /** Text with an optional shorter phone version (board 22m). */
 export type Copy = { text: string; phone?: string };
@@ -67,6 +67,8 @@ export type Vehicle = ProjectBase & {
 /** An engine in development: work lines and a milestone note in place of a launch log. */
 export type Engine = ProjectBase & {
   kind: "engine";
+  /** The engine its panel draws (issue #382); with none, the panel is the texture only. */
+  engine?: OwnEngineModel;
   workLines: readonly WorkLine[];
   milestone: string;
 };
@@ -87,12 +89,13 @@ export function statusOf(project: Project): ProjectStatus {
 }
 
 /**
- * The rocket a /projects panel draws (issue #381): a rocket draws its own
- * model, or the placeholder when it has none; an engine draws no rocket, so
- * its panel is the texture only.
+ * The model a /projects panel draws (issue #381): a rocket draws its own
+ * model, or the placeholder when it has none. An engine never draws a rocket:
+ * it draws its own engine model (issue #382), and with none its panel is the
+ * texture only.
  */
 export function panelRocketOf(project: Project): RocketModel | null {
-  return project.kind === "vehicle" ? rocketModelOf(project.rocket) : null;
+  return project.kind === "vehicle" ? rocketModelOf(project.rocket) : (project.engine ?? null);
 }
 
 export type Stat = { value: string; label: string };

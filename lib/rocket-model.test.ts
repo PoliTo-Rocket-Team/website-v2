@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CAVOUR_CARD_POSTER, CAVOUR_STAGE_POSTER } from "@/components/landing/cavour-assets";
+import { EFESTO_CARD_POSTER, EFESTO_STAGE_POSTER } from "@/components/landing/efesto-assets";
 import { PLACEHOLDER_CARD_POSTER, PLACEHOLDER_STAGE_POSTER } from "@/components/landing/placeholder-assets";
 import { VES_CARD_POSTER, VES_STAGE_POSTER } from "@/components/landing/ves-assets";
 import { importedRecords } from "@/lib/project-content/import";
 import { homeCardOf, pageRecordOf } from "@/lib/project-content/record";
-import { cardPosterOf, rocketModelOf, stageStillOf } from "./rocket-model";
+import { cardPosterOf, ENGINE_STAGE_TEXTURE, rocketModelOf, stageStillOf, stageTextureOf } from "./rocket-model";
 
 // Which rocket a card stage and a page's rocket slot draw (issue #296).
 
@@ -24,12 +25,24 @@ test("a page slot with no model of its own draws the placeholder's still, with n
   assert.deepEqual(stageStillOf({ model: "cavour", alt: "Cavour" }), { src: CAVOUR_STAGE_POSTER, alt: "Cavour" });
 });
 
-test("Cavour and VES draw their own rockets on their cards and pages; Efesto keeps no panel", () => {
+test("Cavour and VES draw their own rockets on their cards and pages; Efesto draws its engine", () => {
   // The pages read the stored records (issue #295); these are the imported ones.
   const record = (slug: string) => importedRecords.find((r) => r.slug === slug)!;
   const pageRecord = (slug: string) => pageRecordOf(record(slug));
   assert.deepEqual(pageRecord("cavour").hero.visual?.rocket?.own?.model, "cavour");
-  assert.equal(pageRecord("efesto").hero.visual, undefined);
+
+  // Efesto (issue #382): its home card and its page slot draw the engine and its stills.
+  const engine = rocketModelOf(homeCardOf(record("efesto"), 2).rocket);
+  assert.equal(engine, "efesto");
+  assert.equal(cardPosterOf(engine), EFESTO_CARD_POSTER);
+  const engineStill = stageStillOf(pageRecord("efesto").hero.visual?.rocket?.own);
+  assert.equal(engineStill.src, EFESTO_STAGE_POSTER);
+  assert.notEqual(engineStill.alt, "");
+  // Its page panel lays the engine on the orange streak; the rockets keep their own texture.
+  assert.equal(stageTextureOf(pageRecord("efesto").hero.visual?.rocket?.own, "/own.webp"), ENGINE_STAGE_TEXTURE);
+  assert.equal(stageTextureOf(pageRecord("cavour").hero.visual?.rocket?.own, "/own.webp"), "/own.webp");
+  assert.equal(stageTextureOf(pageRecord("ves").hero.visual?.rocket?.own, "/own.webp"), "/own.webp");
+  assert.equal(stageTextureOf(undefined, "/own.webp"), "/own.webp");
 
   // VES Mark I (issue #361): its home card and its page slot draw the VES model and its stills.
   const card = rocketModelOf(homeCardOf(record("ves"), 1).rocket);

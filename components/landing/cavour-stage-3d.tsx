@@ -2,9 +2,9 @@
 
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { Environment } from "@react-three/drei";
+import { Center, Environment } from "@react-three/drei";
 import * as THREE from "three";
-import type { RocketModel } from "@/lib/rocket-model";
+import { isEngineModel, type RocketModel } from "@/lib/rocket-model";
 import { builtRockets } from "./rocket-built";
 import type { WeatherUniforms } from "./hero-weathering";
 import { CAVOUR_HDRI } from "./cavour-assets";
@@ -60,8 +60,12 @@ function Vehicle({ model }: { model: RocketModel }) {
   );
 }
 
-/** Keeps the rocket at the board's share of the panel width as the panel resizes. */
-function FitCamera() {
+/**
+ * Keeps the rocket at the board's share of the panel width as the panel
+ * resizes. An engine is not parked: it sits centred (issue #382), so its
+ * frame takes no shift.
+ */
+function FitCamera({ shift }: { shift: number }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const aspect = useThree((s) => s.size.width / s.size.height);
   useEffect(() => {
@@ -71,9 +75,9 @@ function FitCamera() {
     // filmOffset moves the frame by filmOffset / filmWidth of the near plane's
     // width per unit of its tangent span; negative moves the subject right.
     const span = 2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * aspect;
-    camera.filmOffset = -RIGHT_SHIFT * span * camera.getFilmWidth();
+    camera.filmOffset = -shift * span * camera.getFilmWidth();
     camera.updateProjectionMatrix();
-  }, [camera, aspect]);
+  }, [camera, aspect, shift]);
   return null;
 }
 
@@ -87,6 +91,7 @@ type Props = {
 };
 
 export default function CavourStage3D({ model, onReady, onFailed }: Props) {
+  const engine = isEngineModel(model);
   return (
     <Canvas
       frameloop="demand"
@@ -100,11 +105,19 @@ export default function CavourStage3D({ model, onReady, onFailed }: Props) {
           value the hero and the project cards use, so the vehicle reads
           the same on every page. */}
       <directionalLight position={[10, 3, -8]} intensity={0.6} color="#FFD2B0" />
-      <FitCamera />
+      <FitCamera shift={engine ? 0 : RIGHT_SHIFT} />
       <SceneErrorBoundary onError={onFailed}>
         <Suspense fallback={null}>
           <Environment files={CAVOUR_HDRI} environmentIntensity={0.45} environmentRotation={[-Math.PI / 2, 0, 0]} />
-          <Vehicle model={model} />
+          {/* An engine's own bounds, not the rocket's length, place it: its
+              middle goes to the panel's middle. */}
+          {engine ? (
+            <Center>
+              <Vehicle model={model} />
+            </Center>
+          ) : (
+            <Vehicle model={model} />
+          )}
           <WarmUp onWarm={onReady} />
         </Suspense>
       </SceneErrorBoundary>

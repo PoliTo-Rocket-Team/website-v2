@@ -302,6 +302,13 @@
       "when": 1792516800000,
       "tag": "0042_ves_grey_texture",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792603200000,
+      "tag": "0043_efesto_engine_model",
+      "breakpoints": true
     }
   ]
 }

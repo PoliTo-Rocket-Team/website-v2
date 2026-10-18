@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { Hero } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
-import { stageStillOf, type OwnRocket } from "@/lib/rocket-model";
+import { stageStillOf, stageTextureOf, type OwnRocket } from "@/lib/rocket-model";
 import { CopyText, Pill } from "./parts";
 
 // Boards 23, 24 and 25 hero (1440): breadcrumb, the 128px name, intro left
@@ -44,6 +44,30 @@ function RocketStill({ own }: { own: OwnRocket | undefined }) {
   );
 }
 
+/**
+ * The visual panel. A rocket's still lies on the project's texture; an
+ * engine's still is centred on the orange streak texture in its place
+ * (stageTextureOf, issue #382).
+ */
+function VisualPanel({ texture, visual }: { texture: string; visual: NonNullable<Hero["visual"]> }) {
+  return (
+    <div className="glass-project relative mt-6 h-[220px] overflow-hidden rounded-2xl md:mt-10 md:h-[620px]">
+      <Image
+        src={stageTextureOf(visual.rocket?.own, texture)}
+        alt=""
+        fill
+        priority
+        sizes="(min-width: 768px) 1312px, 100vw"
+        className="object-cover"
+      />
+      {visual.rocket && <RocketStill own={visual.rocket.own} />}
+      <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
+        {visual.caption}
+      </p>
+    </div>
+  );
+}
+
 export function ProjectHero({ project, hero }: { project: Pick<Project, "index" | "name" | "texture">; hero: Hero }) {
   const facts = factLayout(hero.facts);
   return (
@@ -75,22 +99,7 @@ export function ProjectHero({ project, hero }: { project: Pick<Project, "index" 
           </div>
         </div>
 
-        {hero.visual && (
-          <div className="glass-project relative mt-6 h-[220px] overflow-hidden rounded-2xl md:mt-10 md:h-[620px]">
-            <Image
-              src={project.texture}
-              alt=""
-              fill
-              priority
-              sizes="(min-width: 768px) 1312px, 100vw"
-              className="object-cover"
-            />
-            {hero.visual.rocket && <RocketStill own={hero.visual.rocket.own} />}
-            <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
-              {hero.visual.caption}
-            </p>
-          </div>
-        )}
+        {hero.visual && <VisualPanel texture={project.texture} visual={hero.visual} />}
 
         <dl className={`mt-6 grid grid-cols-3 md:mt-10 ${facts.grid} md:border-t md:border-hairline md:pt-6`}>
           {hero.facts.map((f) => (
