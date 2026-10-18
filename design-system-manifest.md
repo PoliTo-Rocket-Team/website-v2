@@ -432,8 +432,8 @@ page is the layout reference.
 - The hero shows the visual panel on the project's texture only when the record has a visual:
   Cavour's still of the parked rocket (Stack above, not 3D), VES's still of Mark I with its
   "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. An engine's
-  still sits centred on `bg-accent` in place of the texture, its caption in `accent-on-accent`
-  (`stageGroundOf`, Owner decision, issue #382); its cards keep the texture. Up to six key
+  still sits centred on the orange streak texture (`/textures/project-ves.webp`) in place of its
+  own texture (`stageTextureOf`, Owner decision, issue #382); its cards keep the grey texture. Up to six key
   facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
   and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
   `hero.tsx`); a shorter set is one row of six.

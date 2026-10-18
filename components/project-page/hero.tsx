@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { Hero } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
-import { stageGroundOf, stageStillOf, type OwnRocket } from "@/lib/rocket-model";
+import { stageStillOf, stageTextureOf, type OwnRocket } from "@/lib/rocket-model";
 import { CopyText, Pill } from "./parts";
 
 // Boards 23, 24 and 25 hero (1440): breadcrumb, the 128px name, intro left
@@ -46,22 +46,22 @@ function RocketStill({ own }: { own: OwnRocket | undefined }) {
 
 /**
  * The visual panel. A rocket's still lies on the project's texture; an
- * engine's still is centred on the brand orange in its place, and its
- * caption takes the text-on-accent colour (stageGroundOf, issue #382).
+ * engine's still is centred on the orange streak texture in its place
+ * (stageTextureOf, issue #382).
  */
 function VisualPanel({ texture, visual }: { texture: string; visual: NonNullable<Hero["visual"]> }) {
-  const ground = stageGroundOf(visual.rocket?.own);
   return (
-    <div
-      className={`glass-project relative mt-6 h-[220px] overflow-hidden rounded-2xl md:mt-10 md:h-[620px] ${ground === "accent" ? "bg-accent" : ""}`}
-    >
-      {ground === "texture" && (
-        <Image src={texture} alt="" fill priority sizes="(min-width: 768px) 1312px, 100vw" className="object-cover" />
-      )}
+    <div className="glass-project relative mt-6 h-[220px] overflow-hidden rounded-2xl md:mt-10 md:h-[620px]">
+      <Image
+        src={stageTextureOf(visual.rocket?.own, texture)}
+        alt=""
+        fill
+        priority
+        sizes="(min-width: 768px) 1312px, 100vw"
+        className="object-cover"
+      />
       {visual.rocket && <RocketStill own={visual.rocket.own} />}
-      <p
-        className={`pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] md:bottom-12 md:left-8 md:text-[11px] ${ground === "accent" ? "text-accent-on-accent" : "text-prt-text/80"}`}
-      >
+      <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
         {visual.caption}
       </p>
     </div>

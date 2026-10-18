@@ -68,13 +68,14 @@ export function stageStillOf(own: OwnRocket | undefined): { src: string; alt: st
   return { src: posters[model].stage, alt: own?.alt ?? "" };
 }
 
-/**
- * What a project page's panel lays its still on. A rocket parks on the
- * project's texture; an engine sits centred on the brand orange, in place of
- * its texture (issue #382, Owner decision). Cards keep their texture either way.
- */
-export type StageGround = "texture" | "accent";
+/** The orange streak texture an engine's page panel lies on (issue #382, Owner decision). */
+export const ENGINE_STAGE_TEXTURE = "/textures/project-ves.webp";
 
-export function stageGroundOf(own: OwnRocket | undefined): StageGround {
-  return isEngineModel(own?.model) ? "accent" : "texture";
+/**
+ * The texture a project page's panel lays its still on. A rocket parks on the
+ * project's own texture; an engine sits centred on the orange streak, in place
+ * of its texture (issue #382, Owner decision). Cards keep their texture either way.
+ */
+export function stageTextureOf(own: OwnRocket | undefined, texture: string): string {
+  return isEngineModel(own?.model) ? ENGINE_STAGE_TEXTURE : texture;
 }
