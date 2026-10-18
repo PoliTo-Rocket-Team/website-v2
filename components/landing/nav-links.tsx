@@ -9,7 +9,7 @@ import { isCurrentNavLink, type NavLink } from "./nav-menu";
 // About on /about/the-team) that link is paper and the rest grey; on a page
 // under none, the homepage among them, every link is paper, as board 21 draws.
 // A link with pages under it (About) opens its board 27 hover menu.
-export function NavLinks({ links }: { links: NavLink[] }) {
+export function NavLinks({ links }: { links: readonly NavLink[] }) {
   const pathname = usePathname();
   const anyCurrent = links.some((l) => isCurrentNavLink(pathname, l));
   return (

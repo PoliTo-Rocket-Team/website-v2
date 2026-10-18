@@ -12,7 +12,7 @@ import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
 import { isProjectRecord } from "./check";
 import { importedProjects, importedRecords, projectImportSql } from "./import";
-import { homeCardOf, listingOf, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
+import { homeCardOf, listingOf, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
 import { withSubscriptDigits } from "./subscript";
 
 // The projects content store (issue #295). ./before.json is what the code
@@ -132,4 +132,12 @@ test("the /projects header counts follow the stored launches: a launch added and
 test("a home card draws a formula's subscript digits lowered, and leaves other text alone", () => {
   assert.equal(html(withSubscriptDigits("N₂O and C₂H₅OH")), "N<sub>2</sub>O and C<sub>2</sub>H<sub>5</sub>OH");
   assert.equal(withSubscriptDigits("Mk I · II"), "Mk I · II");
+});
+
+test("the home Projects row shows the newest project first, by year then by number, each card keeping its number", () => {
+  const cards = published().map(homeCardOf);
+  // VES "2024–25", then Efesto "2023–" and Cavour "2023": the same year, so the higher number first.
+  assert.deepEqual(newestFirst(cards).map((c) => [c.num, c.name]), [["02", "VES"], ["03", "Efesto"], ["01", "Cavour"]]);
+  const unnamed = { ...cards[0], num: "04", name: "No year", year: { text: "" } };
+  assert.equal(newestFirst([unnamed, ...cards]).at(-1)?.name, "No year", "a card naming no year goes last");
 });

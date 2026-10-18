@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { test } from "node:test";
-import { guardSeedTarget, parseTarget, PREVIEW_ENDPOINT } from "./target";
+import { guardSeedTarget, isPreviewDatabase, parseTarget, PREVIEW_ENDPOINT } from "./target";
 
 const DIRECT_HOST = `${PREVIEW_ENDPOINT}.c-2.eu-central-1.aws.neon.tech`;
 const POOLED_HOST = `${PREVIEW_ENDPOINT}-pooler.c-2.eu-central-1.aws.neon.tech`;
@@ -47,6 +47,22 @@ test("the pooled host names the same endpoint as the direct one", () => {
   const pooled = parseTarget(POOLED_URL);
   assert.equal(direct.kind === "neon" && direct.endpointId, PREVIEW_ENDPOINT);
   assert.equal(pooled.kind === "neon" && pooled.endpointId, PREVIEW_ENDPOINT);
+});
+
+test("the shared check names the preview branch by its direct and its pooled host, and nothing else (#364)", () => {
+  assert.equal(isPreviewDatabase(DIRECT_URL), true);
+  assert.equal(isPreviewDatabase(POOLED_URL), true);
+  for (const url of [
+    OTHER_URL,
+    `postgresql://app@${PREVIEW_ENDPOINT}x.c-2.eu-central-1.aws.neon.tech/neondb`,
+    "postgres://dev@localhost:5432/prt",
+    "https://example.com",
+    "not a url",
+    "",
+    undefined,
+  ]) {
+    assert.equal(isPreviewDatabase(url), false, String(url));
+  }
 });
 
 test("the preview branch's endpoint is refused outside a Vercel preview build", () => {

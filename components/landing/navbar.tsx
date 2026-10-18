@@ -2,7 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { NavAccount } from "./nav-account";
 import { NavLinks } from "./nav-links";
-import { NavMenu, type NavLink } from "./nav-menu";
+import { NavMenu } from "./nav-menu";
+import { NAV_LINKS, PAGES } from "@/lib/landing-links";
 
 // Board 04 navbar, with board 21's logo and bar: a 72px bar, white PRT logo
 // 220px wide at x64 · links centred on the page, 17px, gap 44 · Sign in
@@ -24,27 +25,11 @@ import { NavMenu, type NavLink } from "./nav-menu";
 // (on phones beside the menu icon), which opens a menu with Dashboard and
 // Log out (board 01b, issue #261). The bar asks who is signed in from the
 // browser (nav-account.tsx), so every page that carries it stays prerendered.
-const links: NavLink[] = [
-  { href: "/projects", label: "Projects" },
-  {
-    label: "About",
-    pages: [
-      { href: "/about/the-team", label: "The Team" },
-      { href: "/about/alumni", label: "Alumni" },
-      { href: "/about/our-university", label: "Our University" },
-      { href: "/about/mission-vision", label: "Mission & Vision" },
-    ],
-  },
-  { href: "/outreach", label: "Outreach" },
-  { href: "/partners", label: "Partners" },
-  { href: "/apply", label: "Apply" },
-];
-
 export function LandingNavbar() {
   return (
     <header className="glass-bar fixed inset-x-0 top-0 z-40">
       <div className="relative mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between px-5 md:h-[72px] md:px-16">
-        <Link href="/" aria-label="Polito Rocket Team" className="relative z-10 block">
+        <Link href={PAGES.home} aria-label="Polito Rocket Team" className="relative z-10 block">
           <Image
             src="/brand/prt-mark-white.svg"
             alt=""
@@ -66,12 +51,12 @@ export function LandingNavbar() {
         {/* Centred on the page, not between logo and actions: the row spans
             the bar, and only its links take the pointer. */}
         <nav className="pointer-events-none absolute inset-0 hidden items-center justify-center gap-8 lg:flex xl:gap-[44px]">
-          <NavLinks links={links} />
+          <NavLinks links={NAV_LINKS} />
         </nav>
 
         <div className="relative z-10 flex items-center gap-2 md:gap-3">
           <NavAccount />
-          <NavMenu links={links} className="-mr-2 lg:hidden" />
+          <NavMenu links={NAV_LINKS} className="-mr-2 lg:hidden" />
         </div>
       </div>
     </header>

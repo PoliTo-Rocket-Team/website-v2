@@ -127,9 +127,9 @@ Rules:
   between them and no background of their own: they sit on the page sky.
 - Section header: eyebrow and title left, intro or link right, `md:flex-row md:items-end`,
   then the content under it: 40px in Latest (`md:mt-10`, board 21), 56px in Projects
-  (`md:mt-14`), 24px on phones.
+  (`md:mt-8` on the swipe row plus the row's own 24px top room, `pt-6`), 24px on phones.
 - Grids: Latest `lg:grid-cols-[1.58fr_1fr]` with `gap-5`, and from lg a cards row at least
-  560px tall (`lg:grid-rows-[minmax(560px,auto)]`); Projects `lg:grid-cols-3`;
+  560px tall (`lg:grid-rows-[minmax(560px,auto)]`); Projects is a swipe row, not a grid (below);
   Inside the team: figures and link cards `lg:grid-cols-4`; otherwise `gap-4`.
 - Radii: glass cards `rounded-xl`; project cards `rounded-2xl` (16px) and their info boxes
   `rounded-xl` (12px); inset photos `rounded-[6px]`; buttons, pills and tags `rounded-full`.
@@ -353,10 +353,16 @@ from md to lg it keeps a 2.2:1 shape. Phones (board 24): one column, the feature
 title, photo 150px tall, no arrow), then only the first news card, 20px below,
 then "All news". The other two news cards are desktop-only (from md).
 
-**Projects:** one card per published project, in site order (today Cavour, VES and Efesto,
-with the board 21 data from `design/specs-from-old-site.md`), each on its texture, 618px tall, with a `.glass-info` box
-inset 32px at the bottom (20px from lg to xl). From md to lg the cards stack, 480px wide at
-most. Each card renders its record's rocket model live in 3D (Cavour on the three cards today;
+**Projects:** one card per published project, newest first: by the start or launch year its card
+names, then by number, the higher first (issue #359, `newestFirst` in
+`lib/project-content/record.ts`). Today the row reads VES, Efesto and Cavour, with the board 21
+data from `design/specs-from-old-site.md`. Each card keeps its number, which is its place in the
+site order (Cavour 01, VES 02, Efesto 03), not its place in the row. Each card sits on its texture, 618px tall, with a `.glass-info` box
+inset 32px at the bottom (20px from lg to xl). The cards sit in one horizontal swipe row at
+every width and never wrap to a new line (issue #359): from md 16px apart, two to a view below
+lg and three from lg (427px wide at 1440), snapping to the 64px page edge, with the row bleeding
+over the section padding so a fourth card peeks past the edge. Pager dots show from md only
+while the cards overflow the row, so three cards at lg show none. Each card renders its record's rocket model live in 3D (Cavour on the three cards today;
 a project with no model of its own draws the shared placeholder, `lib/rocket-model.ts`). At rest it shows from the nose to
 mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
 the rocket stays where it rests. The canvas wrapper hangs above and below the card and is clipped to the card's sides and
@@ -506,7 +512,9 @@ stacked.
   card rocket has no idle motion at all. Any new motion must honour `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.
   Meaningful images carry real alt text; logo links carry `aria-label` (`partners.tsx`).
-- External links open with `target="_blank" rel="noopener noreferrer"` (`partners.tsx`).
+- External links open with `target="_blank" rel="noopener noreferrer"`. Every landing link
+  target lives in `lib/landing-links.ts` (`NEW_TAB`, `opensOf`); its unit test checks that each
+  page link names a route and each external link opens in a new tab (issue #359).
 - `lang="en"` on `<html>` (`app/layout.tsx`).
 
 ## What a reviewer checks

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RocketArrow } from "./rocket-arrow";
+import { INSIDE_TEAM_LINKS } from "@/lib/landing-links";
 
 // Board 21, inside the team: header, four figures, then four small liquid
 // glass link cards.
@@ -8,13 +9,6 @@ const figures = [
   { value: "2021", label: "started by a group of friends" },
   { value: "4", label: "international campaigns" },
   { value: "3", label: "projects: two rockets, one engine" },
-];
-
-const routes = [
-  { title: "The Team", sub: "The people flying this year's vehicle", href: "/about/the-team" },
-  { title: "Alumni", sub: "Everyone who got us off the ground", href: "/about/alumni" },
-  { title: "Our University", sub: "Where we study, build and get funded", href: "/about/our-university" },
-  { title: "Mission & Vision", sub: "What we're trying to prove", href: "/about/mission-vision" },
 ];
 
 export function InsideTeam() {
@@ -52,7 +46,7 @@ export function InsideTeam() {
         </dl>
 
         <div className="mt-8 grid gap-3 md:mt-[67px] md:grid-cols-2 md:gap-4 lg:grid-cols-4">
-          {routes.map((r) => (
+          {INSIDE_TEAM_LINKS.map((r) => (
             <Link
               key={r.title}
               href={r.href}

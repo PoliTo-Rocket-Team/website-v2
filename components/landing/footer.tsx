@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ShootingStar } from "./shooting-star";
 import { Starfield } from "./starfield";
+import { FOOTER_COLUMNS, PAGES, opensOf } from "@/lib/landing-links";
 
 // Board 21 footer. Its own background: the page sky's streak tile and grain
 // (the board is "footer background throughout": the page sky was cut from
@@ -9,43 +10,6 @@ import { Starfield } from "./starfield";
 // stars with a few twinkling, and one shooting star crossing the upper half
 // every ~20s. Board 24 below md: 20px sides, the
 // brand block, then the link columns 2 x 2, then the address lines stacked.
-const columns = [
-  {
-    head: "ABOUT",
-    links: [
-      ["The Team", "/about/the-team"],
-      ["Alumni", "/about/alumni"],
-      ["Our University", "/about/our-university"],
-      ["Mission & Vision", "/about/mission-vision"],
-    ],
-  },
-  {
-    head: "PROJECTS",
-    links: [
-      ["Cavour", "/projects/cavour"],
-      ["VES", "/projects/ves"],
-      ["Efesto", "/projects/efesto"],
-    ],
-  },
-  {
-    head: "GET INVOLVED",
-    links: [
-      ["Apply", "/apply"],
-      ["Partners", "/partners"],
-      ["Outreach", "/outreach"],
-    ],
-  },
-  {
-    head: "CONTACT",
-    links: [
-      ["info@politorocketteam.it", "mailto:info@politorocketteam.it"],
-      ["Instagram", "https://www.instagram.com/politorocketteam"],
-      ["LinkedIn", "https://www.linkedin.com/company/politorocketteam"],
-      ["X / Twitter", "https://x.com/PoliTo_RT"],
-    ],
-  },
-];
-
 export function LandingFooter({ inSky = false }: {
   /**
    * The footer sits inside a PageSky, which already paints the streak tile
@@ -81,7 +45,7 @@ export function LandingFooter({ inSky = false }: {
                 logo fills it, so the logo's left edge and width follow the
                 tagline whatever the font renders at. */}
             <div className="w-max max-w-full">
-              <Link href="/" className="block" aria-label="Polito Rocket Team">
+              <Link href={PAGES.home} className="block" aria-label="Polito Rocket Team">
                 {/* w-0 + min-w-full: the logo adds nothing to the block's
                     max-content width, then fills it. With a plain w-full,
                     Safari counts the SVG's own 943px in the block's width, so
@@ -105,7 +69,7 @@ export function LandingFooter({ inSky = false }: {
 
             {/* Columns */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-4 md:gap-x-[14px] lg:contents">
-              {columns.map((col) => (
+              {FOOTER_COLUMNS.map((col) => (
                 <div key={col.head}>
                   <h3 className="font-mono text-[11px] tracking-[0.2em] text-dim">{col.head}</h3>
                   <ul className="mt-2.5 md:space-y-2">
@@ -113,6 +77,7 @@ export function LandingFooter({ inSky = false }: {
                       <li key={label}>
                         <Link
                           href={href}
+                          {...opensOf(href)}
                           className={`text-[15px] leading-[25px] transition-colors hover:text-accent md:leading-normal ${
                             href.startsWith("mailto:") ? "text-accent" : "text-prt-text"
                           }`}

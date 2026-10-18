@@ -15,14 +15,9 @@ import {
 } from "@/components/ui/dialog";
 import { NavMenuSignIn, useNavViewer } from "./nav-account";
 import { RocketArrow } from "./rocket-arrow";
+import { PAGES, type NavLink } from "@/lib/landing-links";
 
-export type NavPage = { href: string; label: string };
-/**
- * A navbar entry with pages under it (About). It has no page of its own: it
- * opens a hover menu from lg and lists its pages in the sidebar.
- */
-export type NavSection = { label: string; pages: readonly [NavPage, ...NavPage[]] };
-export type NavLink = NavPage | NavSection;
+export type { NavLink, NavPage, NavSection } from "@/lib/landing-links";
 
 /** A link is current on its own page and on every page under it. */
 export function isCurrentLink(pathname: string | null, href: string): boolean {
@@ -47,7 +42,7 @@ export function isCurrentNavLink(pathname: string | null, link: NavLink): boolea
 // centred modal. It slides in and goes at once on close, so Radix unmounts it
 // without waiting on an `animationend` that a frameless tab never sends
 // (issue #79); the slide runs only under `motion-safe:` (issue #80).
-export function NavMenu({ links, className }: { links: NavLink[]; className?: string }) {
+export function NavMenu({ links, className }: { links: readonly NavLink[]; className?: string }) {
   const pathname = usePathname();
   const viewer = useNavViewer();
   return (
@@ -67,7 +62,7 @@ export function NavMenu({ links, className }: { links: NavLink[]; className?: st
           <DialogTitle className="sr-only">Menu</DialogTitle>
           <div className="flex h-16 shrink-0 items-center justify-between">
             <DialogClose asChild>
-              <Link href="/" aria-label="Polito Rocket Team, home">
+              <Link href={PAGES.home} aria-label="Polito Rocket Team, home">
                 <Image src="/brand/prt-mark-white.svg" alt="" width={444} height={220} className="h-8 w-auto" />
               </Link>
             </DialogClose>
