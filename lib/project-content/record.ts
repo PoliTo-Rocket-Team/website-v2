@@ -275,6 +275,7 @@ export function listingOf(record: ProjectRecord, position: number): Project {
     description: record.listing.description,
     specs: record.listing.specs,
     texture: record.texture,
+    ...(record.card.rocket && { rocket: record.card.rocket }),
   };
   if (record.kind === "engine") {
     return { ...base, kind: "engine", workLines: record.listing.workLines, milestone: record.listing.milestone };
@@ -334,6 +335,16 @@ export function startYearOf(card: Pick<HomeCardView, "year">): number | null {
 export function newestFirst<C extends HomeCardView>(cards: readonly C[]): C[] {
   const year = (card: HomeCardView) => startYearOf(card) ?? -Infinity;
   return [...cards].sort((a, b) => year(b) - year(a) || Number(b.num) - Number(a.num));
+}
+
+/**
+ * The /projects entries of `records`, given in site order, as the list shows
+ * them (issue #381): in the home row's order, by its home card under
+ * `newestFirst`, each entry keeping its number, its place in the site order.
+ */
+export function listingsNewestFirst(records: readonly ProjectRecord[]): Project[] {
+  const cards = records.map((record, position) => ({ ...homeCardOf(record, position), record, position }));
+  return newestFirst(cards).map(({ record, position }) => listingOf(record, position));
 }
 
 /**

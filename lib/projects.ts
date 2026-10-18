@@ -3,6 +3,8 @@
 // (lib/project-content/record.ts, issue #295), and the header counts are
 // derived from their launches.
 
+import type { OwnRocketModel } from "@/lib/rocket-model";
+
 /** Text with an optional shorter phone version (board 22m). */
 export type Copy = { text: string; phone?: string };
 
@@ -48,6 +50,8 @@ type ProjectBase = {
   /** Six specs, laid out 3 x 2. */
   specs: readonly [Spec, Spec, Spec, Spec, Spec, Spec];
   texture: string;
+  /** The rocket its panel draws, the one its home card draws; with none, the placeholder (issue #381). */
+  rocket?: OwnRocketModel;
 };
 
 /** A rocket: it has versions and a launch log, and its status counts its flights. */
