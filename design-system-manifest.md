@@ -22,7 +22,8 @@ trust that code over the ADR. Unsettled conflicts are listed under "Open gaps".
   `hero-plume.tsx`, `hero-weathering.ts`). The `/projects/cavour` hero shows a still of the
   parked rocket (`CAVOUR_STAGE_POSTER`), rendered offline from `cavour-stage-3d.tsx` by
   `scripts/render-cavour-stage.mjs`; that page loads no 3D. `/projects/ves` shows VES Mark I's
-  still (`VES_STAGE_POSTER`) the same way.
+  still (`VES_STAGE_POSTER`) the same way, and `/projects/efesto` the still of Efesto's
+  outline engine (`EFESTO_STAGE_POSTER`, `engine-efesto.tsx`, issue #382).
 - The site is dark only. `app/layout.tsx` sets `defaultTheme="dark"`, `enableSystem={false}`,
   and paints `<html>` with the `ground` colour and `color-scheme: dark` before CSS loads.
 
@@ -329,7 +330,10 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   the bob where it stopped (issue #63). The bob, the flame flicker and the smoke move by real
   elapsed time, so fewer frames never mean slower motion. Off screen or in a hidden tab it
   draws nothing. The card canvases draw
-  only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
+  only on demand (warm-up, resize), so a card at rest draws no frames (issue #48). The one
+  exception is Efesto's outline engine: it turns slowly (one turn in 40s, by real elapsed
+  time) and asks for its own frames only while the motion gate is open, so it too draws
+  nothing off screen, under the navbar, in a hidden tab or under reduced motion (issue #382).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
@@ -373,8 +377,10 @@ inset 32px at the bottom (20px from lg to xl). The cards sit in one horizontal s
 every width and never wrap to a new line (issue #359): from md 16px apart, two to a view below
 lg and three from lg (427px wide at 1440), snapping to the 64px page edge, with the row bleeding
 over the section padding so a fourth card peeks past the edge. Pager dots show from md only
-while the cards overflow the row, so three cards at lg show none. Each card renders its record's rocket model live in 3D (VES Mark I on the VES card, Cavour on
-the other two; a project with no model of its own draws the shared placeholder, `lib/rocket-model.ts`).
+while the cards overflow the row, so three cards at lg show none. Each card renders its record's model live in 3D (Cavour on the Cavour card, VES Mark I on the
+VES card, and Efesto's outline engine on the Efesto card, issue #382; a project with no model
+of its own draws the shared placeholder, `lib/rocket-model.ts`). The engine is drawn in the
+placeholder's pen look, smaller than a rocket, in the card's upper part above the info box.
 VES Mark I is built at Cavour's length and body proportions, not as a replica, so the cards read
 as one set (`rocket-ves.tsx`). At rest it shows from the nose to
 mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
@@ -418,7 +424,7 @@ page is the layout reference.
   always run 01, 02, 03 ... (`sectionsOf` in `lib/project-pages/index.ts`).
 - The hero shows the visual panel on the project's texture only when the record has a visual:
   Cavour's still of the parked rocket (Stack above, not 3D), VES's still of Mark I with its
-  "VES MARK I" caption and Mark I's key facts, Efesto none. Up to six key
+  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. Up to six key
   facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
   and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
   `hero.tsx`); a shorter set is one row of six.
@@ -524,7 +530,8 @@ stacked.
   under reduced motion, and the footer shooting star is hidden (`hero-rocket-3d.tsx`,
   `projects.tsx`, `twinkle-star.tsx`, `marquee.tsx`, `shooting-star.tsx`). Nothing on the
   landing page animates continuously then (issue #59 replaced issue #33's kept twinkle). The
-  card rocket has no idle motion at all. Any new motion must honour `prefers-reduced-motion`.
+  card rocket has no idle motion at all; Efesto's engine turns only through the motion gate
+  and holds still under reduced motion (`engine-efesto.tsx`). Any new motion must honour `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.
   Meaningful images carry real alt text; logo links carry `aria-label` (`partners.tsx`).
 - External links open with `target="_blank" rel="noopener noreferrer"`. Every landing link

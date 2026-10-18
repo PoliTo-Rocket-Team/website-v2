@@ -59,9 +59,11 @@ const BBOX_LEN = TIP - BBOX_MIN;
 const OUTLINE_PX = 2.6;
 const RIM_PX = 1.4;
 
-// The paper the drawing is filled with and the ink it is drawn in.
-const PAPER = brand.text;
-const INK = brand.ground;
+// The paper the drawing is filled with and the ink it is drawn in. Exported
+// with the pen below, so Efesto's outline engine (engine-efesto.tsx) is drawn
+// in the same look.
+export const PAPER = brand.text;
+export const INK = brand.ground;
 
 // The outline is an inverted hull: each part's back faces, pushed out along
 // their normals by a width in screen pixels, so it shows only where it
@@ -119,7 +121,7 @@ function plateHull(g: THREE.BufferGeometry, outline: [number, number][]): THREE.
 }
 
 /** A unit ring around the hull axis at y = 0, as line segments. */
-function unitRing(segments: number): LineSegmentsGeometry {
+export function unitRing(segments: number): LineSegmentsGeometry {
   const pts: number[] = [];
   for (let i = 0; i < segments; i++) {
     const a = (i / segments) * Math.PI * 2;
@@ -159,7 +161,7 @@ function placeholderParts() {
 }
 
 // The line materials carry their canvas's size, so each canvas has its own.
-function useLines() {
+export function useLines() {
   const width = useThree((s) => s.size.width);
   const height = useThree((s) => s.size.height);
   const invalidate = useThree((s) => s.invalidate);

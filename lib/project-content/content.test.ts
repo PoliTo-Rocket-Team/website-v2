@@ -11,7 +11,7 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
 import { isProjectRecord } from "./check";
-import { cavourSitePhotos, firstImport, importedProjects, importedRecords, projectImportSql, vesMarkOneRocket, vesSitePhotos } from "./import";
+import { cavourSitePhotos, efestoEngineModel, firstImport, importedProjects, importedRecords, projectImportSql, vesMarkOneRocket, vesSitePhotos } from "./import";
 import { listPhotos } from "./list-fields";
 import { homeCardOf, listingOf, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
 import { revise, revisionSql } from "./revision";
@@ -81,6 +81,23 @@ test("migration 0041 holds exactly the current-site photo revisions, and every p
     for (const src of listPhotos(record))
       assert.ok(existsSync(join(__dirname, "..", "..", "public", src)), `${src} is in public/`);
   }
+});
+
+test("migration 0042 holds exactly the Efesto engine revision, and only an engine record may name the engine", () => {
+  assert.ok(
+    migrationFile("0042_efesto_engine_model.sql").trimEnd().endsWith(revisionSql(efestoEngineModel)),
+    "regenerate the migration from revisionSql(efestoEngineModel)",
+  );
+  const efesto = importedRecords[2];
+  assert.ok(isProjectRecord(plain(efesto)));
+  assert.equal(efesto.card.rocket, "efesto");
+  assert.equal(pageRecordOf(efesto).hero.visual?.rocket?.own?.model, "efesto");
+  assert.equal(firstImport[2].card.rocket, "cavour", "the import itself stays as 0037 carried it");
+
+  const cavour = plain(importedRecords[0]) as VehicleRecord;
+  assert.equal(isProjectRecord({ ...cavour, card: { ...cavour.card, rocket: "efesto" } }), false, "a rocket's card draws a rocket");
+  const visual = { caption: "CAVOUR", rocket: { own: { model: "efesto", alt: "" } } };
+  assert.equal(isProjectRecord({ ...cavour, hero: { ...cavour.hero, visual } }), false, "a rocket's page draws a rocket");
 });
 
 test("the imported records draw the same page records, /projects entries and home cards as the code did", () => {

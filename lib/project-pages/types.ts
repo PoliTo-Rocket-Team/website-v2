@@ -38,7 +38,8 @@ export type Hero = {
    * The panel on the project's texture. Its rocket slot draws a still of the
    * project's `own` model, or of the shared placeholder when it has none
    * (lib/rocket-model.ts). Without a `rocket` it shows the texture alone; a
-   * project with no visual at all leaves the panel out.
+   * project with no visual at all leaves the panel out. The stored record
+   * check refuses an engine on a rocket's page (lib/project-content/check.ts).
    */
   visual?: { caption: string; rocket?: { own?: OwnRocket } };
   facts: KeyFacts;

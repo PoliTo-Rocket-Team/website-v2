@@ -765,8 +765,33 @@ export const vesSitePhotos: ProjectRevision = {
   ],
 };
 
+/**
+ * Efesto is an engine that has not flown, so its home card and its page draw
+ * its engine, drawn in outline (issue #382), not Cavour. The import gave its
+ * page no panel, so the revision sets the whole panel. Migration
+ * drizzle/0042_efesto_engine_model.sql holds its `revisionSql`.
+ */
+export const efestoEngineModel: ProjectRevision = {
+  slug: "efesto",
+  sets: [
+    { path: ["card", "rocket"], value: "efesto" },
+    {
+      path: ["hero", "visual"],
+      value: {
+        caption: "EFESTO · 5 KN LIQUID ENGINE",
+        rocket: {
+          own: {
+            model: "efesto",
+            alt: "Efesto drawn in outline, side-on: injector head on the right, then the combustion chamber and the nozzle, with a feed line along the chamber",
+          },
+        },
+      },
+    },
+  ],
+};
+
 /** The revisions made since the import, in migration order. */
-export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket, cavourSitePhotos, vesSitePhotos];
+export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket, cavourSitePhotos, vesSitePhotos, efestoEngineModel];
 
 /** The three projects as the store holds them once every migration ran: the import, revised. */
 export const importedRecords: readonly ProjectRecord[] = firstImport.map((record) =>

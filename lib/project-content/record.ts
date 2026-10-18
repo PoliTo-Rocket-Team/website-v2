@@ -14,7 +14,7 @@ import type {
 } from "@/lib/project-pages/types";
 import { type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
 import { editorVersion, publicVersion, type ContentItem } from "@/lib/content/versioned";
-import type { OwnRocketModel } from "@/lib/rocket-model";
+import type { OwnModel, OwnRocketModel } from "@/lib/rocket-model";
 
 // One project as the content store keeps it (issue #295): everything the
 // project page, its /projects entry and its home card show, in one record
@@ -26,8 +26,11 @@ import type { OwnRocketModel } from "@/lib/rocket-model";
 // content: the record only names the model its card and its page draw
 // (lib/rocket-model.ts), and a project with none draws the placeholder.
 
-/** The home card (board 21): its own short copy, beside the project's name and texture. */
-export type HomeCard = {
+/**
+ * The home card (board 21): its own short copy, beside the project's name and
+ * texture. `M` narrows the models it may name: a rocket's card names a rocket.
+ */
+export type HomeCard<M extends OwnModel = OwnModel> = {
   year: Copy;
   /** The pill's text. */
   status: string;
@@ -39,11 +42,12 @@ export type HomeCard = {
   /** A bright texture tints its info box darker (Efesto's). */
   infoTint?: number;
   /**
-   * The rocket the card draws; with none it draws the shared placeholder
+   * The model the card draws; with none it draws the shared placeholder
    * (lib/rocket-model.ts). Board 21 draws Cavour on all three cards; VES
-   * draws its own since it was built (issue #361).
+   * draws its own since it was built (issue #361), and Efesto its engine
+   * (issue #382).
    */
-  rocket?: OwnRocketModel;
+  rocket?: M;
 };
 
 /**
@@ -54,7 +58,7 @@ export type HomeCard = {
 export type FlightCount = { readonly count: "flights" };
 
 /** A rocket's home card: its pill is text or its flight count. */
-export type VehicleCard = Omit<HomeCard, "status"> & { status: string | FlightCount };
+export type VehicleCard = Omit<HomeCard<OwnRocketModel>, "status"> & { status: string | FlightCount };
 
 /** What every /projects entry shows (board 22). */
 type ListingBase = {
@@ -138,10 +142,18 @@ type RecordBase = {
   teaser: string;
 };
 
-/** A rocket: versions and a launch history, and its status counts its flights. */
+/**
+ * A rocket: versions and a launch history, and its status counts its flights.
+ * Its card draws a rocket only, never an engine; the stored record check
+ * holds its page panel to the same (check.ts).
+ */
 export type VehicleRecord = RecordBase & { kind: "vehicle"; card: VehicleCard; listing: VehicleListing; launches?: LaunchHistory };
 
-/** An engine in development: work lines and a milestone in place of a launch history. */
+/**
+ * An engine in development: work lines and a milestone in place of a launch
+ * history. It may name a rocket model as well as an engine: the import drew
+ * Cavour on Efesto's card, as board 21 did (migration 0037).
+ */
 export type EngineRecord = RecordBase & { kind: "engine"; card: HomeCard; listing: EngineListing };
 
 export type ProjectRecord = VehicleRecord | EngineRecord;

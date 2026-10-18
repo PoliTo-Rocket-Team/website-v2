@@ -2,9 +2,10 @@
 // components/landing/cavour-assets.ts): the parked rocket, as the panel shows
 // it, with a transparent background so the Cavour texture shows through.
 //
-// Usage: node scripts/render-cavour-stage.mjs [cavour | ves | placeholder]
+// Usage: node scripts/render-cavour-stage.mjs [cavour | ves | efesto | placeholder]
 // (cavour when no model is named). VES's still (VES_STAGE_POSTER in
-// ves-assets.ts, for /projects/ves) and the placeholder's still
+// ves-assets.ts, for /projects/ves), Efesto's engine (EFESTO_STAGE_POSTER in
+// efesto-assets.ts, for /projects/efesto) and the placeholder's still
 // (PLACEHOLDER_STAGE_POSTER in placeholder-assets.ts) comes from the same
 // scene, for a project page with no model of its own.
 //
@@ -22,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MODELS = ["cavour", "ves", "placeholder"];
+const MODELS = ["cavour", "ves", "efesto", "placeholder"];
 const model = process.argv[2] ?? "cavour";
 if (!MODELS.includes(model)) throw new Error(`unknown model ${model}; one of ${MODELS.join(", ")}`);
 const out = path.join(root, `public/design/${model}/stage-poster.webp`);
