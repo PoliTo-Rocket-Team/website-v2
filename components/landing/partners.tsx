@@ -3,6 +3,7 @@ import type { Partner } from "@/lib/partners";
 import { publishedPartners } from "@/lib/partners-public";
 import { Marquee } from "./marquee";
 import { RocketArrow } from "./rocket-arrow";
+import { NEW_TAB, TEAM_MAIL } from "@/lib/landing-links";
 
 // Board 08 / 21 — Partners. Logo marquee scrolls right→left, ~40s loop, pause on
 // hover and while nobody can see it (marquee.tsx).
@@ -28,7 +29,7 @@ function LogoItem({ partner }: { partner: Partner }) {
   );
   if (partner.website === undefined) return <span className={className}>{mark}</span>;
   return (
-    <a href={partner.website} target="_blank" rel="noopener noreferrer" aria-label={partner.name} className={className}>
+    <a href={partner.website} {...NEW_TAB} aria-label={partner.name} className={className}>
       {mark}
     </a>
   );
@@ -50,7 +51,7 @@ export async function Partners() {
           </h2>
         </div>
         <a
-          href="mailto:info@politorocketteam.it"
+          href={TEAM_MAIL}
           className="group inline-flex shrink-0 items-center gap-3 font-mono text-base text-prt-text transition-colors hover:text-accent md:mb-2"
         >
           Become a partner
