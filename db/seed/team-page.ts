@@ -11,10 +11,10 @@
 // Development, whose one division has nobody in it, and the intro text and
 // the group photo's caption changed. The team leader is left as the roles
 // build draws him, with his own photo: a stand-in photo there showed a plain
-// orange disc in his circle on every preview (issue #390). Every edit
-// is keyed to a spot the seeded roles fill and names only people on the
-// team; none of it writes a role, so Reset to team (board 80h) brings back
-// the roles build with the intro text and the group photo kept. The advisors
+// orange disc in his circle on every preview (issue #390). Every edit is
+// keyed to a spot the seeded roles fill and names only people on the team;
+// none of it writes a role, so Reset to team (board 80h) brings back the
+// roles build with the intro text and the group photo kept. The advisors
 // are today's (lib/about/advisors-import.ts), each published, as
 // drizzle/0035 imports them, except that an advisor's real email is swapped
 // for an invented one on a reserved domain: emails stay private.
