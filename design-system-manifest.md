@@ -403,8 +403,14 @@ won Design & Build at IREC 2025.", years "24–25", Cavour motor "Solid L", VES 
 Efesto fuel "Ethanol".
 
 **/projects** (boards 22 and 22m, `app/projects/page.tsx`, `components/projects/`): the header
-figures, then one `.glass-info` card per project: texture panel, facts, then the launch log
-(Efesto: work lines). Every fact comes from the projects' published records
+figures, then one `.glass-info` card per project: texture panel, then facts. The card ends at
+the specs on every width, with no launch log, work lines or phone accordion (issue #381, an
+Owner decision that overrides boards 22 and 22m there). The cards are listed newest first by
+the same rule as the home row (`listingsNewestFirst`, which sorts with `newestFirst`). A rocket
+project's panel draws its rocket live on the panel's diagonal (`RocketCardStage` with the model
+`panelRocketOf` gives): its own model, or the placeholder when it has none. An engine (Efesto)
+draws no rocket and no placeholder: its panel is the texture only, and the `Engine` shape
+carries no rocket. Every fact comes from the projects' published records
 (`lib/project-content/`, issue #295), and the header counts their launches. Every published
 project has its own page (issue #301), so every card is clickable: the name is the link, and its
 `::after` covers the card, so the whole card is the target. The card takes `.glass-linked`, and
@@ -430,10 +436,9 @@ page is the layout reference.
   `hero.tsx`); a shorter set is one row of six.
 - Versions: one highlighted version, bold under an accent pill on desktop and the default tab
   on phones. A spec with no value shows the dimmed dash (`Value` in `parts.tsx`).
-- The launch history and the /projects log read each campaign from the one launch list in the
-  project's record (issues #72 and #295): the page's launch card and the /projects row come
-  from the same entry. A campaign that did not fly gives its own four numbers and reads
-  "DID NOT FLY"; a setback takes the orange pill, never red.
+- The launch history and the /projects header counts read each campaign from the one launch
+  list in the project's record (issues #72 and #295). A campaign that did not fly gives its
+  own four numbers and reads "DID NOT FLY"; a setback takes the orange pill, never red.
 - The plan (board 25): steps done, the one under way, next and later, in that order by the
   record's shape. Desktop: a row of steps under a top rule, the step under way in accent.
   Phones: a vertical timeline with dots. Numbered reasons (board 25 "Why liquid"): up to three,

@@ -22,7 +22,8 @@ export type ProjectCardFrame = (project: Project, node: ReactNode) => ReactNode;
 // Approved /projects page per Pencil boards 22 (desktop) and 22m (phone, 390).
 // The page sky runs behind everything above the footer; the header and the
 // cards paint no background of their own. The route hands it the published
-// projects in site order (issue #295), and the header counts their launches.
+// projects newest first (issue #381, `listingsNewestFirst`), and the header
+// counts their launches.
 // The edit shell's page switch (board 75d, issue #300) draws the same page
 // with the project being edited in its place, and a `frame` that outlines its
 // card and dims the others. The footer lists the published projects
