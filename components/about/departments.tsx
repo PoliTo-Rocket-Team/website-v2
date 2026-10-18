@@ -199,19 +199,25 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
 
   // From lg a chevron at each edge of the carousel as clipped, over the
   // neighbour's slice, steps to the previous or next group; none past
-  // either end.
+  // either end. The chevron slides with the clip edge only under motion-safe.
+  // A step that reaches an end removes the chevron that took it, so focus
+  // moves to the carousel first, where the arrow keys go on stepping it.
   const edge =
-    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-[color,left,right] duration-300 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
+    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-colors duration-300 ease-out motion-safe:transition-[color,left,right] motion-safe:duration-300 motion-safe:ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
+  const step = (to: number) => {
+    if (to <= 0 || to >= count - 1) scroller.current?.focus({ preventScroll: true });
+    go(to);
+  };
 
   return (
     <div style={spacing} className="relative [container-type:inline-size]">
       {current > 0 && (
-        <button type="button" aria-label="Previous group" onClick={() => go(current - 1)} className={`${edge} left-[var(--clip-l)]`}>
+        <button type="button" aria-label="Previous group" onClick={() => step(current - 1)} className={`${edge} left-[var(--clip-l)]`}>
           <ChevronLeft aria-hidden className="h-11 w-11" strokeWidth={1.25} />
         </button>
       )}
       {current < count - 1 && (
-        <button type="button" aria-label="Next group" onClick={() => go(current + 1)} className={`${edge} right-[var(--clip-r)]`}>
+        <button type="button" aria-label="Next group" onClick={() => step(current + 1)} className={`${edge} right-[var(--clip-r)]`}>
           <ChevronRight aria-hidden className="h-11 w-11" strokeWidth={1.25} />
         </button>
       )}
