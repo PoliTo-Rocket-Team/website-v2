@@ -58,6 +58,18 @@ export function parseTarget(connectionString: string | undefined): ParsedTarget 
   return { kind: "unclassifiable", why: `host ${host} is neither local nor a Neon endpoint` };
 }
 
+/**
+ * Whether a connection string names the shared `preview` branch: a Neon host
+ * whose endpoint is `PREVIEW_ENDPOINT`, direct or `-pooler`. Read off the host
+ * alone, so it connects to nothing. The seed guard and the test developer's
+ * write gate (`testDeveloperMayWrite` in lib/test-developer.ts) both ask it
+ * (issue #364, ADR 0016).
+ */
+export function isPreviewDatabase(connectionString: string | undefined): boolean {
+  const parsed = parseTarget(connectionString);
+  return parsed.kind === "neon" && parsed.endpointId === PREVIEW_ENDPOINT;
+}
+
 const approved = Symbol("approved seed target");
 
 /**
@@ -106,7 +118,7 @@ export function guardSeedTarget(connectionString: string | undefined, env: Guard
     case "local":
       return { ok: true, target: ApprovedSeedTarget[approved](connectionString!, "local", parsed.host) };
     case "neon":
-      if (parsed.endpointId !== PREVIEW_ENDPOINT) {
+      if (!isPreviewDatabase(connectionString)) {
         return refuse("unproven-preview", `${parsed.endpointId} is not the endpoint of the "${SHARED_PREVIEW_BRANCH}" branch`);
       }
       if (env.VERCEL_ENV !== "preview") {

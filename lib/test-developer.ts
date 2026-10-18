@@ -3,6 +3,7 @@ import { isTestViewer, type TestViewer, type ViewerSession } from "@/lib/dashboa
 import { dummyDataOn, processDummyModeEnv, type DummyModeEnv } from "@/lib/dummy-data/mode";
 import { ownApplicationsStartOf, type OwnApplicationsStart } from "@/lib/dummy-data/own";
 import { testGrantOf } from "@/lib/dummy-data/test-grant";
+import { isPreviewDatabase } from "@/lib/seed/target";
 import { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
 
 // Test developer sign-in (issue #141). On previews and under `next dev`, a
@@ -116,18 +117,28 @@ export function testDeveloperStandIn(
   return viewer === null ? null : { viewer, userId: TEST_VIEWER_PEOPLE[viewer] };
 }
 
-/**
- * Whether a test developer read as a seeded person may write to the database
- * (ADR 0016, amendment of 2026-10-17): only on a Vercel preview, whose shared
- * `preview` database the next preview build wipes and re-seeds. Refused in
- * production (where the gate is off anyway), on any other Vercel
- * environment, and under `next dev`, where the database may be a real one.
- */
-export function testDeveloperMayWrite(env: GateEnv = processGateEnv()): boolean {
-  return env.VERCEL_ENV === "preview";
+/** What the write gate reads: the test developer gate's variables and the database a write goes to. */
+export type WriteGateEnv = GateEnv & { readonly DATABASE_URL?: string };
+
+function processWriteGateEnv(): WriteGateEnv {
+  return { ...processGateEnv(), DATABASE_URL: process.env.DATABASE_URL };
 }
 
-/** A write a test developer tried on a database outside a preview: refused (ADR 0016). */
+/**
+ * Whether a test developer read as a seeded person may write to the database
+ * (ADR 0016, amendment of 2026-10-17): only on a Vercel preview whose
+ * `DATABASE_URL` names the shared `preview` branch, which the next preview
+ * build wipes and re-seeds. The branch is proven by the seed guard's own
+ * check (`isPreviewDatabase`, issue #364), so a preview pointed at any other
+ * database is refused too. Refused in production (where the gate is off
+ * anyway), on any other Vercel environment, and under `next dev`, where the
+ * database may be a real one.
+ */
+export function testDeveloperMayWrite(env: WriteGateEnv = processWriteGateEnv()): boolean {
+  return env.VERCEL_ENV === "preview" && isPreviewDatabase(env.DATABASE_URL);
+}
+
+/** A write a test developer tried outside a preview, or on a database other than the `preview` branch: refused (ADR 0016). */
 export class TestDeveloperWriteRefused extends Error {
   constructor() {
     super("A test developer's changes reach the database only on a preview; sign in with an account to change it.");
@@ -143,7 +154,7 @@ export class TestDeveloperWriteRefused extends Error {
  */
 export function auditWriterOf(
   user: { readonly session: ViewerSession; readonly id: string } | null,
-  env: GateEnv = processGateEnv(),
+  env: WriteGateEnv = processWriteGateEnv(),
 ): string | null {
   if (user === null) return null;
   if (user.session === "test-developer" && !testDeveloperMayWrite(env)) throw new TestDeveloperWriteRefused();
