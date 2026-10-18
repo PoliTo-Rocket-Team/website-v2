@@ -173,37 +173,45 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
   // From lg: the widest a group may be, the column less a group gap and a
   // peek on each side; each end's padding, half the column less half that
   // end group as shown, so the end groups centre too; and the space before
-  // each group but the first. With the current group centred, a neighbour's
-  // near edge sits one peek in from the column's edge when the current group
-  // is the wider of the two; when it is the narrower, the neighbour shows half
-  // their difference more, so no neighbour ever hides entirely.
+  // each group but the first, which puts a neighbour's near edge one peek
+  // in from the column's edge whenever the current group is the wider of the
+  // two. When it is the narrower, the neighbour would show half their
+  // difference more, so the carousel is clipped by that much on that side:
+  // a neighbour always shows exactly one peek, at the clip's edge.
   const fit = `(100cqw - ${2 * (GROUP_GAP + PEEK)}px)`;
   const shown = (width: number) => `min(${width}px, ${fit})`;
   const widths = groups.map((g) => groupLayout(g).width);
+  const clip = (n: number) =>
+    n < 0 || n >= count ? "0px" : `calc((${shown(Math.max(widths[n], widths[current]))} - ${shown(widths[current])}) / 2)`;
   const spacing: Vars = {
     "--gap": `${GAP}px`,
     "--fit": `calc${fit}`,
     "--pad-start": `calc(50cqw - ${shown(widths[0])} / 2)`,
     "--pad-end": `calc(50cqw - ${shown(widths[count - 1])} / 2)`,
+    "--clip-l": clip(current - 1),
+    "--clip-r": clip(current + 1),
+    // 2px all round for the focus ring.
+    "--clip": "inset(-2px calc(var(--clip-r) - 2px) -2px calc(var(--clip-l) - 2px))",
   };
   const before = (i: number): Vars => ({
     "--before": i === 0 ? "0px" : `calc(50cqw - ${shown(Math.max(widths[i - 1], widths[i]))} / 2 - ${PEEK}px)`,
   });
 
-  // From lg a chevron at each edge of the column, over the neighbour's
-  // slice, steps to the previous or next group; none past either end.
+  // From lg a chevron at each edge of the carousel as clipped, over the
+  // neighbour's slice, steps to the previous or next group; none past
+  // either end.
   const edge =
-    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-colors duration-200 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
+    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-[color,left,right] duration-300 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
 
   return (
     <div style={spacing} className="relative [container-type:inline-size]">
       {current > 0 && (
-        <button type="button" aria-label="Previous group" onClick={() => go(current - 1)} className={`${edge} left-0`}>
+        <button type="button" aria-label="Previous group" onClick={() => go(current - 1)} className={`${edge} left-[var(--clip-l)]`}>
           <ChevronLeft aria-hidden className="h-11 w-11" strokeWidth={1.25} />
         </button>
       )}
       {current < count - 1 && (
-        <button type="button" aria-label="Next group" onClick={() => go(current + 1)} className={`${edge} right-0`}>
+        <button type="button" aria-label="Next group" onClick={() => go(current + 1)} className={`${edge} right-[var(--clip-r)]`}>
           <ChevronRight aria-hidden className="h-11 w-11" strokeWidth={1.25} />
         </button>
       )}
@@ -217,7 +225,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
         aria-label={label}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:pl-[var(--pad-start)] lg:pr-[var(--pad-end)] lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
+        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:pl-[var(--pad-start)] lg:pr-[var(--pad-end)] lg:[clip-path:var(--clip)] lg:[scroll-padding-inline:0] lg:motion-safe:[transition:clip-path_300ms_ease-out] [&::-webkit-scrollbar]:hidden"
       >
         {groups.map((g, i) => (
           <div
