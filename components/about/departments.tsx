@@ -10,14 +10,16 @@ import { SectionHead } from "./section-head";
 // Boards 26, 26d, 26e, 26f and 26m, "Departments": a carousel of groups,
 // sideways on the platform's own scroll with snap, the groups not in view
 // dimmed. On phones the current group sits at the left edge with the next one
-// peeking in from the screen edge. From lg each group is as wide as its grid,
-// the current one sits in the middle of the content column and its
-// neighbours peek in at the column's edges, one column gap away. Where the
-// column is too narrow for that (from lg to about 1250px wide), the group
-// shrinks so a neighbour still shows at least one gap wide on each side.
-// Arrows and dots below, and the arrow keys on the focused carousel, step it;
-// a swipe or a trackpad scrolls it natively and the dots follow. Nothing
-// folds away: every head and lead is always shown.
+// peeking in from the screen edge. From lg each group is as wide as its grid
+// and the current one sits in the middle of the content column. Owner
+// decision on issue #363: the groups sit far apart, so only a narrow slice of
+// a neighbour shows at the column's edge and the groups never read as one
+// slide, and a chevron at each edge of the column steps the carousel. Where
+// the column is too narrow for that (from lg to about 1310px wide), the group
+// shrinks so the slice still shows.
+// Arrows and dots below, the edge chevrons from lg, and the arrow keys on the
+// focused carousel step it; a swipe or a trackpad scrolls it natively and the
+// dots follow. Nothing folds away: every head and lead is always shown.
 //
 // Inside a group, from lg: a grid of person cells, its columns set by the
 // group (`groupLayout`), each head with its division leads under it in two
@@ -95,8 +97,10 @@ function Group({ group, offset, frames }: { group: DepartmentGroup; offset: numb
   );
 }
 
-/** How much of a neighbouring group always shows from lg, px. */
-const MIN_PEEK = GAP;
+/** From lg: how much of a neighbouring group shows at the column's edge, px. */
+const PEEK = 48;
+/** From lg: the least space between two groups, px; wider than the column gap inside a group. */
+const GROUP_GAP = 64;
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -159,24 +163,60 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
   const arrow =
     "flex h-11 w-11 items-center justify-center rounded-full border text-prt-text transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 disabled:cursor-default disabled:border-white-5 disabled:text-dim";
 
-  // The column gap, between the groups as inside them. From lg: the widest a
-  // group may be, the column less a gap and a peek on each side; and each
-  // end's padding, half the column less half that end group as shown, so
-  // the end groups centre too.
-  const fit = `(100cqw - ${2 * (GAP + MIN_PEEK)}px)`;
-  const endPad = (group: DepartmentGroup) => `calc(50cqw - min(${groupLayout(group).width}px, ${fit}) / 2)`;
+  // From lg: the widest a group may be, the column less a group gap and a
+  // peek on each side; each end's padding, half the column less half that
+  // end group as shown, so the end groups centre too; and the space before
+  // each group but the first, which puts a neighbour's near edge one peek
+  // in from the column's edge whenever the current group is the wider of the
+  // two. When it is the narrower, the neighbour would show half their
+  // difference more, so the carousel is clipped by that much on that side:
+  // a neighbour always shows exactly one peek, at the clip's edge.
+  const fit = `(100cqw - ${2 * (GROUP_GAP + PEEK)}px)`;
+  const shown = (width: number) => `min(${width}px, ${fit})`;
+  const widths = groups.map((g) => groupLayout(g).width);
+  const clip = (n: number) =>
+    n < 0 || n >= count ? "0px" : `calc((${shown(Math.max(widths[n], widths[current]))} - ${shown(widths[current])}) / 2)`;
   const spacing: Vars = {
     "--gap": `${GAP}px`,
     "--fit": `calc${fit}`,
-    "--pad-start": endPad(groups[0]),
-    "--pad-end": endPad(groups[count - 1]),
+    "--pad-start": `calc(50cqw - ${shown(widths[0])} / 2)`,
+    "--pad-end": `calc(50cqw - ${shown(widths[count - 1])} / 2)`,
+    "--clip-l": clip(current - 1),
+    "--clip-r": clip(current + 1),
+    // 2px all round for the focus ring.
+    "--clip": "inset(-2px calc(var(--clip-r) - 2px) -2px calc(var(--clip-l) - 2px))",
+  };
+  const before = (i: number): Vars => ({
+    "--before": i === 0 ? "0px" : `calc(50cqw - ${shown(Math.max(widths[i - 1], widths[i]))} / 2 - ${PEEK}px)`,
+  });
+
+  // From lg a chevron at each edge of the carousel as clipped, over the
+  // neighbour's slice, steps to the previous or next group; none past
+  // either end. The chevron slides with the clip edge only under motion-safe.
+  // A step that reaches an end removes the chevron that took it, so focus
+  // moves to the carousel first, where the arrow keys go on stepping it.
+  const edge =
+    "absolute top-1/2 z-10 hidden h-14 w-14 -translate-y-1/2 items-center justify-center text-prt-text/80 transition-colors duration-300 ease-out motion-safe:transition-[color,left,right] motion-safe:duration-300 motion-safe:ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 lg:flex";
+  const step = (to: number) => {
+    if (to <= 0 || to >= count - 1) scroller.current?.focus({ preventScroll: true });
+    go(to);
   };
 
   return (
     <div style={spacing} className="relative [container-type:inline-size]">
+      {current > 0 && (
+        <button type="button" aria-label="Previous group" onClick={() => step(current - 1)} className={`${edge} left-[var(--clip-l)]`}>
+          <ChevronLeft aria-hidden className="h-11 w-11" strokeWidth={1.25} />
+        </button>
+      )}
+      {current < count - 1 && (
+        <button type="button" aria-label="Next group" onClick={() => step(current + 1)} className={`${edge} right-[var(--clip-r)]`}>
+          <ChevronRight aria-hidden className="h-11 w-11" strokeWidth={1.25} />
+        </button>
+      )}
       {/* Bleeds to the screen edge on phones, so the next group peeks in
-          from the edge; from lg the groups sit one column gap apart in the
-          content column, so the neighbours peek in at its edges. */}
+          from the edge; from lg the groups sit far apart in the content
+          column, so only a slice of a neighbour shows at its edges. */}
       <div
         ref={scroller}
         role="region"
@@ -184,7 +224,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
         aria-label={label}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:gap-[var(--gap)] lg:pl-[var(--pad-start)] lg:pr-[var(--pad-end)] lg:[scroll-padding-inline:0] [&::-webkit-scrollbar]:hidden"
+        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:pl-[var(--pad-start)] lg:pr-[var(--pad-end)] lg:[clip-path:var(--clip)] lg:[scroll-padding-inline:0] lg:motion-safe:[transition:clip-path_300ms_ease-out] [&::-webkit-scrollbar]:hidden"
       >
         {groups.map((g, i) => (
           <div
@@ -195,8 +235,8 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
             role="group"
             aria-roledescription="slide"
             aria-label={`${i + 1} of ${count}: ${g.name}`}
-            style={gridVars(g)}
-            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:w-[min(var(--w),var(--fit))] lg:max-w-none lg:snap-center lg:pr-0 ${
+            style={{ ...gridVars(g), ...before(i) }}
+            className={`w-[calc(100vw-52px)] max-w-[560px] shrink-0 snap-start pr-5 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out md:pr-10 lg:ml-[var(--before)] lg:w-[min(var(--w),var(--fit))] lg:max-w-none lg:snap-center lg:pr-0 ${
               i === current ? "opacity-100" : "opacity-[0.35]"
             }`}
           >

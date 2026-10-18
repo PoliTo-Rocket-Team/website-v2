@@ -95,7 +95,11 @@ Rules:
 - Two families, loaded in `app/layout.tsx` with `next/font/google`:
   - `font-display` = Archivo (weights 400 to 900). The body default.
   - `font-mono` = Geist Mono. Eyebrows, dates, tags, spec labels, footer meta, fact strip.
-- Do not add a third family without a decision record.
+- One allowed exception (`.decisions/0017-ampersand-from-inter-tight.md`): the "&" glyph
+  (U+0026) comes from Inter Tight, weights 400 to 900. Its face, `--font-ampersand`, is loaded in
+  `app/layout.tsx` with `next/font/local`, claims `unicode-range: U+0026` only, and sits first in
+  the `font-display` stack, so every other glyph stays Archivo.
+- Do not add a third family, or draw any other glyph from Inter Tight, without a decision record.
 - Patterns in code (`latest.tsx`, `projects.tsx`, `inside-team.tsx`, `partners.tsx`):
   - Eyebrow: `font-mono text-xs tracking-[0.3em] text-accent`, uppercase.
   - Section title (board 21: 48px, weight 700, line height 1.25, tracking -0.025em; board 24
@@ -529,7 +533,8 @@ stacked.
 ## What a reviewer checks
 
 1. Colours come from the PRT tokens, or are a commented exception from the list above.
-2. Fonts are Archivo or Geist Mono, in the type patterns above.
+2. Fonts are Archivo or Geist Mono, in the type patterns above. The one exception is the
+   Inter Tight "&" of ADR 0017, through its U+0026-only face.
 3. Width, padding, radii and glass surfaces match the layout rules.
 4. Hover uses the 300ms ease-out pattern, with no rise on a project card; links use
    `RocketArrow`.
