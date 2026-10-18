@@ -7,7 +7,6 @@ import type { Project } from "@/lib/projects";
 import { ProjectGallery } from "./gallery";
 import { ProjectHero } from "./hero";
 import { ProjectLaunches } from "./launches";
-import { NextProject } from "./next-project";
 import { ProjectPlan } from "./plan";
 import { ProjectReasons } from "./reasons";
 import { ProjectStory } from "./story";
@@ -19,7 +18,7 @@ import { ProjectVersions } from "./versions";
 // part outlined through `frame` (issue #298).
 
 /** The page's parts, each one block the editor can outline. */
-export type ProjectPart = "hero" | "name" | "design" | NumberedSection["kind"] | "next";
+export type ProjectPart = "hero" | "name" | "design" | NumberedSection["kind"];
 
 /** Wraps one part of the page; the public page draws each part as it is. */
 export type ProjectFrame = (part: ProjectPart, node: ReactNode) => ReactNode;
@@ -44,13 +43,10 @@ function Section({ section, project }: { section: NumberedSection; project: Proj
 export function ProjectPageView({
   project,
   record,
-  next,
   frame = bare,
 }: {
   project: Project;
   record: ProjectPageRecord;
-  /** The project after this one in the site order, and the line its card shows. */
-  next: { readonly project: Project; readonly teaser: string };
   frame?: ProjectFrame;
 }) {
   return (
@@ -63,7 +59,6 @@ export function ProjectPageView({
           {sectionsOf(record).map((s) => (
             <Fragment key={s.kind}>{frame(s.kind, <Section section={s} project={project} />)}</Fragment>
           ))}
-          {frame("next", <NextProject project={next.project} teaser={next.teaser} />)}
         </main>
         <LandingFooter inSky />
       </PageSky>

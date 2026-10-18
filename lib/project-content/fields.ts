@@ -29,7 +29,7 @@ import type { ProjectRecord } from "./record";
 // that text is gone.
 
 /** The panel's sections; each block's Edit chip opens one. */
-export type PanelSection = "top" | "name" | "design" | ListSection | "reasons" | "teaser" | "card";
+export type PanelSection = "top" | "name" | "design" | ListSection | "reasons" | "card";
 
 export type { CardFields, CopyFields };
 export type FactFields = { readonly value: string; readonly label: CopyFields };
@@ -57,8 +57,6 @@ export type ProjectFields = ListFields & {
     readonly title: string;
     readonly items: readonly ReasonFields[];
   };
-  /** The one line the previous project's page shows on its next-project card. */
-  readonly teaser: string;
   /** The project's card on Home, which the page switch shows in place (board 75d). */
   readonly card: CardFields;
 };
@@ -93,7 +91,6 @@ export function fieldsOf(record: ProjectRecord): ProjectFields {
       reasons === undefined
         ? { shown: false, eyebrow: "", title: "", items: [{ title: "", text: "" }] }
         : { shown: true, eyebrow: reasons.eyebrow, title: titleText(reasons.title), items: reasons.items.map((r) => ({ ...r })) },
-    teaser: record.teaser,
     card: cardFieldsOf(record),
     ...listFieldsOf(record),
   };
@@ -131,7 +128,7 @@ function reasonItemsOf(items: readonly ReasonFields[]): Reasons["items"] | null 
  * of bounds, which only a hand-made request can make it.
  */
 export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): ProjectRecord {
-  const { hero, nameStory, design, reasons, teaser } = fields;
+  const { hero, nameStory, design, reasons } = fields;
   const visual = opened.hero.visual && hero.caption !== null ? { visual: { ...opened.hero.visual, caption: hero.caption.trim() } } : {};
   const parts = nonEmpty(design.parts.map((p): Part => ({ name: p.name.trim(), desc: p.desc.trim(), phone: p.phone.trim() })));
   const reasonItems = reasonItemsOf(reasons.items);
@@ -158,7 +155,6 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
       parts: { ...opened.design.parts, caption: design.partsCaption.trim(), items: parts ?? opened.design.parts.items },
     },
     ...(shownReasons && { reasons: shownReasons }),
-    teaser: teaser.trim(),
   };
   return withListFields(withCardFields(story, fields.card), fields, opened);
 }
@@ -224,12 +220,11 @@ export function fieldProblems(fields: ProjectFields): FieldProblem[] {
     });
   }
 
-  need("teaser", "teaser", fields.teaser, "the next-project card line");
   return [...problems, ...listProblems(fields), ...cardProblems(fields.card)].sort((a, b) => PANEL_ORDER.indexOf(a.section) - PANEL_ORDER.indexOf(b.section));
 }
 
 /** The panel's sections top to bottom, as board 75c stacks them. */
-export const PANEL_ORDER: readonly PanelSection[] = ["top", "name", "design", "versions", "launches", "plan", "reasons", "gallery", "teaser", "card"];
+export const PANEL_ORDER: readonly PanelSection[] = ["top", "name", "design", "versions", "launches", "plan", "reasons", "gallery", "card"];
 
 /** The record Save draft or Publish stores: `opened` with the fields laid over it, or why it cannot be. */
 export function checkProjectFields(fields: ProjectFields, opened: ProjectRecord): WriteResult<ProjectRecord> {
@@ -269,7 +264,7 @@ const readStory = (v: unknown): StoryFields | null =>
 
 /** The fields a request carries, or null when it does not carry them in this shape. */
 export function readProjectFields(input: unknown): ProjectFields | null {
-  if (!hasStrings(input, ["teaser"])) return null;
+  if (!isObject(input)) return null;
   const { hero, nameStory, design, reasons } = input;
   if (!hasStrings(hero, ["status", "dates"])) return null;
   const caption = hero.caption === null ? null : isString(hero.caption) ? hero.caption : undefined;
@@ -291,7 +286,6 @@ export function readProjectFields(input: unknown): ProjectFields | null {
     nameStory: name,
     design: { ...designStory, partsCaption: design.partsCaption, parts },
     reasons: { shown: reasons.shown, eyebrow: reasons.eyebrow, title: reasons.title, items },
-    teaser: input.teaser,
     card,
   };
 }

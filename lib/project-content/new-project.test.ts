@@ -16,8 +16,8 @@ import { homeCardOf, listingOf, pageRecordOf, publishedPageOf, type ProjectRecor
 // New project and the one project route (issue #301). New project stores a
 // draft that no public page shows until it is published; /projects/<slug>
 // serves every published project, Cavour, VES and Efesto at the addresses
-// they had, and nothing else; the next-project loop follows the site order;
-// a new project draws the shared placeholder rocket on its card and page.
+// they had, and nothing else; a published new project takes its place in the
+// site order; a new project draws the shared placeholder rocket on its card and page.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const member: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false } as ViewerStanding;
@@ -86,7 +86,7 @@ test("one route serves Cavour, VES and Efesto at their addresses, and an unknown
   assert.equal(publishedPageOf([], "cavour"), null);
 });
 
-test("the next-project loop follows the site order and takes in a published new project", async () => {
+test("a published new project takes its place in the site order, and its page its number", async () => {
   const store = memoryContentStore(importedProjects());
   const editor = projectEditor(admin, store);
   const created = await editor.create(mark3);
@@ -96,15 +96,12 @@ test("the next-project loop follows the site order and takes in a published new 
   assert.ok((await editor.setSiteOrder([3, created.value.id, 1, 2])).ok);
 
   const shown = await publicSite(store);
-  const nextOf = (slug: string) => publishedPageOf(shown, slug)?.next.record.slug;
   assert.deepEqual(
     shown.map((r) => r.slug),
     ["efesto", "ves-mark-iii", "cavour", "ves"],
   );
-  assert.equal(nextOf("efesto"), "ves-mark-iii");
-  assert.equal(nextOf("ves-mark-iii"), "cavour");
-  assert.equal(nextOf("ves"), "efesto");
-  assert.equal(publishedPageOf(shown, "ves")?.next.position, 0);
+  assert.equal(publishedPageOf(shown, "ves-mark-iii")?.position, 1);
+  assert.equal(publishedPageOf(shown, "ves")?.position, 3);
 });
 
 test("a new project's card and page draw the placeholder rocket, and its draft is whole and saves as it opens", () => {

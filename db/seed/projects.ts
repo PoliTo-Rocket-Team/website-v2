@@ -19,7 +19,7 @@ const CREATED = "2026-09-12 10:00:00+00";
 const PUBLISHED = "2026-09-12 10:00:00+00";
 const DRAFTED = "2026-10-09 14:00:00+00";
 
-/** VES: published, with draft changes to its intro and its next-project line (board 75b). */
+/** VES: published, with a draft change to its intro (board 75b). */
 export const DRAFT_CHANGES_PROJECT = 2;
 
 /** A project with no rocket model of its own, published, so its card and page draw the placeholder. */
@@ -32,11 +32,7 @@ export const PROJECT_ITEMS: readonly ContentItem<ProjectRecord>[] = [
     if (item.id !== DRAFT_CHANGES_PROJECT || item.version.state !== "published") return item;
     const published = item.version.published;
     const intro = "The second Founding Fathers rocket, named after Vittorio Emanuele II. Mark II won Design & Build at IREC 2025.";
-    const draft: ProjectRecord = {
-      ...published,
-      hero: { ...published.hero, intro: { text: intro } },
-      teaser: "Two marks, one Mach 1.8 target. Mark II won Design & Build at IREC 2025.",
-    };
+    const draft: ProjectRecord = { ...published, hero: { ...published.hero, intro: { text: intro } } };
     return { ...item, version: { state: "published", published, draft } };
   }),
   {
