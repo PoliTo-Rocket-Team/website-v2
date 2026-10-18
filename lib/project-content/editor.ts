@@ -3,7 +3,7 @@ import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import type { ContentItem, PublishStep } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { checkPhotoUpload, filesNoLongerShown, freeingFiles, isPhotoSrc, type PhotoFiles } from "@/lib/outreach-photos";
+import { checkPhotoUpload, filesNoLongerShown, freeingFiles, isPhotoSrc, isSitePhotoSrc, type PhotoFiles } from "@/lib/outreach-photos";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { editedLine, type EditStamp } from "./edited";
 import { checkProjectFields, type ProjectFields } from "./fields";
@@ -52,12 +52,12 @@ function keeping(files: Pick<PhotoFiles, "drop">, held: readonly string[]): Pick
 
 /**
  * The record, or why not: each photo is one the version the panel opened on
- * had, or a file this side stored. A save cannot point a project at a file
- * somewhere else.
+ * had, a file this side stored, or a file the site ships (issue #371). A save
+ * cannot point a project at a file somewhere else.
  */
 export function checkProjectPhotos(record: ProjectRecord, opened: ProjectRecord, files: Pick<PhotoFiles, "owns">): WriteResult<ProjectRecord> {
   const known = new Set(listPhotos(opened));
-  const stray = listPhotos(record).find((src) => !known.has(src) && !files.owns(src));
+  const stray = listPhotos(record).find((src) => !known.has(src) && !files.owns(src) && !isSitePhotoSrc(src));
   return stray === undefined ? written(record) : refused("A photo was not uploaded. Add it again.");
 }
 

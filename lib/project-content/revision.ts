@@ -20,15 +20,25 @@ type Json = { [key: string]: unknown };
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
+ * One step down a path: a key of an object, or, as jsonb_set reads a path, an
+ * index of an array written as its digits ("0" is the first item).
+ */
+function step(at: unknown, key: string): unknown {
+  if (isObject(at)) return at[key];
+  return Array.isArray(at) && /^\d+$/.test(key) ? at[Number(key)] : undefined;
+}
+
+/**
  * The record with the revision applied, or the record itself when the
  * revision is another project's. As jsonb_set does, a set whose parent path
- * is missing changes nothing.
+ * is missing changes nothing. A path may pass through a list by index
+ * (`["launches", "entries", "0", "photos"]`); the key it sets is an object's.
  */
 export function revise(record: ProjectRecord, revision: ProjectRevision): ProjectRecord {
   if (record.slug !== revision.slug) return record;
   const next = structuredClone(record) as unknown as Json;
   for (const { path, value } of revision.sets) {
-    const parent = path.slice(0, -1).reduce<unknown>((at, key) => (isObject(at) ? at[key] : undefined), next);
+    const parent = path.slice(0, -1).reduce<unknown>(step, next);
     if (isObject(parent)) parent[path[path.length - 1]] = structuredClone(value);
   }
   return next as unknown as ProjectRecord;

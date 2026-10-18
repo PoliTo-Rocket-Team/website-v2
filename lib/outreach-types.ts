@@ -12,12 +12,13 @@ import type { Copy } from "./projects";
 export type IsoDate = `${number}-${number}-${number}`;
 
 /**
- * Where a post photo is: a file of the site in public/outreach/, given as its
- * path from the site root; a file uploaded from the dashboard, at its public
+ * Where a post or project photo is: a file of the site in public/outreach/ or
+ * public/project-photos/ (issue #371), given as its path from the site root; a
+ * file uploaded from the dashboard, at its public
  * Blob store URL (issue #291); or, on a preview, an upload kept nowhere, as a
  * data URL the page shows until the next load (lib/dummy-data/outreach.ts).
  */
-export type PhotoSrc = `/outreach/${string}` | `https://${string}` | `data:image/${string}`;
+export type PhotoSrc = `/outreach/${string}` | `/project-photos/${string}` | `https://${string}` | `data:image/${string}`;
 
 /** A photo with its alt text, which every photo has. */
 export type OutreachPhoto = { src: PhotoSrc; alt: string };

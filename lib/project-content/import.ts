@@ -1,8 +1,9 @@
-import type { GalleryItem } from "@/components/gallery/items";
+import type { GalleryItem, GalleryPhoto } from "@/components/gallery/items";
 import type { ContentItem } from "@/lib/content/versioned";
-import type { Version } from "@/lib/project-pages/types";
+import type { PhotoSrc } from "@/lib/outreach-types";
+import type { LaunchPhoto, Version } from "@/lib/project-pages/types";
 import type { ProjectRecord, VehicleRecord, EngineRecord } from "./record";
-import { revise, type ProjectRevision } from "./revision";
+import { revise, type ProjectRevision, type RevisionSet } from "./revision";
 
 // Carrying Cavour, VES and Efesto into the content store (issue #295), each
 // published, in the site order Cavour, VES, Efesto. Before the store, each
@@ -686,8 +687,86 @@ export const vesMarkOneRocket: ProjectRevision = {
   ],
 };
 
+/** A photo of the site in public/project-photos/<slug>/: its file name there, without ".webp", and what it shows. */
+type SitePhoto = { readonly file: string; readonly alt: string };
+
+type CaptionedSitePhoto = SitePhoto & { readonly caption: string };
+
+const sitePhotoSrc = (slug: string, file: string): PhotoSrc => `/project-photos/${slug}/${file}.webp`;
+
+/** One launch card's photos, one or two, set on the launch at this place in the history. */
+const launchPhotos = (slug: string, index: number, photos: readonly [SitePhoto] | readonly [SitePhoto, SitePhoto]): RevisionSet => ({
+  path: ["launches", "entries", String(index), "photos"],
+  value: photos.map(({ file, alt }): LaunchPhoto => ({ src: sitePhotoSrc(slug, file), alt })),
+});
+
+/** The gallery's photos, in carousel order, in place of its placeholders. */
+const galleryPhotos = (slug: string, photos: readonly [CaptionedSitePhoto, ...CaptionedSitePhoto[]]): RevisionSet => ({
+  path: ["gallery", "items"],
+  value: photos.map(({ file, alt, caption }): GalleryPhoto => ({ src: sitePhotoSrc(slug, file), alt, caption })),
+});
+
+/**
+ * Cavour's launch cards and gallery show the Team's own photos, the ones the
+ * current public site shows for each campaign (issue #371), in place of the
+ * texture and the placeholders. Each file is in public/project-photos/cavour/.
+ * Migration drizzle/0041_current_site_photos.sql holds its `revisionSql`.
+ */
+export const cavourSitePhotos: ProjectRevision = {
+  slug: "cavour",
+  sets: [
+    launchPhotos("cavour", 0, [
+      { file: "test-launch-liftoff", alt: "Cavour climbing on its smoke trail above the launch field in Bavaria" },
+      { file: "test-launch-landed", alt: "Cavour lying intact in a green field at sunset after its first flight" },
+    ]),
+    launchPhotos("cavour", 1, [
+      { file: "sa-cup-liftoff", alt: "Cavour leaving the rail in a cloud of desert dust at Spaceport America" },
+      { file: "sa-cup-pad", alt: "Cavour on launch pad B2 in the New Mexico desert" },
+    ]),
+    launchPhotos("cavour", 2, [
+      { file: "euroc-2023-liftoff", alt: "Cavour lifting off at Santa Margarida, Portugal" },
+      { file: "euroc-2023-to-the-pad", alt: "Team members carrying Cavour past the tents at EuRoC 2023" },
+    ]),
+    galleryPhotos("cavour", [
+      { file: "sa-cup-team", alt: "The Team holding Cavour up on a pickup truck in the desert", caption: "Spaceport America Cup 2023, New Mexico" },
+      { file: "sa-cup-expo", alt: "Cavour and its poster on the Team's table at the competition expo", caption: "Spaceport America Cup 2023, New Mexico" },
+      { file: "sa-cup-flag", alt: "The Team with the Italian flag at the Spaceport America Cup", caption: "Spaceport America Cup 2023, New Mexico" },
+      { file: "euroc-2023-team", alt: "The Team seated together in the competition hall", caption: "EuRoC 2023, Portugal" },
+      { file: "euroc-2023-tent", alt: "Team members working on Cavour in the Team's tent", caption: "EuRoC 2023, Portugal" },
+      { file: "test-launch-rail", alt: "Cavour leaving the rail at sunset on its first flight", caption: "Test launch 2023, Bavaria" },
+    ]),
+  ],
+};
+
+/**
+ * VES's launch cards and gallery, the same way: the photos the current public
+ * site shows for EuRoC 2024 and IREC 2025, in public/project-photos/ves/.
+ * Migration drizzle/0041_current_site_photos.sql holds its `revisionSql`.
+ */
+export const vesSitePhotos: ProjectRevision = {
+  slug: "ves",
+  sets: [
+    launchPhotos("ves", 0, [
+      { file: "euroc-2024-liftoff", alt: "VES Mark I lifting off at Santa Margarida, Portugal" },
+      { file: "euroc-2024-to-the-pad", alt: "Team members carrying VES Mark I to the pad at EuRoC 2024" },
+    ]),
+    launchPhotos("ves", 1, [
+      { file: "irec-2025-pad", alt: "Team members readying VES Mark II on the launch rail in Texas" },
+      { file: "irec-2025-award", alt: "The Team on stage with VES Mark II and the Italian flag at IREC 2025" },
+    ]),
+    galleryPhotos("ves", [
+      { file: "euroc-2024-team", alt: "The Team on the competition stage with VES Mark I and the Italian flag", caption: "EuRoC 2024, Portugal" },
+      { file: "euroc-2024-booth", alt: "Team members showing VES Mark I at the Team's stand", caption: "EuRoC 2024, Portugal" },
+      { file: "euroc-2024-stand", alt: "The Team at its stand beside VES Mark I", caption: "EuRoC 2024, Portugal" },
+      { file: "irec-2025-expo", alt: "VES Mark II and its poster at the competition expo", caption: "IREC 2025, Texas" },
+      { file: "irec-2025-dusk", alt: "Team members riding out at dusk with VES Mark II in a pickup truck", caption: "IREC 2025, Texas" },
+      { file: "irec-2025-banner", alt: "VES Mark II held up beside the Team's banner", caption: "IREC 2025, Texas" },
+    ]),
+  ],
+};
+
 /** The revisions made since the import, in migration order. */
-export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket];
+export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket, cavourSitePhotos, vesSitePhotos];
 
 /** The three projects as the store holds them once every migration ran: the import, revised. */
 export const importedRecords: readonly ProjectRecord[] = firstImport.map((record) =>

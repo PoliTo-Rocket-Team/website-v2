@@ -288,6 +288,13 @@
       "when": 1792344000000,
       "tag": "0040_ves_mark_one_rocket",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792430400000,
+      "tag": "0041_current_site_photos",
+      "breakpoints": true
     }
   ]
 }
