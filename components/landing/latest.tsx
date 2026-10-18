@@ -5,6 +5,7 @@ import { CopyText } from "@/components/project-page/parts";
 import { dayMonthYear, phoneNewsCard, slugOf, type TrackRecord } from "@/lib/outreach";
 import { titleOf, type OutreachDraft, type OutreachTag } from "@/lib/outreach-types";
 import { RocketArrow } from "./rocket-arrow";
+import { PAGES, outreachPostHref } from "@/lib/landing-links";
 
 // Board 21, track record: the newest published Outreach posts (issue #293).
 // The home page reads them through the same cached published read as
@@ -65,7 +66,7 @@ function FeaturedCard({ post, awardTags, layout }: CardProps) {
         </p>
       </div>
       <h3 className="text-[20px] font-bold leading-[1.2] tracking-[-0.02em] md:text-[34px]">
-        <Link href={`/outreach/${slugOf(post)}`} className={cardLink}>
+        <Link href={outreachPostHref(slugOf(post))} className={cardLink}>
           {titleOf(post)}
         </Link>
       </h3>
@@ -94,7 +95,7 @@ function NewsCard({ post, awardTags, layout }: CardProps) {
     <article className={`glass-card glass-linked flex-col justify-center gap-2.5 rounded-xl p-5 md:p-8 lg:py-0 ${layout}`}>
       <TagLine post={post} awardTags={awardTags} />
       <h3 className="text-[16px] font-semibold leading-[1.2] md:text-[21px] md:leading-snug">
-        <Link href={`/outreach/${slugOf(post)}`} className={cardLink}>
+        <Link href={outreachPostHref(slugOf(post))} className={cardLink}>
           {titleOf(post)}
         </Link>
       </h3>
@@ -178,7 +179,7 @@ export function Latest<P extends TrackRecordPost>({
 
         <div className="mt-6 text-center md:mt-10">
           <Link
-            href="/outreach"
+            href={PAGES.outreach}
             className="group inline-flex items-center gap-3 font-mono text-base tracking-wide text-prt-text transition-colors hover:text-accent"
           >
             All news

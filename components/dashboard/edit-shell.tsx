@@ -415,7 +415,7 @@ const CARD_CLEARANCE = "scroll-mt-24 md:scroll-mt-[104px]";
  * Scrolls the page in the frame so the edited card sits in the room under
  * its clearance: centred there when it fits, its top at the clearance when it
  * is taller. Centring it in the whole window put a tall card's top edge, and
- * its chip, under the navbar. A card in a swipe row (Home below md) is
+ * its chip, under the navbar. A card in a swipe row (Home's Projects) is
  * brought in sideways first, to where the row snaps it. Only the frame's page
  * and that row move: scrollIntoView would also scroll the dashboard around
  * the frame, which in Phone hides the frame's top, chip and all.

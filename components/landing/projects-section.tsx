@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
-import type { HomeCardView } from "@/lib/project-content/record";
+import { newestFirst, type HomeCardView } from "@/lib/project-content/record";
 import { FILLS_FRAME, HOME_CARD_LAYOUT, HomeProjectCard } from "./project-card";
 import { RocketArrow } from "./rocket-arrow";
 import { SwipeRow } from "./swipe-row";
+import { PAGES } from "@/lib/landing-links";
 
 // Board 21, projects: the home Projects section as it draws the cards it is
-// handed. Home hands it the published projects (projects.tsx); the edit
+// handed, newest first (issue #359, `newestFirst`). Home hands it the
+// published projects (projects.tsx); the edit
 // shell's page switch (board 75d, issue #300) hands it the same list with the
 // project being edited in its place, and a `frame` that outlines that card
 // and dims the others. Each card is on its brand texture, with its rocket
@@ -15,10 +17,12 @@ import { SwipeRow } from "./swipe-row";
 // Hover: only the card's glass edge brightens. The rocket stays where it
 // rests (Huey, 2026-10-06: no hover rise).
 //
-// Board 24 below md: the cards sit side by side in a horizontal swipe row,
-// 210 x 360 each, 10px apart, with scroll-snap, the next card peeking and
-// pager dots below (swipe-row.tsx). Phone copy is shorter: `phone` text
-// replaces the desktop text below md.
+// The cards sit side by side in one horizontal swipe row at every width
+// (issue #359), the next card peeking, so a fourth project never wraps to a
+// new line: board 24 below md, 210 x 360 each, 10px apart, with pager dots
+// below; from md 618px tall, 16px apart, two to a view below lg and three
+// from lg, as board 21 shows them (swipe-row.tsx, `HOME_CARD_LAYOUT`).
+// Phone copy is shorter: `phone` text replaces the desktop text below md.
 
 /** Wraps one card in place: the card drawn to fill the frame, and the box the row gives it. */
 export type HomeCardFrame = (card: HomeCardView, node: ReactNode, layout: string) => ReactNode;
@@ -39,7 +43,7 @@ export function ProjectsSection({ cards, frame }: { cards: readonly HomeCardView
             </h2>
           </div>
           <Link
-            href="/projects"
+            href={PAGES.projects}
             className="group inline-flex shrink-0 items-center gap-3 font-mono text-base text-prt-text transition-colors hover:text-accent md:mb-1"
           >
             All projects
@@ -47,9 +51,10 @@ export function ProjectsSection({ cards, frame }: { cards: readonly HomeCardView
           </Link>
         </div>
 
-        {/* Below md the row's own 24px top room is the gap to the cards. */}
-        <SwipeRow label="Projects" className="md:mt-14 md:grid md:gap-8 lg:grid-cols-3 lg:gap-4">
-          {cards.map((p) =>
+        {/* The row's own 24px top room is the gap to the cards below md, and
+            with mt-8 the 56px gap from md. */}
+        <SwipeRow label="Projects" className="md:mt-8">
+          {newestFirst(cards).map((p) =>
             frame === undefined ? (
               <HomeProjectCard key={p.num} project={p} />
             ) : (
