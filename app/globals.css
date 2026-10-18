@@ -297,7 +297,9 @@
   /* Project card: the texture is the fill, so only the edge and the shadows
    are glass. On hover the edge brightens: a second, brighter ring fades in
    over the first, because a gradient cannot transition. That is the one hover
-   change left under reduced motion. `glass-linked` gives a glass-info card
+   change left under reduced motion. A home card that links to its project's
+   page (issue #372) brightens the same way on keyboard focus. `glass-linked`
+   gives a glass-info card
    that links to its page (/projects) the same brighter edge on hover and
    keyboard focus. */
   .glass-project {
@@ -320,6 +322,7 @@
     transition: opacity 300ms ease-out;
   }
   .glass-project:hover::after,
+  .glass-project:has(> a:focus-visible)::after,
   .glass-linked:hover::after,
   .glass-linked:has(a:focus-visible)::after {
     opacity: 1;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
-import { newestFirst, type HomeCardView } from "@/lib/project-content/record";
+import { newestFirst, type HomeCardView, type LandingCardView } from "@/lib/project-content/record";
 import { FILLS_FRAME, HOME_CARD_LAYOUT, HomeProjectCard } from "./project-card";
 import { RocketArrow } from "./rocket-arrow";
 import { SwipeRow } from "./swipe-row";
@@ -27,7 +27,15 @@ import { PAGES } from "@/lib/landing-links";
 /** Wraps one card in place: the card drawn to fill the frame, and the box the row gives it. */
 export type HomeCardFrame = (card: HomeCardView, node: ReactNode, layout: string) => ReactNode;
 
-export function ProjectsSection({ cards, frame }: { cards: readonly HomeCardView[]; frame?: HomeCardFrame }) {
+/**
+ * Home hands linked cards and no frame: each card opens its project's page
+ * (issue #372). The edit shell hands plain cards and a frame: no card links.
+ */
+export type ProjectsSectionProps =
+  | { cards: readonly LandingCardView[]; frame?: undefined }
+  | { cards: readonly HomeCardView[]; frame: HomeCardFrame };
+
+export function ProjectsSection(props: ProjectsSectionProps) {
   return (
     // Board 24 below md: 20px sides, 56px top and bottom, 26px heading, then
     // the swipe row.
@@ -54,13 +62,11 @@ export function ProjectsSection({ cards, frame }: { cards: readonly HomeCardView
         {/* The row's own 24px top room is the gap to the cards below md, and
             with mt-8 the 56px gap from md. */}
         <SwipeRow label="Projects" className="md:mt-8">
-          {newestFirst(cards).map((p) =>
-            frame === undefined ? (
-              <HomeProjectCard key={p.num} project={p} />
-            ) : (
-              <Fragment key={p.num}>{frame(p, <HomeProjectCard project={p} layout={FILLS_FRAME} />, HOME_CARD_LAYOUT)}</Fragment>
-            ),
-          )}
+          {props.frame === undefined
+            ? newestFirst(props.cards).map((p) => <HomeProjectCard key={p.num} project={p} href={p.href} />)
+            : newestFirst(props.cards).map((p) => (
+                <Fragment key={p.num}>{props.frame(p, <HomeProjectCard project={p} layout={FILLS_FRAME} />, HOME_CARD_LAYOUT)}</Fragment>
+              ))}
         </SwipeRow>
       </div>
     </section>

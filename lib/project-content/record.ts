@@ -307,6 +307,18 @@ export function homeCardOf(record: ProjectRecord, position: number): HomeCardVie
   };
 }
 
+/**
+ * The home card as Home draws it: the same card, linked to its project's page
+ * (issue #372). Only Home builds one; the dashboard, the edit shell's page
+ * switch and the placeholder preview draw a plain `HomeCardView`, which has
+ * no link to follow.
+ */
+export type LandingCardView = HomeCardView & { readonly href: ProjectPage };
+
+export function landingCardOf(record: ProjectRecord, position: number): LandingCardView {
+  return { ...homeCardOf(record, position), href: pageOf(record.slug) };
+}
+
 /** The year a home card starts at: the first year its year line names ("2024–25" is 2024); null when it names none. */
 export function startYearOf(card: Pick<HomeCardView, "year">): number | null {
   const year = /\d{4}/.exec(card.year.text);
@@ -319,7 +331,7 @@ export function startYearOf(card: Pick<HomeCardView, "year">): number | null {
  * (the later in the site order) first. A card that names no year goes last.
  * Each card keeps its number, its place in the site order.
  */
-export function newestFirst(cards: readonly HomeCardView[]): HomeCardView[] {
+export function newestFirst<C extends HomeCardView>(cards: readonly C[]): C[] {
   const year = (card: HomeCardView) => startYearOf(card) ?? -Infinity;
   return [...cards].sort((a, b) => year(b) - year(a) || Number(b.num) - Number(a.num));
 }

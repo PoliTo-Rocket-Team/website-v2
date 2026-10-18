@@ -1,8 +1,9 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { HomeCardView } from "@/lib/project-content/record";
 import { withSubscriptDigits } from "@/lib/project-content/subscript";
-import type { Copy } from "@/lib/projects";
+import type { Copy, ProjectPage } from "@/lib/projects";
 import { rocketModelOf } from "@/lib/rocket-model";
 import { RocketCardStage } from "./rocket-card-stage";
 
@@ -10,7 +11,8 @@ import { RocketCardStage } from "./rocket-card-stage";
 // texture, with its rocket live in 3D and a liquid glass info box. The home
 // Projects section draws one per published project (projects.tsx), and the
 // dashboard Projects page (board 75, issue #297) draws the same card, scaled.
-// It reads nothing on the server, so a client page may draw it too.
+// It reads nothing on the server, so a client page may draw it too. On Home
+// the card links to its project's page; elsewhere it is a plain card.
 //
 // Hover: only the card's glass edge brightens. The rocket stays where it
 // rests (Huey, 2026-10-06: no hover rise).
@@ -45,11 +47,39 @@ export const HOME_CARD_LAYOUT = "h-[360px] w-[210px] shrink-0 snap-start md:h-[6
 /** A card inside a frame that carries its layout. */
 export const FILLS_FRAME = "h-full w-full";
 
-export function HomeProjectCard({ project, layout = HOME_CARD_LAYOUT }: { project: HomeCardView; layout?: string }) {
+/**
+ * `href` makes the whole card one link to that page, named by the project's
+ * name (issue #372). Home passes it; the dashboard, the edit shell's page
+ * switch and the placeholder preview do not, so their cards stay plain.
+ */
+export function HomeProjectCard({
+  project,
+  href,
+  layout = HOME_CARD_LAYOUT,
+}: {
+  project: HomeCardView;
+  href?: ProjectPage;
+  layout?: string;
+}) {
   return (
     // isolate: the card is its own stacking context, so the z-indexes below
     // order its own layers and never reach a neighbouring card.
     <article className={`glass-project group relative isolate rounded-2xl hover:z-10 ${layout}`}>
+      {/* The link: an empty layer over the whole card, above its other
+          layers, so the card is the target and the project's name is the
+          link's name. The info box is its own positioned glass layer, so a
+          link on the name inside it could only stretch over the box. A swipe
+          or drag scrolls the row and fires no click, so it opens nothing.
+          On keyboard focus the edge brightens as on hover
+          (.glass-project:has(> a:focus-visible)) and an accent ring sits
+          round the card, as on the /projects cards. */}
+      {href !== undefined && (
+        <Link
+          href={href}
+          aria-label={project.name}
+          className="absolute inset-0 z-[3] rounded-2xl outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+        />
+      )}
       {/* Texture: clipped to the card's corners on its own layer, because the
           card itself must not clip the rocket's nose. */}
       <div className="absolute inset-0 overflow-hidden rounded-2xl">
