@@ -230,7 +230,7 @@ test("after anonymization the Alumni page still lists them: name, years, roles a
   assert.equal(giulia?.name, "Giulia Rossi");
   assert.equal(giulia?.founder, "co-founder");
   assert.deepEqual(giulia?.lines.map((l) => [l.year, l.group, l.role]), [[2024, "Aerodynamics", "Aerodynamicist"]]);
-  const years = alumniYears(alumniOf(record, 2026));
+  const years = alumniYears(alumniOf(record, 2026), 2025);
   assert.deepEqual(years.map((y) => y.groups.map((g) => g.entries.map((e) => [e.name, e.role, e.tag]))), [[[["Giulia Rossi", "Aerodynamicist", "CO-FOUNDER"]]]]);
 });
 
@@ -240,7 +240,7 @@ test("someone who ticked the remove box loses every name and photo on the entry,
   assert.ok(plan.every((step) => step.kind !== "keep-alumni-entry"));
   assert.ok(plan.some((step) => step.kind === "clear-user") && plan.some((step) => step.kind === "clear-member"));
   const record = alumniRecordAfter({ who: { kind: "member", memberId: 7, keptName: null }, founder: "co-founder", removed: true });
-  assert.deepEqual(alumniYears(alumniOf(record, 2026)), []);
+  assert.deepEqual(alumniYears(alumniOf(record, 2026), 2025), []);
 });
 
 test("someone never on the team has no alumni step", () => {

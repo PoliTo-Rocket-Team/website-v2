@@ -34,8 +34,17 @@ export type RecordUnits = {
   readonly divisions: readonly { readonly id: number; readonly name: string; readonly departmentId: number | null }[];
 };
 
-/** A member's name and email on the team record; the name is null once their account was anonymized. */
-export type RecordPerson = { readonly memberId: number; readonly name: string | null; readonly email: string | null };
+/**
+ * A member's name and email on the team record; the name is null once their
+ * account was anonymized. `picture` is the photo they stored on their member
+ * row (`members.picture`), absent when they have none.
+ */
+export type RecordPerson = {
+  readonly memberId: number;
+  readonly name: string | null;
+  readonly email: string | null;
+  readonly picture?: string;
+};
 
 /** The page text for one person's role in one group of one year (board 78b). */
 export type RoleFix = { readonly year: number; readonly group: string; readonly role: string };
@@ -94,7 +103,8 @@ export function parseAlumnusKey(value: unknown): AlumnusKey | null {
 /** What kind of group a line sits in: departments count their people, Advisors fold after two rows. */
 export type GroupKind = "leadership" | "department" | "imported" | "advisors";
 
-export type Rank = "head" | "lead" | "member";
+/** `leader` is the team leader (a `president` role): always first under Leadership (#391). */
+export type Rank = "leader" | "head" | "lead" | "member";
 
 /** One person in one group of one academic year. */
 export type AlumnusLine = {
@@ -126,6 +136,8 @@ export type Alumnus = {
   readonly email: string | null;
   readonly founder: FounderMark | null;
   readonly photo: string | null;
+  /** The photo a member stored on their member row; null for anyone else, or a member with none. */
+  readonly picture: string | null;
   readonly shown: boolean;
   readonly removed: boolean;
   /**
@@ -146,7 +158,7 @@ export function academicYearOfDay(day: string): number {
   return month >= 10 ? year : year - 1;
 }
 
-const RANK_ORDER: Readonly<Record<Rank, number>> = { head: 0, lead: 1, member: 2 };
+const RANK_ORDER: Readonly<Record<Rank, number>> = { leader: 0, head: 1, lead: 2, member: 3 };
 const LEADERSHIP_ORDER = 0;
 const IMPORTED_ORDER = 100;
 const DEPARTMENT_ORDER = 1000;
@@ -154,15 +166,23 @@ const ADVISORS_ORDER = 1_000_000;
 
 type LineBase = Omit<AlumnusLine, "year" | "role" | "fixed">;
 
-/** Where one role puts its holder on the page, every year it was held. */
+/**
+ * Where one role puts its holder on the page, every year it was held. An
+ * advisor sits in the department or division they advised that year; one
+ * with neither sits in Advisors (#391).
+ */
 function roleBase(role: RecordRole, units: RecordUnits): LineBase {
   const division = units.divisions.find((d) => d.id === role.divisionId);
   const departmentId = role.departmentId ?? division?.departmentId ?? null;
   const departmentAt = units.departments.findIndex((d) => d.id === departmentId);
   const department = units.departments[departmentAt];
-  const rank: Rank = role.type === "head" ? "head" : role.type === "lead" ? "lead" : "member";
+  const rank: Rank = role.type === "president" ? "leader" : role.type === "head" ? "head" : role.type === "lead" ? "lead" : "member";
   const title = role.title.trim() || "Member";
-  if (role.type === "president" || (department === undefined && division === undefined)) {
+  const inNoUnit = department === undefined && division === undefined;
+  if (role.type === "advisor" && inNoUnit) {
+    return { group: ADVISORS, kind: "advisors", order: ADVISORS_ORDER, rank, title, unit: ADVISORS, recordRole: title };
+  }
+  if (role.type === "president" || inNoUnit) {
     return { group: LEADERSHIP, kind: "leadership", order: LEADERSHIP_ORDER, rank, title, unit: "Board", recordRole: title };
   }
   const group = department?.name ?? division!.name;
@@ -259,7 +279,7 @@ export function alumniOf(record: AlumniRecord, currentYear: number): Alumnus[] {
     const lines = nonEmpty(memberLines(roles, record.units, currentYear, entry?.fixes ?? []));
     if (!recordName || lines === null) return [];
     const onTeam = roles.some((r) => r.leftAt === null);
-    return [alumnus(`m${memberId}`, "member", recordName, person?.email ?? null, entry ?? NO_ENTRY, lines, onTeam)];
+    return [alumnus(`m${memberId}`, "member", recordName, person?.email ?? null, person?.picture ?? null, entry ?? NO_ENTRY, lines, onTeam)];
   });
 
   const others = record.entries.flatMap((entry): Alumnus[] => {
@@ -270,7 +290,7 @@ export function alumniOf(record: AlumniRecord, currentYear: number): Alumnus[] {
         ? importedLines(record.imported.filter((l) => l.entryId === entry.id), entry.fixes)
         : advisorLines(who, entry.fixes),
     );
-    return lines === null ? [] : [alumnus(`e${entry.id}`, who.kind, who.name, null, entry, lines, false)];
+    return lines === null ? [] : [alumnus(`e${entry.id}`, who.kind, who.name, null, null, entry, lines, false)];
   });
 
   return [...members, ...others];
@@ -281,6 +301,7 @@ function alumnus(
   kind: Alumnus["kind"],
   recordName: string,
   email: string | null,
+  picture: string | null,
   entry: Pick<AlumniEntry, "name" | "founder" | "photo" | "shown" | "removed">,
   lines: NonEmpty<AlumnusLine>,
   onTeam: boolean,
@@ -293,6 +314,7 @@ function alumnus(
     email,
     founder: entry.founder,
     photo: entry.photo,
+    picture,
     shown: entry.shown,
     removed: entry.removed,
     onTeam,
@@ -317,23 +339,27 @@ function entryOf({ person, line }: Placed): Entry {
   const lead = department ? line.rank !== "member" : leadsByRole(line.role);
   const rankTag: Tag | undefined = department && line.rank === "head" ? "HEAD" : department && line.rank === "lead" ? "LEAD" : undefined;
   const tag = founderTag(person.founder) ?? rankTag;
-  return { name: person.name, role: line.role, lead, ...(tag && { tag }) };
+  // The Alumni page's own photo first, else the one they stored as a member (#391).
+  const photo = person.photo ?? person.picture;
+  return { name: person.name, role: line.role, lead, ...(tag && { tag }), ...(photo !== null && { photo }) };
 }
 
 /**
  * A department lists its head, its leads, then its members (board 28). Any
- * other group lists leads first, then founders, then everyone else, each in
- * the record's order.
+ * other group lists the team leader first (#391), then leads, then founders,
+ * then everyone else, each in the record's order.
  */
 function sortedInGroup(kind: GroupKind, placed: Placed[]): Placed[] {
   const rank = (p: Placed) =>
     kind === "department"
       ? RANK_ORDER[p.line.rank]
-      : leadsByRole(p.line.role)
+      : p.line.rank === "leader"
         ? 0
-        : p.person.founder !== null
+        : leadsByRole(p.line.role)
           ? 1
-          : 2;
+          : p.person.founder !== null
+            ? 2
+            : 3;
   return [...placed].sort((a, b) => rank(a) - rank(b) || a.line.order - b.line.order || a.person.name.localeCompare(b.person.name));
 }
 
@@ -343,11 +369,16 @@ function groupOf(name: string, placed: NonEmpty<Placed>): ShownGroup {
   return { name, entries: [first!, ...rest], counted: kind === "department", firstRows: kind === "department" || kind === "advisors" ? 2 : 3 };
 }
 
-/** The listed people's years, newest first, each with its groups in order. */
-export function alumniYears(alumni: readonly Alumnus[]): AcademicYear[] {
+/**
+ * The listed people's years up to `newestFinished`, newest first, each with
+ * its groups in order. Only finished years: the running one is the Team
+ * page's, so a role still held shows in its finished years only (#391).
+ */
+export function alumniYears(alumni: readonly Alumnus[], newestFinished: number): AcademicYear[] {
   const years = new Map<number, Map<string, Placed[]>>();
   for (const person of alumni.filter(listed)) {
     for (const line of person.lines) {
+      if (line.year > newestFinished) continue;
       const groups = years.get(line.year) ?? new Map<string, Placed[]>();
       groups.set(line.group, [...(groups.get(line.group) ?? []), { person, line }]);
       years.set(line.year, groups);
