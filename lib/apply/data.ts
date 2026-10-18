@@ -16,8 +16,13 @@ export interface ApplyData {
   publicPositions(): Promise<ApplyPosition[]>;
   /** The questions at the bottom of /apply: the published ones, in site order (issue #258). */
   faqs(): Promise<readonly Faq[]>;
-  /** One position, deleted or not, with the recruitment switch, read fresh; null when no position has the id. */
+  /** One position, deleted or not, with the recruitment switch, read fresh for the submit; null when no position has the id. */
   position(id: number): Promise<{ position: ApplyPosition; recruitment: Recruitment } | null>;
+  /**
+   * The same read for the position page (issue #395): on the database side
+   * cached under the tag position edits and the recruitment switch refresh.
+   */
+  shownPosition(id: number): Promise<{ position: ApplyPosition; recruitment: Recruitment } | null>;
   /** The signed-in applicant, or null when nobody is signed in. */
   applicant(): Promise<Applicant | null>;
   hasApplied(userId: string, positionId: number): Promise<boolean>;

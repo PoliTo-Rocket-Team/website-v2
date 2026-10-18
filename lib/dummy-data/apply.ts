@@ -215,6 +215,11 @@ export function dummyApplyData(
     ownApplicationsOf(viewer, ownStart).some((a) => a.positionId === positionId && !isWithdrawn(a, own));
   const alreadySent = (userId: string, positionId: number) => sent.has(userId, positionId) || liveOwn(userId, positionId);
 
+  const position = async (id: number) => {
+    const found = all.find((p) => p.id === id);
+    return found === undefined ? null : { position: found, recruitment };
+  };
+
   return {
     publicPositions: async () => {
       const open = all.filter((p) => isPublic(p, recruitment));
@@ -222,10 +227,9 @@ export function dummyApplyData(
     },
     // The dummy questions' published versions; a test developer's edits stay on their dashboard.
     faqs: async () => publicFaqs(dummyFaqSeed()),
-    position: async (id) => {
-      const position = all.find((p) => p.id === id);
-      return position === undefined ? null : { position, recruitment };
-    },
+    // Memory has nothing to cache: the page and the submit read the same.
+    position,
+    shownPosition: position,
     applicant: async () => (viewer === null ? null : applicantFor(viewer, own)),
     hasApplied: async (userId, positionId) => alreadySent(userId, positionId),
     store: {

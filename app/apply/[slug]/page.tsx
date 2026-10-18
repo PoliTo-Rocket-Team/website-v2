@@ -4,7 +4,14 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import type { Applicant } from "@/app/actions/get-applicant";
 import { ApplicationForm } from "@/components/apply/application-form";
-import { ClosedPopover, PositionLayout, SentPopover, SignInPopover, type PositionView } from "@/components/apply/position";
+import {
+  ClosedPopover,
+  PositionLayout,
+  PositionSkeleton,
+  SentPopover,
+  SignInPopover,
+  type PositionView,
+} from "@/components/apply/position";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
@@ -37,7 +44,9 @@ export default function PositionPage({ params }: { params: Promise<{ slug: strin
       <LandingNavbar />
       <PageSky>
         <main className="min-h-svh pb-section pt-16 md:pt-[72px]">
-          <Suspense fallback={null}>
+          {/* The skeleton is part of the page's static shell (issue #395), so the
+              layout shows at once and the /apply role link prefetches it. */}
+          <Suspense fallback={<PositionSkeleton />}>
             <LivePosition params={params} />
           </Suspense>
         </main>
@@ -47,6 +56,9 @@ export default function PositionPage({ params }: { params: Promise<{ slug: strin
   );
 }
 
+/** Who is looking: nobody signed in, or an applicant and whether they already applied for this position. */
+type Viewer = { kind: "signed-out" } | { kind: "signed-in"; applicant: Applicant; applied: boolean };
+
 /** What the page shows for the form, by its state, in this order: a popover, or the form itself. */
 type CardState =
   | { kind: "closed" }
@@ -54,12 +66,17 @@ type CardState =
   | { kind: "sent"; applicant: Applicant }
   | { kind: "form"; applicant: Applicant };
 
-async function cardState(data: ApplyData, position: ApplyPosition, recruitmentOpen: boolean): Promise<CardState> {
+function cardState(position: ApplyPosition, recruitmentOpen: boolean, viewer: Viewer): CardState {
   if (!isPublic(position, { isOpen: recruitmentOpen })) return { kind: "closed" };
+  if (viewer.kind === "signed-out") return { kind: "signed-out" };
+  return { kind: viewer.applied ? "sent" : "form", applicant: viewer.applicant };
+}
+
+/** The session and the applicant's own reads; they need only the position's id, not its row. */
+async function viewerOf(data: ApplyData, positionId: number): Promise<Viewer> {
   const applicant = await data.applicant();
   if (applicant === null) return { kind: "signed-out" };
-  if (await data.hasApplied(applicant.id, position.id)) return { kind: "sent", applicant };
-  return { kind: "form", applicant };
+  return { kind: "signed-in", applicant, applied: await data.hasApplied(applicant.id, positionId) };
 }
 
 async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
@@ -69,7 +86,8 @@ async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
   if (id === null) notFound();
 
   const data = await openApplyData();
-  const read = await data.position(id);
+  // The position (cached) and the viewer's reads run side by side (issue #395).
+  const [read, viewer] = await Promise.all([data.shownPosition(id), viewerOf(data, id)]);
   if (read === null) notFound();
   const { position, recruitment } = read;
 
@@ -86,7 +104,7 @@ async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
     required: position.required_skills ?? [],
     desirable: position.desirable_skills ?? [],
   };
-  const state = await cardState(data, position, recruitment.isOpen);
+  const state = cardState(position, recruitment.isOpen, viewer);
 
   return (
     <>
