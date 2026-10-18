@@ -88,10 +88,10 @@ test("the imported records draw the same page records, /projects entries and hom
   assert.equal(records.length, 3);
   records.forEach((record, i) => {
     assert.deepEqual(plain(pageRecordOf(record)), before.pages[record.slug as keyof typeof before.pages], `${record.slug} page`);
-    // The panel's rocket came after the switch (issue #381): it is the home card's.
-    const { rocket, ...entry } = listingOf(record, i);
-    assert.deepEqual(plain(entry), before.projects[i], `${record.slug} /projects entry`);
-    assert.equal(rocket, record.card.rocket, `${record.slug} /projects rocket`);
+    // A rocket's panel model came after the switch (issue #381): it is the home card's.
+    const listing = listingOf(record, i);
+    assert.deepEqual(plain({ ...listing, rocket: undefined }), before.projects[i], `${record.slug} /projects entry`);
+    if (listing.kind === "vehicle") assert.equal(listing.rocket, record.card.rocket, `${record.slug} /projects rocket`);
 
     const card = homeCardOf(record, i);
     const was = before.homeCards[i];

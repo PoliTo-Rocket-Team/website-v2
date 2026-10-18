@@ -275,7 +275,6 @@ export function listingOf(record: ProjectRecord, position: number): Project {
     description: record.listing.description,
     specs: record.listing.specs,
     texture: record.texture,
-    ...(record.card.rocket && { rocket: record.card.rocket }),
   };
   if (record.kind === "engine") {
     return { ...base, kind: "engine", workLines: record.listing.workLines, milestone: record.listing.milestone };
@@ -283,6 +282,7 @@ export function listingOf(record: ProjectRecord, position: number): Project {
   return {
     ...base,
     kind: "vehicle",
+    ...(record.card.rocket && { rocket: record.card.rocket }),
     versions: record.listing.versions,
     launches: launchesOf(record).map(listedLaunch),
     logSummary: record.listing.logSummary,

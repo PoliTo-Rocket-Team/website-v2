@@ -1,8 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { RocketCardStage } from "@/components/landing/rocket-card-stage";
-import { statusOf, type Copy, type Project, type ProjectStatus } from "@/lib/projects";
-import { rocketModelOf } from "@/lib/rocket-model";
+import { panelRocketOf, statusOf, type Copy, type Project, type ProjectStatus } from "@/lib/projects";
 
 // Board 22, one card per project: a liquid glass card with the project's
 // texture panel on the left and its facts on the right. Board 22m below md:
@@ -34,13 +33,15 @@ function StatusPill({ status }: { status: ProjectStatus }) {
 }
 
 /**
- * The texture panel. Every project shows its live 3D rocket crossing the
- * panel corner to corner, the model its home card draws (a project with no
- * model of its own draws the placeholder, issue #381). The card rocket
- * stands nearly upright in its own canvas, so the canvas is turned to lay
- * the vehicle along the panel's diagonal, nose top right.
+ * The texture panel. A rocket project shows its live 3D rocket crossing the
+ * panel corner to corner, the model its home card draws (a rocket with no
+ * model of its own draws the placeholder); an engine's panel is the texture
+ * only (issue #381). The card rocket stands nearly upright in its own
+ * canvas, so the canvas is turned to lay the vehicle along the panel's
+ * diagonal, nose top right.
  */
 function TexturePanel({ project }: { project: Project }) {
+  const rocket = panelRocketOf(project);
   return (
     <div className="glass-project relative h-[140px] rounded-xl md:h-[320px] md:rounded-2xl">
       <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
@@ -51,9 +52,11 @@ function TexturePanel({ project }: { project: Project }) {
           sizes="(min-width: 1024px) 560px, (min-width: 768px) 100vw, 330px"
           className="object-cover"
         />
-        <div className="pointer-events-none absolute left-[calc(50%-16px)] top-[calc(50%+12px)] h-[1048px] w-[420px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[53deg] scale-[0.62] md:left-1/2 md:top-1/2 md:scale-100">
-          <RocketCardStage model={rocketModelOf(project.rocket)} />
-        </div>
+        {rocket && (
+          <div className="pointer-events-none absolute left-[calc(50%-16px)] top-[calc(50%+12px)] h-[1048px] w-[420px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[53deg] scale-[0.62] md:left-1/2 md:top-1/2 md:scale-100">
+            <RocketCardStage model={rocket} />
+          </div>
+        )}
       </div>
     </div>
   );
