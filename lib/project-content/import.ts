@@ -92,7 +92,15 @@ const cavourConfig6: Version = {
   },
 };
 
-const cavour: VehicleRecord = {
+/**
+ * A record as migration 0037 imported it: it also carried `teaser`, the line
+ * of the next-project card the pages drew then, a key retired since (issue
+ * #377, `RETIRED_KEYS`). The import keeps it, as 0037 holds it;
+ * `importedRecords` leaves it out.
+ */
+type Imported<R extends ProjectRecord> = R & { readonly teaser: string };
+
+const cavour: Imported<VehicleRecord> = {
   kind: "vehicle",
   slug: "cavour",
   name: "Cavour",
@@ -325,7 +333,7 @@ const vesMarkI: Version = {
   },
 };
 
-const ves: VehicleRecord = {
+const ves: Imported<VehicleRecord> = {
   kind: "vehicle",
   slug: "ves",
   name: "VES",
@@ -488,7 +496,7 @@ const ves: VehicleRecord = {
 // Efesto (boards 25 and 25m): an engine in development, so no hero visual,
 // no versions, no launch history and no gallery yet.
 
-const efesto: EngineRecord = {
+const efesto: Imported<EngineRecord> = {
   kind: "engine",
   slug: "efesto",
   name: "Efesto",
@@ -655,7 +663,7 @@ const efesto: EngineRecord = {
  * The three projects as migration 0037 carried them into the store, in site
  * order. Frozen: a later change to their content is a revision below.
  */
-export const firstImport: readonly ProjectRecord[] = [cavour, ves, efesto];
+export const firstImport: readonly Imported<ProjectRecord>[] = [cavour, ves, efesto];
 
 /**
  * VES draws its own rocket, Mark I, on its home card and its page (issue
@@ -793,8 +801,8 @@ export const efestoEngineModel: ProjectRevision = {
 /** The revisions made since the import, in migration order. */
 export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket, cavourSitePhotos, vesSitePhotos, efestoEngineModel];
 
-/** The three projects as the store holds them once every migration ran: the import, revised. */
-export const importedRecords: readonly ProjectRecord[] = firstImport.map((record) =>
+/** The three projects as the code reads them once every migration ran: the import, revised, with its retired key left out. */
+export const importedRecords: readonly ProjectRecord[] = firstImport.map(({ teaser: _retired, ...record }) =>
   projectRevisions.reduce(revise, record),
 );
 

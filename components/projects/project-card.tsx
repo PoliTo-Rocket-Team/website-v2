@@ -1,16 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { RocketCardStage } from "@/components/landing/rocket-card-stage";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { statusOf, type Copy, type Project, type ProjectStatus } from "@/lib/projects";
-import { LaunchLog, LaunchLogStacked } from "./launch-log";
-import { WorkLines, WorkLinesStacked } from "./work-lines";
+import { panelRocketOf, statusOf, type Copy, type Project, type ProjectStatus } from "@/lib/projects";
 
 // Board 22, one card per project: a liquid glass card with the project's
-// texture panel on the left and its facts on the right, then the launch log
-// (or Efesto's work lines) across the card below a hairline.
-// Board 22m below md: the panel on top at 140px, the facts under it with the
-// specs 3 x 2 between hairlines, and the log behind an accordion row.
+// texture panel on the left and its facts on the right. Board 22m below md:
+// the panel on top at 140px, the facts under it with the specs 3 x 2 between
+// hairlines. The card ends at the specs on every width: the launch log and
+// Efesto's work lines are the project page's to show (issue #381).
 
 /** Text with a shorter phone version (board 22m) where the data has one. */
 function Text({ copy }: { copy: Copy }) {
@@ -36,12 +33,15 @@ function StatusPill({ status }: { status: ProjectStatus }) {
 }
 
 /**
- * The texture panel. Cavour shows its live 3D model crossing the panel
- * corner to corner; the other projects show their texture only. The
- * card rocket stands nearly upright in its own canvas, so the canvas is
- * turned to lay the vehicle along the panel's diagonal, nose top right.
+ * The texture panel. A rocket project shows its live 3D rocket crossing the
+ * panel corner to corner, the model its home card draws (a rocket with no
+ * model of its own draws the placeholder); an engine's panel is the texture
+ * only (issue #381). The card rocket stands nearly upright in its own
+ * canvas, so the canvas is turned to lay the vehicle along the panel's
+ * diagonal, nose top right.
  */
 function TexturePanel({ project }: { project: Project }) {
+  const rocket = panelRocketOf(project);
   return (
     <div className="glass-project relative h-[140px] rounded-xl md:h-[320px] md:rounded-2xl">
       <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
@@ -52,9 +52,9 @@ function TexturePanel({ project }: { project: Project }) {
           sizes="(min-width: 1024px) 560px, (min-width: 768px) 100vw, 330px"
           className="object-cover"
         />
-        {project.slug === "cavour" && (
+        {rocket && (
           <div className="pointer-events-none absolute left-[calc(50%-16px)] top-[calc(50%+12px)] h-[1048px] w-[420px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[53deg] scale-[0.62] md:left-1/2 md:top-1/2 md:scale-100">
-            <RocketCardStage model="cavour" />
+            <RocketCardStage model={rocket} />
           </div>
         )}
       </div>
@@ -123,8 +123,6 @@ function Facts({ project }: { project: Project }) {
 }
 
 export function ProjectCard({ project }: { project: Project }) {
-  const accordionLabel =
-    project.kind === "vehicle" ? `LAUNCH LOG · ${project.logSummary}` : "FIVE WORK LINES";
   return (
     <article
       aria-labelledby={`project-${project.slug}`}
@@ -134,39 +132,6 @@ export function ProjectCard({ project }: { project: Project }) {
         <TexturePanel project={project} />
         <Facts project={project} />
       </div>
-
-      {/* From md the log sits open across the card. */}
-      <div className="hidden border-t border-white-10 px-12 pb-10 pt-8 md:block">
-        {project.kind === "vehicle" ? (
-          <LaunchLog launches={project.launches} />
-        ) : (
-          <WorkLines workLines={project.workLines} milestone={project.milestone} />
-        )}
-      </div>
-
-      {/* Below md it is collapsed behind one accordion row. */}
-      <Accordion
-        type="single"
-        collapsible
-        // Above the card's stretched link, so the row still opens.
-        className="relative z-10 mx-3.5 border-t border-white-10 md:hidden"
-      >
-        <AccordionItem
-          value="log"
-          className="motion-reduce:[&_[role=region]]:animate-none"
-        >
-          <AccordionTrigger className="px-1 py-4 text-left font-mono text-[12px] font-normal tracking-[0.2em] text-text-2 [&>svg]:h-5 [&>svg]:w-5 [&>svg]:text-prt-text">
-            {accordionLabel}
-          </AccordionTrigger>
-          <AccordionContent className="px-1 pb-4">
-            {project.kind === "vehicle" ? (
-              <LaunchLogStacked launches={project.launches} />
-            ) : (
-              <WorkLinesStacked workLines={project.workLines} milestone={project.milestone} />
-            )}
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
     </article>
   );
 }

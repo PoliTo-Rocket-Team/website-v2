@@ -16,7 +16,7 @@ import type { ProjectRecord } from "@/lib/project-content/record";
 // to their cookie. The database write refreshes the cached public read; every
 // page that shows a project renders again.
 
-/** The pages a project shows on: its own page, the other pages' next-project cards, /projects and Home. */
+/** The pages a project shows on: its own page and /projects (both under the /projects layout), and Home. */
 function refreshPublicProjects(): void {
   revalidatePath("/projects", "layout");
   revalidatePath("/");

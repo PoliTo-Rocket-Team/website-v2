@@ -115,7 +115,6 @@ export function newProjectRecord(input: NewProject, year: number): ProjectRecord
         items: [{ name, desc: `${kindLabel} · in design`, phone: "In design" }] as const,
       },
     },
-    teaser: intro,
   };
   const card = {
     year: { text: `${since}–` },

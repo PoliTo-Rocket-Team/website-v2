@@ -10,10 +10,10 @@ import { editorVersion, publicItems } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
-import { isProjectRecord } from "./check";
+import { isProjectRecord, storedProjectRecord } from "./check";
 import { cavourSitePhotos, efestoEngineModel, firstImport, importedProjects, importedRecords, projectImportSql, vesMarkOneRocket, vesSitePhotos } from "./import";
 import { listPhotos } from "./list-fields";
-import { homeCardOf, listingOf, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
+import { homeCardOf, listingOf, listingsNewestFirst, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
 import { revise, revisionSql } from "./revision";
 import { withSubscriptDigits } from "./subscript";
 
@@ -104,8 +104,13 @@ test("the imported records draw the same page records, /projects entries and hom
   const records = published();
   assert.equal(records.length, 3);
   records.forEach((record, i) => {
-    assert.deepEqual(plain(pageRecordOf(record)), before.pages[record.slug as keyof typeof before.pages], `${record.slug} page`);
-    assert.deepEqual(plain(listingOf(record, i)), before.projects[i], `${record.slug} /projects entry`);
+    // The page no longer carries the next-project card's line (issue #377).
+    const { teaser: _, ...page } = before.pages[record.slug as keyof typeof before.pages];
+    assert.deepEqual(plain(pageRecordOf(record)), page, `${record.slug} page`);
+    // A rocket's panel model came after the switch (issue #381): it is the home card's.
+    const listing = listingOf(record, i);
+    assert.deepEqual(plain({ ...listing, rocket: undefined }), before.projects[i], `${record.slug} /projects entry`);
+    if (listing.kind === "vehicle") assert.equal(listing.rocket, record.card.rocket, `${record.slug} /projects rocket`);
 
     const card = homeCardOf(record, i);
     const was = before.homeCards[i];
@@ -125,22 +130,32 @@ test("a stored record that breaks a shape rule is not a record", () => {
   assert.equal(isProjectRecord({ ...cavour, kind: "engine" }), false, "an engine's listing has work lines");
   assert.equal(isProjectRecord({ ...cavour, slug: "Not a slug" }), false);
   assert.equal(isProjectRecord({ ...cavour, extra: 1 }), false);
-  const { teaser: _, ...noTeaser } = cavour;
-  assert.equal(isProjectRecord(noTeaser), false);
+  const { description: _, ...noDescription } = cavour;
+  assert.equal(isProjectRecord(noDescription), false);
+});
+
+test("a record stored before issue #377 still reads, without the retired next-project line", () => {
+  const cavour = plain(importedRecords[0]) as VehicleRecord;
+  const stored = plain(firstImport[0]) as VehicleRecord & { teaser: string };
+  const { teaser: _, ...unrevised } = stored;
+  assert.equal(isProjectRecord(stored), false, "the import carries the retired key");
+  assert.deepEqual(storedProjectRecord(stored), unrevised);
+  assert.deepEqual(storedProjectRecord({ ...cavour, teaser: "A line." }), cavour);
+  assert.equal(storedProjectRecord({ ...cavour, extra: 1 }), null, "only a retired key is let through");
 });
 
 test("the public pages read only the published version: a draft-only change and a draft-only project are not shown", async () => {
   const store = memoryContentStore(importedProjects());
   const editor = contentEditor(admin, store);
   const ves = importedRecords[1];
-  const drafted: ProjectRecord = { ...ves, name: "VES Mark III", teaser: "Draft teaser." };
+  const drafted: ProjectRecord = { ...ves, name: "VES Mark III", description: "Draft description." };
 
   assert.ok((await editor.save(2, "save-draft", async () => ({ ok: true, value: drafted }))).ok);
   assert.ok((await editor.save(null, "save-draft", async () => ({ ok: true, value: { ...ves, slug: "next", name: "Next" } }))).ok);
 
   const shown = publicItems(await store.list());
   assert.deepEqual(shown.map((r) => r.name), ["Cavour", "VES", "Efesto"]);
-  assert.equal(pageRecordOf(shown[1]).teaser, ves.teaser);
+  assert.equal(pageRecordOf(shown[1]).description, ves.description);
   assert.equal(listingOf(shown[1], 1).name, "VES");
   assert.equal(homeCardOf(shown[1], 1).name, "VES");
   assert.equal(editorVersion((await store.list())[1].version).name, "VES Mark III", "the editor opens on the draft");
@@ -196,4 +211,10 @@ test("the home Projects row shows the newest project first, by year then by numb
   assert.deepEqual(newestFirst(cards).map((c) => [c.num, c.name]), [["02", "VES"], ["03", "Efesto"], ["01", "Cavour"]]);
   const unnamed = { ...cards[0], num: "04", name: "No year", year: { text: "" } };
   assert.equal(newestFirst([unnamed, ...cards]).at(-1)?.name, "No year", "a card naming no year goes last");
+});
+
+test("/projects lists the projects in the home row's order, each entry keeping its number", () => {
+  const records = published();
+  const row = newestFirst(records.map(homeCardOf)).map((c) => [c.num, c.name]);
+  assert.deepEqual(listingsNewestFirst(records).map((p) => [p.index, p.name]), row);
 });
