@@ -29,7 +29,8 @@ export type HomeCardFrame = (card: HomeCardView, node: ReactNode, layout: string
 
 /**
  * Home hands linked cards and no frame: each card opens its project's page
- * (issue #372). The edit shell hands plain cards and a frame: no card links.
+ * (issue #372) and its rocket turns while hovered (issue #385). The edit shell hands
+ * plain cards and a frame: no card links, and every rocket holds still.
  */
 export type ProjectsSectionProps =
   | { cards: readonly LandingCardView[]; frame?: undefined }
@@ -63,7 +64,7 @@ export function ProjectsSection(props: ProjectsSectionProps) {
             with mt-8 the 56px gap from md. */}
         <SwipeRow label="Projects" className="md:mt-8">
           {props.frame === undefined
-            ? newestFirst(props.cards).map((p) => <HomeProjectCard key={p.num} project={p} href={p.href} />)
+            ? newestFirst(props.cards).map((p) => <HomeProjectCard key={p.num} project={p} href={p.href} rocketTurns />)
             : newestFirst(props.cards).map((p) => (
                 <Fragment key={p.num}>{props.frame(p, <HomeProjectCard project={p} layout={FILLS_FRAME} />, HOME_CARD_LAYOUT)}</Fragment>
               ))}

@@ -6,6 +6,7 @@ import { withSubscriptDigits } from "@/lib/project-content/subscript";
 import type { Copy, ProjectPage } from "@/lib/projects";
 import { rocketModelOf } from "@/lib/rocket-model";
 import { RocketCardStage } from "./rocket-card-stage";
+import { RocketTurnCard } from "./rocket-turn";
 
 // One home project card (board 21; board 24 below md): a project on its brand
 // texture, with its rocket live in 3D and a liquid glass info box. The home
@@ -15,7 +16,8 @@ import { RocketCardStage } from "./rocket-card-stage";
 // the card links to its project's page; elsewhere it is a plain card.
 //
 // Hover: only the card's glass edge brightens. The rocket stays where it
-// rests (Huey, 2026-10-06: no hover rise).
+// rests (owner decision, 2026-10-06: no hover rise). On the home row a hover
+// turns it about its own long axis in that rest pose (issue #385).
 
 /** IN DESIGN reads as a light pill; flown vehicles get a dark one. */
 const pill: Record<HomeCardView["statusTone"], string> = {
@@ -56,15 +58,23 @@ export function HomeProjectCard({
   project,
   href,
   layout = HOME_CARD_LAYOUT,
+  rocketTurns = false,
 }: {
   project: HomeCardView;
   href?: ProjectPage;
   layout?: string;
+  /**
+   * The rocket turns about its long axis while the card is hovered on a
+   * pointer device, then eases back to rest (issue #385, rocket-turn.tsx).
+   * Only the home Projects row sets it; every other card's rocket holds still.
+   */
+  rocketTurns?: boolean;
 }) {
+  const Card = rocketTurns ? RocketTurnCard : "article";
   return (
     // isolate: the card is its own stacking context, so the z-indexes below
     // order its own layers and never reach a neighbouring card.
-    <article className={`glass-project group relative isolate rounded-2xl hover:z-10 ${layout}`}>
+    <Card className={`glass-project group relative isolate rounded-2xl hover:z-10 ${layout}`}>
       {/* The link: an empty layer over the whole card, above its other
           layers, so the card is the target and the project's name is the
           link's name. The info box is its own positioned glass layer, so a
@@ -156,6 +166,6 @@ export function HomeProjectCard({
           ))}
         </dl>
       </div>
-    </article>
+    </Card>
   );
 }

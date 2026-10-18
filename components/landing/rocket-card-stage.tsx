@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { cardPosterOf, type RocketModel } from "@/lib/rocket-model";
+import { useRocketTurn } from "./rocket-turn";
 import { queueCardSetup, type SetupDone } from "./scene-schedule";
 import { webglSupported } from "./webgl";
 
@@ -83,6 +84,9 @@ const POSTER_SIZES = "(min-width: 768px) 480px, 272px";
  */
 export function RocketCardStage({ model }: { model: RocketModel }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Inside a RocketTurnCard the vehicle turns while its card is hovered; on
+  // every other stage it rests (rocket-turn.tsx).
+  const turn = useRocketTurn();
   const [stage, dispatch] = useReducer(step, POSTER);
   const [tuning, setTuning] = useState(false);
   const [readout, setReadout] = useState("");
@@ -173,6 +177,7 @@ export function RocketCardStage({ model }: { model: RocketModel }) {
         <RocketCard3D
           key={canvas}
           model={model}
+          turn={turn}
           tuning={tuning}
           onReadout={setReadout}
           onReady={() => {

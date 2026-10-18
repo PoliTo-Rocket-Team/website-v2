@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useMemo } from "react";
 import * as THREE from "three";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import type { WeatherUniforms } from "./hero-weathering";
-import { useMotionGate } from "./motion-gate";
 import { INK, PAPER, unitRing, useLines } from "./rocket-placeholder";
 import { lathe } from "./rocket-parts";
 
@@ -25,8 +23,8 @@ import { lathe } from "./rocket-parts";
 // than a rocket, so it does not fill the rocket's length: it takes
 // LENGTH_SHARE of it, centred CENTRE_SHIFT of it toward the nose end, where
 // the card stage frames the rockets from the nose to mid-body
-// (rocket-card-3d.tsx). It turns slowly about its own axis, through the
-// motion gate (motion-gate.ts), and holds still under reduced motion.
+// (rocket-card-3d.tsx). It never turns itself: a card turns it about its
+// axis while hovered, as it turns every model (issue #385).
 
 const TOP = 1.02;
 
@@ -67,11 +65,6 @@ const BOLT_RING = 0.146;
 /** The engine's share of the rocket length a stage hands it, and where its middle sits. */
 const LENGTH_SHARE = 0.6;
 const CENTRE_SHIFT = 0.19;
-
-/** One turn in 40 s. */
-const TURN_PER_S = (2 * Math.PI) / 40;
-/** A frame after a long gap moves the turn no further than this. */
-const MAX_STEP_MS = 100;
 
 /** The bell, the cone, the chamber, the flange and the head, as one closed lathe profile. */
 function bodyProfile(): [number, number][] {
@@ -171,45 +164,9 @@ function engineParts() {
   });
 }
 
-/**
- * Turns the group slowly about the engine's axis while the motion gate lets
- * this canvas move, by real elapsed time. The canvas draws on demand, so each
- * turning frame asks for the next; once the gate shuts, or under reduced
- * motion, no frame is asked for and the engine holds where it stands.
- */
-function useSlowTurn(spin: React.RefObject<THREE.Group | null>) {
-  const gl = useThree((s) => s.gl);
-  const invalidate = useThree((s) => s.invalidate);
-  const canvas = useMemo(() => ({ current: gl.domElement }), [gl]);
-  const open = useMotionGate(canvas);
-  const [reduced, setReduced] = useState(true);
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const read = () => setReduced(query.matches);
-    read();
-    query.addEventListener("change", read);
-    return () => query.removeEventListener("change", read);
-  }, []);
-  const turning = open && !reduced;
-  const last = useRef<number | null>(null);
-  useEffect(() => {
-    last.current = null;
-    if (turning) invalidate();
-  }, [turning, invalidate]);
-  useFrame(() => {
-    if (!turning || !spin.current) return;
-    const now = performance.now();
-    if (last.current !== null) spin.current.rotation.y += (Math.min(now - last.current, MAX_STEP_MS) / 1000) * TURN_PER_S;
-    last.current = now;
-    invalidate();
-  });
-}
-
 export default function EfestoBuilt({ length }: { weather: WeatherUniforms; length: number }) {
   const { geo, paper, ink } = engineParts();
   const lines = useLines();
-  const spin = useRef<THREE.Group>(null);
-  useSlowTurn(spin);
   // Line widths are in pixels, so scaling a ring changes its radius only.
   const rims = useMemo(
     () =>
@@ -231,28 +188,26 @@ export default function EfestoBuilt({ length }: { weather: WeatherUniforms; leng
   return (
     <group rotation-z={-Math.PI / 2} scale={scale}>
       <group position-y={(length * CENTRE_SHIFT) / scale - TOP / 2}>
-        <group ref={spin}>
-          {part("body", geo.body)}
-          {part("inlet", geo.inlet)}
-          {part("manifold", geo.manifold)}
-          {part("line", geo.line)}
-          {rims.map((line) => (
-            <primitive key={line.position.y} object={line} />
-          ))}
-          {/* the nozzle's mouth is a hole, so it is inked solid, as a pen drawing fills one */}
-          <mesh geometry={geo.mouth} material={ink} position-y={0.001} />
-          {Array.from({ length: BOLTS }, (_, k) => {
-            const a = ((k + 0.5) / BOLTS) * Math.PI * 2;
-            return (
-              <mesh
-                key={k}
-                geometry={geo.bolt}
-                material={ink}
-                position={[Math.cos(a) * BOLT_RING, 0, Math.sin(a) * BOLT_RING]}
-              />
-            );
-          })}
-        </group>
+        {part("body", geo.body)}
+        {part("inlet", geo.inlet)}
+        {part("manifold", geo.manifold)}
+        {part("line", geo.line)}
+        {rims.map((line) => (
+          <primitive key={line.position.y} object={line} />
+        ))}
+        {/* the nozzle's mouth is a hole, so it is inked solid, as a pen drawing fills one */}
+        <mesh geometry={geo.mouth} material={ink} position-y={0.001} />
+        {Array.from({ length: BOLTS }, (_, k) => {
+          const a = ((k + 0.5) / BOLTS) * Math.PI * 2;
+          return (
+            <mesh
+              key={k}
+              geometry={geo.bolt}
+              material={ink}
+              position={[Math.cos(a) * BOLT_RING, 0, Math.sin(a) * BOLT_RING]}
+            />
+          );
+        })}
       </group>
     </group>
   );
