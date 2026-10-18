@@ -27,13 +27,7 @@ import { SectionHead } from "./section-head";
 function Lead({ lead }: { lead: DivisionLead }) {
   return (
     <li className="flex items-start gap-2 lg:gap-3">
-      <Avatar
-        person={lead}
-        sizeClass="h-[26px] w-[26px] lg:h-10 lg:w-10"
-        sizes="40px"
-        fallback="initials"
-        initialsClass="text-[8px] lg:text-[11px]"
-      />
+      <Avatar photo={lead.photo} sizeClass="h-[26px] w-[26px] lg:h-10 lg:w-10" sizes="40px" />
       <div className="min-w-0">
         <p className="text-[12px] font-semibold leading-tight text-prt-text lg:text-[15px]">{lead.name}</p>
         <p className="mt-0.5 text-[11px] leading-tight text-prt-muted lg:text-[13px]">{lead.division}</p>
@@ -53,7 +47,6 @@ function Member({ member }: { member: GroupMember }) {
         role={head ? member.role : member.division}
         accent={head}
         phone={{ avatar: "h-[60px] w-[60px]", gap: "gap-3" }}
-        fallback="mark-to-initials"
       />
       {leads.length > 0 && (
         <ul className="ml-[72px] mt-3 grid grid-cols-2 gap-x-2.5 gap-y-3 lg:ml-0 lg:mt-5 lg:gap-x-3 lg:gap-y-4 lg:border-l lg:border-white-10 lg:pl-5">

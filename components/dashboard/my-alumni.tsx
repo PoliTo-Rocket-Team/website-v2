@@ -17,7 +17,7 @@ type Actions = {
 };
 
 /** Board 56b: the one size the Alumni page shows the photo at. */
-const ALUMNI_PREVIEW: readonly PhotoPreviewSize[] = [{ caption: "Alumni page", size: "h-[72px] w-[72px] text-[24px] md:h-24 md:w-24 md:text-[30px]" }];
+const ALUMNI_PREVIEW: readonly PhotoPreviewSize[] = [{ caption: "Alumni page", size: "h-[72px] w-[72px] md:h-24 md:w-24" }];
 
 const COLUMN_LABEL = "font-mono text-[10px] uppercase tracking-[0.2em] text-dim";
 
@@ -31,7 +31,6 @@ export function MyAlumniView({ me, ...actions }: { me: MyAlumni } & Actions) {
       <div className="mt-6 flex flex-col gap-5">
         <ShownCard me={me} setShown={actions.setShown} />
         <PhotoCard
-          name={me.name}
           photoUrl={me.photo}
           uploadPhoto={actions.uploadPhoto}
           removePhoto={actions.removePhoto}

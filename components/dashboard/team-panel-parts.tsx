@@ -95,7 +95,7 @@ export function PersonSelect({
   return (
     <div className={`relative ${className}`}>
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-        <Avatar person={{ name: own?.name ?? "", photo: own?.photo }} sizeClass="h-6 w-6" sizes="24px" fallback="initials" initialsClass="text-[8px]" />
+        <Avatar photo={own?.photo} sizeClass="h-6 w-6" sizes="24px" />
       </span>
       <select
         id={id}
@@ -142,7 +142,7 @@ export function PhotoField({
         <span className="ml-1.5 text-prt-muted">{photo === null ? "from their profile" : "another photo"}</span>
       </p>
       <div className="flex items-center gap-4">
-        <Avatar person={{ name: own?.name ?? "", photo: shown }} sizeClass="h-10 w-10" sizes="40px" fallback="initials" initialsClass="text-[11px]" />
+        <Avatar photo={shown} sizeClass="h-10 w-10" sizes="40px" />
         <button
           type="button"
           aria-expanded={choosing}
@@ -228,7 +228,7 @@ export function PhotoChoices({
               onClick={() => onPick(choice.src)}
               className={`justify-self-center rounded-full ring-offset-2 ring-offset-panel transition-shadow duration-300 ease-out ${on ? "ring-2 ring-accent" : "hover:ring-1 hover:ring-border-strong"} ${CONTENT_FOCUS}`}
             >
-              <Avatar person={{ name: choice.label, photo: choice.src }} sizeClass="h-11 w-11" sizes="44px" fallback="initials" />
+              <Avatar photo={choice.src} sizeClass="h-11 w-11" sizes="44px" />
             </button>
           );
         })}

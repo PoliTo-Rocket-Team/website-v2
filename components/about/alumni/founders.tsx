@@ -3,7 +3,7 @@ import { Avatar } from "../person";
 import { SectionHead } from "../section-head";
 
 // Board 28, "The founders": a centred row of the founder and the co-founders,
-// each a round colour photo (the initials where there is none), the FOUNDER
+// each a round colour photo (the PRT mark where there is none), the FOUNDER
 // or CO-FOUNDER tag, the name and what they did. Who shows here is the
 // founder mark on their alumni entry (issue #257). Phones: a two-column grid
 // with 72px photos.
@@ -11,13 +11,7 @@ import { SectionHead } from "../section-head";
 function FounderCard({ founder }: { founder: Founder }) {
   return (
     <li className="flex flex-col items-center text-center">
-      <Avatar
-        person={founder}
-        sizeClass="h-[72px] w-[72px] md:h-[112px] md:w-[112px]"
-        sizes="112px"
-        fallback="initials"
-        initialsClass="text-[15px] md:text-[20px]"
-      />
+      <Avatar photo={founder.photo} sizeClass="h-[72px] w-[72px] md:h-[112px] md:w-[112px]" sizes="112px" />
       <p className="mt-4 font-mono text-[9px] tracking-[0.2em] text-accent md:mt-5 md:text-[10px]">
         {founder.title === "founder" ? "FOUNDER" : "CO-FOUNDER"}
       </p>

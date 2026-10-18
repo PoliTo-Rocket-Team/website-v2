@@ -17,7 +17,7 @@ export type Photo = `/team/${string}`;
 /** A person's photo: one in public/team/, or the public store URL a member uploaded (`members.picture`). */
 export type PersonPhoto = Photo | `https://${string}`;
 
-/** Someone the page shows. Without a photo a large circle shows the PRT mark, a small one the initials. */
+/** Someone the page shows. Without a photo its circle shows the PRT mark. */
 export type Person = {
   name: string;
   photo?: PersonPhoto;
@@ -96,8 +96,8 @@ export type InNumbers = {
   charts: readonly [Pie, Pie, Pie];
 };
 
-/** A core member in the alphabetical list. */
-export type Member = { name: string; role?: string; linkedin?: string };
+/** A core member in the alphabetical list: a small round photo (or the PRT mark), the name, the role and LinkedIn (issue #366). */
+export type Member = Pick<Person, "name" | "photo" | "linkedin"> & { role?: string };
 
 export type CoreMembers = {
   /** The eyebrow before the member count. */

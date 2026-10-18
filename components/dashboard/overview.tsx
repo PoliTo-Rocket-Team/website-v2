@@ -171,7 +171,7 @@ function LeadView({
             <Panel title="Recent activity" className={`${left ? "" : "lg:col-start-2"} ${compact ? "max-md:hidden" : ""}`}>
               {activity.map((item) => (
                 <li key={`${item.text}-${item.when}`} className="flex items-start gap-3 px-5 py-3.5">
-                  <Avatar name={item.actor} size="sm" accent={item.self} />
+                  <Avatar size="sm" accent={item.self} />
                   <span className="min-w-0">
                     <span className="block text-[13px]">{item.text}</span>
                     <span className="block text-[12px] text-prt-muted">{item.when}</span>
@@ -489,7 +489,7 @@ function RosterPanel({ roster }: { roster: Roster }) {
           key={p.name}
           className={`flex items-center gap-3 px-4 py-2.5 md:px-5 ${p.self ? "max-md:rounded-b-xl max-md:bg-accent/[0.08]" : ""}`}
         >
-          <Avatar name={p.name} size="sm" accent={p.lead} />
+          <Avatar size="sm" accent={p.lead} />
           <span className="min-w-0 flex-1">
             <span className="block text-[13px] font-medium">{p.name}</span>
             <span className="block text-[12px] text-prt-muted">
@@ -517,7 +517,7 @@ const PERSON_FRAME =
 function PersonLines({ name, line, since }: { name: string; line: string; since: string | null }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-5">
-      <Avatar name={name} size="person" />
+      <Avatar size="person" />
       <div className="min-w-0">
         <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] md:text-[24px]">{name}</h1>
         <p className="mt-1 break-words text-[14px] text-text-2">{line}</p>

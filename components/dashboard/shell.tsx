@@ -84,7 +84,7 @@ export function DashboardShell({
             aria-label={`${viewer.name}, ${viewer.role}. Open account menu`}
             className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            <Avatar name={viewer.name} accent />
+            <Avatar accent />
           </button>
         </UserSheet>
       </PhoneTopBar>

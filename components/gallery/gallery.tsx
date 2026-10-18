@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type 
 import Image from "next/image";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ArrowLeft, ArrowRight, Maximize2, X } from "lucide-react";
+import { MarkFallback } from "@/components/mark-fallback";
 import { Dialog, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { isPhoto, ringOffset, wrapIndex, type FilledGallery, type GalleryItem } from "./items";
 
@@ -19,24 +20,17 @@ const SWIPE_PX = 40;
 const glassButton =
   "flex shrink-0 items-center justify-center rounded-full border border-white-10 bg-ground/60 text-prt-text backdrop-blur-md transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60";
 
-function PlaceholderTile({ large = false }: { large?: boolean }) {
+function PlaceholderTile() {
   return (
     <div className="glass-card absolute inset-0 overflow-hidden rounded-xl">
       <div aria-hidden className="absolute inset-0 bg-gradient-to-br from-white-5 to-transparent" />
-      <p
-        aria-hidden
-        className={`absolute font-mono tracking-[0.2em] text-prt-muted ${
-          large ? "bottom-5 left-5 text-[11px] md:text-[13px]" : "bottom-3 left-3 text-[10px] md:bottom-4 md:left-4 md:text-[11px]"
-        }`}
-      >
-        PHOTO<span className={large ? "" : "hidden md:inline"}> · PLACEHOLDER</span>
-      </p>
+      <MarkFallback fit="frame" />
     </div>
   );
 }
 
-function ItemView({ item, sizes, fit, large }: { item: GalleryItem; sizes: string; fit: "cover" | "contain"; large?: boolean }) {
-  if (!isPhoto(item)) return <PlaceholderTile large={large} />;
+function ItemView({ item, sizes, fit }: { item: GalleryItem; sizes: string; fit: "cover" | "contain" }) {
+  if (!isPhoto(item)) return <PlaceholderTile />;
   return (
     <div className="absolute inset-0 overflow-hidden rounded-xl">
       <Image
@@ -268,7 +262,7 @@ function Lightbox({
           <div className="relative flex w-full justify-center">
             <figure className="w-[min(calc(100vw_-_40px),calc((100dvh_-_200px)_*_1.5833))] md:w-[min(1003px,calc(100vw_-_380px),calc((100dvh_-_274px)_*_1.5833))]">
               <div className="relative aspect-[760/480] w-full">
-                <ItemView item={item} sizes="(min-width: 768px) 1003px, 100vw" fit="contain" large />
+                <ItemView item={item} sizes="(min-width: 768px) 1003px, 100vw" fit="contain" />
               </div>
               <figcaption className="mt-4 flex items-baseline justify-between gap-6 md:mt-5">
                 <span className="min-w-0 truncate text-[15px] text-text-2">{item.caption}</span>

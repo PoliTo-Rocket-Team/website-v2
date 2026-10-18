@@ -16,7 +16,8 @@ import {
   type MyProfile,
 } from "@/lib/dashboard/self";
 import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
-import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
+import type { ViewerSession } from "@/lib/dashboard/viewer";
+import { MarkFallback } from "@/components/mark-fallback";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -47,7 +48,6 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
       <PageHeader title="My profile" intro="How you appear on the site and to the team." />
       <div className="mt-6 flex flex-col gap-5">
         <PhotoCard
-          name={profile.name}
           photoUrl={profile.photoUrl}
           uploadPhoto={actions.uploadPhoto}
           removePhoto={actions.removePhoto}
@@ -75,8 +75,8 @@ export type PhotoPreviewSize = { readonly caption: string; readonly size: string
 
 /** Board 55: the Team page's size beside the dashboard's. */
 const PROFILE_PREVIEWS: readonly PhotoPreviewSize[] = [
-  { caption: "Team page", size: "h-[72px] w-[72px] text-[24px] md:h-24 md:w-24 md:text-[30px]" },
-  { caption: "Dashboard", size: "h-8 w-8 text-[11px] md:h-10 md:w-10 md:text-[13px]" },
+  { caption: "Team page", size: "h-[72px] w-[72px] md:h-24 md:w-24" },
+  { caption: "Dashboard", size: "h-8 w-8 md:h-10 md:w-10" },
 ];
 
 /**
@@ -85,14 +85,12 @@ const PROFILE_PREVIEWS: readonly PhotoPreviewSize[] = [
  * alumni (board 56b, issue #317) each hand in their own writes and sizes.
  */
 export function PhotoCard({
-  name,
   photoUrl,
   uploadPhoto,
   removePhoto,
   detail,
   previews,
 }: {
-  name: string;
   photoUrl: string | null;
   uploadPhoto: Actions["uploadPhoto"];
   removePhoto: Actions["removePhoto"];
@@ -163,7 +161,7 @@ export function PhotoCard({
       <div className="flex flex-col gap-6 px-5 py-5 md:flex-row md:items-end md:justify-between md:px-6">
         <div className="flex items-end gap-6 md:gap-7">
           {previews.map((preview) => (
-            <PhotoPreview key={preview.caption} name={name} url={shown} size={preview.size} caption={preview.caption} />
+            <PhotoPreview key={preview.caption} url={shown} size={preview.size} caption={preview.caption} />
           ))}
         </div>
         <div className="flex flex-col items-stretch gap-3 md:items-end">
@@ -207,12 +205,12 @@ export function PhotoCard({
   );
 }
 
-function PhotoPreview({ name, url, size, caption }: { name: string; url: string | null; size: string; caption: string }) {
+function PhotoPreview({ url, size, caption }: { url: string | null; size: string; caption: string }) {
   return (
     <figure className="flex flex-col items-center gap-2">
       {url === null ? (
-        <span aria-hidden className={`flex items-center justify-center rounded-full bg-white-10 font-bold text-text-2 ${size}`}>
-          {initialsOf(name)}
+        <span aria-hidden className={`relative block rounded-full bg-white-10 ${size}`}>
+          <MarkFallback />
         </span>
       ) : (
         // A blob: preview or a Blob store URL; next/image would need every store host configured.

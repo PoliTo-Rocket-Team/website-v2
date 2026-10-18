@@ -1,15 +1,5 @@
 import type { Member, Person } from "./types";
 
-/** The first letters of a name's first two words, as boards 26 and 26m draw them: "Maria Angelica Fullone Penna" is "MA". A title such as "Prof." is skipped. */
-export function initials(name: string): string {
-  const words = name.split(" ").filter((w) => w !== "" && !w.endsWith("."));
-  return words
-    .slice(0, 2)
-    .map((w) => w.charAt(0))
-    .join("")
-    .toUpperCase();
-}
-
 export function linkedinUrl(handle: string): string {
   return `https://www.linkedin.com/in/${encodeURIComponent(handle)}`;
 }

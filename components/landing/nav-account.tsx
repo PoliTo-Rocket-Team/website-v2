@@ -72,7 +72,7 @@ const ITEM =
   "flex h-8 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] outline-none transition-colors data-[highlighted]:bg-white-5";
 
 /**
- * Board 01b: a 38px avatar (photo, else initials on the accent) that opens a
+ * Board 01b: a 38px avatar (photo, else the PRT mark on the accent) that opens a
  * menu below it, aligned right: who is signed in, then Dashboard and a red
  * Log out. It is the repo's Radix dropdown, so Escape, an outside click,
  * focus and arrow keys come with it. The avatar wears an accent ring while
@@ -90,7 +90,7 @@ function AccountMenu({ viewer }: { viewer: NavViewer }) {
         aria-label="Account menu"
         className="flex shrink-0 rounded-full ring-offset-1 ring-offset-ground transition-shadow duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white-10 data-[state=open]:ring-2 data-[state=open]:ring-accent"
       >
-        <Avatar name={viewer.name} photoUrl={viewer.photoUrl} size="nav" accent />
+        <Avatar photoUrl={viewer.photoUrl} size="nav" accent />
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
         <DropdownMenuPrimitive.Content

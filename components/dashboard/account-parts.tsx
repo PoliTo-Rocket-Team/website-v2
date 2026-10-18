@@ -13,8 +13,9 @@ import {
   REMOVE_FROM_ALUMNI_LABEL,
   type SignIn,
 } from "@/lib/dashboard/self";
-import { initialsOf, type ViewerSession } from "@/lib/dashboard/viewer";
+import type { ViewerSession } from "@/lib/dashboard/viewer";
 import type { WriteResult } from "@/lib/dashboard/write";
+import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { inputClass } from "./field";
 import { PANEL } from "./panel";
@@ -55,21 +56,12 @@ export function Card({
   );
 }
 
-/** The accent circle with the person's initials (boards 51 and 55m). */
-export function InitialsAvatar({ name, className }: { name: string; className: string }) {
-  return (
-    <span aria-hidden className={`flex shrink-0 items-center justify-center rounded-full bg-accent font-bold text-accent-on-accent ${className}`}>
-      {initialsOf(name)}
-    </span>
-  );
-}
-
 /** Board 51's Sign-in card: who they are and the Google account. Sign out lives in the user menu. */
 export function SignInCard({ name, signIn }: { name: string; signIn: SignIn }) {
   return (
     <Card title="Sign-in">
       <div className="flex items-center gap-4 px-5 py-5 md:px-6">
-        <InitialsAvatar name={name} className="h-12 w-12 text-[17px]" />
+        <Avatar size="panel" accent />
         <span className="min-w-0">
           <span className="block text-[16px] font-semibold">{name}</span>
           <span className="block truncate text-[13px] text-prt-muted">

@@ -62,7 +62,7 @@ export type MyProfile = {
   /** The team address shown on the site; null when the person has none. */
   readonly teamEmail: string | null;
   readonly linkedin: string | null;
-  /** The public URL of the photo; null shows initials. */
+  /** The public URL of the photo; null shows the PRT mark. */
   readonly photoUrl: string | null;
   readonly signIn: SignIn;
   readonly leave: LeaveState;

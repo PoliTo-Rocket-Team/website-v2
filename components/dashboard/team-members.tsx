@@ -232,7 +232,7 @@ function ListView({
             >
               <td className="px-5 py-2.5">
                 <span className="flex min-w-0 items-center gap-3.5">
-                  <Avatar name={p.name} photoUrl={p.photoUrl} />
+                  <Avatar photoUrl={p.photoUrl} />
                   <span className="min-w-0">
                     <span className="block truncate text-[14px] text-prt-text">{p.name}</span>
                     <span className="block truncate text-[12px] text-prt-muted">{p.details.prtEmail || p.signInEmail}</span>
@@ -271,7 +271,7 @@ function PhoneCards({ people, onOpen }: { people: readonly TeamMember[]; onOpen:
             onClick={() => onOpen(p.id)}
             className={`${PANEL} flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
           >
-            <Avatar name={p.name} size="ml" photoUrl={p.photoUrl} />
+            <Avatar size="ml" photoUrl={p.photoUrl} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[16px] font-semibold">{p.name}</span>
               <span className={`block truncate text-[13px] ${p.role === "member" ? "text-prt-muted" : "text-accent"}`}>{p.roleLabel}</span>
@@ -399,7 +399,7 @@ function TableView({
                   }`}
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
-                    <Avatar name={p.name} size="xs" photoUrl={p.photoUrl} />
+                    <Avatar size="xs" photoUrl={p.photoUrl} />
                     <span className="truncate text-[13px] text-prt-text">{p.name}</span>
                   </span>
                 </td>

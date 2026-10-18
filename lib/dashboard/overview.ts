@@ -71,7 +71,7 @@ export type ActivityItem = {
   readonly actor: string;
   readonly text: string;
   readonly when: string;
-  /** The viewer did it: their initials show on the accent. */
+  /** The viewer did it: their circle shows on the accent. */
   readonly self: boolean;
 };
 

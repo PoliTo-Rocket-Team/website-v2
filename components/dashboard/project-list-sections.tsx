@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, ImagePlus, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { MarkFallback } from "@/components/mark-fallback";
 import { discardProjectPhoto, uploadProjectPhoto } from "@/app/dashboard/project-actions";
 import type { WriteResult } from "@/lib/dashboard/write";
 import {
@@ -729,9 +730,7 @@ function GalleryThumb({ src }: { src: string | null }) {
   return (
     <div className="relative aspect-[4/3] overflow-hidden rounded-lg border border-hairline bg-white-5">
       {src === null ? (
-        <span aria-hidden className="absolute bottom-1.5 left-2 font-mono text-[9px] tracking-[0.2em] text-prt-muted">
-          PLACEHOLDER
-        </span>
+        <MarkFallback fit="frame" />
       ) : (
         // An uploaded photo (the public store, or a preview's data URL) is served as it is.
         <Image src={src} alt="" fill sizes="96px" unoptimized={!src.startsWith("/")} className="object-cover" />

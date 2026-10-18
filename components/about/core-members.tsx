@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { linkedinUrl, searchMembers } from "@/lib/about/people";
 import type { CoreMembers as CoreMembersData, Member } from "@/lib/about/types";
+import { Avatar } from "./person";
 import { SectionHead } from "./section-head";
 import { groupPhotoBlur } from "./team-blur";
 
 // Boards 26 and 26m, "Core members": the group photo, a search by name or
-// role, and the members in alphabetical order, four columns from lg (two
-// from md) and one on phones. Until "Show all" is pressed the list shows its
+// role, and the members in alphabetical order, each with a small round photo
+// (the PRT mark where there is none; issue #366), in a grid that wraps into
+// four columns from lg (two from md) and one on phones. Until "Show all" is pressed the list shows its
 // first nine rows (36 members) from md and ten members on phones. A search
 // looks through every member and shows every match.
 
@@ -25,9 +27,9 @@ const PHOTO_BOX = "relative aspect-[350/210] overflow-hidden rounded-xl md:aspec
 
 function MemberRow({ member, hiddenClass }: { member: Member; hiddenClass: string }) {
   return (
-    <li className={`items-center gap-3 border-b border-white-10 py-3.5 ${hiddenClass}`}>
-      {/* Top-aligned, so a name with no role lines up with its row. */}
-      <div className="min-w-0 flex-1 self-start">
+    <li className={`items-center gap-3 border-b border-white-10 py-3 ${hiddenClass}`}>
+      <Avatar photo={member.photo} sizeClass="h-9 w-9" sizes="36px" />
+      <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] leading-tight text-prt-text">{member.name}</p>
         {member.role !== undefined && <p className="mt-1 truncate text-[13px] leading-tight text-prt-muted">{member.role}</p>}
       </div>

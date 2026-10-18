@@ -173,7 +173,7 @@ function DivisionBar({ tab }: { tab: DivisionMembers }) {
             <span className={EYEBROW}>Leads</span>
             {leads.map((lead) => (
               <span key={lead.id} className="flex items-center gap-2 text-[14px] text-prt-text">
-                <Avatar name={lead.name} size="xs" photoUrl={lead.photoUrl} />
+                <Avatar size="xs" photoUrl={lead.photoUrl} />
                 {lead.name}
               </span>
             ))}

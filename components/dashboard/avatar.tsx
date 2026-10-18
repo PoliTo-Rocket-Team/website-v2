@@ -1,32 +1,33 @@
-import { initialsOf } from "@/lib/dashboard/viewer";
+import { MarkFallback } from "@/components/mark-fallback";
 
 const SIZES = {
-  xs: "h-5 w-5 text-[8px]",
-  sm: "h-7 w-7 text-[10px]",
-  md: "h-8 w-8 text-[11px]",
+  xs: "h-5 w-5",
+  sm: "h-7 w-7",
+  md: "h-8 w-8",
   /** The navbar's account button (board 01b). */
-  nav: "h-[38px] w-[38px] text-[12px]",
-  ml: "h-11 w-11 text-[13px]",
+  nav: "h-[38px] w-[38px]",
+  ml: "h-11 w-11",
   /** The applicant at the top of the detail panel (board 41b). */
-  panel: "h-12 w-12 text-[15px]",
-  lg: "h-12 w-12 text-[15px] md:h-[72px] md:w-[72px] md:text-[22px]",
+  panel: "h-12 w-12",
+  lg: "h-12 w-12 md:h-[72px] md:w-[72px]",
   /** The person at the top of their own Overview (boards 52 and 52m). */
-  person: "h-14 w-14 text-[18px] md:h-[72px] md:w-[72px] md:text-[22px]",
-  xl: "h-16 w-16 text-[18px]",
+  person: "h-14 w-14 md:h-[72px] md:w-[72px]",
+  xl: "h-16 w-16",
 } as const;
 
-// Initials in a circle (boards 40 and 40m). The accent fill marks the viewer
-// in a list, or a lead; everyone else is on white-10.
+export type AvatarSize = keyof typeof SIZES;
+
+// A person's circle (boards 40 and 40m): their photo, else the PRT mark
+// (issue #366). The accent fill marks the viewer in a list, or a lead;
+// everyone else is on white-10.
 export function Avatar({
-  name,
   size = "md",
   accent = false,
   photoUrl = null,
 }: {
-  name: string;
-  size?: keyof typeof SIZES;
+  size?: AvatarSize;
   accent?: boolean;
-  /** The person's photo, shown in place of the initials (board 61g). */
+  /** The person's photo, shown in place of the mark (board 61g). */
   photoUrl?: string | null;
 }) {
   if (photoUrl !== null) {
@@ -37,13 +38,8 @@ export function Avatar({
     );
   }
   return (
-    <span
-      aria-hidden="true"
-      className={`flex shrink-0 items-center justify-center rounded-full font-semibold tracking-[0.02em] ${SIZES[size]} ${
-        accent ? "bg-accent text-accent-on-accent" : "bg-white-10 text-text-2"
-      }`}
-    >
-      {initialsOf(name)}
+    <span aria-hidden="true" className={`relative block shrink-0 rounded-full ${SIZES[size]} ${accent ? "bg-accent" : "bg-white-10"}`}>
+      <MarkFallback />
     </span>
   );
 }

@@ -87,7 +87,7 @@ export function HandOverDialog({
               <div className="relative">
                 {picked && (
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-                    <Avatar name={picked.name} size="sm" />
+                    <Avatar size="sm" />
                   </span>
                 )}
                 <select

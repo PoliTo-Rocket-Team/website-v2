@@ -180,6 +180,12 @@ Rules:
   `prt-mark-white.svg`. Photos use `next/image` with `placeholder="blur"` from the blur map
   beside their component: Outreach photos, the home Track record ones included, go through
   `components/outreach/photo.tsx` and `outreach-blur.ts`.
+- An image slot with no image shows the PRT mark, never initials (issue #366): every person
+  circle (the Team page, Alumni, Advisors, the dashboard's avatars, My profile, the account
+  menu) and every empty photo frame draws `MarkFallback` (`components/mark-fallback.tsx`) in
+  its own fill. `fit="circle"` (the default) is the mark at 78% of a round avatar;
+  `fit="frame"` is a small, dimmed mark in the middle of a wider frame. Team page circles use
+  `Avatar` from `components/about/person.tsx`, dashboard circles the dashboard `Avatar`.
 - Reach for an existing `components/ui/` primitive before writing a new control. Toasts go
   through `sonner` (`app/layout.tsx`).
 - Dialogs on redesigned pages use the repo's Radix dialog (`components/ui/dialog`) for
@@ -251,7 +257,7 @@ The PRT mark only (`prt-mark-white.svg`, 32px tall) on the left and the menu ico
 right. There is no Sign in on the bar: it is in the menu.
 
 **Account menu** (board 01b, issue #261, `nav-account.tsx`): signed in, the bar's end is a
-38px round avatar at every width (the photo, else initials on `accent`), with no name text;
+38px round avatar at every width (the photo, else the PRT mark on `accent`), with no name text;
 on phones it sits beside the menu icon. Its accessible name is "Account menu". It opens the
 repo's Radix dropdown below it, aligned right: a `panel` card with a `hairline` edge, the full
 name and team email as header, then Dashboard (`text-2`) and Log out (`danger`). While open

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Award, ImagePlus } from "lucide-react";
+import { MarkFallback } from "@/components/mark-fallback";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import { CopyText } from "@/components/project-page/parts";
 import {
@@ -176,15 +177,6 @@ function platformOf(name: ChannelName): { label: string; link: string } {
     : { label: CHANNEL_LABELS[name], link: `View on ${CHANNEL_LABELS[name]}` };
 }
 
-function initialsOf(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter((w) => /^[A-Za-z]/.test(w))
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("");
-}
-
 /**
  * Our own card for a post as first shared, not the platform's embed: the
  * account, the platform, the photo on Instagram, the caption's start and a
@@ -198,15 +190,9 @@ function ChannelCard({ name, channel, post }: { name: ChannelName; channel: Chan
   return (
     <article className="glass-card overflow-hidden rounded-xl">
       <div className="flex items-center gap-2.5 p-3.5">
-        {ours ? (
-          <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-[8px] font-extrabold text-accent-on-accent">
-            PRT
-          </span>
-        ) : (
-          <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white-10 text-[10px] font-bold text-prt-text">
-            {initialsOf(channel.account ?? "")}
-          </span>
-        )}
+        <span aria-hidden className={`relative block h-7 w-7 shrink-0 rounded-full ${ours ? "bg-accent" : "bg-white-10"}`}>
+          <MarkFallback />
+        </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold leading-tight text-prt-text">{channel.account ?? account}</p>
           <p className="mt-0.5 text-[10px] leading-tight text-prt-muted">

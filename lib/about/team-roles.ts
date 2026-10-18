@@ -158,9 +158,14 @@ export function teamBuildOf(roles: TeamRoles): TeamBuild {
     .filter((p) => !shown.has(p.id))
     .sort(byName)
     .map((p): Member => {
-      const { linkedin } = personOf(p);
+      const { photo, linkedin } = personOf(p);
       const role = titleOf(p);
-      return { name: p.name, ...(role !== undefined && { role }), ...(linkedin !== undefined && { linkedin }) };
+      return {
+        name: p.name,
+        ...(photo !== undefined && { photo }),
+        ...(role !== undefined && { role }),
+        ...(linkedin !== undefined && { linkedin }),
+      };
     });
   return {
     people: roles.people,
