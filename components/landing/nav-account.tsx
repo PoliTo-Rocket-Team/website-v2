@@ -8,6 +8,7 @@ import { Avatar } from "@/components/dashboard/avatar";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useSignOut } from "@/components/use-sign-out";
 import { parseNavViewer, type NavViewer } from "@/lib/nav-viewer-shape";
+import { PAGES } from "@/lib/landing-links";
 
 // The navbar's account end. A visitor sees "Sign in" (issue #157). Once
 // signed in, the viewer's round avatar opens a menu with Dashboard and Log
@@ -60,7 +61,7 @@ export function NavAccount() {
   const viewer = useNavViewer();
   if (viewer === null) {
     return (
-      <Link href="/login" className={BAR}>
+      <Link href={PAGES.login} className={BAR}>
         Sign in
       </Link>
     );
@@ -106,7 +107,7 @@ function AccountMenu({ viewer }: { viewer: NavViewer }) {
           </DropdownMenuPrimitive.Label>
           <DropdownMenuPrimitive.Separator className="-mx-1.5 mb-1 h-px bg-hairline" />
           <DropdownMenuPrimitive.Item asChild>
-            <Link href="/dashboard" className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
+            <Link href={PAGES.dashboard} className={`${ITEM} text-text-2 data-[highlighted]:text-prt-text`}>
               <LayoutDashboard aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
               Dashboard
             </Link>
@@ -129,7 +130,7 @@ function AccountMenu({ viewer }: { viewer: NavViewer }) {
  */
 export function NavMenuSignIn(link: Omit<ComponentProps<typeof Link>, "href" | "className" | "children">) {
   return (
-    <Link {...link} href="/login" className={FOOT}>
+    <Link {...link} href={PAGES.login} className={FOOT}>
       Sign in
     </Link>
   );

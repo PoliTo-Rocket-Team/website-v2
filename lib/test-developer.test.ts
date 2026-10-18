@@ -20,6 +20,7 @@ import {
   TestDeveloperWriteRefused,
 } from "./test-developer";
 import { TEST_VIEWERS } from "./dashboard/viewer";
+import { PREVIEW_ENDPOINT } from "./seed/target";
 import { TEST_VIEWER_PEOPLE } from "./test-viewer-people";
 
 const PRODUCTION = { NODE_ENV: "production", VERCEL_ENV: "production" };
@@ -155,7 +156,11 @@ test("sign-out clears the cookie and the dummy team's changes, and goes to /logi
   assert.match(cleared[4] ?? "", new RegExp(`^${TEST_DEVELOPER_APPLICATIONS_COOKIE}=;.*Max-Age=0`));
 });
 
-const DB = "postgresql://app@ep-cool-darkness-123456-pooler.eu-central-1.aws.neon.tech/neondb";
+// The shared `preview` branch, by its pooled and its direct host. The hosts
+// are only parsed: no test here connects to any database.
+const DB = `postgresql://app@${PREVIEW_ENDPOINT}-pooler.c-2.eu-central-1.aws.neon.tech/neondb`;
+const DB_DIRECT = `postgresql://app@${PREVIEW_ENDPOINT}.c-2.eu-central-1.aws.neon.tech/neondb`;
+const OTHER_DB = "postgresql://app@ep-cool-darkness-123456-pooler.eu-central-1.aws.neon.tech/neondb";
 
 test("on a preview with its seeded database, each viewer is read as its seeded person", () => {
   for (const viewer of TEST_VIEWERS) {
@@ -183,22 +188,40 @@ test("an audited write by an account is logged under it, in every environment", 
   }
 });
 
-test("on a preview, a test developer's write is logged under the seeded person the viewer switch resolves to (ADR 0016)", () => {
-  assert.equal(testDeveloperMayWrite(PREVIEW), true);
+test("on a preview reading the preview branch, a test developer's write is logged under the seeded person the viewer switch resolves to (ADR 0016)", () => {
+  assert.equal(testDeveloperMayWrite({ ...PREVIEW, DATABASE_URL: DB }), true, "pooled host");
+  assert.equal(testDeveloperMayWrite({ ...PREVIEW, DATABASE_URL: DB_DIRECT }), true, "direct host");
   for (const viewer of TEST_VIEWERS) {
-    const standIn = testDeveloperStandIn(viewer, { ...PREVIEW, DATABASE_URL: DB });
+    const env = { ...PREVIEW, DATABASE_URL: DB };
+    const standIn = testDeveloperStandIn(viewer, env);
     assert.ok(standIn, viewer);
-    assert.equal(auditWriterOf({ session: "test-developer", id: standIn.userId }, PREVIEW), TEST_VIEWER_PEOPLE[viewer], viewer);
+    assert.equal(auditWriterOf({ session: "test-developer", id: standIn.userId }, env), TEST_VIEWER_PEOPLE[viewer], viewer);
   }
 });
 
-test("in production, under next dev and on any other Vercel environment, a test developer's write is refused before it is sent", () => {
+test("on a preview pointed at any database other than the preview branch, a test developer's write is refused before it is sent (#364)", () => {
+  const user = { session: "test-developer", id: TEST_VIEWER_PEOPLE.member } as const;
+  for (const [name, DATABASE_URL] of [
+    ["another Neon endpoint", OTHER_DB],
+    ["a local database", "postgresql://app@localhost:5432/prt"],
+    ["a host that is not Neon", "postgresql://app@db.example.com/prt"],
+    ["no DATABASE_URL", undefined],
+  ] as const) {
+    const env = { ...PREVIEW, DATABASE_URL };
+    assert.equal(testDeveloperMayWrite(env), false, name);
+    assert.throws(() => auditWriterOf(user, env), TestDeveloperWriteRefused, name);
+  }
+});
+
+test("in production, under next dev and on any other Vercel environment, a test developer's write is refused before it is sent, even on the preview branch", () => {
   const user = { session: "test-developer", id: TEST_VIEWER_PEOPLE.member } as const;
   for (const [name, env] of [
     ["production", PRODUCTION],
+    ["production on the preview branch", { ...PRODUCTION, DATABASE_URL: DB }],
     ["next dev", LOCAL_DEV],
+    ["next dev on the preview branch", { ...LOCAL_DEV, DATABASE_URL: DB }],
     ["local production build", { NODE_ENV: "production" }],
-    ["development Vercel environment", { NODE_ENV: "production", VERCEL_ENV: "development" }],
+    ["development Vercel environment", { NODE_ENV: "production", VERCEL_ENV: "development", DATABASE_URL: DB }],
   ] as const) {
     assert.equal(testDeveloperMayWrite(env), false, name);
     assert.throws(() => auditWriterOf(user, env), TestDeveloperWriteRefused, name);

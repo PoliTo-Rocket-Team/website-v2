@@ -33,11 +33,14 @@ function Text({ copy, draw = (text) => text }: { copy: Copy; draw?: (text: strin
 }
 
 /**
- * Where a card sits in the Projects row: 210 x 360 in the phone swipe row,
- * 618px tall from md. The edit shell's page switch (board 75d) puts this box
- * on the frame round the card instead, and the card fills the frame.
+ * Where a card sits in the Projects swipe row: 210 x 360 on phones (board
+ * 24); from md 618px tall and as wide as two cards to a view (below lg) or
+ * three (from lg, board 21: 427px at 1440) leave room for, less the 16px gaps.
+ * The row's next card peeks past the edge. The edit shell's page switch
+ * (board 75d) puts this box on the frame round the card instead, and the card
+ * fills the frame.
  */
-export const HOME_CARD_LAYOUT = "h-[360px] w-[210px] shrink-0 snap-start md:mx-auto md:h-[618px] md:w-full md:max-w-[480px] lg:max-w-none";
+export const HOME_CARD_LAYOUT = "h-[360px] w-[210px] shrink-0 snap-start md:h-[618px] md:w-[calc((100%-16px)/2)] lg:w-[calc((100%-32px)/3)]";
 
 /** A card inside a frame that carries its layout. */
 export const FILLS_FRAME = "h-full w-full";
@@ -54,9 +57,10 @@ export function HomeProjectCard({ project, layout = HOME_CARD_LAYOUT }: { projec
           src={project.texture}
           alt=""
           fill
-          // One of three columns from lg: (content − 2 × 16px gap) / 3, where
-          // the content is 100vw − 128px up to its 1312px cap at 1440.
-          sizes="(min-width: 1440px) 427px, (min-width: 1024px) calc((100vw - 160px) / 3), (min-width: 768px) 480px, 210px"
+          // Three to a view from lg: (content − 2 × 16px gap) / 3, where the
+          // content is 100vw − 128px up to its 1312px cap at 1440; two from
+          // md: (content − 16px) / 2.
+          sizes="(min-width: 1440px) 427px, (min-width: 1024px) calc((100vw - 160px) / 3), (min-width: 768px) calc((100vw - 144px) / 2), 210px"
           className="object-cover"
         />
       </div>

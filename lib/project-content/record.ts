@@ -307,6 +307,23 @@ export function homeCardOf(record: ProjectRecord, position: number): HomeCardVie
   };
 }
 
+/** The year a home card starts at: the first year its year line names ("2024–25" is 2024); null when it names none. */
+export function startYearOf(card: Pick<HomeCardView, "year">): number | null {
+  const year = /\d{4}/.exec(card.year.text);
+  return year === null ? null : Number(year[0]);
+}
+
+/**
+ * The home cards as the Projects row shows them (issue #359): newest first,
+ * by the start or launch year each card names, then by number, the higher
+ * (the later in the site order) first. A card that names no year goes last.
+ * Each card keeps its number, its place in the site order.
+ */
+export function newestFirst(cards: readonly HomeCardView[]): HomeCardView[] {
+  const year = (card: HomeCardView) => startYearOf(card) ?? -Infinity;
+  return [...cards].sort((a, b) => year(b) - year(a) || Number(b.num) - Number(a.num));
+}
+
 /**
  * Where a stored project sits among the published ones, as its page draws
  * it: its number, the project its next-project card shows (the last loops

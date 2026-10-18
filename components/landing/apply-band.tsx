@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { PAGES } from "@/lib/landing-links";
 
 // Board 21, apply band: the accent with the apply-band texture multiplied on
 // top at 60%. The headline is centred against the right block, which is the
@@ -30,7 +31,7 @@ export function ApplyBand() {
             Open to every Politecnico student. No rocketry experience needed. We learn together.
           </p>
           <Link
-            href="/apply"
+            href={PAGES.apply}
             className="mt-6 block rounded-full bg-ground px-10 py-[13px] text-center text-[17px] md:mt-8 md:inline-block md:py-[17px] font-semibold text-prt-text transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0"
           >
             Apply to join
