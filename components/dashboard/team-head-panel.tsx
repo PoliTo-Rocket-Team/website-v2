@@ -233,7 +233,7 @@ function LeadRowItem({
     >
       <div className="flex items-center gap-3 px-3 py-2.5">
         <GripVertical aria-hidden className={`h-4 w-4 shrink-0 ${drag === null ? "text-white-10" : "cursor-grab text-dim"}`} strokeWidth={1.75} />
-        <Avatar person={person} sizeClass="h-7 w-7" sizes="28px" fallback="initials" initialsClass="text-[9px]" />
+        <Avatar photo={person.photo} sizeClass="h-7 w-7" sizes="28px" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold leading-tight text-prt-text">{person.name}</p>
           <p className={`mt-0.5 truncate text-[12px] leading-tight ${division === "" ? "text-dim" : "text-prt-muted"}`}>

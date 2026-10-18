@@ -272,11 +272,11 @@ function PostRow({
   );
 }
 
-/** The post's cover; empty while a draft has no photo yet. */
+/** The post's cover; the PRT mark while a draft has no photo yet (issue #366). */
 function Thumb({ photo }: { photo: OutreachPhoto | undefined }) {
   return (
     <span className="relative h-10 w-16 shrink-0 overflow-hidden rounded-md bg-white-5">
-      {photo !== undefined && <Photo photo={{ ...photo, alt: "" }} sizes="64px" />}
+      <Photo photo={photo && { ...photo, alt: "" }} sizes="64px" />
     </span>
   );
 }

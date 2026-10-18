@@ -33,7 +33,6 @@ export function Advisors({ advisors, frame }: { advisors: AdvisorsData; frame?: 
             role={a.role}
             accent={a.standing === "principal"}
             phone={{ avatar: "h-14 w-14", gap: "gap-4" }}
-            fallback="initials"
           />
         ))}
       </div>

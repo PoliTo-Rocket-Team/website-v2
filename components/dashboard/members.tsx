@@ -102,7 +102,7 @@ function TeamMembersView({
               onClick={() => setOpenId(row.id)}
               className={`${PANEL} flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent`}
             >
-              <Avatar name={row.name} size="ml" accent={row.role !== "member"} />
+              <Avatar size="ml" accent={row.role !== "member"} />
               <span className="min-w-0">
                 <span className="block truncate text-[16px] font-semibold">{row.name}</span>
                 <span className="block truncate text-[13px] text-prt-muted">
@@ -187,7 +187,7 @@ function MemberTableRow({
     >
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
-          <Avatar name={row.name} accent={lead} />
+          <Avatar accent={lead} />
           <span className="min-w-0">
             <span className="block truncate text-[15px] text-prt-text">{row.name}</span>
             <span className="block truncate text-[13px] text-prt-muted">{row.email}</span>

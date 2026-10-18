@@ -25,7 +25,7 @@ const VIEW_AS_LABEL = "font-mono text-[10px] uppercase tracking-[0.3em] text-dim
 export type UserMenuForm = "dropdown" | "sheet";
 
 // The user card at the foot of the sidebar and the menu it opens (board 51b):
-// initials on the accent, name, role and an up-down chevron. The menu holds
+// the PRT mark on the accent, name, role and an up-down chevron. The menu holds
 // the viewer's own page (My account for a non-member, My profile for the
 // team), then a red Sign out. A test developer also gets "View as", every
 // test view, each a sign-in link back to this page. From md it opens above the
@@ -44,7 +44,7 @@ export function UserCard({
 }) {
   const trigger = (
     <>
-      <Avatar name={viewer.name} accent />
+      <Avatar accent />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-prt-text">{viewer.name}</span>
         <span className="block truncate text-[12px] text-prt-muted">{viewer.role}</span>
@@ -172,7 +172,7 @@ export function UserSheet({
         >
           <span aria-hidden="true" className="mx-auto block h-1 w-10 rounded-full bg-white-10" />
           <div className="mt-4 flex items-center gap-3 px-1">
-            <Avatar name={viewer.name} accent size="ml" />
+            <Avatar accent size="ml" />
             <div className="min-w-0">
               <DialogTitle className="truncate text-[16px] font-semibold leading-snug">{viewer.name}</DialogTitle>
               <p className="truncate text-[13px] text-prt-muted">{viewer.role}</p>

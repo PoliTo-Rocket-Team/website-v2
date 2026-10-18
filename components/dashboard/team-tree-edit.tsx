@@ -246,7 +246,7 @@ function LeaderBox({ leader, found, onHandOver }: { leader: StructureLeader; fou
   const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border bg-accent/[0.06] px-3 text-center ${found ? "border-accent ring-1 ring-accent" : "border-accent/70"}`;
   const body = (
     <>
-      <Avatar name={leader.name} size="ml" accent />
+      <Avatar size="ml" accent />
       <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{leader.name}</span>
       <span className="text-[12px] text-prt-muted">Team Leader</span>
     </>

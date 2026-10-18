@@ -142,7 +142,7 @@ function TreeCard({
           <AlsoTags person={person} />
         </span>
       )}
-      {person && <Avatar name={person.name} size="sm" accent />}
+      {person && <Avatar size="sm" accent />}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold leading-tight text-prt-text">
           {title}
@@ -172,7 +172,7 @@ function MemberRow({ person, found }: { person: TreePerson; found: boolean }) {
         person.self ? "border-accent/70 bg-accent/[0.08]" : "border-transparent"
       } ${found ? "ring-1 ring-accent" : ""}`}
     >
-      <Avatar name={person.name} size="xs" accent={person.self} />
+      <Avatar size="xs" accent={person.self} />
       <span className={`min-w-0 truncate text-[12px] ${person.self ? "font-semibold text-prt-text" : "text-text-2"}`}>
         {person.name}
         {person.self && " · you"}

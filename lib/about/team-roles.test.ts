@@ -52,7 +52,7 @@ const people: readonly TeamPerson[] = [
   person(8, "Simone Testa", lead(20)),
   // Electronics has no head: its lead is a core member.
   person(9, "Stefano Mancini", lead(30), { pageTitle: "Hardware Lead" }),
-  person(10, "Sofia Neri", member(10), { pageTitle: "Mission Analyst", linkedin: "linkedin.com/in/sofia-neri" }),
+  person(10, "Sofia Neri", member(10), { pageTitle: "Mission Analyst", linkedin: "linkedin.com/in/sofia-neri", photo: "https://store.example/sofia.jpg" }),
   person(11, "Anna Villa", member(11), { pageTitle: "  " }),
   person(12, "Kenji Watanabe", inDivisions([])),
 ];
@@ -82,11 +82,11 @@ test("departments: each open department's head with its division leads, in depar
   );
 });
 
-test("core members: everyone else with an active role, by name, with their dashboard title", () => {
+test("core members: everyone else with an active role, by name, with their dashboard title and photo (issue #366)", () => {
   assert.deepEqual(built()!.coreMembers.members, [
     { name: "Anna Villa" },
     { name: "Kenji Watanabe" },
-    { name: "Sofia Neri", role: "Mission Analyst", linkedin: "sofia-neri" },
+    { name: "Sofia Neri", photo: "https://store.example/sofia.jpg", role: "Mission Analyst", linkedin: "sofia-neri" },
     { name: "Stefano Mancini", role: "Hardware Lead" },
   ]);
 });

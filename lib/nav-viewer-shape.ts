@@ -8,7 +8,7 @@ export type NavViewer = {
   readonly name: string;
   /** The menu header's address: the team address, else the sign-in address of someone with none. */
   readonly email: string;
-  /** The profile photo; null shows initials. */
+  /** The profile photo; null shows the PRT mark. */
   readonly photoUrl: string | null;
   /** How they signed in, which decides how Log out ends the session. */
   readonly session: ViewerSession;

@@ -100,7 +100,7 @@ function MemberPanel({
     >
       <PanelBody className="flex flex-col">
         <div className="flex items-center gap-4">
-          <Avatar name={row.name} size="xl" accent={row.role !== "member"} />
+          <Avatar size="xl" accent={row.role !== "member"} />
           <div className="min-w-0">
             <p className="truncate text-[18px] font-semibold">{row.name}</p>
             <p className="truncate text-[13px] text-prt-muted">{row.email}</p>

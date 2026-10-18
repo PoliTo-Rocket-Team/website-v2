@@ -65,7 +65,7 @@ export function TeamLeaderDrawer({ open, leader, onClose }: { open: boolean; lea
           <div className="mt-2.5 flex flex-col gap-2">
             {next !== null && !picking && (
               <button type="button" onClick={() => setPicking(true)} aria-label={`${next.name} takes over. Pick someone else`} className={`${PERSON_CARD} transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}>
-                <Avatar name={next.name} size="md" />
+                <Avatar size="md" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] text-prt-text">{next.name}</span>
                   <span className="block truncate text-[12px] text-prt-muted">{next.role} · picked</span>
@@ -86,7 +86,7 @@ export function TeamLeaderDrawer({ open, leader, onClose }: { open: boolean; lea
               />
             )}
             <div className={PERSON_CARD}>
-              <Avatar name={leader.name} size="md" />
+              <Avatar size="md" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px] text-prt-text">{leader.name}</span>
                 <span className="block truncate text-[12px] text-prt-muted">You · Team Leader now</span>

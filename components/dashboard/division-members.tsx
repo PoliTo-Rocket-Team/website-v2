@@ -217,7 +217,7 @@ export function PeopleTable({
               onClick={() => onOpen(p.id)}
               className={`${PANEL} flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
             >
-              <Avatar name={p.name} size="ml" photoUrl={p.photoUrl} />
+              <Avatar size="ml" photoUrl={p.photoUrl} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[16px] font-semibold">{p.name}</span>
                 <span className="block truncate text-[13px] text-prt-muted">{phoneCard === "chips" ? roleText(p) : phoneLine(p)}</span>
@@ -428,7 +428,7 @@ function PersonRow({
     >
       <td className="px-5 py-2.5">
         <span className="flex min-w-0 items-center gap-3.5">
-          <Avatar name={person.name} photoUrl={person.photoUrl} />
+          <Avatar photoUrl={person.photoUrl} />
           <span className="min-w-0">
             <span className="block truncate text-[15px] text-prt-text">{person.name}</span>
             <span className="block truncate text-[13px] text-prt-muted">{person.details.prtEmail || person.signInEmail}</span>
@@ -709,7 +709,7 @@ export function JoiningBanner({ joining, division, editable }: { joining: Joinin
     <li className="flex flex-col gap-3 rounded-xl border border-success/40 bg-success/[0.06] px-4 py-3.5 md:flex-row md:items-center md:gap-4">
       <span className="flex min-w-0 flex-1 items-center gap-3.5">
         <span className="hidden md:block">
-          <Avatar name={joining.name} />
+          <Avatar />
         </span>
         <span className="min-w-0">
           <span className="block text-[15px] font-semibold">{joining.name} is joining</span>

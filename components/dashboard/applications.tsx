@@ -224,7 +224,7 @@ export function ApplicationsView({
                 } focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`}
               >
                 <span className="flex min-w-0 items-center gap-3">
-                  <Avatar name={a.applicant.name} />
+                  <Avatar />
                   <span className="min-w-0">
                     <span className="block truncate text-[14px] font-medium leading-snug">{a.applicant.name}</span>
                     <span className="block truncate text-[12px] leading-snug text-prt-muted">{a.applicant.email}</span>
@@ -420,7 +420,7 @@ function Detail({
 
       <div className="hidden border-b border-hairline px-7 pb-5 pt-7 md:block">
         <div className="flex items-start gap-4">
-          <Avatar name={a.applicant.name} size="panel" />
+          <Avatar size="panel" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[20px] font-bold leading-tight" aria-hidden="true">
               {a.applicant.name}

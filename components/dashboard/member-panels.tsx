@@ -146,7 +146,7 @@ export function PersonDrawer<P extends PanelPerson>({
       onOpenChange={(next) => !next && onClose()}
       title={p.name}
       detail={`Member since ${p.since} · ${count} ${count === 1 ? "division" : "divisions"}`}
-      leading={<Avatar name={p.name} size="panel" photoUrl={p.photoUrl} />}
+      leading={<Avatar size="panel" photoUrl={p.photoUrl} />}
       footer={
         editable && !p.self ? (
           <>
@@ -393,7 +393,7 @@ function EditForm({ open, target, division, onClose }: { open: boolean; target: 
       onOpenChange={(next) => !next && onClose()}
       title={name}
       detail={person ? "Edit details" : "Fill details"}
-      leading={person ? <Avatar name={name} size="panel" photoUrl={person.photoUrl} /> : undefined}
+      leading={person ? <Avatar size="panel" photoUrl={person.photoUrl} /> : undefined}
       submitLabel="Save"
       submitting={pending}
       onSubmit={submit}
@@ -488,7 +488,7 @@ function PhotoField({ person, divisionId }: { person: DivisionPerson; divisionId
 
   return (
     <div className="flex items-center gap-3">
-      <Avatar name={person.name} size="panel" photoUrl={preview} />
+      <Avatar size="panel" photoUrl={preview} />
       <input
         ref={input}
         type="file"
@@ -706,7 +706,7 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
         {(id, describedBy) =>
           picked ? (
             <span className="flex items-center gap-3 rounded-[10px] border border-accent bg-accent/[0.06] px-3.5 py-2.5">
-              <Avatar name={picked.name} size="sm" />
+              <Avatar size="sm" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px] text-prt-text">{picked.name}</span>
                 <span className="block truncate text-[12px] text-prt-muted">{picked.email}</span>
@@ -746,7 +746,7 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
                 onClick={() => setPicked(m)}
                 className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-300 ease-out enabled:hover:bg-white-5 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS}`}
               >
-                <Avatar name={m.name} size="sm" />
+                <Avatar size="sm" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] text-prt-text">{m.name}</span>
                   <span className="block truncate text-[12px] text-prt-muted">{m.here ? `Already in ${short}` : m.email}</span>

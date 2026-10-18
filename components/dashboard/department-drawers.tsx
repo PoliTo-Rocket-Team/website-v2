@@ -16,7 +16,6 @@ import { steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dash
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart } from "@/lib/dashboard/team";
 import type { StructureDepartment, StructureDivision, TeamStructure } from "@/lib/dashboard/team-structure";
-import { initialsOf } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PeoplePicker } from "./division-drawer";
@@ -253,7 +252,7 @@ function NewDepartment({ open, structure, onClose }: { open: boolean; structure:
                 <p className={`${LIST} px-4 py-3 text-center text-[13px] text-prt-muted`}>No head yet</p>
               ) : (
                 <div className={`${LIST} flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5`}>
-                  <Avatar name={head.name} size="md" />
+                  <Avatar size="md" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14px] text-prt-text">{head.name}</span>
                     <span className="block truncate text-[12px] text-prt-muted">{head.place === null ? "In no division yet" : `Keeps ${head.place}`}</span>
@@ -423,7 +422,7 @@ function EditDepartment({
             {newHead === null ? (
               head ? (
                 <div className={`${LIST} mt-2.5 flex items-center gap-3 px-3.5 py-3`}>
-                  <Avatar name={head.name} size="md" accent />
+                  <Avatar size="md" accent />
                   <span className="flex min-w-0 flex-1 items-baseline gap-2">
                     <span className="shrink-0 text-[15px] text-prt-text">{head.name}</span>
                     {head.divisions.length > 0 && <span className="truncate text-[12px] text-prt-muted">also in {head.divisions.join(", ")}</span>}
@@ -436,7 +435,7 @@ function EditDepartment({
               <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
                 {head && (
                   <li className="flex items-center gap-3 px-3.5 py-2.5 opacity-60">
-                    <Avatar name={head.name} size="md" />
+                    <Avatar size="md" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[14px] text-prt-text">{head.name}</span>
                       <span className="block truncate text-[12px] text-prt-muted">Replaced by {newHead.name}</span>
@@ -444,7 +443,7 @@ function EditDepartment({
                   </li>
                 )}
                 <li className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
-                  <Avatar name={newHead.name} size="md" />
+                  <Avatar size="md" />
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-[14px] text-prt-text">{newHead.name}</span>
@@ -563,7 +562,7 @@ function DivisionRow({ division, open, onToggle }: { division: StructureDivision
         <ul className="border-t border-hairline px-3.5 py-2">
           {people.map((p) => (
             <li key={p.id} className="flex items-center gap-3 py-1.5">
-              <Avatar name={p.name} size="sm" accent={p.role === "lead"} photoUrl={p.photoUrl} />
+              <Avatar size="sm" accent={p.role === "lead"} photoUrl={p.photoUrl} />
               <span className="truncate text-[14px] text-prt-text">{p.name}</span>
               {p.role === "lead" && <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Lead</span>}
             </li>
@@ -698,9 +697,7 @@ function CloseDepartment({
             </h3>
             <div className="mt-2.5 rounded-xl border border-hairline p-3.5">
               <div className="flex items-center gap-3">
-                <span aria-hidden className={CODE_BOX}>
-                  {initialsOf(head.name)}
-                </span>
+                <Avatar size="sm" />
                 <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{head.name}</span>
                 <span className="shrink-0 text-[13px] text-prt-muted">Head of {department.name}</span>
               </div>

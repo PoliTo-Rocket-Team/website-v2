@@ -1,65 +1,33 @@
 import Image from "next/image";
 import { Linkedin, Mail } from "lucide-react";
-import { contactsOf, initials } from "@/lib/about/people";
+import { contactsOf } from "@/lib/about/people";
 import type { Person } from "@/lib/about/types";
+import { MarkFallback } from "@/components/mark-fallback";
 
 // The people pieces every Team page section shares: a round colour photo,
-// with the PRT mark or the initials when there is none, and the LinkedIn and
+// with the PRT mark when there is none (issue #366), and the LinkedIn and
 // mail icons. The name is always printed beside the circle, so the photo
 // itself is decorative.
 
-/**
- * What a circle with no photo shows: the PRT mark (the org chart's leaders)
- * or the initials. "mark-to-initials" shows the mark on phones and the
- * initials from lg, as a department head does (boards 26m and 26).
- */
-export type Fallback = "mark" | "initials" | "mark-to-initials";
-
 export function Avatar({
-  person,
+  photo,
   sizeClass,
   sizes,
-  fallback,
-  initialsClass = "text-[10px]",
 }: {
-  /** A photo in public/team/, or a public store URL (an alumni photo, issue #257). */
-  person: { name: string; photo?: string };
+  /** A photo in public/team/, or a public store URL (an alumni photo, issue #257); none shows the PRT mark. */
+  photo: string | undefined;
   /** Width and height, for example "h-[60px] w-[60px] lg:h-[120px] lg:w-[120px]". */
   sizeClass: string;
   /** The photo's rendered width for next/image, for example "120px". */
   sizes: string;
-  fallback: Fallback;
-  initialsClass?: string;
 }) {
   return (
     <span className={`relative block shrink-0 overflow-hidden rounded-full bg-surface-2 ${sizeClass}`}>
-      {person.photo !== undefined ? (
+      {photo !== undefined ? (
         // A store URL is served as stored: next/image would need every store host configured.
-        <Image src={person.photo} alt="" fill sizes={sizes} unoptimized={!person.photo.startsWith("/")} className="object-cover" />
+        <Image src={photo} alt="" fill sizes={sizes} unoptimized={!photo.startsWith("/")} className="object-cover" />
       ) : (
-        <>
-          {fallback !== "initials" && (
-            <Image
-              src="/brand/prt-mark-white.svg"
-              alt=""
-              width={444}
-              height={220}
-              className={`absolute left-1/2 top-1/2 w-[78%] -translate-x-1/2 -translate-y-1/2 ${
-                fallback === "mark-to-initials" ? "lg:hidden" : ""
-              }`}
-            />
-          )}
-          {fallback !== "mark" && (
-            <span
-              aria-hidden
-              className={`absolute inset-0 items-center justify-center font-mono tracking-[0.05em] text-text-2 ${initialsClass} ${
-                fallback === "mark-to-initials" ? "hidden lg:flex" : "flex"
-              }`}
-            >
-              {initials(person.name)}
-            </span>
-          )}
-        </>
+        <MarkFallback />
       )}
     </span>
   );
@@ -116,7 +84,6 @@ export function PersonCell({
   role,
   accent,
   phone,
-  fallback,
 }: {
   person: Pick<Person, "name" | "photo" | "linkedin" | "email">;
   role?: string;
@@ -124,17 +91,10 @@ export function PersonCell({
   accent: boolean;
   /** Below lg: the photo's size and the gap beside it, for example "h-14 w-14" and "gap-4". */
   phone: { avatar: string; gap: string };
-  fallback: Fallback;
 }) {
   return (
     <div className={`flex items-center ${phone.gap} lg:gap-4`}>
-      <Avatar
-        person={person}
-        sizeClass={`${phone.avatar} lg:h-24 lg:w-24`}
-        sizes="96px"
-        fallback={fallback}
-        initialsClass="text-[13px] lg:text-[18px]"
-      />
+      <Avatar photo={person.photo} sizeClass={`${phone.avatar} lg:h-24 lg:w-24`} sizes="96px" />
       <div className="min-w-0">
         <p className="text-[16px] font-semibold leading-tight tracking-[-0.01em] text-prt-text lg:text-[19px]">{person.name}</p>
         {role !== undefined && (

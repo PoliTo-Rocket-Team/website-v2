@@ -169,7 +169,7 @@ function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: reado
           frame,
           "leader",
           <>
-            <Avatar person={leader} sizeClass="h-[176px] w-[176px]" sizes="176px" fallback="mark" />
+            <Avatar photo={leader.photo} sizeClass="h-[176px] w-[176px]" sizes="176px" />
             <div className="mt-5">
               <LeaderLabel leader={leader} size="top" />
             </div>
@@ -191,7 +191,7 @@ function Arc({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: reado
               i,
               <>
                 <span className="block" style={{ width: px, height: px }}>
-                  <Avatar person={l} sizeClass="h-full w-full" sizes={px} fallback="mark" />
+                  <Avatar photo={l.photo} sizeClass="h-full w-full" sizes={px} />
                 </span>
                 <div className="mt-[18px]">
                   <LeaderLabel leader={l} size="arc" />
@@ -215,7 +215,7 @@ function Tree({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: read
         frame,
         "leader",
         <>
-          <Avatar person={leader} sizeClass="h-[120px] w-[120px]" sizes="120px" fallback="mark" />
+          <Avatar photo={leader.photo} sizeClass="h-[120px] w-[120px]" sizes="120px" />
           <div className="mt-3">
             <LeaderLabel leader={leader} size="top" />
           </div>
@@ -235,7 +235,7 @@ function Tree({ leader, leaders, frame, onAdd }: { leader: Leader; leaders: read
               frame,
               i,
               <>
-                <Avatar person={l} sizeClass="h-24 w-24" sizes="96px" fallback="mark" />
+                <Avatar photo={l.photo} sizeClass="h-24 w-24" sizes="96px" />
                 <div className="mt-3">
                   <LeaderLabel leader={l} size="grid" />
                 </div>

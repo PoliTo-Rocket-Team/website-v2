@@ -440,7 +440,7 @@ function OldLeadRow({
   const goneLine = replacedBy !== null ? `Replaced by ${replacedBy}` : removed ? "Removed as lead" : null;
   return (
     <li className={`flex items-center gap-3 px-3.5 py-2.5 ${goneLine ? "opacity-60" : ""}`}>
-      <Avatar name={lead.name} size="md" photoUrl={lead.photoUrl} />
+      <Avatar size="md" photoUrl={lead.photoUrl} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[14px] text-prt-text">{lead.name}</span>
         <span className="block truncate text-[12px] text-prt-muted">{goneLine ?? short}</span>
@@ -486,7 +486,7 @@ function NewLeadRow({ added, divisionId, short, onUndo }: { added: NewLead; divi
   const { pick } = added;
   return (
     <li className="flex items-center gap-3 bg-accent/[0.05] px-3.5 py-2.5">
-      <Avatar name={pick.name} size="md" />
+      <Avatar size="md" />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[14px] text-prt-text">{pick.name}</span>
@@ -690,7 +690,7 @@ export function PeoplePicker({
                     onClick={() => onPick(p)}
                     className={`group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-300 ease-out enabled:hover:bg-white-5 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
                   >
-                    <Avatar name={p.name} size="md" />
+                    <Avatar size="md" />
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-baseline gap-2">
                         <span className="shrink-0 text-[14px] text-prt-text">{p.name}</span>
@@ -891,7 +891,7 @@ function MemberItem({
   const others = person.divisions.filter((d) => d.divisionId !== divisionId).map((d) => d.name);
   return (
     <li className="flex items-center gap-3 px-3.5 py-2.5">
-      <Avatar name={person.name} size="md" photoUrl={person.photoUrl} />
+      <Avatar size="md" photoUrl={person.photoUrl} />
       <span className="flex min-w-0 flex-1 items-baseline gap-2">
         <span className="shrink-0 text-[14px] text-prt-text">{person.name}</span>
         <span className="truncate text-[12px] text-prt-muted">{memberLine(person)}</span>
@@ -955,7 +955,7 @@ function DraftMembers({
         <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
           {members.map((m) => (
             <li key={m.id} className="flex items-center gap-3 px-3.5 py-2.5">
-              <Avatar name={m.name} size="md" />
+              <Avatar size="md" />
               <span className="flex min-w-0 flex-1 items-baseline gap-2">
                 <span className="shrink-0 text-[14px] text-prt-text">{m.name}</span>
                 {m.place !== null && <span className="truncate text-[12px] text-prt-muted">Also in {m.place}</span>}

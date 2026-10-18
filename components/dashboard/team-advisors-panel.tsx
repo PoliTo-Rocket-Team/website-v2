@@ -202,7 +202,7 @@ function AdvisorRowItem({
         className={`flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left ${CONTENT_FOCUS}`}
       >
         <GripVertical aria-hidden className={`h-4 w-4 shrink-0 ${drag === null ? "text-white-10" : "cursor-grab text-dim"}`} strokeWidth={1.75} />
-        <Avatar person={person} sizeClass="h-7 w-7" sizes="28px" fallback="initials" initialsClass="text-[9px]" />
+        <Avatar photo={person.photo} sizeClass="h-7 w-7" sizes="28px" />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-[13px] font-semibold leading-tight ${name === "" ? "text-dim" : "text-prt-text"}`}>{name || "New advisor"}</span>
           {!open && <span className="mt-0.5 block truncate text-[12px] leading-tight text-prt-muted">{role || "No role yet"}</span>}

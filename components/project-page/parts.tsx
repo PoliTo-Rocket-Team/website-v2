@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
+import { MarkFallback } from "@/components/mark-fallback";
 import type { Copy } from "@/lib/projects";
 import type { LaunchPhoto, Title } from "@/lib/project-pages";
 
@@ -75,7 +76,7 @@ export function Pill({ tone, children, className = "" }: { tone: PillTone; child
   );
 }
 
-/** A photo slot: the launch's photo when it has one, else the project's texture under a dark fade, labelled. */
+/** A photo slot: the launch's photo when it has one, else the project's texture under a dark fade, with the PRT mark (issue #366). */
 export function PhotoSlot({ texture, photo, sizes, className = "" }: { texture: string; photo?: LaunchPhoto; sizes: string; className?: string }) {
   if (photo !== undefined) {
     return (
@@ -93,9 +94,7 @@ export function PhotoSlot({ texture, photo, sizes, className = "" }: { texture: 
         style={{ backgroundImage: `url('${texture}')` }}
       />
       <div aria-hidden className="absolute inset-0 bg-gradient-to-br from-ground/80 via-ground/40 to-transparent" />
-      <p className="absolute bottom-3 left-4 font-mono text-[10px] tracking-[0.2em] text-prt-muted">
-        PHOTO · FROM ARCHIVE
-      </p>
+      <MarkFallback fit="frame" />
     </div>
   );
 }

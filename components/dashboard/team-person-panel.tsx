@@ -66,7 +66,7 @@ export function TeamPersonPanel({
       className="flex flex-col border-l border-hairline bg-panel max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[60px] max-md:z-50 md:w-[480px] md:shrink-0"
     >
       <header className="flex shrink-0 items-center gap-3.5 border-b border-hairline px-7 py-5">
-        <Avatar person={{ name: fields.name || own.name, photo }} sizeClass="h-11 w-11" sizes="44px" fallback="initials" />
+        <Avatar photo={photo} sizeClass="h-11 w-11" sizes="44px" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-[20px] font-bold leading-tight">{fields.name.trim() || own.name}</h2>
           <p className="mt-0.5 truncate text-[13px] text-prt-muted">
@@ -101,7 +101,7 @@ export function TeamPersonPanel({
             <>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-                  <Avatar person={{ name: own.name, photo: own.photo }} sizeClass="h-6 w-6" sizes="24px" fallback="initials" initialsClass="text-[8px]" />
+                  <Avatar photo={own.photo} sizeClass="h-6 w-6" sizes="24px" />
                 </span>
                 <select
                   id={id}
@@ -162,7 +162,7 @@ export function TeamPersonPanel({
             {fields.photo !== null && <span className="ml-1.5 text-prt-muted">replaced here</span>}
           </p>
           <div className="flex items-center gap-4">
-            <Avatar person={{ name: own.name, photo }} sizeClass="h-12 w-12" sizes="48px" fallback="initials" initialsClass="text-[12px]" />
+            <Avatar photo={photo} sizeClass="h-12 w-12" sizes="48px" />
             <button
               type="button"
               aria-expanded={choosing}

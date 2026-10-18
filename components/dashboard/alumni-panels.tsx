@@ -130,7 +130,7 @@ function FixForm({ open, row, editable, onClose }: { open: boolean; row: Alumnus
       onOpenChange={(next) => !next && onClose()}
       title={row.name}
       detail={`Alumni · on the team ${row.from} – ${row.to}`}
-      leading={<Avatar name={row.name} size="panel" photoUrl={photo} />}
+      leading={<Avatar size="panel" photoUrl={photo} />}
       submitLabel={saving ? "Saving…" : "Save"}
       submitting={saving || !editable}
       onSubmit={submit}
@@ -190,7 +190,7 @@ function FixForm({ open, row, editable, onClose }: { open: boolean; row: Alumnus
       <div className="mt-6">
         <GroupLabel id={`${row.key}-photo`} label="Photo" hint="optional" />
         <div className="flex items-center gap-4">
-          <Avatar name={row.name} size="panel" photoUrl={photo} />
+          <Avatar size="panel" photoUrl={photo} />
           {editable && <PhotoPicker label={photo === null ? "Upload photo" : "Replace photo"} pending={uploading} onCropped={uploadPhoto} />}
         </div>
       </div>
@@ -371,7 +371,7 @@ function AdvisorForm({ open, thisYear, onClose }: { open: boolean; thisYear: num
           <div className="mt-5">
             <GroupLabel id="add-advisor-photo" label="Photo" hint="optional" />
             <div className="flex items-center gap-4">
-              {preview !== null && <Avatar name={name || "?"} size="panel" photoUrl={preview} />}
+              {preview !== null && <Avatar size="panel" photoUrl={preview} />}
               <PhotoPicker
                 label={photo === null ? "Upload photo" : "Replace photo"}
                 pending={saving}
