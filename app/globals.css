@@ -178,11 +178,10 @@
    lightens and darkens the sky around its own tone, so it reads as even
    film grain, never as specks or scratches, and leaves the sky as dark as
    the board. Its frequency and opacity are matched to board 21, recorded as
-   an exception in design-system-manifest.md. The frequency is 1.8, not a
-   whole number: SVG noise is zero on its lattice, so at baseFrequency 2 a
-   1x screen sampled only lattice points and the grain rendered flat (issue
-   #89). At 1.8 the grain measures the same at 1x, 1.25x, 1.5x and 2x, and
-   70% gives it the strength and tone the 2x render had at 2 and 60%.
+   an exception in design-system-manifest.md. Frequency 2 at 60% is the
+   approved look on a 2x screen. Issue #89 tried 1.8 at 70% so a 1x screen
+   would show grain too, but on 2x screens that drew the grain as visible
+   small squares, so the owner kept 2 at 60%.
    Both layers are drawn down from the sky's top edge, so every page shows
    the same texture at the same height, whatever its length. Where the sky
    runs straight into the footer (/projects, the project pages), the footer
@@ -215,10 +214,10 @@
     }
   }
   .page-sky-grain {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.8' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-size: 160px 160px;
     mix-blend-mode: soft-light;
-    opacity: 0.7;
+    opacity: 0.6;
   }
 
   /* Liquid glass (board 21 spec table). Every glass surface draws its edge as
