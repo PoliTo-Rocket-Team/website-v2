@@ -118,7 +118,8 @@ const config = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        display: ["var(--font-display)", "Archivo", "system-ui", "sans-serif"],
+        // Inter Tight's "&" first: its face claims U+0026 only (app/layout.tsx).
+        display: ["var(--font-ampersand)", "var(--font-display)", "Archivo", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       animation: {
