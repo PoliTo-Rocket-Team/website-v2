@@ -74,22 +74,22 @@ test("a section switched off keeps its text through Save draft and Publish, so s
 test("Save draft changes only the draft; Publish changes what the public pages show", async () => {
   const editor = projectEditor(admin, memoryContentStore(importedProjects()));
   const fields = fieldsOf(cavour);
-  const edited = { ...fields, teaser: "Edited line." };
+  const edited = { ...fields, hero: { ...fields.hero, dates: "Edited dates" } };
 
   assert.ok((await editor.saveFields(1, "save-draft", edited)).ok);
   let items = (await editor.list())!;
-  assert.equal(publicItems(items)[0].teaser, cavour.teaser);
-  assert.equal(editorVersion(items[0].version).teaser, "Edited line.");
+  assert.equal(publicItems(items)[0].hero.dates, cavour.hero.dates);
+  assert.equal(editorVersion(items[0].version).hero.dates, "Edited dates");
   assert.equal(statusOf(items[0].version), "draft-changes");
 
   assert.ok((await editor.saveFields(1, "publish", edited)).ok);
   items = (await editor.list())!;
-  assert.equal(publicItems(items)[0].teaser, "Edited line.");
+  assert.equal(publicItems(items)[0].hero.dates, "Edited dates");
   assert.equal(statusOf(items[0].version), "published");
 });
 
 test("only the full admins and holders of site-content access save; a blank field is refused; nothing changes on a refusal", async () => {
-  const fields = { ...fieldsOf(cavour), teaser: "Edited line." };
+  const fields = { ...fieldsOf(cavour), hero: { ...fieldsOf(cavour).hero, dates: "Edited dates" } };
   const outsiders: ViewerStanding[] = [
     { kind: "division-lead", siteContent: false, approveOrders: false },
     { kind: "member", areaGrant: false, siteContent: false, approveOrders: false },
@@ -113,7 +113,7 @@ test("only the full admins and holders of site-content access save; a blank fiel
 test("a request is read as fields only in their shape, and nothing it carries beyond them is kept", () => {
   const fields = fieldsOf(efesto);
   assert.deepEqual(readProjectFields(JSON.parse(JSON.stringify({ ...fields, slug: "elsewhere" }))), fields);
-  for (const broken of [null, "fields", { ...fields, teaser: 1 }, { ...fields, hero: { ...fields.hero, facts: "6" } }, { ...fields, reasons: { ...fields.reasons, shown: "yes" } }]) {
+  for (const broken of [null, "fields", { ...fields, hero: { ...fields.hero, dates: 1 } }, { ...fields, hero: { ...fields.hero, facts: "6" } }, { ...fields, reasons: { ...fields.reasons, shown: "yes" } }]) {
     assert.equal(readProjectFields(broken), null);
   }
 });

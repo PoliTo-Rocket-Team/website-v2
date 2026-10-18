@@ -50,7 +50,7 @@ import type { SummitVersions } from "@/lib/outreach-editor";
 import { draftFromColumns, outreachPostOf, postFromColumns, summitFromColumns } from "@/lib/outreach-rows";
 import { CHANNEL_NAMES, type OutreachDraft, type OutreachTag, type PostItem, type PostVersions } from "@/lib/outreach-types";
 import type { Partner } from "@/lib/partners";
-import { isProjectRecord } from "@/lib/project-content/check";
+import { storedProjectRecord } from "@/lib/project-content/check";
 import type { ProjectRecord } from "@/lib/project-content/record";
 import { rocketModelOf } from "@/lib/rocket-model";
 import { partnerFromColumns } from "@/lib/partners-rows";
@@ -385,8 +385,9 @@ export function projectItemsOf(data: SeedData): ContentItem<ProjectRecord>[] {
   return itemsOf(
     data.projects,
     data.projectVersions.map((v) => {
-      if (!isProjectRecord(v.content)) throw new Error(`project ${v.projectId} holds a ${v.version} version that is not a project record`);
-      return { itemId: v.projectId, kind: v.version, content: v.content };
+      const content = storedProjectRecord(v.content);
+      if (content === null) throw new Error(`project ${v.projectId} holds a ${v.version} version that is not a project record`);
+      return { itemId: v.projectId, kind: v.version, content };
     }),
   );
 }
@@ -1191,7 +1192,6 @@ export const SEED_CASES: readonly SeedCase[] = [
         (item) =>
           item.version.state === "published" &&
           item.version.draft !== null &&
-          item.version.draft.teaser !== item.version.published.teaser &&
           item.version.draft.hero.intro.text !== item.version.published.hero.intro.text &&
           publicItems([item])[0] === item.version.published,
       ),

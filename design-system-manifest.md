@@ -412,7 +412,8 @@ per-project components and no per-project routes: a new project is a stored reco
 New project on the dashboard Projects page (issue #301), and needs no new file. The built Cavour
 page is the layout reference.
 - Order: hero, 01 The name and 02 The design side by side, then versions, launch history, the
-  plan, numbered reasons and gallery, then the next project.
+  plan, numbered reasons and gallery, then the footer. There is no next-project card (Owner
+  decision 2026-10-18, issue #377).
 - A section the record has no data for is an absent key, and the page leaves it out entirely,
   with no note about what is missing. Section numbers follow the sections that render, so they
   always run 01, 02, 03 ... (`sectionsOf` in `lib/project-pages/index.ts`).
@@ -432,10 +433,6 @@ page is the layout reference.
   record's shape. Desktop: a row of steps under a top rule, the step under way in accent.
   Phones: a vertical timeline with dots. Numbered reasons (board 25 "Why liquid"): up to three,
   in columns on desktop, stacked on phones.
-- Next project loops through the published projects in site order, back to the first (Cavour,
-  VES, Efesto, back to Cavour).
-  "Open <name>" is the white pill and "All projects" the outlined one, as built for Cavour
-  (boards 24 and 25 draw the open button orange; the built page wins).
 - Gallery (boards 23, 23m and 23L, `components/gallery/gallery.tsx`): a carousel with the
   current photo centred (760 x 480, phones 300 x 220) and its neighbours smaller at 35%
   opacity, clipped by the page edge. It wraps, never autoplays and does not move while idle.

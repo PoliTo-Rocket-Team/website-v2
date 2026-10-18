@@ -70,12 +70,12 @@ test("a test developer's edit keeps only the sections it changed, fits the cooki
   const editor = contentEditor(admin, dummyProjectStore(jar));
   const withLaunch: VehicleRecord = { ...cavour, launches: { ...cavour.launches!, entries: [...cavour.launches!.entries, newLaunch] } };
   assert.ok((await editor.save(1, "publish", save(withLaunch))).ok);
-  assert.ok((await editor.save(3, "save-draft", save({ ...importedRecords[2], teaser: "Edited." }))).ok);
+  assert.ok((await editor.save(3, "save-draft", save({ ...importedRecords[2], description: "Edited." }))).ok);
 
   const kept = parseProjectEdits(jar.value);
   assert.deepEqual(kept.saved.map((item) => [item.id, Object.keys(editorVersion(item.version))]), [
     [1, ["launches"]],
-    [3, ["teaser"]],
+    [3, ["description"]],
   ]);
   assert.ok(jar.value!.length <= DUMMY_STATE_COOKIE_BYTES, `${jar.value!.length} bytes`);
 
@@ -83,9 +83,9 @@ test("a test developer's edit keeps only the sections it changed, fits the cooki
   const next = await dummyProjectStore(jar).list();
   const shown = publicItems(next);
   assert.equal(pageRecordOf(shown[0]).launches?.entries.length, 4);
-  assert.equal(shown[2].teaser, importedRecords[2].teaser, "a draft is not published");
-  assert.equal(editorVersion(next[2].version).teaser, "Edited.");
-  assert.equal(editorVersion(next[1].version).teaser, editorVersion(dummyProjectSeed()[1].version).teaser, "VES keeps its seeded draft");
+  assert.equal(shown[2].description, importedRecords[2].description, "a draft is not published");
+  assert.equal(editorVersion(next[2].version).description, "Edited.");
+  assert.deepEqual(editorVersion(next[1].version).hero, editorVersion(dummyProjectSeed()[1].version).hero, "VES keeps its seeded draft");
 });
 
 test("an optional section switched off is kept as left out, and comes back when switched on", async () => {
@@ -112,7 +112,7 @@ function noise(length: number, seed: number): string {
 test("an edit the cookie cannot hold is refused with a message, and nothing changes", async () => {
   const jar = cookie();
   const editor = contentEditor(admin, dummyProjectStore(jar));
-  const bloated: VehicleRecord = { ...cavour, description: noise(3000, 1), teaser: noise(3000, 2) };
+  const bloated: VehicleRecord = { ...cavour, description: noise(3000, 1), name: noise(3000, 2) };
   const result = await editor.save(1, "save-draft", save(bloated));
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.error, PREVIEW_FULL);

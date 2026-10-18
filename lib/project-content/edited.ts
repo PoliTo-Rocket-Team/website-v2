@@ -21,7 +21,6 @@ const PART_NAMES: Readonly<Partial<Record<ProjectSection, string>>> = {
   plan: "Plan",
   reasons: "Why",
   gallery: "Gallery",
-  teaser: "Next-project card",
   card: "Home card",
 };
 

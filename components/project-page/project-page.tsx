@@ -16,7 +16,6 @@ export async function ProjectPage({ slug }: { slug: string }) {
     <ProjectPageView
       project={listingOf(found.record, found.position)}
       record={pageRecordOf(found.record)}
-      next={{ project: listingOf(found.next.record, found.next.position), teaser: found.next.record.teaser }}
       footerProjects={await footerProjects()}
     />
   );
