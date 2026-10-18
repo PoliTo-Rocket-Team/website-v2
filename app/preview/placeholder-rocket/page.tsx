@@ -4,9 +4,9 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { HomeProjectCard } from "@/components/landing/project-card";
 import { ProjectHero } from "@/components/project-page/hero";
-import { dummyDataOn } from "@/lib/dummy-data/mode";
 import type { HomeCardView } from "@/lib/project-content/record";
 import type { Hero } from "@/lib/project-pages";
+import { samplePagesOn } from "@/lib/sample-pages";
 
 export const metadata: Metadata = {
   title: "Placeholder rocket · PoliTo Rocket Team",
@@ -16,7 +16,8 @@ export const metadata: Metadata = {
 // The placeholder rocket (issue #296) on a project with no model of its own:
 // its home card and its page hero, drawn by the same components as the real
 // projects. No project draws the placeholder until New project adds one, so
-// this sample lets a preview show it. Off dummy mode the route does not exist.
+// this sample lets a preview show it, with or without a database
+// (lib/sample-pages.ts). In production the route does not exist.
 
 const card: HomeCardView = {
   num: "04",
@@ -46,7 +47,7 @@ const hero: Hero = {
 };
 
 export default function PlaceholderRocketPreview() {
-  if (!dummyDataOn()) notFound();
+  if (!samplePagesOn()) notFound();
   return (
     <div className="relative bg-ground">
       <LandingNavbar />
