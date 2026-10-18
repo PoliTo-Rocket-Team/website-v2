@@ -5,6 +5,7 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { withAcademicYear } from "@/lib/about/academic-year-copy";
 import type { TeamPage } from "@/lib/about/types";
+import type { FooterProject } from "@/lib/landing-links";
 import { Advisors } from "./advisors";
 import { CoreMembers } from "./core-members";
 import { Departments, type DepartmentFrames } from "./departments";
@@ -40,11 +41,14 @@ export type TeamPageFrames = {
 export function TeamPageView({
   page,
   academicYear,
+  footerProjects,
   frames = {},
 }: {
   page: TeamPage;
   /** The academic year the intro names, as its first calendar year. */
   academicYear: number;
+  /** The published projects the footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
   frames?: TeamPageFrames;
 }) {
   const { header } = page;
@@ -63,7 +67,7 @@ export function TeamPageView({
         </main>
       </PageSky>
       <ApplyBand />
-      <LandingFooter />
+      <LandingFooter projects={footerProjects} />
       {frames.note}
     </div>
   );

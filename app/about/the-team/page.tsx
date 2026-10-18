@@ -3,6 +3,7 @@ import { TeamPageView } from "@/components/about/team-page";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
 import { team } from "@/lib/about/team";
 import { teamPageData } from "@/lib/about/team-data";
+import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "The Team · PoliTo Rocket Team",
@@ -16,6 +17,6 @@ export const metadata: Metadata = {
 // the hand-typed lib/about/team.ts.
 export default async function TeamPage() {
   // The intro names the current academic year, which turns over on 1 October.
-  const [page, academicYear] = await Promise.all([teamPageData(), currentAcademicYearStart()]);
-  return <TeamPageView page={page} academicYear={academicYear} />;
+  const [page, academicYear, projects] = await Promise.all([teamPageData(), currentAcademicYearStart(), footerProjects()]);
+  return <TeamPageView page={page} academicYear={academicYear} footerProjects={projects} />;
 }

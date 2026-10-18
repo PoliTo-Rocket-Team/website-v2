@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ProjectsListPage } from "@/components/projects/list-page";
 import { listingOf } from "@/lib/project-content/record";
-import { publishedProjects } from "@/lib/project-content/public";
+import { footerProjects, publishedProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "Projects · PoliTo Rocket Team",
@@ -14,5 +14,5 @@ export const metadata: Metadata = {
 // components/projects/list-page.tsx, which the edit shell's page switch
 // draws too (issue #300).
 export default async function ProjectsPage() {
-  return <ProjectsListPage projects={(await publishedProjects()).map(listingOf)} />;
+  return <ProjectsListPage projects={(await publishedProjects()).map(listingOf)} footerProjects={await footerProjects()} />;
 }

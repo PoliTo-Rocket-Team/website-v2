@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { PageHeader } from "@/components/about/page-header";
 import { Faq as FaqSection } from "@/components/apply/faq";
 import { Positions } from "@/components/apply/positions";
-import { LandingFooter } from "@/components/landing/footer";
+import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { applyPage, applyStats, type Faq } from "@/lib/apply/page";
@@ -21,7 +21,7 @@ export function ApplyFrame({ children }: { children: ReactNode }) {
       <LandingNavbar />
       <PageSky>
         <main className="pb-section pt-16 md:pt-[72px]">{children}</main>
-        <LandingFooter inSky />
+        <SiteFooter inSky />
       </PageSky>
     </div>
   );

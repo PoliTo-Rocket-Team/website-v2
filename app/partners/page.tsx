@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/about/page-header";
-import { LandingFooter } from "@/components/landing/footer";
+import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { BecomePartner } from "@/components/partners/become-partner";
@@ -31,7 +31,7 @@ export default async function PartnersPage() {
           <PartnerGroup title={partnersPage.mediaTitle} partners={partnersOf(partners, "media")} />
           <BecomePartner />
         </main>
-        <LandingFooter inSky />
+        <SiteFooter inSky />
       </PageSky>
     </div>
   );

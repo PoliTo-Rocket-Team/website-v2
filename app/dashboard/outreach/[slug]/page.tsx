@@ -8,6 +8,7 @@ import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { neighboursOf, slugOf } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
+import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "Edit post · Outreach · Dashboard · PoliTo Rocket Team",
@@ -52,5 +53,5 @@ async function LivePost({ params }: Params) {
   const content = await publishedOutreach();
   const published = publicVersion(item.version);
   const neighbours = published === null ? {} : neighboursOf(content.posts, published);
-  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} published={content} />;
+  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} published={content} footerProjects={await footerProjects()} />;
 }

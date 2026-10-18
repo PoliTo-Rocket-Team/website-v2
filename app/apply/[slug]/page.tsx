@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import type { Applicant } from "@/app/actions/get-applicant";
 import { ApplicationForm } from "@/components/apply/application-form";
 import { ClosedPopover, PositionLayout, SentPopover, SignInPopover, type PositionView } from "@/components/apply/position";
-import { LandingFooter } from "@/components/landing/footer";
+import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import type { ApplyPosition } from "@/db/types";
@@ -41,7 +41,7 @@ export default function PositionPage({ params }: { params: Promise<{ slug: strin
             <LivePosition params={params} />
           </Suspense>
         </main>
-        <LandingFooter inSky />
+        <SiteFooter inSky />
       </PageSky>
     </div>
   );

@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { publicItems } from "@/lib/content/versioned";
 import { importedPartners } from "@/lib/partners-import";
 import { importedProjects } from "@/lib/project-content/import";
-import { FOOTER_COLUMNS, NEW_TAB, isExternal, landingHrefs, opensOf, outreachPostHref } from "./landing-links";
+import { NEW_TAB, footerColumns, isExternal, landingHrefs, opensOf, outreachPostHref } from "./landing-links";
 
 // Issue #359: every landing link (navbar, hero, sections, footer) is checked.
 // A link to a page must name a page the app has (app/**/page.tsx); a link to
@@ -43,14 +43,28 @@ test("every page the landing page links to exists", () => {
   assert.ok(isPage(outreachPostHref("a-post")), "a Track record card's post page");
 });
 
-test("the footer's project links name published projects", () => {
-  const slugs = new Set(publicItems(importedProjects()).map((p) => p.slug));
-  const projects = FOOTER_COLUMNS.find((c) => c.head === "PROJECTS");
-  assert.ok(projects);
-  for (const [, href] of projects.links) {
-    const slug = href.replace(/^\/projects\//, "");
-    assert.ok(slugs.has(slug), `${href} is no published project`);
-  }
+// Issue #378: the PROJECTS column is the published projects, each by name
+// linking to its page, in the order it is handed (the /projects order).
+test("the footer's PROJECTS column lists the published projects, in order, each linking to its page", () => {
+  const published = publicItems(importedProjects());
+  assert.ok(published.length > 0);
+  const columns = footerColumns(published);
+  assert.deepEqual(
+    columns.map((c) => c.head),
+    ["ABOUT", "PROJECTS", "GET INVOLVED", "CONTACT"],
+  );
+  const projects = columns[1];
+  assert.deepEqual(
+    projects.links,
+    published.map((p) => [p.name, `/projects/${p.slug}`]),
+  );
+  for (const [, href] of projects.links) assert.ok(isPage(href), `${href} names no page under app/`);
+  // The other columns do not depend on the projects.
+  assert.deepEqual(
+    columns.filter((c) => c.head !== "PROJECTS"),
+    footerColumns([]).filter((c) => c.head !== "PROJECTS"),
+  );
+  assert.deepEqual(footerColumns([]).find((c) => c.head === "PROJECTS")?.links, []);
 });
 
 test("every link to another site opens in a new tab with noopener noreferrer", () => {

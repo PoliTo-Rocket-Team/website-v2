@@ -3,6 +3,7 @@ import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import type { HeaderStats } from "@/lib/about/types";
+import type { FooterProject } from "@/lib/landing-links";
 import { outreachCopy } from "@/lib/outreach";
 import type { OutreachFeature } from "@/lib/outreach-types";
 import { Feature } from "./feature";
@@ -20,6 +21,7 @@ export function OutreachListPage({
   feature,
   cards,
   years,
+  footerProjects,
   frame,
   keepInView,
 }: {
@@ -28,6 +30,8 @@ export function OutreachListPage({
   /** Newest first. */
   cards: readonly PostCardData[];
   years: readonly number[];
+  /** The published projects the footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
   frame?: PostCardFrame;
   keepInView?: PostCardData;
 }) {
@@ -40,7 +44,7 @@ export function OutreachListPage({
           <Feature feature={feature} />
           <Posts title={outreachCopy.postsTitle} posts={cards} years={years} frame={frame} keepInView={keepInView} />
         </main>
-        <LandingFooter inSky />
+        <LandingFooter inSky projects={footerProjects} />
       </PageSky>
     </div>
   );

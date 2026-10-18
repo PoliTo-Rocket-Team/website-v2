@@ -5,6 +5,7 @@ import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
 import { ProjectEdit } from "@/components/dashboard/project-edit";
 import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { openDashboard } from "@/lib/dashboard/open";
+import { footerProjects } from "@/lib/project-content/public";
 import { placeOf } from "@/lib/project-content/record";
 
 export const metadata: Metadata = {
@@ -39,5 +40,5 @@ async function LiveProject({ params }: Params) {
     items.find((i) => editorVersion(i.version).slug === slug) ?? items.find((i) => publicVersion(i.version)?.slug === slug);
   const place = item === undefined ? null : placeOf(items, item.id);
   if (item === undefined || place === null) notFound();
-  return <ProjectEdit item={item} place={place} />;
+  return <ProjectEdit item={item} place={place} footerProjects={await footerProjects()} />;
 }
