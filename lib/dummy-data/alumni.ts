@@ -1,3 +1,4 @@
+import { newestFinishedAcademicYear } from "@/lib/about/academic-year";
 import { importedEntries } from "@/lib/about/alumni-import";
 import {
   academicYearOfDay,
@@ -20,6 +21,9 @@ import { DUMMY_NOW, formerMember, type DummyAlumnus } from "./team";
 
 /** This academic year on the dummy clock: 2026–27. */
 export const DUMMY_ALUMNI_YEAR = academicYearOfDay(DUMMY_NOW.slice(0, 10));
+
+/** The newest finished academic year on the dummy clock, the last the Alumni page lists: 2025–26 (#391). */
+export const DUMMY_NEWEST_FINISHED_YEAR = newestFinishedAcademicYear(new Date(DUMMY_NOW));
 
 /** Someone off the team: their Alumni row, and the place they held when they left, when the roster knew them. */
 export type DummyFormer = { readonly row: DummyAlumnus; readonly placement: Placement | null };

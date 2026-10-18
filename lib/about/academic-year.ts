@@ -11,6 +11,15 @@ export function academicYearStart(at: Date): number {
   return month >= 10 ? year : year - 1;
 }
 
+/**
+ * The newest academic year that has ended at a moment, as its first calendar
+ * year: the one before the running year. On 30 September 2026 it is 2024–25;
+ * on 1 October 2026 it is 2025–26 (issue #391).
+ */
+export function newestFinishedAcademicYear(at: Date): number {
+  return academicYearStart(at) - 1;
+}
+
 // How copy names the year lives apart, with no cache, so the Team page
 // editor in the browser fills the intro the same way (issue #284).
 export { academicYearLabel, CURRENT_ACADEMIC_YEAR, withAcademicYear } from "./academic-year-copy";
@@ -23,4 +32,15 @@ export async function currentAcademicYearStart(): Promise<number> {
   "use cache";
   cacheLife("days");
   return academicYearStart(new Date());
+}
+
+/**
+ * Today's newest finished academic year, cached for a day like the running
+ * year, so the Alumni page gains the year that just ended on 1 October
+ * without a redeploy.
+ */
+export async function newestFinishedAcademicYearStart(): Promise<number> {
+  "use cache";
+  cacheLife("days");
+  return newestFinishedAcademicYear(new Date());
 }

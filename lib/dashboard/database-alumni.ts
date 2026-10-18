@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { asc, eq, isNotNull, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { alumniEntries, alumniImportedRoles, alumniRoleFixes, departments, divisions, roles, users } from "@/db/schema";
+import { alumniEntries, alumniImportedRoles, alumniRoleFixes, departments, divisions, members, roles, users } from "@/db/schema";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
 import {
   alumniOf,
@@ -72,9 +72,11 @@ async function queryAlumniRecord(): Promise<AlumniRecord> {
         divisionId: roles.divisionId,
       })
       .from(roles),
+    // The member row's picture is the photo beside their name on the yearly lists (#391).
     db
-      .select({ memberId: users.member, firstName: users.firstName, lastName: users.lastName, email: users.email })
+      .select({ memberId: users.member, firstName: users.firstName, lastName: users.lastName, email: users.email, picture: members.picture })
       .from(users)
+      .leftJoin(members, eq(members.memberId, users.member))
       .where(isNotNull(users.member)),
     db.select().from(alumniEntries).orderBy(asc(alumniEntries.id)),
     db.select().from(alumniRoleFixes),
@@ -102,7 +104,14 @@ async function queryAlumniRecord(): Promise<AlumniRecord> {
     people: personRows.flatMap((p) =>
       p.memberId === null
         ? []
-        : [{ memberId: p.memberId, name: [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || null, email: p.email }],
+        : [
+            {
+              memberId: p.memberId,
+              name: [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || null,
+              email: p.email,
+              ...(p.picture?.trim() && { picture: p.picture }),
+            },
+          ],
     ),
     entries,
     imported: importedRows.map((r) => ({ entryId: r.entryId, year: r.year, group: r.groupName, role: r.role, position: r.position })),
