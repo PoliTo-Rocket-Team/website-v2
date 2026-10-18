@@ -395,10 +395,11 @@ of its own draws the shared placeholder, `lib/rocket-model.ts`). The engine is d
 placeholder's pen look, smaller than a rocket, in the card's upper part above the info box.
 VES Mark I is built at Cavour's length and body proportions, not as a replica, so the cards read
 as one set (`rocket-ves.tsx`). At rest it shows from the nose to
-mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
-the rocket stays where it rests. The canvas wrapper hangs above and below the card and is clipped to the card's sides and
-bottom only. The camera holds still; the vehicle turns about its long axis only while the
-card is hovered (Card rocket hover turn below), and holds still otherwise.
+mid-body above the info box. There is no hover rise (Owner decision, 2026-10-06): on hover the
+card's glass edge brightens and the rocket turns in place about its long axis (Owner decision,
+2026-10-19, issue #385; Card rocket hover turn above), then eases back to rest. The canvas
+wrapper hangs above and below the card and is clipped to the card's sides and bottom only. The
+camera holds still, and the vehicle holds still whenever its card is not hovered.
 At rest the nose sits about 30px below the card top and
 the flags show just above the info box. The canvas takes no pointer events. No raycast hover
 (`project-card.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
@@ -579,9 +580,10 @@ stacked.
 - **Footer projects.** The landing Projects section shows three projects (board 21), but the
   footer's Projects column still lists VES Mark II separately, as board 21's footer does.
 - **Hover turn.** `handoff-hero-rocket.md` §8 describes a card hover where the rocket turns its
-  nose toward the viewer, and board 21 a straight rise. Neither is built: the card rocket stays
-  where it rests (Huey, 2026-10-06, issue #73) and only spins about its own long axis there
-  (issue #385). The handoff and the board are stale there.
+  nose toward the viewer, and board 21 a straight rise. Neither is built: the card rocket does
+  not rise or move from its rest pose (Owner decision, 2026-10-06, issue #73); while its card is
+  hovered it only turns about its own long axis in place (issue #385). The handoff and the board
+  are stale there.
 - **Focus styles.** Landing links and pills have no `focus-visible` style. Only
   `components/ui/` primitives do (`components/ui/button.tsx`).
 - **Unused keyframes.** `rocket-hover`, `rocket-fly-in` and `shoot` in `tailwind.config.ts`
