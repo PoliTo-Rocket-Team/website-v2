@@ -40,7 +40,8 @@ export type HomeCard = {
   infoTint?: number;
   /**
    * The rocket the card draws; with none it draws the shared placeholder
-   * (lib/rocket-model.ts). All three cards draw Cavour, as board 21 does.
+   * (lib/rocket-model.ts). Board 21 draws Cavour on all three cards; VES
+   * draws its own since it was built (issue #361).
    */
   rocket?: OwnRocketModel;
 };

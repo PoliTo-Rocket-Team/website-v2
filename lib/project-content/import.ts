@@ -2,6 +2,7 @@ import type { GalleryItem } from "@/components/gallery/items";
 import type { ContentItem } from "@/lib/content/versioned";
 import type { Version } from "@/lib/project-pages/types";
 import type { ProjectRecord, VehicleRecord, EngineRecord } from "./record";
+import { revise, type ProjectRevision } from "./revision";
 
 // Carrying Cavour, VES and Efesto into the content store (issue #295), each
 // published, in the site order Cavour, VES, Efesto. Before the store, each
@@ -649,8 +650,36 @@ const efesto: EngineRecord = {
   teaser: "Italy's first pressure-fed liquid engine, printed in copper.",
 };
 
-/** The three projects as the import carries them, in site order. */
-export const importedRecords: readonly ProjectRecord[] = [cavour, ves, efesto];
+/**
+ * The three projects as migration 0037 carried them into the store, in site
+ * order. Frozen: a later change to their content is a revision below.
+ */
+export const firstImport: readonly ProjectRecord[] = [cavour, ves, efesto];
+
+/**
+ * VES draws its own rocket, Mark I, on its home card and its page (issue
+ * #361), not Cavour's. The page's caption names the mark it draws.
+ * Migration drizzle/0040_ves_mark_one_rocket.sql holds its `revisionSql`.
+ */
+export const vesMarkOneRocket: ProjectRevision = {
+  slug: "ves",
+  sets: [
+    { path: ["card", "rocket"], value: "ves" },
+    { path: ["hero", "visual", "caption"], value: "VES MARK I · EUROC 2024 CONFIGURATION" },
+    {
+      path: ["hero", "visual", "rocket"],
+      value: { own: { model: "ves", alt: "VES Mark I in its EuRoC 2024 livery, side-on, nose right" } },
+    },
+  ],
+};
+
+/** The revisions made since the import, in migration order. */
+export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket];
+
+/** The three projects as the store holds them once every migration ran: the import, revised. */
+export const importedRecords: readonly ProjectRecord[] = firstImport.map((record) =>
+  projectRevisions.reduce(revise, record),
+);
 
 /** The records as stored items: ids and site order from 1, each published with no draft. */
 export function importedProjects(records: readonly ProjectRecord[] = importedRecords): ContentItem<ProjectRecord>[] {
@@ -671,7 +700,7 @@ function literal(value: string): string {
  * published version in `project_versions`, written in one go so the version
  * finds its project's new id.
  */
-export function projectImportSql(records: readonly ProjectRecord[] = importedRecords): string {
+export function projectImportSql(records: readonly ProjectRecord[] = firstImport): string {
   return records
     .map((record, i) =>
       [

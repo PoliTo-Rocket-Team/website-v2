@@ -1,5 +1,6 @@
 import { CAVOUR_CARD_POSTER, CAVOUR_STAGE_POSTER } from "@/components/landing/cavour-assets";
 import { PLACEHOLDER_CARD_POSTER, PLACEHOLDER_STAGE_POSTER } from "@/components/landing/placeholder-assets";
+import { VES_CARD_POSTER, VES_STAGE_POSTER } from "@/components/landing/ves-assets";
 
 // Which rocket a project's card stage and page slot draw (issue #296). A
 // rocket model is code (components/landing/rocket-<name>.tsx), never content:
@@ -7,7 +8,7 @@ import { PLACEHOLDER_CARD_POSTER, PLACEHOLDER_STAGE_POSTER } from "@/components/
 // the shared placeholder until its own is built.
 
 /** The vehicles written in code for one project each. */
-export const ownRocketModels = ["cavour"] as const;
+export const ownRocketModels = ["cavour", "ves"] as const;
 export type OwnRocketModel = (typeof ownRocketModels)[number];
 
 /** What a rocket slot draws: a project's own model, or the shared placeholder. */
@@ -25,6 +26,7 @@ export function rocketModelOf(own: OwnRocketModel | undefined): RocketModel {
  */
 const posters: Record<RocketModel, { card: string; stage: string }> = {
   cavour: { card: CAVOUR_CARD_POSTER, stage: CAVOUR_STAGE_POSTER },
+  ves: { card: VES_CARD_POSTER, stage: VES_STAGE_POSTER },
   placeholder: { card: PLACEHOLDER_CARD_POSTER, stage: PLACEHOLDER_STAGE_POSTER },
 };
 
