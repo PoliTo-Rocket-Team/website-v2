@@ -774,10 +774,21 @@ export const vesSitePhotos: ProjectRevision = {
 };
 
 /**
+ * VES's rocket is orange, so its orange streak texture hid it. Its card, its
+ * /projects panel and its page sit on the same streak image in grey instead
+ * (issue #386); the orange file stays in public/textures/. Migration
+ * drizzle/0042_ves_grey_texture.sql holds its `revisionSql`.
+ */
+export const vesGreyTexture: ProjectRevision = {
+  slug: "ves",
+  sets: [{ path: ["texture"], value: "/textures/project-ves-grey.webp" }],
+};
+
+/**
  * Efesto is an engine that has not flown, so its home card and its page draw
  * its engine, drawn in outline (issue #382), not Cavour. The import gave its
  * page no panel, so the revision sets the whole panel. Migration
- * drizzle/0042_efesto_engine_model.sql holds its `revisionSql`.
+ * drizzle/0043_efesto_engine_model.sql holds its `revisionSql`.
  */
 export const efestoEngineModel: ProjectRevision = {
   slug: "efesto",
@@ -799,7 +810,7 @@ export const efestoEngineModel: ProjectRevision = {
 };
 
 /** The revisions made since the import, in migration order. */
-export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket, cavourSitePhotos, vesSitePhotos, efestoEngineModel];
+export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket, cavourSitePhotos, vesSitePhotos, vesGreyTexture, efestoEngineModel];
 
 /** The three projects as the code reads them once every migration ran: the import, revised, with its retired key left out. */
 export const importedRecords: readonly ProjectRecord[] = firstImport.map(({ teaser: _retired, ...record }) =>

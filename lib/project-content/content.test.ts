@@ -11,7 +11,7 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
 import { isProjectRecord, storedProjectRecord } from "./check";
-import { cavourSitePhotos, efestoEngineModel, firstImport, importedProjects, importedRecords, projectImportSql, vesMarkOneRocket, vesSitePhotos } from "./import";
+import { cavourSitePhotos, efestoEngineModel, firstImport, importedProjects, importedRecords, projectImportSql, vesGreyTexture, vesMarkOneRocket, vesSitePhotos } from "./import";
 import { listPhotos } from "./list-fields";
 import { homeCardOf, listingOf, listingsNewestFirst, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
 import { revise, revisionSql } from "./revision";
@@ -83,9 +83,21 @@ test("migration 0041 holds exactly the current-site photo revisions, and every p
   }
 });
 
-test("migration 0042 holds exactly the Efesto engine revision, and only an engine record may name the engine", () => {
+test("migration 0042 holds exactly the VES grey texture revision, and the texture is a file of the site", () => {
   assert.ok(
-    migrationFile("0042_efesto_engine_model.sql").trimEnd().endsWith(revisionSql(efestoEngineModel)),
+    migrationFile("0042_ves_grey_texture.sql").trimEnd().endsWith(revisionSql(vesGreyTexture)),
+    "regenerate the migration from revisionSql(vesGreyTexture)",
+  );
+  const [cavour, ves, efesto] = importedRecords;
+  assert.equal(ves.texture, "/textures/project-ves-grey.webp");
+  assert.ok(existsSync(join(__dirname, "..", "..", "public", ves.texture)), `${ves.texture} is in public/`);
+  assert.equal(firstImport[1].texture, "/textures/project-ves.webp", "the import itself stays as 0037 carried it");
+  assert.deepEqual([cavour.texture, efesto.texture], [firstImport[0].texture, firstImport[2].texture], "no other project's texture changes");
+});
+
+test("migration 0043 holds exactly the Efesto engine revision, and only an engine record may name the engine", () => {
+  assert.ok(
+    migrationFile("0043_efesto_engine_model.sql").trimEnd().endsWith(revisionSql(efestoEngineModel)),
     "regenerate the migration from revisionSql(efestoEngineModel)",
   );
   const efesto = importedRecords[2];
