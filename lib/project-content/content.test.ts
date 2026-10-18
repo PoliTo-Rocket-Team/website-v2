@@ -56,6 +56,14 @@ test("migration 0040 holds exactly the VES Mark I revision, and the revised reco
   const ves = importedRecords[1];
   assert.equal(ves.card.rocket, "ves");
   assert.deepEqual(pageRecordOf(ves).hero.visual?.rocket?.own?.model, "ves");
+  const markI = ves.kind === "vehicle" ? ves.versions?.after.find((v) => v.pill === "VES MARK I") : undefined;
+  assert.ok(markI, "VES has its Mark I version");
+  const { diameter, length, wetMass, motor, maxSpeed, targetApogee } = markI.specs;
+  assert.deepEqual(
+    ves.hero.facts.map((f) => f.value),
+    [diameter, length, wetMass, motor, maxSpeed, targetApogee],
+    "the key facts under the Mark I caption are Mark I's",
+  );
   assert.equal(firstImport[1].card.rocket, "cavour", "the import itself stays as 0037 carried it");
   assert.deepEqual(importedRecords[0], firstImport[0], "a revision touches its own project only");
 });

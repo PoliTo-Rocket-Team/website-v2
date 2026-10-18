@@ -5,6 +5,7 @@ import { brand } from "@/lib/brand-colors";
 import type { WeatherUniforms } from "./hero-weathering";
 import {
   DEG,
+  FIN_THICKNESS_OF_SPAN,
   finGeometry,
   hullMaterials,
   lathe,
@@ -17,76 +18,80 @@ import {
 } from "./rocket-parts";
 
 // VES Mark I built in code, the way rocket-cavour.tsx builds Cavour (issue
-// #361). There is no CAD file for VES, so every number below was read off the
-// team's side-on photos of Mark I at EuRoC 2024 and the public specs: 134 mm
-// outer diameter, about 3.42 m long (3.65 m is Mark II). Measured in the
-// photo of the rocket held level, where the body is 43 px across and the
-// whole vehicle 1100 px long.
+// #361). It is not a replica: by Owner decision
+// (https://github.com/PoliTo-Rocket-Team/website-v2/issues/361#issuecomment-6253099628)
+// it takes Cavour's length and body proportions, so the project cards read
+// as one set, and keeps Mark I's look. The real Mark I is 134 mm across and
+// 3 420 mm long (25 calibres); the page's key facts say so, the model does
+// not try to.
 //
-// Units are Cavour's, so the shared nozzle and seams fit and the stages read
-// both vehicles in one frame: body radius 0.05, tail at y=0, nose pointing
-// +Y, laid along +X by the holder at the bottom. MM converts a measured
-// millimetre into those units.
+// Units and envelope are Cavour's: body radius 0.05, tail at y=0, nose tip
+// at y=0.85, the nose starting where Cavour's does, nose pointing +Y, laid
+// along +X by the holder at the bottom. The shared nozzle and seams fit, and
+// the model is framed in Cavour's own box (BBOX_MIN below), so on a stage
+// that draws either one at the same length the two bodies match.
 //
-// Livery, from the same photos: a white body, one orange stripe along one
-// side with a thin black edge, a white ogive nose with a small black tip, four
-// orange swept fins, a short black band just above the fins and a black
-// tail ring. It is drawn into a canvas from the brand colours, so the wrap
-// needs no file. Decals and lettering are left out.
+// Livery, from the team's photos of Mark I at EuRoC 2024: a white body, one
+// orange stripe along one side with a thin black edge, a white ogive nose
+// with a small black tip, four orange swept fins, a short black band just
+// above the fins and a black tail ring. It is drawn into a canvas from the
+// brand colours, so the wrap needs no file. Decals and lettering are left
+// out.
 
-const MM = 0.05 / 67; // units per millimetre: 67 mm radius → Cavour's 0.05
-const R = 0.05; // body radius, 134 mm
-const LENGTH_MM = 3420; // nose tip to the nozzle's mouth
-// The bell's mouth is the lowest point: y = -0.027 (nozzleGeometry).
-const BBOX_MIN = -0.027;
-const TIP = LENGTH_MM * MM + BBOX_MIN;
-const NOSE_LENGTH = 470 * MM; // a tangent ogive, 3.5 calibres
-const NOSE_START = TIP - NOSE_LENGTH;
-const NOSE_TIP_BLACK = 55 * MM; // the black cap on the nose's point
+const R = 0.05; // body radius, Cavour's
+const TIP = 0.85; // nose tip, Cavour's
+const NOSE_START = 0.619; // where Cavour's nose begins
+const NOSE_LENGTH = TIP - NOSE_START; // a tangent ogive, about 2.3 calibres
+const NOSE_TIP_BLACK = 0.027; // the black cap on the nose's point
+// Cavour's box: its fin tips reach y = -0.0357, lower than this nozzle's
+// mouth (-0.027, nozzleGeometry), so VES sits in the frame exactly where
+// Cavour does.
+const BBOX_MIN = -0.0357;
 
-// Fin plate outline in (radial, axial): swept trapezoid, root buried 0.8 mm
-// (in Cavour units) inside the skin. Root chord 340 mm, tip chord 120 mm,
-// span 150 mm; the trailing edge stands square, 20 mm above the tail. Four
-// at 45° + k·90°, as Cavour's. Thin and square-cut: a 5 mm plate, no fillet.
+// Fin plate outline in (radial, axial): Mark I's swept trapezoid at Cavour's
+// span. Root buried 0.8 mm inside the skin; span 0.0625 as Cavour's; root
+// chord 2.27 spans and tip chord 0.8 span, Mark I's ratios; the trailing
+// edge stands square just above the tail. Four at 45° + k·90°, as Cavour's.
+// Thin and square-cut: a plate, no fillet.
 const FIN_ROOT = R - 0.0008;
-const FIN_TIP = R + 150 * MM;
+const FIN_TIP = 0.1125;
 const FIN_OUTLINE: [number, number][] = [
-  [FIN_ROOT, 20 * MM],
-  [FIN_ROOT, 360 * MM],
-  [FIN_TIP, 140 * MM],
-  [FIN_TIP, 20 * MM],
+  [FIN_ROOT, 0.008],
+  [FIN_ROOT, 0.15],
+  [FIN_TIP, 0.058],
+  [FIN_TIP, 0.008],
 ];
-const FIN_THICKNESS = 5 * MM;
+const FIN_THICKNESS = FIN_THICKNESS_OF_SPAN * 0.1675; // Cavour's plate
 
 // Section joints: the fin can, the two body joints and the nose shoulder.
-const SEAM_Y = [400 * MM, 1330 * MM, 2050 * MM, NOSE_START];
+const SEAM_Y = [0.16, 0.36, 0.5, NOSE_START];
 const SEAM_R = 0.0504;
 const SEAM_H = 0.0009;
 
 // The short black band, just above the fins.
-const BAND = { from: 400 * MM, to: 470 * MM };
+const BAND = { from: 0.16, to: 0.178 };
 
 // The orange stripe: a third of the round, centred low on the camera side
 // (angle 90° faces the camera, 0° faces down once laid along +X), from above
 // the band to just short of the nose shoulder. Its ends taper to a point
 // along its upper edge, as the photos show, and a thin black line edges it.
 const STRIPE = {
-  from: 520 * MM,
-  to: NOSE_START - 60 * MM,
+  from: 0.192,
+  to: NOSE_START - 0.016,
   angLo: -10,
   angHi: 110,
-  taper: 260 * MM,
-  edge: 6 * MM,
+  taper: 0.065,
+  edge: 0.0045,
 };
 
 /** u on the hull's UV rule (rocket-parts.ts): u = 0.5 − angle/2π. */
 const uOf = (angDeg: number) => 0.5 - angDeg / 360;
 
 // The wrap drawn into a canvas on the hull's UV rule (v = 1 − y/TIP, nose at
-// the top of the image). The hull is 25 calibres long, so the image is tall.
+// the top of the image). The hull is 8.5 calibres long, so the image is tall.
 function liveryTexture(): THREE.CanvasTexture {
   const W = 512;
-  const H = 4096;
+  const H = 2048;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;

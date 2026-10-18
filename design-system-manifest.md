@@ -18,10 +18,11 @@ trust that code over the ADR. Unsettled conflicts are listed under "Open gaps".
 - Tailwind CSS 3 (`tailwind.config.ts`) plus `tailwindcss-animate`. shadcn/ui primitives in
   `components/ui/` (`components.json`: style `default`, CSS variables on).
 - Three.js through `@react-three/fiber` for the hero rocket and the project card rockets
-  (`hero-rocket-3d.tsx`, `rocket-card-3d.tsx`, `rocket-cavour.tsx`, `hero-plume.tsx`,
-  `hero-weathering.ts`). The `/projects/cavour` hero shows a still of the parked rocket
-  (`CAVOUR_STAGE_POSTER`), rendered offline from `cavour-stage-3d.tsx` by
-  `scripts/render-cavour-stage.mjs`; that page loads no 3D.
+  (`hero-rocket-3d.tsx`, `rocket-card-3d.tsx`, `rocket-cavour.tsx`, `rocket-ves.tsx`,
+  `hero-plume.tsx`, `hero-weathering.ts`). The `/projects/cavour` hero shows a still of the
+  parked rocket (`CAVOUR_STAGE_POSTER`), rendered offline from `cavour-stage-3d.tsx` by
+  `scripts/render-cavour-stage.mjs`; that page loads no 3D. `/projects/ves` shows VES Mark I's
+  still (`VES_STAGE_POSTER`) the same way.
 - The site is dark only. `app/layout.tsx` sets `defaultTheme="dark"`, `enableSystem={false}`,
   and paints `<html>` with the `ground` colour and `color-scheme: dark` before CSS loads.
 
@@ -362,8 +363,10 @@ inset 32px at the bottom (20px from lg to xl). The cards sit in one horizontal s
 every width and never wrap to a new line (issue #359): from md 16px apart, two to a view below
 lg and three from lg (427px wide at 1440), snapping to the 64px page edge, with the row bleeding
 over the section padding so a fourth card peeks past the edge. Pager dots show from md only
-while the cards overflow the row, so three cards at lg show none. Each card renders its record's rocket model live in 3D (Cavour on the three cards today;
-a project with no model of its own draws the shared placeholder, `lib/rocket-model.ts`). At rest it shows from the nose to
+while the cards overflow the row, so three cards at lg show none. Each card renders its record's rocket model live in 3D (VES Mark I on the VES card, Cavour on
+the other two; a project with no model of its own draws the shared placeholder, `lib/rocket-model.ts`).
+VES Mark I is built at Cavour's length and body proportions, not as a replica, so the cards read
+as one set (`rocket-ves.tsx`). At rest it shows from the nose to
 mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
 the rocket stays where it rests. The canvas wrapper hangs above and below the card and is clipped to the card's sides and
 bottom only. The vehicle and camera hold still in the scene.
@@ -404,8 +407,8 @@ page is the layout reference.
   with no note about what is missing. Section numbers follow the sections that render, so they
   always run 01, 02, 03 ... (`sectionsOf` in `lib/project-pages/index.ts`).
 - The hero shows the visual panel on the project's texture only when the record has a visual:
-  Cavour's still of the parked rocket (Stack above, not 3D), VES's texture alone with its
-  caption (no render exists, and the page says nothing about one), Efesto none. Up to six key
+  Cavour's still of the parked rocket (Stack above, not 3D), VES's still of Mark I with its
+  "VES MARK I" caption and Mark I's key facts, Efesto none. Up to six key
   facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
   and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
   `hero.tsx`); a shorter set is one row of six.

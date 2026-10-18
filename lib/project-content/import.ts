@@ -658,8 +658,10 @@ export const firstImport: readonly ProjectRecord[] = [cavour, ves, efesto];
 
 /**
  * VES draws its own rocket, Mark I, on its home card and its page (issue
- * #361), not Cavour's. The page's caption names the mark it draws.
- * Migration drizzle/0040_ves_mark_one_rocket.sql holds its `revisionSql`.
+ * #361), not Cavour's. The page's caption names the mark it draws, and the
+ * key facts under it are Mark I's, from `vesMarkI` (target apogee, as Mark
+ * II's fact gives its target). Migration drizzle/0040_ves_mark_one_rocket.sql
+ * holds its `revisionSql`.
  */
 export const vesMarkOneRocket: ProjectRevision = {
   slug: "ves",
@@ -669,6 +671,17 @@ export const vesMarkOneRocket: ProjectRevision = {
     {
       path: ["hero", "visual", "rocket"],
       value: { own: { model: "ves", alt: "VES Mark I in its EuRoC 2024 livery, side-on, nose right" } },
+    },
+    {
+      path: ["hero", "facts"],
+      value: [
+        { value: vesMarkI.specs.diameter, label: { text: "DIAMETER" } },
+        { value: vesMarkI.specs.length, label: { text: "LENGTH" } },
+        { value: vesMarkI.specs.wetMass, label: { text: "WET MASS" } },
+        { value: vesMarkI.specs.motor, label: { text: "MOTOR" } },
+        { value: vesMarkI.specs.maxSpeed, label: { text: "MAX SPEED" } },
+        { value: vesMarkI.specs.targetApogee, label: { text: "TARGET APOGEE" } },
+      ],
     },
   ],
 };
