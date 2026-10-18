@@ -6,7 +6,7 @@ import { withSubscriptDigits } from "@/lib/project-content/subscript";
 import type { Copy, ProjectPage } from "@/lib/projects";
 import { rocketModelOf } from "@/lib/rocket-model";
 import { RocketCardStage } from "./rocket-card-stage";
-import { RocketTurnBox } from "./rocket-turn";
+import { RocketTurnCard } from "./rocket-turn";
 
 // One home project card (board 21; board 24 below md): a project on its brand
 // texture, with its rocket live in 3D and a liquid glass info box. The home
@@ -16,8 +16,8 @@ import { RocketTurnBox } from "./rocket-turn";
 // the card links to its project's page; elsewhere it is a plain card.
 //
 // Hover: only the card's glass edge brightens. The rocket stays where it
-// rests (Huey, 2026-10-06: no hover rise). On the home row it turns slowly
-// about its own long axis in that rest pose (issue #385).
+// rests (owner decision, 2026-10-06: no hover rise). On the home row a hover
+// turns it about its own long axis in that rest pose (issue #385).
 
 /** IN DESIGN reads as a light pill; flown vehicles get a dark one. */
 const pill: Record<HomeCardView["statusTone"], string> = {
@@ -49,9 +49,6 @@ export const HOME_CARD_LAYOUT = "h-[360px] w-[210px] shrink-0 snap-start md:h-[6
 /** A card inside a frame that carries its layout. */
 export const FILLS_FRAME = "h-full w-full";
 
-/** The card-sized box the rocket shows in, open at the top (see the Rocket layer below). */
-const ROCKET_BOX = "pointer-events-none absolute inset-0 z-[2] [clip-path:inset(-400px_0_0_0_round_16px)]";
-
 /**
  * `href` makes the whole card one link to that page, named by the project's
  * name (issue #372). Home passes it; the dashboard, the edit shell's page
@@ -67,21 +64,17 @@ export function HomeProjectCard({
   href?: ProjectPage;
   layout?: string;
   /**
-   * The rocket turns slowly about its long axis while its motion gate is open
-   * (issue #385, rocket-turn.tsx). Only the home Projects row sets it; every
-   * other card's rocket holds still.
+   * The rocket turns about its long axis while the card is hovered on a
+   * pointer device, then eases back to rest (issue #385, rocket-turn.tsx).
+   * Only the home Projects row sets it; every other card's rocket holds still.
    */
   rocketTurns?: boolean;
 }) {
-  const rocket = (
-    <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
-      <RocketCardStage model={rocketModelOf(project.rocket)} />
-    </div>
-  );
+  const Card = rocketTurns ? RocketTurnCard : "article";
   return (
     // isolate: the card is its own stacking context, so the z-indexes below
     // order its own layers and never reach a neighbouring card.
-    <article className={`glass-project group relative isolate rounded-2xl hover:z-10 ${layout}`}>
+    <Card className={`glass-project group relative isolate rounded-2xl hover:z-10 ${layout}`}>
       {/* The link: an empty layer over the whole card, above its other
           layers, so the card is the target and the project's name is the
           link's name. The info box is its own positioned glass layer, so a
@@ -126,11 +119,11 @@ export function HomeProjectCard({
           will-change keeps the rising wrapper on its own compositor layer
           from the start, so the rise never waits on a repaint of the canvas
           and the hover does not stutter while the canvas draws frames. */}
-      {rocketTurns ? (
-        <RocketTurnBox className={ROCKET_BOX}>{rocket}</RocketTurnBox>
-      ) : (
-        <div className={ROCKET_BOX}>{rocket}</div>
-      )}
+      <div className="pointer-events-none absolute inset-0 z-[2] [clip-path:inset(-400px_0_0_0_round_16px)]">
+        <div className="absolute -bottom-[89px] -top-[144px] left-[-25px] right-[25px] md:-bottom-[170px] md:-top-[260px] md:left-0 md:right-0">
+          <RocketCardStage model={rocketModelOf(project.rocket)} />
+        </div>
+      </div>
 
       {/* Top row */}
       <div className="absolute inset-x-0 top-0 z-[2] flex items-center justify-between p-3.5 md:p-8">
@@ -173,6 +166,6 @@ export function HomeProjectCard({
           ))}
         </dl>
       </div>
-    </article>
+    </Card>
   );
 }

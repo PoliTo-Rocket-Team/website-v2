@@ -286,7 +286,7 @@ const IDLE_THROTTLE = 0.3;
 const THROTTLE_RATE = 1.4; // 1/s, exponential approach
 
 // Once the rocket has parked the plume fades out to nothing over FADE_S,
-// eased in and out, and stays off: the parked rocket only bobs (ADR 0004).
+// eased in and out, and stays off: the parked rocket holds still (ADR 0004).
 const FADE_S = 1.25;
 
 /**

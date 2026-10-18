@@ -1,9 +1,10 @@
 // Renders a project card's poster (CAVOUR_CARD_POSTER in
 // components/landing/cavour-assets.ts, VES_CARD_POSTER in ves-assets.ts,
+// EFESTO_CARD_POSTER in efesto-assets.ts,
 // PLACEHOLDER_CARD_POSTER in placeholder-assets.ts): the card canvas's finished frame as a still, so the
 // card shows its rocket before the 3D has loaded.
 //
-// Usage: node scripts/render-card-poster.mjs [cavour | ves | placeholder]
+// Usage: node scripts/render-card-poster.mjs [cavour | ves | efesto | placeholder]
 // (cavour when no model is named)
 //
 // It mounts the real card scene (rocket-card-3d.tsx) alone on a blank page in
@@ -20,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MODELS = ["cavour", "ves", "placeholder"];
+const MODELS = ["cavour", "ves", "efesto", "placeholder"];
 const model = process.argv[2] ?? "cavour";
 if (!MODELS.includes(model)) throw new Error(`unknown model ${model}; one of ${MODELS.join(", ")}`);
 const out = path.join(root, `public/design/${model}/card-poster.png`);

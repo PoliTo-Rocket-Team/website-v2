@@ -83,7 +83,7 @@ export function ProjectsListPage({
             <div className="-mx-1.5 mt-4 space-y-6 md:mx-0 md:mt-14">
               {projects.map((p) =>
                 frame === undefined ? (
-                  <ProjectCard key={p.slug} project={p} />
+                  <ProjectCard key={p.slug} project={p} rocketTurns />
                 ) : (
                   <Fragment key={p.slug}>{frame(p, <ProjectCard project={p} />)}</Fragment>
                 ),

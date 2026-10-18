@@ -1,31 +1,31 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { useMotionGate } from "./motion-gate";
+import { createContext, useContext, useEffect, useState, type ComponentPropsWithoutRef } from "react";
 
-// The home card rocket's slow turn (issue #385): each rocket on the home
-// Projects row turns about its own long axis, as the Efesto engine does
-// (engine-efesto.tsx, issue #382). The turn is opt-in. The home card wraps
-// its rocket in a RocketTurnBox; every other stage (the /projects panels,
-// the dashboard and the edit shell's cards) has none, so its rocket holds
-// still as before.
+// A card rocket turns about its own long axis while its card is hovered on a
+// pointer device, then eases back to its tuned pose (issue #385). The turn is
+// opt-in: the home Projects row and the /projects list wrap each card in a
+// RocketTurnCard; every other card (the dashboard, the edit shell, the
+// preview pages) has none, so its rocket holds still.
 //
-// The gate watches the top half of the card, not the canvas: the canvas hangs
-// far above and below the card, so it reaches under the navbar while the
-// whole card is still on screen, and the rocket would stop just as it came
-// into view. The rocket's nose sits about 20px under the card's top edge, so
-// that half is where a reader sees it. It is the top half, not the whole card,
-// because the gate also stops when a blurring surface covers the watched
-// box's centre: the card's centre sits only 13px above its glass info box on
-// a phone, so one more line of description would stop the rocket for good.
-// The top half's centre clears the info box at every width.
+// A touch never turns a rocket: a tap is not a hover. Under reduced motion no
+// rocket turns. At rest the card canvas draws nothing (rocket-card-3d.tsx).
 
-/** Whether the rocket in this box may turn now. No box: it holds still. */
-const RocketTurn = createContext(false);
+/**
+ * What a card's rocket is asked to do now. One value, so no mix of flags can
+ * ask it to turn and rest at once.
+ *  - "turn": its card is hovered; it turns about its long axis
+ *  - "rest": it eases back to its tuned pose, then draws nothing
+ *  - "hold": the tab is hidden; it stays where it stands and draws nothing
+ */
+export type RocketTurn = "turn" | "rest" | "hold";
+
+/** No RocketTurnCard round the stage: the rocket rests. */
+const RocketTurnContext = createContext<RocketTurn>("rest");
 
 /** Read by the card stage (rocket-card-stage.tsx). */
-export function useRocketTurn(): boolean {
-  return useContext(RocketTurn);
+export function useRocketTurn(): RocketTurn {
+  return useContext(RocketTurnContext);
 }
 
 /** True until read otherwise, so the first paint never starts a turn it must undo. */
@@ -41,19 +41,35 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
+function usePageHidden(): boolean {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const read = () => setHidden(document.hidden);
+    read();
+    document.addEventListener("visibilitychange", read);
+    return () => document.removeEventListener("visibilitychange", read);
+  }, []);
+  return hidden;
+}
+
 /**
- * The box a home card's rocket shows in. Its rocket turns while the motion
- * gate (motion-gate.ts) lets the box's top half move and the reader has not
- * asked for reduced motion; otherwise it holds where it stands.
+ * The card's own <article>, taking the same props. Hovering it with a mouse
+ * or a pen turns the rocket inside; leaving it sends the rocket back to rest.
  */
-export function RocketTurnBox({ className, children }: { className: string; children: ReactNode }) {
-  const topHalf = useRef<HTMLDivElement>(null);
-  const open = useMotionGate(topHalf);
+export function RocketTurnCard({ children, ...article }: ComponentPropsWithoutRef<"article">) {
+  const [hovered, setHovered] = useState(false);
   const reduced = useReducedMotion();
+  const hidden = usePageHidden();
+  const turn: RocketTurn = hidden ? "hold" : hovered && !reduced ? "turn" : "rest";
   return (
-    <div className={className}>
-      <div ref={topHalf} aria-hidden className="absolute inset-x-0 top-0 h-1/2" />
-      <RocketTurn.Provider value={open && !reduced}>{children}</RocketTurn.Provider>
-    </div>
+    <article
+      {...article}
+      onPointerEnter={(e) => {
+        if (e.pointerType !== "touch") setHovered(true);
+      }}
+      onPointerLeave={() => setHovered(false)}
+    >
+      <RocketTurnContext.Provider value={turn}>{children}</RocketTurnContext.Provider>
+    </article>
   );
 }

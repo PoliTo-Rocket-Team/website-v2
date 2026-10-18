@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { RocketCardStage } from "@/components/landing/rocket-card-stage";
+import { RocketTurnCard } from "@/components/landing/rocket-turn";
 import { panelRocketOf, statusOf, type Copy, type Project, type ProjectStatus } from "@/lib/projects";
 
 // Board 22, one card per project: a liquid glass card with the project's
@@ -35,8 +36,9 @@ function StatusPill({ status }: { status: ProjectStatus }) {
 /**
  * The texture panel. A rocket project shows its live 3D rocket crossing the
  * panel corner to corner, the model its home card draws (a rocket with no
- * model of its own draws the placeholder); an engine's panel is the texture
- * only (issue #381). The card rocket stands nearly upright in its own
+ * model of its own draws the placeholder); an engine draws its own engine
+ * model the same way (issue #382), or with none the texture only. The card
+ * rocket stands nearly upright in its own
  * canvas, so the canvas is turned to lay the vehicle along the panel's
  * diagonal, nose top right.
  */
@@ -122,9 +124,21 @@ function Facts({ project }: { project: Project }) {
   );
 }
 
-export function ProjectCard({ project }: { project: Project }) {
+export function ProjectCard({
+  project,
+  rocketTurns = false,
+}: {
+  project: Project;
+  /**
+   * The panel's rocket turns about its long axis while the card is hovered on
+   * a pointer device, then eases back to rest (issue #385, rocket-turn.tsx).
+   * Only the /projects list sets it; the edit shell's cards hold still.
+   */
+  rocketTurns?: boolean;
+}) {
+  const Card = rocketTurns ? RocketTurnCard : "article";
   return (
-    <article
+    <Card
       aria-labelledby={`project-${project.slug}`}
       className="glass-info glass-linked relative rounded-3xl"
     >
@@ -132,6 +146,6 @@ export function ProjectCard({ project }: { project: Project }) {
         <TexturePanel project={project} />
         <Facts project={project} />
       </div>
-    </article>
+    </Card>
   );
 }

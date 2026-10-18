@@ -37,8 +37,8 @@ import {
 // nose right, matching the static render's framing (nose ~95% across, plume
 // trailing to the left edge). The Blender GLB it was measured from lives in
 // design/cavour.glb, out of public/ so it is never served.
-// Idle: hover bob only (decision 0004: no shake); the plume fades out once
-// parked (hero-plume.tsx).
+// Idle: the parked rocket holds still (decision 0004, amended for issue #385:
+// no bob, no shake); the plume fades out once parked (hero-plume.tsx).
 // Scroll fly-out stays on the CSS wrapper in hero.tsx.
 
 // Canvas 2400x280, centred where the old 1480px stage was: ~750px of room
@@ -119,18 +119,10 @@ function Rocket({
     [weather],
   );
 
-  useFrame((state) => {
+  useFrame(() => {
+    // The group never moves in the scene (the parked rocket holds still, issue
+    // #385), so the wear's rocket-space matrix above stays as set.
     if (!group.current || REDUCED) return;
-    const t = state.clock.elapsedTime;
-
-    // Hover drift: barely-there, ±0.15 world units (~5px) over ~9s.
-    // Enough to keep the rocket from reading as a sticker, never a bounce.
-    group.current.position.y = Math.sin(t * 0.7) * 0.15;
-
-    // Keep the procedural wear pinned to the hull while the group moves
-    group.current.updateMatrixWorld();
-    weather.uRocketInv.value.copy(group.current.matrixWorld).invert();
-
     if (frame.current++ % DOM_READ_EVERY !== 0) return;
     stage.current ??= canvas.closest<HTMLElement>("[data-rocket-stage]");
     const el = stage.current;
@@ -175,29 +167,20 @@ const BURN: Record<Phase, Burn> = { enter: "idle", drive: "full", settled: "out"
 
 // Render budget (issue #48): the site must stay light. The canvas draws every
 // display frame only while something really moves — the hold, the drive-in,
-// and the plume fading out after it. Parked there is no plume, only the slow
-// bob (one lap in 9s, at most ~4px a second). It reads the same at 10 fps, so
-// it draws at most that (issue #63; 15 in #59, 30 before). Once nobody has scrolled, pointed or typed for
-// PARKED_STILL_MS, it holds a still frame, and the next input wakes it where
-// it stopped (SceneClock). Off screen it draws nothing.
-const PARKED_FPS = 10;
-const PARKED_GAP_MS = 1000 / PARKED_FPS;
-const PARKED_STILL_MS = 5000;
-// What counts as someone at the page. Scroll covers the keyboard and the
-// scrollbar too.
-const WAKE_EVENTS = ["pointermove", "pointerdown", "wheel", "scroll", "keydown", "touchstart"] as const;
+// and the plume fading out after it. Parked, with the plume gone, nothing in
+// the scene moves (the parked rocket holds still, issue #385; it bobbed
+// before), so the canvas holds its finished frame and draws again only when a
+// resize clears it. Off screen it draws nothing.
 
 /**
  * How often the canvas draws. One value, so no mix of flags can ask for two
  * rates at once.
  *  - "every-frame": warming up, or the rocket is on the move
- *  - "parked":      the bob at PARKED_FPS, then a still
- *                   frame while nobody is at the page
- *  - "on-resize":   reduced motion; the finished scene, redrawn only when a
- *                   resize clears the canvas
+ *  - "on-resize":   parked, or reduced motion; the finished scene, redrawn
+ *                   only when a resize clears the canvas
  *  - "none":        off screen; the last frame stays up
  */
-type DrawRate = "every-frame" | "parked" | "on-resize" | "none";
+type DrawRate = "every-frame" | "on-resize" | "none";
 
 function drawRate(ready: boolean, visible: boolean, moving: boolean): DrawRate {
   // Warm-up draws even off screen (on phones the stage waits fully outside
@@ -206,13 +189,13 @@ function drawRate(ready: boolean, visible: boolean, moving: boolean): DrawRate {
   if (!ready) return "every-frame";
   if (!visible) return "none";
   if (REDUCED) return "on-resize";
-  return moving ? "every-frame" : "parked";
+  return moving ? "every-frame" : "on-resize";
 }
 
 /**
  * Scene time for a canvas that does not draw all the time. While it draws,
  * scene time is wall-clock time: each draw moves it on by the real time since
- * the one before, so the bob and the plume move at full speed however few
+ * the one before, so the plume moves at full speed however few
  * frames are drawn, never in slow motion. While it does not draw (a
  * still frame, a hidden tab, off screen) the clock is paused, so the next
  * draw carries on from where the last one stopped instead of jumping ahead.
@@ -236,49 +219,10 @@ class SceneClock {
 }
 
 /**
- * Draws parked: one frame every PARKED_GAP_MS while someone is at the page,
- * then none once they have been away PARKED_STILL_MS; any input wakes it.
- * It waits on a timer, not on every display frame, so a parked hero does not
- * wake the page 60 times a second to draw 10. A hidden tab gets no animation
- * frames, so it draws nothing there. `still` runs when it stops drawing.
- * Returns the stop.
- */
-function driveParked(draw: (now: number) => void, still: () => void): () => void {
-  let lastInput = performance.now();
-  let drawing = false;
-  let timer = 0;
-  let frame = 0;
-  const next = () => {
-    frame = requestAnimationFrame((now) => {
-      draw(now);
-      if (now - lastInput > PARKED_STILL_MS) {
-        drawing = false;
-        still();
-        return;
-      }
-      timer = window.setTimeout(next, PARKED_GAP_MS);
-    });
-  };
-  const wake = () => {
-    lastInput = performance.now();
-    if (drawing) return;
-    drawing = true;
-    next();
-  };
-  wake();
-  for (const type of WAKE_EVENTS) window.addEventListener(type, wake, { passive: true });
-  return () => {
-    for (const type of WAKE_EVENTS) window.removeEventListener(type, wake);
-    window.clearTimeout(timer);
-    cancelAnimationFrame(frame);
-  };
-}
-
-/**
  * Drives a `frameloop="never"` canvas at its draw rate, on one SceneClock for
- * every rate, so switching rate never restarts or jumps the bob or the plume.
- * The clock outlives the canvas, so a new canvas carries on the bob where the
- * last one stopped and matches its held frame (issue #111).
+ * every rate, so switching rate never restarts or jumps the plume.
+ * The clock outlives the canvas, so a new canvas carries on the scene where
+ * the last one stopped and matches its held frame (issue #111).
  * A hidden tab gets no animation frames, so it draws nothing there either.
  */
 function FrameDriver({ rate, clock }: { rate: DrawRate; clock: SceneClock }) {
@@ -299,7 +243,6 @@ function FrameDriver({ rate, clock }: { rate: DrawRate; clock: SceneClock }) {
 
   useEffect(() => {
     const draw = (now: number) => advance(clock.at(now));
-    if (rate === "parked") return driveParked(draw, () => clock.pause());
     if (rate !== "every-frame") {
       clock.pause();
       return;
@@ -415,7 +358,7 @@ export default function HeroRocket3D({ phase, onStatus }: Props) {
   useEffect(() => (holdCards ? holdCardSetup() : undefined), [holdCards]);
   const wrapRef = useRef<HTMLDivElement>(null);
   // The canvas may draw under the navbar; the bar drops its blur there
-  // instead, so the bob keeps going and no frame costs a re-blur (#61).
+  // instead, so no frame of the entrance costs a re-blur (#61).
   useClearGlassBarOver(wrapRef, live);
 
   // Before the first paint of every showing, so the page never shows a

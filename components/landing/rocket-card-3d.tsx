@@ -4,11 +4,13 @@ import { Suspense, useEffect, useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { stepCardTurn } from "@/lib/card-turn";
 import type { RocketModel } from "@/lib/rocket-model";
 import { builtRockets } from "./rocket-built";
 import type { WeatherUniforms } from "./hero-weathering";
 import { SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
+import type { RocketTurn } from "./rocket-turn";
 
 // The vehicle in a project card, seen from above and in front: the hero shows
 // the whole rocket side-on, so the card is a close-up from an angle you cannot
@@ -52,51 +54,68 @@ const PARKED_X = 1.2;
 const WEAR_SCALE = 2.5;
 const WEAR_AMOUNT = 0.45;
 
-// A home card's rocket turns about its own long axis (issue #385), at the
-// Efesto engine's speed (TURN_PER_S in engine-efesto.tsx, PR #384, not yet on
-// trunk, so the same value is named here). Only the spin moves: the pose,
-// lean, parked position and camera above stay as tuned.
-/** One turn in 40 s. */
-const TURN_PER_S = (2 * Math.PI) / 40;
+// While its card is hovered, the vehicle turns about its own long axis, then
+// eases back to rest when the pointer leaves (issue #385, rocket-turn.tsx).
+// Every model turns the same way here, Efesto's engine included; no model
+// turns itself. Only the spin moves: the pose, lean, parked position and
+// camera above stay as tuned. The speed and easing are in lib/card-turn.ts.
 /** A frame after a long gap moves the turn no further than this. */
 const MAX_STEP_MS = 100;
-/** The turn asks for a frame this often: about 30 fps, plenty for one turn in 40 s. */
+/** While it moves, the vehicle asks for a frame this often: about 30 fps at most. */
 const TURN_FRAME_MS = 1000 / 30;
 
 /**
- * Turns the group about the vehicle's long axis (its X) while `turning`, by
- * real elapsed time. The canvas draws on demand, so while turning a timer
- * asks for a frame about 30 times a second; once `turning` drops, the timer
- * stops, no frame is asked for and the vehicle holds where it stands.
+ * Turns the group about the vehicle's long axis (its X) while `turn` is
+ * "turn", and eases it back to rest on "rest", by real elapsed time. The
+ * canvas draws on demand: while the vehicle moves, each frame asks for the
+ * next one TURN_FRAME_MS later; at rest, or on "hold" (a hidden tab), none is
+ * asked for, so the canvas draws nothing.
  */
-function useSlowTurn(spin: RefObject<THREE.Group | null>, turning: boolean) {
+function useCardTurn(spin: RefObject<THREE.Group | null>, turn: RocketTurn) {
   const invalidate = useThree((s) => s.invalidate);
-  const last = useRef<number | null>(null);
+  // Kept across frames and changed in place: no allocation per frame.
+  const motion = useRef({ angle: 0, speed: 0, last: null as number | null, timer: 0 });
   useEffect(() => {
-    last.current = null;
-    if (!turning) return;
-    invalidate();
-    const timer = window.setInterval(() => invalidate(), TURN_FRAME_MS);
-    return () => window.clearInterval(timer);
-  }, [turning, invalidate]);
+    const m = motion.current;
+    m.last = null;
+    // A rest at the tuned pose has nothing to draw.
+    if (turn === "turn" || (turn === "rest" && m.angle !== 0)) invalidate();
+    return () => {
+      window.clearTimeout(m.timer);
+      m.timer = 0;
+    };
+  }, [turn, invalidate]);
   useFrame(() => {
-    if (!turning || !spin.current) return;
+    const m = motion.current;
+    if (!spin.current || turn === "hold") return;
     const now = performance.now();
-    if (last.current !== null) spin.current.rotation.x += (Math.min(now - last.current, MAX_STEP_MS) / 1000) * TURN_PER_S;
-    last.current = now;
+    const dt = m.last === null ? 0 : Math.min(now - m.last, MAX_STEP_MS) / 1000;
+    const moving = stepCardTurn(m, turn, dt);
+    spin.current.rotation.x = m.angle;
+    if (!moving) {
+      m.last = null;
+      return;
+    }
+    m.last = now;
+    if (m.timer === 0) {
+      m.timer = window.setTimeout(() => {
+        m.timer = 0;
+        invalidate();
+      }, TURN_FRAME_MS);
+    }
   });
 }
 
-function Vehicle({ model, turning }: { model: RocketModel; turning: boolean }) {
+function Vehicle({ model, turn }: { model: RocketModel; turn: RocketTurn }) {
   const Built = builtRockets[model];
   const group = useRef<THREE.Group>(null!);
   /**
    * The group the vehicle sits in directly: its frame IS rocket space. It
-   * turns about the vehicle's long axis on a home card, and holds still
-   * everywhere else.
+   * turns about the vehicle's long axis while the card is hovered, and is at
+   * rest (identity) otherwise.
    */
   const spin = useRef<THREE.Group>(null!);
-  useSlowTurn(spin, turning);
+  useCardTurn(spin, turn);
   const weather = useMemo<WeatherUniforms>(
     () => ({
       uRocketInv: { value: new THREE.Matrix4() },
@@ -113,8 +132,9 @@ function Vehicle({ model, turning }: { model: RocketModel; turning: boolean }) {
   );
 
   // The vehicle stays in its parked pose, and the canvas only draws on demand
-  // (warm-up, resize, and each frame of a home card's turn), so there is no
-  // idle drift: a still card draws no frames (issue #48).
+  // (warm-up, resize, and each frame of a hovered card's turn and its ease
+  // back), so there is no idle drift: a card at rest draws no frames (issue
+  // #48).
   useFrame(() => {
     if (!group.current) return;
     // Pin the procedural wear to the hull through the lean and the turn.
@@ -165,10 +185,11 @@ type Props = {
   /** The vehicle to draw. */
   model: RocketModel;
   /**
-   * The vehicle turns slowly about its long axis now. Only a home card ever
-   * sets it, through its motion gate (rocket-turn.tsx).
+   * What the vehicle is asked to do: turn while its card is hovered, else
+   * rest or hold (rocket-turn.tsx). A stage with no RocketTurnCard round it
+   * passes "rest".
    */
-  turning: boolean;
+  turn: RocketTurn;
   /** `?cam` on the URL: orbit controls and a live camera readout. */
   tuning: boolean;
   onReadout: (s: string) => void;
@@ -187,14 +208,14 @@ type Props = {
   onLost: () => void;
 };
 
-export default function RocketCard3D({ model, turning, tuning, onReadout, onReady, onFailed, onLost }: Props) {
+export default function RocketCard3D({ model, turn, tuning, onReadout, onReady, onFailed, onLost }: Props) {
   return (
     <Canvas
-      // Nothing in the scene moves but a home card's slow turn, so the canvas
+      // Nothing in the scene moves but a hovered card's turn, so the canvas
       // draws only when asked: the warm-up (scene-ready.tsx), a resize, the
-      // ?cam tuner's orbit controls, and each frame of the turn while its gate
-      // is open. Under reduced motion there is no turn: the warm-up draws the
-      // finished vehicle, then nothing.
+      // ?cam tuner's orbit controls, and each frame of the turn and its ease
+      // back. On touch and under reduced motion there is no turn: the warm-up
+      // draws the finished vehicle, then nothing.
       // Not "never": that leaves the WebGL buffer undrawn, which shows white
       // on a real GPU, and ignores the warm-up's invalidate.
       frameloop="demand"
@@ -229,7 +250,7 @@ export default function RocketCard3D({ model, turning, tuning, onReadout, onRead
             environmentIntensity={0.45}
             environmentRotation={[-Math.PI / 2, 0, 0]}
           />
-          <Vehicle model={model} turning={turning} />
+          <Vehicle model={model} turn={turn} />
           <WarmUp onWarm={onReady} />
         </Suspense>
       </SceneErrorBoundary>

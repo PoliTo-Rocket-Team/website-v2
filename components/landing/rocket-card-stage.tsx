@@ -84,9 +84,9 @@ const POSTER_SIZES = "(min-width: 768px) 480px, 272px";
  */
 export function RocketCardStage({ model }: { model: RocketModel }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  // Inside a home card's RocketTurnBox the vehicle turns slowly while its
-  // gate is open; on every other stage it holds still (rocket-turn.tsx).
-  const turning = useRocketTurn();
+  // Inside a RocketTurnCard the vehicle turns while its card is hovered; on
+  // every other stage it rests (rocket-turn.tsx).
+  const turn = useRocketTurn();
   const [stage, dispatch] = useReducer(step, POSTER);
   const [tuning, setTuning] = useState(false);
   const [readout, setReadout] = useState("");
@@ -177,7 +177,7 @@ export function RocketCardStage({ model }: { model: RocketModel }) {
         <RocketCard3D
           key={canvas}
           model={model}
-          turning={turning}
+          turn={turn}
           tuning={tuning}
           onReadout={setReadout}
           onReady={() => {

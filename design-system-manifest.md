@@ -22,7 +22,8 @@ trust that code over the ADR. Unsettled conflicts are listed under "Open gaps".
   `hero-plume.tsx`, `hero-weathering.ts`). The `/projects/cavour` hero shows a still of the
   parked rocket (`CAVOUR_STAGE_POSTER`), rendered offline from `cavour-stage-3d.tsx` by
   `scripts/render-cavour-stage.mjs`; that page loads no 3D. `/projects/ves` shows VES Mark I's
-  still (`VES_STAGE_POSTER`) the same way.
+  still (`VES_STAGE_POSTER`) the same way, and `/projects/efesto` the still of Efesto's
+  outline engine (`EFESTO_STAGE_POSTER`, `engine-efesto.tsx`, issue #382).
 - The site is dark only. `app/layout.tsx` sets `defaultTheme="dark"`, `enableSystem={false}`,
   and paints `<html>` with the `ground` colour and `color-scheme: dark` before CSS loads.
 
@@ -227,9 +228,11 @@ Rules:
 | `marquee` | 40s linear infinite | partners strip |
 | `twinkle` | 4s ease-in-out infinite | stars |
 | `shooting-star` | 20s linear infinite | footer |
+| Card rocket hover turn | one turn in 20s; eases in (0.35s time constant) and back as a damped spring (0.5s) | a hovered card's rocket (`lib/card-turn.ts`) |
 
-All values from `tailwind.config.ts`. A project card has no hover motion (issue #73): only its
-glass edge brightens.
+All values from `tailwind.config.ts`, except the card rocket turn, which is named in
+`lib/card-turn.ts`. A project card has no hover motion of its own (issue #73): its glass
+edge brightens and its rocket turns in place (issue #385).
 
 ## Page rules
 
@@ -310,7 +313,8 @@ dark band under the hero makes the page look like it starts halfway down (issue 
 - Plays once per load. Title and slogan stagger in, gathered. Hold 2s (`HOLD_MS`). The rocket
   climbs in from off-screen lower-left over the type for 7s (`DRIVE_MS`), nose easing 14° to 6°,
   while title and slogan part on the same curve. Body copy, hairline and fact strip fade in after.
-- No pinning, no scroll effect, no lift-off, no replay. The parked rocket only bobs; no shake.
+- No pinning, no scroll effect, no lift-off, no replay. The parked rocket holds still: no bob,
+  no shake (issue #385).
 - The entrance burns its full plume and smoke. Once parked, the plume and smoke fade out to
   nothing over 1.25s, eased in and out (`FADE_S`, `hero-plume.tsx`), and stay off while the
   rocket is parked.
@@ -324,13 +328,13 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   hairline or fact strip. Only the frame that is showing mounts the rocket canvas.
 - Render budget: pixel ratio capped at 1.5 on every canvas, shadow map 1024
   (`hero-rocket-3d.tsx`). The hero draws every frame only through the entrance and the plume's
-  fade-out. Parked, with no plume, it draws only the bob: at most 10 fps while someone
-  scrolls, points or types, and a still frame once nobody has for 5s; the next input resumes
-  the bob where it stopped (issue #63). The bob, the flame flicker and the smoke move by real
-  elapsed time, so fewer frames never mean slower motion. Off screen or in a hidden tab it
-  draws nothing. The card canvases draw
-  only on demand (warm-up, resize, and each frame of a home card rocket's slow turn while its
-  gate is open), so a card whose rocket holds still draws no frames (issue #48).
+  fade-out. Parked, with no plume, it holds its finished frame and draws again only when a
+  resize clears it (issue #385; it bobbed at up to 10 fps before, issue #63). The flame
+  flicker and the smoke move by real elapsed time, so fewer frames never mean slower motion.
+  Off screen or in a hidden tab it draws nothing. The card canvases draw only on demand
+  (warm-up, resize, and each frame of a hovered card rocket's turn and its ease back), so a
+  card at rest draws no frames (issue #48). No model turns itself, Efesto's outline engine
+  included (issue #385 replaced issue #382's always-on turn).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
@@ -342,14 +346,21 @@ the shooting star is hidden (Accessibility below). Only the page sky passes `who
 `minSpacing`. One star in `twinkleEvery` is bright, and one bright star in two twinkles; the
 rest hold still at full brightness.
 
-**Idle motion** (issue #59): every twinkle, the shooting star, the partners marquee and the
-home card rockets' slow turn go through the motion gate (`motion-gate.ts`). Each runs only
-while the tab is visible, some of it shows below the navbar and none of it shows under the
-navbar, and no surface with a `backdrop-filter` covers its centre. Otherwise it pauses where
-it stands. Each home Projects card rocket turns about its own long axis, one turn in 40s, in
-its tuned rest pose, with the camera fixed (issue #385, `rocket-turn.tsx`). Its gate watches
-the card's top half, not the taller canvas, and while it turns its canvas draws about 30 frames a
-second. The /projects panels, the dashboard and the edit shell keep a still card rocket.
+**Idle motion** (issue #59): every twinkle, the shooting star and the partners marquee go
+through the motion gate (`motion-gate.ts`). Each runs only while the tab is visible, some of
+it shows below the navbar and none of it shows under the navbar, and no surface with a
+`backdrop-filter` covers its centre. Otherwise it pauses where it stands.
+
+**Card rocket hover turn** (issue #385, `rocket-turn.tsx`, `rocket-card-3d.tsx`,
+`lib/card-turn.ts`): a card
+rocket has no idle motion. On the home Projects row and the /projects cards, hovering a card
+with a mouse or pen turns its rocket about its own long axis (one turn in 20s, easing in) in
+its tuned rest pose, with the camera fixed; leaving the card eases it back to rest. A touch
+never turns it, nor does anything under reduced motion. While it moves its canvas draws about
+30 frames a second; at rest it draws none, and in a hidden tab it pauses where it stands.
+Hover is not idle motion, so it does not use the gate. The dashboard and the edit shell keep
+a still card rocket.
+
 The gate does not cover the hero canvas: parked, it draws by the Render budget above, also
 while part of it sits under the navbar, where the bar drops its blur instead (Spacing,
 layout, shape above). The gate does not watch the phone menu either, so motion behind an
@@ -378,13 +389,16 @@ inset 32px at the bottom (20px from lg to xl). The cards sit in one horizontal s
 every width and never wrap to a new line (issue #359): from md 16px apart, two to a view below
 lg and three from lg (427px wide at 1440), snapping to the 64px page edge, with the row bleeding
 over the section padding so a fourth card peeks past the edge. Pager dots show from md only
-while the cards overflow the row, so three cards at lg show none. Each card renders its record's rocket model live in 3D (VES Mark I on the VES card, Cavour on
-the other two; a project with no model of its own draws the shared placeholder, `lib/rocket-model.ts`).
+while the cards overflow the row, so three cards at lg show none. Each card renders its record's model live in 3D (Cavour on the Cavour card, VES Mark I on the
+VES card, and Efesto's outline engine on the Efesto card, issue #382; a project with no model
+of its own draws the shared placeholder, `lib/rocket-model.ts`). The engine is drawn in the
+placeholder's pen look, smaller than a rocket, in the card's upper part above the info box.
 VES Mark I is built at Cavour's length and body proportions, not as a replica, so the cards read
 as one set (`rocket-ves.tsx`). At rest it shows from the nose to
 mid-body above the info box. There is no hover rise (Huey, 2026-10-06): on hover only the card's glass edge brightens and
 the rocket stays where it rests. The canvas wrapper hangs above and below the card and is clipped to the card's sides and
-bottom only. The vehicle and camera hold still in the scene.
+bottom only. The camera holds still; the vehicle turns about its long axis only while the
+card is hovered (Card rocket hover turn below), and holds still otherwise.
 At rest the nose sits about 30px below the card top and
 the flags show just above the info box. The canvas takes no pointer events. No raycast hover
 (`project-card.tsx`, `rocket-card-3d.tsx`). Change tuning constants at the top of
@@ -409,8 +423,8 @@ Owner decision that overrides boards 22 and 22m there). The cards are listed new
 the same rule as the home row (`listingsNewestFirst`, which sorts with `newestFirst`). A rocket
 project's panel draws its rocket live on the panel's diagonal (`RocketCardStage` with the model
 `panelRocketOf` gives): its own model, or the placeholder when it has none. An engine (Efesto)
-draws no rocket and no placeholder: its panel is the texture only, and the `Engine` shape
-carries no rocket. Every fact comes from the projects' published records
+never draws a rocket or the placeholder: its panel draws its own engine model the same way, on
+its texture (issue #382), and an engine with no model of its own shows the texture only. Every fact comes from the projects' published records
 (`lib/project-content/`, issue #295), and the header counts their launches. Every published
 project has its own page (issue #301), so every card is clickable: the name is the link, and its
 `::after` covers the card, so the whole card is the target. The card takes `.glass-linked`, and
@@ -430,7 +444,9 @@ page is the layout reference.
   always run 01, 02, 03 ... (`sectionsOf` in `lib/project-pages/index.ts`).
 - The hero shows the visual panel on the project's texture only when the record has a visual:
   Cavour's still of the parked rocket (Stack above, not 3D), VES's still of Mark I with its
-  "VES MARK I" caption and Mark I's key facts, Efesto none. Up to six key
+  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. An engine's
+  still sits centred on the orange streak texture (`/textures/project-ves.webp`) in place of its
+  own texture (`stageTextureOf`, Owner decision, issue #382); its cards keep the grey texture. Up to six key
   facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
   and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
   `hero.tsx`); a shorter set is one row of six.
@@ -526,13 +542,13 @@ stacked.
 
 ## Accessibility
 
-- Reduced motion: the hero jumps to its settled state and mounts no rocket (`hero.tsx`). The
-  hero bob, every star twinkle and the partners marquee are off
+- Reduced motion: the hero jumps to its settled state and mounts no rocket (`hero.tsx`).
+  Every star twinkle and the partners marquee are off
   under reduced motion, and the footer shooting star is hidden (`hero-rocket-3d.tsx`,
   `projects.tsx`, `twinkle-star.tsx`, `marquee.tsx`, `shooting-star.tsx`). Nothing on the
   landing page animates continuously then (issue #59 replaced issue #33's kept twinkle). The
-  home card rockets' slow turn holds still under reduced motion (`rocket-turn.tsx`); the card
-  rocket has no other idle motion. Any new motion must honour `prefers-reduced-motion`.
+  card rocket has no idle motion at all, and its hover turn is off under reduced motion
+  (`rocket-turn.tsx`). Any new motion must honour `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.
   Meaningful images carry real alt text; logo links carry `aria-label` (`partners.tsx`).
 - External links open with `target="_blank" rel="noopener noreferrer"`. Every landing link
@@ -564,7 +580,8 @@ stacked.
   footer's Projects column still lists VES Mark II separately, as board 21's footer does.
 - **Hover turn.** `handoff-hero-rocket.md` §8 describes a card hover where the rocket turns its
   nose toward the viewer, and board 21 a straight rise. Neither is built: the card rocket stays
-  where it rests (Huey, 2026-10-06, issue #73). The handoff and the board are stale there.
+  where it rests (Huey, 2026-10-06, issue #73) and only spins about its own long axis there
+  (issue #385). The handoff and the board are stale there.
 - **Focus styles.** Landing links and pills have no `focus-visible` style. Only
   `components/ui/` primitives do (`components/ui/button.tsx`).
 - **Unused keyframes.** `rocket-hover`, `rocket-fly-in` and `shoot` in `tailwind.config.ts`

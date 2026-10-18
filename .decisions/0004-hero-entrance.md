@@ -8,7 +8,7 @@ date: 2026-09-18
 # 0004 — Hero entrance choreography
 
 **What this decides:** How the landing hero animates on load — ruled by the founder
-2026-08-24 in a grilling round, amended 2026-09-17.
+2026-08-24 in a grilling round, amended 2026-09-17 and 2026-10-19.
 
 Two things it supersedes:
 
@@ -36,7 +36,8 @@ Two things it supersedes:
 **Scroll:** nothing. The page scrolls normally, there is no pinned section, and the
 rocket stays parked.
 
-**Motion of the parked rocket:** a slow bob only. No vibration or shake.
+**Motion of the parked rocket:** none. Once parked, the rocket holds still: no bob, no
+vibration or shake. (It bobbed slowly until the amendment of 2026-10-19 below.)
 
 **Reduced motion:** the hero jumps straight to its settled state — type, copy and strip
 in final positions, no entrance.
@@ -55,6 +56,17 @@ What replaced the lift-off's job of making the hero feel alive: the belly light.
 glow builds on the rocket's underside as it climbs in and fades once it parks, driven
 each frame by how low the rocket sits on screen. Details in
 `design/handoff-hero-rocket.md`.
+
+## Amendment, 2026-10-19
+
+Owner decision (2026-10-19, issue #385): the parked rocket holds still. The slow bob is
+gone, so once the plume has faded the hero canvas holds its finished frame and draws
+again only when a resize clears it. The drive-in and everything before it are unchanged.
+
+Why: idle CPU. The bob kept the canvas drawing while the page sat idle. With the card
+rockets also still at rest, a landing page nobody touches now draws no 3D frames. The
+ruling is recorded on the issue:
+https://github.com/PoliTo-Rocket-Team/website-v2/issues/385#issuecomment-6255998651
 
 ## Context
 
