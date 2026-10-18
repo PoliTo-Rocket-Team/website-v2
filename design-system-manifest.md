@@ -127,7 +127,7 @@ Rules:
   between them and no background of their own: they sit on the page sky.
 - Section header: eyebrow and title left, intro or link right, `md:flex-row md:items-end`,
   then the content under it: 40px in Latest (`md:mt-10`, board 21), 56px in Projects
-  (`md:mt-14`), 24px on phones.
+  (`md:mt-8` on the swipe row plus the row's own 24px top room, `pt-6`), 24px on phones.
 - Grids: Latest `lg:grid-cols-[1.58fr_1fr]` with `gap-5`, and from lg a cards row at least
   560px tall (`lg:grid-rows-[minmax(560px,auto)]`); Projects is a swipe row, not a grid (below);
   Inside the team: figures and link cards `lg:grid-cols-4`; otherwise `gap-4`.
@@ -355,8 +355,9 @@ then "All news". The other two news cards are desktop-only (from md).
 
 **Projects:** one card per published project, newest first: by the start or launch year its card
 names, then by number, the higher first (issue #359, `newestFirst` in
-`lib/project-content/record.ts`); each card keeps its number, its place in the site order (today VES, Efesto and Cavour,
-with the board 21 data from `design/specs-from-old-site.md`), each on its texture, 618px tall, with a `.glass-info` box
+`lib/project-content/record.ts`). Today the row reads VES, Efesto and Cavour, with the board 21
+data from `design/specs-from-old-site.md`. Each card keeps its number, which is its place in the
+site order (Cavour 01, VES 02, Efesto 03), not its place in the row. Each card sits on its texture, 618px tall, with a `.glass-info` box
 inset 32px at the bottom (20px from lg to xl). The cards sit in one horizontal swipe row at
 every width and never wrap to a new line (issue #359): from md 16px apart, two to a view below
 lg and three from lg (427px wide at 1440), snapping to the 64px page edge, with the row bleeding
