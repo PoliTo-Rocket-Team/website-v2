@@ -343,17 +343,17 @@ the shooting star is hidden (Accessibility below). Only the page sky passes `who
 rest hold still at full brightness.
 
 **Idle motion** (issue #59): every twinkle, the shooting star, the partners marquee and the
-home card rockets' slow turn go through the motion gate (`motion-gate.ts`). Each home Projects
-card rocket turns about its own long axis, one turn in 40s, in its tuned rest pose, with the
-camera fixed (issue #385, `rocket-turn.tsx`); its gate watches the card box, not the taller
-canvas, and while it turns its canvas draws about 30 frames a second. The /projects panels,
-the dashboard and the edit shell keep a still card rocket. Each runs only while the tab is
-visible, some of it shows below the navbar and none of it shows under the navbar, and no surface with a
-`backdrop-filter` covers its centre. Otherwise it pauses where it stands. The gate does not
-cover the hero canvas: parked, it draws by the Render budget above, also while part of it sits
-under the navbar, where the bar drops its blur instead (Spacing, layout, shape above). The gate does not watch the phone menu
-either, so motion behind an open menu keeps the state it had. New continuous motion uses the
-gate.
+home card rockets' slow turn go through the motion gate (`motion-gate.ts`). Each runs only
+while the tab is visible, some of it shows below the navbar and none of it shows under the
+navbar, and no surface with a `backdrop-filter` covers its centre. Otherwise it pauses where
+it stands. Each home Projects card rocket turns about its own long axis, one turn in 40s, in
+its tuned rest pose, with the camera fixed (issue #385, `rocket-turn.tsx`). Its gate watches
+the card's top half, not the taller canvas, and while it turns its canvas draws about 30 frames a
+second. The /projects panels, the dashboard and the edit shell keep a still card rocket.
+The gate does not cover the hero canvas: parked, it draws by the Render budget above, also
+while part of it sits under the navbar, where the bar drops its blur instead (Spacing,
+layout, shape above). The gate does not watch the phone menu either, so motion behind an
+open menu keeps the state it had. New continuous motion uses the gate.
 
 **Latest** (track record, board 21, `latest.tsx`): featured card plus a three-row list, then
 a centred "All news" link to /outreach. The cards are the newest published Outreach posts
