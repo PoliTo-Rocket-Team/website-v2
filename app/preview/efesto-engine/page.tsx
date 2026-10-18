@@ -32,7 +32,8 @@ export default function EfestoEnginePreview() {
         <main className="pb-section">
           <ProjectHero project={{ index: card.num, name: card.name, texture: card.texture }} hero={pageRecordOf(record).hero} />
           <section className="px-5 pt-section md:px-16">
-            <div className="mx-auto grid max-w-[1312px] md:gap-8 lg:grid-cols-3 lg:gap-4">
+            {/* A flex row, as the home row is: the card's width is a share of the row's. */}
+            <div className="mx-auto flex max-w-[1312px] gap-4">
               <HomeProjectCard project={card} />
             </div>
           </section>

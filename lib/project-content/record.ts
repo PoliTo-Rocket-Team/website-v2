@@ -14,7 +14,7 @@ import type {
 } from "@/lib/project-pages/types";
 import { type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
 import { publicVersion, type ContentItem } from "@/lib/content/versioned";
-import type { OwnModel, OwnRocketModel } from "@/lib/rocket-model";
+import { isEngineModel, type OwnModel, type OwnRocketModel } from "@/lib/rocket-model";
 
 // One project as the content store keeps it (issue #295): everything the
 // project page, its /projects entry and its home card show, in one record
@@ -278,7 +278,14 @@ export function listingOf(record: ProjectRecord, position: number): Project {
     texture: record.texture,
   };
   if (record.kind === "engine") {
-    return { ...base, kind: "engine", workLines: record.listing.workLines, milestone: record.listing.milestone };
+    const { rocket } = record.card;
+    return {
+      ...base,
+      kind: "engine",
+      ...(isEngineModel(rocket) && { engine: rocket }),
+      workLines: record.listing.workLines,
+      milestone: record.listing.milestone,
+    };
   }
   return {
     ...base,

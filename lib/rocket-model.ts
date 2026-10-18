@@ -30,6 +30,10 @@ export type OwnModel = OwnRocketModel | OwnEngineModel;
 /** What a model slot draws: a project's own model, or the shared placeholder. */
 export type RocketModel = OwnModel | "placeholder";
 
+export function isEngineModel(model: RocketModel | undefined): model is OwnEngineModel {
+  return (ownEngineModels as readonly string[]).includes(model ?? "");
+}
+
 /** The model to draw for a project: its own when it has one, else the placeholder. */
 export function rocketModelOf(own: OwnModel | undefined): RocketModel {
   return own ?? "placeholder";
@@ -62,4 +66,15 @@ export type OwnRocket = { model: OwnModel; alt: string };
 export function stageStillOf(own: OwnRocket | undefined): { src: string; alt: string } {
   const model = rocketModelOf(own?.model);
   return { src: posters[model].stage, alt: own?.alt ?? "" };
+}
+
+/**
+ * What a project page's panel lays its still on. A rocket parks on the
+ * project's texture; an engine sits centred on the brand orange, in place of
+ * its texture (issue #382, Owner decision). Cards keep their texture either way.
+ */
+export type StageGround = "texture" | "accent";
+
+export function stageGroundOf(own: OwnRocket | undefined): StageGround {
+  return isEngineModel(own?.model) ? "accent" : "texture";
 }

@@ -11,10 +11,11 @@ const listing = (slug: string): Project => {
   return listingOf(importedRecords[position], position);
 };
 
-test("an engine's /projects panel draws no stage: no rocket and no placeholder", () => {
+test("an engine's /projects panel draws its own engine (issue #382), and with none no stage at all", () => {
   const efesto = listing("efesto");
-  assert.equal(efesto.kind, "engine");
-  assert.equal(panelRocketOf(efesto), null);
+  assert.ok(efesto.kind === "engine");
+  assert.equal(panelRocketOf(efesto), "efesto");
+  assert.equal(panelRocketOf({ ...efesto, engine: undefined }), null);
 });
 
 test("a rocket's /projects panel draws its own model, or the placeholder when it has none", () => {

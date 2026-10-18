@@ -410,8 +410,8 @@ Owner decision that overrides boards 22 and 22m there). The cards are listed new
 the same rule as the home row (`listingsNewestFirst`, which sorts with `newestFirst`). A rocket
 project's panel draws its rocket live on the panel's diagonal (`RocketCardStage` with the model
 `panelRocketOf` gives): its own model, or the placeholder when it has none. An engine (Efesto)
-draws no rocket and no placeholder: its panel is the texture only, and the `Engine` shape
-carries no rocket. Every fact comes from the projects' published records
+never draws a rocket or the placeholder: its panel draws its own engine model the same way, on
+its texture (issue #382), and an engine with no model of its own shows the texture only. Every fact comes from the projects' published records
 (`lib/project-content/`, issue #295), and the header counts their launches. Every published
 project has its own page (issue #301), so every card is clickable: the name is the link, and its
 `::after` covers the card, so the whole card is the target. The card takes `.glass-linked`, and
@@ -431,7 +431,9 @@ page is the layout reference.
   always run 01, 02, 03 ... (`sectionsOf` in `lib/project-pages/index.ts`).
 - The hero shows the visual panel on the project's texture only when the record has a visual:
   Cavour's still of the parked rocket (Stack above, not 3D), VES's still of Mark I with its
-  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. Up to six key
+  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. An engine's
+  still sits centred on `bg-accent` in place of the texture, its caption in `accent-on-accent`
+  (`stageGroundOf`, Owner decision, issue #382); its cards keep the texture. Up to six key
   facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
   and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
   `hero.tsx`); a shorter set is one row of six.
