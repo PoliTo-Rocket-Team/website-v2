@@ -80,9 +80,9 @@ Rules:
   radial fades (`hero.tsx`, `navbar.tsx`), the `.hero-type` gradient (`app/globals.css`), the
   `RocketArrow` grey hull and fin fills (`rocket-arrow.tsx`; its ring and nose use
   `fill-prt-text` and `fill-accent`), and the page sky grain (one octave of pixel-fine grey SVG
-  noise at frequency 1.8 in soft-light blend at 70%, with no threshold, so it reads as even
+  noise in soft-light blend, frequency 2 at 60% on 2x screens and 1.8 at 70% on 1x, with no threshold, so it reads as even
   film grain, not as specks, and keeps the sky's tone; matched to board 21, and the same at
-  1x and 2x, issue #89), and the
+  each density, issue #89), and the
   board 21 spec values for the liquid glass utilities, the navbar bar and the panel that
   hangs from it included, with the white noise dither on `.glass-card` and `.glass-info`
   taken off their white fill (`.page-sky-grain`, `.glass-*` in `app/globals.css`), and the
@@ -291,7 +291,7 @@ tile cut from the approved background, with the soft diagonal streaks baked onto
 the board's 16% strength, blurred so it holds no compression blocks and stored lossless. It
 repeats down the page (`max(100%, 1440px) auto repeat-y`), so it shows no seam at any page
 height. `.page-sky-grain` is the fine film grain, a
-stitched SVG noise tile in soft-light blend at 70% (the exception above), kept apart because webp compression drops grain. It
+stitched SVG noise tile in soft-light blend at 60% on 2x, 70% on 1x (the exception above), kept apart because webp compression drops grain. It
 is film texture only. The streak tile carries its own 8 x 8 ordered dither, so its dark
 gradients show no bands; the grain is random noise and is not the layer that removes banding
 (issue #87). On top
