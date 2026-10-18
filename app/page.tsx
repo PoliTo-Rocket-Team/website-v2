@@ -5,7 +5,7 @@ import { Projects } from "@/components/landing/projects";
 import { InsideTeam } from "@/components/landing/inside-team";
 import { Partners } from "@/components/landing/partners";
 import { ApplyBand } from "@/components/landing/apply-band";
-import { LandingFooter } from "@/components/landing/footer";
+import { SiteFooter } from "@/components/landing/site-footer";
 import { PageSky } from "@/components/landing/page-sky";
 import { trackRecord } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
@@ -33,7 +33,7 @@ export default async function LandingPage() {
         </PageSky>
         <ApplyBand />
       </main>
-      <LandingFooter />
+      <SiteFooter />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
+import type { FooterProject } from "@/lib/landing-links";
 import { sectionsOf, type NumberedSection, type ProjectPageRecord } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
 import { ProjectGallery } from "./gallery";
@@ -45,12 +46,15 @@ export function ProjectPageView({
   project,
   record,
   next,
+  footerProjects,
   frame = bare,
 }: {
   project: Project;
   record: ProjectPageRecord;
   /** The project after this one in the site order, and the line its card shows. */
   next: { readonly project: Project; readonly teaser: string };
+  /** The published projects the footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
   frame?: ProjectFrame;
 }) {
   return (
@@ -65,7 +69,7 @@ export function ProjectPageView({
           ))}
           {frame("next", <NextProject project={next.project} teaser={next.teaser} />)}
         </main>
-        <LandingFooter inSky />
+        <LandingFooter inSky projects={footerProjects} />
       </PageSky>
     </div>
   );

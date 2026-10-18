@@ -4,7 +4,7 @@ import { Founders } from "@/components/about/alumni/founders";
 import { YearByYear } from "@/components/about/alumni/year-by-year";
 import { PageHeader } from "@/components/about/page-header";
 import { ApplyBand } from "@/components/landing/apply-band";
-import { LandingFooter } from "@/components/landing/footer";
+import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { alumni } from "@/lib/about/alumni";
@@ -59,7 +59,7 @@ export default async function AlumniPage({ searchParams }: { searchParams: Searc
         </main>
       </PageSky>
       <ApplyBand />
-      <LandingFooter />
+      <SiteFooter />
     </div>
   );
 }

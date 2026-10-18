@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Beliefs, Mission, Path, Vision } from "@/components/about/mission";
 import { PageHeader } from "@/components/about/page-header";
-import { LandingFooter } from "@/components/landing/footer";
+import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { mission } from "@/lib/about/mission";
@@ -27,7 +27,7 @@ export default function MissionVisionPage() {
           <Path path={mission.path} />
           <Beliefs beliefs={mission.beliefs} />
         </main>
-        <LandingFooter inSky />
+        <SiteFooter inSky />
       </PageSky>
     </div>
   );

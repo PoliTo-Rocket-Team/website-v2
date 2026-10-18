@@ -10,6 +10,7 @@ import { ProjectPageView, type ProjectFrame, type ProjectPart } from "@/componen
 import { ProjectsListPage } from "@/components/projects/list-page";
 import type { EditBlocks, EditDevice, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
+import type { FooterProject } from "@/lib/landing-links";
 import { fieldProblems, fieldsAfterSave, fieldsOf, projectViewOf, type PanelSection, type ProjectFields } from "@/lib/project-content/fields";
 import { homeCardOf, lineupWith, listingOf, pageRecordOf, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
 import { CardInPlace, EditableBlock, EditShell } from "./edit-shell";
@@ -55,7 +56,16 @@ function errorsOf(fields: ProjectFields): FieldErrors {
   return Object.fromEntries(fieldProblems(fields).map((p) => [p.field, p.error]));
 }
 
-export function ProjectEdit({ item: opening, place }: { item: ContentItem<ProjectRecord>; place: ProjectPlace }) {
+export function ProjectEdit({
+  item: opening,
+  place,
+  footerProjects,
+}: {
+  item: ContentItem<ProjectRecord>;
+  place: ProjectPlace;
+  /** The published projects the page's footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
+}) {
   const [item, setItem] = useState(opening);
   const opened = editorVersion(item.version);
   const [fields, setFields] = useState<ProjectFields>(() => fieldsOf(opened));
@@ -136,10 +146,17 @@ export function ProjectEdit({ item: opening, place }: { item: ContentItem<Projec
           project={listingOf(view, place.position)}
           record={pageRecordOf(view)}
           next={{ project: listingOf(place.next.record, place.next.position), teaser: place.next.record.teaser }}
+          footerProjects={footerProjects}
           frame={outlined}
         />
       ) : (
-        <CardPage page={page} lineup={lineupWith(place, view)} position={place.position} onEditCard={() => openSection("card")} />
+        <CardPage
+          page={page}
+          lineup={lineupWith(place, view)}
+          position={place.position}
+          footerProjects={footerProjects}
+          onEditCard={() => openSection("card")}
+        />
       )}
     </EditShell>
   );
@@ -155,11 +172,13 @@ function CardPage({
   page,
   lineup,
   position,
+  footerProjects,
   onEditCard,
 }: {
   page: Exclude<ProjectPageId, "page">;
   lineup: readonly ProjectRecord[];
   position: number;
+  footerProjects: readonly FooterProject[];
   onEditCard: () => void;
 }) {
   if (page === "list") {
@@ -168,6 +187,7 @@ function CardPage({
     return (
       <ProjectsListPage
         projects={projects}
+        footerProjects={footerProjects}
         frame={(project, node) => (
           // The /projects card is rounded-3xl (24px), so its outline is 30px.
           <CardInPlace edited={project === edited} onEdit={onEditCard} outline="rounded-[30px]">

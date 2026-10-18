@@ -6,6 +6,7 @@ import { TeamPageEdit } from "@/components/dashboard/team-page-edit";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
+import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "Team page · Dashboard · PoliTo Rocket Team",
@@ -30,7 +31,12 @@ async function LiveTeamPage() {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "team-page")) notFound();
-  const [editing, advisors, academicYear] = await Promise.all([data.teamPage.open(), data.teamAdvisors.list(), currentAcademicYearStart()]);
+  const [editing, advisors, academicYear, projects] = await Promise.all([
+    data.teamPage.open(),
+    data.teamAdvisors.list(),
+    currentAcademicYearStart(),
+    footerProjects(),
+  ]);
   if (editing === null || advisors === null) notFound();
-  return <TeamPageEdit opening={editing} advisors={advisors} academicYear={academicYear} />;
+  return <TeamPageEdit opening={editing} advisors={advisors} academicYear={academicYear} footerProjects={projects} />;
 }
