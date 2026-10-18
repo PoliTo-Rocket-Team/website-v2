@@ -32,7 +32,7 @@ import {
 // The Edit <project> panel (board 75c, issues #298 and #299): beside the
 // project page under the edit shell, one card per section: Top of the page,
 // Name story, Design story, Versions, Launch history (a rocket's only), Plan,
-// Why, Gallery and the Next-project card, then the Card (issue #300), which
+// Why and Gallery, then the Card (issue #300), which
 // the Edit card chip on Home and the Projects list opens. The list sections are in
 // ./project-list-sections.tsx. Every change goes straight back to the page, which
 // redraws as the editor types. In Phone the fields that have a phone version
@@ -45,7 +45,6 @@ type Change = (change: (fields: ProjectFields) => ProjectFields) => void;
 export function ProjectEditPanel({
   name,
   kind,
-  previousName,
   card: homeCard,
   fields,
   onChange,
@@ -59,8 +58,6 @@ export function ProjectEditPanel({
   /** The project's name, as the panel's title says it. */
   name: string;
   kind: "vehicle" | "engine";
-  /** The project before this one in the site order, whose page shows the next-project card line. */
-  previousName: string;
   /** The project's card as Home draws it now, for the Card section's number and counted pill. */
   card: HomeCardView;
   fields: ProjectFields;
@@ -296,17 +293,6 @@ export function ProjectEditPanel({
         }
       >
         <GalleryEditor gallery={gallery} errors={errors} onChange={(change) => onChange((f) => ({ ...f, gallery: change(f.gallery) }))} />
-      </PanelSection>
-
-      <PanelSection value="teaser" cardRef={card("teaser")} title="Next-project card" summary={`The line on ${previousName}'s page`}>
-        <TextField
-          label="Card line"
-          hint={`on ${previousName}'s page, under NEXT PROJECT`}
-          rows={2}
-          value={fields.teaser}
-          error={errors.teaser}
-          onChange={(teaser) => onChange((f) => ({ ...f, teaser }))}
-        />
       </PanelSection>
 
       <PanelSection value="card" cardRef={card("card")} title="Card" summary={cardSummary(homeCard)}>

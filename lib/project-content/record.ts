@@ -13,7 +13,7 @@ import type {
   Versions,
 } from "@/lib/project-pages/types";
 import { type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
-import { editorVersion, publicVersion, type ContentItem } from "@/lib/content/versioned";
+import { publicVersion, type ContentItem } from "@/lib/content/versioned";
 import type { OwnRocketModel } from "@/lib/rocket-model";
 
 // One project as the content store keeps it (issue #295): everything the
@@ -134,8 +134,6 @@ type RecordBase = {
   plan?: Plan;
   reasons?: Reasons;
   gallery?: GallerySection;
-  /** The one line the previous project's page shows on its next-project card. */
-  teaser: string;
 };
 
 /** A rocket: versions and a launch history, and its status counts its flights. */
@@ -165,7 +163,6 @@ export const PROJECT_SECTIONS = [
   "plan",
   "reasons",
   "gallery",
-  "teaser",
 ] as const satisfies readonly ProjectSection[];
 
 /** Sections the page may leave out: absent from the record, never empty. */
@@ -236,7 +233,6 @@ export function pageRecordOf(record: ProjectRecord): ProjectPageRecord {
     ...(record.plan && { plan: record.plan }),
     ...(record.reasons && { reasons: record.reasons }),
     ...(record.gallery && { gallery: record.gallery }),
-    teaser: record.teaser,
   };
 }
 
@@ -247,21 +243,14 @@ export function pageOf(slug: string): ProjectPage {
 
 /**
  * What /projects/<slug> draws, read off the published projects in site
- * order: the project, its place, and the project its next-project card shows
- * (the last loops back to the first). Null for a slug no published project
+ * order: the project and its place. Null for a slug no published project
  * has, a project with only a draft included: that address is not found.
  */
-export type PublishedPage = {
-  readonly record: ProjectRecord;
-  readonly position: number;
-  readonly next: { readonly record: ProjectRecord; readonly position: number };
-};
+export type PublishedPage = { readonly record: ProjectRecord; readonly position: number };
 
 export function publishedPageOf(published: readonly ProjectRecord[], slug: string): PublishedPage | null {
   const position = published.findIndex((r) => r.slug === slug);
-  if (position === -1) return null;
-  const next = (position + 1) % published.length;
-  return { record: published[position], position, next: { record: published[next], position: next } };
+  return position === -1 ? null : { record: published[position], position };
 }
 
 /** The /projects entry of the project at `position` (from 0) in the site order: its number is its place. */
@@ -349,15 +338,11 @@ export function listingsNewestFirst(records: readonly ProjectRecord[]): Project[
 
 /**
  * Where a stored project sits among the published ones, as its page draws
- * it: its number, the project its next-project card shows (the last loops
- * back to the first), and the project whose card shows it. A project not
- * published yet is counted at its place in the site order, as it will show
- * once published.
+ * it: its number. A project not published yet is counted at its place in
+ * the site order, as it will show once published.
  */
 export type ProjectPlace = {
   readonly position: number;
-  readonly next: { readonly record: ProjectRecord; readonly position: number };
-  readonly previous: ProjectRecord;
   /**
    * The published projects before and after it in the site order: Home and
    * the Projects list as the page switch draws them, with this project's
@@ -372,20 +357,10 @@ export function lineupWith(place: ProjectPlace, edited: ProjectRecord): readonly
 }
 
 export function placeOf(items: readonly ContentItem<ProjectRecord>[], id: number): ProjectPlace | null {
-  const item = items.find((i) => i.id === id);
-  if (item === undefined) return null;
+  if (!items.some((i) => i.id === id)) return null;
   const ordered = [...items].sort((a, b) => a.siteOrder - b.siteOrder);
   const shown = ordered.filter((i) => publicVersion(i.version) !== null || i.id === id);
   const position = shown.findIndex((i) => i.id === id);
-  const at = (p: number) => {
-    const found = shown[(p + shown.length) % shown.length];
-    return found.id === id ? editorVersion(found.version) : publicVersion(found.version)!;
-  };
   const published = (from: number, to?: number) => shown.slice(from, to).map((i) => publicVersion(i.version)!);
-  return {
-    position,
-    next: { record: at(position + 1), position: (position + 1) % shown.length },
-    previous: at(position - 1),
-    lineup: { before: published(0, position), after: published(position + 1) },
-  };
+  return { position, lineup: { before: published(0, position), after: published(position + 1) } };
 }

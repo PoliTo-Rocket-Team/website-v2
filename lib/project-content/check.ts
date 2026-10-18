@@ -149,7 +149,6 @@ const recordBase = {
   plan: optional(plan),
   reasons: optional(reasons),
   gallery: optional(gallery),
-  teaser: isString,
 };
 
 const vehicle = shape({
@@ -169,5 +168,23 @@ const engine = shape({
 
 export function isProjectRecord(value: unknown): value is ProjectRecord {
   return vehicle(value) || engine(value);
+}
+
+/**
+ * Keys a record saved before may still carry, which nothing reads now:
+ * `teaser`, the line of the next-project card the pages no longer draw
+ * (issue #377). Migration 0037 imported it and every save until then kept it,
+ * so stored versions and a test developer's cookie still hold it.
+ */
+export const RETIRED_KEYS: ReadonlySet<string> = new Set(["teaser"]);
+
+/**
+ * A record read back from the store: the record with any retired key left
+ * out, or null when what is left is not a record.
+ */
+export function storedProjectRecord(value: unknown): ProjectRecord | null {
+  if (!isObject(value)) return null;
+  const record = Object.fromEntries(Object.entries(value).filter(([key]) => !RETIRED_KEYS.has(key)));
+  return isProjectRecord(record) ? record : null;
 }
 

@@ -38,7 +38,6 @@ const PROJECT_BLOCKS: EditBlocks<ProjectPart, PanelSection> = {
   plan: { name: "Plan", section: "plan", chip: "Edit plan" },
   reasons: { name: "Why", section: "reasons", chip: "Edit Why" },
   gallery: { name: "Gallery", section: "gallery", chip: "Edit gallery" },
-  next: { name: "Next-project card", section: "teaser", chip: "Edit card line" },
 };
 
 const outlined: ProjectFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
@@ -127,7 +126,6 @@ export function ProjectEdit({
             key={revision}
             name={view.name}
             kind={view.kind}
-            previousName={place.previous.name}
             card={homeCardOf(view, place.position)}
             fields={fields}
             onChange={setFields}
@@ -145,7 +143,6 @@ export function ProjectEdit({
         <ProjectPageView
           project={listingOf(view, place.position)}
           record={pageRecordOf(view)}
-          next={{ project: listingOf(place.next.record, place.next.position), teaser: place.next.record.teaser }}
           footerProjects={footerProjects}
           frame={outlined}
         />

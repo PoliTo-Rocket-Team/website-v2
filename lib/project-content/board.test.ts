@@ -98,7 +98,7 @@ test("each card's line names the last edit, and the one part a draft changes", a
   const first = await editor.board();
   assert.deepEqual(first?.edited, {
     1: "Edited 12 Sep by Giulia Rossi",
-    2: "Next-project card edited today by Marco Bianchi",
+    2: "Top of the page edited today by Marco Bianchi",
     3: "Edited 2 Oct by Elisa Marchi",
   });
 
@@ -119,7 +119,7 @@ test("the line says only Edited when the draft changes more than one part, and n
   const [cavour] = importedProjects();
   if (cavour.version.state !== "published") throw new Error("Cavour is published");
   const published = cavour.version.published;
-  const draft = { ...published, teaser: "A new line.", description: "A new description." };
+  const draft = { ...published, name: "A new name", description: "A new description." };
   const item = { ...cavour, version: { state: "published" as const, published, draft } };
   const now = new Date(DUMMY_NOW).toISOString();
   assert.equal(editedLine(item, { at: "2026-10-09T09:00:00+02:00", by: "Giulia Rossi" }, now), "Edited today by Giulia Rossi");

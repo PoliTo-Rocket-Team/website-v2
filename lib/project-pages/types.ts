@@ -162,6 +162,4 @@ export type ProjectPageRecord = {
   plan?: Plan;
   reasons?: Reasons;
   gallery?: GallerySection;
-  /** The one line the previous project's page shows on its next-project card. */
-  teaser: string;
 };

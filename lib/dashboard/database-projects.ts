@@ -8,7 +8,7 @@ import { logs, projects, projectVersions, users } from "@/db/schema";
 import type { ContentStore } from "@/lib/content/editor";
 import { publicItems, versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import { isProjectRecord } from "@/lib/project-content/check";
+import { storedProjectRecord } from "@/lib/project-content/check";
 import type { EditStamp } from "@/lib/project-content/edited";
 import type { ProjectRecord } from "@/lib/project-content/record";
 import { publicStorePanelPhotos, type PhotoFiles } from "@/lib/outreach-photos";
@@ -33,10 +33,15 @@ function isUndefinedTable(error: unknown): boolean {
   return false;
 }
 
-/** A `project_versions` row's record; only this code writes the column, so one that is not a record is a fault. */
+/**
+ * A `project_versions` row's record; only this code writes the column, so one
+ * that is not a record is a fault. A retired key an older save left in it is
+ * dropped (`storedProjectRecord`).
+ */
 function recordOf(row: typeof projectVersions.$inferSelect): ProjectRecord {
-  if (!isProjectRecord(row.content)) throw new Error(`project ${row.projectId} holds a ${row.version} version that is not a project record`);
-  return row.content;
+  const record = storedProjectRecord(row.content);
+  if (record === null) throw new Error(`project ${row.projectId} holds a ${row.version} version that is not a project record`);
+  return record;
 }
 
 /** Every project with its versions, in site order. */

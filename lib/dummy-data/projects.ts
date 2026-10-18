@@ -2,7 +2,7 @@ import { deflateRawSync, inflateRawSync } from "node:zlib";
 import type { ContentStore } from "@/lib/content/editor";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ContentItem, Versioned } from "@/lib/content/versioned";
-import { isProjectRecord } from "@/lib/project-content/check";
+import { RETIRED_KEYS, storedProjectRecord } from "@/lib/project-content/check";
 import type { EditStamp } from "@/lib/project-content/edited";
 import type { EditHistory } from "@/lib/project-content/editor";
 import { importedProjects } from "@/lib/project-content/import";
@@ -35,12 +35,13 @@ import { DUMMY_NOW } from "./team";
 /** The project the dummy dashboard shows with draft changes (VES, board 75b). */
 const DRAFTED_ID = 2;
 
-/** The dashboard's starting projects: the import, with VES's teaser changed in a draft. */
+/** The dashboard's starting projects: the import, with VES's intro changed in a draft. */
 export function dummyProjectSeed(): ContentItem<ProjectRecord>[] {
   return importedProjects().map((item) => {
     if (item.id !== DRAFTED_ID || item.version.state !== "published") return item;
     const published = item.version.published;
-    const draft: ProjectRecord = { ...published, teaser: "Two marks, one Mach 1.8 target. Mark II won Design & Build at IREC 2025." };
+    const intro = "The second Founding Fathers rocket, named after Vittorio Emanuele II. Mark II won Design & Build at IREC 2025.";
+    const draft: ProjectRecord = { ...published, hero: { ...published.hero, intro: { text: intro } } };
     return { ...item, version: { state: "published", published, draft } };
   });
 }
@@ -58,8 +59,14 @@ export type DummyProjectEditsStore = ContentEditsStore<ProjectPatch>;
 
 const SECTIONS: ReadonlySet<string> = new Set(PROJECT_SECTIONS);
 
+/** A cookie written before a key was retired may still carry it (`RETIRED_KEYS`); `withPatch` drops it. */
 function isPatch(value: unknown): value is ProjectPatch {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).every((key) => SECTIONS.has(key));
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).every((key) => SECTIONS.has(key) || RETIRED_KEYS.has(key))
+  );
 }
 
 /** The sections of `record` that differ from `base`'s. */
@@ -81,7 +88,7 @@ export function withPatch(base: ProjectRecord | null, patch: ProjectPatch): Proj
     if (value === null) delete record[section];
     else record[section] = value;
   }
-  return isProjectRecord(record) ? record : null;
+  return storedProjectRecord(record);
 }
 
 function mapVersion<A, B>(version: Versioned<A>, map: (content: A) => B): Versioned<B> {

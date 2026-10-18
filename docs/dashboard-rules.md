@@ -752,7 +752,7 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
 - Under each card: Edit page opens the project on its page (board 75b); View on site opens the
   public page in a new tab, and only a published project has one.
 - Dragging a card, or the arrow keys on its grip, sets the site order. It is saved at once, and
-  the home Projects section, /projects and each page's next-project card follow it.
+  the home Projects section and /projects follow it.
 - New project (#301), in the page header, asks for the name, the address and whether it is a
   rocket or an engine. The name is at most 40 characters. The address follows the name until it
   is typed in itself; it is lower-case letters and digits joined by single hyphens, at most 40
@@ -786,9 +786,8 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   here.
 - The panel's sections: Top of the page (intro, status, dates, the visual's caption, one to six
   key facts), Name story, Design story (with its parts, drawn top to bottom and numbered from the
-  bottom), Versions, Launch history (a rocket's only), Plan, Why (one to three reasons), Gallery
-  and the Next-project card line, which the previous project's page shows. The page redraws as
-  the editor types.
+  bottom), Versions, Launch history (a rocket's only), Plan, Why (one to three reasons) and
+  Gallery. The page redraws as the editor types.
 - Versions: each version's name, phone tab, what it was for and its spec rows (an empty spec shows
   a dash). Exactly one is highlighted; removing it is refused until another one is.
 - Launch history: one card per launch, opened one at a time: name, date, place, version, motor,
