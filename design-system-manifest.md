@@ -329,7 +329,8 @@ dark band under the hero makes the page look like it starts halfway down (issue 
   the bob where it stopped (issue #63). The bob, the flame flicker and the smoke move by real
   elapsed time, so fewer frames never mean slower motion. Off screen or in a hidden tab it
   draws nothing. The card canvases draw
-  only on demand (warm-up, resize), so a card at rest draws no frames (issue #48).
+  only on demand (warm-up, resize, and each frame of a home card rocket's slow turn while its
+  gate is open), so a card whose rocket holds still draws no frames (issue #48).
 
 **Stars:** on the hero, the page sky and the footer (board 21 replaced HANDOFF's "hero and
 footer only"). The shooting star is the footer's alone. Use `Starfield` (seeded, so SSR and
@@ -341,9 +342,13 @@ the shooting star is hidden (Accessibility below). Only the page sky passes `who
 `minSpacing`. One star in `twinkleEvery` is bright, and one bright star in two twinkles; the
 rest hold still at full brightness.
 
-**Idle motion** (issue #59): every twinkle, the shooting star and the partners marquee go
-through the motion gate (`motion-gate.ts`). Each runs only while the tab is visible, some of it
-shows below the navbar and none of it shows under the navbar, and no surface with a
+**Idle motion** (issue #59): every twinkle, the shooting star, the partners marquee and the
+home card rockets' slow turn go through the motion gate (`motion-gate.ts`). Each home Projects
+card rocket turns about its own long axis, one turn in 40s, in its tuned rest pose, with the
+camera fixed (issue #385, `rocket-turn.tsx`); its gate watches the card box, not the taller
+canvas, and while it turns its canvas draws about 30 frames a second. The /projects panels,
+the dashboard and the edit shell keep a still card rocket. Each runs only while the tab is
+visible, some of it shows below the navbar and none of it shows under the navbar, and no surface with a
 `backdrop-filter` covers its centre. Otherwise it pauses where it stands. The gate does not
 cover the hero canvas: parked, it draws by the Render budget above, also while part of it sits
 under the navbar, where the bar drops its blur instead (Spacing, layout, shape above). The gate does not watch the phone menu
@@ -521,7 +526,8 @@ stacked.
   under reduced motion, and the footer shooting star is hidden (`hero-rocket-3d.tsx`,
   `projects.tsx`, `twinkle-star.tsx`, `marquee.tsx`, `shooting-star.tsx`). Nothing on the
   landing page animates continuously then (issue #59 replaced issue #33's kept twinkle). The
-  card rocket has no idle motion at all. Any new motion must honour `prefers-reduced-motion`.
+  home card rockets' slow turn holds still under reduced motion (`rocket-turn.tsx`); the card
+  rocket has no other idle motion. Any new motion must honour `prefers-reduced-motion`.
 - Decorative layers (stars, fades, textures, `RocketArrow`) carry `aria-hidden` or `alt=""`.
   Meaningful images carry real alt text; logo links carry `aria-label` (`partners.tsx`).
 - External links open with `target="_blank" rel="noopener noreferrer"`. Every landing link
