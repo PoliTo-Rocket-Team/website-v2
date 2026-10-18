@@ -1,6 +1,7 @@
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
+import type { FooterProject } from "@/lib/landing-links";
 import type { Neighbouring } from "@/lib/outreach";
 import type { OutreachDraft } from "@/lib/outreach-types";
 import { Neighbours, PostBody, PostHeader, type PostFrame } from "./post";
@@ -13,11 +14,14 @@ import { Neighbours, PostBody, PostHeader, type PostFrame } from "./post";
 export function PostPage({
   post,
   neighbours,
+  footerProjects,
   frame,
   hints,
 }: {
   post: OutreachDraft;
   neighbours: Neighbouring;
+  /** The published projects the footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
   frame?: PostFrame;
   /** The editor's page: a blank part says what goes there (board 74f). */
   hints?: boolean;
@@ -33,7 +37,7 @@ export function PostPage({
             <Neighbours {...neighbours} />
           </div>
         </main>
-        <LandingFooter inSky />
+        <LandingFooter inSky projects={footerProjects} />
       </PageSky>
     </div>
   );

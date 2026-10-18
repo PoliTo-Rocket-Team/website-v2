@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { listingOf, pageRecordOf, publishedPageOf } from "@/lib/project-content/record";
-import { publishedProjects } from "@/lib/project-content/public";
+import { footerProjects, publishedProjects } from "@/lib/project-content/public";
 import { ProjectPageView } from "./view";
 
 // Boards 23 to 25 (1440) and 23m to 25m (390): one template for every
@@ -16,6 +16,7 @@ export async function ProjectPage({ slug }: { slug: string }) {
     <ProjectPageView
       project={listingOf(found.record, found.position)}
       record={pageRecordOf(found.record)}
+      footerProjects={await footerProjects()}
     />
   );
 }

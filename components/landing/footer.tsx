@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ShootingStar } from "./shooting-star";
 import { Starfield } from "./starfield";
-import { FOOTER_COLUMNS, PAGES, opensOf } from "@/lib/landing-links";
+import { type FooterProject, PAGES, footerColumns, opensOf } from "@/lib/landing-links";
 
 // Board 21 footer. Its own background: the page sky's streak tile and grain
 // (the board is "footer background throughout": the page sky was cut from
@@ -10,14 +10,19 @@ import { FOOTER_COLUMNS, PAGES, opensOf } from "@/lib/landing-links";
 // stars with a few twinkling, and one shooting star crossing the upper half
 // every ~20s. Board 24 below md: 20px sides, the
 // brand block, then the link columns 2 x 2, then the address lines stacked.
-export function LandingFooter({ inSky = false }: {
+// A server page renders it through SiteFooter (./site-footer.tsx), which reads
+// the published projects; a view shared with a dashboard editor takes them as
+// a prop from its page.
+export function LandingFooter({ inSky = false, projects }: {
   /**
    * The footer sits inside a PageSky, which already paints the streak tile
    * and grain behind it; the footer then adds only its own stars and
    * shooting star, so the sky runs on into it with no line.
    */
   inSky?: boolean;
-} = {}) {
+  /** The published projects, in site order: the PROJECTS column (issue #378). */
+  projects: readonly FooterProject[];
+}) {
   return (
     // pt-section: the footer is the last section, so its top pad is the
     // section rhythm's and the gap after the apply band matches the others.
@@ -69,7 +74,7 @@ export function LandingFooter({ inSky = false }: {
 
             {/* Columns */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-4 md:gap-x-[14px] lg:contents">
-              {FOOTER_COLUMNS.map((col) => (
+              {footerColumns(projects).map((col) => (
                 <div key={col.head}>
                   <h3 className="font-mono text-[11px] tracking-[0.2em] text-dim">{col.head}</h3>
                   <ul className="mt-2.5 md:space-y-2">

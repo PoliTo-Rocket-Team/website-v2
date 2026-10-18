@@ -7,6 +7,7 @@ import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { todayInRome } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
+import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "New post · Outreach · Dashboard · PoliTo Rocket Team",
@@ -34,5 +35,14 @@ async function NewPost() {
   if (!canReach(opening.data.viewer, "outreach")) notFound();
   const tags = await opening.data.outreach.tags();
   if (tags === null) notFound();
-  return <OutreachPostEdit item={null} today={todayInRome()} tags={tags} neighbours={{}} published={await publishedOutreach()} />;
+  return (
+    <OutreachPostEdit
+      item={null}
+      today={todayInRome()}
+      tags={tags}
+      neighbours={{}}
+      published={await publishedOutreach()}
+      footerProjects={await footerProjects()}
+    />
+  );
 }

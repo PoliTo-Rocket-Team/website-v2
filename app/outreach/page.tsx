@@ -3,6 +3,7 @@ import { OutreachListPage } from "@/components/outreach/list-page";
 import { postCardOf } from "@/components/outreach/post-card";
 import { newestFirst, outreachCopy, outreachStats, postYears } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
+import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "Outreach · PoliTo Rocket Team",
@@ -20,6 +21,7 @@ export default async function OutreachPage() {
       feature={content.feature}
       cards={newestFirst(content.posts).map(postCardOf)}
       years={postYears(content.posts)}
+      footerProjects={await footerProjects()}
     />
   );
 }

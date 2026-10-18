@@ -2,6 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
+import type { FooterProject } from "@/lib/landing-links";
 import { sectionsOf, type NumberedSection, type ProjectPageRecord } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
 import { ProjectGallery } from "./gallery";
@@ -43,10 +44,13 @@ function Section({ section, project }: { section: NumberedSection; project: Proj
 export function ProjectPageView({
   project,
   record,
+  footerProjects,
   frame = bare,
 }: {
   project: Project;
   record: ProjectPageRecord;
+  /** The published projects the footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
   frame?: ProjectFrame;
 }) {
   return (
@@ -60,7 +64,7 @@ export function ProjectPageView({
             <Fragment key={s.kind}>{frame(s.kind, <Section section={s} project={project} />)}</Fragment>
           ))}
         </main>
-        <LandingFooter inSky />
+        <LandingFooter inSky projects={footerProjects} />
       </PageSky>
     </div>
   );

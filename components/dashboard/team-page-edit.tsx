@@ -8,6 +8,7 @@ import { endAdvising, resetTeamPageLayer, saveTeamPage } from "@/app/dashboard/a
 import { PAGE_INTRO } from "@/components/about/page-header";
 import { TeamPageView, type TeamPageFrames } from "@/components/about/team-page";
 import { CURRENT_ACADEMIC_YEAR } from "@/lib/about/academic-year-copy";
+import type { FooterProject } from "@/lib/landing-links";
 import {
   advisorFieldErrors,
   advisorRowsOf,
@@ -171,10 +172,13 @@ export function TeamPageEdit({
   opening,
   advisors,
   academicYear,
+  footerProjects,
 }: {
   opening: TeamPageOpening;
   advisors: readonly AdvisorItem[];
   academicYear: number;
+  /** The published projects the page's footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
 }) {
   const { build, base } = opening;
   const [layer, setLayer] = useState<TeamPageLayer>(opening.layer);
@@ -504,7 +508,7 @@ export function TeamPageEdit({
           )
         }
       >
-        <TeamPageView page={page} academicYear={academicYear} frames={frames} />
+        <TeamPageView page={page} academicYear={academicYear} footerProjects={footerProjects} frames={frames} />
       </EditShell>
 
       <EndAdvisingDialog

@@ -5,6 +5,7 @@ import { publicItems } from "@/lib/content/versioned";
 import { cachedPublishedProjects } from "@/lib/dashboard/database-projects";
 import { dummyProjectSeed } from "@/lib/dummy-data/projects";
 import { dummyDataOn } from "@/lib/dummy-data/mode";
+import type { FooterProject } from "@/lib/landing-links";
 import { importedProjects } from "./import";
 import type { ProjectRecord } from "./record";
 
@@ -21,4 +22,9 @@ export async function publishedProjects(): Promise<readonly ProjectRecord[]> {
   const imported = () => publicItems(importedProjects());
   if (!isDatabaseConfigured()) return imported();
   return (await cachedPublishedProjects()) ?? imported();
+}
+
+/** The footer's PROJECTS column (issue #378): each published project's name and slug, in site order. */
+export async function footerProjects(): Promise<readonly FooterProject[]> {
+  return (await publishedProjects()).map(({ name, slug }) => ({ name, slug }));
 }

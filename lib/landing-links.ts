@@ -4,6 +4,8 @@
 // the app has, and an external one opens in a new tab. The components under
 // components/landing/ write no link target of their own.
 
+import { pageOf } from "@/lib/project-content/record";
+
 /** A page of this site: a path from its root. */
 export type SitePath = `/${string}`;
 /** A link to another site. */
@@ -65,44 +67,51 @@ export const INSIDE_TEAM_LINKS: readonly { title: string; sub: string; href: Sit
 
 export type FooterColumn = { head: string; links: readonly (readonly [label: string, href: LandingHref])[] };
 
-/** The footer's four link columns (board 21). */
-export const FOOTER_COLUMNS: readonly FooterColumn[] = [
-  { head: "ABOUT", links: ABOUT_PAGES.map((p) => [p.label, p.href] as const) },
-  {
-    head: "PROJECTS",
-    links: [
-      ["Cavour", "/projects/cavour"],
-      ["VES", "/projects/ves"],
-      ["Efesto", "/projects/efesto"],
-    ],
-  },
-  {
-    head: "GET INVOLVED",
-    links: [
-      ["Apply", PAGES.apply],
-      ["Partners", PAGES.partners],
-      ["Outreach", PAGES.outreach],
-    ],
-  },
-  {
-    head: "CONTACT",
-    links: [
-      [TEAM_EMAIL, TEAM_MAIL],
-      ["Instagram", "https://www.instagram.com/politorocketteam"],
-      ["LinkedIn", "https://www.linkedin.com/company/politorocketteam"],
-      ["X / Twitter", "https://x.com/PoliTo_RT"],
-    ],
-  },
-];
+/** A published project as the footer's PROJECTS column names it: its name, linking to its page. */
+export type FooterProject = { readonly name: string; readonly slug: string };
 
-/** Every link target the landing page names here, data-driven ones (posts, partner sites) aside. */
+const GET_INVOLVED: FooterColumn = {
+  head: "GET INVOLVED",
+  links: [
+    ["Apply", PAGES.apply],
+    ["Partners", PAGES.partners],
+    ["Outreach", PAGES.outreach],
+  ],
+};
+
+const CONTACT: FooterColumn = {
+  head: "CONTACT",
+  links: [
+    [TEAM_EMAIL, TEAM_MAIL],
+    ["Instagram", "https://www.instagram.com/politorocketteam"],
+    ["LinkedIn", "https://www.linkedin.com/company/politorocketteam"],
+    ["X / Twitter", "https://x.com/PoliTo_RT"],
+  ],
+};
+
+/**
+ * The footer's four link columns (board 21). PROJECTS lists every published
+ * project in the /projects order (issue #378); the caller hands them in, read
+ * through `footerProjects()` (lib/project-content/public.ts), so the column
+ * follows publishing with the same cache refresh as /projects.
+ */
+export function footerColumns(projects: readonly FooterProject[]): readonly FooterColumn[] {
+  return [
+    { head: "ABOUT", links: ABOUT_PAGES.map((p) => [p.label, p.href] as const) },
+    { head: "PROJECTS", links: projects.map((p) => [p.name, pageOf(p.slug)] as const) },
+    GET_INVOLVED,
+    CONTACT,
+  ];
+}
+
+/** Every link target the landing page names here, data-driven ones (posts, partner sites, projects) aside. */
 export function landingHrefs(): readonly LandingHref[] {
   const nav = NAV_LINKS.flatMap((l) => ("pages" in l ? l.pages.map((p) => p.href) : [l.href]));
   return [
     ...Object.values(PAGES),
     ...nav,
     ...INSIDE_TEAM_LINKS.map((l) => l.href),
-    ...FOOTER_COLUMNS.flatMap((c) => c.links.map(([, href]) => href)),
+    ...footerColumns([]).flatMap((c) => c.links.map(([, href]) => href)),
     TEAM_MAIL,
   ];
 }

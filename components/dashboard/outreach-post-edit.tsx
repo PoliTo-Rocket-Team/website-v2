@@ -13,6 +13,7 @@ import { postCardOf } from "@/components/outreach/post-card";
 import { PostPage } from "@/components/outreach/post-page";
 import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
+import type { FooterProject } from "@/lib/landing-links";
 import { newestFirst, outreachStats, postYears, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
 import {
   blankPost,
@@ -72,12 +73,15 @@ export function OutreachPostEdit({
   tags: initialTags,
   neighbours,
   published,
+  footerProjects,
   ...opening
 }: Opening & {
   tags: readonly OutreachTag[];
   neighbours: Neighbouring;
   /** What the public pages show, for the list and home targets. */
   published: OutreachContent;
+  /** The published projects the page's footer lists (issue #378). */
+  footerProjects: readonly FooterProject[];
 }) {
   const router = useRouter();
   // What the page opened on; for a new post, the blank dated the day it opened.
@@ -178,12 +182,13 @@ export function OutreachPostEdit({
       }
     >
       {page === "post" || item === null ? (
-        <PostPage post={view} neighbours={neighbours} frame={outlined} hints />
+        <PostPage post={view} neighbours={neighbours} footerProjects={footerProjects} frame={outlined} hints />
       ) : (
         <CardPage
           page={page}
           view={view}
           published={published}
+          footerProjects={footerProjects}
           publishedSlug={live === null ? null : slugOf(live)}
           onEditCard={() => openSection("details")}
         />
@@ -201,12 +206,14 @@ function CardPage({
   page,
   view,
   published,
+  footerProjects,
   publishedSlug,
   onEditCard,
 }: {
   page: Exclude<PostPageId, "post">;
   view: OutreachDraft;
   published: OutreachContent;
+  footerProjects: readonly FooterProject[];
   publishedSlug: string | null;
   onEditCard: () => void;
 }) {
@@ -220,6 +227,7 @@ function CardPage({
         feature={published.feature}
         cards={cards.map((c) => c.card)}
         years={postYears(posts)}
+        footerProjects={footerProjects}
         keepInView={edited}
         frame={(card, node, layout) => (
           <CardInPlace edited={card === edited} onEdit={onEditCard} className={layout}>

@@ -2,6 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
+import type { FooterProject } from "@/lib/landing-links";
 import { launchCounts, type Project, type Stat } from "@/lib/projects";
 import { ProjectCard } from "./project-card";
 
@@ -24,8 +25,17 @@ export type ProjectCardFrame = (project: Project, node: ReactNode) => ReactNode;
 // projects in site order (issue #295), and the header counts their launches.
 // The edit shell's page switch (board 75d, issue #300) draws the same page
 // with the project being edited in its place, and a `frame` that outlines its
-// card and dims the others.
-export function ProjectsListPage({ projects, frame }: { projects: readonly Project[]; frame?: ProjectCardFrame }) {
+// card and dims the others. The footer lists the published projects
+// (`footerProjects`, issue #378), never the edit shell's draft.
+export function ProjectsListPage({
+  projects,
+  footerProjects,
+  frame,
+}: {
+  projects: readonly Project[];
+  footerProjects: readonly FooterProject[];
+  frame?: ProjectCardFrame;
+}) {
   const stats = [...launchCounts(projects), ...targets];
   return (
     <div className="relative bg-ground">
@@ -80,7 +90,7 @@ export function ProjectsListPage({ projects, frame }: { projects: readonly Proje
             </div>
           </div>
         </main>
-        <LandingFooter inSky />
+        <LandingFooter inSky projects={footerProjects} />
       </PageSky>
     </div>
   );

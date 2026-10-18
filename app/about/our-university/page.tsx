@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/about/page-header";
 import { EntrancePhoto, Politecnico, Support } from "@/components/about/university";
-import { LandingFooter } from "@/components/landing/footer";
+import { SiteFooter } from "@/components/landing/site-footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { university } from "@/lib/about/university";
@@ -26,7 +26,7 @@ export default function OurUniversityPage() {
           <Politecnico politecnico={university.politecnico} />
           <Support support={university.support} />
         </main>
-        <LandingFooter inSky />
+        <SiteFooter inSky />
       </PageSky>
     </div>
   );
