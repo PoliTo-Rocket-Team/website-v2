@@ -1,6 +1,7 @@
 import type { RocketModel } from "@/lib/rocket-model";
 import CavourBuilt from "./rocket-cavour";
 import PlaceholderBuilt from "./rocket-placeholder";
+import VesBuilt from "./rocket-ves";
 
 /**
  * The code-built vehicle for each rocket model. Every one takes the same
@@ -9,5 +10,6 @@ import PlaceholderBuilt from "./rocket-placeholder";
  */
 export const builtRockets: Record<RocketModel, typeof CavourBuilt> = {
   cavour: CavourBuilt,
+  ves: VesBuilt,
   placeholder: PlaceholderBuilt,
 };

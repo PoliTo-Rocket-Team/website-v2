@@ -281,6 +281,13 @@
       "when": 1792256823996,
       "tag": "0039_restore_application_files",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792344000000,
+      "tag": "0040_ves_mark_one_rocket",
+      "breakpoints": true
     }
   ]
 }

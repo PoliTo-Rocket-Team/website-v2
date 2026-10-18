@@ -11,8 +11,9 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
 import { isProjectRecord } from "./check";
-import { importedProjects, importedRecords, projectImportSql } from "./import";
+import { firstImport, importedProjects, importedRecords, projectImportSql, vesMarkOneRocket } from "./import";
 import { homeCardOf, listingOf, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
+import { revisionSql } from "./revision";
 import { withSubscriptDigits } from "./subscript";
 
 // The projects content store (issue #295). ./before.json is what the code
@@ -34,14 +35,37 @@ const PILL_TONE: Record<string, ProjectRecord["card"]["statusTone"]> = {
   "bg-prt-text text-ground": "light",
 };
 
-const published = () => publicItems(importedProjects());
+/** The import as the switch carried it, before any later revision. */
+const published = () => publicItems(importedProjects(firstImport));
+
+const migrationFile = (name: string) => readFileSync(join(__dirname, "..", "..", "drizzle", name), "utf8");
 
 test("migration 0037 holds exactly the import of Cavour, VES and Efesto, each a whole record", () => {
-  const migration = readFileSync(join(__dirname, "..", "..", "drizzle", "0037_projects_audit_and_import.sql"), "utf8");
+  const migration = migrationFile("0037_projects_audit_and_import.sql");
   assert.ok(migration.trimEnd().endsWith(projectImportSql()), "regenerate the migration's import from projectImportSql()");
   assert.equal(projectImportSql().split("--> statement-breakpoint").length, 3);
   assert.deepEqual(importedRecords.map((r) => r.slug), ["cavour", "ves", "efesto"]);
   for (const record of importedRecords) assert.ok(isProjectRecord(plain(record)), record.slug);
+});
+
+test("migration 0040 holds exactly the VES Mark I revision, and the revised records are whole", () => {
+  assert.ok(
+    migrationFile("0040_ves_mark_one_rocket.sql").trimEnd().endsWith(revisionSql(vesMarkOneRocket)),
+    "regenerate the migration from revisionSql(vesMarkOneRocket)",
+  );
+  const ves = importedRecords[1];
+  assert.equal(ves.card.rocket, "ves");
+  assert.deepEqual(pageRecordOf(ves).hero.visual?.rocket?.own?.model, "ves");
+  const markI = ves.kind === "vehicle" ? ves.versions?.after.find((v) => v.pill === "VES MARK I") : undefined;
+  assert.ok(markI, "VES has its Mark I version");
+  const { diameter, length, wetMass, motor, maxSpeed, targetApogee } = markI.specs;
+  assert.deepEqual(
+    ves.hero.facts.map((f) => f.value),
+    [diameter, length, wetMass, motor, maxSpeed, targetApogee],
+    "the key facts under the Mark I caption are Mark I's",
+  );
+  assert.equal(firstImport[1].card.rocket, "cavour", "the import itself stays as 0037 carried it");
+  assert.deepEqual(importedRecords[0], firstImport[0], "a revision touches its own project only");
 });
 
 test("the imported records draw the same page records, /projects entries and home cards as the code did", () => {
