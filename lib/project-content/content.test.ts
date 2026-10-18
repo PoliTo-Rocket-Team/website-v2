@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createElement, Fragment } from "react";
@@ -11,9 +11,10 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
 import { isProjectRecord } from "./check";
-import { firstImport, importedProjects, importedRecords, projectImportSql, vesMarkOneRocket } from "./import";
+import { cavourSitePhotos, firstImport, importedProjects, importedRecords, projectImportSql, vesMarkOneRocket, vesSitePhotos } from "./import";
+import { listPhotos } from "./list-fields";
 import { homeCardOf, listingOf, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
-import { revisionSql } from "./revision";
+import { revise, revisionSql } from "./revision";
 import { withSubscriptDigits } from "./subscript";
 
 // The projects content store (issue #295). ./before.json is what the code
@@ -65,7 +66,21 @@ test("migration 0040 holds exactly the VES Mark I revision, and the revised reco
     "the key facts under the Mark I caption are Mark I's",
   );
   assert.equal(firstImport[1].card.rocket, "cavour", "the import itself stays as 0037 carried it");
-  assert.deepEqual(importedRecords[0], firstImport[0], "a revision touches its own project only");
+  assert.deepEqual(revise(firstImport[0], vesMarkOneRocket), firstImport[0], "a revision touches its own project only");
+});
+
+test("migration 0041 holds exactly the current-site photo revisions, and every photo they set is a file of the site", () => {
+  const migration = migrationFile("0041_current_site_photos.sql");
+  for (const revision of [cavourSitePhotos, vesSitePhotos])
+    assert.ok(migration.includes(revisionSql(revision)), `regenerate the migration from revisionSql(${revision.slug} photos)`);
+  for (const record of importedRecords.slice(0, 2)) {
+    assert.ok(isProjectRecord(plain(record)), record.slug);
+    const page = pageRecordOf(record);
+    assert.ok(page.launches?.entries.every((launch) => launch.photos?.length === 2), `${record.slug}: every launch card has its two photos`);
+    assert.ok(page.gallery?.items.every((item) => "src" in item), `${record.slug}: the gallery holds no placeholder`);
+    for (const src of listPhotos(record))
+      assert.ok(existsSync(join(__dirname, "..", "..", "public", src)), `${src} is in public/`);
+  }
 });
 
 test("the imported records draw the same page records, /projects entries and home cards as the code did", () => {

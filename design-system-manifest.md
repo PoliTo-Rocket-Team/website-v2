@@ -442,8 +442,10 @@ page is the layout reference.
   Arrows, swipe, the arrow keys or a tap on a neighbour step it; dots below, the current one
   an accent pill. The open button or a tap on the photo opens the lightbox: a full-screen
   `ground` dialog with the photo contained, "n / total" top left, close top right, prev and
-  next beside the photo and a one-line caption. Both share one index. Until real photos
-  exist, the slots are glass placeholders.
+  next beside the photo and a one-line caption. Both share one index. A slot with no photo
+  is a glass placeholder. Cavour's and VES's galleries and launch cards show the Team's own
+  photos from the current public site (issue #371): webp files in `public/project-photos/`,
+  named in the project's stored record, never in a component.
 
 **/apply** (boards 34, 34b, 34c, 34m and 34bm, issue #119, `app/apply/page.tsx`,
 `components/apply/`): the About page header with four figures (2 x 2 on phones), the

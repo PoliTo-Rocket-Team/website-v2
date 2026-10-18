@@ -11,6 +11,7 @@ import {
   type OutreachFeature,
   type OutreachPhoto,
   type OutreachPost,
+  type PhotoSrc,
 } from "./outreach-types";
 import { isPhotoSrc } from "./outreach-photos";
 import type { Copy } from "./projects";
@@ -157,7 +158,7 @@ function bodyBlockOf(value: unknown): BodyBlock | null {
  * stored. Which store an uploaded file may come from, a save decides
  * (`checkPhotoSources`), so a row holds only what a save let through.
  */
-export function isStoredPhotoSrc(src: unknown): src is `/outreach/${string}` | `https://${string}` {
+export function isStoredPhotoSrc(src: unknown): src is Exclude<PhotoSrc, `data:${string}`> {
   return isPhotoSrc(src) && !src.startsWith("data:");
 }
 

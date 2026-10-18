@@ -16,7 +16,12 @@ import type { OutreachDraft, PhotoSrc, PostItem, PostStore } from "./outreach-ty
 
 /** Whether `value` has the shape of a photo's src. Whose file it is, a save checks with `checkPhotoSources`. */
 export function isPhotoSrc(value: unknown): value is PhotoSrc {
-  return typeof value === "string" && /^(\/outreach\/|https:\/\/|data:image\/)\S+$/.test(value);
+  return typeof value === "string" && /^(\/outreach\/|\/project-photos\/|https:\/\/|data:image\/)\S+$/.test(value);
+}
+
+/** Whether `src` is a file the site itself ships, in public/outreach/ or public/project-photos/: no save uploads it and none deletes it. */
+export function isSitePhotoSrc(src: string): boolean {
+  return /^\/(outreach|project-photos)\/\S+$/.test(src);
 }
 
 /** The largest photo file the panel sends. The panel shrinks a picked photo first, so this is rarely reached. */
@@ -64,7 +69,7 @@ export type PanelPhotoKind = Extract<PublicFileKind, "post-photo" | "project-pho
 /**
  * The pathname of an uploaded photo of this kind in this deployment's public
  * store, whose files `host` serves; null for anything else: a photo of the
- * site (`/outreach/...`), a preview's data URL, a file of another kind, or a
+ * site (`/outreach/...`, `/project-photos/...`), a preview's data URL, a file of another kind, or a
  * file on any other host, another Blob store included. Only this answers
  * which URLs a save may carry and which files may be deleted.
  */
