@@ -12,7 +12,7 @@ import type { EditBlocks, EditDevice, PageTarget } from "@/lib/content/edit-shel
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import type { FooterProject } from "@/lib/landing-links";
 import { fieldProblems, fieldsAfterSave, fieldsOf, projectViewOf, type PanelSection, type ProjectFields } from "@/lib/project-content/fields";
-import { homeCardOf, lineupWith, listingOf, pageRecordOf, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
+import { homeCardOf, lineupWith, listingOf, listingsNewestFirst, pageRecordOf, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
 import { CardInPlace, EditableBlock, EditShell } from "./edit-shell";
 import { ProjectEditPanel, type FieldErrors } from "./project-edit-panel";
 
@@ -179,15 +179,17 @@ function CardPage({
   onEditCard: () => void;
 }) {
   if (page === "list") {
-    const projects = lineup.map(listingOf);
-    const edited = projects[position];
+    // Newest first, as the public list orders them (issue #381). Each entry
+    // keeps its number, its place in the site order, so the number finds the
+    // edited card even while a draft slug repeats another project's.
+    const edited = listingOf(lineup[position], position).index;
     return (
       <ProjectsListPage
-        projects={projects}
+        projects={listingsNewestFirst(lineup)}
         footerProjects={footerProjects}
         frame={(project, node) => (
           // The /projects card is rounded-3xl (24px), so its outline is 30px.
-          <CardInPlace edited={project === edited} onEdit={onEditCard} outline="rounded-[30px]">
+          <CardInPlace edited={project.index === edited} onEdit={onEditCard} outline="rounded-[30px]">
             {node}
           </CardInPlace>
         )}

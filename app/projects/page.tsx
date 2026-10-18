@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ProjectsListPage } from "@/components/projects/list-page";
-import { listingOf } from "@/lib/project-content/record";
+import { listingsNewestFirst } from "@/lib/project-content/record";
 import { footerProjects, publishedProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
@@ -10,9 +10,9 @@ export const metadata: Metadata = {
 };
 
 // Approved /projects page per Pencil boards 22 (desktop) and 22m (phone, 390):
-// the published projects in site order (issue #295), drawn by
-// components/projects/list-page.tsx, which the edit shell's page switch
-// draws too (issue #300).
+// the published projects (issue #295), newest first as the home row lists
+// them (issue #381), drawn by components/projects/list-page.tsx, which the
+// edit shell's page switch draws too (issue #300).
 export default async function ProjectsPage() {
-  return <ProjectsListPage projects={(await publishedProjects()).map(listingOf)} footerProjects={await footerProjects()} />;
+  return <ProjectsListPage projects={listingsNewestFirst(await publishedProjects())} footerProjects={await footerProjects()} />;
 }

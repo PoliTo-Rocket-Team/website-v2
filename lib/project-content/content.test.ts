@@ -13,7 +13,7 @@ import before from "./before.json";
 import { isProjectRecord, storedProjectRecord } from "./check";
 import { cavourSitePhotos, firstImport, importedProjects, importedRecords, projectImportSql, vesGreyTexture, vesMarkOneRocket, vesSitePhotos } from "./import";
 import { listPhotos } from "./list-fields";
-import { homeCardOf, listingOf, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
+import { homeCardOf, listingOf, listingsNewestFirst, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
 import { revise, revisionSql } from "./revision";
 import { withSubscriptDigits } from "./subscript";
 
@@ -102,7 +102,10 @@ test("the imported records draw the same page records, /projects entries and hom
     // The page no longer carries the next-project card's line (issue #377).
     const { teaser: _, ...page } = before.pages[record.slug as keyof typeof before.pages];
     assert.deepEqual(plain(pageRecordOf(record)), page, `${record.slug} page`);
-    assert.deepEqual(plain(listingOf(record, i)), before.projects[i], `${record.slug} /projects entry`);
+    // A rocket's panel model came after the switch (issue #381): it is the home card's.
+    const listing = listingOf(record, i);
+    assert.deepEqual(plain({ ...listing, rocket: undefined }), before.projects[i], `${record.slug} /projects entry`);
+    if (listing.kind === "vehicle") assert.equal(listing.rocket, record.card.rocket, `${record.slug} /projects rocket`);
 
     const card = homeCardOf(record, i);
     const was = before.homeCards[i];
@@ -203,4 +206,10 @@ test("the home Projects row shows the newest project first, by year then by numb
   assert.deepEqual(newestFirst(cards).map((c) => [c.num, c.name]), [["02", "VES"], ["03", "Efesto"], ["01", "Cavour"]]);
   const unnamed = { ...cards[0], num: "04", name: "No year", year: { text: "" } };
   assert.equal(newestFirst([unnamed, ...cards]).at(-1)?.name, "No year", "a card naming no year goes last");
+});
+
+test("/projects lists the projects in the home row's order, each entry keeping its number", () => {
+  const records = published();
+  const row = newestFirst(records.map(homeCardOf)).map((c) => [c.num, c.name]);
+  assert.deepEqual(listingsNewestFirst(records).map((p) => [p.index, p.name]), row);
 });
