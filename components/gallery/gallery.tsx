@@ -5,6 +5,7 @@ import Image from "next/image";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ArrowLeft, ArrowRight, Maximize2, X } from "lucide-react";
 import { MarkFallback } from "@/components/mark-fallback";
+import { NO_GESTURE, readWheel } from "@/lib/wheel-swipe";
 import { Dialog, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { isPhoto, ringOffset, wrapIndex, type FilledGallery, type GalleryItem } from "./items";
 
@@ -85,6 +86,24 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
     swiped.current = true;
     step(dx < 0 ? 1 : -1);
   };
+
+  // A trackpad's sideways scroll steps once per gesture (lib/wheel-swipe.ts).
+  // The listener is not passive, so a sideways gesture is kept from the page
+  // and never turns into the browser's back-swipe.
+  useEffect(() => {
+    const region = regionRef.current;
+    if (!region) return;
+    let gesture = NO_GESTURE;
+    const onWheel = (e: WheelEvent) => {
+      const read = readWheel(gesture, e.deltaX, e.deltaY, e.timeStamp);
+      gesture = read.gesture;
+      if (!read.sideways) return;
+      e.preventDefault();
+      if (read.step !== 0) setCurrent((i) => wrapIndex(i, read.step, count));
+    };
+    region.addEventListener("wheel", onWheel, { passive: false });
+    return () => region.removeEventListener("wheel", onWheel);
+  }, [count]);
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "ArrowLeft") step(-1);
