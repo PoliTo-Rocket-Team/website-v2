@@ -106,19 +106,24 @@ export async function markOrdered(orderId: number): Promise<WriteResult<Order>> 
 // The Partners page (boards 76 and 76b, issue #256). Each write also passes
 // the site-content gate inside the data interface (lib/content/gate.ts).
 
-/** The panel measures a picked logo, so it can say whether the site draws it white before it is saved. */
+/** The panel measures a picked logo, so it can pre-set "draw it white" and warn of a solid box before it is saved. */
 export async function measurePartnerLogo(form: FormData): Promise<WriteResult<MeasuredLogo>> {
   const logo = await uploadOf(form, "logo");
   if (logo === null) return refused("Choose a logo.");
   return write("partners", (data) => data.partners.measure(logo));
 }
 
-/** Save draft or Publish on a partner; `partnerId` null is New partner. */
+/**
+ * Save draft or Publish on a partner; `partnerId` null is New partner. The
+ * form's `darkLogo` ("true" or "false") is the editor's "draw it white" choice.
+ */
 export async function savePartner(partnerId: number | null, step: PublishStep, form: FormData): Promise<WriteResult<ContentItem<Partner>>> {
   if (partnerId !== null && !Number.isSafeInteger(partnerId)) return refused("Unknown partner.");
   if (!isPublishStep(step)) return refused("Save a draft or publish.");
   const fields = textFields(form, PARTNER_FIELDS) as PartnerFields;
-  const result = await write("partners", async (data) => data.partners.save(partnerId, step, fields, await uploadOf(form, "logo")));
+  const dark = form.get("darkLogo");
+  const darkLogo = dark === "true" ? true : dark === "false" ? false : undefined;
+  const result = await write("partners", async (data) => data.partners.save(partnerId, step, fields, await uploadOf(form, "logo"), darkLogo));
   if (result.ok) refreshPublicPartners();
   return result;
 }

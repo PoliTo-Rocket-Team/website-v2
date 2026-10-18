@@ -15,8 +15,13 @@ import { logoKindOf, type Partner, type PartnerLogo, type PartnerTier } from "./
 /** The largest logo file the panel takes. */
 export const LOGO_MAX_BYTES = 1024 * 1024;
 
-/** A logo as measured on upload, before it is stored. */
-export type MeasuredLogo = Omit<PartnerLogo, "src">;
+/**
+ * A logo as measured on upload, before it is stored: what the partner keeps
+ * (`logo`, its dark flag as measured) and whether the file sits on a solid box
+ * instead of transparency, which the panel warns about but does not refuse
+ * (issue #394).
+ */
+export type MeasuredLogo = { logo: Omit<PartnerLogo, "src">; solidBackground: boolean };
 
 /** Where uploaded logo files go: the public Blob store, or nowhere on a preview. */
 export interface LogoFiles {
@@ -26,16 +31,16 @@ export interface LogoFiles {
 
 /**
  * The upload measured with `measureLogo` (lib/logo-luminance.ts): its size,
- * its kind from its shape, and whether it is too dark for the page, in which
- * case the site draws it white. Only an 8-bit PNG can be measured, so only
- * that is taken.
+ * its kind from its shape, whether it is too dark for the page, in which
+ * case the site draws it white, and whether it sits on a solid box. Only an
+ * 8-bit PNG can be measured, so only that is taken.
  */
 export function measureUpload(logo: Upload): WriteResult<MeasuredLogo> {
   if (logo.contentType !== "image/png") return refused("The logo must be a PNG file.");
   if (logo.bytes.byteLength > LOGO_MAX_BYTES) return refused("The logo must be at most 1 MB.");
   try {
-    const { width, height, dark } = measureLogo(logo.bytes);
-    return written({ width, height, kind: logoKindOf(width, height), darkLogo: dark });
+    const { width, height, dark, solidBackground } = measureLogo(logo.bytes);
+    return written({ logo: { width, height, kind: logoKindOf(width, height), darkLogo: dark }, solidBackground });
   } catch (error) {
     return refused(`The logo could not be read: ${error instanceof Error ? error.message : "not a PNG file"}.`);
   }
@@ -44,10 +49,20 @@ export function measureUpload(logo: Upload): WriteResult<MeasuredLogo> {
 export interface PartnerEditor {
   /** Every partner as the editor sees it, in site order; null for a viewer without site-content access. */
   list(): Promise<readonly ContentItem<Partner>[] | null>;
-  /** The panel measures a picked logo before it is saved, so it can say whether the site draws it white. */
+  /** The panel measures a picked logo before it is saved, so it can pre-set "draw it white" and warn of a solid box. */
   measure(logo: Upload): Promise<WriteResult<MeasuredLogo>>;
-  /** Save draft or Publish (`id` null: New partner). A new partner needs a logo; an edit keeps its logo unless one is sent. */
-  save(id: number | null, step: PublishStep, fields: PartnerFields, logo: Upload | null): Promise<WriteResult<ContentItem<Partner>>>;
+  /**
+   * Save draft or Publish (`id` null: New partner). A new partner needs a logo; an edit keeps its logo unless one is sent.
+   * `darkLogo` is the editor's choice to draw the logo white, kept over the measurement; left out, a sent logo keeps its
+   * measured flag and a kept logo its stored one.
+   */
+  save(
+    id: number | null,
+    step: PublishStep,
+    fields: PartnerFields,
+    logo: Upload | null,
+    darkLogo?: boolean,
+  ): Promise<WriteResult<ContentItem<Partner>>>;
   remove(id: number): Promise<WriteResult<null>>;
   /** The order of one tier's partners, as dragged. */
   reorder(tier: PartnerTier, ids: readonly number[]): Promise<WriteResult<null>>;
@@ -58,14 +73,15 @@ export function partnerEditor(viewer: ViewerStanding, store: ContentStore<Partne
   return {
     list: () => editor.list(),
     measure: async (logo) => (maySiteContent(viewer) ? measureUpload(logo) : refused(SITE_CONTENT_REFUSAL)),
-    save: (id, step, fields, logo) =>
+    save: (id, step, fields, logo, darkLogo) =>
       editor.save(id, step, async (current) => {
         const text = checkPartnerFields(fields);
         if (!text.ok) return text;
-        if (logo === null) return current === null ? refused("Add the partner's logo.") : written(withLogo(text.value, current.logo));
+        const chosen = (kept: PartnerLogo): PartnerLogo => (darkLogo === undefined ? kept : { ...kept, darkLogo });
+        if (logo === null) return current === null ? refused("Add the partner's logo.") : written(withLogo(text.value, chosen(current.logo)));
         const measured = measureUpload(logo);
         if (!measured.ok) return measured;
-        return written(withLogo(text.value, { src: await files.put(logo), ...measured.value }));
+        return written(withLogo(text.value, chosen({ src: await files.put(logo), ...measured.value.logo })));
       }),
     remove: (id) => editor.remove(id),
     reorder: (tier, ids) => editor.reorder((partner) => partner.tier === tier, ids),
