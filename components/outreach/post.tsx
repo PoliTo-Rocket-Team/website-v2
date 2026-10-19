@@ -289,16 +289,16 @@ function Neighbour({ post, side }: { post: OutreachPost; side: "older" | "newer"
   const arrow = "h-[1em] w-[2.4em] opacity-80 transition-[transform,opacity] duration-300 ease-out group-hover:opacity-100";
   return (
     <article
-      className={`glass-card glass-linked group flex h-[96px] overflow-hidden rounded-xl md:h-[150px] ${side === "newer" ? "order-first md:order-none" : ""}`}
+      className="glass-card glass-linked group flex h-[96px] overflow-hidden rounded-xl md:h-[150px]"
     >
       <div className="relative w-[120px] shrink-0 md:w-[190px]">
         <Photo photo={post.photos[0]} sizes="190px" />
       </div>
       <div className="flex min-w-0 flex-col justify-center px-4 md:px-6">
         <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.2em] text-prt-muted">
-          {side === "older" && <RocketArrow className={`rotate-180 group-hover:-translate-x-1 ${arrow}`} />}
+          {side === "newer" && <RocketArrow className={`rotate-180 group-hover:-translate-x-1 ${arrow}`} />}
           {side === "older" ? "OLDER" : "NEWER"} · {monthYear(post.date)}
-          {side === "newer" && <RocketArrow className={`group-hover:translate-x-1 ${arrow}`} />}
+          {side === "older" && <RocketArrow className={`group-hover:translate-x-1 ${arrow}`} />}
         </p>
         <h2 className="mt-2 truncate text-[17px] font-bold leading-tight text-prt-text md:text-[20px]">
           <Link
@@ -317,8 +317,9 @@ export function Neighbours({ older, newer }: { older?: OutreachPost; newer?: Out
   if (older === undefined && newer === undefined) return null;
   return (
     <nav aria-label="More outreach" className={`${width} mt-14 grid gap-3 md:mt-20 md:grid-cols-2 md:gap-4`}>
-      {older !== undefined ? <Neighbour post={older} side="older" /> : <div className="hidden md:block" />}
-      {newer !== undefined && <Neighbour post={newer} side="newer" />}
+      {/* Newer on the left, older on the right, as a timeline reads (Owner decision, 2026-10-19). */}
+      {newer !== undefined ? <Neighbour post={newer} side="newer" /> : <div className="hidden md:block" />}
+      {older !== undefined && <Neighbour post={older} side="older" />}
     </nav>
   );
 }
