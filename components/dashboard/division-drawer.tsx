@@ -348,11 +348,13 @@ function DrawerForm({
               ),
             )}
             {gone.map((lead) =>
-              replacedBy(lead.id) !== null ? (
+              // Only an open division has leads to replace, so a replaced lead always has its division.
+              replacedBy(lead.id) !== null && divisionId !== null ? (
                 <div key={lead.id} className="mt-5">
                   <HandOverChoice
                     name={`hand-over-${lead.id}`}
                     person={lead.name}
+                    handed={{ kind: "lead", divisionId }}
                     unit={short}
                     value={draft.handOvers[lead.id] ?? null}
                     leave={lead.leave}

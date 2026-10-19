@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   checkDivisionSave,
   closeRefusal,
+  divisionClosing,
   divisionCodeError,
   divisionRowWrites,
   peopleInDivision,
@@ -213,6 +214,19 @@ test("Close counts only lead and member rows as people: a seat kept on the divis
   assert.equal(closeRefusal(head, org, 1, { people: peopleInDivision(1, seatsOnly).length, waiting: 0 }), null);
   const withMember = [...seatsOnly, { id: 107, memberId: 8, type: "core" as const }];
   assert.match(closeRefusal(head, org, 1, { people: peopleInDivision(1, withMember).length, waiting: 0 })!, /1 person is still/);
+});
+
+test("Close division: an advisor in it does not keep it open, and stays in its department with the Advisor role (#441)", () => {
+  const rows: readonly DivisionRow[] = [...seatRows.filter((r) => r.type === "head" || r.type === "president"), { id: 108, memberId: 1, type: "advisor" }];
+  const closing = divisionClosing(1, rows);
+  assert.deepEqual(closing, { people: [], advisors: [{ id: 108, memberId: 1, type: "advisor" }] });
+  assert.equal(closeRefusal(head, org, 1, { people: closing.people.length, waiting: 0 }), null, "only an advisor is left, so it closes");
+  // With a member still in it, it stays refused; the advisor alone never counts.
+  const withMember = divisionClosing(1, [...rows, { id: 109, memberId: 3, type: "core" }]);
+  assert.deepEqual(withMember.people, [3]);
+  assert.match(closeRefusal(head, org, 1, { people: withMember.people.length, waiting: 0 })!, /1 person is still/);
+  // Close department reads every row as before: its department closes too, so an advisor there still counts.
+  assert.deepEqual(peopleInDivision(1, rows), [1]);
 });
 
 test("the pickers search the whole team, the team leader, board and heads included, and offer a new email", () => {

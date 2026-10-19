@@ -1,4 +1,4 @@
-import { mayManageDepartments } from "./department-edit";
+import { closingPeople, mayManageDepartments, type ClosingPerson } from "./department-edit";
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
 import { divisionLabel, roleIn, type DepartmentKind, type Joining, type OrgChart, type TeamActor } from "./team";
@@ -49,6 +49,8 @@ export type StructureDepartment = {
   /** Pencils on its divisions and its Add division: its head, the team leader and full access. */
   readonly divisionsEditable: boolean;
   readonly divisions: readonly StructureDivision[];
+  /** Everyone Close department moves (`closingPeople`, issue #441); none where the viewer may not close departments. */
+  readonly closing: readonly ClosingPerson[];
   /** The viewer heads it: its box wears the accent ring and tint (issue #405). */
   readonly yours: boolean;
 };
@@ -164,6 +166,7 @@ export function teamStructure(input: {
       size: (head ? 1 : 0) + inDepartment.size,
       divisionsEditable: editable,
       divisions,
+      closing: mayManageDepartments(actor) ? closingPeople(records, org, department.id) : [],
       yours: self?.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id) ?? false,
     };
   });

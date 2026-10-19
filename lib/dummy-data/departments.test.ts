@@ -24,6 +24,7 @@ const STRUCTURES = 2;
 const MISSION_ANALYSIS = 1;
 const OPTIMIZATION = 2;
 const DESIGN = 3;
+const STRUCTURES_ANALYSIS = 4;
 const SARA = 7; // a member of Mission Analysis
 const CHIARA = 15; // Head of Aerodynamics, in no division
 
@@ -55,8 +56,7 @@ test("a department head manages no department, and the server refuses each depar
   const head = pages("department-head");
   assert.equal((await head.writes.createDepartment({ name: "Propulsion", code: "PR", kind: "technical", heads: [SARA] })).ok, false);
   assert.equal((await head.writes.saveDepartment(AERODYNAMICS, { name: "Aero", code: "AE", kind: "technical" })).ok, false);
-  const fates = { divisions: [{ divisionId: MISSION_ANALYSIS, action: "move", to: STRUCTURES }, { divisionId: OPTIMIZATION, action: "move", to: STRUCTURES }] };
-  assert.equal((await head.writes.closeDepartment(AERODYNAMICS, fates)).ok, false);
+  assert.equal((await head.writes.closeDepartment(AERODYNAMICS, { people: [] })).ok, false);
   assert.equal(head.kept(), NO_EDITS, "nothing is saved");
   assert.equal((await head.view.teamStructure())!.departmentsEditable, false);
 });
@@ -70,87 +70,84 @@ test("a department head's division writes outside their own department are refus
   assert.equal(head.kept(), NO_EDITS, "nothing is saved");
 });
 
-/** Aerodynamics with an empty division beside its two full ones, ready for Close department. */
-async function aerodynamicsToClose() {
-  const ops = pages("operations-lead");
-  // A new division in Aerodynamics, then its only lead taken out, leaves one empty division to close.
-  const created = await ops.writes.createDivision(AERODYNAMICS, { name: "Flight Dynamics", code: "FD", newLeads: [13], oldLeads: [], members: [], emails: [] });
-  assert.ok(created.ok);
-  const emptied = pages("operations-lead", ops.kept());
-  assert.equal(await emptied.writes.removeFromDivision(13, created.value), true);
-  const divisions = [
-    { divisionId: MISSION_ANALYSIS, action: "move", to: STRUCTURES },
-    { divisionId: OPTIMIZATION, action: "move", to: STRUCTURES },
-    { divisionId: created.value, action: "close" },
-  ];
-  return { edits: emptied.kept(), emptyDivision: created.value, divisions };
+// Close department (issue #441, Owner decision, 2026-10-19): every person in
+// Aerodynamics gets a destination, and nobody leaves the team from here.
+
+const DESIGN_UNIT = { kind: "division", divisionId: DESIGN } as const;
+const ANALYSIS_UNIT = { kind: "division", divisionId: STRUCTURES_ANALYSIS } as const;
+
+/**
+ * Aerodynamics with nobody waiting for their NDA (each add cancelled), and
+ * everyone in it sent to Design & Manufacturing, or Structures Analysis for
+ * anyone in it already; a former head or lead takes `role`.
+ */
+async function everyoneToDesign(role: "advisor" | "member") {
+  let edits = NO_EDITS;
+  const waiting = (await structureOf(edits)).departments.find((d) => d.id === AERODYNAMICS)!.divisions.flatMap((d) => d.page!.waiting);
+  for (const w of waiting) {
+    const ops = pages("operations-lead", edits);
+    assert.ok(await ops.writes.cancelAdd(w.joinId));
+    edits = ops.kept();
+  }
+  const aero = (await structureOf(edits)).departments.find((d) => d.id === AERODYNAMICS)!;
+  const people = aero.closing.map((p) => ({
+    personId: p.id,
+    to: p.holds.some((u) => u.kind === "division" && u.divisionId === DESIGN) ? ANALYSIS_UNIT : DESIGN_UNIT,
+    role: p.standing === "head" || p.standing === "lead" ? role : null,
+  }));
+  return { aero, people, edits };
 }
 
-test("Close department moves each division with its people and closes the empty ones", async () => {
-  const { edits, emptyDivision, divisions } = await aerodynamicsToClose();
-  const before = await structureOf(edits);
-  const missionBefore = before.departments.find((d) => d.id === AERODYNAMICS)!.divisions.find((d) => d.id === MISSION_ANALYSIS)!;
-  const closer = pages("operations-lead", edits);
-  const refused = await closer.writes.closeDepartment(AERODYNAMICS, {
-    divisions: [{ divisionId: MISSION_ANALYSIS, action: "close" }, ...divisions.slice(1)],
-    head: "advisor",
-  });
-  assert.equal(refused.ok, false, "a division with people in it can only move");
-
-  assert.deepEqual(await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" }), { ok: true, value: null });
-  const after = await structureOf(closer.kept());
-  assert.ok(!after.departments.some((d) => d.id === AERODYNAMICS), "the department is closed");
-  const structures = after.departments.find((d) => d.id === STRUCTURES)!;
-  const mission = structures.divisions.find((d) => d.id === MISSION_ANALYSIS)!;
-  assert.deepEqual(
-    mission.page!.people.map((p) => [p.id, p.role]),
-    missionBefore.page!.people.map((p) => [p.id, p.role]),
-    "its people and leads moved with it",
-  );
-  assert.ok(structures.divisions.some((d) => d.id === OPTIMIZATION));
-  assert.ok(!after.departments.flatMap((d) => d.divisions).some((d) => d.id === emptyDivision), "the empty division is closed");
+test("Close department waits for nobody's NDA: it is refused while anyone waits in its divisions", async () => {
+  const { people } = await everyoneToDesign("member");
+  const closer = pages("operations-lead");
+  assert.match(((await closer.writes.closeDepartment(AERODYNAMICS, { people })) as { error: string }).error, /waiting for their NDA/);
+  assert.equal(closer.kept(), NO_EDITS);
 });
 
-test("Close department is refused while nothing is picked for the head, and nothing is saved", async () => {
-  const { edits, divisions } = await aerodynamicsToClose();
+test("Close department moves every person to their destination and closes every division with it", async () => {
+  const { aero, people, edits } = await everyoneToDesign("member");
+  assert.ok(aero.closing.some((p) => p.id === CHIARA && p.standing === "head"), "the head is one of the people it moves");
+  assert.ok(aero.closing.some((p) => p.id === SARA), "and so is every member");
   const closer = pages("operations-lead", edits);
-  const refused = await closer.writes.closeDepartment(AERODYNAMICS, { divisions });
-  assert.deepEqual(refused, { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
+  assert.deepEqual(await closer.writes.closeDepartment(AERODYNAMICS, { people }), { ok: true, value: null });
+  const after = await structureOf(closer.kept());
+  assert.ok(!after.departments.some((d) => d.id === AERODYNAMICS), "the department is closed");
+  const open = after.departments.flatMap((d) => d.divisions).map((d) => d.id);
+  assert.ok(!open.includes(MISSION_ANALYSIS) && !open.includes(OPTIMIZATION), "every division closes with it");
+  const structures = after.departments.find((d) => d.id === STRUCTURES)!;
+  const inStructures = new Set(structures.divisions.flatMap((d) => d.page!.people.map((p) => p.id)));
+  for (const { personId } of people) assert.ok(inStructures.has(personId), `${personId} is in Structures now`);
+  const design = structures.divisions.find((d) => d.id === DESIGN)!;
+  assert.equal(design.page!.people.find((p) => p.id === CHIARA)?.role, "member", "the former head picked member");
+});
+
+test("Close department is refused while anyone has no destination or a former head or lead no role, and nothing is saved", async () => {
+  const { people, edits } = await everyoneToDesign("member");
+  const closer = pages("operations-lead", edits);
+  const refused = await closer.writes.closeDepartment(AERODYNAMICS, { people: people.filter((p) => p.personId !== SARA) });
+  assert.equal(refused.ok, false, "Sara has no destination");
+  const unpicked = await closer.writes.closeDepartment(AERODYNAMICS, { people: people.map((p) => (p.personId === CHIARA ? { ...p, role: null } : p)) });
+  assert.match((unpicked as { error: string }).error, /Become an advisor or Member/);
+  assert.equal((await closer.writes.closeDepartment(AERODYNAMICS, { divisions: [], head: "leave" })).ok, false, "no Leave the team");
   assert.equal(closer.kept(), edits);
 });
 
-test("Become an advisor: the head of a closed department stays on the team with the Advisor role, off Alumni", async () => {
-  const { edits, divisions } = await aerodynamicsToClose();
-  const closer = pages("operations-lead", edits);
-  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" })).ok);
-  const members = await pages("team-leader", closer.kept()).view.members();
-  assert.ok(members.scope === "whole-team");
-  const chiara = members.people.find((p) => p.id === CHIARA);
-  assert.deepEqual([chiara?.roleLabel, chiara?.departmentIds, chiara?.divisionIds], ["Advisor", [], []], "in no department and no division");
-  assert.ok(!(await pages("operations-lead", closer.kept()).view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "not on Alumni");
-});
-
-test("Become an advisor removes every access row the head held", async () => {
-  const { edits, divisions } = await aerodynamicsToClose();
+test("Close department: a former head who becomes an advisor holds the Advisor role in their destination and their access ends; nobody moves to Alumni", async () => {
   const holds = (team: TeamEdits) => {
     const access = dummyAccessPage("operations-lead", personFor["operations-lead"], editedRoster(team))!;
     return [...access.roleAccess, ...access.grants].some((a) => a.person.id === CHIARA);
   };
-  assert.ok(holds(edits), "the head holds their department's access before the close");
+  assert.ok(holds(NO_EDITS), "the head holds their department's access before the close");
+  const { people, edits } = await everyoneToDesign("advisor");
   const closer = pages("operations-lead", edits);
-  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" })).ok);
+  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { people })).ok);
+  assert.deepEqual(closer.kept().advisors[CHIARA], { place: DESIGN_UNIT, access: "ends" });
   assert.equal(holds(closer.kept()), false, "no access is left");
-  assert.deepEqual(editedRoster(closer.kept()).find((e) => e.id === CHIARA)?.access, []);
-});
-
-test("Leave the team: the head of a closed department leaves the team and appears on Alumni", async () => {
-  const { edits, divisions } = await aerodynamicsToClose();
-  const closer = pages("operations-lead", edits);
-  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "leave" })).ok);
   const view = pages("operations-lead", closer.kept()).view;
   const members = await view.members();
-  assert.ok(members.scope === "whole-team" && !members.people.some((p) => p.id === CHIARA), "off the team");
-  assert.ok((await view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "on Alumni");
+  assert.ok(members.scope === "whole-team" && members.people.some((p) => p.id === CHIARA), "still on the team");
+  assert.ok(!(await view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "not on Alumni");
 });
 
 // Change head and the Team Leader box (issue #253): handing a role over.

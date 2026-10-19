@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { closeDivision } from "@/app/dashboard/team-actions";
 import type { DivisionMembers } from "@/lib/dashboard/division-members";
+import { advisorsStayLine } from "@/lib/dashboard/hand-over";
 import { SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber, sheetConfirm } from "./confirm-dialog";
 
 // Close division (board 68c, #232), opened from Edit division's footer in the
@@ -14,7 +15,8 @@ import { SHEET_BUTTONS, SHEET_CANCEL, SHEET_CONTENT, SHEET_OVERLAY, SheetGrabber
 // the dialog says so and offers Edit division in place of the way out. An
 // empty one asks "are you sure", since its open positions close, its division
 // access goes, and a closed division never opens again (board 68e is
-// dropped).
+// dropped). An advisor does not keep it open: they stay in its department
+// with the Advisor role, and the dialog says so (issue #441).
 
 /** "9 people to move", "2 open positions will close", "Division access goes away". */
 function Summary({ people, positions }: { people: number; positions: number }) {
@@ -54,8 +56,11 @@ export function CloseDivisionDialog({
   const [shownTab, setShown] = useState(tab);
   if (tab !== null && tab !== shownTab) setShown(tab);
   const name = shownTab?.division.name ?? "";
-  const people = (shownTab?.people.length ?? 0) + (shownTab?.waiting.length ?? 0);
+  // An advisor does not keep the division open: they stay in its department (issue #441).
+  const advisors = shownTab?.people.filter((p) => p.advisor) ?? [];
+  const people = (shownTab?.people.length ?? 0) - advisors.length + (shownTab?.waiting.length ?? 0);
   const blocked = people > 0;
+  const department = shownTab?.division.department ?? "";
 
   const close = () =>
     startTransition(async () => {
@@ -82,7 +87,12 @@ export function CloseDivisionDialog({
           <p className="mt-2 text-[14px] leading-relaxed text-text-2">
             {blocked
               ? `${people} ${people === 1 ? "person is" : "people are"} still in this division. Remove them or add them to another division from Edit division first, then close it.`
-              : "Nobody is in this division. Once closed, it cannot be reopened; its name stays in the team's history."}
+              : advisors.length > 0
+                ? `Only advisors are in this division. ${advisorsStayLine(
+                    advisors.map((a) => a.name),
+                    department,
+                  )} Once closed, it cannot be reopened; its name stays in the team's history.`
+                : "Nobody is in this division. Once closed, it cannot be reopened; its name stays in the team's history."}
           </p>
           <Summary people={people} positions={openPositions} />
           <div className={SHEET_BUTTONS}>

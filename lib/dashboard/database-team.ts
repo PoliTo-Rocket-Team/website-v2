@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
@@ -69,6 +69,7 @@ import {
 import { departmentMembers } from "./department-members";
 import {
   ADVISOR_TITLE,
+  advisorAfterDivisionCloses,
   checkTeamLeaderHandOver,
   planTeamLeaderHandOver,
   promotingLead,
@@ -82,6 +83,7 @@ import {
   checkDepartmentClose,
   checkDepartmentCreate,
   checkDepartmentSave,
+  closingPeople,
   planDepartmentClose,
   planDepartmentCreate,
   planDepartmentSave,
@@ -90,8 +92,8 @@ import { editableDivisionIds, teamStructure, type TeamStructure } from "./team-s
 import {
   checkDivisionSave,
   closeRefusal,
+  divisionClosing,
   divisionRowWrites,
-  peopleInDivision,
   planDivisionSave,
   searchTeam,
   type DivisionPlan,
@@ -886,8 +888,8 @@ async function heldRows(divisionId: number): Promise<DivisionRow[]> {
 }
 
 /**
- * Someone who leaves the team from a structure edit (an old lead's "Leave the
- * team", a closed department's head's): every active role ends and every
+ * Someone who leaves the team from a structure edit (an old lead's or head's
+ * "Leave the team"): every active role ends and every
  * access row goes, their years on the team are set from their roles, and the
  * leave is recorded, so they appear on Alumni.
  */
@@ -905,7 +907,7 @@ function leaveTeamWrites(db: Tx, leaver: { readonly memberId: number; readonly a
   ];
 }
 
-/** The unit an Advisor role row is kept on: its division (as every division role, with no department), its department, or neither for the whole team. */
+/** The unit a role row is kept on: its division (as every division role, with no department), its department, or neither for an Advisor role on the whole team. */
 function advisorUnit(place: AdvisorPlace): { deptId: number | null; divisionId: number | null } {
   switch (place.kind) {
     case "team":
@@ -1037,10 +1039,12 @@ function refreshPositions() {
 
 /**
  * Close division (board 68c): refused while anyone holds a lead or member role
- * in it (`peopleInDivision`: a seat row kept on it is not a person in it, as the
- * dialog counts) or waits for their NDA there. Otherwise, in one batch: the
- * division closes, its open positions close, and every access given in it is
- * removed.
+ * in it (`divisionClosing`: a seat row kept on it is not a person in it, as the
+ * dialog counts, and neither is an Advisor role) or waits for their NDA there.
+ * Otherwise, in one batch: the division closes, its open positions close,
+ * every access given in it is removed, and each Advisor role in it ends and
+ * starts again on the division's department (issue #441), so the advisor
+ * stays there with the Advisor role.
  */
 async function closeDivision(identity: DashboardIdentity, divisionId: number): Promise<WriteResult<null>> {
   const snapshot = await readTeamSnapshot();
@@ -1051,10 +1055,25 @@ async function closeDivision(identity: DashboardIdentity, divisionId: number): P
     heldRows(divisionId),
     db.select({ count: sql<number>`count(*)::int` }).from(teamJoins).where(eq(teamJoins.divisionId, divisionId)),
   ]);
-  const people = peopleInDivision(divisionId, held).length;
-  const refusal = closeRefusal(actor, snapshot.org, divisionId, { people, waiting: Number(waiting?.count ?? 0) });
+  const { people, advisors } = divisionClosing(divisionId, held);
+  const refusal = closeRefusal(actor, snapshot.org, divisionId, { people: people.length, waiting: Number(waiting?.count ?? 0) });
   if (refusal !== null) return refused(refusal);
-  await runAuditBatch((tx) => closeDivisionWrites(tx, divisionId, today()));
+  const departmentId = snapshot.org.divisions.find((d) => d.id === divisionId)!.departmentId;
+  const on = today();
+  await runAuditBatch((tx) => [
+    ...closeDivisionWrites(tx, divisionId, on),
+    ...(advisors.length === 0
+      ? []
+      : [
+          tx
+            .update(roles)
+            .set({ leavedAt: on })
+            .where(and(inArray(roles.id, advisors.map((r) => r.id)), isNull(roles.leavedAt))),
+          tx.insert(roles).values(
+            advisors.map(({ memberId }) => ({ memberId, ...advisorUnit(advisorAfterDivisionCloses(departmentId)), title: ADVISOR_TITLE, type: "advisor" as const, startedAt: on })),
+          ),
+        ]),
+  ]);
   done();
   refreshPositions();
   return written(null);
@@ -1141,20 +1160,20 @@ function headRowOf(departmentId: number, org: OrgChart) {
 }
 
 /**
- * Close department (board 77f), in one batch:
- * - each division that moves takes its people, leads and open positions with
- *   it: the division row, then every active lead and member row and every
- *   access row that names the old department for it, follow the new one (a
- *   position names only its division, so it moves with it);
- * - each empty division that closes closes as Close division closes it;
+ * Close department (Owner decision, 2026-10-19), in one batch:
  * - the department closes and its department access goes;
- * - its head gets the outcome the closer picked, never one by default (Owner
- *   decision, 2026-10-16): "advisor" ends the head row, starts one Advisor
- *   role in no department and no division, and removes every access row they
- *   hold; "leave" ends every role and access row they hold, as Leaves the
- *   team does, so they appear on Alumni.
- * A seat kept on a moving division's row (a head's or the team leader's) is
- * not a lead or member row, so it stays where it is.
+ * - every division of it closes as Close division closes it: its open
+ *   positions close and the access given in it goes;
+ * - every person in it moves where the closer picked (`planDepartmentClose`):
+ *   each role they held in the department ends (its head role wherever the
+ *   row is kept, every lead, member and Advisor row in its divisions, and any
+ *   role kept on the department), and one role starts in the destination, a
+ *   member's or an Advisor role. A former head or lead who becomes an advisor
+ *   there loses every access row (`advisingIn`); everyone else keeps the
+ *   access they hold elsewhere.
+ * Nobody leaves the team from here. A seat kept on one of its division rows
+ * (the team leader's, another department's head) is not a role in the
+ * department, so it stays.
  */
 async function closeDepartment(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkDepartmentClose(input);
@@ -1162,58 +1181,64 @@ async function closeDepartment(identity: DashboardIdentity, departmentId: number
   const snapshot = await readTeamSnapshot();
   const actor = await readActor(identity, snapshot.org);
   const divisionIds = snapshot.org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
-  const [held, waiting] = await Promise.all([
-    Promise.all(divisionIds.map(async (id) => [id, peopleInDivision(id, await heldRows(id)).length] as const)),
+  const waiting =
     divisionIds.length === 0
       ? []
-      : getDb()
+      : await getDb()
           .select({ division_id: teamJoins.divisionId, count: sql<number>`count(*)::int` })
           .from(teamJoins)
           .where(inArray(teamJoins.divisionId, divisionIds))
-          .groupBy(teamJoins.divisionId),
-  ]);
-  const inIt = Object.fromEntries(held.map(([id, people]) => [id, people + Number(waiting.find((w) => w.division_id === id)?.count ?? 0)]));
-  // The head rows of this department, wherever each is kept (`headDepartmentOf`), read before any division moves.
-  const isHeadRow = headRowOf(departmentId, snapshot.org);
-  const headIds = [...new Set(snapshot.roles.filter((r) => r.leaved_at === null && isHeadRow(r)).map((r) => r.member_id))];
-  const planned = planDepartmentClose({ actor, org: snapshot.org, departmentId, close: checked.value, inIt, headIds });
+          .groupBy(teamJoins.divisionId);
+  const planned = planDepartmentClose({
+    actor,
+    org: snapshot.org,
+    departmentId,
+    close: checked.value,
+    people: closingPeople(recordsOf(snapshot), snapshot.org, departmentId),
+    waiting: Object.fromEntries(waiting.flatMap((w) => (w.division_id === null ? [] : [[w.division_id, Number(w.count)]]))),
+  });
   if (!planned.ok) return refused(planned.error);
 
   const on = today();
-  const { head } = planned.value;
-  const heads = head === null ? [] : await Promise.all(head.personIds.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
-  const advisors = head?.outcome === "advisor" ? heads : [];
-  const leavers = head?.outcome === "leave" ? heads : [];
-  const endHeads = advisors.flatMap((h) => h.active.filter(isHeadRow).map((r) => r.id));
-  const isDivisionRow = or(isNull(roles.type), inArray(roles.type, ["lead", "core", "advisor"]));
+  const { moves } = planned.value;
+  const memberIds = moves.map((m) => m.personId);
+  const held =
+    memberIds.length === 0
+      ? []
+      : await getDb()
+          .select({ id: roles.id, type: roles.type, dept_id: roles.deptId, division_id: roles.divisionId })
+          .from(roles)
+          .where(and(inArray(roles.memberId, memberIds), isNull(roles.leavedAt)));
+  // Every role held in the department: its head rows wherever kept (`headDepartmentOf`), its division roles, and roles kept on it.
+  const isHeadRow = headRowOf(departmentId, snapshot.org);
+  const ending = held
+    .filter(
+      (r) =>
+        isHeadRow(r) ||
+        (r.division_id !== null && divisionIds.includes(r.division_id) && isDivisionRole({ type: r.type, divisionId: r.division_id })) ||
+        (r.division_id === null && r.dept_id === departmentId),
+    )
+    .map((r) => r.id);
 
   await runAuditBatch((tx) => [
     tx.update(departments).set({ closedAt: on }).where(and(eq(departments.id, departmentId), isNull(departments.closedAt))),
-    ...planned.value.move.flatMap(({ divisionId, to }) => [
-      tx.update(divisions).set({ deptId: to }).where(eq(divisions.id, divisionId)),
-      tx
-        .update(roles)
-        .set({ deptId: to })
-        .where(and(eq(roles.divisionId, divisionId), eq(roles.deptId, departmentId), isNull(roles.leavedAt), isDivisionRow)),
-      tx
-        .update(scopes)
-        .set({ deptId: to })
-        .where(and(eq(scopes.divisionId, divisionId), eq(scopes.deptId, departmentId))),
-    ]),
-    ...planned.value.close.flatMap((divisionId) => closeDivisionWrites(tx, divisionId, on)),
-    tx
-      .delete(scopes)
-      .where(
-        and(
-          eq(scopes.scope, "department"),
-          eq(scopes.deptId, departmentId),
-          isNull(scopes.divisionId),
-        ),
-      ),
-    ...(advisors.length === 0 ? [] : [tx.delete(scopes).where(inArray(scopes.memberId, advisors.map((h) => h.memberId)))]),
-    ...(endHeads.length === 0 ? [] : [tx.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, endHeads), isNull(roles.leavedAt)))]),
-    ...advisors.map(({ memberId }) => tx.insert(roles).values({ memberId, deptId: null, divisionId: null, title: ADVISOR_TITLE, type: "advisor", startedAt: on })),
-    ...leavers.flatMap((leaver) => leaveTeamWrites(tx, leaver, on)),
+    ...divisionIds.flatMap((divisionId) => closeDivisionWrites(tx, divisionId, on)),
+    tx.delete(scopes).where(and(eq(scopes.scope, "department"), eq(scopes.deptId, departmentId), isNull(scopes.divisionId))),
+    ...(ending.length === 0 ? [] : [tx.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, ending), isNull(roles.leavedAt)))]),
+    ...(moves.length === 0
+      ? []
+      : [
+          tx.insert(roles).values(
+            moves.map(({ personId, to, becomes }) => ({
+              memberId: personId,
+              ...advisorUnit(to),
+              title: becomes.kind === "advisor" ? ADVISOR_TITLE : "",
+              type: becomes.kind === "advisor" ? ("advisor" as const) : ("core" as const),
+              startedAt: on,
+            })),
+          ),
+        ]),
+    ...moves.flatMap(({ personId, becomes }) => (becomes.kind === "advisor" && becomes.access === "ends" ? [tx.delete(scopes).where(eq(scopes.memberId, personId))] : [])),
   ]);
   done();
   refreshPositions();

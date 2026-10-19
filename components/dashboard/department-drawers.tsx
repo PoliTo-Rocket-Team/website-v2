@@ -1,18 +1,30 @@
 "use client";
 
 import { useId, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Building2, ChevronDown, Lock, Pencil, Repeat, Undo2 } from "lucide-react";
+import { Building2, ChevronDown, Pencil, Repeat, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { closeDepartment, createDepartment, saveDepartment } from "@/app/dashboard/team-actions";
 import {
   departmentCodeError,
   departmentNameError,
+  destinationName,
   normalizeDepartmentCode,
   planDepartmentClose,
+  stepsDown,
   storedDepartmentName,
-  type DivisionFate,
+  type ClosingPerson,
+  type DestinationRole,
+  type PersonMove,
 } from "@/lib/dashboard/department-edit";
-import { steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
+import {
+  advisorInDestinationDetail,
+  BECOME_AN_ADVISOR,
+  movesWithAdvisorRoleLine,
+  steppingDown,
+  steppingDownLine,
+  type HandOverOutcome,
+  type Unit,
+} from "@/lib/dashboard/hand-over";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart } from "@/lib/dashboard/team";
 import type { StructureDepartment, StructureDivision, TeamStructure } from "@/lib/dashboard/team-structure";
@@ -21,21 +33,22 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { PeoplePicker } from "./division-drawer";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
-import { HandOverChoice } from "./hand-over-choice";
+import { HandOverChoice, RadioChoice } from "./hand-over-choice";
 
 // New department (board 77d), Edit department (77e) and Close department
-// (77f), on the Team tree's edit view (issue #251). Only the team leader and
-// full access open them. Each save asks "are you sure" first, and the server
-// checks every rule again (lib/dashboard/department-edit.ts). Change head in
-// Edit department hands the head role over (issue #253): the head replaced
-// becomes an advisor in the department or leaves the team.
+// (77f, reworked by issue #441), on the Team tree's edit view (issue #251).
+// Only the team leader and full access open them. Each save asks "are you
+// sure" first, and the server checks every rule again
+// (lib/dashboard/department-edit.ts). Change head in Edit department hands
+// the head role over (issue #253): the head replaced becomes an advisor in
+// the department or leaves the team.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const ADD_LINK = `inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:text-accent-hover ${FOCUS}`;
 const LIST = "overflow-hidden rounded-xl border border-hairline";
 const SECTION_LABEL = "text-[13px] text-prt-text";
 const CODE_BOX = "inline-flex h-6 shrink-0 items-center rounded-md border border-hairline bg-white-5 px-1.5 font-mono text-[11px] font-medium tracking-[0.08em] text-prt-text";
-/** The red footer button that closes the department (board 77f): filled, and muted until every division has a choice. */
+/** The red footer button that closes the department (board 77f): filled, and muted until every person has a destination. */
 const DANGER_FILLED = `inline-flex h-11 items-center justify-center rounded-full bg-danger px-4 text-[14px] font-semibold text-prt-text transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
 
 /** Which department panel is open: New department, or Edit department and its Close department step. */
@@ -487,6 +500,7 @@ function EditDepartment({
                 <HandOverChoice
                   name={`head-${department.id}`}
                   person={head.name}
+                  handed={{ kind: "head", departmentId: department.id }}
                   unit={stored}
                   value={headOutcome}
                   leave={{ allowed: true }}
@@ -573,26 +587,51 @@ function DivisionRow({ division, open, onToggle }: { division: StructureDivision
   );
 }
 
-/** A division's choice on Close department: move (to a department, once picked) or close. */
-type Fate = { readonly action: "move"; readonly to: number | null } | { readonly action: "close" };
+/** One person's picks on Close department: where they go and, for a former head or lead, their role there. Nothing at first. */
+type Pick = { readonly to: Unit | null; readonly role: DestinationRole | null };
 
-/** One option of a two-way choice on Close department (board 77f): the picked one filled, the other plain. */
-function choiceClass(current: boolean): string {
-  return `flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
-    current ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 enabled:hover:text-prt-text"
-  } disabled:cursor-not-allowed disabled:text-dim`;
+const NOTHING_PICKED: Pick = { to: null, role: null };
+
+/** A destination as a select's value: "department:2", "division:7". */
+function unitKey(unit: Unit): string {
+  return unit.kind === "department" ? `department:${unit.departmentId}` : `division:${unit.divisionId}`;
 }
 
-/** Everyone in the division, those waiting for their NDA included: a division with anyone in it can only move. */
-function inDivision(division: StructureDivision): number {
-  return division.size + (division.page?.waiting.length ?? 0);
+function unitOfKey(key: string): Unit | null {
+  const [kind, id] = key.split(":");
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return kind === "department" ? { kind: "department", departmentId: n } : kind === "division" ? { kind: "division", divisionId: n } : null;
 }
+
+function holdsUnit(person: ClosingPerson, unit: Unit): boolean {
+  return person.holds.some((u) => unitKey(u) === unitKey(unit));
+}
+
+/** What Close department names each person as, beside their name. */
+function standingLabel(person: ClosingPerson, department: string): string {
+  switch (person.standing) {
+    case "head":
+      return `Head of ${department}`;
+    case "lead":
+      return "Division Lead";
+    case "advisor":
+      return "Advisor";
+    case "member":
+      return "Member";
+  }
+}
+
+const SELECT = `${inputClass()} cursor-pointer appearance-none pr-10`;
 
 /**
- * Board 77f: each division moves to another department or, when empty,
- * closes, and the head becomes an advisor or leaves the team, with neither
- * picked at first (Owner decision, 2026-10-16). Close department stays
- * disabled until every division and the head have a choice.
+ * Close department (Owner decision, 2026-10-19): the department and every
+ * division in it close, and every person in it moves to a department or
+ * division picked for them, one each, with "Move everyone to…" to pick one
+ * for all at once. A former head or lead picks Advisor or member there.
+ * Nobody leaves the team from here. Nothing is picked at first (Owner
+ * decision, 2026-10-16), so Close department stays disabled until every
+ * person has a destination and every former head and lead a role.
  */
 function CloseDepartment({
   open,
@@ -605,33 +644,35 @@ function CloseDepartment({
   structure: TeamStructure;
   onClose: () => void;
 }) {
-  const [fates, setFates] = useState<Readonly<Record<number, Fate>>>(() =>
-    Object.fromEntries(department.divisions.flatMap((d) => (inDivision(d) > 0 ? [[d.id, { action: "move", to: null } satisfies Fate]] : []))),
-  );
-  const [headOutcome, setHeadOutcome] = useState<HandOverOutcome | null>(null);
+  const [picks, setPicks] = useState<Readonly<Record<number, Pick>>>({});
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const others = structure.departments.filter((d) => d.id !== department.id);
-  const { head } = department;
+  const org = orgOf(structure);
+  const people = department.closing;
+  const pickOf = (id: number) => picks[id] ?? NOTHING_PICKED;
+  const setPick = (id: number, pick: Pick) => setPicks((current) => ({ ...current, [id]: pick }));
 
-  const sent: DivisionFate[] = department.divisions.flatMap((d): DivisionFate[] => {
-    const fate = fates[d.id];
-    if (!fate) return [];
-    if (fate.action === "close") return [{ divisionId: d.id, action: "close" }];
-    return fate.to === null ? [] : [{ divisionId: d.id, action: "move", to: fate.to }];
+  const sent: PersonMove[] = people.flatMap((p): PersonMove[] => {
+    const { to, role } = pickOf(p.id);
+    return to === null ? [] : [{ personId: p.id, to, role: stepsDown(p.standing) ? role : null }];
   });
   const planned = planDepartmentClose({
     actor: { kind: "team" },
-    org: orgOf(structure),
+    org,
     departmentId: department.id,
-    close: { divisions: sent, head: headOutcome },
-    inIt: Object.fromEntries(department.divisions.map((d) => [d.id, inDivision(d)])),
-    headIds: head ? [head.id] : [],
+    close: { people: sent },
+    people,
+    waiting: Object.fromEntries(department.divisions.map((d) => [d.id, d.page?.waiting.length ?? 0])),
   });
+
+  /** "Move everyone to…": the same division for everyone who is not in it already; each role stays as picked. */
+  const moveEveryone = (unit: Unit) =>
+    setPicks((current) => Object.fromEntries(people.map((p) => [p.id, holdsUnit(p, unit) ? (current[p.id] ?? NOTHING_PICKED) : { ...(current[p.id] ?? NOTHING_PICKED), to: unit }])));
 
   const confirm = () =>
     startTransition(async () => {
-      const result = await closeDepartment(department.id, { divisions: sent, head: headOutcome });
+      const result = await closeDepartment(department.id, { people: sent });
       if (!result.ok) {
         toast.error("Could not close the department", { description: result.error });
         return;
@@ -641,13 +682,23 @@ function CloseDepartment({
       onClose();
     });
 
-  const nameOf = (id: number) => others.find((d) => d.id === id)?.name ?? "";
-  const lines = sent.map((f) => {
-    const label = divisionLabel(department.divisions.find((d) => d.id === f.divisionId)?.name ?? "");
-    return f.action === "move" ? `${label} moves to ${nameOf(f.to)}, with its people, leads and open positions.` : `${label} closes, and its open positions close.`;
-  });
-  if (head && headOutcome === "advisor") lines.push(`${head.name} stops being Head of ${department.name} and stays on the team as an Advisor, in no department or division; their access ends.`);
-  if (head && headOutcome === "leave") lines.push(`${head.name} leaves the team: every role they hold ends and they move to Alumni.`);
+  const nameOf = (id: number) => people.find((p) => p.id === id)?.name ?? "";
+  const openPositions = department.divisions.reduce((sum, d) => sum + d.openPositions, 0);
+  const lines: string[] = [];
+  if (department.divisions.length > 0) {
+    const closing = department.divisions.map((d) => divisionLabel(d.name)).join(", ");
+    lines.push(`${closing} ${department.divisions.length === 1 ? "closes" : "close"} with it${openPositions > 0 ? `, and ${openPositions} open ${openPositions === 1 ? "position closes" : "positions close"}` : ""}.`);
+  }
+  if (planned.ok) {
+    for (const move of planned.value.moves) {
+      const where = destinationName(move.to, org, department.id) ?? "";
+      lines.push(
+        move.becomes.kind === "advisor"
+          ? `${nameOf(move.personId)} ${movesWithAdvisorRoleLine(where, move.becomes.access === "ends")}.`
+          : `${nameOf(move.personId)} moves to ${where} as a member.`,
+      );
+    }
+  }
 
   return (
     <SidePanel
@@ -668,54 +719,63 @@ function CloseDepartment({
     >
       <PanelBody>
         <p className="text-[14px] leading-relaxed text-prt-text">
-          {head ? "Choose what happens to each division and to the head." : "Choose what happens to each division."} A division with people in it can only move.
+          {people.length > 0
+            ? "Every division closes with the department. Pick where each person goes; a former head or lead also picks their role there."
+            : "Every division closes with the department. Nobody is in it."}
         </p>
         {department.divisions.length > 0 && (
           <section className="mt-6">
             <h3 className={SECTION_LABEL}>
-              Divisions
+              Divisions closing
               <span className="ml-1.5 text-prt-muted">{department.divisions.length}</span>
             </h3>
-            <ul className="mt-2.5 flex flex-col gap-3">
+            <ul className={`${LIST} mt-2.5 divide-y divide-hairline`}>
               {department.divisions.map((division) => (
-                <FateCard
-                  key={division.id}
-                  division={division}
-                  fate={fates[division.id] ?? null}
+                <li key={division.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                  {division.code !== null && <span className={CODE_BOX}>{division.code}</span>}
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{division.name}</span>
+                  {division.openPositions > 0 && (
+                    <span className="shrink-0 text-[13px] text-prt-muted">
+                      {division.openPositions} open {division.openPositions === 1 ? "position" : "positions"}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {people.length > 0 && (
+          <section className="mt-6">
+            <h3 className={SECTION_LABEL}>
+              People
+              <span className="ml-1.5 text-prt-muted">{people.length}</span>
+            </h3>
+            <DestinationSelect
+              label="Move everyone to"
+              placeholder="Move everyone to…"
+              value={null}
+              departments={others}
+              withDepartments={false}
+              taken={() => false}
+              onChange={moveEveryone}
+              className="mt-2.5"
+            />
+            <ul className="mt-3 flex flex-col gap-3">
+              {people.map((person) => (
+                <PersonCard
+                  key={person.id}
+                  person={person}
+                  department={department.name}
+                  pick={pickOf(person.id)}
                   departments={others}
-                  onChange={(fate) => setFates((current) => ({ ...current, [division.id]: fate }))}
+                  destination={(unit) => destinationName(unit, org, department.id)}
+                  onChange={(pick) => setPick(person.id, pick)}
                 />
               ))}
             </ul>
           </section>
         )}
-        {head && (
-          <section className="mt-6">
-            <h3 className={SECTION_LABEL}>
-              Head
-              <span className="ml-1.5 text-prt-muted">1</span>
-            </h3>
-            <div className="mt-2.5 rounded-xl border border-hairline p-3.5">
-              <div className="flex items-center gap-3">
-                <Avatar size="sm" />
-                <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{head.name}</span>
-                <span className="shrink-0 text-[13px] text-prt-muted">Head of {department.name}</span>
-              </div>
-              <div role="group" aria-label={`What happens to ${head.name}`} className="mt-3 flex rounded-lg border border-hairline bg-panel/60 p-0.5">
-                <button type="button" aria-pressed={headOutcome === "advisor"} onClick={() => setHeadOutcome("advisor")} className={choiceClass(headOutcome === "advisor")}>
-                  Become an advisor
-                </button>
-                <button type="button" aria-pressed={headOutcome === "leave"} onClick={() => setHeadOutcome("leave")} className={choiceClass(headOutcome === "leave")}>
-                  Leave the team
-                </button>
-              </div>
-              <p className="mt-2.5 text-[12px] leading-relaxed text-prt-muted">
-                Pick one before you close. Become an advisor: stays in the team with the Advisor role, in no department or division; their access ends. Leave the
-                team: moves to Alumni.
-              </p>
-            </div>
-          </section>
-        )}
+        {!planned.ok && <p className="mt-4 text-[12px] leading-relaxed text-prt-muted">{planned.error}</p>}
       </PanelBody>
       <ConfirmDialog
         open={confirming}
@@ -744,64 +804,128 @@ function CloseDepartment({
   );
 }
 
-/** One division on Close department (board 77f): Move to another department, or Close it when nobody is in it. */
-function FateCard({
-  division,
-  fate,
+/**
+ * A destination picker on Close department: every open division outside the
+ * closing department, grouped by department, and, where `withDepartments`,
+ * each department itself (an Advisor role can sit on one). A unit `taken`
+ * names is listed but cannot be picked.
+ */
+function DestinationSelect({
+  label,
+  placeholder,
+  value,
   departments,
+  withDepartments,
+  taken,
+  onChange,
+  className = "",
+}: {
+  label: string;
+  placeholder: string;
+  value: Unit | null;
+  departments: readonly StructureDepartment[];
+  withDepartments: boolean;
+  taken: (unit: Unit) => boolean;
+  onChange: (unit: Unit) => void;
+  className?: string;
+}) {
+  const option = (unit: Unit, text: string) => {
+    const held = taken(unit);
+    return (
+      <option key={unitKey(unit)} value={unitKey(unit)} disabled={held} className="bg-panel text-prt-text">
+        {held ? `${text} (already in it)` : text}
+      </option>
+    );
+  };
+  return (
+    <span className={`relative block ${className}`}>
+      <select
+        aria-label={label}
+        value={value === null ? "" : unitKey(value)}
+        onChange={(e) => {
+          const unit = unitOfKey(e.target.value);
+          if (unit !== null) onChange(unit);
+        }}
+        className={`${SELECT} ${value === null ? "text-prt-muted" : ""}`}
+      >
+        <option value="" disabled className="bg-panel text-prt-muted">
+          {placeholder}
+        </option>
+        {departments.map((d) => (
+          <optgroup key={d.id} label={`${d.name} Department`} className="bg-panel text-prt-muted">
+            {withDepartments && option({ kind: "department", departmentId: d.id }, `${d.name} Department`)}
+            {d.divisions.map((v) => option({ kind: "division", divisionId: v.id }, divisionLabel(v.name)))}
+          </optgroup>
+        ))}
+      </select>
+      <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
+    </span>
+  );
+}
+
+/**
+ * One person on Close department: where they go and, for a former head or
+ * lead, their role there, Become an advisor or Member, neither picked at
+ * first. A member goes to a division; an advisor keeps the Advisor role,
+ * which may sit on a department.
+ */
+function PersonCard({
+  person,
+  department,
+  pick,
+  departments,
+  destination,
   onChange,
 }: {
-  division: StructureDivision;
-  fate: Fate | null;
+  person: ClosingPerson;
+  department: string;
+  pick: Pick;
   departments: readonly StructureDepartment[];
-  onChange: (fate: Fate) => void;
+  destination: (unit: Unit) => string | null;
+  onChange: (pick: Pick) => void;
 }) {
-  const count = inDivision(division);
-  const full = count > 0;
-  const help = full
-    ? `${peopleLine(count)} in it, so it can't close. Its people, leads and open positions move with it.`
-    : fate?.action === "close"
-      ? "No one is in it. Closing it also closes its open positions."
-      : fate?.action === "move"
-        ? "No one is in it. Its open positions move with it."
-        : "No one is in it, so it can move or close.";
+  const choosesRole = stepsDown(person.standing);
+  const where = pick.to === null ? null : destination(pick.to);
+  const onDepartment = pick.to?.kind === "department";
   return (
     <li className="rounded-xl border border-hairline p-3.5">
       <div className="flex items-center gap-3">
-        {division.code !== null && <span className={CODE_BOX}>{division.code}</span>}
-        <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{division.name}</span>
-        <span className="shrink-0 text-[13px] text-prt-muted">{full ? peopleLine(count) : "Empty"}</span>
+        <Avatar size="sm" accent={choosesRole} />
+        <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{person.name}</span>
+        <span className="shrink-0 text-[13px] text-prt-muted">{standingLabel(person, department)}</span>
       </div>
-      <div role="group" aria-label={`What happens to ${division.name}`} className="mt-3 flex rounded-lg border border-hairline bg-panel/60 p-0.5">
-        <button type="button" aria-pressed={fate?.action === "move"} onClick={() => onChange({ action: "move", to: fate?.action === "move" ? fate.to : null })} className={choiceClass(fate?.action === "move")}>
-          Move to another department
-        </button>
-        <button type="button" aria-pressed={fate?.action === "close"} disabled={full} onClick={() => onChange({ action: "close" })} className={choiceClass(fate?.action === "close")}>
-          {full && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          Close it
-        </button>
-      </div>
-      {fate?.action === "move" && (
-        <span className="relative mt-3 block">
-          <select
-            aria-label={`Department ${division.name} moves to`}
-            value={fate.to ?? ""}
-            onChange={(e) => onChange({ action: "move", to: e.target.value === "" ? null : Number(e.target.value) })}
-            className={`${inputClass()} cursor-pointer appearance-none pr-10 ${fate.to === null ? "text-prt-muted" : ""}`}
-          >
-            <option value="" disabled className="bg-panel text-prt-muted">
-              Pick a department
-            </option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id} className="bg-panel text-prt-text">
-                {d.name} Department
-              </option>
-            ))}
-          </select>
-          <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-        </span>
+      <DestinationSelect
+        label={`Where ${person.name} goes`}
+        placeholder="Pick where they go"
+        value={pick.to}
+        departments={departments}
+        withDepartments={person.standing !== "member"}
+        taken={(unit) => holdsUnit(person, unit)}
+        onChange={(to) => onChange({ to, role: to.kind === "department" && pick.role === "member" ? null : pick.role })}
+        className="mt-3"
+      />
+      {choosesRole && (
+        <div className="mt-3">
+          <RadioChoice<DestinationRole>
+            name={`close-role-${person.id}`}
+            legend={`${person.name.split(" ")[0] ?? person.name}'s role there`}
+            value={pick.role}
+            onChange={(role) => onChange({ ...pick, role })}
+            options={[
+              { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorInDestinationDetail(where ?? "the place you pick") },
+              {
+                value: "member",
+                title: "Member",
+                detail: `Joins ${where ?? "the division you pick"} as a member`,
+                permission: onDepartment ? { allowed: false, reason: "A member goes to a division" } : { allowed: true },
+              },
+            ]}
+          />
+        </div>
       )}
-      <p className="mt-2.5 text-[12px] leading-relaxed text-prt-muted">{help}</p>
+      {person.standing === "advisor" && where !== null && (
+        <p className="mt-2.5 text-[12px] leading-relaxed text-prt-muted">Keeps the Advisor role there.</p>
+      )}
     </li>
   );
 }

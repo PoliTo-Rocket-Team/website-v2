@@ -45,6 +45,7 @@ function record(
     memberships: membershipsOf(divisions.map(([divisionId, role]) => ({ divisionId, role, since: "2024-10-01" }))),
     beyondDivisions: options.beyond ?? [],
     titles: Object.fromEntries(divisions.map(([divisionId]) => [divisionId, options.title ?? null])),
+    advising: [],
     details: { ...NO_MEMBER_DETAILS, ...options.details },
     nda: options.nda === false ? null : { signedOn: "2024-10-02", confirmedBy: null },
   };

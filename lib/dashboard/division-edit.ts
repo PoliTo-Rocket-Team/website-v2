@@ -320,8 +320,9 @@ export function planDivisionSave(input: {
 /**
  * Why the division cannot close, or null (Owner decision, 2026-10-11): only
  * its department's head or the team leader closes it, and never while anyone
- * is in it, people waiting for their NDA included. Closing also closes its
- * open positions and removes the access given in it.
+ * is in it, people waiting for their NDA included. An advisor in it is not
+ * counted: they stay in the department (`divisionClosing`, issue #441).
+ * Closing also closes its open positions and removes the access given in it.
  */
 export function closeRefusal(
   actor: TeamActor,
@@ -353,6 +354,23 @@ export type DivisionRow = {
  */
 export function peopleInDivision(divisionId: number, held: readonly DivisionRow[]): number[] {
   return [...new Set(held.filter((r) => isDivisionRole({ type: r.type, divisionId })).map((r) => r.memberId))];
+}
+
+/**
+ * What Close division reads off the active rows kept on the division (issue
+ * #441): the people whose lead or member role keeps it open, and the Advisor
+ * rows, which do not. When the division closes, each Advisor row ends and its
+ * advisor stays in the division's department with the Advisor role
+ * (`advisorAfterDivisionCloses`, ./hand-over.ts). Close department does not
+ * read this: its department closes too, so every person in it, an advisor
+ * included, moves where the closer picked (`planDepartmentClose`,
+ * ./department-edit.ts).
+ */
+export type DivisionClosing = { readonly people: readonly number[]; readonly advisors: readonly DivisionRow[] };
+
+export function divisionClosing(divisionId: number, held: readonly DivisionRow[]): DivisionClosing {
+  const advisors = held.filter((r) => r.type === "advisor" && isDivisionRole({ type: r.type, divisionId }));
+  return { people: peopleInDivision(divisionId, held.filter((r) => r.type !== "advisor")), advisors };
 }
 
 /** The rows of the division a plan's writes end or change, by row id. */

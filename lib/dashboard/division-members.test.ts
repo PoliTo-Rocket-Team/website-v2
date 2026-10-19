@@ -29,6 +29,7 @@ function record(id: number, name: string, list: [divisionId: number, role: "lead
     memberships: membershipsOf(list.map(([divisionId, role, since]) => ({ divisionId, role, since }))),
     beyondDivisions: [],
     titles: Object.fromEntries(list.map(([divisionId, , , title]) => [divisionId, title])),
+    advising: [],
     details: { ...NO_MEMBER_DETAILS, phone: "+39 349 778 0045" },
     nda: { signedOn: "2024-03-12", confirmedBy: "Marco Bianchi" },
   };

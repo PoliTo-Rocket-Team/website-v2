@@ -4,14 +4,16 @@ import {
   checkDepartmentClose,
   checkDepartmentCreate,
   checkDepartmentSave,
+  closingPeople,
   departmentCodeError,
   planDepartmentClose,
   planDepartmentCreate,
   planDepartmentSave,
-  type DepartmentClose,
+  type ClosingRecord,
   type DepartmentCreate,
+  type PersonMove,
 } from "./department-edit";
-import type { HandOverOutcome } from "./hand-over";
+import { advisingIn, type HandOverOutcome, type Unit } from "./hand-over";
 import type { TeamPerson } from "./division-edit";
 import { membershipsOf, type OrgChart, type TeamActor } from "./team";
 
@@ -48,7 +50,7 @@ test("only the team leader or full access creates, edits or closes a department;
   for (const actor of [head, lead, null]) {
     assert.equal(create({}, actor).ok, false, JSON.stringify(actor));
     assert.equal(planDepartmentSave({ actor, org, departmentId: 1, team, headIds: [6], save: { name: "Aero", code: "AE", head: null, kind: "technical" } }).ok, false);
-    assert.equal(planDepartmentClose({ actor, org, departmentId: 1, close: { divisions: [], head: "advisor" }, inIt: {}, headIds: [6] }).ok, false);
+    assert.equal(planDepartmentClose({ actor, org, departmentId: 1, close: { people: [] }, people: [], waiting: {} }).ok, false);
   }
 });
 
@@ -81,40 +83,103 @@ test("Edit department saves a new name or code under the same rules, for an open
   assert.equal(departmentCodeError("AE", org.departments, 1), null);
 });
 
-const close = (divisions: DepartmentClose["divisions"], inIt: Record<number, number> = { 1: 6, 2: 0 }, head: HandOverOutcome | null = "advisor") =>
-  planDepartmentClose({ actor: fullAccess, org, departmentId: 1, close: { divisions, head }, inIt, headIds: [6] });
+// Close department (issue #441, Owner decision, 2026-10-19): every person in
+// the department gets a destination, and nobody leaves the team from here.
 
-test("Close department needs a choice for every open division before it closes anything", () => {
-  assert.deepEqual(close([{ divisionId: 1, action: "move", to: 2 }]), { ok: false, error: "Choose what happens to Optimization and Analysis." });
-  assert.deepEqual(close([]), { ok: false, error: "Choose what happens to Mission Analysis." });
-  assert.equal(close([{ divisionId: 1, action: "move", to: 2 }, { divisionId: 1, action: "close" }, { divisionId: 2, action: "close" }]).ok, false, "listed twice");
-  assert.equal(close([{ divisionId: 1, action: "move", to: 2 }, { divisionId: 2, action: "close" }, { divisionId: 3, action: "close" }]).ok, false, "another department's division");
+const DM: Unit = { kind: "division", divisionId: 3 };
+const STRUCTURES: Unit = { kind: "department", departmentId: 2 };
+
+const record = (r: Partial<ClosingRecord> & Pick<ClosingRecord, "id" | "name">): ClosingRecord => ({ memberships: membershipsOf([]), beyondDivisions: [], advising: [], ...r });
+
+/** Aerodynamics: its head, a lead, a member also in Design & Manufacturing, an advisor in a division and one on the department; and someone only in Structures. */
+const records: ClosingRecord[] = [
+  record({ id: 7, name: "Sara Conti", memberships: membershipsOf([{ divisionId: 1, role: "member", since: "2024-10-01" }, { divisionId: 3, role: "member", since: "2024-10-01" }]) }),
+  record({ id: 1, name: "Marco Bianchi", memberships: membershipsOf([{ divisionId: 1, role: "lead", since: "2023-10-01" }]) }),
+  record({ id: 13, name: "Luca Neri", memberships: membershipsOf([{ divisionId: 2, role: "member", since: "2025-10-01" }]), advising: [2] }),
+  record({ id: 20, name: "Elena Russo", beyondDivisions: [{ kind: "advisor", departmentId: 1 }] }),
+  record({ id: 6, name: "Chiara Rinaldi", beyondDivisions: [{ kind: "head", departmentId: 1 }] }),
+  record({ id: 30, name: "Paolo Gallo", memberships: membershipsOf([{ divisionId: 3, role: "member", since: "2024-10-01" }]) }),
+];
+
+const people = closingPeople(records, org, 1);
+
+/** Everyone in Aerodynamics but Sara, who is in Design & Manufacturing already: the head as an advisor, the lead as a member. */
+const allToDesign: PersonMove[] = [
+  { personId: 6, to: DM, role: "advisor" },
+  { personId: 1, to: DM, role: "member" },
+  { personId: 13, to: DM, role: null },
+  { personId: 20, to: STRUCTURES, role: null },
+];
+
+const closing = (moves: readonly PersonMove[], waiting: Record<number, number> = {}, actor: TeamActor | null = fullAccess) =>
+  planDepartmentClose({ actor, org, departmentId: 1, close: { people: moves }, people, waiting });
+
+test("Close department moves everyone in the department: the head, its leads, its advisors and its members, each once", () => {
+  assert.deepEqual(
+    people.map((p) => [p.id, p.standing]),
+    [
+      [6, "head"],
+      [1, "lead"],
+      [20, "advisor"],
+      [13, "advisor"],
+      [7, "member"],
+    ],
+    "head first, then leads, advisors and members, by name; someone only in another department is not listed",
+  );
+  assert.deepEqual(people.find((p) => p.id === 7)?.holds, [DM], "Sara is in Design & Manufacturing already, so it is no destination for her");
+  assert.deepEqual(closingPeople(records, org, 2).map((p) => p.id), [30, 7], "the department's own people only");
+});
+
+test("Close department needs a destination for every person before it saves; it offers no Leave the team", () => {
+  assert.deepEqual(closing(allToDesign), { ok: false, error: "Choose where Sara Conti goes." });
+  assert.equal(checkDepartmentClose({ divisions: [], head: "leave" }).ok, false, "the old request shape, with a head who leaves, is refused");
+  assert.equal(checkDepartmentClose({ people: [{ personId: 6, to: DM, role: "leave" }] }).ok, false, "no Leave the team for anyone");
+  const sent = checkDepartmentClose({ people: [{ personId: 7, to: { kind: "division", divisionId: 2 } }] });
+  assert.ok(sent.ok && sent.value.people[0]?.role === null, "a move with no role reads as nothing picked");
+  for (const actor of [head, lead, null]) assert.equal(closing([], {}, actor).ok, false, "only the team leader and full access");
+});
+
+test("Close department: a former head or lead picks Advisor or member in their destination, nothing picked; an advisor there follows the one rule", () => {
+  // Sara is in Design & Manufacturing already, so she goes to a second division of Structures.
+  const orgWithMore: OrgChart = { ...org, divisions: [...org.divisions, { id: 4, name: "Composites Division", departmentId: 2, code: "CO" }] };
+  const plan = (moves: readonly PersonMove[]) => planDepartmentClose({ actor: fullAccess, org: orgWithMore, departmentId: 1, close: { people: moves }, people, waiting: {} });
+  const composites: Unit = { kind: "division", divisionId: 4 };
+  const sara: PersonMove = { personId: 7, to: composites, role: null };
+  const planned = plan([...allToDesign, sara]);
+  assert.ok(planned.ok, JSON.stringify(planned));
+  assert.deepEqual(planned.value.divisions, [1, 2], "every division of the department closes with it");
+  assert.deepEqual(planned.value.moves, [
+    { personId: 6, to: DM, becomes: { kind: "advisor", access: advisingIn(DM).access } },
+    { personId: 1, to: DM, becomes: { kind: "member" } },
+    { personId: 20, to: STRUCTURES, becomes: { kind: "advisor", access: "kept" } },
+    { personId: 13, to: DM, becomes: { kind: "advisor", access: "kept" } },
+    { personId: 7, to: composites, becomes: { kind: "member" } },
+  ]);
+  assert.equal(advisingIn(DM).access, "ends", "a head or lead who becomes an advisor loses their access, as on every hand-over");
+
+  const unpicked = plan([{ personId: 6, to: DM, role: null }, ...allToDesign.slice(1), { ...sara, to: composites }]);
+  assert.deepEqual(unpicked, { ok: false, error: "Choose Chiara Rinaldi's role in Design & Manufacturing: Become an advisor or Member." });
+  const leadAsMemberOfDepartment = plan([allToDesign[0]!, { personId: 1, to: STRUCTURES, role: "member" }, ...allToDesign.slice(2), { ...sara, to: composites }]);
+  assert.deepEqual(leadAsMemberOfDepartment, { ok: false, error: "A member goes to a division: pick one for Marco Bianchi." });
+  const leadAsAdvisorOfDepartment = plan([allToDesign[0]!, { personId: 1, to: STRUCTURES, role: "advisor" }, ...allToDesign.slice(2), { ...sara, to: composites }]);
+  assert.ok(leadAsAdvisorOfDepartment.ok, "an Advisor role may sit on a department");
+  const memberPicksRole = plan([...allToDesign, { ...sara, to: composites, role: "advisor" }]);
+  assert.deepEqual(memberPicksRole, { ok: false, error: "Sara Conti keeps the role they hold: only a head or lead picks one." });
+  const memberToDepartment = plan([...allToDesign, { ...sara, to: STRUCTURES }]);
+  assert.deepEqual(memberToDepartment, { ok: false, error: "A member goes to a division: pick one for Sara Conti." });
+});
+
+test("Close department sends people only to an open unit outside it where they hold no role yet, and waits for nobody's NDA", () => {
+  const sara = (to: Unit): PersonMove => ({ personId: 7, to, role: null });
+  assert.deepEqual(closing([...allToDesign, sara(DM)]), { ok: false, error: "Sara Conti is already in Design & Manufacturing." });
+  assert.deepEqual(closing([...allToDesign, sara({ kind: "division", divisionId: 2 })]), { ok: false, error: "Pick an open department or division outside this one for Sara Conti." });
+  assert.equal(closing([...allToDesign, sara({ kind: "division", divisionId: 99 })]).ok, false, "not a closed or unknown division");
+  assert.equal(closing([...allToDesign.slice(0, 3), { personId: 20, to: { kind: "department", departmentId: 1 }, role: null }, sara(DM)]).ok, false, "not the department that closes");
+  assert.deepEqual(closing([...allToDesign, allToDesign[0]!]), { ok: false, error: "Someone is listed twice." });
+  assert.deepEqual(closing([...allToDesign, { personId: 30, to: DM, role: null }]), { ok: false, error: "Only people in this department move when it closes." });
+  assert.deepEqual(closing(allToDesign, { 2: 1 }), { ok: false, error: "1 person is waiting for their NDA in Optimization and Analysis. Confirm or cancel them first." });
   const empty: OrgChart = { ...org, departments: [...org.departments, { id: 3, name: "Recovery", code: "RC", kind: "technical" }] };
-  assert.ok(planDepartmentClose({ actor: fullAccess, org: empty, departmentId: 3, close: { divisions: [], head: null }, inIt: {}, headIds: [] }).ok, "a department with no division and no head closes at once");
-});
-
-test("a division moves only to another open department, and closes only when nobody is in it", () => {
-  assert.deepEqual(close([{ divisionId: 1, action: "move", to: 2 }, { divisionId: 2, action: "close" }]), { ok: true, value: { move: [{ divisionId: 1, to: 2 }], close: [2], head: { outcome: "advisor", personIds: [6] } } });
-  assert.deepEqual(close([{ divisionId: 1, action: "close" }, { divisionId: 2, action: "close" }]), { ok: false, error: "People are still in Mission Analysis, so it can only move." });
-  assert.deepEqual(close([{ divisionId: 1, action: "close" }, { divisionId: 2, action: "close" }], { 1: 0, 2: 1 }), { ok: false, error: "People are still in Optimization and Analysis, so it can only move." }, "someone waiting for their NDA counts");
-  assert.equal(close([{ divisionId: 1, action: "move", to: 1 }, { divisionId: 2, action: "close" }]).ok, false, "not to the department that closes");
-  assert.equal(close([{ divisionId: 1, action: "move", to: 9 }, { divisionId: 2, action: "close" }]).ok, false, "not to a closed department");
-  assert.ok(close([{ divisionId: 1, action: "move", to: 2 }, { divisionId: 2, action: "move", to: 2 }]).ok, "an empty division may move too");
-  assert.equal(checkDepartmentClose({ divisions: [{ divisionId: 1, action: "reopen" }] }).ok, false, "only move or close");
-});
-
-test("Close department needs a head outcome while the department has a head, and the server refuses a request without one", () => {
-  const fates: DepartmentClose["divisions"] = [{ divisionId: 1, action: "move", to: 2 }, { divisionId: 2, action: "close" }];
-  assert.deepEqual(close(fates, undefined, null), { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
-  const sent = checkDepartmentClose({ divisions: fates });
-  assert.ok(sent.ok && sent.value.head === null, "a request with no head field reads as nothing picked");
-  assert.equal(planDepartmentClose({ actor: fullAccess, org, departmentId: 1, close: sent.value, inIt: { 1: 6, 2: 0 }, headIds: [6] }).ok, false);
-  assert.equal(checkDepartmentClose({ divisions: fates, head: "member" }).ok, false, "only advisor or leave");
-  for (const outcome of ["advisor", "leave"] as const) {
-    const planned = close(fates, undefined, outcome);
-    assert.ok(planned.ok);
-    assert.deepEqual(planned.value.head, { outcome, personIds: [6] });
-  }
+  assert.deepEqual(planDepartmentClose({ actor: fullAccess, org: empty, departmentId: 3, close: { people: [] }, people: [], waiting: {} }), { ok: true, value: { divisions: [], moves: [] } }, "a department with nobody in it closes at once");
 });
 
 // Change head (issue #253, board 77e): handing the head role over.

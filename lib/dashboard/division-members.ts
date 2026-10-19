@@ -69,6 +69,8 @@ export type DivisionPerson = {
   readonly role: DivisionRole;
   /** Their title in this division; the Role column shows it, or "Division Lead". */
   readonly title: string | null;
+  /** Their role here is an Advisor role: Close division keeps them, in the department (issue #441). */
+  readonly advisor: boolean;
   /** Every division they are in, this one first. */
   readonly divisions: readonly PersonDivision[];
   readonly chips: readonly DivisionChip[];
@@ -135,6 +137,8 @@ export type PersonRecord = {
   readonly beyondDivisions: readonly RoleBeyondDivisions[];
   /** Their role's title in each division they are in. */
   readonly titles: Readonly<Record<number, string | null>>;
+  /** The divisions where their role is an Advisor role (issue #253): a membership that Close division does not count. */
+  readonly advising: readonly number[];
   readonly details: MemberDetails;
   readonly nda: SignedNda | null;
 };
@@ -220,6 +224,7 @@ export function divisionMembers(input: {
         since: record.since,
         role,
         title: record.titles[divisionId] ?? null,
+        advisor: record.advising.includes(divisionId),
         divisions: ordered,
         chips: chipsOf(ordered),
         details: record.details,
@@ -410,6 +415,7 @@ export function lookupForAdd(
       memberships: c.memberships,
       beyondDivisions: [],
       titles: {},
+      advising: [],
       details: NO_MEMBER_DETAILS,
       nda: null,
     };

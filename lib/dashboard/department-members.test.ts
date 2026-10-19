@@ -29,6 +29,7 @@ function record(id: number, name: string, list: [divisionId: number, role: "lead
     memberships: membershipsOf(list.map(([divisionId, role, since]) => ({ divisionId, role, since }))),
     beyondDivisions: [],
     titles: {},
+    advising: [],
     details: NO_MEMBER_DETAILS,
     nda: null,
   };
