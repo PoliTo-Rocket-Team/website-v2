@@ -81,8 +81,10 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 const PANEL_WIDTH = "md:w-[460px]";
 const ROOM_FOR_PANEL = "xl:mr-[448px]";
 
-const COLUMNS_FULL = "grid-cols-[minmax(0,1.35fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,0.65fr)_minmax(0,0.55fr)]";
-const COLUMNS_NARROW = "grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.5fr)]";
+// Documents and Applied are the narrow columns: each keeps room for its whole header name and
+// its column filter (issue #428), so the name is never cut. The wider columns give way.
+const COLUMNS_FULL = "grid-cols-[minmax(0,1.35fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(108px,0.65fr)_minmax(92px,0.55fr)]";
+const COLUMNS_NARROW = "grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(92px,0.5fr)]";
 
 export function ApplicationsView({
   page,
@@ -127,7 +129,7 @@ export function ApplicationsView({
   /** A header name and its column filters: the Studies column carries two, its program and its level. */
   const header = (name: string, filters: readonly ApplicationFilter[]) => (
     <span className="flex min-w-0 items-center gap-1.5">
-      <span aria-hidden="true" className="truncate">
+      <span aria-hidden="true" className="shrink-0 whitespace-nowrap">
         {name}
       </span>
       {filters.map((column) => {
