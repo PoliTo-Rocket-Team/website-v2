@@ -1,14 +1,13 @@
 "use client";
 
 import { useId, useState, type DragEvent } from "react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ArrowDown, ArrowUp, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { moveTo } from "@/lib/content/order";
 import { textLength } from "@/lib/content/text";
 import { CONTENT_STATUS_LABELS, type ContentStatus, type PublishStep } from "@/lib/content/versioned";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON } from "./drawer";
 import { inputClass } from "./field";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 
 // The parts every site-content editor shares (boards 76 to 79b, issues #256
 // and #258): the status pill, a row's menu, dragging rows into a new order,

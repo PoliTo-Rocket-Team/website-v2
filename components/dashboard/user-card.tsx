@@ -4,15 +4,14 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronsUpDown, LogOut, UserRound } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { MenuPage } from "@/lib/dashboard/access";
 import { TEST_VIEWER_LABELS, TEST_VIEWERS, testViewerOf, type DashboardViewer } from "@/lib/dashboard/viewer";
 import { testDeveloperSignInHref } from "@/lib/test-developer";
 import { useSignOut } from "@/components/use-sign-out";
 import { Avatar } from "./avatar";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 
 const ITEM =
   "flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] outline-none transition-colors data-[highlighted]:bg-white-5";

@@ -1,11 +1,9 @@
 "use client";
 
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { GripVertical, Plus, X } from "lucide-react";
 import { discardOutreachPhoto, uploadOutreachPhoto } from "@/app/dashboard/actions";
 import { CHANNEL_ICONS } from "@/components/outreach/channel-icons";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { shortDayMonthYear } from "@/lib/outreach";
 import type { ChannelFields, PostFieldErrors, PostFields } from "@/lib/outreach-post-fields";
 import { isIsoDate } from "@/lib/outreach-rows";
@@ -19,6 +17,7 @@ import {
 import { galleryProblems } from "@/lib/gallery-fields";
 import { CONTENT_FOCUS, RowMenu, TextField, useDragOrder, type DragRow } from "./content-parts";
 import { Toggle } from "./controls";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { EditPanel, ErrorLine, PanelSection, usePanelScroll } from "./edit-panel";
 import { Field, GroupLabel, inputClass } from "./field";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";

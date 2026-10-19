@@ -1,10 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, Search } from "lucide-react";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { pagerItems, type TeamRole } from "@/lib/dashboard/team";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 
 // The parts the Members and Alumni pages share (boards 46, 46c, 59): the tab
 // strip with counts (a row of chips on a phone, board 59m), the department
