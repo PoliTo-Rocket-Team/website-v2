@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { GoogleSignInButton } from "@/components/login-form";
+import { LoginPhoto } from "@/components/login/login-photo";
 import { RocketFlame } from "@/components/login/rocket-flame";
 import { TestDeveloperSignIn, TestDeveloperSignInSpace } from "@/components/test-developer-sign-in";
 import { brand } from "@/lib/brand-colors";
@@ -15,9 +16,10 @@ export const metadata: Metadata = {
 
 // Boards 36 (desktop) and 36m (phone): a full-height split with no navbar and
 // no footer. The image side is a 420px band on top on phones. The whole
-// sign-in panel is in the prerendered page, its background preloaded like
-// the image side's; only the test developer entry waits for the request, in
-// a space its own size (issue #157).
+// sign-in panel is in the prerendered page; only the test developer entry
+// waits for the request, in a space its own size (issue #157). The two
+// background photos load behind their blurred previews and never hold up the
+// heading and the button (issue #446).
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default function LoginPage({ searchParams }: { searchParams: SearchParams }) {
@@ -29,14 +31,7 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
           middle. The rest flows into the last row, so the preview-only test
           developer section grows downward and never moves the heading up. */}
       <section className="relative flex flex-1 flex-col items-center overflow-hidden px-5 py-10 md:grid md:min-h-svh md:grid-rows-[5fr_auto_7fr] md:justify-items-center md:px-12 md:py-0">
-        <Image
-          src="/login/gray.webp"
-          alt=""
-          fill
-          priority
-          sizes="(min-width: 768px) 50vw, 100vw"
-          className="object-cover object-[50%_59%]"
-        />
+        <LoginPhoto src="/login/gray.webp"sizes="(min-width: 768px) 50vw, 100vw" position="50% 59%" />
         <div aria-hidden="true" className="absolute inset-0 bg-ground/55" />
 
         <div className="relative flex w-full max-w-[360px] flex-col items-center gap-7 text-center md:row-start-2">
@@ -91,14 +86,7 @@ function ImageSide() {
       aria-label="Polito Rocket Team"
       className="relative h-[420px] shrink-0 overflow-hidden md:h-auto md:min-h-svh md:w-1/2 md:border-r md:border-white-10"
     >
-      <Image
-        src="/login/plume.webp"
-        alt=""
-        fill
-        priority
-        sizes="(min-width: 768px) 50vw, 100vw"
-        className="object-cover object-[50%_59%]"
-      />
+      <LoginPhoto src="/login/plume.webp"sizes="(min-width: 768px) 50vw, 100vw" position="50% 59%" />
       <div aria-hidden="true" className="absolute inset-0" style={{ background: PHOTO_SHADE }} />
 
       {/* The stage is board 36's, centred; board 36m draws it at 0.43. */}
