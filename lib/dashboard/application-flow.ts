@@ -856,8 +856,16 @@ export function firstNameOf(name: string): string {
 
 /** "Aerospace Eng. · MSc 1" from "Aerospace Engineering" and "Year 1 Master's" (board 58b). */
 export function studiesLine(degree: string | null, year: string | null): string | null {
-  const course = degree?.replace(/\bEngineering\b/, "Eng.") ?? null;
+  return [studiesProgram(degree), studiesLevel(year)].filter(Boolean).join(" · ") || null;
+}
+
+/** The program half of the studies column: "Aerospace Eng."; null or empty when none was given. */
+export function studiesProgram(degree: string | null): string | null {
+  return degree?.replace(/\bEngineering\b/, "Eng.") ?? null;
+}
+
+/** The level half of the studies column: "MSc 1"; another year reads as given, null or empty when none was given. */
+export function studiesLevel(year: string | null): string | null {
   const match = year ? /^Year (\d+) (Master's|Bachelor's)$/.exec(year) : null;
-  const level = match ? `${match[2] === "Master's" ? "MSc" : "BSc"} ${match[1]}` : year;
-  return [course, level].filter(Boolean).join(" · ") || null;
+  return match ? `${match[2] === "Master's" ? "MSc" : "BSc"} ${match[1]}` : year;
 }

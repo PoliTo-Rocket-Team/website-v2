@@ -1,3 +1,13 @@
+import {
+  clearPicksIn,
+  optionsOf,
+  rowsWithPicks,
+  togglePickIn,
+  type ColumnFilters,
+  type ColumnOption,
+  type ColumnPicks as Picks,
+} from "./column-filters";
+export type { ColumnOption } from "./column-filters";
 import { levelLabel, type MemberDetails } from "./details";
 import { matchesPerson, type DivisionChip, type DivisionHeader, type PersonDivision, type PersonRecord, type SignedNda } from "./division-members";
 import { beyondTitle, BOARD_SEAT_TITLES, divisionLabel, homeFirst, leadsChangedBy, type OrgChart, type TeamRole } from "./team";
@@ -200,7 +210,7 @@ export const TABLE_FILTER_LABELS: Readonly<Record<TableFilter, string>> = {
 };
 
 /** The values ticked in each filtered column; a column with none ticked does not narrow. */
-export type ColumnPicks = Readonly<Partial<Record<TableFilter, readonly string[]>>>;
+export type ColumnPicks = Picks<TableFilter>;
 
 export const NO_PICKS: ColumnPicks = {};
 
@@ -226,20 +236,13 @@ export function columnValues(person: TeamMember, column: TableFilter): string[] 
   }
 }
 
-function matchesPicks(person: TeamMember, picks: ColumnPicks, skip: TableFilter | null): boolean {
-  return TABLE_FILTERS.every((column) => {
-    const ticked = picks[column];
-    if (column === skip || ticked === undefined || ticked.length === 0) return true;
-    return columnValues(person, column).some((value) => ticked.includes(value));
-  });
-}
+/** The Table view's filtered columns, on the shared column-filter rules (./column-filters.ts). */
+const MEMBER_FILTERS: ColumnFilters<TeamMember, TableFilter> = { columns: TABLE_FILTERS, values: columnValues };
 
 /** The people every column's ticks leave: within a column any ticked value matches, across columns all must. */
 export function withPicks<P extends TeamMember>(people: readonly P[], picks: ColumnPicks): P[] {
-  return people.filter((p) => matchesPicks(p, picks, null));
+  return rowsWithPicks<P, TableFilter>(MEMBER_FILTERS, people, picks);
 }
-
-export type ColumnOption = { readonly value: string; readonly count: number };
 
 /**
  * A column's popover (board 73c): each value with how many people hold it,
@@ -247,24 +250,15 @@ export type ColumnOption = { readonly value: string; readonly count: number };
  * by name.
  */
 export function columnOptions(people: readonly TeamMember[], picks: ColumnPicks, column: TableFilter): ColumnOption[] {
-  const counts = new Map<string, number>();
-  for (const person of people) {
-    if (!matchesPicks(person, picks, column)) continue;
-    for (const value of new Set(columnValues(person, column))) counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  return [...counts]
-    .map(([value, count]) => ({ value, count }))
-    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  return optionsOf(MEMBER_FILTERS, people, picks, column);
 }
 
 /** The picks with one value ticked or unticked in one column. */
 export function togglePick(picks: ColumnPicks, column: TableFilter, value: string): ColumnPicks {
-  const ticked = picks[column] ?? [];
-  const next = ticked.includes(value) ? ticked.filter((v) => v !== value) : [...ticked, value];
-  return { ...picks, [column]: next };
+  return togglePickIn(picks, column, value);
 }
 
 /** The picks with one column cleared. */
 export function clearPicks(picks: ColumnPicks, column: TableFilter): ColumnPicks {
-  return { ...picks, [column]: [] };
+  return clearPicksIn(picks, column);
 }
