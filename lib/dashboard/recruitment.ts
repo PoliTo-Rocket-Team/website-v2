@@ -1,3 +1,4 @@
+import type { ApplicantDetails } from "./applicant-details";
 import type { ApplicantStanding, ApplicationStage, ApplicationState } from "./application-flow";
 import type { DivisionChoice, PositionContent } from "./new-position";
 
@@ -138,7 +139,7 @@ export type ApplicationDocument = {
   readonly name: string;
   /** "412 KB"; null when the size was not stored. */
   readonly size: string | null;
-  /** Where the file opens; null when there is no file to open. */
+  /** Where the file opens: the access-checked document route (./application-documents.ts); null when no file is stored. */
   readonly href: string | null;
 };
 
@@ -154,17 +155,10 @@ export type ApplicationEntry = {
   readonly id: number;
   /** Where it stands; ./application-flow.ts says what can happen next. */
   readonly state: ApplicationState;
-  readonly applicant: {
-    readonly name: string;
-    readonly email: string;
-    readonly phone: string | null;
-    readonly politoId: string | null;
-    /** As the application form asked it; it picks "she", "he" or "they" in the dialogs. */
-    readonly gender: string | null;
-  };
+  /** Their name, and every field they gave on the apply form and in "Your details" (issue #406). */
+  readonly applicant: ApplicantDetails & { readonly name: string };
   /** Where the applicant stands with the team: a member joins with no NDA wait (board 58h2). */
   readonly standing: ApplicantStanding;
-  readonly studies: { readonly year: string | null; readonly degree: string | null };
   readonly position: { readonly ref: PositionRef; readonly title: string; readonly division: string };
   /** "Today" in the list, "today, 14:32" in the detail panel. */
   readonly applied: { readonly day: string; readonly at: string };

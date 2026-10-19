@@ -761,14 +761,21 @@ function applicationEntry(a: DummyApplication, position: DummyPosition, team: Te
     id: a.id,
     state: a.state,
     standing: dummyStanding(a.applicant.email, position.divisionId, onTeam),
+    // The dummy applicants keep only the fields the old form asked; the rest read empty.
     applicant: {
       name: a.applicant.name,
       email: a.applicant.email,
       phone: a.applicant.phone,
       politoId: a.applicant.politoId,
+      year: a.applicant.year,
+      degree: a.applicant.degree,
+      birthDate: null,
       gender: a.applicant.gender,
+      country: null,
+      origin: null,
+      linkedin: null,
+      referral: null,
     },
-    studies: { year: a.applicant.year, degree: a.applicant.degree },
     position: { ref: position.slug, title: position.title, division: divisionOf(position.divisionId).name },
     applied: appliedLabels(new Date(a.appliedAt), NOW),
     documents: [
@@ -1017,6 +1024,14 @@ export function dummyDashboardData(
     ),
     positions: async () => positionsPage(kind, team),
     applications: async () => applicationsPage(kind, team, teamRoster),
+    // Dummy mode stores no files: an application the viewer reaches has no document to open.
+    async applicationDocument(id) {
+      const application = baseApplications.find((a) => a.id === id);
+      if (!application || !positionsFor(kind, team).some((p) => p.id === application.positionId)) {
+        throw new DashboardRefused(`application ${id}`);
+      }
+      return null;
+    },
 
     async setPositionOpen(id, open) {
       const base = basePositions.find((p) => p.id === id);

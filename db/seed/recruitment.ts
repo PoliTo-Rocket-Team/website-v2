@@ -9,8 +9,10 @@
 // Applications and their answers are private, so every applicant is an
 // invented person (issue #326).
 
-import { applications, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
+import { applicationFiles, applications, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
 import { TESTERS } from "@/lib/dev-tester";
+import { samplePdf } from "@/lib/seed/sample-pdf";
+import { privatePathname } from "@/lib/storage/pathname";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DIVISION as D } from "./structure";
 
@@ -180,7 +182,8 @@ function answersTo(positionId: number, answers: readonly string[] = ANSWERS[posi
   return questions.map((question, i) => ({ question, answer: answers[i] ?? "" }));
 }
 
-type Application = typeof applications.$inferInsert;
+/** An application row; the seed names every id, which its files are numbered from. */
+type Application = typeof applications.$inferInsert & { readonly id: number };
 
 /** One application; its answers are the position's questions with ANSWERS. */
 function application(
@@ -189,7 +192,7 @@ function application(
   userId: string,
   appliedAt: string,
   status: NonNullable<Application["status"]>,
-  more: Partial<Application> = {},
+  more: Partial<typeof applications.$inferInsert> = {},
 ): Application {
   const first = userId.slice(0, 4);
   return {
@@ -224,7 +227,7 @@ export const APPLICATION = {
   testerNew: 25,
 } as const;
 
-export const APPLICATION_ROWS = rowsOf(applications, [
+const APPLICATIONS: readonly Application[] = [
   application(APPLICATION.ndaArrived, 1, "dddddddd-dddd-dddd-dddd-dddddddddddd", "2026-09-05 16:45:00+02", "accepted", {
     acceptedAt: "2026-10-05 11:00:00+02",
     ndaArrivedAt: "2026-10-08 09:30:00+02",
@@ -288,7 +291,54 @@ export const APPLICATION_ROWS = rowsOf(applications, [
       "Only exploded views for a robotics club so far",
     ]),
   },
+];
+
+// Each application's CV and motivation letter (issue #406): a small real PDF
+// in the private store under a seed-only name, and its `application_files`
+// row. The preview build writes the PDFs to the store (db/preview-build.ts),
+// so the Applications panel's document cards open them there.
+
+type ApplicationFile = typeof applicationFiles.$inferInsert;
+
+/** A seeded document: its row, and the bytes the preview build stores at its pathname. */
+export type SeedApplicationFile = { readonly row: ApplicationFile; readonly bytes: Uint8Array };
+
+function seedFile(id: number, app: Application, kind: "cv" | "letter"): SeedApplicationFile {
+  const title = kind === "cv" ? "Curriculum vitae" : "Motivation letter";
+  const position = POSITION_ROWS.rows.find((p) => p.id === app.applyPositionId)?.title ?? "a position";
+  const bytes = samplePdf(title, [
+    `Application ${app.id}, for ${position}.`,
+    "An invented applicant: this file is preview data only.",
+  ]);
+  return {
+    row: {
+      id,
+      pathname: privatePathname("application", `seed-${app.id}-${kind}.pdf`),
+      originalFilename: (kind === "cv" ? app.cvName : app.mlName) ?? `${kind}.pdf`,
+      mimeType: "application/pdf",
+      fileSize: bytes.length,
+      uploadedAt: app.appliedAt,
+      userId: app.userId,
+    },
+    bytes,
+  };
+}
+
+/** Two files per application, numbered from it: the CV 2n − 1 and the letter 2n. */
+export const SEED_APPLICATION_FILES: readonly SeedApplicationFile[] = APPLICATIONS.flatMap((app) => [
+  seedFile(2 * app.id - 1, app, "cv"),
+  seedFile(2 * app.id, app, "letter"),
 ]);
+
+export const APPLICATION_FILE_ROWS = rowsOf(
+  applicationFiles,
+  SEED_APPLICATION_FILES.map((f) => f.row),
+);
+
+export const APPLICATION_ROWS = rowsOf(
+  applications,
+  APPLICATIONS.map((app) => ({ ...app, cvFileId: 2 * app.id - 1, coverLetterFileId: 2 * app.id })),
+);
 
 /** One interview time: an hour from `start`, offered when the lead moved the application to interview. */
 function slot(id: number, applicationId: number, start: string, offeredAt: string, chosenAt: string | null = null) {
@@ -324,6 +374,6 @@ export const RECRUITMENT_SETTING_ROWS = rowsOf(recruitmentSetting, [
 
 export const recruitmentSeed = tableSeedModule({
   name: "recruitment",
-  owns: [applyPositions, applications, interviewSlots, recruitmentSetting],
-  rows: [POSITION_ROWS, APPLICATION_ROWS, SLOT_ROWS, RECRUITMENT_SETTING_ROWS],
+  owns: [applyPositions, applicationFiles, applications, interviewSlots, recruitmentSetting],
+  rows: [POSITION_ROWS, APPLICATION_FILE_ROWS, APPLICATION_ROWS, SLOT_ROWS, RECRUITMENT_SETTING_ROWS],
 });

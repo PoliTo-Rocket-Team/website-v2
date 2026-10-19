@@ -9,6 +9,7 @@
 // It reads the real environment only, never a .env file, so a local build
 // never seeds.
 
+import { put } from "@vercel/blob";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -16,6 +17,7 @@ import { preparePreviewDatabase, type PreviewBuildSteps } from "@/lib/seed/previ
 import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
 import { seedConnection } from "./seed/connection";
+import { SEED_APPLICATION_FILES } from "./seed/recruitment";
 import { SEED_MODULES } from "./seed/registry";
 
 /** The advisory lock every preview build takes before it migrates and seeds. */
@@ -68,9 +70,35 @@ async function main() {
     case "seeded": {
       const { target, modules } = outcome.report;
       console.log(`Migrated and seeded ${target.kind} ${target.label}: ${modules.join(", ")}.`);
+      await storeSeedFiles();
       return;
     }
   }
+}
+
+/**
+ * Writes the seeded applications' PDFs to the private store (issue #406), at
+ * the seed-only pathnames their `application_files` rows name, so the
+ * Applications panel's document cards open on a preview. Every build writes
+ * the same bytes, so writing over a file a build before stored changes
+ * nothing. A preview with no store token stores none, and says so.
+ */
+async function storeSeedFiles(): Promise<void> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) {
+    console.log("Seed files skipped: this preview has no BLOB_READ_WRITE_TOKEN, so its document cards answer that no file is stored.");
+    return;
+  }
+  for (const file of SEED_APPLICATION_FILES) {
+    await put(file.row.pathname, Buffer.from(file.bytes), {
+      access: "private",
+      token,
+      contentType: "application/pdf",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+  }
+  console.log(`Stored ${SEED_APPLICATION_FILES.length} seed application files in the private store.`);
 }
 
 main().catch((error) => {
