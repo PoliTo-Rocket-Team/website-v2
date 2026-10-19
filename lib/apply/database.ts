@@ -3,7 +3,12 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { getApplicant, hasApplied } from "@/app/actions/get-applicant";
-import { getPositionWithRecruitment, getPublicPositions } from "@/app/actions/get-apply-positions";
+import {
+  getPositionWithRecruitment,
+  getPublicPositions,
+  getShownPositionWithRecruitment,
+  type PositionWithRecruitment,
+} from "@/app/actions/get-apply-positions";
 import { isDatabaseConfigured } from "@/db/client";
 import { applicationFiles, applications, users } from "@/db/schema";
 import { cachedPublishedFaqs } from "@/lib/dashboard/database-faqs";
@@ -26,10 +31,8 @@ export const databaseApplyData: ApplyData = {
   // The cached read every question write refreshes; the record where there is
   // no database or no FAQ tables yet.
   faqs: async () => (isDatabaseConfigured() ? ((await cachedPublishedFaqs()) ?? faqRecord) : faqRecord),
-  position: async (id) => {
-    const read = await getPositionWithRecruitment(id);
-    return read.status === "found" ? { position: read.position, recruitment: read.recruitment } : null;
-  },
+  position: async (id) => foundOrNull(await getPositionWithRecruitment(id)),
+  shownPosition: async (id) => foundOrNull(await getShownPositionWithRecruitment(id)),
   applicant: async () => {
     const userId = await getCurrentUserId();
     return userId === null ? null : getApplicant(userId);
@@ -42,6 +45,10 @@ export const databaseApplyData: ApplyData = {
     newFileName: randomUUID,
   },
 };
+
+function foundOrNull(read: PositionWithRecruitment): Awaited<ReturnType<ApplyData["position"]>> {
+  return read.status === "found" ? { position: read.position, recruitment: read.recruitment } : null;
+}
 
 /** Postgres' unique_violation. */
 const UNIQUE_VIOLATION = "23505";
