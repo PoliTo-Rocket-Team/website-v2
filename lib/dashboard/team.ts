@@ -345,15 +345,14 @@ export type DepartmentHead = {
 };
 
 /**
- * Who a viewer's Members page lists: the whole team for the operations lead
- * (board 46), and for the team leader with every member field (boards 73 to
- * 73c, issue #252); one division for a division lead, with every division they are
- * in and what the lead may do to each (boards 61e to 61h2, issue #231); every
- * division of the department for its head (boards 69 to 69c, issue #235); and
- * nothing for anyone else.
+ * Who a viewer's Members page lists: the whole team with every member field
+ * for each full-access seat, the team leader, the operations lead and the IT
+ * lead alike (boards 73 to 73c, issues #252 and #418); one division for a
+ * division lead, with every division they are in and what the lead may do to
+ * each (boards 61e to 61h2, issue #231); every division of the department for
+ * its head (boards 69 to 69c, issue #235); and nothing for anyone else.
  */
 export type MemberDirectory =
-  | { readonly scope: "team"; readonly rows: readonly MemberRow[]; readonly departments: readonly string[] }
   | ({ readonly scope: "whole-team" } & WholeTeamMembers)
   | ({ readonly scope: "division" } & DivisionMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
@@ -370,8 +369,6 @@ function roleLabelOf(placement: Placement, role: TeamRole, org: OrgChart): strin
   }
   return role === "team-leader" ? "Team Leader" : role === "division-lead" ? "Division Lead" : "Member";
 }
-
-const ROLE_ORDER: Readonly<Record<TeamRole, number>> = { "team-leader": 0, board: 1, head: 2, "division-lead": 3, member: 4 };
 
 /**
  * The person's row. Seen from one division (`divisionId`), the row is their
@@ -401,21 +398,6 @@ export function memberRowOf(entry: RosterEntry, org: OrgChart, selfId: number | 
     access: entry.access,
     self: entry.id === selfId,
   };
-}
-
-/** Leads first (team leader, heads, division leads), then members; by name within each. */
-function byRoleThenName(a: MemberRow, b: MemberRow): number {
-  return ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.name.localeCompare(b.name);
-}
-
-export function teamDirectory(
-  roster: readonly RosterEntry[],
-  org: OrgChart,
-  selfId: number | null = null,
-): Extract<MemberDirectory, { scope: "team" }> {
-  const rows = roster.map((entry) => memberRowOf(entry, org, selfId)).sort(byRoleThenName);
-  const present = new Set(rows.map((r) => r.department));
-  return { scope: "team", rows, departments: org.departments.map((d) => d.name).filter((n) => present.has(n)) };
 }
 
 // Who may change whom on the Members page (issue #231, boards 61e to 61h2)
@@ -739,37 +721,11 @@ export function checkDeparture(
   return { ok: true, value: { from: years.from, to: years.to, reason: reason as LeaveReason | null } };
 }
 
-export const MEMBER_TABS = ["all", "leads", "members"] as const;
-export type MemberTab = (typeof MEMBER_TABS)[number];
-
-export const MEMBER_TAB_LABELS: Readonly<Record<MemberTab, string>> = { all: "All", leads: "Leads", members: "Members" };
-
-export function inMemberTab(row: MemberRow, tab: MemberTab): boolean {
-  if (tab === "all") return true;
-  return tab === "leads" ? isLead(row.role) : !isLead(row.role);
-}
-
 /** A name or email holds every word of the query, in any case. */
 export function matchesQuery(fields: readonly string[], query: string): boolean {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const haystack = fields.join(" ").toLowerCase();
   return words.every((word) => haystack.includes(word));
-}
-
-export type MemberFilter = {
-  readonly tab: MemberTab;
-  /** A department name, or null for all departments. */
-  readonly department: string | null;
-  readonly query: string;
-};
-
-/** The filter before the tab: what the tab counts are counted over. */
-export function memberRowsFor(rows: readonly MemberRow[], filter: Omit<MemberFilter, "tab">): MemberRow[] {
-  return rows.filter(
-    (row) =>
-      (filter.department === null || row.department === filter.department) &&
-      matchesQuery([row.name, row.email], filter.query),
-  );
 }
 
 /** The team year a date falls in: a year runs from October, so 9 Oct 2026 gives "2026–27". */

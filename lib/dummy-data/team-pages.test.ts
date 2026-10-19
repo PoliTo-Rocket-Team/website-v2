@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { MemberDirectory } from "@/lib/dashboard/team";
 import { membershipsIn } from "@/lib/dashboard/team";
+import { MEMBERS_TOOLS, membersModelOf } from "@/lib/dashboard/members-view";
 import { dummyAccessPage } from "./division";
 import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits } from "./edits";
 import { divisions, people, personFor, positions } from "./team";
@@ -25,12 +26,25 @@ function divisionPage(directory: MemberDirectory) {
   return directory;
 }
 
-function teamRows(directory: MemberDirectory) {
-  if (directory.scope !== "team") throw new Error(`expected the team directory, got ${directory.scope}`);
-  return directory.rows;
+function wholeTeam(directory: MemberDirectory) {
+  if (directory.scope !== "whole-team") throw new Error(`expected the whole team, got ${directory.scope}`);
+  return directory.people;
 }
 
 const MISSION_ANALYSIS = 1;
+
+test("every role that opens Members gets the same tools; the operations lead opens the whole team like the team leader (#418)", async () => {
+  for (const kind of ["team-leader", "operations-lead", "department-head", "division-lead"] as const) {
+    const page = membersModelOf(await pages(kind).view.members());
+    assert.deepEqual(page?.tools, MEMBERS_TOOLS, kind);
+  }
+  const ops = wholeTeam(await pages("operations-lead").view.members());
+  const leader = wholeTeam(await pages("team-leader").view.members());
+  assert.deepEqual(
+    ops.map((p) => p.id),
+    leader.map((p) => p.id),
+  );
+});
 
 test("a division lead lists only their own division, with every division each person is in", async () => {
   const page = divisionPage(await pages("division-lead").view.members());
@@ -63,9 +77,10 @@ test("the team leader and a head keep their place when the operations lead saves
   const writes = ops.view.teamWrites!;
   assert.equal(await writes.saveMember(14, { role: null, pageTitle: "Team Leader 2026" }), true);
   assert.equal(await writes.saveMember(15, { role: "member", pageTitle: null }), false); // a head's role is not the drawer's
-  const leader = teamRows(await pages("operations-lead", reread(ops.saved[0])).view.members()).find((r) => r.id === 14);
+  const edits = reread(ops.saved[0]);
+  const leader = wholeTeam(await pages("operations-lead", edits).view.members()).find((p) => p.id === 14);
   assert.equal(leader?.role, "team-leader");
-  assert.equal(leader?.pageTitle, "Team Leader 2026");
+  assert.equal(editedRoster(edits).find((e) => e.id === 14)?.pageTitle, "Team Leader 2026");
 });
 
 test("Leaves the team takes someone off the tree and onto the Alumni page", async () => {

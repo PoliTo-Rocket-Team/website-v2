@@ -2,10 +2,11 @@ import { departmentLine, type DepartmentMembers, type DepartmentPerson, type Div
 import { headcountLine, matchesPerson, type DivisionHeader, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "./division-members";
 import { divisionLabel, type Joining, type MemberDirectory } from "./team";
 import { wholeTeamLine, type TeamMember, type WholeTeamMembers } from "./team-members";
+import type { ViewerStanding } from "./viewer";
 
 // The Members page as one view for every role that opens it (Owner decision,
-// 2026-10-19, issue #408): the team leader, a department head and a division
-// lead get the same tools and views. Each role's page data (the whole team,
+// 2026-10-19, issues #408 and #418): the team leader, the operations lead, the
+// IT lead, a department head and a division lead get the same tools and views. Each role's page data (the whole team,
 // a department, a division) is turned into one model here; what differs is
 // only the rows it holds and the actions its data allows. Who may see or
 // change what is still decided where the data is built (./access.ts,
@@ -80,12 +81,22 @@ export type MembersModel = {
   readonly panelEdits: boolean;
 };
 
+/**
+ * Whether the viewer's Members page is the whole team: true for every
+ * full-access seat, the team leader, the operations lead and the IT lead
+ * alike, and for full access from a scope row (issue #418). Anyone else reads
+ * the units their roles reach, built where the data is read.
+ */
+export function opensWholeTeam(viewer: ViewerStanding): boolean {
+  return viewer.kind === "operations-lead";
+}
+
 /** The one place a model is made, so every role's model carries the same tools. */
 function model(parts: Omit<MembersModel, "tools">): MembersModel {
   return { tools: MEMBERS_TOOLS, ...parts };
 }
 
-/** The page for whatever the viewer's directory holds; null for the operations lead's board-46 list and for no list at all. */
+/** The page for whatever the viewer's directory holds; null for no list at all. */
 export function membersModelOf(directory: MemberDirectory): MembersModel | null {
   switch (directory.scope) {
     case "whole-team":
@@ -94,13 +105,12 @@ export function membersModelOf(directory: MemberDirectory): MembersModel | null 
       return departmentModel(directory);
     case "division":
       return divisionModel(directory);
-    case "team":
     case "none":
       return null;
   }
 }
 
-/** The team leader's page (boards 73 to 73c): the whole team, read only per row, with Add member. */
+/** A full-access seat's page (boards 73 to 73c, issue #418): the whole team, read only per row, with Add member. */
 export function wholeTeamModel(page: WholeTeamMembers): MembersModel {
   return model({
     intro: wholeTeamLine(page),

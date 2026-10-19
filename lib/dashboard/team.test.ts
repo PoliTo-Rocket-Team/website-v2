@@ -6,7 +6,6 @@ import {
   buildTeamTree,
   checkDeparture,
   inDivisions,
-  inMemberTab,
   isDivisionRole,
   leadsChangedBy,
   mayChangeDivision,
@@ -20,12 +19,10 @@ import {
   withJoined,
   withoutDivision,
   withRoleIn,
-  memberRowsFor,
   pagerItems,
   seasonAt,
   roleBeyondDivisions,
   standingOfRoles,
-  teamDirectory,
   type Memberships,
   type OrgChart,
   type RoleSeat,
@@ -120,16 +117,6 @@ test("the tree is built from the roster: a person added to it is a node", () => 
   assert.equal(after.departments[0].size, before.departments[0].size + 1);
   assert.deepEqual(after.path, { departmentId: 1, divisionId: 10 });
   assert.equal(after.leader?.name, "Alessandro Greco");
-});
-
-test("tabs, the department filter and search narrow the members", () => {
-  const { rows } = teamDirectory(roster, org);
-  const names = (list: typeof rows) => list.map((r) => r.name);
-  assert.equal(rows.length, 6);
-  assert.deepEqual(names(rows.filter((r) => inMemberTab(r, "leads"))), ["Alessandro Greco", "Chiara Rinaldi", "Bruno Valli", "Marco Bianchi"]);
-  assert.deepEqual(names(memberRowsFor(rows, { department: "Aerodynamics", query: "" })), ["Chiara Rinaldi", "Marco Bianchi", "Elif Kaya"]);
-  assert.deepEqual(names(memberRowsFor(rows, { department: null, query: "elif" })), ["Elif Kaya"]);
-  assert.deepEqual(names(memberRowsFor(rows, { department: "Operations", query: "elif" })), []);
 });
 
 test("the pager keeps the first pages, the current one and the last", () => {

@@ -3,9 +3,10 @@ import { test } from "node:test";
 import { departmentMembers } from "./department-members";
 import { NO_MEMBER_DETAILS } from "./details";
 import { divisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
-import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, shownMembers, type MembersModel } from "./members-view";
+import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MembersModel } from "./members-view";
 import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import { wholeTeamMembers } from "./team-members";
+import type { ViewerStanding } from "./viewer";
 
 // Issue #408: the team leader, a department head and a division lead open
 // one Members view with the same tools; only the rows and the actions their
@@ -68,6 +69,21 @@ test("the team leader, a head and a division lead get the same Members tools, th
   const tools = [leaderPage(), headPage(), leadPage(), leadPage(null)].map((page) => page.tools);
   for (const set of tools) assert.deepEqual(set, MEMBERS_TOOLS);
   assert.ok(MEMBERS_TOOLS.includes("list-view") && MEMBERS_TOOLS.includes("table-view"));
+});
+
+test("the operations lead and the IT lead open the whole team like the team leader, with the same tools as a head and a lead (#418)", () => {
+  const seats = ["team-leader", "operations-lead", "it-lead", null] as const;
+  for (const seat of seats) {
+    const viewer: ViewerStanding = { kind: "operations-lead", seat, siteContent: false, approveOrders: false };
+    assert.equal(opensWholeTeam(viewer), true, String(seat));
+  }
+  for (const kind of ["department-head", "division-lead"] as const) {
+    assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false }), false, kind);
+  }
+  // The own row is the only thing that tells the full-access seats' pages apart.
+  const seatPage = (selfId: number) => membersModelOf({ scope: "whole-team", ...wholeTeamMembers({ records, org, selfId }) })!;
+  const tools = [seatPage(7), seatPage(8), seatPage(9), headPage(), leadPage()].map((page) => page.tools);
+  for (const set of tools) assert.deepEqual(set, MEMBERS_TOOLS);
 });
 
 test("only the rows differ: the whole team, the department, the division", () => {

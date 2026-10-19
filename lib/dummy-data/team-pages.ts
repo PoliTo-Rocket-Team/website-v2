@@ -63,7 +63,6 @@ import {
   removalFrom,
   roleIn,
   standingOfPlacement,
-  teamDirectory,
   withJoined,
   withoutDivision,
   type DivisionRole,
@@ -80,6 +79,7 @@ import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structu
 import { kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { grantActors, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
+import { opensWholeTeam } from "@/lib/dashboard/members-view";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
@@ -985,9 +985,10 @@ export function dummyTeamPages(
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
-      // The team leader's page lists every member field (boards 73 to 73c, issue #252).
-      if (kind === "team-leader") return { scope: "whole-team", ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }) };
-      if (kind === "operations-lead") return teamDirectory(team, org, self);
+      // Every full-access seat's page lists every member field (boards 73 to 73c, issues #252 and #418).
+      if (opensWholeTeam(testDeveloperStanding(kind))) {
+        return { scope: "whole-team", ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }) };
+      }
       if (actor?.kind === "head") {
         const [departmentId] = actor.departmentIds;
         const ids = org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
