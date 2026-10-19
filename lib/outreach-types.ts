@@ -145,7 +145,7 @@ export type OutreachFeature = {
 export type OutreachCopy = {
   description: string;
   header: { eyebrow: string; title: string; intro: string };
-  /** Section title over the year filter and the post cards. */
+  /** Section title over the post cards. */
   postsTitle: string;
 };
 

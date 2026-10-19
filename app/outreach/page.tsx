@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { OutreachListPage } from "@/components/outreach/list-page";
 import { postCardOf } from "@/components/outreach/post-card";
-import { featuredCard, newestFirst, outreachCopy, outreachStats, postYears } from "@/lib/outreach";
+import { featuredCard, newestFirst, outreachCopy, outreachStats } from "@/lib/outreach";
 import { publishedOutreach } from "@/lib/outreach-public";
 import { footerProjects } from "@/lib/project-content/public";
 
@@ -20,7 +20,6 @@ export default async function OutreachPage() {
       stats={outreachStats(content)}
       feature={featuredCard(content.feature, content.pinned)}
       cards={newestFirst(content.posts).map(postCardOf)}
-      years={postYears(content.posts)}
       footerProjects={await footerProjects()}
     />
   );

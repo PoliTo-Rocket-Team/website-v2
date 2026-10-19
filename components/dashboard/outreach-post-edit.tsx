@@ -14,7 +14,7 @@ import { PostPage } from "@/components/outreach/post-page";
 import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
 import type { FooterProject } from "@/lib/landing-links";
-import { featuredCard, newestFirst, outreachStats, postYears, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
+import { featuredCard, newestFirst, outreachStats, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
 import {
   blankPost,
   blankPostFields,
@@ -235,7 +235,6 @@ function CardPage({
         stats={outreachStats(published)}
         feature={featuredCard(published.feature, view)}
         cards={newestFirst(published.posts).map(postCardOf)}
-        years={postYears(published.posts)}
         footerProjects={footerProjects}
       />
     );
@@ -249,7 +248,6 @@ function CardPage({
         stats={outreachStats(published)}
         feature={featuredCard(published.feature, published.pinned)}
         cards={cards.map((c) => c.card)}
-        years={postYears(posts)}
         footerProjects={footerProjects}
         keepInView={edited}
         frame={(card, node, layout) => (
