@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { outreachPosts, outreachPostTags, outreachPostVersions, outreachSummitVersions, outreachTags } from "@/db/schema";
@@ -26,14 +26,36 @@ export const OUTREACH_CACHE_TAG = "outreach";
 /** Postgres' "undefined_table": the outreach migration has not run on this database yet. */
 const UNDEFINED_TABLE = "42P01";
 
-function isUndefinedTable(error: unknown): boolean {
+/** Postgres' "undefined_column": migration 0044, which adds `outreach_posts.pinned`, has not run on this database yet. */
+const UNDEFINED_COLUMN = "42703";
+
+function hasCode(error: unknown, code: string): boolean {
   for (let e = error; e instanceof Error; e = e.cause) {
-    if ((e as { code?: unknown }).code === UNDEFINED_TABLE) return true;
+    if ((e as { code?: unknown }).code === code) return true;
   }
   return false;
 }
 
-/** Everything stored, read in one round trip: the posts with their versions in site order, the summit and the tag list. */
+const isUndefinedTable = (error: unknown) => hasCode(error, UNDEFINED_TABLE);
+
+/**
+ * The pinned post's id (issue #392), or null. Before migration 0044 has run
+ * there is no `pinned` column and so no pinned post: the pages show what they
+ * showed before it.
+ */
+async function readPinned(): Promise<number | null> {
+  try {
+    const rows = await getDb().select({ id: outreachPosts.id }).from(outreachPosts).where(eq(outreachPosts.pinned, true));
+    // The outreach_posts_one_pinned index keeps it to one row.
+    if (rows.length > 1) throw new Error("more than one outreach post is pinned");
+    return rows[0]?.id ?? null;
+  } catch (error) {
+    if (hasCode(error, UNDEFINED_COLUMN)) return null;
+    throw error;
+  }
+}
+
+/** Everything stored, read in one round trip: the posts with their versions in site order, the summit, the tag list and the pinned post. */
 export async function readStoredOutreach(): Promise<StoredOutreach> {
   const db = getDb();
   const [versionRowsRead, tagRows, summitRows, tagList] = await db.batch([
@@ -81,7 +103,12 @@ export async function readStoredOutreach(): Promise<StoredOutreach> {
   // The import publishes the summit, and no write unpublishes it.
   if (summit === null || summit.state !== "published") throw new Error("the outreach summit has no published version");
 
-  return { posts, summit, tags: tagList.map((row): OutreachTag => ({ name: row.name, award: row.award })) };
+  return {
+    posts,
+    summit,
+    tags: tagList.map((row): OutreachTag => ({ name: row.name, award: row.award })),
+    pinned: await readPinned(),
+  };
 }
 
 /**
@@ -216,6 +243,23 @@ export const databaseOutreachStore: OutreachStore = {
     );
     updateTag(OUTREACH_CACHE_TAG);
     return written({ name, award: false });
+  },
+
+  pinned: async () => (await readStoredOutreach()).pinned,
+
+  async pin(id) {
+    // The pinned post before it is unpinned first, in the same transaction:
+    // the one-pinned index checks each row as it changes.
+    const unpinOthers = (db: ReturnType<typeof getDb>) =>
+      db
+        .update(outreachPosts)
+        .set({ pinned: false })
+        .where(id === null ? eq(outreachPosts.pinned, true) : and(eq(outreachPosts.pinned, true), ne(outreachPosts.id, id)));
+    await runAuditBatch((db) =>
+      id === null ? [unpinOthers(db)] : [unpinOthers(db), db.update(outreachPosts).set({ pinned: true }).where(eq(outreachPosts.id, id))],
+    );
+    updateTag(OUTREACH_CACHE_TAG);
+    return written(null);
   },
 };
 

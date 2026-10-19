@@ -155,7 +155,15 @@ export type OutreachCopy = {
  */
 export type OutreachContent = {
   feature: OutreachFeature;
-  /** In any order; the page shows them newest first. */
+  /**
+   * The published post pinned to the top of /outreach (issue #392), shown in
+   * the Featured card and never in `posts`; null while none is.
+   */
+  pinned: OutreachPost | null;
+  /** Every other published post, in any order; the page shows them newest first. */
   posts: readonly OutreachPost[];
   tags: readonly OutreachTag[];
 };
+
+/** The Outreach record of lib/outreach.ts, as the 0032 import carried it in: the summit, the posts and the tags, nothing pinned yet. */
+export type OutreachRecord = Omit<OutreachContent, "pinned">;

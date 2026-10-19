@@ -14,7 +14,7 @@ import { PostPage } from "@/components/outreach/post-page";
 import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
 import type { FooterProject } from "@/lib/landing-links";
-import { newestFirst, outreachStats, postYears, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
+import { featuredCard, newestFirst, outreachStats, postYears, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
 import {
   blankPost,
   blankPostFields,
@@ -66,16 +66,23 @@ const PAGE_TARGETS: readonly PageTarget<PostPageId>[] = [
   { id: "home", label: "Home" },
 ];
 
+// The pinned post (issue #392) shows in the Outreach list's Featured card and
+// on no home card, so its switch offers the post page and the list alone.
+const PINNED_PAGE_TARGETS = PAGE_TARGETS.filter((t) => t.id !== "home");
+
 /** What the editor opens on: a stored post, or a new one not saved yet, dated `today`. */
 type Opening = { readonly item: PostItem } | { readonly item: null; readonly today: IsoDate };
 
 export function OutreachPostEdit({
+  pinned,
   tags: initialTags,
   neighbours,
   published,
   footerProjects,
   ...opening
 }: Opening & {
+  /** Whether the post is the one pinned to the top of /outreach (issue #392). */
+  pinned: boolean;
   tags: readonly OutreachTag[];
   neighbours: Neighbouring;
   /** What the public pages show, for the list and home targets. */
@@ -160,7 +167,7 @@ export function OutreachPostEdit({
       onSaveDraft={pending ? null : () => save("save-draft")}
       onPublish={pending ? null : () => save("publish")}
       publishChecklist={publishChecklist(fields)}
-      pages={item === null ? undefined : { targets: PAGE_TARGETS, current: page, onSelect: setPage }}
+      pages={item === null ? undefined : { targets: pinned ? PINNED_PAGE_TARGETS : PAGE_TARGETS, current: page, onSelect: setPage }}
       blocks={POST_BLOCKS}
       startHere={item === null && !panelOpen ? "details" : undefined}
       onEdit={openSection}
@@ -187,6 +194,7 @@ export function OutreachPostEdit({
         <CardPage
           page={page}
           view={view}
+          pinned={pinned}
           published={published}
           footerProjects={footerProjects}
           publishedSlug={live === null ? null : slugOf(live)}
@@ -200,11 +208,14 @@ export function OutreachPostEdit({
 /**
  * The Outreach list or the home page, with the post's card in place, outlined
  * with an Edit card chip that opens Title and details, where the card summary
- * lives; the other cards are dimmed.
+ * lives; the other cards are dimmed. The pinned post's card is the list's
+ * Featured card (issue #392), drawn from the fields with the cards below it
+ * as they are.
  */
 function CardPage({
   page,
   view,
+  pinned,
   published,
   footerProjects,
   publishedSlug,
@@ -212,11 +223,23 @@ function CardPage({
 }: {
   page: Exclude<PostPageId, "post">;
   view: OutreachDraft;
+  pinned: boolean;
   published: OutreachContent;
   footerProjects: readonly FooterProject[];
   publishedSlug: string | null;
   onEditCard: () => void;
 }) {
+  if (pinned) {
+    return (
+      <OutreachListPage
+        stats={outreachStats(published)}
+        feature={featuredCard(published.feature, view)}
+        cards={newestFirst(published.posts).map(postCardOf)}
+        years={postYears(published.posts)}
+        footerProjects={footerProjects}
+      />
+    );
+  }
   const posts = withEdited(published.posts, publishedSlug, view);
   if (page === "list") {
     const cards = newestFirst(posts).map((p) => ({ post: p, card: postCardOf(p) }));
@@ -224,7 +247,7 @@ function CardPage({
     return (
       <OutreachListPage
         stats={outreachStats(published)}
-        feature={published.feature}
+        feature={featuredCard(published.feature, published.pinned)}
         cards={cards.map((c) => c.card)}
         years={postYears(posts)}
         footerProjects={footerProjects}

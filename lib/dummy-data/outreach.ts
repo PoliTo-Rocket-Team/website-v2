@@ -12,8 +12,9 @@ import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 // #287), which never touch a database. The dashboard starts from what the
 // import carries into the database. A test developer's changes are kept in
 // one cookie in their own browser, cleared on sign out: the edits to the
-// posts (./content-edits.ts), the summit's versions once they change it, and
-// the tags they add. The public pages never read it.
+// posts (./content-edits.ts), the summit's versions once they change it, the
+// tags they add, and the pinned post once they pin or unpin one. The public
+// pages never read it.
 //
 // A post is long, so a whole one or two fill the cookie. The cookie keeps a
 // version of a seeded post or of the summit as the fields that differ from
@@ -23,6 +24,9 @@ import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 // answer carries it as a data URL, so the panel and the page show it until
 // the next load, and the cookie keeps the board's warm stand-in in its place.
 
+/** Which post is pinned, once a test developer pinned or unpinned one: its id, or none. */
+export type DummyPin = { readonly id: number | null };
+
 /** What a test developer changed on the Outreach content. */
 export type DummyOutreachEdits = {
   readonly posts: ContentEdits<OutreachPost, OutreachDraft>;
@@ -30,9 +34,11 @@ export type DummyOutreachEdits = {
   readonly summit: SummitVersions | null;
   /** Tags added to the end of the list, in the order they were added. */
   readonly tags: readonly string[];
+  /** The pin, once changed (issue #392); null while it is the seed's. */
+  readonly pin: DummyPin | null;
 };
 
-export const NO_OUTREACH_EDITS: DummyOutreachEdits = { posts: NO_CONTENT_EDITS, summit: null, tags: [] };
+export const NO_OUTREACH_EDITS: DummyOutreachEdits = { posts: NO_CONTENT_EDITS, summit: null, tags: [], pin: null };
 
 export type DummyOutreachEditsStore = {
   readonly current: DummyOutreachEdits;
@@ -96,8 +102,17 @@ export function serializeOutreachEdits(edits: DummyOutreachEdits): string {
     },
     summit: edits.summit === null ? null : eachVersion(edits.summit, (f) => compact(SEED.summit.published, f as OutreachFeature)),
     tags: edits.tags,
+    pin: edits.pin,
   };
   return encodeURIComponent(JSON.stringify(wire));
+}
+
+/** The pin as the cookie keeps it; undefined when it is not one this code wrote. A cookie from before pins were kept has none. */
+function pinOf(value: unknown): DummyPin | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!isShape(value)) return undefined;
+  if (value.id === null) return { id: null };
+  return Number.isSafeInteger(value.id) ? { id: value.id as number } : undefined;
 }
 
 const isPost = (value: unknown): value is OutreachPost => outreachPostOf(value) !== null;
@@ -138,8 +153,9 @@ export function parseOutreachEdits(value: string | undefined): DummyOutreachEdit
     const posts = parseContentEdits(encodeURIComponent(JSON.stringify({ ...wire.posts, saved })), isPost, isDraft);
     const summit = wire.summit === null ? null : summitOf(eachVersion(wire.summit, (f) => expand(SEED.summit.published, f)));
     const tags = addedTags(wire.tags);
-    if ((wire.summit !== null && summit === null) || tags === null) return NO_OUTREACH_EDITS;
-    return { posts, summit, tags };
+    const pin = pinOf(wire.pin);
+    if ((wire.summit !== null && summit === null) || tags === null || pin === undefined) return NO_OUTREACH_EDITS;
+    return { posts, summit, tags, pin };
   } catch {
     return NO_OUTREACH_EDITS;
   }
@@ -185,10 +201,12 @@ export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStor
     return null;
   }
 
+  const posts = memoryContentStore(withContentEdits(SEED.posts, current.posts), (items: readonly PostItem[]) =>
+    keep({ ...current, posts: contentEditsOf(SEED.posts, items, keptVersion) }),
+  );
+
   return {
-    posts: memoryContentStore(withContentEdits(SEED.posts, current.posts), (items: readonly PostItem[]) =>
-      keep({ ...current, posts: contentEditsOf(SEED.posts, items, keptVersion) }),
-    ),
+    posts,
 
     summit: async () => current.summit ?? SEED.summit,
 
@@ -202,6 +220,17 @@ export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStor
     async addTag(name) {
       const error = await keep({ ...current, tags: [...current.tags, name] });
       return error === null ? written({ name, award: false }) : refused(error);
+    },
+
+    // A removed post takes its pin with it, as the database's row does.
+    async pinned() {
+      const id = current.pin === null ? SEED.pinned : current.pin.id;
+      return (await posts.list()).some((item) => item.id === id) ? id : null;
+    },
+
+    async pin(id) {
+      const error = await keep({ ...current, pin: { id } });
+      return error === null ? written(null) : refused(error);
     },
   };
 }

@@ -32,7 +32,7 @@ function freshStore(): OutreachStore {
 
 /** What /outreach shows from the store as it is now. */
 async function site(store: OutreachStore) {
-  return publicOutreach({ posts: await store.posts.list(), summit: await store.summit(), tags: await store.tags() });
+  return publicOutreach({ posts: await store.posts.list(), summit: await store.summit(), tags: await store.tags(), pinned: await store.pinned() });
 }
 
 test("Unpublish keeps the post in the list as a draft and takes it off /outreach and its page; Delete removes it from both", async () => {

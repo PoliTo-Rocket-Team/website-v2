@@ -536,6 +536,13 @@ export function outreachSummitOf(data: SeedData): SummitVersions | null {
   return summit?.state === "published" ? summit : null;
 }
 
+/** The pinned post's id (issue #392), or null; the one-pinned index refuses two. */
+export function outreachPinnedOf(data: SeedData): number | null {
+  const pinned = data.outreachPosts.filter((p) => p.pinned === true);
+  if (pinned.length > 1) throw new Error("more than one outreach post is pinned");
+  return pinned[0]?.id ?? null;
+}
+
 /** Every version of every post, published or draft. */
 function outreachVersionsOf(data: SeedData): OutreachDraft[] {
   return outreachItemsOf(data).flatMap((item) =>

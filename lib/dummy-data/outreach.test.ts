@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { editorVersion, publicItems, statusOf } from "@/lib/content/versioned";
-import { outreachRecord } from "@/lib/outreach";
+import { iressStory, outreachRecord } from "@/lib/outreach";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { outreachPostOf } from "@/lib/outreach-rows";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
@@ -44,7 +44,9 @@ test("the test developer's dashboard reads the imported Outreach content, behind
   const outreach = dummyDashboardData("operations-lead", recruitment, changes).outreach;
   const posts = await outreach.posts.list();
   assert.ok(posts !== null);
-  assert.deepEqual(publicItems(posts), outreachRecord.posts);
+  assert.deepEqual(publicItems(posts), [...outreachRecord.posts, iressStory]);
+  const pinned = await outreach.pinned();
+  assert.deepEqual(posts.find((i) => i.id === pinned)?.version, { state: "published", published: iressStory, draft: null }, "the summit's story is pinned");
   assert.deepEqual((await outreach.summit())?.published, outreachRecord.feature);
   assert.deepEqual(await outreach.tags(), outreachRecord.tags);
 
@@ -83,8 +85,21 @@ test("a test developer's writes stay in their cookie, across requests", async ()
   assert.equal((await next.summit())?.draft?.title, "IRESS");
   assert.equal((await next.summit())?.published.title, outreachRecord.feature.title);
   assert.deepEqual((await next.tags())?.at(-1), { name: "Workshop", award: false });
-  // What the public pages would show is still the record's, less the removed post.
-  assert.deepEqual(publicItems(items), outreachRecord.posts.filter((_, i) => i !== 11));
+  // What the public pages would show is still the record's and the summit's story, less the removed post.
+  assert.deepEqual(publicItems(items), [...outreachRecord.posts.filter((_, i) => i !== 11), iressStory]);
+});
+
+test("a test developer's pin stays in their cookie, one post at a time, and a removed post takes its pin with it", async () => {
+  const jar = cookie();
+  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const story = (await editor.pinned())!;
+  assert.ok((await editor.pin(1)).ok);
+  assert.equal(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).pinned(), 1, "the next request reads the pin");
+  assert.ok((await editor.unpin()).ok);
+  assert.equal(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).pinned(), null);
+  assert.ok((await editor.pin(story)).ok);
+  assert.ok((await editor.posts.remove(story)).ok);
+  assert.equal(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).pinned(), null);
 });
 
 test("a cookie this code did not write reads as no changes", () => {
@@ -96,4 +111,6 @@ test("a cookie this code did not write reads as no changes", () => {
   assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedTag))), NO_OUTREACH_EDITS);
   const forgedSummit = { posts: { saved: [], removed: [], order: [] }, summit: { state: "draft", draft: {} }, tags: [] };
   assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedSummit))), NO_OUTREACH_EDITS);
+  const forgedPin = { posts: { saved: [], removed: [], order: [] }, summit: null, tags: [], pin: { id: "1" } };
+  assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedPin))), NO_OUTREACH_EDITS);
 });

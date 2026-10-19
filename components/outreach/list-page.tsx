@@ -4,8 +4,7 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import type { HeaderStats } from "@/lib/about/types";
 import type { FooterProject } from "@/lib/landing-links";
-import { outreachCopy } from "@/lib/outreach";
-import type { OutreachFeature } from "@/lib/outreach-types";
+import { outreachCopy, type FeaturedCard } from "@/lib/outreach";
 import { Feature } from "./feature";
 import type { PostCardData } from "./post-card";
 import { Posts, type PostCardFrame } from "./posts";
@@ -14,7 +13,7 @@ import { Posts, type PostCardFrame } from "./posts";
 // shows it and as the dashboard's edit shell shows it with the post being
 // edited in place (issue #294): `frame` wraps each post card and `keepInView`
 // is the card the list must not hide behind "Show N more". The header and its
-// figures (2 x 2 on phones), the summit we started, then the post cards. No
+// figures (2 x 2 on phones), the Featured card, then the post cards. No
 // apply band on this page (issue #110).
 export function OutreachListPage({
   stats,
@@ -26,7 +25,8 @@ export function OutreachListPage({
   keepInView,
 }: {
   stats: HeaderStats;
-  feature: OutreachFeature;
+  /** The Featured card: the pinned post, or the summit alone (issue #392). */
+  feature: FeaturedCard;
   /** Newest first. */
   cards: readonly PostCardData[];
   years: readonly number[];

@@ -1,21 +1,38 @@
+import Link from "next/link";
 import { CopyText } from "@/components/project-page/parts";
-import type { OutreachFeature } from "@/lib/outreach-types";
+import type { FeaturedCard } from "@/lib/outreach";
 import { Photo } from "./photo";
 
-// Boards 32 and 32m, "Featured": the summit the team started, as one glass
-// card. From md the group photo fills the left part and the story sits right
-// of it; on phones the photo sits on top. The editions close the story.
-export function Feature({ feature }: { feature: OutreachFeature }) {
+// Boards 32 and 32m, "Featured": the story pinned to the top of the page
+// (issue #392), under the summit's line and editions, as one glass card. From
+// md the photo fills the left part and the story sits right of it; on phones
+// the photo sits on top. The editions close the story. With a post pinned the
+// title is the link, and its ::after covers the card, so the whole card opens
+// the post, as a post card does; its edge brightens on hover and on keyboard
+// focus (.glass-linked). With none pinned the card is the summit alone, with
+// nothing to open.
+export function Feature({ feature }: { feature: FeaturedCard }) {
   return (
     <section className="px-5 pt-section md:px-16">
-      <article className="glass-card mx-auto grid max-w-[1312px] overflow-hidden rounded-xl md:grid-cols-[minmax(0,47fr)_minmax(0,53fr)]">
+      <article
+        className={`glass-card mx-auto grid max-w-[1312px] overflow-hidden rounded-xl md:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] ${feature.slug === null ? "" : "glass-linked"}`}
+      >
         <div className="relative h-[200px] md:h-auto md:min-h-[460px]">
           <Photo photo={feature.photo} sizes="(min-width: 1440px) 620px, (min-width: 768px) 47vw, 100vw" />
         </div>
         <div className="flex flex-col justify-center p-5 md:p-12">
           <p className="font-mono text-[11px] tracking-[0.2em] text-accent">{feature.eyebrow}</p>
           <h2 className="mt-3 text-[22px] font-bold leading-[1.2] tracking-[-0.02em] md:mt-4 md:text-[34px] md:leading-[1.15]">
-            {feature.title}
+            {feature.slug === null ? (
+              feature.title
+            ) : (
+              <Link
+                href={`/outreach/${feature.slug}`}
+                className="after:absolute after:inset-0 after:z-[2] after:rounded-xl focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-4 focus-visible:after:outline-accent"
+              >
+                {feature.title}
+              </Link>
+            )}
           </h2>
           <p className="mt-3 text-[14px] leading-[1.6] text-text-2 md:mt-5 md:text-[15px]">
             <CopyText copy={feature.story} />

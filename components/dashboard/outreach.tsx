@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { EyeOff, ExternalLink, Instagram, Linkedin, Pencil, Plus, Trash2, X } from "lucide-react";
+import { EyeOff, ExternalLink, Instagram, Linkedin, Pencil, Pin, PinOff, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { deleteOutreachPost, saveOutreachSummit, unpublishOutreachPost } from "@/app/dashboard/outreach-actions";
+import { deleteOutreachPost, pinOutreachPost, saveOutreachSummit, unpinOutreachPost, unpublishOutreachPost } from "@/app/dashboard/outreach-actions";
 import { Photo } from "@/components/outreach/photo";
 import { statusOf, type PublishStep } from "@/lib/content/versioned";
 import type { SummitVersions } from "@/lib/outreach-editor";
@@ -44,9 +44,13 @@ import { PANEL } from "./panel";
 // headings and each row's menu: View on site, Unpublish, Delete. A post opens
 // on its own page under the edit shell (issue #288); New post opens an empty
 // one there (board 74f, issue #292). A draft with no title yet is listed as
-// "Untitled post", and one with no photo yet shows an empty thumbnail. The page keeps
-// the rows it was sent and each answer from the server; every write is
-// checked there again, behind the site-content gate.
+// "Untitled post", and one with no photo yet shows an empty thumbnail. A
+// published post can be pinned from its menu (issue #392): it takes the
+// Featured card at the top of /outreach, under the summit's line and
+// editions, and a Pinned pill marks its row; pinning another post unpins it,
+// so at most one is pinned. The page keeps the rows it was sent and each
+// answer from the server; every write is checked there again, behind the
+// site-content gate.
 
 const STATUS_OPTIONS = (Object.keys(LIST_STATUS_LABELS) as ListStatus[]).map((value) => ({ value, label: LIST_STATUS_LABELS[value] }));
 
@@ -54,13 +58,18 @@ export function OutreachView({
   rows: initial,
   summit: initialSummit,
   tags,
+  pinned: initialPinned,
 }: {
   rows: readonly OutreachRow[];
   summit: SummitVersions;
   tags: readonly OutreachTag[];
+  /** The pinned post's id; null while none is. */
+  pinned: number | null;
 }) {
   const [rows, setRows] = useState<readonly OutreachRow[]>(initial);
   const [summit, setSummit] = useState<SummitVersions>(initialSummit);
+  const [pinned, setPinned] = useState<number | null>(initialPinned);
+  const pinnedRow = rows.find((r) => r.id === pinned);
   const [filter, setFilter] = useState<OutreachFilter>(NO_FILTER);
   // Each opening starts the panel afresh from the summit as it is now.
   const [opened, setOpened] = useState<number | null>(null);
@@ -77,6 +86,28 @@ export function OutreachView({
       }
       setRows((list) => list.map((r) => (r.id === row.id ? outreachRow(result.value, row.slug) : r)));
       toast.success(`${titleOf(row.post)} is off the Outreach page and kept as a draft.`);
+    });
+  };
+
+  const pin = (row: OutreachRow) => {
+    void pinOutreachPost(row.id).then((result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setPinned(row.id);
+      toast.success(`${titleOf(row.post)} is pinned to the top of the Outreach page.`);
+    });
+  };
+
+  const unpin = (row: OutreachRow) => {
+    void unpinOutreachPost().then((result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setPinned(null);
+      toast.success(`${titleOf(row.post)} is back in the post list.`);
     });
   };
 
@@ -108,7 +139,7 @@ export function OutreachView({
         }
       />
 
-      <SummitCard summit={summit} onEdit={() => setOpened((n) => (n ?? 0) + 1)} />
+      <SummitCard summit={summit} pinned={pinnedRow} onEdit={() => setOpened((n) => (n ?? 0) + 1)} />
 
       {/* Phones have no table headings, so the two filters sit over the cards. */}
       <div className="mt-5 flex flex-wrap gap-2 md:hidden">
@@ -137,7 +168,16 @@ export function OutreachView({
         ) : (
           <ul className="divide-y divide-hairline">
             {shown.map((row) => (
-              <PostRow key={row.id} row={row} award={award} onUnpublish={() => unpublish(row)} onDelete={() => setDeleting(row)} />
+              <PostRow
+                key={row.id}
+                row={row}
+                award={award}
+                pinned={row.id === pinned}
+                onPin={() => pin(row)}
+                onUnpin={() => unpin(row)}
+                onUnpublish={() => unpublish(row)}
+                onDelete={() => setDeleting(row)}
+              />
             ))}
           </ul>
         )}
@@ -155,7 +195,7 @@ export function OutreachView({
       )}
 
       {opened !== null && (
-        <SummitPanel key={opened} summit={summit} onClose={() => setOpened(null)} onSaved={setSummit} />
+        <SummitPanel key={opened} summit={summit} pinned={pinnedRow !== undefined} onClose={() => setOpened(null)} onSaved={setSummit} />
       )}
     </DrawerPage>
   );
@@ -165,17 +205,24 @@ export function OutreachView({
 const COLUMNS =
   "md:grid-cols-[minmax(0,1fr)_150px_110px_32px] lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.4fr)_88px_118px_32px]";
 
-/** Board 74's card over the table: the summit's photo, its eyebrow and title, its editions, and Edit. */
-function SummitCard({ summit, onEdit }: { summit: SummitVersions; onEdit: () => void }) {
+/**
+ * Board 74's card over the table: what the Featured card shows, the pinned
+ * post's photo and title (issue #392) or, with none pinned, the summit's,
+ * under the summit's eyebrow, then its editions, and Edit.
+ */
+function SummitCard({ summit, pinned, onEdit }: { summit: SummitVersions; pinned: OutreachRow | undefined; onEdit: () => void }) {
   const shown = summit.draft ?? summit.published;
+  const photo = pinned === undefined ? shown.photo : pinned.post.photos[0];
   return (
     <section aria-label="Featured summit" className={`${PANEL} mt-6 flex items-center gap-4 p-4`}>
       <span className="relative hidden h-[60px] w-[96px] shrink-0 overflow-hidden rounded-lg bg-white-5 sm:block">
-        <Photo photo={{ ...shown.photo, alt: "" }} sizes="96px" />
+        <Photo photo={photo && { ...photo, alt: "" }} sizes="96px" />
       </span>
       <div className="min-w-0 flex-1">
         <p className={`${EYEBROW} truncate`}>Featured · {shown.eyebrow}</p>
-        <p className="mt-1.5 truncate text-[15px] font-semibold text-prt-text">{shown.title}</p>
+        <p className="mt-1.5 truncate text-[15px] font-semibold text-prt-text">
+          {pinned === undefined ? shown.title : `Pinned: ${titleOf(pinned.post)}`}
+        </p>
         <p className="mt-0.5 truncate text-[13px] text-prt-muted">{editionsLine(shown)}</p>
       </div>
       {summit.draft !== null && (
@@ -199,11 +246,18 @@ const CHANNEL_ICONS: Readonly<Record<MainChannelName, { Icon: typeof Instagram; 
 function PostRow({
   row,
   award,
+  pinned,
+  onPin,
+  onUnpin,
   onUnpublish,
   onDelete,
 }: {
   row: OutreachRow;
   award: ReadonlySet<string>;
+  /** Whether this is the post pinned to the top of /outreach (issue #392). */
+  pinned: boolean;
+  onPin: () => void;
+  onUnpin: () => void;
   onUnpublish: () => void;
   onDelete: () => void;
 }) {
@@ -215,7 +269,15 @@ function PostRow({
       <Link href={`/dashboard/outreach/${row.slug}`} className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg md:gap-4 ${FOCUS}`}>
         <Thumb photo={post.photos[0]} />
         <span className="min-w-0">
-          <span className="block truncate text-[14px] font-medium text-prt-text">{titleOf(post)}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[14px] font-medium text-prt-text">{titleOf(post)}</span>
+            {pinned && (
+              <span className="inline-flex h-[20px] shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 text-[11px] font-medium text-accent">
+                <Pin aria-hidden className="h-3 w-3" strokeWidth={2} />
+                Pinned
+              </span>
+            )}
+          </span>
           <span className="block truncate text-[13px] text-prt-muted md:line-clamp-2 md:whitespace-normal">{post.summary.text}</span>
           <span className="mt-0.5 block truncate text-[12px] text-prt-muted md:hidden">
             {rowDate(post.date)}
@@ -255,6 +317,24 @@ function PostRow({
           >
             View on site
           </MenuItem>
+          {pinned ? (
+            <MenuItem
+              icon={<PinOff className="h-3.5 w-3.5" strokeWidth={1.75} />}
+              detail="Puts it back in the post list. The Featured card shows the summit alone."
+              onSelect={onUnpin}
+            >
+              Unpin
+            </MenuItem>
+          ) : (
+            <MenuItem
+              icon={<Pin className="h-3.5 w-3.5" strokeWidth={1.75} />}
+              locked={live ? null : "Publish the post before you pin it."}
+              detail={live ? "Shows it in the Featured card at the top of the Outreach page, in place of any pinned post." : null}
+              onSelect={onPin}
+            >
+              Pin to top
+            </MenuItem>
+          )}
           <MenuItem
             icon={<EyeOff className="h-3.5 w-3.5" strokeWidth={1.75} />}
             locked={live ? null : "Already a draft."}
@@ -317,7 +397,20 @@ function DeleteDialog({ row, onOpenChange, onDeleted }: { row: OutreachRow; onOp
 // The summit's edit panel, opened by the card's Edit: its line over the
 // title, title, story and the shorter phone story, the photo's description,
 // and the editions; Save draft keeps /outreach as it is, Publish changes it.
-function SummitPanel({ summit, onClose, onSaved }: { summit: SummitVersions; onClose: () => void; onSaved: (summit: SummitVersions) => void }) {
+// While a post is pinned (issue #392) the Featured card shows that post's
+// title, summary and photo, so the panel says the summit's own show only
+// while none is.
+function SummitPanel({
+  summit,
+  pinned,
+  onClose,
+  onSaved,
+}: {
+  summit: SummitVersions;
+  pinned: boolean;
+  onClose: () => void;
+  onSaved: (summit: SummitVersions) => void;
+}) {
   const [current, setCurrent] = useState(summit);
   const shown = current.draft ?? current.published;
   const [fields, setFields] = useState<SummitFields>(() => summitFieldsOf(shown));
@@ -367,6 +460,11 @@ function SummitPanel({ summit, onClose, onSaved }: { summit: SummitVersions; onC
     >
       <form noValidate onSubmit={(e) => e.preventDefault()} className="flex min-h-0 flex-1 flex-col">
         <PanelBody className="flex flex-col gap-5">
+          {pinned && (
+            <p className="text-[13px] leading-snug text-text-2">
+              A post is pinned, so the Featured card shows its title, summary and photo under this line and the editions. The title, story and photo below show only while no post is pinned.
+            </p>
+          )}
           <TextField label="Line over the title" value={fields.eyebrow} limit={SUMMIT_LIMITS.eyebrow} error={errors.eyebrow} onChange={(v) => set("eyebrow", v)} />
           <TextField label="Title" value={fields.title} limit={SUMMIT_LIMITS.title} error={errors.title} onChange={(v) => set("title", v)} />
           <TextField label="Story" rows={5} value={fields.story} limit={SUMMIT_LIMITS.story} error={errors.story} onChange={(v) => set("story", v)} />

@@ -38,6 +38,7 @@ async function NewPost() {
   return (
     <OutreachPostEdit
       item={null}
+      pinned={false}
       today={todayInRome()}
       tags={tags}
       neighbours={{}}
