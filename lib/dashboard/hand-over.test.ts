@@ -4,14 +4,16 @@ import { test } from "node:test";
 import type { TeamPerson } from "./division-edit";
 import {
   advising,
+  advisingIn,
   advisorAfterDivisionCloses,
+  advisorInDestinationDetail,
   advisorOptionDetail,
   advisorsStayLine,
   BECOME_AN_ADVISOR,
   checkPromotion,
   checkTeamLeaderHandOver,
-  CLOSING_HEAD_OUTCOMES,
   mayHandOverTeamLeader,
+  movesWithAdvisorRoleLine,
   planTeamLeaderHandOver,
   promotingLead,
   steppingDown,
@@ -104,9 +106,10 @@ test("Become an advisor is one rule: a lead stays in the division, a head in the
   assert.deepEqual(advising({ kind: "lead", divisionId: 1 }), steppingDown({ kind: "lead", divisionId: 1 }, "advisor"));
   assert.deepEqual(advising({ kind: "head", departmentId: 1 }), steppingDown({ kind: "head", departmentId: 1 }, "advisor"));
   assert.deepEqual(advising({ kind: "team-leader" }), steppingDown({ kind: "team-leader" }, "advisor"));
-  // A closing division's advisor stays in its department; a closing department offers its head only Leave the team.
+  // A closing division's advisor stays in its department; a closing department's head or lead becomes one in the unit the closer picked.
   assert.deepEqual(advisorAfterDivisionCloses(1), { kind: "department", departmentId: 1 });
-  assert.deepEqual([...CLOSING_HEAD_OUTCOMES], ["leave"]);
+  assert.deepEqual(advising({ kind: "head", departmentId: 1 }), advisingIn({ kind: "department", departmentId: 1 }));
+  assert.deepEqual(advisingIn({ kind: "division", divisionId: 3 }), { kind: "advisor", place: { kind: "division", divisionId: 3 }, access: "ends" });
 });
 
 test("every drawer and dialog words Become an advisor the same way, for the editor or for the person stepping down", () => {
@@ -122,6 +125,10 @@ test("every drawer and dialog words Become an advisor the same way, for the edit
   assert.equal(steppingDownLine(steppingDown({ kind: "head", departmentId: 1 }, "advisor"), "Aerodynamics"), "stays in Aerodynamics with the Advisor role; their access ends");
   assert.equal(advisorsStayLine(["Marco Bianchi"], "Aerodynamics"), "Marco Bianchi stays in Aerodynamics with the Advisor role.");
   assert.equal(advisorsStayLine(["Marco Bianchi", "Sara Conti", "Luca Neri"], "Aerodynamics"), "Marco Bianchi, Sara Conti and Luca Neri stay in Aerodynamics with the Advisor role.");
+  // Close department moves them instead: the same phrase, to the destination picked.
+  assert.equal(advisorInDestinationDetail("Structures"), "Moves to Structures with the Advisor role; their access ends");
+  assert.equal(movesWithAdvisorRoleLine("Structures", true), "moves to Structures with the Advisor role; their access ends");
+  assert.equal(movesWithAdvisorRoleLine("Structures", false), "moves to Structures with the Advisor role", "an advisor who moves keeps their access");
 });
 
 test("no hand-over, replacement or close path writes the Team page's advisory board: it is edited by hand only", () => {

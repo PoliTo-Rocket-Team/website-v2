@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { TeamPerson } from "./division-edit";
-import { CLOSING_HEAD_OUTCOMES, HAND_OVER_OUTCOMES, steppingDown, type ClosingHeadOutcome, type HandOverOutcome, type SteppingDown } from "./hand-over";
+import type { PersonRecord } from "./division-members";
+import { advisingIn, HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown, type Unit } from "./hand-over";
 import { beyondTitle, DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart, type TeamActor } from "./team";
 
 // New department, Edit department and Close department (issue #251, boards
@@ -72,21 +73,24 @@ export type HeadChange = { readonly to: number; readonly outcome: HandOverOutcom
 /** What Save changes on Edit department sends (board 77e): the name, the code, its kind (issue #325), and a new head when Change head picked one. */
 export type DepartmentSave = { readonly name: string; readonly code: string; readonly kind: DepartmentKind; readonly head: HeadChange | null };
 
-/** What becomes of one division when its department closes (board 77f). */
-export type DivisionFate =
-  | { readonly divisionId: number; readonly action: "move"; readonly to: number }
-  | { readonly divisionId: number; readonly action: "close" };
+/** The role a former head or lead picks in their destination on Close department: "Become an advisor" or a member. */
+export const DESTINATION_ROLES = ["advisor", "member"] as const;
+export type DestinationRole = (typeof DESTINATION_ROLES)[number];
 
 /**
- * What Close department sends: a fate for each of its open divisions, and
- * what becomes of its head (board 77f). Nothing is picked for them (Owner
- * decision, 2026-10-16), and the one outcome offered is "leave" (Owner
- * decision, 2026-10-19, `CLOSING_HEAD_OUTCOMES`): an advisor stays in their
- * unit, and the department closes. "leave" ends every role they hold, so
- * they appear on Alumni. `head` is null only when nothing was picked; the
- * rules refuse that while the department has a head.
+ * Where one person goes when their department closes, and, for a former head
+ * or lead, the role they pick there. `role` is null when nothing was picked,
+ * and always for a member or an advisor, who keep the role they hold.
  */
-export type DepartmentClose = { readonly divisions: readonly DivisionFate[]; readonly head: ClosingHeadOutcome | null };
+export type PersonMove = { readonly personId: number; readonly to: Unit; readonly role: DestinationRole | null };
+
+/**
+ * What Close department sends (Owner decision, 2026-10-19): a destination for
+ * every person in the department, members, leads, advisors and the head, and
+ * no "Leave the team". Every division closes with the department. Nothing is
+ * picked for anyone (Owner decision, 2026-10-16).
+ */
+export type DepartmentClose = { readonly people: readonly PersonMove[] };
 
 export type Checked<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
@@ -110,16 +114,9 @@ const saveSchema = z.object({
   kind,
   head: z.object({ to: id, outcome: z.enum(HAND_OVER_OUTCOMES).nullable() }).nullable().default(null),
 });
+const unit = z.discriminatedUnion("kind", [z.object({ kind: z.literal("department"), departmentId: id }), z.object({ kind: z.literal("division"), divisionId: id })]);
 const closeSchema = z.object({
-  divisions: z
-    .array(
-      z.discriminatedUnion("action", [
-        z.object({ divisionId: id, action: z.literal("move"), to: id }),
-        z.object({ divisionId: id, action: z.literal("close") }),
-      ]),
-    )
-    .max(60),
-  head: z.enum(CLOSING_HEAD_OUTCOMES).nullable().default(null),
+  people: z.array(z.object({ personId: id, to: unit, role: z.enum(DESTINATION_ROLES).nullable().default(null) })).max(500),
 });
 
 function parsed<T>(result: z.ZodSafeParseResult<T>): Checked<T> {
@@ -238,59 +235,136 @@ function planHeadChange(change: HeadChange, departmentId: number, from: readonly
   return yes({ to: next.id, from, steppingDown: steppingDown({ kind: "head", departmentId }, change.outcome) });
 }
 
-/**
- * A checked Close department: the divisions that move, each to its new
- * department, the empty ones that close, and what becomes of the people who
- * head it (null when nobody does), as `steppingDown` says.
- */
-export type DepartmentClosePlan = {
-  readonly move: readonly { readonly divisionId: number; readonly to: number }[];
-  readonly close: readonly number[];
-  readonly head: { readonly steppingDown: SteppingDown; readonly personIds: readonly number[] } | null;
+// Close department (Owner decision, 2026-10-19): the department and every one
+// of its divisions close, and every person in it moves to a department or
+// division the closer picks, one destination each. Nobody leaves the team
+// from here.
+
+/** What someone holds in a closing department: its head, a lead of one of its divisions, an Advisor role in it, or a member of it. */
+export type ClosingStanding = "head" | "lead" | "advisor" | "member";
+
+/** Whether the person hands a role over when their department closes, and so picks their role in the destination. */
+export function stepsDown(standing: ClosingStanding): standing is "head" | "lead" {
+  return standing === "head" || standing === "lead";
+}
+
+/** Someone Close department moves: who they are, what they hold in the department, and the units outside it they already hold a role in. */
+export type ClosingPerson = {
+  readonly id: number;
+  readonly name: string;
+  readonly standing: ClosingStanding;
+  /** Units outside the closing department where they already hold a role: they cannot be moved there. */
+  readonly holds: readonly Unit[];
 };
 
+/** A person as `closingPeople` reads them: both data sources build these records (./division-members.ts). */
+export type ClosingRecord = Pick<PersonRecord, "id" | "name" | "memberships" | "beyondDivisions" | "advising">;
+
+const STANDING_ORDER: Readonly<Record<ClosingStanding, number>> = { head: 0, lead: 1, advisor: 2, member: 3 };
+
 /**
- * Close department as the rules allow it (board 77f), or the first reason it
- * is refused: only the team leader or full access; every open division of the
- * department has exactly one fate; a division moves to another open
- * department, with its people, leads and open positions; a division closes
- * only when nobody is in it (`inIt`, the people and the people waiting for
- * their NDA, by division id; an advisor in it counts too, since the
- * department their Advisor role would move to closes as well); while anyone
- * heads it (`headIds`), the closer picks what becomes of them
- * (`CLOSING_HEAD_OUTCOMES`), and nothing is picked for them.
+ * Everyone Close department moves, head first, then leads, advisors and
+ * members, each by name: anyone who heads the department, or holds a role in
+ * one of its divisions or on the department itself. A role they hold
+ * anywhere else stays, and that unit is not a destination for them.
+ */
+export function closingPeople(records: readonly ClosingRecord[], org: OrgChart, departmentId: number): ClosingPerson[] {
+  const own = new Set(org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id));
+  const people = records.flatMap((r): ClosingPerson[] => {
+    const here = r.memberships.filter((m) => own.has(m.divisionId));
+    const heads = r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === departmentId);
+    const kept = r.beyondDivisions.filter((b) => (b.kind === "advisor" || b.kind === "department") && b.departmentId === departmentId);
+    if (!heads && here.length === 0 && kept.length === 0) return [];
+    const advises = kept.some((b) => b.kind === "advisor") || here.some((m) => r.advising.includes(m.divisionId));
+    const standing: ClosingStanding = heads ? "head" : here.some((m) => m.role === "lead") ? "lead" : advises ? "advisor" : "member";
+    const holds: Unit[] = [
+      ...r.memberships.filter((m) => !own.has(m.divisionId)).map((m): Unit => ({ kind: "division", divisionId: m.divisionId })),
+      ...r.beyondDivisions.flatMap((b): Unit[] =>
+        (b.kind === "head" || b.kind === "advisor" || b.kind === "department") && b.departmentId !== null && b.departmentId !== departmentId
+          ? [{ kind: "department", departmentId: b.departmentId }]
+          : [],
+      ),
+    ];
+    return [{ id: r.id, name: r.name, standing, holds }];
+  });
+  return people.sort((a, b) => STANDING_ORDER[a.standing] - STANDING_ORDER[b.standing] || a.name.localeCompare(b.name));
+}
+
+/** "Structures", "Mission Analysis": the destination's name, or null when it is not an open unit outside the closing department. */
+export function destinationName(to: Unit, org: OrgChart, departmentId: number): string | null {
+  if (to.kind === "department") {
+    return to.departmentId === departmentId ? null : (org.departments.find((d) => d.id === to.departmentId)?.name ?? null);
+  }
+  const division = org.divisions.find((d) => d.id === to.divisionId);
+  return division === undefined || division.departmentId === departmentId ? null : divisionLabel(division.name);
+}
+
+function sameUnit(a: Unit, b: Unit): boolean {
+  return a.kind === "department" ? b.kind === "department" && a.departmentId === b.departmentId : b.kind === "division" && a.divisionId === b.divisionId;
+}
+
+/**
+ * The role someone holds in their destination. A former head or lead picked
+ * it: "Become an advisor" there (`advisingIn`, so their access ends) or a
+ * member. A member stays a member and an advisor stays an advisor, with the
+ * access they hold.
+ */
+export type Becoming = { readonly kind: "member" } | { readonly kind: "advisor"; readonly access: "ends" | "kept" };
+
+/** One person's move: where they go and what they hold there. Every role they held in the closing department ends. */
+export type ClosingMove = { readonly personId: number; readonly to: Unit; readonly becomes: Becoming };
+
+/** A checked Close department: the divisions that close with it, and every person's move. */
+export type DepartmentClosePlan = { readonly divisions: readonly number[]; readonly moves: readonly ClosingMove[] };
+
+function becoming(person: ClosingPerson, move: PersonMove, where: string): Checked<Becoming> {
+  const { standing } = person;
+  if (!stepsDown(standing) && move.role !== null) return no(`${person.name} keeps the role they hold: only a head or lead picks one.`);
+  const role: DestinationRole | null = stepsDown(standing) ? move.role : standing;
+  if (role === null) return no(`Choose ${person.name}'s role in ${where}: Become an advisor or Member.`);
+  if (role === "member") return move.to.kind === "division" ? yes({ kind: "member" }) : no(`A member goes to a division: pick one for ${person.name}.`);
+  return yes({ kind: "advisor", access: stepsDown(standing) ? advisingIn(move.to).access : "kept" });
+}
+
+/**
+ * Close department as the rules allow it, or the first reason it is refused
+ * (Owner decision, 2026-10-19): only the team leader or full access; nobody
+ * waits for their NDA in its divisions (`waiting`, by division id); every
+ * person in it (`people`, from `closingPeople`) has one destination, an open
+ * department or division outside it where they hold no role yet; a former
+ * head or lead picks Advisor or member there, and nothing is picked for them;
+ * a member's destination is a division. Every division of the department
+ * closes with it.
  */
 export function planDepartmentClose(input: {
   readonly actor: TeamActor | null;
   readonly org: OrgChart;
   readonly departmentId: number;
   readonly close: DepartmentClose;
-  readonly inIt: Readonly<Record<number, number>>;
-  readonly headIds: readonly number[];
+  readonly people: readonly ClosingPerson[];
+  readonly waiting: Readonly<Record<number, number>>;
 }): Checked<DepartmentClosePlan> {
-  const { actor, org, departmentId, close, inIt } = input;
+  const { actor, org, departmentId, close, people } = input;
   if (!mayManageDepartments(actor)) return no(ONLY_TEAM);
   if (!org.departments.some((d) => d.id === departmentId)) return no("That department is already closed.");
   const divisions = org.divisions.filter((d) => d.departmentId === departmentId);
-  const named = close.divisions.map((f) => f.divisionId);
-  if (new Set(named).size !== named.length) return no("A division is listed twice.");
-  if (named.some((divisionId) => !divisions.some((d) => d.id === divisionId))) return no("Only this department's open divisions can be moved or closed.");
-  const move: { divisionId: number; to: number }[] = [];
-  const shut: number[] = [];
   for (const division of divisions) {
-    const fate = close.divisions.find((f) => f.divisionId === division.id);
-    const label = divisionLabel(division.name);
-    if (!fate) return no(`Choose what happens to ${label}.`);
-    if (fate.action === "move") {
-      if (fate.to === departmentId || !org.departments.some((d) => d.id === fate.to)) return no(`Pick another open department for ${label}.`);
-      move.push({ divisionId: division.id, to: fate.to });
-    } else {
-      if ((inIt[division.id] ?? 0) > 0) return no(`People are still in ${label}, so it can only move.`);
-      shut.push(division.id);
-    }
+    const waiting = input.waiting[division.id] ?? 0;
+    if (waiting > 0) return no(`${waiting} ${waiting === 1 ? "person is" : "people are"} waiting for their NDA in ${divisionLabel(division.name)}. Confirm or cancel them first.`);
   }
-  const personIds = [...new Set(input.headIds)];
-  if (personIds.length === 0) return yes({ move, close: shut, head: null });
-  if (close.head === null) return no("Choose what happens to the head: Leave the team.");
-  return yes({ move, close: shut, head: { steppingDown: steppingDown({ kind: "head", departmentId }, close.head), personIds } });
+  const named = close.people.map((m) => m.personId);
+  if (new Set(named).size !== named.length) return no("Someone is listed twice.");
+  if (named.some((personId) => !people.some((p) => p.id === personId))) return no("Only people in this department move when it closes.");
+  const moves: ClosingMove[] = [];
+  for (const person of people) {
+    const move = close.people.find((m) => m.personId === person.id);
+    if (!move) return no(`Choose where ${person.name} goes.`);
+    const where = destinationName(move.to, org, departmentId);
+    if (where === null) return no(`Pick an open department or division outside this one for ${person.name}.`);
+    if (person.holds.some((u) => sameUnit(u, move.to))) return no(`${person.name} is already in ${where}.`);
+    const becomes = becoming(person, move, where);
+    if (!becomes.ok) return no(becomes.error);
+    moves.push({ personId: person.id, to: move.to, becomes: becomes.value });
+  }
+  return yes({ divisions: divisions.map((d) => d.id), moves });
 }

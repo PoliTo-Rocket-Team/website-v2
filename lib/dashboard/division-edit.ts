@@ -362,8 +362,9 @@ export function peopleInDivision(divisionId: number, held: readonly DivisionRow[
  * rows, which do not. When the division closes, each Advisor row ends and its
  * advisor stays in the division's department with the Advisor role
  * (`advisorAfterDivisionCloses`, ./hand-over.ts). Close department does not
- * read this: its department closes too, so an advisor there still counts as
- * someone in the division (`peopleInDivision`).
+ * read this: its department closes too, so every person in it, an advisor
+ * included, moves where the closer picked (`planDepartmentClose`,
+ * ./department-edit.ts).
  */
 export type DivisionClosing = { readonly people: readonly number[]; readonly advisors: readonly DivisionRow[] };
 

@@ -65,21 +65,24 @@ export function advising(handed: HandedRole): Advising {
     case "team-leader":
       return { kind: "advisor", place: { kind: "team" }, access: "keeps-full-access" };
     case "head":
-      return { kind: "advisor", place: { kind: "department", departmentId: handed.departmentId }, access: "ends" };
+      return advisingIn({ kind: "department", departmentId: handed.departmentId });
     case "lead":
-      return { kind: "advisor", place: { kind: "division", divisionId: handed.divisionId }, access: "ends" };
+      return advisingIn({ kind: "division", divisionId: handed.divisionId });
   }
 }
 
-/** "Leave the team", the one outcome Close department offers its head. */
-export type ClosingHeadOutcome = Extract<HandOverOutcome, "leave">;
+/** A department or a division: where a lead or head holds their role, and where Close department sends each person. */
+export type Unit = Exclude<AdvisorPlace, { kind: "team" }>;
 
 /**
- * What Close department offers its head (Owner decision, 2026-10-19): only
- * "Leave the team". An Advisor role stays in the unit the role was held in,
- * and a closing department leaves no unit to stay in.
+ * "Become an advisor" in `unit`: the lead or head role ends, an Advisor role
+ * starts there, and their access ends. A hand-over keeps them in the unit
+ * they held the role in (`advising`); Close department, whose units all
+ * close, puts them in the unit the closer picked (Owner decision, 2026-10-19).
  */
-export const CLOSING_HEAD_OUTCOMES = ["leave"] as const satisfies readonly ClosingHeadOutcome[];
+export function advisingIn(unit: Unit): Advising & { readonly place: Unit; readonly access: "ends" } {
+  return { kind: "advisor", place: unit, access: "ends" };
+}
 
 /**
  * Where an Advisor role kept on a division goes when the division closes
@@ -99,9 +102,10 @@ export const BECOME_AN_ADVISOR = "Become an advisor";
 /** Who the wording speaks to: the person stepping down ("you"), or the editor about them ("they"). */
 export type Voice = "you" | "they";
 
-/** "stays in Aerodynamics with the Advisor role": the one phrase every wording below is built on. */
-function staysWithAdvisorRole(where: string, verb: "stay" | "stays"): string {
-  return `${verb} in ${where} with the Advisor role`;
+/** "stays in Aerodynamics with the Advisor role", "moves to Structures with the Advisor role": the one phrase every wording below is built on. */
+function withAdvisorRole(where: string, verb: "stay" | "stays" | "move" | "moves"): string {
+  const into = verb === "stay" || verb === "stays" ? "in" : "to";
+  return `${verb} ${into} ${where} with the Advisor role`;
 }
 
 /**
@@ -111,12 +115,29 @@ function staysWithAdvisorRole(where: string, verb: "stay" | "stays"): string {
  */
 export function advisorsStayLine(names: readonly string[], department: string): string {
   const who = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `${who} ${staysWithAdvisorRole(department, names.length === 1 ? "stays" : "stay")}.`;
+  return `${who} ${withAdvisorRole(department, names.length === 1 ? "stays" : "stay")}.`;
+}
+
+/**
+ * "moves to Structures with the Advisor role; their access ends": what Close
+ * department says of someone who holds the Advisor role in their destination.
+ * Their access ends when they become an advisor there (`advisingIn`); an
+ * advisor who moves keeps the access they hold.
+ */
+export function movesWithAdvisorRoleLine(destination: string, accessEnds: boolean): string {
+  const moves = withAdvisorRole(destination, "moves");
+  return accessEnds ? `${moves}; their access ends` : moves;
+}
+
+/** The detail under "Become an advisor" on Close department, for a former head or lead going to `destination`: "Moves to Structures with the Advisor role; their access ends". */
+export function advisorInDestinationDetail(destination: string): string {
+  const words = movesWithAdvisorRoleLine(destination, true);
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function advisorWords(step: Advising, unit: string | null, voice: Voice): string {
   const where = step.place.kind === "team" || unit === null ? "the team" : unit;
-  const stays = staysWithAdvisorRole(where, voice === "you" ? "stay" : "stays");
+  const stays = withAdvisorRole(where, voice === "you" ? "stay" : "stays");
   if (step.access === "ends") return `${stays}; ${voice === "you" ? "your" : "their"} access ends`;
   const keeps = voice === "you" ? "keep your access" : "keeps their access";
   return `${stays} and ${keeps}; the new Team Leader can change it in Access`;

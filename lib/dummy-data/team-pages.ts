@@ -16,6 +16,7 @@ import {
   checkDepartmentClose,
   checkDepartmentCreate,
   checkDepartmentSave,
+  closingPeople,
   planDepartmentClose,
   planDepartmentCreate,
   planDepartmentSave,
@@ -405,6 +406,12 @@ function withAdvisor(edits: TeamEdits, personId: number, step: Extract<SteppingD
   return { ...edits, advisors: { ...edits.advisors, [personId]: advisor } };
 }
 
+/** Whether an Advisor role sits in the closing department `departmentId`, on it or on one of its divisions (`own`). */
+function closedHere(place: AdvisorPlace, departmentId: number, own: readonly { readonly id: number }[]): boolean {
+  if (place.kind === "department") return place.departmentId === departmentId;
+  return place.kind === "division" && own.some((d) => d.id === place.divisionId);
+}
+
 /** Whether someone's Advisor role is kept on the division. */
 function advisesIn(edits: TeamEdits, personId: number, divisionId: number): boolean {
   const place = edits.advisors[personId]?.place;
@@ -413,7 +420,7 @@ function advisesIn(edits: TeamEdits, personId: number, divisionId: number): bool
 
 /**
  * Someone who leaves the team from a structure edit or a hand-over (an old
- * lead's or a closed department's head's "Leave the team"): moved to Alumni
+ * lead's or head's "Leave the team"): moved to Alumni
  * with their years, or why the preview cannot.
  */
 function leftTeamEdits(next: TeamEdits, id: number, name: string | undefined): TeamEdits | string {
@@ -747,35 +754,58 @@ function writesFor(
     async closeDepartment(departmentId, input) {
       const checked = checkDepartmentClose(input);
       if (!checked.ok) return refused(checked.error);
-      const ids = org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
+      const own = org.divisions.filter((d) => d.departmentId === departmentId);
       const planned = planDepartmentClose({
         actor,
         org,
         departmentId,
         close: checked.value,
-        inIt: Object.fromEntries(ids.map((id) => [id, inIt(id)])),
-        headIds: headsOf(departmentId),
+        people: closingPeople(
+          team.map((e) => recordOf(e, edits)),
+          org,
+          departmentId,
+        ),
+        waiting: Object.fromEntries(own.map((d) => [d.id, waitingIn(edits, d.id).length])),
       });
       if (!planned.ok) return refused(planned.error);
-      const { head } = planned.value;
-      const moved = { ...edits.divisions };
-      const state = (divisionId: number) => {
-        const d = org.divisions.find((v) => v.id === divisionId)!;
-        return { name: d.name, code: d.code ?? null, departmentId: d.departmentId, closedOn: null };
-      };
-      // A division moves with everyone in it: the people stay in it, so they move with it.
-      for (const { divisionId, to } of planned.value.move) moved[divisionId] = { ...state(divisionId), departmentId: to };
-      for (const divisionId of planned.value.close) moved[divisionId] = { ...state(divisionId), closedOn: TODAY };
+      const closedDivisions = { ...edits.divisions };
+      for (const d of own) closedDivisions[d.id] = { name: d.name, code: d.code ?? null, departmentId: d.departmentId, closedOn: TODAY };
+      // The department closes, so its head is a head no more (`placedOf`).
       let next: TeamEdits = {
         ...edits,
-        divisions: moved,
+        divisions: closedDivisions,
         departments: { ...edits.departments, [departmentId]: { ...departmentEdit(departmentId), closedOn: TODAY } },
       };
-      // The department closes, so its head leaves the team (Owner decision, 2026-10-19): no unit is left to advise in.
-      for (const id of head?.steppingDown.kind === "leave" ? head.personIds : []) {
-        const left = leftTeam(next, id);
-        if (typeof left === "string") return refused(left);
-        next = left;
+      // Every person leaves the department's divisions and starts one role where the closer sent them (Owner decision, 2026-10-19).
+      for (const { personId, to, becomes } of planned.value.moves) {
+        const c = next.members[personId] ?? changeOf(personId);
+        const joined = { ...c.joined };
+        const titles = { ...c.titles };
+        const roles = { ...c.roles };
+        for (const d of own) {
+          delete joined[d.id];
+          delete titles[d.id];
+          delete roles[d.id];
+        }
+        const left = [...(c.left ?? []).filter((id) => to.kind !== "division" || id !== to.divisionId), ...own.map((d) => d.id)];
+        const arrived: MemberChange =
+          to.kind === "division"
+            ? {
+                ...c,
+                roles: { ...roles, [to.divisionId]: "member" },
+                joined: { ...joined, [to.divisionId]: TODAY },
+                titles: becomes.kind === "advisor" ? { ...titles, [to.divisionId]: ADVISOR_TITLE } : titles,
+                left,
+              }
+            : { ...c, roles, joined, titles, left };
+        next = { ...next, members: { ...next.members, [personId]: arrived } };
+        const advisors = { ...next.advisors };
+        if (becomes.kind === "advisor") {
+          advisors[personId] = { place: to, access: becomes.access === "ends" ? "ends" : (edits.advisors[personId]?.access ?? "ends") };
+        } else if (advisors[personId] !== undefined && closedHere(advisors[personId].place, departmentId, own)) {
+          delete advisors[personId];
+        }
+        next = { ...next, advisors };
       }
       await save(next);
       return written(null);

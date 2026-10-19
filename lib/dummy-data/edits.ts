@@ -128,10 +128,11 @@ export type TeamEdits = {
   /** Departments created, edited or closed (issue #251), by id. */
   readonly departments: Readonly<Record<number, DummyDepartmentEdit>>;
   /**
-   * People who became advisors (Owner decisions, 2026-10-16): a closed
-   * department's head (in no department or division), a replaced lead or head
-   * (in their own division or department) and a former team leader (on the
-   * whole team), by person id, as the database starts their Advisor role.
+   * People who became advisors (Owner decisions, 2026-10-16 and 2026-10-19):
+   * a replaced lead or head (in their own division or department), a closed
+   * department's head or lead (in the unit the closer sent them to) and a
+   * former team leader (on the whole team), by person id, as the database
+   * starts their Advisor role.
    */
   readonly advisors: Readonly<Record<number, DummyAdvisor>>;
   /** Who "Hand over the role" made the team leader (board 77i, issue #253); null while it is the one in the arrays. */
