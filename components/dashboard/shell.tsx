@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, type ReactNode } from "react";
+import { Suspense, use, useState, type ReactNode } from "react";
 import { redirect, usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
@@ -47,8 +47,13 @@ export function DashboardShell({
 }) {
   const [open, setOpen] = useState(false);
   const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
-  const pathname = usePathname();
-  const title = pageTitleFor(pathname ?? "/dashboard") ?? "Dashboard";
+  // The address is request data on a page with a dynamic segment, so the
+  // title reading it sits in its own Suspense and never holds the frame back.
+  const title = (
+    <Suspense fallback={null}>
+      <PageTitle />
+    </Suspense>
+  );
   return (
     <div className="min-h-svh bg-ground text-prt-text">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-hairline bg-panel/50 md:block">
@@ -95,6 +100,12 @@ export function DashboardShell({
       {closed}
     </div>
   );
+}
+
+/** The phone top bar's title: the page's name. */
+function PageTitle() {
+  const pathname = usePathname();
+  return pageTitleFor(pathname ?? "/dashboard") ?? "Dashboard";
 }
 
 /** The top bar's avatar, which opens the user menu as a bottom sheet. */
