@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Award, ImagePlus } from "lucide-react";
+import { Gallery } from "@/components/gallery/gallery";
+import { isFilled } from "@/components/gallery/items";
 import { MarkFallback } from "@/components/mark-fallback";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import { CopyText } from "@/components/project-page/parts";
@@ -14,6 +16,7 @@ import {
 } from "@/lib/outreach";
 import {
   CHANNEL_LABELS,
+  titleOf,
   UNTITLED_POST,
   type BodyBlock,
   type Channel,
@@ -35,7 +38,7 @@ import { Photo } from "./photo";
 const width = "mx-auto max-w-[1116px]";
 
 /** The parts of a post page an editor outlines as blocks (board 74b). */
-export type PostPart = "details" | "cover" | "text" | "photos" | "channels";
+export type PostPart = "details" | "cover" | "text" | "photos" | "channels" | "gallery";
 
 /**
  * Wraps each part of the page, as the dashboard's edit shell does to outline
@@ -246,6 +249,8 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
 export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) {
   const channels = channelsOf(post);
   const more = post.photos.slice(1);
+  // Original posts are optional (issue #430): the public page leaves the column out when there are none.
+  const showChannels = channels.length > 0 || hints;
   return (
     <div className={`${width} mt-10 grid gap-y-14 md:mt-14 lg:grid-cols-[minmax(0,760px)_300px] lg:gap-x-14 lg:gap-y-24`}>
       <div className="lg:col-start-1 lg:row-start-1">
@@ -267,21 +272,58 @@ export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) 
         </div>
       )}
 
-      <aside aria-label="Original posts" className="lg:col-start-2 lg:row-start-1">
-        <div className="lg:sticky lg:top-[96px]">
-          {frame(
-            "channels",
-            <div className="space-y-3">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-dim">ORIGINAL POSTS</p>
-              {channels.map(({ name, channel }) => (
-                <ChannelCard key={name} name={name} channel={channel} post={post} />
-              ))}
-              {hints && channels.length === 0 && <p className="text-[13px] leading-[1.5] text-dim">Add the Instagram or LinkedIn post.</p>}
-            </div>,
-          )}
-        </div>
-      </aside>
+      {showChannels && (
+        <aside aria-label="Original posts" className="lg:col-start-2 lg:row-start-1">
+          <div className="lg:sticky lg:top-[96px]">
+            {frame(
+              "channels",
+              <div className="space-y-3">
+                <p className="font-mono text-[10px] tracking-[0.2em] text-dim">ORIGINAL POSTS</p>
+                {channels.map(({ name, channel }) => (
+                  <ChannelCard key={name} name={name} channel={channel} post={post} />
+                ))}
+                {hints && channels.length === 0 && (
+                  <p className="text-[13px] leading-[1.5] text-dim">Optional: add the Instagram or LinkedIn post.</p>
+                )}
+              </div>,
+            )}
+          </div>
+        </aside>
+      )}
     </div>
+  );
+}
+
+/**
+ * The gallery at the bottom of the post (issue #430): the project pages'
+ * carousel and lightbox (components/gallery/gallery.tsx), across the page so
+ * its neighbours bleed off the edges, under a title on the post's width. A
+ * post shows it only while it is switched on and has a photo; the editor's
+ * page says what is missing while it has none.
+ */
+export function PostGallerySection({ post, frame = bare, hints = false }: PostPartsProps) {
+  const gallery = post.gallery;
+  if (gallery === undefined || !gallery.shown) return null;
+  const items = gallery.items;
+  const title = gallery.title.trim();
+  if (!isFilled(items) && !hints) return null;
+  return frame(
+    "gallery",
+    <section aria-label="Gallery" className="mt-14 md:mt-20">
+      <div className={width}>
+        <p className="font-mono text-[10px] tracking-[0.2em] text-dim">GALLERY</p>
+        <h2 className={`mt-2 text-[22px] font-bold leading-[1.25] tracking-[-0.02em] md:text-[26px] ${title === "" ? "text-dim" : "text-prt-text"}`}>
+          {title === "" ? "Add the gallery title" : title}
+        </h2>
+      </div>
+      {isFilled(items) ? (
+        <div className="-mx-5 mt-5 md:-mx-16 md:mt-8">
+          <Gallery items={items} label={`${title || titleOf(post)} gallery`} />
+        </div>
+      ) : (
+        <p className={`${width} mt-3 text-[13px] leading-[1.5] text-dim`}>Add photos to the gallery.</p>
+      )}
+    </section>,
   );
 }
 

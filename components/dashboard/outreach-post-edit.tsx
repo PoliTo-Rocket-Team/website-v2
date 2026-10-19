@@ -50,6 +50,7 @@ const POST_BLOCKS: EditBlocks<PostPart, PostSection> = {
   text: { name: "Text", section: "text" },
   photos: { name: "Photos", section: "photos" },
   channels: { name: "Original posts", section: "channels" },
+  gallery: { name: "Gallery", section: "gallery" },
 };
 
 const outlined: PostFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;

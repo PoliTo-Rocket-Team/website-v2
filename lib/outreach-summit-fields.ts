@@ -77,7 +77,7 @@ const REQUIRED: Readonly<Partial<Record<TextField, string>>> = {
   eyebrow: "Write the line over the title.",
   title: "Write the summit's title.",
   story: "Write the summit's story.",
-  photoAlt: "Describe the photo for people who cannot see it.",
+  // The photo's description is optional (Owner decision, issue #430).
 };
 
 /** The editions in order, oldest first, or why not. */

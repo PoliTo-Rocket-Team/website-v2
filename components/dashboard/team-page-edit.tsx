@@ -59,10 +59,12 @@ import type { TeamPerson } from "@/lib/about/team-person";
 import { carouselSpotsOf } from "@/lib/about/team-roles";
 import {
   backToTeamRecord,
+  describedGroupPhoto,
   editCount,
   editedTeamPage,
   editOfFields,
   groupPhotoChoices,
+  groupPhotoDescriptions,
   groupPhotoOf,
   hasErrors,
   introError,
@@ -817,7 +819,12 @@ function IntroBox({
   );
 }
 
-/** The group photo chosen in place (issue #284): the site's own photos and the words that describe it. */
+/**
+ * The group photo chosen in place (issue #284): the site's own photos and the
+ * words that describe it. Each photo keeps the description typed for it
+ * (issue #430), so picking another photo shows that photo's own, and the
+ * description is optional.
+ */
 function GroupPhotoBox({
   photo,
   choices,
@@ -831,8 +838,9 @@ function GroupPhotoBox({
   onChange: (photo: GroupPhoto) => void;
   onDone: () => void;
 }) {
-  const [alt, setAlt] = useState(photo.alt);
+  const [descriptions, setDescriptions] = useState(() => groupPhotoDescriptions(photo, original));
   const src = photo.src;
+  const alt = descriptions[src] ?? photo.alt;
   return (
     <div className="mt-6 rounded-xl border border-hairline bg-panel p-4 md:mt-8 md:p-5">
       <p className="text-[13px] font-semibold text-prt-text">Group photo</p>
@@ -846,7 +854,7 @@ function GroupPhotoBox({
               aria-pressed={on}
               aria-label={choice.label}
               title={choice.label}
-              onClick={() => onChange({ src: choice.src, alt: choice.src === original.src ? original.alt : alt })}
+              onClick={() => onChange(describedGroupPhoto(choice.src, descriptions))}
               className={`relative h-[72px] w-[120px] shrink-0 overflow-hidden rounded-[6px] ${on ? "ring-2 ring-accent" : "opacity-70 transition-opacity duration-300 ease-out hover:opacity-100"} ${CONTENT_FOCUS}`}
             >
               <Image src={choice.src} alt="" fill sizes="120px" className="object-cover" />
@@ -857,12 +865,12 @@ function GroupPhotoBox({
       <div className="mt-4">
         <TextField
           label="Describe the photo"
-          hint="for screen readers"
+          hint="optional, for screen readers"
           value={alt}
           limit={300}
           onChange={(value) => {
-            setAlt(value);
-            if (value.trim() !== "") onChange({ src, alt: value });
+            setDescriptions((d) => ({ ...d, [src]: value }));
+            onChange({ src, alt: value });
           }}
         />
       </div>
@@ -871,7 +879,7 @@ function GroupPhotoBox({
           type="button"
           disabled={src === original.src && alt.trim() === original.alt}
           onClick={() => {
-            setAlt(original.alt);
+            setDescriptions((d) => ({ ...d, [original.src]: original.alt }));
             onChange(original);
           }}
           className={`${IN_PLACE_BUTTON} border border-white-10 text-prt-text transition-colors duration-300 ease-out enabled:hover:border-border-strong disabled:opacity-50`}

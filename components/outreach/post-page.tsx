@@ -4,7 +4,7 @@ import { PageSky } from "@/components/landing/page-sky";
 import type { FooterProject } from "@/lib/landing-links";
 import type { Neighbouring } from "@/lib/outreach";
 import type { OutreachDraft } from "@/lib/outreach-types";
-import { Neighbours, PostBody, PostHeader, type PostFrame } from "./post";
+import { Neighbours, PostBody, PostGallerySection, PostHeader, type PostFrame } from "./post";
 
 // Boards 33 (desktop) and 33m (phone): one outreach post's whole page, as
 // /outreach/<slug> shows it and as the dashboard's edit shell shows it with
@@ -34,6 +34,7 @@ export function PostPage({
           <div className="pt-8 md:pt-16">
             <PostHeader post={post} frame={frame} hints={hints} />
             <PostBody post={post} frame={frame} hints={hints} />
+            <PostGallerySection post={post} frame={frame} hints={hints} />
             <Neighbours {...neighbours} />
           </div>
         </main>

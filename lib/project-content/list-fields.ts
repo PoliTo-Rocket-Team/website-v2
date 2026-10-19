@@ -1,5 +1,13 @@
 import type { GalleryItem } from "@/components/gallery/items";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
+import {
+  GALLERY_KEEPS_A_PHOTO,
+  galleryProblems,
+  readGalleryFields,
+  removeGalleryItem,
+  type GalleryFields,
+  type GalleryItemFields,
+} from "@/lib/gallery-fields";
 import { isPhotoSrc } from "@/lib/outreach-photos";
 import { planSteps, versionList, type PlanStatus } from "@/lib/project-pages";
 import {
@@ -342,12 +350,9 @@ export function removeStep(fields: PlanFields, index: number): WriteResult<PlanF
   return written({ ...fields, steps: fields.steps.filter((_, i) => i !== index) });
 }
 
-// Gallery
+// Gallery: its fields and rules are shared with the Outreach post panel (lib/gallery-fields.ts).
 
-/** One slot of the carousel: an uploaded photo, or a placeholder (`src` null) until one is uploaded. */
-export type GalleryItemFields = { readonly src: string | null; readonly alt: string; readonly caption: string };
-
-export type GalleryFields = Switched<{ readonly title: string; readonly items: readonly GalleryItemFields[] }>;
+export { GALLERY_KEEPS_A_PHOTO, removeGalleryItem, type GalleryFields, type GalleryItemFields };
 
 function galleryFields(gallery: GallerySection | undefined): GalleryFields {
   if (gallery === undefined) return { shown: false, title: "", items: [] };
@@ -369,15 +374,6 @@ function galleryOf(fields: GalleryFields): GallerySection | null {
   if (fields.items.length === 0) return null;
   const [first, ...rest] = fields.items.map(galleryItemOf);
   return { title: fields.title.trim(), items: [first, ...rest] };
-}
-
-export const GALLERY_KEEPS_A_PHOTO = "A gallery on the page keeps one photo at least. Switch Gallery off to take it off the page.";
-
-/** Removes a photo, or refuses: a gallery on the page keeps one. Its uploaded file is let go. */
-export function removeGalleryItem(fields: GalleryFields, index: number): WriteResult<Removal<GalleryFields>> {
-  if (fields.shown && fields.items.length <= 1) return refused(GALLERY_KEEPS_A_PHOTO);
-  const src = fields.items[index]?.src ?? null;
-  return written({ fields: { ...fields, items: fields.items.filter((_, i) => i !== index) }, letGo: src === null ? [] : [src] });
 }
 
 // The four sections together
@@ -481,8 +477,8 @@ export function listProblems(fields: ListFields): ListProblem[] {
       }
       l.need(`${p}.where`, x.where, `where launch ${i + 1} reads on /projects`);
       l.need(`${p}.result`, x.result, `launch ${i + 1}'s result on /projects`);
+      // A photo's description is optional (Owner decision, issue #430).
       if (x.photos.length > LAUNCH_PHOTOS_MAX) l.refuse(`${p}.photos`, `Keep ${LAUNCH_PHOTOS_MAX} photos at most on launch ${i + 1}.`);
-      x.photos.forEach((photo, j) => l.need(`${p}.photos.${j}`, photo.alt, `a description of launch ${i + 1}'s photo ${j + 1}`));
     });
   }
 
@@ -497,12 +493,7 @@ export function listProblems(fields: ListFields): ListProblem[] {
     });
   }
 
-  if (gallery.shown) {
-    const g = at("gallery");
-    g.need("gallery.title", gallery.title, "the gallery title");
-    if (gallery.items.length === 0) g.refuse("gallery.items", GALLERY_KEEPS_A_PHOTO);
-    gallery.items.forEach((x, i) => g.need(`gallery.items.${i}.alt`, x.alt, `a description of photo ${i + 1}`));
-  }
+  for (const { field, error } of galleryProblems(gallery)) at("gallery").refuse(field, error);
   return problems;
 }
 
@@ -580,12 +571,6 @@ function readStep(v: unknown): StepFields | null {
   return text === null || copy === null || status === undefined ? null : { ...text, text: copy, status };
 }
 
-function readGalleryItem(v: unknown): GalleryItemFields | null {
-  const text = strings(v, ["alt", "caption"]);
-  if (text === null || !isObject(v) || !(v.src === null || isString(v.src))) return null;
-  return { ...text, src: v.src };
-}
-
 /** The list sections a request carries, or null when it does not carry them in this shape. */
 export function readListFields(input: Loose): ListFields | null {
   const versions = switched(input.versions, (v) => {
@@ -605,11 +590,7 @@ export function readListFields(input: Loose): ListFields | null {
     const steps = listOf(v.steps, readStep);
     return title === null || intro === null || steps === null ? null : { ...title, intro, steps };
   });
-  const gallery = switched(input.gallery, (v) => {
-    const title = strings(v, ["title"]);
-    const items = listOf(v.items, readGalleryItem);
-    return title === null || items === null ? null : { ...title, items };
-  });
+  const gallery = readGalleryFields(input.gallery);
   if (versions === null || launches === null || plan === null || gallery === null) return null;
   return { versions, launches, plan, gallery };
 }

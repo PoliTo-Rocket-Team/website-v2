@@ -484,6 +484,7 @@ function SummitPanel({
             <div className="min-w-0 flex-1">
               <TextField
                 label="Photo description"
+                hint="optional"
                 rows={3}
                 value={fields.photoAlt}
                 limit={SUMMIT_LIMITS.photoAlt}

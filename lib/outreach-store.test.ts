@@ -149,11 +149,18 @@ test("every record post, the summit's story and the summit read back from their 
 });
 
 test("a row whose JSON is not a post's is refused, never shown", () => {
-  const columns = { ...JSON.parse(JSON.stringify(postColumns(outreachRecord.posts[0]))), body: [] };
-  assert.throws(() => postFromColumns(columns, ["Award"]));
-  const noChannel = { ...JSON.parse(JSON.stringify(postColumns(outreachRecord.posts[0]))), channels: {} };
-  assert.throws(() => postFromColumns(noChannel, ["Award"]));
-  assert.throws(() => postFromColumns(JSON.parse(JSON.stringify(postColumns(outreachRecord.posts[0]))), []));
+  const row = () => JSON.parse(JSON.stringify(postColumns(outreachRecord.posts[0])));
+  assert.throws(() => postFromColumns({ ...row(), body: [] }, ["Award"]));
+  assert.throws(() => postFromColumns({ ...row(), channels: { instagram: { url: "", caption: "" } } }, ["Award"]));
+  assert.throws(() => postFromColumns(row(), []));
+  // A gallery on the page has a title and a photo; one switched off may hold neither.
+  assert.throws(() => postFromColumns({ ...row(), gallery: { shown: true, title: "More", items: [] } }, ["Award"]));
+  assert.throws(() => postFromColumns({ ...row(), gallery: { shown: true, title: " ", items: [row().photos[0]] } }, ["Award"]));
+  assert.throws(() => postFromColumns({ ...row(), gallery: { shown: true, title: "More", items: [{ src: "javascript:x", alt: "" }] } }, ["Award"]));
+  assert.ok(postFromColumns({ ...row(), gallery: { shown: false, title: "", items: [] } }, ["Award"]).gallery?.shown === false);
+  // Original posts and photo descriptions are optional (issue #430).
+  assert.deepEqual(postFromColumns({ ...row(), channels: {} }, ["Award"]).channels, {});
+  assert.equal(postFromColumns({ ...row(), photos: [{ ...row().photos[0], alt: "" }] }, ["Award"]).photos[0].alt, "");
 });
 
 test("/outreach and the post pages show only published posts: a draft-only post is not listed and its page is not found", async () => {

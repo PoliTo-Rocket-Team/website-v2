@@ -158,7 +158,8 @@ export function filesNoLongerShown<T extends D, D>(
   return [...new Set(candidates)].filter((src) => !shown.has(src));
 }
 
-const postPhotos = (post: OutreachDraft): PhotoSrc[] => post.photos.map((p) => p.src);
+/** Every photo a version of a post shows or keeps: its photos, then its gallery's (issue #430), shown or not. */
+export const postPhotos = (post: OutreachDraft): PhotoSrc[] => [...post.photos, ...(post.gallery?.items ?? [])].map((p) => p.src);
 
 /**
  * The post store, freeing the files a write leaves unshown: after an update
@@ -185,7 +186,7 @@ export function photosNoLongerShown(candidates: Iterable<PhotoSrc>, posts: reado
  * cannot point a post at a file somewhere else.
  */
 export function checkPhotoSources<P extends OutreachDraft>(post: P, had: OutreachDraft | null, files: Pick<PhotoFiles, "owns">): WriteResult<P> {
-  const known = new Set((had?.photos ?? []).map((p) => p.src));
-  const stray = post.photos.find((p) => !known.has(p.src) && !files.owns(p.src));
+  const known = new Set(had === null ? [] : postPhotos(had));
+  const stray = postPhotos(post).find((src) => !known.has(src) && !files.owns(src));
   return stray === undefined ? written(post) : refused("A photo was not uploaded. Add it again.");
 }
