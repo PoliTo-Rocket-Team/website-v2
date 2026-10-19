@@ -30,7 +30,8 @@ export function PostPage({
     <div className="relative bg-ground">
       <LandingNavbar />
       <PageSky>
-        <main className="px-5 pb-section pt-16 md:px-16 md:pt-[72px]">
+        {/* No bottom padding: the footer's own top padding is the gap under the last section (Owner decision, 2026-10-19). */}
+        <main className="px-5 pt-16 md:px-16 md:pt-[72px]">
           <div className="pt-8 md:pt-16">
             <PostHeader post={post} frame={frame} hints={hints} />
             <PostBody post={post} frame={frame} hints={hints} />
