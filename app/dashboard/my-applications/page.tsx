@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { MyApplicationsView } from "@/components/dashboard/my-applications";
 import { canReach } from "@/lib/dashboard/access";
 import { hasNoneShown } from "@/lib/dashboard/my-applications";
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 // board 50f says why.
 export default function MyApplicationsPage() {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="stack" />}>
       <LiveApplications />
     </Suspense>
   );

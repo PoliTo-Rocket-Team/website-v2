@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { ProjectEdit } from "@/components/dashboard/project-edit";
 import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -23,7 +23,7 @@ type Params = { params: Promise<{ slug: string }> };
 // else gets the dashboard's not found.
 export default function ProjectEditPage({ params }: Params) {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="editor" />}>
       <LiveProject params={params} />
     </Suspense>
   );
@@ -34,11 +34,12 @@ async function LiveProject({ params }: Params) {
   const opening = await openDashboard();
   if (opening.kind === "signed-out") redirect(`/login?cb=/dashboard/projects/${encodeURIComponent(slug)}`);
   if (opening.kind === "account-unresolved") return null;
-  const items = await opening.data.projects.list();
+  // The footer's projects need nothing of the editor's, so both are read at once (issue #397).
+  const [items, projects] = await Promise.all([opening.data.projects.list(), footerProjects()]);
   if (items === null) notFound();
   const item =
     items.find((i) => editorVersion(i.version).slug === slug) ?? items.find((i) => publicVersion(i.version)?.slug === slug);
   const place = item === undefined ? null : placeOf(items, item.id);
   if (item === undefined || place === null) notFound();
-  return <ProjectEdit item={item} place={place} footerProjects={await footerProjects()} />;
+  return <ProjectEdit item={item} place={place} footerProjects={projects} />;
 }

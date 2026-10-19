@@ -191,11 +191,12 @@ export function teamPageEditor(
 
   return {
     async open() {
-      const items = await editor.list();
+      // The roles need nothing of the layer, so both are read at once (issue #397).
+      const [items, teamRoles] = await Promise.all([editor.list(), roles()]);
       if (items === null) return null;
       const version = items[0]?.version ?? null;
       const layer = version === null ? NO_TEAM_LAYER : editorVersion(version);
-      const build = teamBuildOf(await roles());
+      const build = teamBuildOf(teamRoles);
       return { status: version === null ? null : statusOf(version), layer, page: editedTeamPage(build, base, layer).page, build, base };
     },
 

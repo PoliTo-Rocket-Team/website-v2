@@ -3,8 +3,8 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
-import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { getDb } from "@/db/client";
+import { refreshAfter } from "@/lib/cache-tags";
 import {
   applicationFiles,
   applications,
@@ -51,7 +51,6 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "./recruitment";
-import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 import { mayChange, readsAsDivisionLead, type ChangeArea, type DivisionUnit } from "./viewer";
 import { refused, written, type WriteResult } from "./write";
 
@@ -98,40 +97,43 @@ async function mayChangePosition(identity: Identity, area: ChangeArea, positionI
 /** The positions a lead reaches, with what the table shows for each. */
 async function readPositionRows(identity: Identity, now: Date): Promise<PositionRow[]> {
   const db = getDb();
-  const rows = await db
-    .select({
-      id: applyPositions.id,
-      title: applyPositions.title,
-      status: applyPositions.status,
-      created_at: applyPositions.createdAt,
-      description: applyPositions.description,
-      required: applyPositions.requiredSkills,
-      desirable: applyPositions.desirableSkills,
-      questions: applyPositions.customQuestions,
-      motivation_letter: applyPositions.requiresMotivationLetter,
-      division_id: divisions.id,
-      division_name: divisions.name,
-      div_code: divisions.code,
-      dept_id: departments.id,
-      dept_name: departments.name,
-      dept_code: departments.code,
-    })
-    .from(applyPositions)
-    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
-    .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(and(eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
-    .orderBy(desc(applyPositions.createdAt));
+  // The tallies are read for every position, beside the positions rather than
+  // after them, and picked per row below: one round trip, not two (issue #397).
+  const [rows, tallies] = await Promise.all([
+    db
+      .select({
+        id: applyPositions.id,
+        title: applyPositions.title,
+        status: applyPositions.status,
+        created_at: applyPositions.createdAt,
+        description: applyPositions.description,
+        required: applyPositions.requiredSkills,
+        desirable: applyPositions.desirableSkills,
+        questions: applyPositions.customQuestions,
+        motivation_letter: applyPositions.requiresMotivationLetter,
+        division_id: divisions.id,
+        division_name: divisions.name,
+        div_code: divisions.code,
+        dept_id: departments.id,
+        dept_name: departments.name,
+        dept_code: departments.code,
+      })
+      .from(applyPositions)
+      .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+      .innerJoin(departments, eq(divisions.deptId, departments.id))
+      .where(and(eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+      .orderBy(desc(applyPositions.createdAt)),
+    db
+      .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
+      .from(applications)
+      .where(isNull(applications.withdrawnAt))
+      .groupBy(applications.applyPositionId, applications.status),
+  ]);
   const scoped =
     identity.kind === "operations-lead"
       ? rows
       : rows.filter((r) => identity.divisionIds.includes(r.division_id) || identity.departmentIds.includes(r.dept_id));
   if (scoped.length === 0) return [];
-
-  const tallies = await db
-    .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
-    .from(applications)
-    .where(and(inArray(applications.applyPositionId, scoped.map((r) => r.id)), isNull(applications.withdrawnAt)))
-    .groupBy(applications.applyPositionId, applications.status);
 
   return scoped.map((r) => {
     const own = tallies.filter((t) => t.position_id === r.id);
@@ -194,14 +196,15 @@ async function readNextPositionId(): Promise<number> {
 
 async function positionsPage(identity: Identity): Promise<PositionsPage> {
   if (!isLead(identity)) throw new DashboardRefused("positions");
-  const [positions, divisionChoices, nextId] = await Promise.all([
+  // The head's department needs nothing of the positions, so it is read beside them (issue #397).
+  const [positions, divisionChoices, nextId, department] = await Promise.all([
     readPositionRows(identity, new Date()),
     readPostableDivisions(identity),
     readNextPositionId(),
+    identity.kind === "operations-lead" ? null : readDepartmentUnit(identity),
   ]);
   const newPosition = { divisions: divisionChoices, nextId };
   if (identity.kind === "operations-lead") return { scope: "team", positions, newPosition };
-  const department = await readDepartmentUnit(identity);
   if (department !== null) return { scope: "department", department, positions, newPosition };
   return { scope: "division", division: identity.role?.divisionName ?? null, positions, newPosition };
 }
@@ -227,7 +230,7 @@ async function reachablePositionIds(identity: Identity): Promise<Set<number>> {
 async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
   if (!(await mayChangePosition(identity, "positions", positionId))) throw new DashboardRefused(`position ${positionId}`);
   await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
 }
 
 async function createPosition(identity: Identity, input: unknown): Promise<WriteResult<CreatedPosition>> {
@@ -253,7 +256,7 @@ async function createPosition(identity: Identity, input: unknown): Promise<Write
       })
       .returning({ id: applyPositions.id }),
   );
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
   return written({ id: row.id, code: newPositionCode(division, row.id) });
 }
 
@@ -275,7 +278,7 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
       })
       .where(eq(applyPositions.id, positionId)),
   );
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
   return written(null);
 }
 
@@ -534,7 +537,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
       const change = joinChange(standing);
       if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused(APPLICATION_CHANGED);
-      updateTag(TEAM_ROSTER_CACHE_TAG);
+      refreshAfter("team", updateTag);
       return written(null);
     }
 

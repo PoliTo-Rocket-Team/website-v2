@@ -5,6 +5,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { departments, divisions, members, roles, scopes, users } from "@/db/schema";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
+import { TEAM_ROSTER_CACHE_TAG } from "@/lib/cache-tags";
 import type { MemberDetails } from "./details";
 import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
@@ -30,8 +31,8 @@ import {
 // the viewer after the cache hit. The Alumni pages read their own record
 // (./database-alumni.ts).
 
-/** Tag for the snapshot; a write that changes who is on the team invalidates it. */
-export const TEAM_ROSTER_CACHE_TAG = "team-roster";
+/** Tag for the snapshot; a write that changes who is on the team invalidates it (lib/cache-tags.ts). */
+export { TEAM_ROSTER_CACHE_TAG };
 
 type RoleRow = {
   member_id: number;
