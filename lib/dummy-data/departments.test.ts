@@ -149,7 +149,7 @@ test("Leave the team: the head of a closed department leaves the team and appear
   assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "leave" })).ok);
   const view = pages("operations-lead", closer.kept()).view;
   const members = await view.members();
-  assert.ok(members.scope === "team" && !members.rows.some((r) => r.id === CHIARA), "off the team");
+  assert.ok(members.scope === "whole-team" && !members.people.some((p) => p.id === CHIARA), "off the team");
   assert.ok((await view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "on Alumni");
 });
 

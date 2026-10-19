@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { TeamPageEdit } from "@/components/dashboard/team-page-edit";
 import { currentAcademicYearStart } from "@/lib/about/academic-year";
 import { canReach } from "@/lib/dashboard/access";
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 // dashboard's not found.
 export default function TeamPageEditPage() {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="editor" />}>
       <LiveTeamPage />
     </Suspense>
   );

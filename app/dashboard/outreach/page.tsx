@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { OutreachView } from "@/components/dashboard/outreach";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 // else gets the dashboard's not found.
 export default function OutreachPage() {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="list" />}>
       <LiveOutreach />
     </Suspense>
   );

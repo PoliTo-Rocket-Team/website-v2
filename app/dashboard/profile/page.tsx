@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { MyProfileView } from "@/components/dashboard/my-profile";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 // (lib/dashboard/access.ts); an applicant has My account instead.
 export default function ProfilePage() {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="form" />}>
       <LiveProfile />
     </Suspense>
   );

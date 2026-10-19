@@ -63,7 +63,7 @@ import {
   removalFrom,
   roleIn,
   standingOfPlacement,
-  teamDirectory,
+  teamPageEditOf,
   withJoined,
   withoutDivision,
   type DivisionRole,
@@ -77,9 +77,10 @@ import {
   type TeamActor,
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
-import { kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { isTeamLeader, kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { grantActors, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
+import { opensWholeTeam } from "@/lib/dashboard/members-view";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
@@ -985,9 +986,16 @@ export function dummyTeamPages(
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
-      // The team leader's page lists every member field (boards 73 to 73c, issue #252).
-      if (kind === "team-leader") return { scope: "whole-team", ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }) };
-      if (kind === "operations-lead") return teamDirectory(team, org, self);
+      // Every full-access seat's page lists every member field (boards 73 to 73c, issues #252 and #418);
+      // the operations lead keeps the Team page panel's edits (board 46b), the team leader's rows offer none.
+      const standing = testDeveloperStanding(kind);
+      if (opensWholeTeam(standing)) {
+        return {
+          scope: "whole-team",
+          teamPageEdits: isTeamLeader(standing) ? null : team.map((entry) => teamPageEditOf(entry, org)),
+          ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }),
+        };
+      }
       if (actor?.kind === "head") {
         const [departmentId] = actor.departmentIds;
         const ids = org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);

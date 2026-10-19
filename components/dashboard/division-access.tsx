@@ -2,6 +2,7 @@
 
 import { useId, useState, useTransition, type FormEvent } from "react";
 import {
+  ArrowUpDown,
   BriefcaseBusiness,
   Check,
   ChevronDown,
@@ -32,7 +33,6 @@ import {
   areaLevelsOf,
   areaRule,
   canChangePerson,
-  departmentOfPlace,
   heldIn,
   heldLevel,
   heldLines,
@@ -45,7 +45,6 @@ import {
   placeLine,
   placesHeldBy,
   placesOf,
-  roleDivision,
   samePlace,
   SEAT_LABELS,
   shortUnitName,
@@ -53,7 +52,6 @@ import {
   unitLine,
   WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
-  type AccessDivision,
   type AccessGrant,
   type AccessLevel,
   type AccessPage,
@@ -64,15 +62,25 @@ import {
   type AreaLevels,
   type ApproveOrdersHolder,
   type PersonAccess,
-  type RoleAccess,
   type SaveAccess,
 } from "@/lib/dashboard/division-access";
-import { ALL_DEPARTMENTS_LABEL, ALL_DIVISIONS_LABEL, divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
+import {
+  ACCESS_SHOW_LABELS,
+  ACCESS_SHOWS,
+  ACCESS_SORTS,
+  accessModelOf,
+  divisionOfRow,
+  divisionOptions,
+  NO_ACCESS_FILTER,
+  shownAccess,
+  type AccessFilter,
+  type AccessRow as Row,
+  type AccessTool,
+} from "@/lib/dashboard/access-view";
 import { shortDate, type WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
-import { FilterMenu, Segmented } from "./controls";
-import { DivisionTabs } from "./division-tabs";
+import { FilterMenu, SearchField, Segmented } from "./controls";
 import { Drawer, DrawerPage, PANEL_DANGER_BUTTON } from "./drawer";
 import { Field, GroupLabel, LOCKED_INPUT } from "./field";
 import { PANEL } from "./panel";
@@ -86,16 +94,6 @@ const TARGET_ICONS: Readonly<Record<AccessTarget, LucideIcon>> = {
   orders: ShoppingCart,
 };
 
-/** The tabs over a team page's table (board 71): everyone, the full-access seats, and the holders of "Approve orders". */
-const ACCESS_TABS = ["everyone", "full-access", "approve-orders"] as const;
-type AccessTab = (typeof ACCESS_TABS)[number];
-
-const ACCESS_TAB_LABELS: Readonly<Record<AccessTab, string>> = {
-  everyone: "Everyone",
-  "full-access": "Full access",
-  "approve-orders": "Approve orders",
-};
-
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
 type Actions = {
@@ -106,16 +104,8 @@ type Actions = {
 type Open = { readonly kind: "none" } | { readonly kind: "give" } | { readonly kind: "edit"; readonly personId: number };
 const CLOSED: Open = { kind: "none" };
 
-/** A row of the table: a lead whose access comes with the role, or someone the viewer's unit shared access with. */
-type Row = { readonly kind: "role"; readonly role: RoleAccess } | { readonly kind: "grants"; readonly access: PersonAccess };
-
 function personOfRow(row: Row): AccessPerson {
   return row.kind === "role" ? row.role.person : row.access.person;
-}
-
-/** The division a row names and files under: a role row's own, else the person's. */
-function divisionOfRow(row: Row): AccessDivision | null {
-  return row.kind === "role" ? roleDivision(row.role) : row.access.person.division;
 }
 
 /** A role row per division a lead leads, a grants row per person. */
@@ -156,32 +146,12 @@ function unitWords(unit: AccessUnit): string {
   return unit.kind === "division" && unit.divisions.length > 1 ? "your divisions" : `your ${unit.kind}`;
 }
 
-/** Whether a row shows under a team page's tab (board 71). */
-function inAccessTab(row: Row, tab: AccessTab): boolean {
-  switch (tab) {
-    case "everyone":
-      return true;
-    case "full-access":
-      return row.kind === "role" && row.role.place.kind === "team";
-    case "approve-orders":
-      return row.kind === "grants" && row.access.approveOrders;
-  }
-}
-
 /** The line under the title: what the viewer may give (boards 60, 65 and 71). */
 function introOf(access: AccessPage): string {
   if (access.unit.kind !== "team") return `Share what you can do with people in ${unitWords(access.unit)}. You can only give access you have.`;
   return access.approveOrders.canGive
     ? "Share access with anyone on the team. You can give every kind of access."
     : "Share access with anyone on the team. You can give every kind of access but Approve orders, which is the team leader's.";
-}
-
-/** The department a row belongs to on a team page (issue #238): its division's, else the department its access is in. */
-function rowDepartment(row: Row, unit: AccessUnit): string | null {
-  const division = divisionOfRow(row);
-  const place: AccessPlace | undefined =
-    division !== null ? { kind: "division", division } : row.kind === "role" ? row.role.place : row.access.grants[0]?.place;
-  return place === undefined ? null : (departmentOfPlace(unit, place)?.name ?? null);
 }
 
 /** Whether the viewer may change anything of this person's access, in any place they hold it. */
@@ -195,13 +165,13 @@ function changeableIn(access: AccessPage, grants: readonly AccessGrant[], person
 // 65b, 65c and 65m (a department head, issue #230): what the viewer holds, the
 // other leads with the access their role gives (locked), one row per person
 // the unit shared access with, and the Give access and Edit access drawers.
-// A lead of several divisions sees them all in one list with an "All
-// divisions" select, as board 71 filters departments (issue #185); a grant
+// A lead of several divisions sees them all in one list (issue #185); a grant
 // they give is in the division of the person it goes to.
-// A head's page has division tabs, starting on All divisions, and a Where
-// field in the drawers. A full-access page (issue #238) is the same across
-// the whole team: department tabs, starting on All departments, and a Where
-// field over every department and division. This is the only dashboard page
+// A head's page has a Where field in the drawers. A full-access page (issue
+// #238) is the same across the whole team, with a Where field over every
+// department and division. Every role gets one toolbar (issue #415): the
+// department and division selects over its unit, the "Show people" switch, a
+// search and a sort (./lib/dashboard/access-view.ts). This is the only dashboard page
 // that gives, changes or removes access. Props in, nothing fetched; the
 // grants live in this page's state, so a save shows at once. Remove all
 // access asks first.
@@ -209,8 +179,8 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
   const [grants, setGrants] = useState(initial.grants);
   const [holders, setHolders] = useState(initial.approveOrders.holders);
   const [open, setOpen] = useState<Open>(CLOSED);
-  const [divisionTab, setDivisionTab] = useState<DivisionTab>(null);
-  const [accessTab, setAccessTab] = useState<AccessTab>("everyone");
+  // Every role's page starts on all departments, all divisions and everyone, leads first.
+  const [filter, setFilter] = useState<AccessFilter>(NO_ACCESS_FILTER);
   // The page as this session left it: the holders of "Approve orders" change with each save.
   const access: AccessPage = { ...initial, approveOrders: { ...initial.approveOrders, holders } };
   const unit = access.unit;
@@ -220,24 +190,13 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
     ...access.roleAccess.map((role): Row => ({ kind: "role", role })),
     ...accessByPerson(grants, holders).map((row): Row => ({ kind: "grants", access: row })),
   ];
-  // Each row's tab: its division on a head's or a lead's page, its department on a team page.
-  const tabOf = (row: Row): string | null => (unit.kind === "team" ? rowDepartment(row, unit) : (divisionOfRow(row)?.name ?? null));
-  // A lead of one division gets null here: no tabs and no select.
-  const divisionOptions =
-    unit.kind === "team"
-      ? divisionTabs(
-          unit.departments.map((d) => d.department.name),
-          allRows.map(tabOf),
-          ALL_DEPARTMENTS_LABEL,
-        )
-      : divisionTabs(
-          unit.kind === "department" ? unit.divisions.map((d) => d.name) : unit.divisions.map((d) => d.division.name),
-          allRows.map(tabOf),
-        );
+  // One toolbar for every role (issue #415): only the rows, and so the options, differ.
+  const model = accessModelOf(unit);
+  const has = (tool: AccessTool) => model.tools.includes(tool);
+  const narrow = (change: Partial<AccessFilter>) => setFilter((f) => ({ ...f, ...change }));
+  const shown = shownAccess(model, unit, allRows, filter);
+  const rows = shown.rows;
   const holds = holdsAny(unit);
-  const tabsOver = unit.kind === "team" ? "department" : "division";
-  const inDepartment = allRows.filter((row) => inDivisionTab(tabOf(row), divisionTab));
-  const rows = inDepartment.filter((row) => inAccessTab(row, accessTab));
   const editing = open.kind === "edit" ? (access.people.find((p) => p.id === open.personId) ?? null) : null;
   const openRow = (person: AccessPerson) => setOpen({ kind: "edit", personId: person.id });
   // A holder of "Approve orders" opens for the team leader, who alone changes it.
@@ -271,82 +230,96 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
         }
       />
 
-      {/* On phones the division pill comes first (board 65m); from md the tabs sit under Your access (board 65). */}
-      {divisionOptions && unit.kind === "department" && (
-        <div className="md:hidden">
-          <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} over={tabsOver} />
-        </div>
-      )}
-
       {holds && <YourAccess access={access} drawerOpen={open.kind !== "none"} />}
 
-      {divisionOptions && unit.kind === "department" && (
-        <div className="mt-5 hidden md:block">
-          <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} over={tabsOver} />
-        </div>
-      )}
-
-      {/* A lead of several divisions: one list, and the team page's filter over their divisions (board 71's pattern, issue #185). */}
-      {divisionOptions && unit.kind === "division" && (
-        <div className="mt-5 flex">
-          <FilterMenu
-            label="Division"
-            allLabel={ALL_DIVISIONS_LABEL}
-            value={divisionTab}
-            onChange={setDivisionTab}
-            options={divisionOptions.flatMap((o) => (o.division === null ? [] : [{ value: o.division, label: o.label }]))}
-          />
-        </div>
-      )}
-
-      {/* A team page: who to show, and in which department (board 71). */}
-      {unit.kind === "team" && (
-        <div className="mt-5 flex">
-          <Segmented
-            label="Show people"
-            value={accessTab}
-            onChange={setAccessTab}
-            options={ACCESS_TABS.map((tab) => ({ value: tab, label: ACCESS_TAB_LABELS[tab], count: inDepartment.filter((row) => inAccessTab(row, tab)).length }))}
-          >
-            {divisionOptions && (
+      {/* One toolbar for every role (issue #415). Each tool keeps its whole label on a phone: the row wraps, and only the search gives way. */}
+      <div className="mt-5 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          {has("department-filter") && (
+            <div className="shrink-0">
               <FilterMenu
-                look="inset"
                 label="Department"
-                allLabel={ALL_DEPARTMENTS_LABEL}
-                value={divisionTab}
-                onChange={setDivisionTab}
-                options={divisionOptions.flatMap((o) => (o.division === null ? [] : [{ value: o.division, label: o.label }]))}
+                allLabel="All departments"
+                value={filter.department}
+                onChange={(department) => narrow({ department })}
+                options={model.departments.map((d) => ({ value: d, label: d }))}
               />
-            )}
-          </Segmented>
+            </div>
+          )}
+          {has("division-filter") && (
+            <div className="shrink-0">
+              <FilterMenu
+                label="Division"
+                allLabel="All divisions"
+                value={shown.division}
+                onChange={(division) => narrow({ division })}
+                options={divisionOptions(model, filter.department).map((d) => ({ value: d.name, label: d.label }))}
+              />
+            </div>
+          )}
+          <span aria-hidden className="hidden h-5 w-px bg-hairline md:block" />
+          {has("show-switch") && (
+            <Segmented
+              label="Show people"
+              value={filter.show}
+              onChange={(show) => narrow({ show })}
+              phone="chips"
+              options={ACCESS_SHOWS.map((show) => ({ value: show, label: ACCESS_SHOW_LABELS[show], count: shown.counts[show] }))}
+            />
+          )}
         </div>
-      )}
+        <div className="flex items-center gap-3 md:ml-auto">
+          {has("sort") && (
+            <div className="shrink-0">
+              <FilterMenu
+                label="Sort"
+                icon={ArrowUpDown}
+                allLabel={ACCESS_SORTS[0].label}
+                value={filter.sort === ACCESS_SORTS[0].sort ? null : filter.sort}
+                onChange={(sort) => narrow({ sort: ACCESS_SORTS.find((s) => s.sort === sort)?.sort ?? ACCESS_SORTS[0].sort })}
+                options={ACCESS_SORTS.slice(1).map((s) => ({ value: s.sort, label: s.label }))}
+              />
+            </div>
+          )}
+          {has("search") && (
+            <div className="min-w-0 flex-1 md:flex-none">
+              <SearchField label="Search people" value={filter.query} onChange={(query) => narrow({ query })} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {rows.length === 0 && allRows.length > 0 && <p className="mt-5 px-1 text-[13px] text-prt-muted">No people match.</p>}
 
       {rows.length > 0 && (
         <>
-          <section aria-label="People with access" className="mt-6 md:hidden">
-            <h2 className={EYEBROW}>People with access</h2>
-            <ul className="mt-2.5 flex flex-col gap-2.5">
-              {rows.map((row) => (
-                <li key={rowKey(row)}>
-                  <PersonCard
-                    row={row}
-                    unit={unit}
-                    onOpen={changeable(row) ? () => openRow(personOfRow(row)) : null}
-                    department={department}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-          <AccessTable
-            rows={rows}
-            unit={unit}
-            changeable={changeable}
-            onOpen={openRow}
-            department={department}
-            drawerOpen={open.kind !== "none"}
-          />
+          {has("phone-cards") && (
+            <section aria-label="People with access" className="mt-6 md:hidden">
+              <h2 className={EYEBROW}>People with access</h2>
+              <ul className="mt-2.5 flex flex-col gap-2.5">
+                {rows.map((row) => (
+                  <li key={rowKey(row)}>
+                    <PersonCard
+                      row={row}
+                      unit={unit}
+                      onOpen={changeable(row) ? () => openRow(personOfRow(row)) : null}
+                      department={department}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {has("table-view") && (
+            <AccessTable
+              rows={rows}
+              unit={unit}
+              changeable={changeable}
+              onOpen={openRow}
+              department={department}
+              drawerOpen={open.kind !== "none"}
+            />
+          )}
         </>
       )}
 

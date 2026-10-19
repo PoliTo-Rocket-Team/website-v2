@@ -2,9 +2,10 @@ import "server-only";
 
 import { and, asc, count, eq, inArray, isNull, max, min, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { updateTag } from "next/cache";
-import { getRecruitmentControl, PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
-import { getScopeInfoForCurrentUser } from "@/app/actions/get-member-scopes";
+import { cacheLife, cacheTag, updateTag } from "next/cache";
+import { getRecruitmentControlFor } from "@/app/actions/get-apply-positions";
+import { getScopeInfoForMember } from "@/app/actions/get-member-scopes";
+import { cachedReadTags, refreshAfter } from "@/lib/cache-tags";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applications,
@@ -27,13 +28,14 @@ import { DashboardRefused, type DashboardData } from "./data";
 import {
   buildTeamTree,
   seasonAt,
-  teamDirectory,
+  teamPageEditOf,
   type MemberDirectory,
   type RoleType,
 } from "./team";
 import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
 import { wholeTeamMembers } from "./team-members";
+import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
 import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
@@ -121,21 +123,59 @@ type Identity = {
 /** Who the signed-in account is; the page modules beside this one read it. */
 export type DashboardIdentity = Identity;
 
+/**
+ * Who the account is, read in one round trip (issue #397): the user row, their
+ * scope rows and active roles (both reached through the user's member id) and
+ * the open departments go out together, since none needs another's answer.
+ * Only someone with no active role waits for one more read, the Alumni record.
+ */
 async function readIdentity(userId: string): Promise<Identity | null> {
   const db = getDb();
-  const [user] = await db
-    .select({
-      first_name: users.firstName,
-      last_name: users.lastName,
-      email: users.email,
-      linkedin: users.linkedin,
-      member_id: users.member,
-      picture: members.picture,
-    })
-    .from(users)
-    .leftJoin(members, eq(users.member, members.memberId))
-    .where(eq(users.id, userId))
-    .limit(1);
+  const [[user], scopeRows, roleRows, openDepartments] = await Promise.all([
+    db
+      .select({
+        first_name: users.firstName,
+        last_name: users.lastName,
+        email: users.email,
+        linkedin: users.linkedin,
+        member_id: users.member,
+        picture: members.picture,
+      })
+      .from(users)
+      .leftJoin(members, eq(users.member, members.memberId))
+      .where(eq(users.id, userId))
+      .limit(1),
+    db
+      .select({
+        scope: scopes.scope,
+        target: scopes.target,
+        level: scopes.accessLevel,
+        division_id: scopes.divisionId,
+        dept_id: scopes.deptId,
+      })
+      .from(scopes)
+      .innerJoin(users, eq(users.member, scopes.memberId))
+      .where(eq(users.id, userId)),
+    db
+      .select({
+        title: roles.title,
+        type: roles.type,
+        startedAt: roles.startedAt,
+        divisionId: roles.divisionId,
+        divisionName: divisions.name,
+        departmentId: departments.id,
+        departmentName: departments.name,
+        fullAccess: roles.fullAccess,
+      })
+      .from(roles)
+      .innerJoin(users, eq(users.member, roles.memberId))
+      .leftJoin(divisions, eq(roles.divisionId, divisions.id))
+      // A head's role names its department; a lead's names it through the division (issue #230).
+      .leftJoin(departments, eq(departments.id, sql`coalesce(${roles.deptId}, ${divisions.deptId})`))
+      .where(and(eq(users.id, userId), isNull(roles.leavedAt)))
+      .orderBy(asc(roles.startedAt)),
+    db.select({ id: departments.id }).from(departments).where(isNull(departments.closedAt)),
+  ]);
   if (!user) return null;
 
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
@@ -151,42 +191,11 @@ async function readIdentity(userId: string): Promise<Identity | null> {
     return { ...base, role: null, roles: [], divisionIds: [], departmentIds: [], grants: [], ...viewerStandingOf(null) };
   }
 
-  const [scopeRows, roleRows] = await Promise.all([
-    db
-      .select({
-        scope: scopes.scope,
-        target: scopes.target,
-        level: scopes.accessLevel,
-        division_id: scopes.divisionId,
-        dept_id: scopes.deptId,
-      })
-      .from(scopes)
-      .where(eq(scopes.memberId, user.member_id)),
-    db
-      .select({
-        title: roles.title,
-        type: roles.type,
-        startedAt: roles.startedAt,
-        divisionId: roles.divisionId,
-        divisionName: divisions.name,
-        departmentId: departments.id,
-        departmentName: departments.name,
-        fullAccess: roles.fullAccess,
-      })
-      .from(roles)
-      .leftJoin(divisions, eq(roles.divisionId, divisions.id))
-      // A head's role names its department; a lead's names it through the division (issue #230).
-      .leftJoin(departments, eq(departments.id, sql`coalesce(${roles.deptId}, ${divisions.deptId})`))
-      .where(and(eq(roles.memberId, user.member_id), isNull(roles.leavedAt)))
-      .orderBy(asc(roles.startedAt)),
-  ]);
   const activeRoles: ActiveRole[] = roleRows.map((r) => ({ ...r, fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] }));
 
   // A grant across the whole team stands for every open department (issue #247).
   const wholeTeam = scopeRows.some((s) => s.scope === "team" && s.target !== "approve_orders");
-  const openDepartmentIds = wholeTeam
-    ? (await db.select({ id: departments.id }).from(departments).where(isNull(departments.closedAt))).map((d) => d.id)
-    : [];
+  const openDepartmentIds = wholeTeam ? openDepartments.map((d) => d.id) : [];
   const unitRows = unitRowsOf(
     scopeRows.map((s) => ({ scope: s.scope, target: s.target, level: s.level, divisionId: s.division_id, deptId: s.dept_id })),
     openDepartmentIds,
@@ -219,22 +228,34 @@ function primaryRole(active: readonly ActiveRole[]): ActiveRole | null {
   return [...active].sort((a, b) => rank(a) - rank(b) || a.startedAt.localeCompare(b.startedAt))[0] ?? null;
 }
 
-type ScopedPosition = {
+type LivePosition = {
   id: number;
   title: string;
   open: boolean;
   divisionId: number;
   divisionName: string;
+  departmentId: number;
   departmentName: string;
+};
+
+type ScopedPosition = Omit<LivePosition, "departmentId"> & {
   newApplications: number;
   /** When the oldest unread application came in; null when there is none. */
   oldestNew: Date | null;
 };
 
-/** Open org units' live positions the viewer's figures cover, with their unread application counts. */
-async function readPositions(identity: Identity): Promise<ScopedPosition[]> {
-  const db = getDb();
-  const rows = await db
+/**
+ * Every live position in an open division and department, read once for
+ * every viewer and cached (ADR 0003). Its tags are refreshed by every
+ * position write and by every write that renames or closes a division or a
+ * department (lib/cache-tags.ts); each viewer's share is filtered after the
+ * cache hit (`scopedPositions`).
+ */
+async function readLivePositions(): Promise<LivePosition[]> {
+  "use cache";
+  cacheTag(...cachedReadTags("livePositions"));
+  cacheLife("hours");
+  const rows = await getDb()
     .select({
       id: applyPositions.id,
       title: applyPositions.title,
@@ -250,40 +271,51 @@ async function readPositions(identity: Identity): Promise<ScopedPosition[]> {
     .where(
       and(eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)),
     );
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title ?? "Untitled position",
+    open: r.status,
+    divisionId: r.division_id,
+    divisionName: r.division_name,
+    departmentId: r.dept_id,
+    departmentName: r.dept_name,
+  }));
+}
 
-  const scoped =
-    identity.kind === "operations-lead"
-      ? rows
-      : rows.filter(
-          (r) => identity.divisionIds.includes(r.division_id) || identity.departmentIds.includes(r.dept_id),
-        );
-  if (scoped.length === 0) return [];
+/** The live positions the viewer's figures cover. */
+async function scopedPositions(identity: Identity): Promise<LivePosition[]> {
+  const rows = await readLivePositions();
+  return identity.kind === "operations-lead"
+    ? rows
+    : rows.filter((r) => identity.divisionIds.includes(r.divisionId) || identity.departmentIds.includes(r.departmentId));
+}
 
-  const unread = await db
+/**
+ * The unread applications on every position: how many, and when the oldest
+ * came in. Applications change by the minute, so this is read on request,
+ * beside the cached positions rather than after them.
+ */
+async function readUnread(): Promise<Map<number | null, { n: number; oldest: string | null }>> {
+  const unread = await getDb()
     .select({ position_id: applications.applyPositionId, n: count(), oldest: min(applications.appliedAt) })
     .from(applications)
-    .where(
-      and(
-        eq(applications.status, "received"),
-        isNull(applications.withdrawnAt),
-        inArray(
-          applications.applyPositionId,
-          scoped.map((r) => r.id),
-        ),
-      ),
-    )
+    .where(and(eq(applications.status, "received"), isNull(applications.withdrawnAt)))
     .groupBy(applications.applyPositionId);
-  const unreadBy = new Map(unread.map((u) => [u.position_id, u]));
+  return new Map(unread.map((u) => [u.position_id, u]));
+}
 
-  return scoped.map((r) => {
+/** Open org units' live positions the viewer's figures cover, with their unread application counts. */
+async function readPositions(identity: Identity, scoped: Promise<LivePosition[]> = scopedPositions(identity)): Promise<ScopedPosition[]> {
+  const [rows, unreadBy] = await Promise.all([scoped, readUnread()]);
+  return rows.map((r) => {
     const fresh = unreadBy.get(r.id);
     return {
       id: r.id,
-      title: r.title ?? "Untitled position",
-      open: r.status,
-      divisionId: r.division_id,
-      divisionName: r.division_name,
-      departmentName: r.dept_name,
+      title: r.title,
+      open: r.open,
+      divisionId: r.divisionId,
+      divisionName: r.divisionName,
+      departmentName: r.departmentName,
       newApplications: fresh?.n ?? 0,
       oldestNew: fresh?.oldest ? new Date(fresh.oldest) : null,
     };
@@ -365,13 +397,14 @@ async function teamOverview(identity: Identity): Promise<TeamOverview> {
  * no activity feed, so that reads empty.
  */
 async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
-  const [positions, snapshot, notices] = await Promise.all([
+  const snapshotRead = readTeamSnapshot();
+  const [positions, snapshot, orders, notices] = await Promise.all([
     readPositions(identity),
-    readTeamSnapshot(),
+    snapshotRead,
+    snapshotRead.then((s) => readOrdersIn(s.org.divisions.map((d) => d.id))),
     readNoticeAttention(identity, new Date()),
   ]);
   const records = recordsOf(snapshot);
-  const orders = await readOrdersIn(snapshot.org.divisions.map((d) => d.id));
   const open = positions.filter((p) => p.open);
   return {
     shape: "leader",
@@ -417,7 +450,7 @@ async function readMembersWithoutPhoto(divisionIds: number[]): Promise<string[]>
  * applicant, read the way the applications page reads them
  * (./interview-slots.ts).
  */
-async function readInterviews(positions: readonly ScopedPosition[]): Promise<UpcomingInterview[]> {
+async function readInterviews(positions: readonly { id: number; title: string }[]): Promise<UpcomingInterview[]> {
   if (positions.length === 0) return [];
   const titles = new Map(positions.map((p) => [p.id, p.title]));
   const rows = await getDb()
@@ -461,14 +494,16 @@ async function readInterviews(positions: readonly ScopedPosition[]): Promise<Upc
  */
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
-  const [positions, memberCount, ordersPage, withoutPhoto, notices] = await Promise.all([
-    readPositions(identity),
+  // The interviews need only which positions the lead reaches, so they start beside the counts.
+  const scoped = scopedPositions(identity);
+  const [positions, interviews, memberCount, ordersPage, withoutPhoto, notices] = await Promise.all([
+    readPositions(identity, scoped),
+    scoped.then(readInterviews),
     readActiveMemberCount(identity.divisionIds),
     databaseDivisionPages(identity).orders(),
     readMembersWithoutPhoto(identity.divisionIds),
     readNoticeAttention(identity, now),
   ]);
-  const interviews = await readInterviews(positions);
   const open = positions.filter((p) => p.open);
   const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
   // The figure counts the lead's own divisions' orders, though Orders shows the whole team (issue #233).
@@ -527,30 +562,38 @@ async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
  */
 async function departmentOverview(identity: Identity): Promise<DepartmentOverview> {
   const now = new Date();
-  const department = await readHeadDepartment(identity);
-  const divisionIds = department?.divisions.map((d) => d.id) ?? [];
   const db = getDb();
-  const [positions, team, orders, withoutPhoto, notices] = await Promise.all([
-    readPositions(identity),
-    divisionIds.length === 0
-      ? []
-      : db
-          .select({
-            member_id: roles.memberId,
-            division_id: roles.divisionId,
-            type: roles.type,
-            first_name: users.firstName,
-            last_name: users.lastName,
-            email: users.email,
-          })
-          .from(roles)
-          .innerJoin(users, eq(users.member, roles.memberId))
-          .where(and(inArray(roles.divisionId, divisionIds), isNull(roles.leavedAt))),
-    readOrdersIn(divisionIds),
-    readMembersWithoutPhoto(divisionIds),
+  // The positions, their interviews and the notices need nothing of the
+  // department, so they start beside its read; the rest wait for its divisions.
+  const scoped = scopedPositions(identity);
+  const departmentRead = readHeadDepartment(identity).then(async (department) => {
+    const divisionIds = department?.divisions.map((d) => d.id) ?? [];
+    const [team, orders, withoutPhoto] = await Promise.all([
+      divisionIds.length === 0
+        ? []
+        : db
+            .select({
+              member_id: roles.memberId,
+              division_id: roles.divisionId,
+              type: roles.type,
+              first_name: users.firstName,
+              last_name: users.lastName,
+              email: users.email,
+            })
+            .from(roles)
+            .innerJoin(users, eq(users.member, roles.memberId))
+            .where(and(inArray(roles.divisionId, divisionIds), isNull(roles.leavedAt))),
+      readOrdersIn(divisionIds),
+      readMembersWithoutPhoto(divisionIds),
+    ]);
+    return { department, team, orders, withoutPhoto };
+  });
+  const [positions, interviews, notices, { department, team, orders, withoutPhoto }] = await Promise.all([
+    readPositions(identity, scoped),
+    scoped.then(readInterviews),
     readNoticeAttention(identity, now),
+    departmentRead,
   ]);
-  const interviews = await readInterviews(positions);
   const open = positions.filter((p) => p.open);
   const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
   const waiting = waitingOrders(orders);
@@ -638,10 +681,9 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
     },
   ];
 
-  let roster: PersonalOverview["roster"] = null;
-  if (role?.divisionId != null) {
-    const db = getDb();
-    const rows = await db
+  const readRoster = async (): Promise<PersonalOverview["roster"]> => {
+    if (role?.divisionId == null) return null;
+    const rows = await getDb()
       .select({
         member_id: roles.memberId,
         type: roles.type,
@@ -652,7 +694,7 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
       .from(roles)
       .innerJoin(users, eq(users.member, roles.memberId))
       .where(and(eq(roles.divisionId, role.divisionId), isNull(roles.leavedAt)));
-    roster = divisionRoster(
+    return divisionRoster(
       { title: role.divisionName ?? "", department: role.departmentName ?? "" },
       rows.flatMap((r) =>
         r.member_id === null
@@ -661,11 +703,13 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
       ),
       identity.memberId,
     );
-  }
+  };
+  // The notices need nothing of the roster, so they are read beside it.
+  const [roster, notices] = await Promise.all([readRoster(), readNoticeAttention(identity, new Date())]);
 
   return {
     shape: "personal",
-    attention: await readNoticeAttention(identity, new Date()),
+    attention: notices,
     person: {
       name: identity.name,
       line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
@@ -733,18 +777,22 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
 }
 
 /**
- * The Members page: the whole team for the operations lead, and with every
- * member field for the team leader (boards 73 to 73c); for a division
- * lead one of their divisions, with the people waiting for Confirm NDA and the
- * people joining it (./database-team.ts).
+ * The Members page: the whole team with every member field for each
+ * full-access seat, the team leader, the operations lead and the IT lead alike
+ * (boards 73 to 73c, issue #418); for a division lead one of their divisions,
+ * with the people waiting for Confirm NDA and the people joining it
+ * (./database-team.ts). The operations lead and the IT lead keep the Team
+ * page panel's edits (board 46b); the team leader's rows offer none.
  */
 async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
-  if (identity.kind === "operations-lead") {
+  if (opensWholeTeam(identity)) {
     const snapshot = await readTeamSnapshot();
-    if (isTeamLeader(identity)) {
-      return { scope: "whole-team", ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }) };
-    }
-    return teamDirectory(rosterOf(snapshot), snapshot.org, identity.memberId);
+    const teamPageEdits = isTeamLeader(identity) ? null : rosterOf(snapshot).map((entry) => teamPageEditOf(entry, snapshot.org));
+    return {
+      scope: "whole-team",
+      teamPageEdits,
+      ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }),
+    };
   }
   return readDivisionMembers(identity, divisionId);
 }
@@ -800,13 +848,14 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     dismissNotice: (noticeId) => dismissNotice(identity, noticeId),
     sendHandOver: (input) => sendHandOver(identity, input),
     answerHandOver: (requestId, answer) => answerHandOver(identity, requestId, answer),
-    recruitment: getRecruitmentControl,
+    // The member this request already resolved, never the session a second time (issue #397).
+    recruitment: () => getRecruitmentControlFor(identity.memberId),
     setRecruitment: (next) =>
       switchRecruitment(next, {
         // Read on the server, from the caller's positions scope rows.
-        maySwitch: async () => canSwitchRecruitment(await getScopeInfoForCurrentUser("positions")),
+        maySwitch: async () => canSwitchRecruitment(await getScopeInfoForMember(identity.memberId, "positions")),
         save: saveRecruitment,
-        refresh: () => updateTag(PUBLIC_POSITIONS_CACHE_TAG),
+        refresh: () => refreshAfter("positions", updateTag),
       }),
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),

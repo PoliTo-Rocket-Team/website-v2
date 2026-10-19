@@ -100,8 +100,8 @@ import {
   type TeamPerson,
   type TeamSearch,
 } from "./division-edit";
-import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
-import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, teamPeopleOf, type TeamSnapshot } from "./team-database";
+import { refreshAfter } from "@/lib/cache-tags";
+import { readTeamSnapshot, recordsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -131,9 +131,9 @@ export function leadDivisionId(identity: DashboardIdentity): number | null {
  * else. Every Members write checks this actor, directly or through
  * `actingOn`.
  */
-async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
-  return actorOf(identity, org, (divisionId) => {
-    const division = org.divisions.find((d) => d.id === divisionId);
+async function readActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
+  return actorOf(identity, org, (divisionId, chart) => {
+    const division = chart.divisions.find((d) => d.id === divisionId);
     return division !== undefined && mayChange(identity, "members", { divisionId, departmentId: division.departmentId });
   });
 }
@@ -145,18 +145,35 @@ async function readActor(identity: DashboardIdentity, org: OrgChart): Promise<Te
  * decides; no write takes this actor, and the page's actions follow
  * `readActor` (issue #351).
  */
-async function readViewingActor(identity: DashboardIdentity, org: OrgChart): Promise<TeamActor | null> {
+async function readViewingActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
   return actorOf(identity, org, () => readsAsDivisionLead(identity));
 }
 
-/** The team or a head, as their roles say; else a division lead over the divisions their units cover that `leads` keeps. */
-async function actorOf(identity: DashboardIdentity, org: OrgChart, leads: (divisionId: number) => boolean): Promise<TeamActor | null> {
-  if (identity.memberId === null || isOffTeam(identity.kind)) return null;
-  if (identity.kind === "operations-lead") return { kind: "team" };
-  const rows = await getDb()
-    .select({ type: roles.type, dept_id: roles.deptId, division_id: roles.divisionId })
-    .from(roles)
-    .where(and(eq(roles.memberId, identity.memberId), isNull(roles.leavedAt)));
+/**
+ * The team or a head, as their roles say; else a division lead over the
+ * divisions their units cover that `leads` keeps. The org chart may still be
+ * on its way: the roles are read beside it, since they need nothing of it
+ * (issue #397).
+ */
+async function actorOf(
+  identity: DashboardIdentity,
+  orgRead: OrgChart | Promise<OrgChart>,
+  leads: (divisionId: number, org: OrgChart) => boolean,
+): Promise<TeamActor | null> {
+  const memberId = identity.memberId;
+  const decided: TeamActor | null | undefined =
+    memberId === null || isOffTeam(identity.kind) ? null : identity.kind === "operations-lead" ? { kind: "team" } : undefined;
+  // The chart is awaited on every path, so a failed read of it never goes unheard.
+  const [rows, org] = await Promise.all([
+    decided !== undefined || memberId === null
+      ? []
+      : getDb()
+          .select({ type: roles.type, dept_id: roles.deptId, division_id: roles.divisionId })
+          .from(roles)
+          .where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt))),
+    orgRead,
+  ]);
+  if (decided !== undefined) return decided;
   if (rows.some((r) => r.type === "president")) return { kind: "team" };
   const headOf = rows.flatMap((r) => {
     if (r.type !== "head") return [];
@@ -165,7 +182,7 @@ async function actorOf(identity: DashboardIdentity, org: OrgChart, leads: (divis
   });
   if (headOf.length > 0) return { kind: "head", departmentIds: [...new Set(headOf)] };
   // A grant across a department covers each of its divisions (issue #351).
-  const divisionIds = coveredDivisionIds(identity, org.divisions).filter(leads);
+  const divisionIds = coveredDivisionIds(identity, org.divisions).filter((id) => leads(id, org));
   return divisionIds.length === 0 ? null : { kind: "lead", divisionIds };
 }
 
@@ -305,6 +322,16 @@ function waitingPerson(row: WaitingRow): WaitingPerson {
  * Confirm NDA and the accepted applicants joining. A head of several
  * departments sees the first.
  */
+/** Each division's people joining and people waiting for Confirm NDA, every read at once. */
+function readPerDivision(divisionIds: readonly number[]) {
+  return Promise.all(
+    divisionIds.map(async (id) => {
+      const [joining, waiting] = await Promise.all([readJoining(id), readWaiting(id)]);
+      return { id, joining, waiting };
+    }),
+  );
+}
+
 async function readDepartmentMembers(
   identity: DashboardIdentity,
   actor: Extract<TeamActor, { kind: "head" }>,
@@ -313,7 +340,7 @@ async function readDepartmentMembers(
   const [departmentId] = actor.departmentIds;
   if (departmentId === undefined) return NO_MEMBERS;
   const divisionIds = snapshot.org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
-  const perDivision = await Promise.all(divisionIds.map(async (id) => ({ id, joining: await readJoining(id), waiting: await readWaiting(id) })));
+  const perDivision = await readPerDivision(divisionIds);
   const page = departmentMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -333,14 +360,11 @@ async function readDepartmentMembers(
  * positions. Null for a viewer who edits no structure.
  */
 export async function readTeamStructure(identity: DashboardIdentity): Promise<TeamStructure | null> {
-  const snapshot = await readTeamSnapshot();
-  const actor = await readActor(identity, snapshot.org);
+  const snapshotRead = readTeamSnapshot();
+  const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const ids = editableDivisionIds(actor, snapshot.org);
   if (actor === null || actor.kind === "lead") return null;
-  const [perDivision, openPositions] = await Promise.all([
-    Promise.all(ids.map(async (id) => ({ id, joining: await readJoining(id), waiting: await readWaiting(id) }))),
-    readOpenPositions(ids),
-  ]);
+  const [perDivision, openPositions] = await Promise.all([readPerDivision(ids), readOpenPositions(ids)]);
   return teamStructure({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -362,8 +386,8 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
  * grant at Can view shows the people and no action (issue #351).
  */
 export async function readDivisionMembers(identity: DashboardIdentity, divisionId: number | null): Promise<MemberDirectory> {
-  const snapshot = await readTeamSnapshot();
-  const viewing = await readViewingActor(identity, snapshot.org);
+  const snapshotRead = readTeamSnapshot();
+  const [snapshot, viewing] = await Promise.all([snapshotRead, readViewingActor(identity, snapshotRead.then((s) => s.org))]);
   if (viewing === null || viewing.kind === "team") return NO_MEMBERS;
   if (viewing.kind === "head") return readDepartmentMembers(identity, viewing, snapshot);
   const reach = reachOf(identity, viewing, snapshot.org);
@@ -455,7 +479,7 @@ async function rolesTheViewerChanges(identity: DashboardIdentity, actor: TeamAct
 const ROLE_TYPE: Readonly<Record<EditableRole, "lead" | "core">> = { "division-lead": "lead", member: "core" };
 
 function done(): true {
-  updateTag(TEAM_ROSTER_CACHE_TAG);
+  refreshAfter("team", updateTag);
   return true;
 }
 
@@ -1008,7 +1032,7 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
 }
 
 function refreshPositions() {
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
 }
 
 /**

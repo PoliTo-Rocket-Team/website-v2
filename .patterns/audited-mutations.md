@@ -17,7 +17,7 @@ made stale. Client components import the action functions directly.
    async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
      if (!(await reachablePositionIds(identity)).has(positionId)) throw new DashboardRefused(`position ${positionId}`);
      await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
-     updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+     refreshAfter("positions", updateTag);
    }
    ```
    ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts))
@@ -39,8 +39,10 @@ made stale. Client components import the action functions directly.
    returns the new id and its position code, so the drawer can name the saved role.
 
 5. **Invalidate the read tags.** After the write, call `updateTag` on every tag whose snapshot the
-   write changed, as `setPositionOpen` does above. The tag names come from the read module
-   ([app/actions/get-apply-positions.ts](../app/actions/get-apply-positions.ts)).
+   write changed, as `setPositionOpen` does above. A tag that more than one cached read carries
+   (positions, the team roster) lives in [lib/cache-tags.ts](../lib/cache-tags.ts), and the write
+   refreshes it by kind, `refreshAfter("positions", updateTag)`, from the same mapping the cached
+   reads take their tags from (issue #397).
 
 6. **Call the actions from the client.** The dashboard's client components import them from
    [app/dashboard/recruitment-actions.ts](../app/dashboard/recruitment-actions.ts), which checks the

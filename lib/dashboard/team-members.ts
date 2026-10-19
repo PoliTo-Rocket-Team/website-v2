@@ -235,7 +235,7 @@ function matchesPicks(person: TeamMember, picks: ColumnPicks, skip: TableFilter 
 }
 
 /** The people every column's ticks leave: within a column any ticked value matches, across columns all must. */
-export function withPicks(people: readonly TeamMember[], picks: ColumnPicks): TeamMember[] {
+export function withPicks<P extends TeamMember>(people: readonly P[], picks: ColumnPicks): P[] {
   return people.filter((p) => matchesPicks(p, picks, null));
 }
 

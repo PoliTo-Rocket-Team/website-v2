@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { OutreachPostEdit } from "@/components/dashboard/outreach-post-edit";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { todayInRome } from "@/lib/outreach";
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 // reach decides who opens it, as for every post.
 export default function NewOutreachPostPage() {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="editor" />}>
       <NewPost />
     </Suspense>
   );
@@ -33,7 +33,8 @@ async function NewPost() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/outreach/new");
   if (opening.kind === "account-unresolved") return null;
   if (!canReach(opening.data.viewer, "outreach")) notFound();
-  const tags = await opening.data.outreach.tags();
+  // Three independent reads, so they go out together (issue #397).
+  const [tags, published, projects] = await Promise.all([opening.data.outreach.tags(), publishedOutreach(), footerProjects()]);
   if (tags === null) notFound();
   return (
     <OutreachPostEdit
@@ -42,8 +43,8 @@ async function NewPost() {
       today={todayInRome()}
       tags={tags}
       neighbours={{}}
-      published={await publishedOutreach()}
-      footerProjects={await footerProjects()}
+      published={published}
+      footerProjects={projects}
     />
   );
 }

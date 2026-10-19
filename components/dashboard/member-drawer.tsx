@@ -5,19 +5,20 @@ import { ChevronDown, GraduationCap, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
 import { moveToAlumni, saveMember } from "@/app/dashboard/team-actions";
-import { checkDeparture, LEAVE_REASONS, LEAVE_REASON_LABELS, yearsLabel, type EditableRole, type MemberRow } from "@/lib/dashboard/team";
+import { memberDetailText } from "@/lib/dashboard/details";
+import { checkDeparture, LEAVE_REASONS, LEAVE_REASON_LABELS, yearsLabel, type EditableRole, type TeamPageEdit } from "@/lib/dashboard/team";
+import type { TeamMember } from "@/lib/dashboard/team-members";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 
-// The operations lead's member panel (board 46b): who the person is, the role
-// the Team page shows under their name, whether they lead their division, and
-// moving them to Alumni. Access is not here: the Access page is the only
-// place it is given or removed. A division lead's panel is board 61f
-// (./division-members.tsx). Where the data source stores no Team page
-// writes, or the row is the viewer's own, it shows the same facts with
-// nothing to change.
+// The Team page panel (board 46b), opened from Edit details on the whole-team
+// Members page for the operations lead and the IT lead (issue #418): the role
+// the Team page shows under the person's name, whether they lead their
+// division, and moving them to Alumni. Access is not here: the Access page is
+// the only place it is given or removed. A division page's Edit details is
+// board 61g (./member-panels.tsx).
 
 const ROLE_OPTIONS: readonly { value: EditableRole; label: string }[] = [
   { value: "member", label: "Member" },
@@ -26,57 +27,37 @@ const ROLE_OPTIONS: readonly { value: EditableRole; label: string }[] = [
 
 const LABEL = "mb-2 block text-[14px] font-medium text-prt-text";
 
-export function MemberDrawer({
-  row,
-  editable,
-  onClose,
-}: {
-  row: MemberRow | null;
-  editable: boolean;
-  onClose: () => void;
-}) {
+/** Who the panel is open for: the person as the whole team lists them, and what it changes for them. */
+export type TeamPageTarget = { readonly person: TeamMember; readonly edit: TeamPageEdit };
+
+export function TeamPageDrawer({ target, onClose }: { target: TeamPageTarget | null; onClose: () => void }) {
   // The panel keeps showing the last person while it closes.
-  const [shown, setShown] = useState<MemberRow | null>(row);
-  if (row !== null && row !== shown) setShown(row);
-  const person = row ?? shown;
-  return person === null ? null : (
-    <MemberPanel key={person.id} open={row !== null} row={person} editable={editable && !person.self} onClose={onClose} />
-  );
+  const [shown, setShown] = useState<TeamPageTarget | null>(target);
+  if (target !== null && target !== shown) setShown(target);
+  const current = target ?? shown;
+  return current === null ? null : <TeamPagePanel key={current.person.id} open={target !== null} target={current} onClose={onClose} />;
 }
 
-function editableRoleOf(row: MemberRow): EditableRole | null {
-  if (row.role === "member") return row.division === null ? null : "member";
-  return row.role === "division-lead" ? "division-lead" : null;
-}
-
-function MemberPanel({
-  open,
-  row,
-  editable,
-  onClose,
-}: {
-  open: boolean;
-  row: MemberRow;
-  editable: boolean;
-  onClose: () => void;
-}) {
-  const startRole = editableRoleOf(row);
-  const [role, setRole] = useState<EditableRole | null>(startRole);
-  const [title, setTitle] = useState(row.pageTitle ?? "");
+function TeamPagePanel({ open, target, onClose }: { open: boolean; target: TeamPageTarget; onClose: () => void }) {
+  const { person, edit } = target;
+  const [role, setRole] = useState<EditableRole | null>(edit.role);
+  const [title, setTitle] = useState(edit.pageTitle ?? "");
   const [asking, setAsking] = useState(false);
   const [pending, startTransition] = useTransition();
   const titleId = useId();
-  const firstName = row.name.split(" ")[0];
-  const facts = [row.program, row.study, `joined ${row.joined}`].filter(Boolean).join(" · ");
+  const firstName = person.name.split(" ")[0];
+  const facts = [memberDetailText(person.details, "programme"), memberDetailText(person.details, "level"), `joined ${person.since}`]
+    .filter(Boolean)
+    .join(" · ");
 
   const save = () =>
     startTransition(async () => {
-      const result = await saveMember(row.id, role, title.trim() === "" ? null : title);
+      const result = await saveMember(person.id, role, title.trim() === "" ? null : title);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      toast.success(`Saved ${row.name}`);
+      toast.success(`Saved ${person.name}`);
       onClose();
     });
 
@@ -86,24 +67,20 @@ function MemberPanel({
       onOpenChange={(next) => !next && onClose()}
       title="Member"
       footer={
-        editable ? (
-          <>
-            <DialogClose className={PANEL_GHOST_BUTTON}>Cancel</DialogClose>
-            <button type="button" onClick={save} disabled={pending} className={PANEL_PRIMARY_BUTTON}>
-              Save
-            </button>
-          </>
-        ) : (
-          <DialogClose className={`${PANEL_GHOST_BUTTON} col-span-2`}>Close</DialogClose>
-        )
+        <>
+          <DialogClose className={PANEL_GHOST_BUTTON}>Cancel</DialogClose>
+          <button type="button" onClick={save} disabled={pending} className={PANEL_PRIMARY_BUTTON}>
+            Save
+          </button>
+        </>
       }
     >
       <PanelBody className="flex flex-col">
         <div className="flex items-center gap-4">
-          <Avatar size="xl" accent={row.role !== "member"} />
+          <Avatar size="xl" accent={person.role !== "member"} photoUrl={person.photoUrl} />
           <div className="min-w-0">
-            <p className="truncate text-[18px] font-semibold">{row.name}</p>
-            <p className="truncate text-[13px] text-prt-muted">{row.email}</p>
+            <p className="truncate text-[18px] font-semibold">{person.name}</p>
+            <p className="truncate text-[13px] text-prt-muted">{person.signInEmail}</p>
             <p className="text-[12px] text-prt-muted">{facts}</p>
           </div>
         </div>
@@ -118,17 +95,14 @@ function MemberPanel({
               id={titleId}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              readOnly={!editable}
               maxLength={80}
-              className={`${inputClass()} pr-11 read-only:focus:border-white-10 read-only:focus:bg-white-5`}
+              className={`${inputClass()} pr-11`}
             />
-            {editable && (
-              <Pencil aria-hidden className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-            )}
+            <Pencil aria-hidden className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
           </div>
         </div>
 
-        {editable && startRole !== null && (
+        {edit.role !== null && (
           <div className="mt-6">
             <label className="relative block">
               <span className={LABEL}>Leads their division</span>
@@ -148,24 +122,22 @@ function MemberPanel({
           </div>
         )}
 
-        {editable && (
-          <section className="mt-10 rounded-xl border border-danger/40 bg-danger/[0.06] p-4 md:mt-auto">
-            <h2 className="text-[14px] font-semibold">Leaving the team</h2>
-            <p className="mt-2 text-[12px] leading-relaxed text-prt-muted">
-              Moves {firstName} to Alumni with the years on the team. The account stays; dashboard access ends.
-            </p>
-            <button
-              type="button"
-              onClick={() => setAsking(true)}
-              className="mt-4 inline-flex h-9 items-center rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              Move to alumni
-            </button>
-          </section>
-        )}
+        <section className="mt-10 rounded-xl border border-danger/40 bg-danger/[0.06] p-4 md:mt-auto">
+          <h2 className="text-[14px] font-semibold">Leaving the team</h2>
+          <p className="mt-2 text-[12px] leading-relaxed text-prt-muted">
+            Moves {firstName} to Alumni with the years on the team. The account stays; dashboard access ends.
+          </p>
+          <button
+            type="button"
+            onClick={() => setAsking(true)}
+            className="mt-4 inline-flex h-9 items-center rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            Move to alumni
+          </button>
+        </section>
       </PanelBody>
 
-      <AlumniDialog open={asking} onOpenChange={setAsking} person={row} onDone={onClose} />
+      <AlumniDialog open={asking} onOpenChange={setAsking} person={{ id: person.id, name: person.name, joined: person.since }} onDone={onClose} />
     </SidePanel>
   );
 }
