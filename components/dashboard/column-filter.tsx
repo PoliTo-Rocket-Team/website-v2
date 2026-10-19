@@ -12,43 +12,53 @@ import type { ColumnOption } from "@/lib/dashboard/column-filters";
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
+/** One field's ticks: every value with its count, as lib/dashboard/column-filters.ts's `optionsOf` orders them. */
+type FieldTicks = {
+  options: readonly ColumnOption[];
+  ticked: readonly string[];
+  onToggle: (value: string) => void;
+};
+
+/** A field of a column that filters more than one (the Applications Studies column: its program and its level). */
+export type ColumnFilterSection = FieldTicks & {
+  /** The field's name, shown over its ticks: "Program". */
+  title: string;
+};
+
+/** A column filters one field, or several, each under its name in the one popover. */
+type ColumnFields = (FieldTicks & { sections?: never }) | { sections: readonly ColumnFilterSection[] };
+
 /**
  * A column's filter (board 73c): a search, a tick per value with how many
  * hold it, the ticked ones first, then Clear and "N selected". Ticking
  * narrows the table at once. Not modal; it hangs under the header in a
  * portal, so the table's scroll does not clip it, and closes on Escape or an
- * outside press; the table closes it on a scroll.
+ * outside press; the table closes it on a scroll. A column over several
+ * fields keeps one button, and its popover lists each field under its name.
  */
 export function ColumnFilter({
   label,
   placeholder = `Search ${label.toLowerCase()}`,
-  tooltip,
-  options: all,
-  ticked,
-  onToggle,
   onClear,
   open,
   onOpenChange,
+  ...fields
 }: {
   /** The column's name: "Filter by role", the popover's title. */
   label: string;
   placeholder?: string;
-  /** A hover hint naming the filter, where one header carries two (the Applications Studies column). */
-  tooltip?: string;
-  /** Every value with its count, as lib/dashboard/column-filters.ts's `optionsOf` orders them. */
-  options: readonly ColumnOption[];
-  ticked: readonly string[];
-  onToggle: (value: string) => void;
+  /** Clears every field of the column. */
   onClear: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}) {
+} & ColumnFields) {
   const trigger = useRef<HTMLButtonElement>(null);
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
   const [search, setSearch] = useState("");
-  const options = all.filter((o) => o.value.toLowerCase().includes(search.trim().toLowerCase()));
-  const on = options.filter((o) => ticked.includes(o.value));
-  const off = options.filter((o) => !ticked.includes(o.value));
+  const sections: readonly (FieldTicks & { title: string | null })[] =
+    fields.sections ?? [{ title: null, options: fields.options, ticked: fields.ticked, onToggle: fields.onToggle }];
+  const tickedCount = sections.reduce((n, s) => n + s.ticked.length, 0);
+  const matches = (o: ColumnOption) => o.value.toLowerCase().includes(search.trim().toLowerCase());
 
   const change = (next: boolean) => {
     if (next && trigger.current) {
@@ -59,15 +69,15 @@ export function ColumnFilter({
     onOpenChange(next);
   };
 
-  const row = (option: ColumnOption) => {
-    const checked = ticked.includes(option.value);
+  const row = (field: FieldTicks) => (option: ColumnOption) => {
+    const checked = field.ticked.includes(option.value);
     return (
       <li key={option.value} className="flex">
         <button
           type="button"
           role="checkbox"
           aria-checked={checked}
-          onClick={() => onToggle(option.value)}
+          onClick={() => field.onToggle(option.value)}
           className={`flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors duration-300 ease-out hover:bg-white-5 ${FOCUS} ${
             checked ? "text-prt-text" : "text-text-2"
           }`}
@@ -92,10 +102,9 @@ export function ColumnFilter({
       <DialogPrimitive.Trigger
         ref={trigger}
         aria-label={`Filter by ${label.toLowerCase()}`}
-        title={tooltip}
         onClick={(e) => e.stopPropagation()}
         className={`flex h-5 w-5 items-center justify-center rounded transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS} ${
-          ticked.length > 0 || open ? "text-accent" : "text-prt-muted"
+          tickedCount > 0 || open ? "text-accent" : "text-prt-muted"
         }`}
       >
         <ListFilter aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
@@ -124,9 +133,27 @@ export function ColumnFilter({
               />
             </label>
             <div className="max-h-[300px] overflow-y-auto">
-              {on.length > 0 && <ul className="pb-1">{on.map(row)}</ul>}
-              {on.length > 0 && off.length > 0 && <div aria-hidden className="-mx-1.5 mb-1 h-px bg-hairline" />}
-              {off.length > 0 && <ul>{off.map(row)}</ul>}
+              {sections.map((field, i) => {
+                const options = field.options.filter(matches);
+                if (field.title !== null && options.length === 0) return null;
+                const on = options.filter((o) => field.ticked.includes(o.value));
+                const off = options.filter((o) => !field.ticked.includes(o.value));
+                return (
+                  <div key={field.title ?? label} role={field.title === null ? undefined : "group"} aria-label={field.title ?? undefined}>
+                    {field.title !== null && (
+                      <p
+                        aria-hidden
+                        className={`px-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-prt-muted ${i > 0 ? "mt-1 border-t border-hairline pt-2.5" : "pt-1.5"}`}
+                      >
+                        {field.title}
+                      </p>
+                    )}
+                    {on.length > 0 && <ul className="pb-1">{on.map(row(field))}</ul>}
+                    {on.length > 0 && off.length > 0 && <div aria-hidden className="-mx-1.5 mb-1 h-px bg-hairline" />}
+                    {off.length > 0 && <ul>{off.map(row(field))}</ul>}
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-1.5 flex items-center justify-between border-t border-hairline px-1.5 pb-1 pt-2.5">
               <button
@@ -136,7 +163,7 @@ export function ColumnFilter({
               >
                 Clear
               </button>
-              <span className="text-[12px] text-prt-muted">{ticked.length} selected</span>
+              <span className="text-[12px] text-prt-muted">{tickedCount} selected</span>
             </div>
           </DialogPrimitive.Content>
         )}

@@ -28,7 +28,8 @@ import {
 import { divisionLabel } from "@/lib/dashboard/team";
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Chips } from "./division-chips";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";

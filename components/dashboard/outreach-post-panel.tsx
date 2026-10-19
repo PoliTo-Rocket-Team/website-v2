@@ -16,8 +16,9 @@ import {
 } from "@/lib/outreach-types";
 import { galleryProblems } from "@/lib/gallery-fields";
 import { CONTENT_FOCUS, RowMenu, TextField, useDragOrder, type DragRow } from "./content-parts";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Toggle } from "./controls";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { EditPanel, ErrorLine, PanelSection, usePanelScroll } from "./edit-panel";
 import { Field, GroupLabel, inputClass } from "./field";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";

@@ -56,7 +56,8 @@ import { documentsLine, type ApplicationEntry, type ApplicationsPage, type Other
 import { divisionLabel } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FilterMenu, SearchField, Segmented } from "./controls";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
 import { InterviewDialog } from "./interview-dialog";
@@ -125,30 +126,32 @@ export function ApplicationsView({
     return () => window.removeEventListener("scroll", close);
   }, [filterOpen]);
 
-  /** A header name and its column filters: the Studies column carries two, its program and its level. */
-  const header = (name: string, filters: readonly ApplicationFilter[]) => (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span aria-hidden="true" className="shrink-0 whitespace-nowrap">
-        {name}
+  /** A header name and its one column filter: the Studies column's holds two fields, its program and its level. */
+  const header = (name: string, [first, ...more]: readonly [ApplicationFilter, ...ApplicationFilter[]]) => {
+    const ticks = (column: ApplicationFilter) => ({
+      options: applicationColumnOptions(rows, picks, column),
+      ticked: picks[column] ?? [],
+      onToggle: (value: string) => setPicks((p) => toggleApplicationPick(p, column, value)),
+    });
+    const fields =
+      more.length === 0
+        ? ticks(first)
+        : { sections: [first, ...more].map((column) => ({ title: APPLICATION_FILTER_LABELS[column], ...ticks(column) })) };
+    return (
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span aria-hidden="true" className="shrink-0 whitespace-nowrap">
+          {name}
+        </span>
+        <ColumnFilter
+          label={more.length === 0 ? APPLICATION_FILTER_LABELS[first] : name}
+          {...fields}
+          onClear={() => setPicks((p) => [first, ...more].reduce(clearApplicationPicks, p))}
+          open={filterOpen === first}
+          onOpenChange={(next) => setFilterOpen(next ? first : null)}
+        />
       </span>
-      {filters.map((column) => {
-        const label = APPLICATION_FILTER_LABELS[column];
-        return (
-          <ColumnFilter
-            key={column}
-            label={label}
-            tooltip={filters.length > 1 ? `Filter by ${label.toLowerCase()}` : undefined}
-            options={applicationColumnOptions(rows, picks, column)}
-            ticked={picks[column] ?? []}
-            onToggle={(value) => setPicks((p) => toggleApplicationPick(p, column, value))}
-            onClear={() => setPicks((p) => clearApplicationPicks(p, column))}
-            open={filterOpen === column}
-            onOpenChange={(next) => setFilterOpen(next ? column : null)}
-          />
-        );
-      })}
-    </span>
-  );
+    );
+  };
 
   /** Shows the step at once, then saves it; a refusal puts the row back and says why. */
   const move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =>

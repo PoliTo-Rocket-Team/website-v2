@@ -16,7 +16,8 @@ import {
 } from "@/lib/dashboard/new-position";
 import type { PositionRow } from "@/lib/dashboard/recruitment";
 import { Toggle } from "./controls";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Drawer } from "./drawer";
 import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 

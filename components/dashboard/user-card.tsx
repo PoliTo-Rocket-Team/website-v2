@@ -11,7 +11,8 @@ import { TEST_VIEWER_LABELS, TEST_VIEWERS, testViewerOf, type DashboardViewer } 
 import { testDeveloperSignInHref } from "@/lib/test-developer";
 import { useSignOut } from "@/components/use-sign-out";
 import { Avatar } from "./avatar";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const ITEM =
   "flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] outline-none transition-colors data-[highlighted]:bg-white-5";
