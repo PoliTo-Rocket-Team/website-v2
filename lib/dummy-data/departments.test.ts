@@ -93,11 +93,11 @@ test("Close department moves each division with its people and closes the empty 
   const closer = pages("operations-lead", edits);
   const refused = await closer.writes.closeDepartment(AERODYNAMICS, {
     divisions: [{ divisionId: MISSION_ANALYSIS, action: "close" }, ...divisions.slice(1)],
-    head: "advisor",
+    head: "leave",
   });
   assert.equal(refused.ok, false, "a division with people in it can only move");
 
-  assert.deepEqual(await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" }), { ok: true, value: null });
+  assert.deepEqual(await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "leave" }), { ok: true, value: null });
   const after = await structureOf(closer.kept());
   assert.ok(!after.departments.some((d) => d.id === AERODYNAMICS), "the department is closed");
   const structures = after.departments.find((d) => d.id === STRUCTURES)!;
@@ -115,22 +115,18 @@ test("Close department is refused while nothing is picked for the head, and noth
   const { edits, divisions } = await aerodynamicsToClose();
   const closer = pages("operations-lead", edits);
   const refused = await closer.writes.closeDepartment(AERODYNAMICS, { divisions });
-  assert.deepEqual(refused, { ok: false, error: "Choose what happens to the head: Become an advisor or Leave the team." });
+  assert.deepEqual(refused, { ok: false, error: "Choose what happens to the head: Leave the team." });
   assert.equal(closer.kept(), edits);
 });
 
-test("Become an advisor: the head of a closed department stays on the team with the Advisor role, off Alumni", async () => {
+test("Close department offers its head no Become an advisor: no unit is left, and nothing is saved (#441)", async () => {
   const { edits, divisions } = await aerodynamicsToClose();
   const closer = pages("operations-lead", edits);
-  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" })).ok);
-  const members = await pages("team-leader", closer.kept()).view.members();
-  assert.ok(members.scope === "whole-team");
-  const chiara = members.people.find((p) => p.id === CHIARA);
-  assert.deepEqual([chiara?.roleLabel, chiara?.departmentIds, chiara?.divisionIds], ["Advisor", [], []], "in no department and no division");
-  assert.ok(!(await pages("operations-lead", closer.kept()).view.alumni()).rows.some((a) => a.key === `m${CHIARA}`), "not on Alumni");
+  assert.equal((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" })).ok, false);
+  assert.equal(closer.kept(), edits);
 });
 
-test("Become an advisor removes every access row the head held", async () => {
+test("Leave the team ends every access row the closed department's head held", async () => {
   const { edits, divisions } = await aerodynamicsToClose();
   const holds = (team: TeamEdits) => {
     const access = dummyAccessPage("operations-lead", personFor["operations-lead"], editedRoster(team))!;
@@ -138,9 +134,8 @@ test("Become an advisor removes every access row the head held", async () => {
   };
   assert.ok(holds(edits), "the head holds their department's access before the close");
   const closer = pages("operations-lead", edits);
-  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "advisor" })).ok);
+  assert.ok((await closer.writes.closeDepartment(AERODYNAMICS, { divisions, head: "leave" })).ok);
   assert.equal(holds(closer.kept()), false, "no access is left");
-  assert.deepEqual(editedRoster(closer.kept()).find((e) => e.id === CHIARA)?.access, []);
 });
 
 test("Leave the team: the head of a closed department leaves the team and appears on Alumni", async () => {

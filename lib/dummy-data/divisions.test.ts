@@ -172,6 +172,25 @@ test("closing an empty division takes it off the chart, closes its open position
   assert.ok(!access.grants.some((g) => g.place.kind === "division" && g.place.division.id === OPTIMIZATION));
 });
 
+test("closing a division whose only one left is an advisor keeps them in its department with the Advisor role (#441)", async () => {
+  // Flight Dynamics opens with Anna Villa (13) as lead; Sara Conti (7) replaces her, and Anna becomes its advisor.
+  const h = head();
+  const created = await h.writes.createDivision(1, { name: "Flight Dynamics", code: "FD", newLeads: [13], oldLeads: [], members: [], emails: [] });
+  assert.ok(created.ok);
+  const handed = head(h.kept());
+  const replaced = { name: "Flight Dynamics", code: "FD", newLeads: [7], oldLeads: [{ personId: 13, via: "replaced", outcome: "advisor" }], members: [], emails: [] };
+  assert.deepEqual(await handed.writes.saveDivision(created.value, replaced), { ok: true, value: null });
+  const emptied = head(handed.kept());
+  assert.equal(await emptied.writes.removeFromDivision(7, created.value), true);
+  const tab = (await tabOf(emptied.kept(), created.value))!;
+  assert.deepEqual(tab.people.map((p) => [p.id, p.advisor]), [[13, true]], "only the advisor is left");
+
+  const closer = head(emptied.kept());
+  assert.deepEqual(await closer.writes.closeDivision(created.value), { ok: true, value: null }, "an advisor does not keep it open");
+  assert.deepEqual(closer.kept().advisors[13], { place: { kind: "department", departmentId: 1 }, access: "ends" }, "stays in the department with the Advisor role");
+  assert.equal(closer.kept().movedToAlumni[13], undefined, "still on the team");
+});
+
 test("a closed division never opens again: a save on it is refused, even with a lead (#251)", async () => {
   const h = head(NO_EDITS);
   const saved = await h.writes.saveDivision(WIND_TUNNEL, { ...keep, name: "Wind Tunnel", code: "WT", newLeads: [13] });

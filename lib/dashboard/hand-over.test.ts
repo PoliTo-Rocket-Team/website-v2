@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { TeamPerson } from "./division-edit";
 import {
+  advising,
+  advisorAfterDivisionCloses,
+  advisorOptionDetail,
+  advisorsStayLine,
+  BECOME_AN_ADVISOR,
   checkPromotion,
   checkTeamLeaderHandOver,
+  CLOSING_HEAD_OUTCOMES,
   mayHandOverTeamLeader,
   planTeamLeaderHandOver,
   promotingLead,
   steppingDown,
+  steppingDownLine,
   type HandOverViewer,
 } from "./hand-over";
 import { decideRightOf } from "./orders";
@@ -86,6 +94,42 @@ test("after the hand-over the new person is the team leader seat; the former one
   const former = viewerStandingOf({ scopes: [{ scope: "org", target: "all", level: "edit" }], activeRoles: [role("advisor")] });
   assert.deepEqual(former, { kind: "operations-lead", seat: null, siteContent: false, approveOrders: false }, "full access, from the access row; no Approve orders grant");
   assert.equal(decideRightOf({ teamLeader: isTeamLeader(former), approveOrders: false }), null, "orders are the new team leader's");
+});
+
+// Issue #441 (Owner decision, 2026-10-19): "Become an advisor" ends the lead or
+// head role and keeps the person in the same unit with the Advisor role, on
+// every path, in one wording; it never touches the Team page's advisory board.
+
+test("Become an advisor is one rule: a lead stays in the division, a head in the department, the team leader team-wide", () => {
+  assert.deepEqual(advising({ kind: "lead", divisionId: 1 }), steppingDown({ kind: "lead", divisionId: 1 }, "advisor"));
+  assert.deepEqual(advising({ kind: "head", departmentId: 1 }), steppingDown({ kind: "head", departmentId: 1 }, "advisor"));
+  assert.deepEqual(advising({ kind: "team-leader" }), steppingDown({ kind: "team-leader" }, "advisor"));
+  // A closing division's advisor stays in its department; a closing department offers its head only Leave the team.
+  assert.deepEqual(advisorAfterDivisionCloses(1), { kind: "department", departmentId: 1 });
+  assert.deepEqual([...CLOSING_HEAD_OUTCOMES], ["leave"]);
+});
+
+test("every drawer and dialog words Become an advisor the same way, for the editor or for the person stepping down", () => {
+  assert.equal(BECOME_AN_ADVISOR, "Become an advisor");
+  assert.equal(advisorOptionDetail({ kind: "lead", divisionId: 1 }, "Mission Analysis", "they"), "Stays in Mission Analysis with the Advisor role; their access ends");
+  assert.equal(advisorOptionDetail({ kind: "head", departmentId: 1 }, "Aerodynamics", "they"), "Stays in Aerodynamics with the Advisor role; their access ends");
+  assert.equal(advisorOptionDetail({ kind: "lead", divisionId: 1 }, "Mission Analysis", "you"), "Stay in Mission Analysis with the Advisor role; your access ends");
+  assert.equal(
+    advisorOptionDetail({ kind: "team-leader" }, null, "you"),
+    "Stay in the team with the Advisor role and keep your access; the new Team Leader can change it in Access",
+  );
+  // The confirm line is the same words, in the sentence that names them.
+  assert.equal(steppingDownLine(steppingDown({ kind: "head", departmentId: 1 }, "advisor"), "Aerodynamics"), "stays in Aerodynamics with the Advisor role; their access ends");
+  assert.equal(advisorsStayLine(["Marco Bianchi"], "Aerodynamics"), "Marco Bianchi stays in Aerodynamics with the Advisor role.");
+  assert.equal(advisorsStayLine(["Marco Bianchi", "Sara Conti", "Luca Neri"], "Aerodynamics"), "Marco Bianchi, Sara Conti and Luca Neri stay in Aerodynamics with the Advisor role.");
+});
+
+test("no hand-over, replacement or close path writes the Team page's advisory board: it is edited by hand only", () => {
+  // Both data sources' hand-over, replace and close writes live in these two files; the board is `team_page_advisors`.
+  for (const file of ["./database-team.ts", "../dummy-data/team-pages.ts"]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /teamPageAdvisor|team_page_advisor|database-team-advisors|AdvisorStore|advisorEditor/, file);
+  }
 });
 
 test("an advisor is never counted as a lead or a head", () => {

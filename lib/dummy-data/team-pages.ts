@@ -5,7 +5,9 @@ import { DashboardRefused, type DashboardData, type TeamWrites } from "@/lib/das
 import { departmentMembers } from "@/lib/dashboard/department-members";
 import {
   ADVISOR_TITLE,
+  advisorAfterDivisionCloses,
   checkTeamLeaderHandOver,
+  advising,
   planTeamLeaderHandOver,
   type AdvisorPlace,
   type SteppingDown,
@@ -403,6 +405,12 @@ function withAdvisor(edits: TeamEdits, personId: number, step: Extract<SteppingD
   return { ...edits, advisors: { ...edits.advisors, [personId]: advisor } };
 }
 
+/** Whether someone's Advisor role is kept on the division. */
+function advisesIn(edits: TeamEdits, personId: number, divisionId: number): boolean {
+  const place = edits.advisors[personId]?.place;
+  return place?.kind === "division" && place.divisionId === divisionId;
+}
+
 /**
  * Someone who leaves the team from a structure edit or a hand-over (an old
  * lead's or a closed department's head's "Leave the team"): moved to Alumni
@@ -515,6 +523,7 @@ function recordOf(entry: RosterEntry, edits: TeamEdits): PersonRecord {
     memberships,
     beyondDivisions: beyondOf(entry, edits),
     titles,
+    advising: memberships.flatMap((m) => (advisesIn(edits, entry.id, m.divisionId) ? [m.divisionId] : [])),
     details: savedDetails ?? addedDetails ?? (person ? dummyMemberDetails(person) : NO_MEMBER_DETAILS),
     nda: person ? dummyNda(person) : confirmation ? { signedOn: confirmation.on, confirmedBy: confirmer } : null,
   };
@@ -626,7 +635,7 @@ function writesFor(
     // A replaced lead stays in the division with the Advisor role, and their access ends (issue #253).
     for (const id of plan.advise) {
       change(id, (c) => ({ ...setRole("member")(c), titles: { ...c.titles, [divisionId]: ADVISOR_TITLE } }));
-      next = withAdvisor(next, id, { kind: "advisor", place: { kind: "division", divisionId }, access: "ends" });
+      next = withAdvisor(next, id, advising({ kind: "lead", divisionId }));
     }
     plan.leaveDivision.forEach((id) => change(id, leave));
     for (const id of plan.leaveTeam) {
@@ -684,17 +693,27 @@ function writesFor(
     },
     async closeDivision(divisionId) {
       if (actor === null) return refused("Only a department head or the team leader closes a division.");
-      const counted = { people: team.filter((e) => isIn(e.placement, divisionId)).length, waiting: waitingIn(edits, divisionId).length };
+      // An advisor in the division does not keep it open: they stay in its department (issue #441).
+      const advisors = team.filter((e) => isIn(e.placement, divisionId) && advisesIn(edits, e.id, divisionId)).map((e) => e.id);
+      const counted = { people: team.filter((e) => isIn(e.placement, divisionId)).length - advisors.length, waiting: waitingIn(edits, divisionId).length };
       const refusal = closeRefusal(actor, org, divisionId, counted);
       if (refusal !== null) return refused(refusal);
       const division = org.divisions.find((d) => d.id === divisionId)!;
-      await save({
+      let next: TeamEdits = {
         ...edits,
         divisions: {
           ...edits.divisions,
           [divisionId]: { name: division.name, code: division.code ?? null, departmentId: division.departmentId, closedOn: TODAY },
         },
-      });
+      };
+      for (const id of advisors) {
+        const c = next.members[id] ?? changeOf(id);
+        const joined = { ...c.joined };
+        delete joined[divisionId];
+        next = { ...next, members: { ...next.members, [id]: { ...c, joined, left: [...(c.left ?? []), divisionId] } } };
+        next = withAdvisor(next, id, { kind: "advisor", place: advisorAfterDivisionCloses(division.departmentId), access: edits.advisors[id]!.access });
+      }
+      await save(next);
       return written(null);
     },
     async createDepartment(input) {
@@ -752,9 +771,8 @@ function writesFor(
         divisions: moved,
         departments: { ...edits.departments, [departmentId]: { ...departmentEdit(departmentId), closedOn: TODAY } },
       };
-      // The department closes, so its head's Advisor role sits on the whole team, and their access ends.
-      for (const id of head?.outcome === "advisor" ? head.personIds : []) next = withAdvisor(next, id, { kind: "advisor", place: { kind: "team" }, access: "ends" });
-      for (const id of head?.outcome === "leave" ? head.personIds : []) {
+      // The department closes, so its head leaves the team (Owner decision, 2026-10-19): no unit is left to advise in.
+      for (const id of head?.steppingDown.kind === "leave" ? head.personIds : []) {
         const left = leftTeam(next, id);
         if (typeof left === "string") return refused(left);
         next = left;

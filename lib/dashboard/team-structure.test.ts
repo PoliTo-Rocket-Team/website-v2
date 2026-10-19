@@ -31,6 +31,7 @@ function record(id: number, name: string, list: [number, "lead" | "member"][], b
     memberships: membershipsOf(list.map(([divisionId, role]) => ({ divisionId, role, since: "2024-10-01" }))),
     beyondDivisions: beyond,
     titles: {},
+    advising: [],
     details: NO_MEMBER_DETAILS,
     nda: null,
   };

@@ -308,6 +308,7 @@ export function recordsOf(snapshot: TeamSnapshot): PersonRecord[] {
       memberships: membershipsIn(entry.placement),
       beyondDivisions: active.flatMap((role) => roleBeyondDivisions(roleSeat(role), snapshot.org) ?? []),
       titles,
+      advising: active.flatMap((role) => (role.type === "advisor" && role.division_id !== null ? [role.division_id] : [])),
       details: detailsOf(person),
       nda:
         person.nda_signed_at === null

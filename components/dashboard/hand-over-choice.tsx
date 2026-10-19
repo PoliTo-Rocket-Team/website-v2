@@ -1,13 +1,14 @@
 "use client";
 
 import { Lock } from "lucide-react";
-import type { HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { advisorOptionDetail, BECOME_AN_ADVISOR, type HandedRole, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { Permission } from "@/lib/dashboard/team";
 
 // The one-of choice the structure panels ask about the person stepping down
 // (issue #253): "What happens to Marco?" on lead replace (board 68b4) and
 // Change head (77e), and "What you do next" on the Team Leader box (77i).
-// The rule behind each option is `steppingDown` (lib/dashboard/hand-over.ts).
+// The rule behind each option is `steppingDown`, and "Become an advisor" reads
+// its one wording there too (lib/dashboard/hand-over.ts, issue #441).
 
 const FOCUS_RING = "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
 
@@ -86,6 +87,7 @@ export function RadioChoice<T extends string>({
 export function HandOverChoice({
   name,
   person,
+  handed,
   unit,
   value,
   leave,
@@ -94,7 +96,9 @@ export function HandOverChoice({
   name: string;
   /** Whose next step it is: "Marco Bianchi". */
   person: string;
-  /** Where they stay as an advisor: "Mission Analysis", "Aerodynamics". */
+  /** The role they hand over: an advisor stays in its unit (`advising`). */
+  handed: HandedRole;
+  /** That unit's name: "Mission Analysis", "Aerodynamics". */
   unit: string;
   value: HandOverOutcome | null;
   /** Whether this editor may move them to Alumni (`mayLeaveTeam`). */
@@ -108,7 +112,7 @@ export function HandOverChoice({
       value={value}
       onChange={onChange}
       options={[
-        { value: "advisor", title: "Become an advisor", detail: `Stays in ${unit} as an advisor; their access ends` },
+        { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorOptionDetail(handed, unit, "they") },
         { value: "leave", title: "Leave the team", detail: "Moves to Alumni; their access ends", danger: true, permission: leave },
       ]}
     />

@@ -12,7 +12,7 @@ import {
   storedDepartmentName,
   type DivisionFate,
 } from "@/lib/dashboard/department-edit";
-import { steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { CLOSING_HEAD_OUTCOMES, steppingDown, steppingDownLine, type ClosingHeadOutcome, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { DEPARTMENT_KINDS, divisionLabel, type DepartmentKind, type OrgChart } from "@/lib/dashboard/team";
 import type { StructureDepartment, StructureDivision, TeamStructure } from "@/lib/dashboard/team-structure";
@@ -487,6 +487,7 @@ function EditDepartment({
                 <HandOverChoice
                   name={`head-${department.id}`}
                   person={head.name}
+                  handed={{ kind: "head", departmentId: department.id }}
                   unit={stored}
                   value={headOutcome}
                   leave={{ allowed: true }}
@@ -590,9 +591,10 @@ function inDivision(division: StructureDivision): number {
 
 /**
  * Board 77f: each division moves to another department or, when empty,
- * closes, and the head becomes an advisor or leaves the team, with neither
- * picked at first (Owner decision, 2026-10-16). Close department stays
- * disabled until every division and the head have a choice.
+ * closes, and the head leaves the team: an advisor stays in their unit, and
+ * no unit is left (Owner decision, 2026-10-19). Nothing is picked at first
+ * (Owner decision, 2026-10-16), so Close department stays disabled until
+ * every division and the head have a choice.
  */
 function CloseDepartment({
   open,
@@ -608,7 +610,7 @@ function CloseDepartment({
   const [fates, setFates] = useState<Readonly<Record<number, Fate>>>(() =>
     Object.fromEntries(department.divisions.flatMap((d) => (inDivision(d) > 0 ? [[d.id, { action: "move", to: null } satisfies Fate]] : []))),
   );
-  const [headOutcome, setHeadOutcome] = useState<HandOverOutcome | null>(null);
+  const [headOutcome, setHeadOutcome] = useState<ClosingHeadOutcome | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const others = structure.departments.filter((d) => d.id !== department.id);
@@ -646,8 +648,7 @@ function CloseDepartment({
     const label = divisionLabel(department.divisions.find((d) => d.id === f.divisionId)?.name ?? "");
     return f.action === "move" ? `${label} moves to ${nameOf(f.to)}, with its people, leads and open positions.` : `${label} closes, and its open positions close.`;
   });
-  if (head && headOutcome === "advisor") lines.push(`${head.name} stops being Head of ${department.name} and stays on the team as an Advisor, in no department or division; their access ends.`);
-  if (head && headOutcome === "leave") lines.push(`${head.name} leaves the team: every role they hold ends and they move to Alumni.`);
+  if (head && headOutcome !== null) lines.push(`${head.name} ${steppingDownLine(steppingDown({ kind: "head", departmentId: department.id }, headOutcome), null)}.`);
 
   return (
     <SidePanel
@@ -702,16 +703,14 @@ function CloseDepartment({
                 <span className="shrink-0 text-[13px] text-prt-muted">Head of {department.name}</span>
               </div>
               <div role="group" aria-label={`What happens to ${head.name}`} className="mt-3 flex rounded-lg border border-hairline bg-panel/60 p-0.5">
-                <button type="button" aria-pressed={headOutcome === "advisor"} onClick={() => setHeadOutcome("advisor")} className={choiceClass(headOutcome === "advisor")}>
-                  Become an advisor
-                </button>
-                <button type="button" aria-pressed={headOutcome === "leave"} onClick={() => setHeadOutcome("leave")} className={choiceClass(headOutcome === "leave")}>
-                  Leave the team
-                </button>
+                {CLOSING_HEAD_OUTCOMES.map((outcome) => (
+                  <button key={outcome} type="button" aria-pressed={headOutcome === outcome} onClick={() => setHeadOutcome(outcome)} className={choiceClass(headOutcome === outcome)}>
+                    Leave the team
+                  </button>
+                ))}
               </div>
               <p className="mt-2.5 text-[12px] leading-relaxed text-prt-muted">
-                Pick one before you close. Become an advisor: stays in the team with the Advisor role, in no department or division; their access ends. Leave the
-                team: moves to Alumni.
+                Pick it before you close. Leave the team: moves to Alumni. The department closes, so no unit is left to stay in as an advisor.
               </p>
             </div>
           </section>

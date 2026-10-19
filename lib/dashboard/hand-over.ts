@@ -53,7 +53,14 @@ export type SteppingDown =
  * team leader keeps theirs.
  */
 export function steppingDown(handed: HandedRole, outcome: HandOverOutcome): SteppingDown {
-  if (outcome === "leave") return { kind: "leave" };
+  return outcome === "leave" ? { kind: "leave" } : advising(handed);
+}
+
+/** What "Become an advisor" makes of whoever hands over `handed`: the advisor half of `steppingDown`. */
+export type Advising = Extract<SteppingDown, { kind: "advisor" }>;
+
+/** "Become an advisor" for whoever hands over `handed`: an Advisor role in the same unit (`steppingDown`). */
+export function advising(handed: HandedRole): Advising {
   switch (handed.kind) {
     case "team-leader":
       return { kind: "advisor", place: { kind: "team" }, access: "keeps-full-access" };
@@ -64,11 +71,71 @@ export function steppingDown(handed: HandedRole, outcome: HandOverOutcome): Step
   }
 }
 
-/** "stays in the team as an Advisor in Aerodynamics; their access ends": what a confirm says becomes of them. */
+/** "Leave the team", the one outcome Close department offers its head. */
+export type ClosingHeadOutcome = Extract<HandOverOutcome, "leave">;
+
+/**
+ * What Close department offers its head (Owner decision, 2026-10-19): only
+ * "Leave the team". An Advisor role stays in the unit the role was held in,
+ * and a closing department leaves no unit to stay in.
+ */
+export const CLOSING_HEAD_OUTCOMES = ["leave"] as const satisfies readonly ClosingHeadOutcome[];
+
+/**
+ * Where an Advisor role kept on a division goes when the division closes
+ * (Owner decision, 2026-10-19): the advisor stays in the division's
+ * department, still with the Advisor role.
+ */
+export function advisorAfterDivisionCloses(departmentId: number): AdvisorPlace {
+  return { kind: "department", departmentId };
+}
+
+// One wording for "Become an advisor" (issue #441). Every drawer and dialog
+// that offers it, and every confirm that says what it does, reads it here.
+
+/** The option's title, in every drawer and dialog that offers it. */
+export const BECOME_AN_ADVISOR = "Become an advisor";
+
+/** Who the wording speaks to: the person stepping down ("you"), or the editor about them ("they"). */
+export type Voice = "you" | "they";
+
+/** "stays in Aerodynamics with the Advisor role": the one phrase every wording below is built on. */
+function staysWithAdvisorRole(where: string, verb: "stay" | "stays"): string {
+  return `${verb} in ${where} with the Advisor role`;
+}
+
+/**
+ * "Marco Bianchi stays in Aerodynamics with the Advisor role.": what Close
+ * division says of the advisors in it, who stay in its department
+ * (`advisorAfterDivisionCloses`).
+ */
+export function advisorsStayLine(names: readonly string[], department: string): string {
+  const who = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${who} ${staysWithAdvisorRole(department, names.length === 1 ? "stays" : "stay")}.`;
+}
+
+function advisorWords(step: Advising, unit: string | null, voice: Voice): string {
+  const where = step.place.kind === "team" || unit === null ? "the team" : unit;
+  const stays = staysWithAdvisorRole(where, voice === "you" ? "stay" : "stays");
+  if (step.access === "ends") return `${stays}; ${voice === "you" ? "your" : "their"} access ends`;
+  const keeps = voice === "you" ? "keep your access" : "keeps their access";
+  return `${stays} and ${keeps}; the new Team Leader can change it in Access`;
+}
+
+/**
+ * The detail under "Become an advisor" for whoever hands over `handed`:
+ * "Stays in Aerodynamics with the Advisor role; their access ends". `unit`
+ * names the division or department they hand over.
+ */
+export function advisorOptionDetail(handed: HandedRole, unit: string | null, voice: Voice): string {
+  const words = advisorWords(advising(handed), unit, voice);
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** "stays in Aerodynamics with the Advisor role; their access ends": what a confirm says becomes of them. */
 export function steppingDownLine(step: SteppingDown, unit: string | null): string {
   if (step.kind === "leave") return "leaves the team: every role they hold ends and they move to Alumni";
-  const where = step.place.kind === "team" || unit === null ? "" : ` in ${unit}`;
-  return step.access === "ends" ? `stays in the team as an Advisor${where}; their access ends` : `stays in the team as an Advisor${where} and keeps their access`;
+  return advisorWords(step, unit, "they");
 }
 
 // The Team Leader box (board 77i)

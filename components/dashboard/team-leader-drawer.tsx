@@ -5,7 +5,7 @@ import { Info } from "lucide-react";
 import { toast } from "sonner";
 import { handOverTeamLeader } from "@/app/dashboard/team-actions";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
-import type { HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { advisorOptionDetail, BECOME_AN_ADVISOR, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { StructureLeader } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { PeoplePicker } from "./division-drawer";
@@ -103,11 +103,7 @@ export function TeamLeaderDrawer({ open, leader, onClose }: { open: boolean; lea
             value={outcome}
             onChange={setOutcome}
             options={[
-              {
-                value: "advisor",
-                title: "Become an advisor",
-                detail: "Stay in the team as an advisor. You keep your access; the new Team Leader can change it in Access.",
-              },
+              { value: "advisor", title: BECOME_AN_ADVISOR, detail: `${advisorOptionDetail({ kind: "team-leader" }, null, "you")}.` },
               { value: "leave", title: "Leave the team", detail: "Move to Alumni. Your account stays." },
             ]}
           />

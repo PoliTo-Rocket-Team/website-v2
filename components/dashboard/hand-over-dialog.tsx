@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { ChevronDown, LogOut } from "lucide-react";
 import { toast } from "sonner";
-import type { HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { advisorOptionDetail, BECOME_AN_ADVISOR, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import { approverName, type HandOverOffer, type HandOverSend } from "@/lib/dashboard/hand-over-request";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
@@ -121,11 +121,7 @@ export function HandOverDialog({
           value={outcome}
           onChange={setOutcome}
           options={[
-            {
-              value: "advisor",
-              title: "Become an advisor",
-              detail: `Stay in ${offer.unit} with the Advisor role, without the ${offer.role.kind} role. Your access ends.`,
-            },
+            { value: "advisor", title: BECOME_AN_ADVISOR, detail: `${advisorOptionDetail(offer.role, offer.unit, "you")}.` },
             { value: "leave", title: "Leave the team", detail: "Move to Alumni. Your account stays, so you can apply again later." },
           ]}
         />
