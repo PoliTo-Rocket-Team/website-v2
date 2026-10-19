@@ -182,8 +182,7 @@ function answersTo(positionId: number, answers: readonly string[] = ANSWERS[posi
   return questions.map((question, i) => ({ question, answer: answers[i] ?? "" }));
 }
 
-/** An application row; the seed names every id, which its files are numbered from. */
-type Application = typeof applications.$inferInsert & { readonly id: number };
+type Application = typeof applications.$inferInsert;
 
 /** One application; its answers are the position's questions with ANSWERS. */
 function application(
@@ -192,7 +191,7 @@ function application(
   userId: string,
   appliedAt: string,
   status: NonNullable<Application["status"]>,
-  more: Partial<typeof applications.$inferInsert> = {},
+  more: Partial<Application> = {},
 ): Application {
   const first = userId.slice(0, 4);
   return {
@@ -293,51 +292,42 @@ const APPLICATIONS: readonly Application[] = [
   },
 ];
 
-// Each application's CV and motivation letter (issue #406): a small real PDF
-// in the private store under a seed-only name, and its `application_files`
-// row. The preview build writes the PDFs to the store (db/preview-build.ts),
-// so the Applications panel's document cards open them there.
+// Every application's CV and motivation letter (issue #406, owner decision of
+// 2026-10-19): one shared sample PDF in the private store, at one fixed
+// pathname, and the one `application_files` row that names it. The preview
+// build uploads the PDF once (db/preview-build.ts); every seeded application
+// points both its documents at that row, so the document route streams it from
+// the store like a real file. A file row's pathname is unique, so the
+// applications share the row rather than each holding a copy of it. The row
+// has no owner, so deleting one tester's account never deletes it; the
+// withdrawn-files cleanup keeps a row another live application still holds.
 
-type ApplicationFile = typeof applicationFiles.$inferInsert;
+/** The shared sample document: where the preview build stores it, and its bytes. */
+export const SEED_SAMPLE_DOCUMENT = {
+  pathname: privatePathname("application", "seed-sample.pdf"),
+  bytes: samplePdf("Sample document", [
+    "Every seeded application opens this file as its CV and its motivation letter.",
+    "It is preview data only: no applicant sent it.",
+  ]),
+} as const;
 
-/** A seeded document: its row, and the bytes the preview build stores at its pathname. */
-export type SeedApplicationFile = { readonly row: ApplicationFile; readonly bytes: Uint8Array };
+const SAMPLE_FILE_ID = 1;
 
-function seedFile(id: number, app: Application, kind: "cv" | "letter"): SeedApplicationFile {
-  const title = kind === "cv" ? "Curriculum vitae" : "Motivation letter";
-  const position = POSITION_ROWS.rows.find((p) => p.id === app.applyPositionId)?.title ?? "a position";
-  const bytes = samplePdf(title, [
-    `Application ${app.id}, for ${position}.`,
-    "An invented applicant: this file is preview data only.",
-  ]);
-  return {
-    row: {
-      id,
-      pathname: privatePathname("application", `seed-${app.id}-${kind}.pdf`),
-      originalFilename: (kind === "cv" ? app.cvName : app.mlName) ?? `${kind}.pdf`,
-      mimeType: "application/pdf",
-      fileSize: bytes.length,
-      uploadedAt: app.appliedAt,
-      userId: app.userId,
-    },
-    bytes,
-  };
-}
-
-/** Two files per application, numbered from it: the CV 2n − 1 and the letter 2n. */
-export const SEED_APPLICATION_FILES: readonly SeedApplicationFile[] = APPLICATIONS.flatMap((app) => [
-  seedFile(2 * app.id - 1, app, "cv"),
-  seedFile(2 * app.id, app, "letter"),
+export const APPLICATION_FILE_ROWS = rowsOf(applicationFiles, [
+  {
+    id: SAMPLE_FILE_ID,
+    pathname: SEED_SAMPLE_DOCUMENT.pathname,
+    originalFilename: "sample-document.pdf",
+    mimeType: "application/pdf",
+    fileSize: SEED_SAMPLE_DOCUMENT.bytes.length,
+    uploadedAt: "2026-09-01 09:00:00+02",
+    userId: null,
+  },
 ]);
-
-export const APPLICATION_FILE_ROWS = rowsOf(
-  applicationFiles,
-  SEED_APPLICATION_FILES.map((f) => f.row),
-);
 
 export const APPLICATION_ROWS = rowsOf(
   applications,
-  APPLICATIONS.map((app) => ({ ...app, cvFileId: 2 * app.id - 1, coverLetterFileId: 2 * app.id })),
+  APPLICATIONS.map((app) => ({ ...app, cvFileId: SAMPLE_FILE_ID, coverLetterFileId: SAMPLE_FILE_ID })),
 );
 
 /** One interview time: an hour from `start`, offered when the lead moved the application to interview. */

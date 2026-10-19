@@ -1030,14 +1030,15 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "recruitment",
-    case: "Every application has a CV and a motivation letter stored as a small PDF",
+    case: "Every application's CV and motivation letter point at the one shared sample PDF",
     data: "invented",
-    rows: "`application_files`, named by `applications.cv_file_id` and `cover_letter_file_id`",
+    rows: "the one `application_files` row, named by every `applications.cv_file_id` and `cover_letter_file_id`",
     exercisedBy: issue(406),
     holds: (data) => {
-      const pdf = (id: number | null | undefined) =>
-        data.applicationFiles.some((f) => f.id === id && f.mimeType === "application/pdf" && f.pathname.startsWith("applications/"));
-      return data.applications.every((a) => pdf(a.cvFileId) && pdf(a.coverLetterFileId));
+      const [sample, ...others] = data.applicationFiles;
+      if (sample === undefined || others.length > 0) return false;
+      const isPdf = sample.mimeType === "application/pdf" && sample.pathname.startsWith("applications/");
+      return isPdf && data.applications.every((a) => a.cvFileId === sample.id && a.coverLetterFileId === sample.id);
     },
   },
   {

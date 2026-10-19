@@ -1,7 +1,7 @@
 // A small, real PDF for the preview seed (issue #406): one A4 page of plain
 // text in Helvetica, built in code so the repository holds no binary and every
-// build writes the same bytes. The seeded applications' CV and motivation
-// letter cards open these on a preview.
+// build makes the same bytes. The seed's one shared sample document is this
+// PDF; every seeded application's CV and motivation letter cards open it.
 
 /** Text the PDF can draw: plain ASCII, with accents dropped and PDF string escapes applied. */
 function pdfText(line: string): string {
