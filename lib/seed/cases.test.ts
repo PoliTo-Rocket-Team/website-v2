@@ -10,6 +10,7 @@ import { TESTERS } from "../dev-tester";
 import { checkFaqFields, fieldsOf as faqFields } from "../faq/faq";
 import { checkPartnerFields, fieldsOf as partnerFields } from "../partners-fields";
 import { checkProjectFields, fieldsOf as projectFields } from "../project-content/fields";
+import { iressStory } from "../outreach";
 import { publicOutreach } from "../outreach-editor";
 import { importedOutreach } from "../outreach-import";
 import { checkPostFields, draftOfFields, postFieldsOf } from "../outreach-post-fields";
@@ -26,6 +27,7 @@ import {
   memberOfUser,
   orgOf,
   outreachItemsOf,
+  outreachPinnedOf,
   outreachSummitOf,
   outreachTagsOf,
   partnerItemsOf,
@@ -397,8 +399,10 @@ test("the outreach rows read back to the import's content, plus the seed's own p
     assert.ok(seeded?.version.state === "published", `post ${item.id}`);
     assert.deepEqual(seeded.version.published, item.version.state === "published" && item.version.published, `post ${item.id}`);
   }
-  const shown = publicOutreach({ posts: items, summit: outreachSummitOf(data)!, tags: outreachTagsOf(data) });
-  assert.equal(shown.posts.length, items.filter((i) => i.version.state === "published").length);
+  assert.equal(outreachPinnedOf(data), imported.pinned, "the summit's story is pinned (issue #392)");
+  const shown = publicOutreach({ posts: items, summit: outreachSummitOf(data)!, tags: outreachTagsOf(data), pinned: outreachPinnedOf(data) });
+  assert.equal(shown.pinned?.title, iressStory.title);
+  assert.equal(shown.posts.length, items.filter((i) => i.version.state === "published").length - 1, "the pinned post is not listed");
 });
 
 test("every seeded post and summit version passes the editor's own checks", () => {

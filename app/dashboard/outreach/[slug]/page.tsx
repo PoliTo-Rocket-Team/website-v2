@@ -40,9 +40,10 @@ async function LivePost({ params }: Params) {
   if (!canReach(opening.data.viewer, "outreach")) notFound();
   const { outreach } = opening.data;
   // Every read here is independent of the others, so they go out together (issue #397).
-  const [items, tags, content, projects] = await Promise.all([
+  const [items, tags, pinned, content, projects] = await Promise.all([
     outreach.posts.list(),
     outreach.tags(),
+    outreach.pinned(),
     publishedOutreach(),
     footerProjects(),
   ]);
@@ -54,9 +55,19 @@ async function LivePost({ params }: Params) {
       return published !== null && slugOf(published) === slug;
     });
   if (item === undefined) notFound();
-  // The posts either side are the public page's: the published ones.
-  // The published content also fills the page switch's list and home pages.
+  // The posts either side are the public page's: the published listed ones,
+  // so the pinned post (issue #392) has none. The published content also
+  // fills the page switch's list and home pages.
   const published = publicVersion(item.version);
   const neighbours = published === null ? {} : neighboursOf(content.posts, published);
-  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} published={content} footerProjects={projects} />;
+  return (
+    <OutreachPostEdit
+      item={item}
+      pinned={item.id === pinned}
+      tags={tags}
+      neighbours={neighbours}
+      published={content}
+      footerProjects={projects}
+    />
+  );
 }

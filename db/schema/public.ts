@@ -721,14 +721,24 @@ export const outreachTags = pgTable(
 // The posts on /outreach and their pages (issue #287, boards 74 to 74h). A
 // post is its place in the site order; what it shows lives in its versions,
 // as a partner's does: a published one, a draft, or both. Removing a post
-// removes its versions and their tags.
-export const outreachPosts = pgTable("outreach_posts", {
-  id: serial("id").primaryKey(),
-  siteOrder: integer("site_order").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
-    .defaultNow()
-    .notNull(),
-});
+// removes its versions and their tags. `pinned` marks the post pinned to the
+// top of /outreach (issue #392); the partial unique index keeps it to one.
+export const outreachPosts = pgTable(
+  "outreach_posts",
+  {
+    id: serial("id").primaryKey(),
+    siteOrder: integer("site_order").notNull(),
+    pinned: boolean("pinned").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    onePinned: uniqueIndex("outreach_posts_one_pinned")
+      .on(table.pinned)
+      .where(sql`${table.pinned}`),
+  }),
+);
 
 export const outreachPostVersions = pgTable(
   "outreach_post_versions",

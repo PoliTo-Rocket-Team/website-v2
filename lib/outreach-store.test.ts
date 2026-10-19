@@ -5,9 +5,9 @@ import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
-import { awardPosts, outreachRecord, outreachStats, postBySlug, slugOf, trackRecord } from "./outreach";
+import { awardPosts, featuredCard, iressStory, outreachRecord, outreachStats, postBySlug, postsWithPages, slugOf, trackRecord } from "./outreach";
 import { outreachEditor, publicOutreach, type StoredOutreach } from "./outreach-editor";
-import { importedOutreach, outreachImportSql } from "./outreach-import";
+import { importedOutreach, outreachImportSql, pinnedStoryImportSql } from "./outreach-import";
 import { outreachPostOf, postColumns, postFromColumns, summitColumns, summitFromColumns } from "./outreach-rows";
 import type { IsoDate, OutreachPost } from "./outreach-types";
 
@@ -54,22 +54,93 @@ test("migrations 0031 and 0032 come after 0030 in that order, and 0032 holds exa
   assert.equal(outreachImportSql().split("--> statement-breakpoint").length, 2 + outreachRecord.posts.length);
 });
 
-test("the import carries every post, tag and the summit as published, and the public pages show the record unchanged", () => {
+test("migration 0044 adds the pinned flag with its one-pinned index, then holds exactly the import of the pinned summit story", () => {
+  const files = readdirSync(drizzle).filter((f) => f.endsWith(".sql")).sort();
+  assert.ok(files.indexOf("0044_outreach_pinned_post.sql") > files.indexOf("0043_efesto_engine_model.sql"), files.join(", "));
+  const migration = readFileSync(join(drizzle, "0044_outreach_pinned_post.sql"), "utf8");
+  assert.match(migration, /ALTER TABLE "outreach_posts" ADD COLUMN "pinned" boolean DEFAULT false NOT NULL;/);
+  assert.match(migration, /CREATE UNIQUE INDEX "outreach_posts_one_pinned" ON "outreach_posts" USING btree \("pinned"\) WHERE "outreach_posts"\."pinned";/);
+  assert.ok(migration.trimEnd().endsWith(pinnedStoryImportSql()), "regenerate the migration's import from pinnedStoryImportSql()");
+});
+
+test("the imports carry every post, tag and the summit as published, the summit's story pinned, and the public pages show the record unchanged", () => {
   const stored = importedOutreach();
-  assert.equal(stored.posts.length, outreachRecord.posts.length);
+  assert.equal(stored.posts.length, outreachRecord.posts.length + 1);
   for (const item of stored.posts) assert.deepEqual({ state: item.version.state, draft: "draft" in item.version ? item.version.draft : null }, { state: "published", draft: null });
   assert.deepEqual(stored.summit, { state: "published", published: outreachRecord.feature, draft: null });
   assert.deepEqual(stored.tags, outreachRecord.tags);
+  assert.equal(stored.posts.find((item) => item.id === stored.pinned)?.siteOrder, outreachRecord.posts.length + 1, "the story comes after every record post");
 
   const shown = publicOutreach(stored);
-  assert.deepEqual(shown, { feature: outreachRecord.feature, posts: outreachRecord.posts, tags: outreachRecord.tags });
+  assert.deepEqual(shown, { feature: outreachRecord.feature, pinned: iressStory, posts: outreachRecord.posts, tags: outreachRecord.tags });
+  // The /outreach header figures and the home Track record cards are the record's: the pinned post counts toward neither.
   assert.deepEqual(outreachStats(shown), outreachStats(outreachRecord));
+  assert.deepEqual(trackRecord(shown.posts), trackRecord(outreachRecord.posts));
   // The photos stay at their /outreach/ paths.
-  for (const post of shown.posts) for (const photo of post.photos) assert.match(photo.src, /^\/outreach\/[a-z0-9-]+\.webp$/);
+  for (const post of postsWithPages(shown)) for (const photo of post.photos) assert.match(photo.src, /^\/outreach\/[a-z0-9-]+\.webp$/);
 });
 
-test("every record post and the summit read back from their rows as they were", () => {
-  for (const post of outreachRecord.posts) assert.deepEqual(throughRow(post), post, post.title);
+test("the Featured card tells the pinned story as the card showed the summit, and opens its page; with none pinned it is the summit alone", () => {
+  const { feature } = outreachRecord;
+  const card = featuredCard(feature, iressStory);
+  assert.deepEqual(card, {
+    eyebrow: feature.eyebrow,
+    title: feature.title,
+    story: feature.story,
+    photo: feature.photo,
+    editions: feature.editions,
+    slug: "iress-the-italian-rocket-engineering-student-summit",
+  });
+  assert.equal(postBySlug(postsWithPages(publicOutreach(importedOutreach())), card.slug!)?.title, iressStory.title, "the card's address has a page");
+  assert.deepEqual(featuredCard(feature, null), { ...card, slug: null });
+});
+
+test("at most one post is pinned: pinning one unpins the one before, only a published post can be pinned, and only site-content editors pin", async () => {
+  const editor = outreachEditor(admin, dummyOutreachStore(cookie()), dummyPhotoFiles);
+  const story = await editor.pinned();
+  assert.ok(story !== null);
+
+  assert.deepEqual(await editor.pin(1), { ok: true, value: null });
+  assert.equal(await editor.pinned(), 1);
+  const stored = async (): Promise<StoredOutreach> => ({
+    posts: (await editor.posts.list())!,
+    summit: (await editor.summit())!,
+    tags: (await editor.tags())!,
+    pinned: await editor.pinned(),
+  });
+  const shown = publicOutreach(await stored());
+  assert.equal(shown.pinned?.title, outreachRecord.posts[0].title);
+  assert.ok(!shown.posts.some((p) => p.title === outreachRecord.posts[0].title), "the pinned post leaves the list");
+  assert.ok(shown.posts.some((p) => p.title === iressStory.title), "the post pinned before goes back to the list");
+
+  assert.deepEqual(await editor.unpin(), { ok: true, value: null });
+  assert.equal(await editor.pinned(), null);
+  assert.equal(publicOutreach(await stored()).pinned, null);
+
+  const draft = await editor.posts.save(null, "save-draft", async () => ({ ok: true, value: { ...outreachRecord.posts[0], title: "Not yet live" } }));
+  assert.ok(draft.ok);
+  assert.deepEqual(await editor.pin(draft.value.id), { ok: false, error: "Publish the post before you pin it." });
+  assert.deepEqual(await editor.pin(999), { ok: false, error: "This post was removed. Reload the page." });
+  assert.equal(await editor.pinned(), null);
+
+  const refused = outreachEditor(member, dummyOutreachStore(cookie()), dummyPhotoFiles);
+  assert.equal(await refused.pinned(), null);
+  assert.equal((await refused.pin(1)).ok, false);
+  assert.equal((await refused.unpin()).ok, false);
+});
+
+test("a pinned post that is not published shows nowhere, and the Featured card falls back to the summit", () => {
+  const stored = importedOutreach();
+  const posts = stored.posts.map((item) =>
+    item.id === stored.pinned && item.version.state === "published" ? { ...item, version: { state: "draft" as const, draft: item.version.published } } : item,
+  );
+  const shown = publicOutreach({ ...stored, posts });
+  assert.equal(shown.pinned, null);
+  assert.deepEqual(shown.posts, outreachRecord.posts);
+});
+
+test("every record post, the summit's story and the summit read back from their rows as they were", () => {
+  for (const post of [...outreachRecord.posts, iressStory]) assert.deepEqual(throughRow(post), post, post.title);
   const summit = JSON.parse(JSON.stringify(summitColumns(outreachRecord.feature)));
   assert.deepEqual(summitFromColumns(summit), outreachRecord.feature);
   // Every tag a record post carries is on the tag list.

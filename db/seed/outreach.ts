@@ -2,8 +2,9 @@
 // home page's Track record cards, and the dashboard's Outreach editor (epic
 // #254, boards 74 to 74h). It starts from what the import migration carries
 // in (lib/outreach-import.ts): the tag list with Award as the award tag, the
-// featured summit, and every post of the record, published, each with its
-// photo and alt text. The record's posts carry every tag but link Instagram
+// featured summit, every post of the record, published, each with its photo
+// and alt text, and the summit's story, published and pinned to the top of
+// /outreach (issue #392). The record's posts carry every tag but link Instagram
 // and LinkedIn only, so one more published post links every channel type.
 // The IAC 2024 post holds draft changes, and one new post is a draft saved
 // before it is whole (board 74f), never published, so the public pages do
@@ -26,10 +27,10 @@ const DRAFTED = "2026-10-09 14:00:00+00";
 export const DRAFT_CHANGES_POST = 4;
 
 /** A published post that links every channel type a post can carry (board 74h). */
-export const EVERY_CHANNEL_POST = 14;
+export const EVERY_CHANNEL_POST = 15;
 
 /** A new post saved as a draft before it is whole (board 74f), never published. */
-export const DRAFT_ONLY_POST = 15;
+export const DRAFT_ONLY_POST = 16;
 
 /**
  * The every-channel post's cover: the seed uploads no file, so it uses the
@@ -96,6 +97,9 @@ const UNFINISHED_DRAFT: OutreachDraft = {
 
 const IMPORTED = importedOutreach();
 
+/** The summit's story (issue #392), pinned as the import leaves it. */
+export const PINNED_POST = IMPORTED.pinned;
+
 export const OUTREACH_ITEMS: readonly PostItem[] = [
   ...IMPORTED.posts.map((item): PostItem => {
     if (item.id !== DRAFT_CHANGES_POST || item.version.state !== "published") return item;
@@ -120,7 +124,7 @@ export const OUTREACH_TAG_ROWS = rowsOf(
 
 export const OUTREACH_POST_ROWS = rowsOf(
   outreachPosts,
-  OUTREACH_ITEMS.map(({ id, siteOrder }) => ({ id, siteOrder, createdAt: CREATED })),
+  OUTREACH_ITEMS.map(({ id, siteOrder }) => ({ id, siteOrder, pinned: id === PINNED_POST, createdAt: CREATED })),
 );
 
 const VERSIONS = contentVersionRows(OUTREACH_ITEMS);

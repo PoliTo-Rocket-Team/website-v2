@@ -37,6 +37,17 @@ export async function deleteOutreachPost(postId: number): Promise<WriteResult<nu
   return onOutreach((data) => data.outreach.posts.remove(postId));
 }
 
+/** Pin a published post to the top of /outreach (issue #392); the post pinned before it goes back to the list. */
+export async function pinOutreachPost(postId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(postId)) return refused("Unknown post.");
+  return onOutreach((data) => data.outreach.pin(postId));
+}
+
+/** Unpin the pinned post: it goes back to the list, and the Featured card shows the summit alone. */
+export async function unpinOutreachPost(): Promise<WriteResult<null>> {
+  return onOutreach((data) => data.outreach.unpin());
+}
+
 /** Save draft or Publish on the featured summit. */
 export async function saveOutreachSummit(step: PublishStep, input: unknown): Promise<WriteResult<SummitVersions>> {
   if (!isPublishStep(step)) return refused("Save a draft or publish.");

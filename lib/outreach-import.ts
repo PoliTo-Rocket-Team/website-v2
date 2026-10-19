@@ -1,26 +1,44 @@
-import { outreachRecord } from "./outreach";
+import { iressStory, outreachRecord } from "./outreach";
 import type { StoredOutreach } from "./outreach-editor";
 import { postColumns, summitColumns, type OutreachPostColumns, type OutreachSummitColumns } from "./outreach-rows";
-import type { OutreachContent } from "./outreach-types";
+import type { OutreachPost, OutreachRecord, PostItem } from "./outreach-types";
 
 // Carrying the Outreach record of lib/outreach.ts into the database (issue
 // #287): the tag list with Award as the award tag, the summit, and every post
 // in the record's order, each published with no draft. The photos stay where
 // they are, in public/outreach/. Migration
 // drizzle/0032_outreach_audit_and_import.sql holds exactly the SQL
-// `outreachImportSql` writes, which lib/outreach-store.test.ts checks, and the
-// dummy data (previews) starts from the same items.
+// `outreachImportSql` writes, which lib/outreach-store.test.ts checks. Then
+// the summit's story, published and pinned after every record post (issue
+// #392): migration drizzle/0044_outreach_pinned_post.sql ends with exactly
+// the SQL `pinnedStoryImportSql` writes. The dummy data (previews) and the
+// seed start from the same items.
 
-/** The record as stored: post ids and site order from 1, everything published with no draft. */
-export function importedOutreach(record: OutreachContent = outreachRecord): StoredOutreach {
+/** The record's posts as stored: ids and site order from 1, each published with no draft. */
+function recordItems(record: OutreachRecord): PostItem[] {
+  return record.posts.map((post, i) => ({
+    id: i + 1,
+    siteOrder: i + 1,
+    version: { state: "published", published: post, draft: null },
+  }));
+}
+
+/**
+ * What the imports leave stored: the record's posts, then the summit's story
+ * after them, published and pinned; the summit published; the tag list.
+ */
+export function importedOutreach(): StoredOutreach {
+  const posts = recordItems(outreachRecord);
+  const pinned: PostItem = {
+    id: posts.length + 1,
+    siteOrder: posts.length + 1,
+    version: { state: "published", published: iressStory, draft: null },
+  };
   return {
-    posts: record.posts.map((post, i) => ({
-      id: i + 1,
-      siteOrder: i + 1,
-      version: { state: "published", published: post, draft: null },
-    })),
-    summit: { state: "published", published: record.feature, draft: null },
-    tags: record.tags,
+    posts: [...posts, pinned],
+    summit: { state: "published", published: outreachRecord.feature, draft: null },
+    tags: outreachRecord.tags,
+    pinned: pinned.id,
   };
 }
 
@@ -63,34 +81,51 @@ function namesAndValues<C extends object>(names: Readonly<Record<keyof C, string
 }
 
 /**
- * The tag list in one statement, the summit's published version in one, then
- * one statement per post: its row in `outreach_posts` at its site order, its
- * published version, and that version's tags, written in one go so the
- * version and its tags find the post's new id.
+ * One published post in one statement: `postRow` inserts its row in
+ * `outreach_posts` and returns the new id, then its published version and
+ * that version's tags follow, written in one go so they find the id.
  */
-export function outreachImportSql(record: OutreachContent = outreachRecord): string {
-  const stored = importedOutreach(record);
+function publishedPostSql(postRow: string, post: OutreachPost): string {
+  const columns = namesAndValues(POST_COLUMN_NAMES, postColumns(post));
+  const postTags = post.tags.map((name, i) => `(${literal(name)}, ${i + 1})`).join(", ");
+  return [
+    `WITH "post" AS (${postRow} RETURNING "id"),`,
+    `"version" AS (INSERT INTO "outreach_post_versions" ("post_id", "version", ${columns.names})`,
+    `SELECT "id", 'published', ${columns.values} FROM "post" RETURNING "post_id")`,
+    `INSERT INTO "outreach_post_tags" ("post_id", "version", "tag_name", "position")`,
+    `SELECT "post_id", 'published', "tag"."name", "tag"."position" FROM "version", (VALUES ${postTags}) AS "tag" ("name", "position");`,
+  ].join("\n");
+}
+
+/**
+ * The tag list in one statement, the summit's published version in one, then
+ * one statement per record post at its site order (`publishedPostSql`).
+ */
+export function outreachImportSql(record: OutreachRecord = outreachRecord): string {
   const tags = [
     `INSERT INTO "outreach_tags" ("name", "award", "list_order") VALUES`,
-    stored.tags.map((tag, i) => `(${literal(tag.name)}, ${tag.award}, ${i + 1})`).join(",\n") + ";",
+    record.tags.map((tag, i) => `(${literal(tag.name)}, ${tag.award}, ${i + 1})`).join(",\n") + ";",
   ].join("\n");
-  const summit = namesAndValues(SUMMIT_COLUMN_NAMES, summitColumns(stored.summit.published));
+  const summit = namesAndValues(SUMMIT_COLUMN_NAMES, summitColumns(record.feature));
   const summitSql = [
     `INSERT INTO "outreach_summit_versions" ("version", ${summit.names})`,
     `VALUES ('published', ${summit.values});`,
   ].join("\n");
-  const posts = stored.posts.map((item) => {
+  const posts = recordItems(record).map((item) => {
     if (item.version.state !== "published" || item.version.draft !== null) throw new Error("the import publishes every post");
-    const post = item.version.published;
-    const columns = namesAndValues(POST_COLUMN_NAMES, postColumns(post));
-    const postTags = post.tags.map((name, i) => `(${literal(name)}, ${i + 1})`).join(", ");
-    return [
-      `WITH "post" AS (INSERT INTO "outreach_posts" ("site_order") VALUES (${item.siteOrder}) RETURNING "id"),`,
-      `"version" AS (INSERT INTO "outreach_post_versions" ("post_id", "version", ${columns.names})`,
-      `SELECT "id", 'published', ${columns.values} FROM "post" RETURNING "post_id")`,
-      `INSERT INTO "outreach_post_tags" ("post_id", "version", "tag_name", "position")`,
-      `SELECT "post_id", 'published', "tag"."name", "tag"."position" FROM "version", (VALUES ${postTags}) AS "tag" ("name", "position");`,
-    ].join("\n");
+    return publishedPostSql(`INSERT INTO "outreach_posts" ("site_order") VALUES (${item.siteOrder})`, item.version.published);
   });
   return [tags, summitSql, ...posts].join("\n--> statement-breakpoint\n");
+}
+
+/**
+ * The summit's story (issue #392) in one statement: published, after every
+ * post the database holds, and pinned. It runs once the `pinned` column and
+ * its one-pinned index exist, on a database where no post is pinned yet.
+ */
+export function pinnedStoryImportSql(post: OutreachPost = iressStory): string {
+  return publishedPostSql(
+    `INSERT INTO "outreach_posts" ("site_order", "pinned") SELECT COALESCE(MAX("site_order"), 0) + 1, true FROM "outreach_posts"`,
+    post,
+  );
 }

@@ -1,15 +1,21 @@
 import type { HeaderStats } from "./about/types";
 import type { NonEmpty } from "./about/alumni-types";
+import type { Copy } from "./projects";
 import {
   CHANNEL_NAMES,
   UNTITLED_POST,
+  titleOf,
   type BodyBlock,
   type ChannelName,
   type Channel,
+  type Edition,
   type IsoDate,
   type OutreachContent,
   type OutreachCopy,
+  type OutreachFeature,
+  type OutreachPhoto,
   type OutreachPost,
+  type OutreachRecord,
   type OutreachTag,
   type OutreachDraft,
 } from "./outreach-types";
@@ -19,8 +25,9 @@ import {
 // the title, summary and lead say the same in fewer words, as the boards do.
 // Each post has one photo and one channel today, the "See more" link on the
 // live page. The summit, the posts and the tags below are the record the
-// import carries into the database (lib/outreach-import.ts, issue #287). The
-// pages read the published ones from there (lib/outreach-public.ts), and this
+// import carries into the database (lib/outreach-import.ts, issue #287), and
+// the summit's story is the post pinned above them (issue #392). The pages
+// read the published ones from there (lib/outreach-public.ts), and this
 // record only where there is no database or no outreach tables yet.
 
 export const outreachCopy: OutreachCopy = {
@@ -51,7 +58,7 @@ const recordTags: NonEmpty<OutreachTag> = [
   { name: "Visit", award: false },
 ];
 
-export const outreachRecord: OutreachContent & { readonly posts: NonEmpty<OutreachPost> } = {
+export const outreachRecord: OutreachRecord & { readonly posts: NonEmpty<OutreachPost> } = {
   tags: recordTags,
 
   feature: {
@@ -432,6 +439,47 @@ export const outreachRecord: OutreachContent & { readonly posts: NonEmpty<Outrea
   ],
 };
 
+const editionPhoto = (title: string): OutreachPhoto => {
+  const post = outreachRecord.posts.find((p) => p.title === title);
+  if (post === undefined) throw new Error(`the outreach record has no post titled ${title}`);
+  return post.photos[0];
+};
+
+/**
+ * The summit's own story (issue #392): the post pinned to the top of
+ * /outreach, so the Featured card opens its page. Its title, card summary
+ * and cover are the ones the card showed for the summit, so the card reads
+ * as before; the edition posts above stay as they are. Migration
+ * drizzle/0044_outreach_pinned_post.sql carries it into the database
+ * (`pinnedStoryImportSql`, lib/outreach-import.ts).
+ */
+export const iressStory: OutreachPost = {
+  title: outreachRecord.feature.title,
+  date: "2023-05-02",
+  place: "Torino, Italy",
+  tags: ["Summit"],
+  summary: outreachRecord.feature.story,
+  lead: "The student summit we started in 2023 brings Italy’s university rocket teams together every year, in a new city each time.",
+  body: [
+    {
+      kind: "paragraph",
+      text: "In May 2023 we brought rocket teams from Italy’s main universities together for the first time, in the Aula Magna of Politecnico di Torino, with speakers from ArianeSpace and Avio. The summit gave students a place to show their projects, share ideas and meet professionals and industry leaders in rocket and space engineering.",
+    },
+    {
+      kind: "paragraph",
+      text: "The summit now moves city every year and runs on its own: Team Thrust organised the second edition in Padova in 2024, and SASA hosted the third in Rome in 2025.",
+    },
+    { kind: "highlight", label: "EDITIONS", text: "Torino 2023 · Padova 2024 · Rome 2025" },
+  ],
+  photos: [outreachRecord.feature.photo, editionPhoto("IRESS, 2nd edition"), editionPhoto("IRESS, 3rd edition")],
+  channels: {
+    instagram: {
+      url: "https://www.instagram.com/p/CrwPytBs6Kr/",
+      caption: "The event brought together rocket teams from major Italian universities, promoting collaboration and networking…",
+    },
+  },
+};
+
 // What the pages read from the record. Every count and order is worked out
 // here, so the record holds each fact once.
 
@@ -522,13 +570,42 @@ export function sharedSlug(posts: readonly OutreachPost[]): string | null {
 }
 
 {
-  const shared = sharedSlug(outreachRecord.posts);
+  const shared = sharedSlug([...outreachRecord.posts, iressStory]);
   if (shared !== null) throw new Error(`Two outreach posts share the address /outreach/${shared}`);
 }
 
 /** The post at an address, or undefined. Where two share it, the newest wins. */
 export function postBySlug(posts: readonly OutreachPost[], slug: string): OutreachPost | undefined {
   return newestFirst(posts).find((p) => slugOf(p) === slug);
+}
+
+/** Every published post that has a page: the listed ones and the pinned one (issue #392). */
+export function postsWithPages(content: Pick<OutreachContent, "pinned" | "posts">): OutreachPost[] {
+  return content.pinned === null ? [...content.posts] : [...content.posts, content.pinned];
+}
+
+/**
+ * The Featured card on /outreach (boards 32 and 32m). With a post pinned
+ * (issue #392) it tells that post's story, its title, card summary and cover,
+ * under the summit's line and editions, and opens the post's page; with
+ * none pinned it is the summit alone, as before, with no page to open.
+ */
+export type FeaturedCard = {
+  eyebrow: string;
+  title: string;
+  story: Copy;
+  /** None while the editor's view of a post has no photo yet. */
+  photo: OutreachPhoto | undefined;
+  editions: NonEmpty<Edition>;
+  /** The pinned post's address, /outreach/<slug>; null for the summit alone. */
+  slug: string | null;
+};
+
+/** The Featured card from the summit and the pinned post, or the editor's view of it (issue #294). */
+export function featuredCard(feature: OutreachFeature, pinned: Pick<OutreachDraft, "title" | "summary" | "photos"> | null): FeaturedCard {
+  const { eyebrow, editions } = feature;
+  if (pinned === null) return { eyebrow, title: feature.title, story: feature.story, photo: feature.photo, editions, slug: null };
+  return { eyebrow, title: titleOf(pinned), story: pinned.summary, photo: pinned.photos[0], editions, slug: slugOf(pinned) };
 }
 
 /** The next older and the next newer post, where there is one. */
@@ -577,8 +654,8 @@ export function awardPosts(content: Pick<OutreachContent, "posts" | "tags">): Ou
   return content.posts.filter((p) => p.tags.some((name) => award.has(name)));
 }
 
-/** The header's four figures, counted from the posts, the tags and the feature. */
-export function outreachStats(content: OutreachContent): HeaderStats {
+/** The header's four figures, counted from the listed posts, the tags and the feature. */
+export function outreachStats(content: Pick<OutreachContent, "feature" | "posts" | "tags">): HeaderStats {
   const years = content.posts.map((p) => yearOf(p.date));
   const awards = awardPosts(content).length;
   return [

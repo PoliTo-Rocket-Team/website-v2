@@ -21,8 +21,8 @@ import {
 
 // The Outreach content as the dashboard keeps it (issue #287): the posts, each
 // a content item with a published version and an optional draft
-// (lib/content/), the featured summit with the same two versions, and the
-// tag list. Each side of the dashboard data interface brings an
+// (lib/content/), the featured summit with the same two versions, the tag
+// list, and which post is pinned to the top of /outreach (issue #392). Each side of the dashboard data interface brings an
 // `OutreachStore`: the database (lib/dashboard/database-outreach.ts), or the
 // dummy data on previews and in test-developer sessions
 // (lib/dummy-data/outreach.ts), and its place for photo files
@@ -50,6 +50,10 @@ export interface OutreachStore {
   tags(): Promise<readonly OutreachTag[]>;
   /** A new tag at the end of the list; never the award one. */
   addTag(name: string): Promise<WriteResult<OutreachTag>>;
+  /** The id of the pinned post (issue #392); null while none is. */
+  pinned(): Promise<number | null>;
+  /** The post `id` becomes the one pinned post, every other one unpinned in the same write; null unpins every post. */
+  pin(id: number | null): Promise<WriteResult<null>>;
 }
 
 /** Everything a store holds, as the public read and the import see it. */
@@ -57,11 +61,31 @@ export type StoredOutreach = {
   readonly posts: readonly PostItem[];
   readonly summit: SummitVersions;
   readonly tags: readonly OutreachTag[];
+  /** The id of the one pinned post (issue #392), or null: one id, so two pinned posts cannot be written down. */
+  readonly pinned: number | null;
 };
 
-/** What the public pages show: the published posts in site order, the published summit and the tags. A post with only a draft is not there. */
+/**
+ * What the public pages show: the published summit, the pinned post while it
+ * is published, every other published post in site order, and the tags. A
+ * post with only a draft is not there, and a pinned one is not listed.
+ */
 export function publicOutreach(stored: StoredOutreach): OutreachContent {
-  return { feature: stored.summit.published, posts: publicItems(stored.posts), tags: stored.tags };
+  const pinnedItem = stored.posts.find((item) => item.id === stored.pinned);
+  return {
+    feature: stored.summit.published,
+    pinned: pinnedItem === undefined ? null : publicVersion(pinnedItem.version),
+    posts: publicItems(stored.posts.filter((item) => item !== pinnedItem)),
+    tags: stored.tags,
+  };
+}
+
+/** The post `id` may be pinned, or why not: it must be in the list and on the site (issue #392). */
+export function checkPin(id: number, items: readonly PostItem[]): WriteResult<number> {
+  const item = items.find((i) => i.id === id);
+  if (item === undefined) return refused("This post was removed. Reload the page.");
+  if (publicVersion(item.version) === null) return refused("Publish the post before you pin it.");
+  return written(id);
 }
 
 /** The longest tag name the list takes; the `outreach_tags` table checks the same. */
@@ -139,6 +163,16 @@ export interface OutreachEditor {
   /** The tag list; null for a viewer the gate refuses. */
   tags(): Promise<readonly OutreachTag[] | null>;
   addTag(name: string): Promise<WriteResult<OutreachTag>>;
+  /** The id of the pinned post; null while none is, and for a viewer the gate refuses. */
+  pinned(): Promise<number | null>;
+  /**
+   * Pin a published post to the top of /outreach (issue #392): it takes the
+   * Featured card and leaves the post list, and the post pinned before it,
+   * if any, goes back to the list. At most one post is pinned at any time.
+   */
+  pin(id: number): Promise<WriteResult<null>>;
+  /** Unpin the pinned post: it goes back to the list, and the Featured card shows the summit alone. */
+  unpin(): Promise<WriteResult<null>>;
 }
 
 export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, files: PhotoFiles): OutreachEditor {
@@ -203,6 +237,19 @@ export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, fil
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
       const checked = checkNewTag(name, await store.tags());
       return checked.ok ? store.addTag(checked.value) : checked;
+    },
+
+    pinned: async () => (allowed ? store.pinned() : null),
+
+    async pin(id) {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      const checked = checkPin(id, await store.posts.list());
+      return checked.ok ? store.pin(checked.value) : checked;
+    },
+
+    async unpin() {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      return store.pin(null);
     },
   };
 }
