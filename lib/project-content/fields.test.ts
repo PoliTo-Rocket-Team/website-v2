@@ -39,10 +39,10 @@ test("the page follows the fields as typed, desktop and phone copy apart", () =>
 
 test("switching an optional section off drops it and closes up the numbers; switching it on brings the same text back", () => {
   const fields = fieldsOf(efesto);
-  assert.deepEqual(numbers(fields), ["03 plan", "04 reasons"]);
+  assert.deepEqual(numbers(fields), ["03 plan", "04 reasons", "05 gallery"]);
   const off = { ...fields, reasons: { ...fields.reasons, shown: false } };
   assert.equal(projectViewOf(off, efesto).reasons, undefined);
-  assert.deepEqual(numbers(off), ["03 plan"]);
+  assert.deepEqual(numbers(off), ["03 plan", "04 gallery"]);
   assert.deepEqual(fieldProblems({ ...off, reasons: { ...off.reasons, title: "" } }), [], "a section off the page does not stop a save");
   assert.deepEqual(projectViewOf({ ...off, reasons: { ...off.reasons, shown: true } }, efesto), efesto);
 

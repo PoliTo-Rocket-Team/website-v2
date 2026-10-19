@@ -115,7 +115,7 @@ const plan = shape({
   later: list(planStep),
 });
 
-const reasons = shape({ eyebrow: isString, title, items: list(shape({ title: isString, text: isString }), 1, 3) });
+const reasons = shape({ eyebrow: isString, title, items: list(shape({ title: isString, text: isString }), 1, 5) });
 
 const galleryItem: Check = (v) =>
   shape({ src: isString, alt: isString, caption: optional(isString) })(v) ||

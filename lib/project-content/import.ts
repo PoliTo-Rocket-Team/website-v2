@@ -1,7 +1,7 @@
 import type { GalleryItem, GalleryPhoto } from "@/components/gallery/items";
 import type { ContentItem } from "@/lib/content/versioned";
 import type { PhotoSrc } from "@/lib/outreach-types";
-import type { LaunchPhoto, Version } from "@/lib/project-pages/types";
+import type { GallerySection, LaunchPhoto, Reasons, Version } from "@/lib/project-pages/types";
 import type { ProjectRecord, VehicleRecord, EngineRecord } from "./record";
 import { revise, type ProjectRevision, type RevisionSet } from "./revision";
 
@@ -809,8 +809,76 @@ export const efestoEngineModel: ProjectRevision = {
   ],
 };
 
+/**
+ * Efesto's page shows the current public site's content (issue #449): its two
+ * images, in public/project-photos/efesto/, as a gallery, and its five key
+ * characteristics in place of the Why section the import wrote. The import
+ * gave Efesto no gallery, so the revision sets the whole section, title and
+ * photos. Migration drizzle/0046_efesto_site_content.sql holds its
+ * `revisionSql`.
+ */
+export const efestoSiteContent: ProjectRevision = {
+  slug: "efesto",
+  sets: [
+    {
+      path: ["gallery"],
+      value: {
+        title: "Designed in-house.",
+        items: [
+          {
+            src: sitePhotoSrc("efesto", "injector-head"),
+            alt: "A cutaway of the Efesto injector head, where it joins the combustion chamber",
+            caption: "Efesto injector head",
+          },
+          {
+            src: sitePhotoSrc("efesto", "rocketforge"),
+            alt: "The RocketForge main screen, with fields for chamber pressure, oxidizer, fuel and mixture ratio",
+            caption: "RocketForge, the Team's engine design tool",
+          },
+        ],
+      } satisfies GallerySection,
+    },
+    {
+      path: ["reasons"],
+      value: {
+        eyebrow: "CHARACTERISTICS",
+        title: "What sets Efesto apart.",
+        items: [
+          {
+            title: "Reusability",
+            text: "Efesto is a regenerative liquid engine. It is meant as a small, reusable propulsion system for the first stage of a micro launcher.",
+          },
+          {
+            title: "New materials",
+            text: "Copper alloys keep the chamber walls cool, and high-strength steel or nickel alloys keep them stiff. With Politecnico's R&D partnership, the chamber uses new copper-based metal matrix composites.",
+          },
+          {
+            title: "New technologies",
+            text: "The whole engine assembly is to be made by additive manufacturing. This opens new shapes and a lighter engine.",
+          },
+          {
+            title: "Static fire qualification",
+            text: "Efesto is designed to fire on a new test bench. Qualification tests there will check it meets the mission's targets.",
+          },
+          {
+            title: "Simplicity",
+            text: "A regenerative pressure-fed cycle gives strong results with a simpler design than electric-pump-fed or open cycles.",
+          },
+        ],
+      } satisfies Reasons,
+    },
+  ],
+};
+
 /** The revisions made since the import, in migration order. */
-export const projectRevisions: readonly ProjectRevision[] = [vesMarkOneRocket, cavourSitePhotos, vesSitePhotos, vesGreyTexture, efestoEngineModel];
+export const projectRevisions: readonly ProjectRevision[] = [
+  vesMarkOneRocket,
+  cavourSitePhotos,
+  vesSitePhotos,
+  vesGreyTexture,
+  efestoEngineModel,
+  efestoSiteContent,
+];
 
 /** The three projects as the code reads them once every migration ran: the import, revised, with its retired key left out. */
 export const importedRecords: readonly ProjectRecord[] = firstImport.map(({ teaser: _retired, ...record }) =>

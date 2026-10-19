@@ -146,7 +146,13 @@ export type Reasons = {
   /** The eyebrow after the section number, for example "WHY LIQUID". */
   eyebrow: string;
   title: Title;
-  items: readonly [Reason] | readonly [Reason, Reason] | readonly [Reason, Reason, Reason];
+  /** One to five reasons (`REASONS_LIMIT`). */
+  items:
+    | readonly [Reason]
+    | readonly [Reason, Reason]
+    | readonly [Reason, Reason, Reason]
+    | readonly [Reason, Reason, Reason, Reason]
+    | readonly [Reason, Reason, Reason, Reason, Reason];
 };
 
 export type GallerySection = { title: string; items: FilledGallery };

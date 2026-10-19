@@ -11,7 +11,7 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
 import { isProjectRecord, storedProjectRecord } from "./check";
-import { cavourSitePhotos, efestoEngineModel, firstImport, importedProjects, importedRecords, projectImportSql, vesGreyTexture, vesMarkOneRocket, vesSitePhotos } from "./import";
+import { cavourSitePhotos, efestoEngineModel, efestoSiteContent, firstImport, importedProjects, importedRecords, projectImportSql, vesGreyTexture, vesMarkOneRocket, vesSitePhotos } from "./import";
 import { listPhotos } from "./list-fields";
 import { homeCardOf, listingOf, listingsNewestFirst, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
 import { revise, revisionSql } from "./revision";
@@ -110,6 +110,25 @@ test("migration 0043 holds exactly the Efesto engine revision, and only an engin
   assert.equal(isProjectRecord({ ...cavour, card: { ...cavour.card, rocket: "efesto" } }), false, "a rocket's card draws a rocket");
   const visual = { caption: "CAVOUR", rocket: { own: { model: "efesto", alt: "" } } };
   assert.equal(isProjectRecord({ ...cavour, hero: { ...cavour.hero, visual } }), false, "a rocket's page draws a rocket");
+});
+
+test("migration 0046 holds exactly the Efesto site content revision, and the revised Efesto is a whole record", () => {
+  assert.ok(
+    migrationFile("0046_efesto_site_content.sql").trimEnd().endsWith(revisionSql(efestoSiteContent)),
+    "regenerate the migration from revisionSql(efestoSiteContent)",
+  );
+  const efesto = importedRecords[2];
+  assert.ok(isProjectRecord(plain(efesto)));
+  const page = pageRecordOf(efesto);
+  assert.equal(page.gallery?.items.length, 2, "the gallery holds the public site's two images");
+  for (const src of listPhotos(efesto))
+    assert.ok(existsSync(join(__dirname, "..", "..", "public", src)), `${src} is in public/`);
+  assert.deepEqual(
+    page.reasons?.items.map((r) => r.title),
+    ["Reusability", "New materials", "New technologies", "Static fire qualification", "Simplicity"],
+  );
+  assert.equal(firstImport[2].gallery, undefined, "the import itself stays as 0037 carried it");
+  assert.deepEqual(revise(firstImport[0], efestoSiteContent), firstImport[0], "a revision touches its own project only");
 });
 
 test("the imported records draw the same page records, /projects entries and home cards as the code did", () => {
