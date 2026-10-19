@@ -13,28 +13,25 @@ import {
   type MemberRow,
   type MemberTab,
 } from "@/lib/dashboard/team";
+import { membersModelOf } from "@/lib/dashboard/members-view";
 import { Avatar } from "./avatar";
-import { DepartmentMembersView } from "./department-members";
 import { Controls, DepartmentFilter, Pager, RolePill, SearchField, TH, Tabs } from "./directory";
-import { DivisionMembersView } from "./division-members";
 import { DrawerPage } from "./drawer";
 import { MemberDrawer } from "./member-drawer";
-import { WholeTeamMembersView } from "./team-members";
+import { ScopedMembersView } from "./team-members";
 import { PageHeader } from "./page-header";
 import { PANEL } from "./panel";
 
-// The Members page. The operations lead sees the whole team with the
-// department filter and pages of nine (board 46); the team leader the whole
-// team with every member field (boards 73 to 73c, ./team-members.tsx); a division lead sees one of
-// their divisions (boards 61e to 61h2, ./division-members.tsx); a department
-// head every division of their department (boards 69 to 69c,
-// ./department-members.tsx).
+// The Members page. The team leader, a department head and a division lead
+// get one view with the same tools (issue #408, ./team-members.tsx); only
+// their rows (the whole team, the department, the division) and the actions
+// their data allows differ. The operations lead's list (board 46) is still
+// its own view.
 export function MembersView({ directory, editable }: { directory: MemberDirectory; editable: boolean }) {
-  if (directory.scope === "division") return <DivisionMembersView page={directory} editable={editable} />;
-  if (directory.scope === "department") return <DepartmentMembersView page={directory} editable={editable} />;
   if (directory.scope === "none") return <PageHeader title="Members" intro="" phone="bar" />;
-  if (directory.scope === "whole-team") return <WholeTeamMembersView page={directory} editable={editable} />;
-  return <TeamMembersView rows={directory.rows} departments={directory.departments} editable={editable} />;
+  if (directory.scope === "team") return <TeamMembersView rows={directory.rows} departments={directory.departments} editable={editable} />;
+  const page = membersModelOf(directory);
+  return page === null ? null : <ScopedMembersView page={page} editable={editable} />;
 }
 
 // Board 46: tabs, filter and search narrow the rows here, in the browser;

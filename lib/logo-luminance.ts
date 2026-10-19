@@ -22,13 +22,54 @@ const MIN_CONTRAST = 3;
  */
 export const DARK_LOGO_THRESHOLD = MIN_CONTRAST * (hexLuminance(brand.ground) + 0.05) - 0.05;
 
-/** The measurement, with the file's own pixel size read on the way. */
-export type LogoLuminance = { luminance: number; dark: boolean; width: number; height: number };
+/**
+ * The measurement, with the file's own pixel size read on the way.
+ * `solidBackground` is true when the logo sits on a box of one colour rather
+ * than on transparency (issue #394), so the page would show the box.
+ */
+export type LogoLuminance = { luminance: number; dark: boolean; solidBackground: boolean; width: number; height: number };
 
 export function measureLogo(png: Uint8Array): LogoLuminance {
   const pixels = decodePng(png);
   const luminance = alphaWeightedLuminance(pixels);
-  return { luminance, dark: luminance < DARK_LOGO_THRESHOLD, width: pixels.width, height: pixels.height };
+  return {
+    luminance,
+    dark: luminance < DARK_LOGO_THRESHOLD,
+    solidBackground: hasSolidBackground(pixels),
+    width: pixels.width,
+    height: pixels.height,
+  };
+}
+
+/** A border pixel at or above this alpha is opaque: a box, not anti-aliased padding. */
+const OPAQUE_ALPHA = 250;
+
+/** How far, per channel (0 to 255), a border pixel may sit from the border's own colour and still be that colour. */
+const SAME_COLOUR = 24;
+
+/** The share of border pixels that must be opaque and of one colour for the border to read as a box. */
+const SOLID_SHARE = 0.95;
+
+/**
+ * Whether the outermost ring of pixels is opaque and close to one colour: the
+ * logo was exported on a white (or any) box instead of on transparency. The
+ * border's colour is its per-channel median, so a mark that touches the edge
+ * in a few places does not move it; the 5% slack lets such a mark through.
+ */
+function hasSolidBackground({ width, height, rgba }: Pixels): boolean {
+  const border: number[] = [];
+  for (let y = 0; y < height; y++) {
+    const edgeRow = y === 0 || y === height - 1;
+    for (let x = 0; x < width; x += edgeRow || width === 1 ? 1 : width - 1) border.push((y * width + x) * 4);
+  }
+  const median = [0, 1, 2].map((c) => {
+    const values = border.map((at) => rgba[at + c]).sort((a, b) => a - b);
+    return values[values.length >> 1];
+  });
+  const solid = border.filter(
+    (at) => rgba[at + 3] >= OPAQUE_ALPHA && median.every((value, c) => Math.abs(rgba[at + c] - value) <= SAME_COLOUR),
+  );
+  return solid.length >= SOLID_SHARE * border.length;
 }
 
 function relativeLuminance(r: number, g: number, b: number): number {

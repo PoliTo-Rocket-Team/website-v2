@@ -52,7 +52,8 @@ test("the team leader, a board seat and the head can lead a division and keep th
   const tree = await head(h.kept()).view.teamTree();
   assert.equal(tree.leader?.id, 14, "still drawn as the team leader");
   const missionAnalysis = tree.departments.flatMap((d) => d.divisions).find((d) => d.id === MISSION_ANALYSIS)!;
-  assert.ok([14, 94, 15].every((id) => missionAnalysis.elsewhere.includes(id)), "and listed in the division they lead");
+  const listed = [missionAnalysis.lead, ...missionAnalysis.members].map((p) => p?.id);
+  assert.ok([14, 94, 15].every((id) => listed.includes(id)), "and listed in the division they lead");
 });
 
 test("a seat holder whose only division it is can leave it and keeps the seat", async () => {

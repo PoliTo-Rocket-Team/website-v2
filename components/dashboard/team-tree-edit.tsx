@@ -32,11 +32,22 @@ import { TeamLeaderDrawer } from "./team-leader-drawer";
 // for everyone else, the operations lead and the IT lead included.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-const BOX = `relative block w-full rounded-xl border bg-panel px-3 py-2.5 text-left transition-colors duration-300 ease-out ${FOCUS}`;
+const BOX = `relative block w-full rounded-xl border px-3 py-2.5 text-left transition-colors duration-300 ease-out ${FOCUS}`;
 const ACCENT_BOX = `flex w-full items-center justify-center gap-1.5 rounded-xl border border-accent/60 text-[13px] font-medium text-accent transition-colors duration-300 ease-out hover:border-accent hover:bg-accent/10 ${FOCUS}`;
 
 /** The division panel that is open: New division in a department, or Edit division. */
 type DivisionPanel = { readonly kind: "new"; readonly departmentId: number } | { readonly kind: "edit"; readonly divisionId: number };
+
+/**
+ * A box's fill and edge (issue #405): only the viewer's own box wears the
+ * accent tint and edge, as the Team tree marks the viewer's path; "Find
+ * someone" rings the box it marks, whoever's it is.
+ */
+function boxMark(found: boolean, yours: boolean): string {
+  const fill = yours ? "bg-accent/[0.06]" : "bg-panel";
+  const edge = found ? "border-accent ring-1 ring-accent" : yours ? "border-accent/70" : "border-hairline";
+  return `${fill} ${edge}`;
+}
 
 function peopleLine(count: number): string {
   return `${count} ${count === 1 ? "person" : "people"}`;
@@ -243,7 +254,7 @@ function StructureCanvas({
  * lock and the reason, since only the team leader hands this role over.
  */
 function LeaderBox({ leader, found, onHandOver }: { leader: StructureLeader; found: boolean; onHandOver: () => void }) {
-  const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border bg-accent/[0.06] px-3 text-center ${found ? "border-accent ring-1 ring-accent" : "border-accent/70"}`;
+  const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, leader.yours)}`;
   const body = (
     <>
       <Avatar size="ml" accent />
@@ -299,11 +310,11 @@ function DepartmentColumn({
       <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{department.head ? `Head · ${peopleLine(department.size)}` : peopleLine(department.size)}</span>
     </>
   );
-  const frame = `${BOX} ${found ? "border-accent ring-1 ring-accent" : "border-hairline"}`;
+  const frame = `${BOX} ${boxMark(found, department.yours)}`;
   return (
     <div className={dimmed ? "opacity-40" : undefined}>
       {editable ? (
-        <button type="button" data-found={found || undefined} onClick={() => onDepartment(department.id)} aria-label={`Edit ${department.name} Department`} className={`${frame} hover:border-border-strong`}>
+        <button type="button" data-found={found || undefined} onClick={() => onDepartment(department.id)} aria-label={`Edit ${department.name} Department`} className={`${frame} ${department.yours ? "hover:border-accent" : "hover:border-border-strong"}`}>
           {box}
           <PencilMark />
         </button>
@@ -351,7 +362,7 @@ function DivisionBox({ division, found, onOpen }: { division: StructureDivision;
       <span className="mt-1 block text-[12px] leading-snug text-prt-muted">{line}</span>
     </>
   );
-  const frame = `${BOX} ${found ? "border-accent ring-1 ring-accent" : "border-hairline"}`;
+  const frame = `${BOX} ${boxMark(found, division.yours)}`;
   if (division.page === null) {
     return (
       <div data-found={found || undefined} className={frame}>
@@ -360,7 +371,7 @@ function DivisionBox({ division, found, onOpen }: { division: StructureDivision;
     );
   }
   return (
-    <button type="button" data-found={found || undefined} onClick={onOpen} aria-label={`Edit ${division.name}`} className={`${frame} hover:border-border-strong`}>
+    <button type="button" data-found={found || undefined} onClick={onOpen} aria-label={`Edit ${division.name}`} className={`${frame} ${division.yours ? "hover:border-accent" : "hover:border-border-strong"}`}>
       {body}
       <PencilMark />
     </button>

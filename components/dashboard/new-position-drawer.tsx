@@ -33,12 +33,13 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 
 type ListKey = "required" | "desirable" | "questions";
 
-const LISTS: readonly { key: ListKey; label: string; icon: ReactNode; placeholder: string }[] = [
+const LISTS: readonly { key: ListKey; label: string; hint?: string; icon: ReactNode; placeholder: string }[] = [
   { key: "required", label: "Required skills", icon: <Check aria-hidden className="h-3.5 w-3.5 text-accent" strokeWidth={2} />, placeholder: "A skill the role needs" },
   { key: "desirable", label: "Desirable skills", icon: <Plus aria-hidden className="h-3.5 w-3.5 text-prt-muted" strokeWidth={2} />, placeholder: "A skill that helps" },
   {
     key: "questions",
     label: "Questions for applicants",
+    hint: "optional",
     icon: <MessageSquare aria-hidden className="h-3.5 w-3.5 text-prt-muted" strokeWidth={1.75} />,
     placeholder: "A question the form asks",
   },
@@ -244,6 +245,7 @@ export function NewPositionDrawer({
           <ListField
             key={list.key}
             label={list.label}
+            hint={list.hint}
             icon={list.icon}
             placeholder={list.placeholder}
             items={form[list.key]}
@@ -363,6 +365,7 @@ export function DivisionMenu<D extends Pick<DivisionChoice, "id" | "name" | "dep
 /** A list with add and remove (boards 57a, 57b): one row per item, its icon on the left and a remove cross on the right. */
 function ListField({
   label,
+  hint,
   icon,
   placeholder,
   items,
@@ -370,6 +373,7 @@ function ListField({
   error,
 }: {
   label: string;
+  hint?: string;
   icon: ReactNode;
   placeholder: string;
   items: string[];
@@ -385,7 +389,7 @@ function ListField({
   };
   return (
     <div>
-      <GroupLabel id={groupId} label={label} />
+      <GroupLabel id={groupId} label={label} hint={hint} />
       <ul aria-labelledby={groupId} className="flex flex-col gap-2">
         {items.map((item, i) => (
           <li key={i} className={`flex h-10 items-center gap-3 rounded-[10px] border bg-white-5 pl-3.5 pr-2 focus-within:border-accent focus-within:bg-accent/[0.06] ${error && i === 0 ? "border-danger" : "border-white-10"}`}>

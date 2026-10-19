@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AcademicYear, Entry, NonEmpty, ShownGroup } from "@/lib/about/alumni-types";
 import { yearLabel, yearSlug } from "@/lib/about/alumni-year";
+import { Avatar } from "../person";
 import { SectionHead } from "../section-head";
 
 // Boards 28, 28b and 28c, "Year by year": a row of academic-year pills,
@@ -18,7 +19,7 @@ import { SectionHead } from "../section-head";
 // 760px wide (board 28c). Phones: the strip runs edge to
 // edge, with no arrows.
 //
-// Each group is a heading and a list of name and role, four columns from lg,
+// Each group is a heading and a list of photo, name and role, four columns from lg,
 // two from md, one on phones. A group longer than its first rows (2 for a
 // department, 3 for the others) shows those rows and a "Show all N" button.
 
@@ -134,18 +135,22 @@ function YearSwitch({ years }: { years: NonEmpty<AcademicYear> }) {
   );
 }
 
+/** A row: the small round photo (the PRT mark when there is none, #391), then the name over the role. */
 function EntryRow({ entry, display }: { entry: Entry; display: string }) {
   return (
-    <li className={`min-w-0 flex-col border-b border-white-10 py-3.5 ${display}`}>
-      <p className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-[15px] leading-tight text-prt-text">{entry.name}</span>
-        {entry.tag !== undefined && (
-          <span className={`shrink-0 font-mono text-[9px] tracking-[0.2em] ${entry.tag === "LEAD" ? "text-prt-muted" : "text-accent"}`}>
-            {entry.tag}
-          </span>
-        )}
-      </p>
-      <p className={`mt-1 truncate text-[13px] leading-tight ${entry.lead ? "text-accent" : "text-prt-muted"}`}>{entry.role}</p>
+    <li className={`min-w-0 items-center gap-3 border-b border-white-10 py-3.5 ${display}`}>
+      <Avatar photo={entry.photo} sizeClass="h-10 w-10" sizes="40px" />
+      <div className="min-w-0">
+        <p className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-[15px] leading-tight text-prt-text">{entry.name}</span>
+          {entry.tag !== undefined && (
+            <span className={`shrink-0 font-mono text-[9px] tracking-[0.2em] ${entry.tag === "LEAD" ? "text-prt-muted" : "text-accent"}`}>
+              {entry.tag}
+            </span>
+          )}
+        </p>
+        <p className={`mt-1 truncate text-[13px] leading-tight ${entry.lead ? "text-accent" : "text-prt-muted"}`}>{entry.role}</p>
+      </div>
     </li>
   );
 }

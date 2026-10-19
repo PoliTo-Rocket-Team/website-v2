@@ -485,7 +485,13 @@ function Detail({
       </div>
 
       {footer && (
-        <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-hairline px-5 py-4 md:px-7">
+        <div className="grid shrink-0 grid-cols-3 gap-3 border-t border-hairline px-5 py-4 md:px-7">
+          {/* Cancel closes the panel without deciding (Owner decision, 2026-10-19). */}
+          <DialogPrimitive.Close
+            className={`h-11 rounded-full text-[14px] font-semibold text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+          >
+            Cancel
+          </DialogPrimitive.Close>
           <FooterButton step={footer.secondary} kind="secondary" onAsk={setAsking} />
           <FooterButton step={footer.primary} kind="primary" ready={footer.primary.ready} onAsk={setAsking} />
         </div>

@@ -45,8 +45,8 @@ const records = [
   record(6, "Andrea Bassi", [[4, "lead"]]),
 ];
 
-const build = (actor: TeamActor | null) =>
-  teamStructure({ records, org, actor, selfId: null, seat: null, waiting: { 1: [{ joinId: 9, email: "new@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] }, joining: {}, openPositions: { 1: 2 } });
+const build = (actor: TeamActor | null, selfId: number | null = null) =>
+  teamStructure({ records, org, actor, selfId, seat: null, waiting: { 1: [{ joinId: 9, email: "new@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] }, joining: {}, openPositions: { 1: 2 } });
 
 test("the team leader and full access edit every department and division, and add departments (board 77b)", () => {
   const structure = build({ kind: "team" })!;
@@ -75,6 +75,22 @@ test("a division lead and anyone else edit no structure, and get no Edit button"
   assert.equal(showsTreeEdit({ kind: "member", areaGrant: false, siteContent: false, approveOrders: false }), false);
   assert.equal(showsTreeEdit({ kind: "department-head", siteContent: false, approveOrders: false }), true);
   assert.equal(showsTreeEdit({ kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false }), true);
+});
+
+test("only the viewer's own boxes are marked theirs: the leader's for the leader, a head's department, a lead's division (#405)", () => {
+  const yours = (selfId: number | null) => {
+    const s = build({ kind: "team" }, selfId)!;
+    const divisions = s.departments.flatMap((d) => d.divisions);
+    return {
+      leader: s.leader?.yours,
+      departments: s.departments.filter((d) => d.yours).map((d) => d.id),
+      divisions: divisions.filter((v) => v.yours).map((v) => v.id),
+    };
+  };
+  assert.deepEqual(yours(1), { leader: true, departments: [], divisions: [] });
+  assert.deepEqual(yours(2), { leader: false, departments: [1], divisions: [] }, "a head's own department, never the leader box");
+  assert.deepEqual(yours(5), { leader: false, departments: [], divisions: [2] }, "a lead's own division only");
+  assert.deepEqual(yours(null), { leader: false, departments: [], divisions: [] });
 });
 
 test("each box counts its people once: the head and someone in two divisions count once in a department", () => {

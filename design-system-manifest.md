@@ -520,9 +520,9 @@ Dark logos (issue #107): a logo whose alpha-weighted luminance gives under 3:1 c
 `ground` (`darkLogo`) is drawn all white with `brightness(0) invert(1)`, here and on /partners
 (`components/partners/partner-logo.tsx`). There is no plate behind it and no recoloured file:
 the partner's own file is served unchanged. This white drawing is not a recolour under the
-brand-asset rule (Components above). The flag comes from the measurement, never from the eye
-(`measureLogo` in `lib/logo-luminance.ts`): the dashboard sets it when a logo is uploaded, and
-`pnpm logos:check` (`scripts/logos-check.ts`) fails until each `darkLogo` flag in
+brand-asset rule (Components above). The flag starts from the measurement (`measureLogo` in
+`lib/logo-luminance.ts`): the dashboard sets it when a logo is uploaded, and the editor may
+change it before saving (Owner decision, issue #394). `pnpm logos:check` (`scripts/logos-check.ts`) fails until each `darkLogo` flag in
 `lib/partners.ts` equals the measurement.
 
 **Apply band** (board 21): `bg-accent` (`#FF5E00`) with `public/textures/apply-band.webp` on

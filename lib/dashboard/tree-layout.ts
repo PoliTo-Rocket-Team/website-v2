@@ -1,10 +1,12 @@
-import { BOARD_SEAT_TITLES, divisionLabel, type TeamTree, type TreeDivision, type TreePerson } from "./team";
+import { BOARD_SEAT_TITLES, divisionLabel, type TeamTree, type TreePerson } from "./team";
 
 // Where every card, row and line of the Team tree canvas sits (board 54c),
 // in canvas pixels at 100% zoom. The tree reads top-down: the team leader,
 // the board seats side by side, every department head in one row, each
 // head's division leads, and each division's members as a short list under
 // its lead. The viewer's path carries `onPath` from the leader down to them.
+// No name or label is cut off: a long one wraps, and its card or row, and
+// everything under it, moves down to fit (Owner decision, 2026-10-19, on #398).
 
 export type Box = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
 
@@ -21,48 +23,101 @@ export type TreeNode =
       readonly subtitle: string | null;
       readonly onPath: boolean;
     })
-  | (Box & { readonly kind: "row"; readonly key: string; readonly person: TreePerson });
+  | (Box & { readonly kind: "row"; readonly key: string; readonly person: TreePerson; readonly onPath: boolean });
 
 export type Point = readonly [x: number, y: number];
 
 export type TreeEdge = { readonly points: readonly Point[]; readonly onPath: boolean };
-
-/**
- * A dashed line from a division to someone in it who is drawn under another
- * division (board 54e): from the foot of the division's member rail, down
- * under the tree, across and up to them.
- */
-export type TreeLink = { readonly key: string; readonly divisionId: number; readonly personId: number; readonly points: readonly Point[] };
 
 export type TreeLayout = {
   readonly width: number;
   readonly height: number;
   readonly nodes: readonly TreeNode[];
   readonly edges: readonly TreeEdge[];
-  /** The dashed lines to people drawn under another division; none when nobody is in two. */
-  readonly links: readonly TreeLink[];
   /** What the canvas opens on: the viewer's department, or the top of the tree for the leader and board, each down to its lowest row. Null for no place. */
   readonly focus: Box | null;
 };
 
+/** The smallest size of a card; a long name or subtitle makes it taller (`cardHeight`). */
 export const CARD = { w: 184, h: 52 } as const;
 export const LEAD_CARD = { w: 164, h: 58 } as const;
 const COLUMN_GAP = 12;
 const DEPARTMENT_GAP = 48;
 const BOARD_GAP = 24;
-const ROW = { pitch: 30, h: 24, top: 14, rail: 14, indent: 26 } as const;
+/** A member row: its smallest height, the gap between two rows, the lead card's foot to the first row, the rail's offset and the rows' indent. */
+const ROW = { h: 24, gap: 6, top: 14, rail: 14, indent: 26 } as const;
+const ROW_WIDTH = LEAD_CARD.w - ROW.indent;
 
-/** How far under the lowest card or row a dashed line runs across, and the step between two of them. */
-const LINK_DROP = 28;
-const LINK_STEP = 8;
+/** The vertical gaps between levels, and where each bus runs inside them. */
+const LEADER_TO_BOARD = 56;
+const BOARD_TO_HEADS = 72;
+const HEADS_TO_LEADS = 64;
+const BOARD_BUS_DROP = 28;
+const HEAD_BUS_RISE = 28;
+const LEAD_BUS_DROP = 32;
 
-const LEADER_Y = 0;
-const BOARD_Y = LEADER_Y + CARD.h + 56;
-const HEAD_Y = BOARD_Y + CARD.h + 72;
-const LEAD_Y = HEAD_Y + CARD.h + 64;
-const BOARD_BUS = LEADER_Y + CARD.h + 28;
-const HEAD_BUS = HEAD_Y - 28;
-const LEAD_BUS = HEAD_Y + CARD.h + 32;
+/**
+ * A line of text as the tree draws it: its size and line height in canvas
+ * pixels, and an upper bound on one character's width (Archivo, the site's
+ * face). A bound, not a measure, so a box is never drawn shorter than what
+ * it shows.
+ */
+type TextStyle = { readonly line: number; readonly char: number };
+const TITLE: TextStyle = { line: 16.25, char: 13 * 0.64 };
+const SUBTITLE: TextStyle = { line: 13.75, char: 11 * 0.6 };
+const ROW_NAME: TextStyle = { line: 15, char: 12 * 0.6 };
+const ROW_NAME_SELF: TextStyle = { line: 15, char: 12 * 0.64 };
+const SUBTITLE_GAP = 2;
+
+/**
+ * What sits around a card's text: its border and padding, the avatar and the
+ * gap after it across, and its border and padding down.
+ */
+const CARD_PARTS = { across: 2 + 2 * 10 + 28 + 10, down: 2 + 2 * 4 } as const;
+const ROW_PARTS = { across: 2 + 2 * 6 + 20 + 8, down: 2 + 2 * 2 } as const;
+
+/**
+ * How many lines `text` wraps to in `width`: words fill a line until the next
+ * one would run past it, and a word longer than a whole line breaks across lines.
+ */
+function lineCount(text: string, style: TextStyle, width: number): number {
+  const words = text.split(/\s+/).filter((w) => w !== "");
+  let lines = 1;
+  let used = 0;
+  for (const word of words) {
+    const w = word.length * style.char;
+    const next = used === 0 ? w : used + style.char + w;
+    if (next <= width) {
+      used = next;
+    } else if (w <= width) {
+      lines += used === 0 ? 0 : 1;
+      used = w;
+    } else {
+      const spill = Math.ceil(w / width);
+      lines += (used === 0 ? 0 : 1) + spill - 1;
+      used = w - (spill - 1) * width;
+    }
+  }
+  return lines;
+}
+
+/** The name as drawn: the viewer's carries " · you". */
+const shownName = (name: string, self: boolean) => (self ? `${name} · you` : name);
+
+/** How tall a card `width` wide is drawn: the smallest card, or taller to show its whole title and subtitle. */
+function cardHeight(title: string, subtitle: string | null, width: number, least: number): number {
+  const text = width - CARD_PARTS.across;
+  const titleH = lineCount(title, TITLE, text) * TITLE.line;
+  const subtitleH = subtitle === null ? 0 : SUBTITLE_GAP + lineCount(subtitle, SUBTITLE, text) * SUBTITLE.line;
+  return Math.max(least, Math.ceil(CARD_PARTS.down + titleH + subtitleH));
+}
+
+/** How tall a member row is drawn: one line, or taller to show the whole name. */
+function rowHeight(person: TreePerson): number {
+  const style = person.self ? ROW_NAME_SELF : ROW_NAME;
+  const lines = lineCount(shownName(person.name, person.self), style, ROW_WIDTH - ROW_PARTS.across);
+  return Math.max(ROW.h, Math.ceil(ROW_PARTS.down + lines * style.line));
+}
 
 const bottom = (box: Box) => box.y + box.h;
 const middle = (box: Box) => box.x + box.w / 2;
@@ -80,60 +135,22 @@ function elbow(parent: Box, child: Box, busY: number, onPath: boolean, from = mi
   };
 }
 
-function membersHeight(count: number): number {
-  return count === 0 ? 0 : ROW.top + (count - 1) * ROW.pitch + ROW.h;
-}
-
-/**
- * A member row's parts, in canvas pixels: its side padding, the avatar, the
- * gap between items, and an upper bound on one character of the name (12px)
- * and of an "also" tag (10px, plus its own padding). Bounds, not measures, so
- * a row is never drawn narrower than what it shows.
- */
-const ROW_PARTS = { pad: 6, avatar: 20, gap: 8, nameChar: 6.6, tagChar: 5.6, tagPad: 12 } as const;
-const PLAIN_ROW_WIDTH = LEAD_CARD.w - ROW.indent;
-
-/**
- * How wide a member row is drawn. A plain row fits under its lead's card and
- * truncates its name there. A row with "also" tags (board 54e) is as wide as
- * its name and tags, and its division's column widens to hold it, so a tag
- * never runs into the next column.
- */
-export function rowWidth(person: TreePerson): number {
-  if (person.also.length === 0) return PLAIN_ROW_WIDTH;
-  const name = person.name.length + (person.self ? " · you".length : 0);
-  const tags = person.also.reduce((sum, d) => sum + ROW_PARTS.gap + ROW_PARTS.tagPad + `also ${d.label}`.length * ROW_PARTS.tagChar, 0);
-  const width = 2 * ROW_PARTS.pad + ROW_PARTS.avatar + ROW_PARTS.gap + name * ROW_PARTS.nameChar + tags;
-  return Math.max(PLAIN_ROW_WIDTH, Math.ceil(width));
-}
-
-/** How wide a division's column is: its lead's card, or its widest member row. */
-function divisionWidth(division: TreeDivision): number {
-  return Math.max(LEAD_CARD.w, ...division.members.map((m) => ROW.indent + rowWidth(m)));
-}
-
-/** Where a dashed line can reach a person: their box, whether anything is drawn under it in its column, and the gap beside the column. */
-type Target = { readonly box: Box; readonly covered: boolean; readonly gutterX: number };
-
 export function layoutTeamTree(tree: TeamTree): TreeLayout {
   const path = tree.path;
   const nodes: TreeNode[] = [];
   const edges: TreeEdge[] = [];
-  /** Where each division's dashed lines start: the foot of its member rail, or under its card. */
-  const starts = new Map<number, Point>();
-  const targets = new Map<number, Target>();
 
   const columns = tree.departments.map((department) => {
-    const slots = department.divisions.map(divisionWidth);
-    const leadsWidth = slots.reduce((sum, w) => sum + w, 0) + Math.max(0, slots.length - 1) * COLUMN_GAP;
-    return { department, width: Math.max(CARD.w, leadsWidth), leadsWidth, slots };
+    const leadsWidth = department.divisions.length * LEAD_CARD.w + Math.max(0, department.divisions.length - 1) * COLUMN_GAP;
+    return { department, width: Math.max(CARD.w, leadsWidth), leadsWidth };
   });
   const headsWidth = columns.reduce((sum, c) => sum + c.width, 0) + Math.max(0, columns.length - 1) * DEPARTMENT_GAP;
   const boardWidth = tree.board.length * CARD.w + Math.max(0, tree.board.length - 1) * BOARD_GAP;
   const width = Math.max(headsWidth, boardWidth, CARD.w);
   const centre = width / 2;
 
-  const leaderBox: Box = { x: centre - CARD.w / 2, y: LEADER_Y, w: CARD.w, h: CARD.h };
+  const leaderTitle = tree.leader ? shownName(tree.leader.name, tree.leader.self) : "";
+  const leaderBox: Box = { x: centre - CARD.w / 2, y: 0, w: CARD.w, h: tree.leader ? cardHeight(leaderTitle, "Team Leader", CARD.w, CARD.h) : CARD.h };
   const aboveDepartments = tree.leader?.self === true || tree.board.some((b) => b.person.self);
   if (tree.leader) {
     nodes.push({
@@ -148,128 +165,100 @@ export function layoutTeamTree(tree: TeamTree): TreeLayout {
     });
   }
 
+  const boardY = bottom(leaderBox) + LEADER_TO_BOARD;
+  const boardBus = bottom(leaderBox) + BOARD_BUS_DROP;
   const boardLeft = centre - boardWidth / 2;
+  let boardBottom = boardY + CARD.h;
   tree.board.forEach(({ seat, person }, i) => {
-    const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: BOARD_Y, w: CARD.w, h: CARD.h };
+    const h = cardHeight(shownName(person.name, person.self), BOARD_SEAT_TITLES[seat], CARD.w, CARD.h);
+    const box: Box = { x: boardLeft + i * (CARD.w + BOARD_GAP), y: boardY, w: CARD.w, h };
+    boardBottom = Math.max(boardBottom, bottom(box));
     nodes.push({ kind: "card", key: `board-${person.id}`, level: "board", ...box, person, title: person.name, subtitle: BOARD_SEAT_TITLES[seat], onPath: person.self });
-    if (tree.leader) edges.push(elbow(leaderBox, box, BOARD_BUS, person.self));
+    if (tree.leader) edges.push(elbow(leaderBox, box, boardBus, person.self));
   });
 
-  let height = tree.board.length > 0 ? BOARD_Y + CARD.h : LEADER_Y + CARD.h;
+  const headY = boardBottom + BOARD_TO_HEADS;
+  const headBus = headY - HEAD_BUS_RISE;
+  const heads = columns.map(({ department }) => {
+    const title = department.head?.name ?? department.name;
+    const subtitle = department.head ? `Head of ${department.name}` : null;
+    const shown = department.head ? shownName(title, department.head.self) : title;
+    return { title, subtitle, h: cardHeight(shown, subtitle, CARD.w, CARD.h) };
+  });
+  const headsBottom = headY + Math.max(CARD.h, ...heads.map((c) => c.h));
+  const leadY = headsBottom + HEADS_TO_LEADS;
+  const leadBus = headsBottom + LEAD_BUS_DROP;
+
+  let height = tree.board.length > 0 ? boardBottom : bottom(leaderBox);
   let ownColumn: Box | null = null;
 
   let left = (width - headsWidth) / 2;
-  for (const { department, width: columnWidth, leadsWidth, slots } of columns) {
+  for (const [i, { department, width: columnWidth, leadsWidth }] of columns.entries()) {
     const onDepartment = path?.departmentId === department.id;
-    const headBox: Box = { x: left + columnWidth / 2 - CARD.w / 2, y: HEAD_Y, w: CARD.w, h: CARD.h };
+    const head = heads[i];
+    const headBox: Box = { x: left + columnWidth / 2 - CARD.w / 2, y: headY, w: CARD.w, h: head.h };
     nodes.push({
       kind: "card",
       key: `head-${department.id}`,
       level: "head",
       ...headBox,
       person: department.head,
-      title: department.head?.name ?? department.name,
-      subtitle: department.head ? `Head of ${department.name}` : null,
+      title: head.title,
+      subtitle: head.subtitle,
       onPath: onDepartment,
     });
     // The trunk runs from the leader past the board seats to every head.
-    if (tree.leader) edges.push(elbow(leaderBox, headBox, HEAD_BUS, onDepartment));
+    if (tree.leader) edges.push(elbow(leaderBox, headBox, headBus, onDepartment));
 
     let columnBottom = bottom(headBox);
     let slotLeft = left + (columnWidth - leadsWidth) / 2;
-    department.divisions.forEach((division, j) => {
+    for (const division of department.divisions) {
       const onDivision = onDepartment && path?.divisionId === division.id;
-      const slotWidth = slots[j];
-      const leadBox: Box = { x: slotLeft, y: LEAD_Y, w: LEAD_CARD.w, h: LEAD_CARD.h };
-      slotLeft += slotWidth + COLUMN_GAP;
       const label = divisionLabel(division.name);
-      nodes.push({
-        kind: "card",
-        key: `lead-${division.id}`,
-        level: "lead",
-        ...leadBox,
-        person: division.lead,
-        title: division.lead?.name ?? label,
-        subtitle: division.lead ? `${label} · lead` : null,
-        onPath: onDivision,
-      });
-      edges.push(elbow(headBox, leadBox, LEAD_BUS, onDivision));
+      const title = division.lead?.name ?? label;
+      const subtitle = division.lead ? `${label} · lead` : null;
+      const shown = division.lead ? shownName(title, division.lead.self) : title;
+      const leadBox: Box = { x: slotLeft, y: leadY, w: LEAD_CARD.w, h: cardHeight(shown, subtitle, LEAD_CARD.w, LEAD_CARD.h) };
+      slotLeft += LEAD_CARD.w + COLUMN_GAP;
+      nodes.push({ kind: "card", key: `lead-${division.id}`, level: "lead", ...leadBox, person: division.lead, title, subtitle, onPath: onDivision });
+      edges.push(elbow(headBox, leadBox, leadBus, onDivision));
 
-      const railX = leadBox.x + ROW.rail;
-      const rows = division.members.map((person, k): Box => ({
-        x: leadBox.x + ROW.indent,
-        y: bottom(leadBox) + ROW.top + k * ROW.pitch,
-        w: rowWidth(person),
-        h: ROW.h,
-      }));
-      division.members.forEach((person, k) => nodes.push({ kind: "row", key: `row-${person.id}`, ...rows[k], person }));
-      const gutterX = leadBox.x + slotWidth + COLUMN_GAP / 2;
-      if (division.lead) targets.set(division.lead.id, { box: leadBox, covered: rows.length > 0, gutterX });
-      division.members.forEach((person, k) => targets.set(person.id, { box: rows[k], covered: k < rows.length - 1, gutterX }));
-      const lastRow = rows[rows.length - 1];
-      starts.set(division.id, lastRow ? [railX, lastRow.y + lastRow.h / 2] : [middle(leadBox), bottom(leadBox)]);
+      // Each row sits under the one before it, so a row that grows pushes the rest down.
+      const rows: Box[] = [];
+      let rowY = bottom(leadBox) + ROW.top;
+      for (const person of division.members) {
+        const row: Box = { x: leadBox.x + ROW.indent, y: rowY, w: ROW_WIDTH, h: rowHeight(person) };
+        rows.push(row);
+        rowY = bottom(row) + ROW.gap;
+      }
+      division.members.forEach((person, k) =>
+        nodes.push({ kind: "row", key: `row-${division.id}-${person.id}`, ...rows[k], person, onPath: onDivision && person.self }),
+      );
       if (rows.length > 0) {
+        const railX = leadBox.x + ROW.rail;
         const rowMiddle = (box: Box) => box.y + box.h / 2;
         edges.push({ points: [[railX, bottom(leadBox)], [railX, rowMiddle(rows[rows.length - 1])]], onPath: false });
-        rows.forEach((row, k) => edges.push({ points: [[railX, rowMiddle(row)], [row.x, rowMiddle(row)]], onPath: false }));
-        const mine = division.members.findIndex((m) => m.self);
+        rows.forEach((row) => edges.push({ points: [[railX, rowMiddle(row)], [row.x, rowMiddle(row)]], onPath: false }));
+        const mine = onDivision ? division.members.findIndex((m) => m.self) : -1;
         if (mine >= 0) {
           const row = rows[mine];
           edges.push({ points: [[railX, bottom(leadBox)], [railX, rowMiddle(row)], [row.x, rowMiddle(row)]], onPath: true });
         }
       }
-      columnBottom = Math.max(columnBottom, bottom(leadBox) + membersHeight(rows.length));
-    });
+      columnBottom = Math.max(columnBottom, rows.length > 0 ? bottom(rows[rows.length - 1]) : bottom(leadBox));
+    }
 
-    if (onDepartment) ownColumn = { x: left, y: HEAD_Y, w: columnWidth, h: columnBottom - HEAD_Y };
+    if (onDepartment) ownColumn = { x: left, y: headY, w: columnWidth, h: columnBottom - headY };
     height = Math.max(height, columnBottom);
     left += columnWidth + DEPARTMENT_GAP;
   }
 
-  const links = linksOf(tree, nodes, starts, targets);
-  for (const link of links) height = Math.max(height, ...link.points.map(([, y]) => y + LINK_STEP));
   // The leader and board open on the top of the tree, down to its lowest row, so the opening view leaves no row cut off.
   const top: Box | null = aboveDepartments ? { x: Math.min(leaderBox.x, boardLeft), y: 0, w: Math.max(CARD.w, boardWidth), h: height } : null;
-  return { width, height, nodes, edges, links, focus: ownColumn ?? top };
+  return { width, height, nodes, edges, focus: ownColumn ?? top };
 }
 
-/**
- * One dashed line per division a person is in beyond the one they are drawn
- * under (board 54e). Each runs down from the division's rail to just under the
- * lowest card or row it passes, across, and up to the person: straight up into
- * the bottom of their box when nothing is drawn under it, else up the gap
- * beside their column and into its side, so it crosses no one. Lines are
- * stacked LINK_STEP apart so no two run across on one level.
- */
-function linksOf(tree: TeamTree, nodes: readonly TreeNode[], starts: ReadonlyMap<number, Point>, targets: ReadonlyMap<number, Target>): TreeLink[] {
-  const links: TreeLink[] = [];
-  for (const division of tree.departments.flatMap((d) => d.divisions)) {
-    const start = starts.get(division.id);
-    for (const personId of division.elsewhere) {
-      const target = targets.get(personId);
-      if (!start || !target) continue;
-      const { box, covered, gutterX } = target;
-      const endX = covered ? gutterX : middle(box);
-      const [from, to] = [Math.min(start[0], endX, box.x), Math.max(start[0], endX, box.x + box.w)];
-      const lowest = Math.max(start[1], ...nodes.filter((n) => n.x < to && n.x + n.w > from).map(bottom));
-      const busY = lowest + LINK_DROP + links.length * LINK_STEP;
-      const up: Point[] = covered
-        ? [
-            [gutterX, busY],
-            [gutterX, box.y + box.h / 2],
-            [box.x + box.w, box.y + box.h / 2],
-          ]
-        : [
-            [endX, busY],
-            [endX, bottom(box)],
-          ];
-      links.push({ key: `also-${division.id}-${personId}`, divisionId: division.id, personId, points: [start, [start[0], busY], ...up] });
-    }
-  }
-  return links;
-}
-
-/** The box of the card or row that shows `personId`, for "Find someone" and "Show me". */
+/** The box of the card or row at the person's first place, for "Find someone" and "Show me". */
 export function boxOf(layout: TreeLayout, personId: number): Box | null {
-  return layout.nodes.find((n) => n.person?.id === personId) ?? null;
+  return layout.nodes.find((n) => n.person?.id === personId && n.person.first) ?? null;
 }

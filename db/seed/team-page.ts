@@ -6,13 +6,15 @@
 // on the arc the two leaders lib/about/team.ts draws there whom no board seat
 // places: the head of Operations, between the Project Manager and the Chief
 // Engineer, and the head of R&D after them. The other edits are invented,
-// since the public data holds no editor's changes: the team leader's photo
-// replaced, a head's role text changed, a division lead hidden, a division
-// lead added to Research and Development, whose one division has nobody in
-// it, and the intro text and the group photo's caption changed. Every edit
-// is keyed to a spot the seeded roles fill and names only people on the
-// team; none of it writes a role, so Reset to team (board 80h) brings back
-// the roles build with the intro text and the group photo kept. The advisors
+// since the public data holds no editor's changes: a head's role text
+// changed, a division lead hidden, a division lead added to Research and
+// Development, whose one division has nobody in it, and the intro text and
+// the group photo's caption changed. The team leader is left as the roles
+// build draws him, with his own photo: a stand-in photo there showed a plain
+// orange disc in his circle on every preview (issue #390). Every edit is
+// keyed to a spot the seeded roles fill and names only people on the team;
+// none of it writes a role, so Reset to team (board 80h) brings back the
+// roles build with the intro text and the group photo kept. The advisors
 // are today's (lib/about/advisors-import.ts), each published, as
 // drizzle/0035 imports them, except that an advisor's real email is swapped
 // for an invented one on a reserved domain: emails stay private.
@@ -54,12 +56,9 @@ function arcRole(name: string): string {
   return leader.role;
 }
 
-/**
- * The published layer. The photo is the warm stand-in a preview shows for an
- * upload, since the seed uploads no file.
- */
+/** The published layer. */
 export const TEAM_PAGE_LAYER: TeamPageLayer = {
-  leader: { photo: "/team/preview-upload.webp" },
+  leader: {},
   spots: {
     [RENAMED_HEAD_SPOT]: { role: "Head of Recovery and Landing" },
     [HIDDEN_LEAD_SPOT]: { hidden: true },

@@ -1,21 +1,22 @@
 import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } from "./viewer";
 
-// Which viewer reaches which dashboard page, and where the page sits for that
-// viewer (Dashboard v2 boards 51b, 52 and 56; the operations lead keeps boards
-// 40 to 46). One row per page: a new page adds one row. A viewer whose kind is
-// missing from a row's `reach` does not reach the page, unless the row names an
-// `areaGrant` place and they are a member holding an area grant (issue #160),
-// a `siteContent` place and they hold site-content access, or an
-// `approveOrders` place and they hold "Approve orders". A row that names a
-// `seat` is reached by that full-access seat alone (issue #238). The
-// `operations-lead` kind is full access: the team leader, the operations lead
-// and the IT lead, or an admin or org scope row (./viewer.ts), so it reaches
-// every page of the team. A row's `seatPlace` moves a page to another group
-// for one full-access seat: the team leader's sidebar has a Content group
-// (board 72, issue #252), where Alumni sits, and each content page adds its
-// own row there.
+// Which viewer reaches which dashboard page, and where the page sits (Dashboard
+// v2 boards 51b, 52, 56 and 72). One row per page: a new page adds one row. A
+// viewer whose kind is missing from a row's `reach` does not reach the page,
+// unless the row admits `areaGrant` and they are a member holding an area grant
+// (issue #160), `siteContent` and they hold site-content access, or
+// `approveOrders` and they hold "Approve orders". A row that names a `seat` is
+// reached by that full-access seat alone (issue #238). The `operations-lead`
+// kind is full access: the team leader, the operations lead and the IT lead,
+// or an admin or org scope row (./viewer.ts), so it reaches every page of the
+// team.
+//
+// Owner decision (issue #408): the sidebar has one structure for every role,
+// the same groups in the same order under the same names. A row therefore
+// carries one `place`, the same for every viewer who reaches the page; a role
+// only hides the pages it does not reach.
 
-export const NAV_GROUPS = ["main", "recruitment", "team", "content", "my-department", "my-division"] as const;
+export const NAV_GROUPS = ["main", "recruitment", "team", "content"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
 /** The small heading over each group; the main group has none. */
@@ -24,8 +25,6 @@ export const NAV_GROUP_LABELS: Readonly<Record<NavGroup, string | null>> = {
   recruitment: "Recruitment",
   team: "Team",
   content: "Content",
-  "my-department": "My department",
-  "my-division": "My division",
 };
 
 /**
@@ -46,19 +45,20 @@ type PageRow = {
   readonly key: string;
   readonly label: string;
   readonly href: `/dashboard${string}`;
-  readonly reach: Readonly<Partial<Record<ViewerKind, NavPlace>>>;
-  /** Where the page shows for a member who holds an area grant (issue #160): where it shows for a division lead. */
-  readonly areaGrant?: NavPlace;
-  /** Where the page shows for a viewer whose kind does not reach it but who holds site-content access. */
-  readonly siteContent?: NavPlace;
-  /** Where the page shows for a viewer whose kind does not reach it but who holds "Approve orders". */
-  readonly approveOrders?: NavPlace;
+  /** Where the page shows, the same for every viewer who reaches it (issue #408). */
+  readonly place: NavPlace;
+  /** The viewer kinds whose role reaches the page. */
+  readonly reach: readonly ViewerKind[];
+  /** A member who holds an area grant (issue #160) reaches the page as a division lead does. */
+  readonly areaGrant?: true;
+  /** A viewer whose kind does not reach the page reaches it with site-content access. */
+  readonly siteContent?: true;
+  /** A viewer whose kind does not reach the page reaches it with "Approve orders". */
+  readonly approveOrders?: true;
   /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
   readonly shownWhen?: Readonly<Partial<Record<ViewerKind, NavCondition>>>;
   /** The one full-access seat that reaches the page; every other viewer, full access or not, does not. */
   readonly seat?: FullAccessSeat;
-  /** Where the page shows for a full-access seat whose sidebar places it apart from the rest of full access. */
-  readonly seatPlace?: Readonly<Partial<Record<FullAccessSeat, NavPlace>>>;
 };
 
 /** Rows in sidebar order within each group. */
@@ -69,34 +69,23 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard",
     // Every viewer lands here, a non-member with nothing shown too (board
     // 50f, issue #317).
-    reach: {
-      "operations-lead": "main",
-      "department-head": "main",
-      "division-lead": "main",
-      member: "main",
-      alumni: "main",
-      "non-member": "main",
-    },
+    place: "main",
+    reach: ["operations-lead", "department-head", "division-lead", "member", "alumni", "non-member"],
   },
   {
     key: "my-alumni",
     label: "My alumni",
     href: "/dashboard/my-alumni",
     // Board 56b (issue #317): how an alumnus shows on the Alumni page.
-    reach: { alumni: "main" },
+    place: "main",
+    reach: ["alumni"],
   },
   {
     key: "my-applications",
     label: "My applications",
     href: "/dashboard/my-applications",
-    reach: {
-      "operations-lead": "main",
-      "department-head": "main",
-      "division-lead": "main",
-      member: "main",
-      alumni: "main",
-      "non-member": "main",
-    },
+    place: "main",
+    reach: ["operations-lead", "department-head", "division-lead", "member", "alumni", "non-member"],
     // Listed only while one of their applications is shown, for everyone
     // (issue #317; the team since issue #183).
     shownWhen: {
@@ -112,29 +101,33 @@ export const DASHBOARD_PAGES = [
     key: "team-tree",
     label: "Team tree",
     href: "/dashboard/team-tree",
-    reach: { "operations-lead": "main", "department-head": "main", "division-lead": "main", member: "main" },
+    place: "main",
+    reach: ["operations-lead", "department-head", "division-lead", "member"],
   },
   {
     key: "positions",
     label: "Positions",
     href: "/dashboard/positions",
-    reach: { "operations-lead": "recruitment", "department-head": "recruitment", "division-lead": "recruitment" },
-    areaGrant: "recruitment",
+    place: "recruitment",
+    reach: ["operations-lead", "department-head", "division-lead"],
+    areaGrant: true,
   },
   {
     key: "applications",
     label: "Applications",
     href: "/dashboard/applications",
-    reach: { "operations-lead": "recruitment", "department-head": "recruitment", "division-lead": "recruitment" },
-    areaGrant: "recruitment",
+    place: "recruitment",
+    reach: ["operations-lead", "department-head", "division-lead"],
+    areaGrant: true,
   },
   {
     key: "members",
     label: "Members",
     href: "/dashboard/members",
     // A department head's Members page holds every division of the department (issue #235).
-    reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
-    areaGrant: "my-division",
+    place: "team",
+    reach: ["operations-lead", "department-head", "division-lead"],
+    areaGrant: true,
   },
   {
     key: "projects",
@@ -143,9 +136,9 @@ export const DASHBOARD_PAGES = [
     // Board 75 (issue #297): the site-content rule Outreach, Partners, Alumni
     // and FAQ follow (maySiteContent, lib/content/gate.ts), placed first in
     // the Content group as board 75 lists it.
-    reach: { "operations-lead": "team" },
-    siteContent: "team",
-    seatPlace: { "team-leader": "content" },
+    place: "content",
+    reach: ["operations-lead"],
+    siteContent: true,
   },
   {
     key: "outreach",
@@ -154,20 +147,20 @@ export const DASHBOARD_PAGES = [
     // Board 74 (issue #289): the site-content rule Partners, Alumni and FAQ
     // follow (maySiteContent, lib/content/gate.ts), placed ahead of Partners
     // as board 74 lists the Content group.
-    reach: { "operations-lead": "team" },
-    siteContent: "team",
-    seatPlace: { "team-leader": "content" },
+    place: "content",
+    reach: ["operations-lead"],
+    siteContent: true,
   },
   {
     key: "partners",
     label: "Partners",
     href: "/dashboard/partners",
     // Boards 76 and 76b (issue #256): the Alumni rule (maySiteContent,
-    // lib/content/gate.ts), placed as Alumni is: under Content for the team
-    // leader, ahead of Alumni as board 76 lists them.
-    reach: { "operations-lead": "team" },
-    siteContent: "team",
-    seatPlace: { "team-leader": "content" },
+    // lib/content/gate.ts), placed as Alumni is: under Content, ahead of
+    // Alumni as board 76 lists them.
+    place: "content",
+    reach: ["operations-lead"],
+    siteContent: true,
   },
   {
     key: "alumni",
@@ -176,10 +169,10 @@ export const DASHBOARD_PAGES = [
     // Owner decision on #234: full access (the team leader, the operations
     // lead and the IT lead, issue #238) and anyone given site-content access.
     // A division lead or department head gets nothing from their role here.
-    reach: { "operations-lead": "team" },
-    siteContent: "team",
-    // The team leader's sidebar groups it under Content (board 72, issue #252).
-    seatPlace: { "team-leader": "content" },
+    // It sits under Content (board 72, issue #252).
+    place: "content",
+    reach: ["operations-lead"],
+    siteContent: true,
   },
   {
     key: "faq",
@@ -187,10 +180,10 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/faq",
     // Boards 79 and 79b (issue #258): the site-content rule Partners and
     // Alumni follow (maySiteContent, lib/content/gate.ts), placed after
-    // Alumni, under Content for the team leader, as board 79 lists them.
-    reach: { "operations-lead": "team" },
-    siteContent: "team",
-    seatPlace: { "team-leader": "content" },
+    // Alumni, under Content, as board 79 lists them.
+    place: "content",
+    reach: ["operations-lead"],
+    siteContent: true,
   },
   {
     key: "team-page",
@@ -198,11 +191,10 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/team-page",
     // The Team page editor (boards 80 to 80h, issues #283 and #284): the
     // site-content rule Partners, Alumni and FAQ follow (maySiteContent,
-    // lib/content/gate.ts), placed after FAQ, under Content for the team
-    // leader.
-    reach: { "operations-lead": "team" },
-    siteContent: "team",
-    seatPlace: { "team-leader": "content" },
+    // lib/content/gate.ts), placed after FAQ, under Content.
+    place: "content",
+    reach: ["operations-lead"],
+    siteContent: true,
   },
   {
     key: "division-access",
@@ -210,19 +202,20 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/access",
     // A department head's Access page is here (issue #230); full access gives
     // access across the whole team (issue #238).
-    reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
-    areaGrant: "my-division",
+    place: "team",
+    reach: ["operations-lead", "department-head", "division-lead"],
+    areaGrant: true,
   },
   {
     key: "orders",
     label: "Orders",
     href: "/dashboard/orders",
     // Every order in the team, for anyone with Orders access (issue #233).
-    reach: { "operations-lead": "team", "department-head": "my-department", "division-lead": "my-division" },
-    areaGrant: "my-division",
-    // "Approve orders" is a grant across the whole team, so the page sits
-    // under Team, as it does for full access (issue #270).
-    approveOrders: "team",
+    place: "team",
+    reach: ["operations-lead", "department-head", "division-lead"],
+    areaGrant: true,
+    // "Approve orders" is a grant across the whole team (issue #270).
+    approveOrders: true,
   },
   {
     key: "activity-log",
@@ -230,21 +223,24 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/activity-log",
     // Owner decision on #238: the IT lead alone, not the rest of full access.
     // The page is not built yet, so the sidebar does not list it.
-    reach: { "operations-lead": "unlisted" },
+    place: "unlisted",
+    reach: ["operations-lead"],
     seat: "it-lead",
   },
   {
     key: "my-profile",
     label: "My profile",
     href: "/dashboard/profile",
-    reach: { "operations-lead": "user-menu", "department-head": "user-menu", "division-lead": "user-menu", member: "user-menu" },
+    place: "user-menu",
+    reach: ["operations-lead", "department-head", "division-lead", "member"],
   },
   {
     key: "my-account",
     label: "My account",
     href: "/dashboard/account",
     // Someone off the team keeps their account and its details (issues #201, #317).
-    reach: { alumni: "user-menu", "non-member": "user-menu" },
+    place: "user-menu",
+    reach: ["alumni", "non-member"],
   },
 ] as const satisfies readonly PageRow[];
 
@@ -280,19 +276,15 @@ export type MenuPage = {
   readonly href: string;
 };
 
-/** Where `page` shows for `viewer`; undefined when the viewer does not reach it. */
-function placeOf(page: PageRow, viewer: ViewerStanding): NavPlace | undefined {
-  const seat = seatOf(viewer);
-  if (page.seat !== undefined && seat !== page.seat) return undefined;
-  const reached = page.reach[viewer.kind];
-  if (reached === undefined) {
-    return (
-      (viewer.kind === "member" && viewer.areaGrant ? page.areaGrant : undefined) ??
-      (viewer.siteContent ? page.siteContent : undefined) ??
-      (viewer.approveOrders ? page.approveOrders : undefined)
-    );
-  }
-  return (seat === null ? undefined : page.seatPlace?.[seat]) ?? reached;
+/** Whether `viewer` reaches `page`, by their role or by a grant the row admits. */
+function reaches(page: PageRow, viewer: ViewerStanding): boolean {
+  if (page.seat !== undefined && seatOf(viewer) !== page.seat) return false;
+  return (
+    page.reach.includes(viewer.kind) ||
+    (viewer.kind === "member" && viewer.areaGrant && page.areaGrant === true) ||
+    (viewer.siteContent && page.siteContent === true) ||
+    (viewer.approveOrders && page.approveOrders === true)
+  );
 }
 
 function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean {
@@ -306,14 +298,17 @@ function shownFor(page: PageRow, kind: ViewerKind, facts: SidebarFacts): boolean
 
 /** Whether `viewer` reaches the page: the one rule its sidebar item and the page itself both read. */
 export function canReach(viewer: ViewerStanding, key: DashboardPageKey): boolean {
-  return DASHBOARD_PAGES.some((page) => page.key === key && placeOf(page, viewer) !== undefined);
+  return DASHBOARD_PAGES.some((page) => page.key === key && reaches(page, viewer));
 }
 
-/** The viewer's sidebar: their groups in order, each with the pages listed there for them. */
+/**
+ * The viewer's sidebar: the one structure every role shares (issue #408), with
+ * only the pages the viewer reaches and an empty group left out.
+ */
 export function sidebarFor(viewer: ViewerStanding, facts: SidebarFacts): NavSection[] {
   return NAV_GROUPS.flatMap((group) => {
     const items = DASHBOARD_PAGES.filter(
-      (page) => placeOf(page, viewer) === group && shownFor(page, viewer.kind, facts),
+      (page: PageRow) => page.place === group && reaches(page, viewer) && shownFor(page, viewer.kind, facts),
     ).map(
       (page): NavItem => ({ key: page.key, label: page.label, href: page.href, count: facts.counts[page.key] || null }),
     );
@@ -336,7 +331,7 @@ export const LANDING_AFTER_LEAVING: DashboardLanding = "/dashboard";
 
 /** The page the user menu opens for this viewer: My account off the team, My profile on it. */
 export function userMenuPageFor(kind: ViewerKind): MenuPage | null {
-  const page = DASHBOARD_PAGES.find((row: PageRow) => row.reach[kind] === "user-menu");
+  const page = DASHBOARD_PAGES.find((row: PageRow) => row.place === "user-menu" && row.reach.includes(kind));
   return page ? { key: page.key, label: page.label, href: page.href } : null;
 }
 

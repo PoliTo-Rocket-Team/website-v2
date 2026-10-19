@@ -32,6 +32,8 @@ export type StructureDivision = {
   readonly page: DivisionMembers | null;
   /** Its open positions: Close division and Close department say how many close (boards 68c, 77f). */
   readonly openPositions: number;
+  /** The viewer leads it: its box wears the accent ring and tint (issue #405). */
+  readonly yours: boolean;
 };
 
 export type StructureDepartment = {
@@ -47,10 +49,16 @@ export type StructureDepartment = {
   /** Pencils on its divisions and its Add division: its head, the team leader and full access. */
   readonly divisionsEditable: boolean;
   readonly divisions: readonly StructureDivision[];
+  /** The viewer heads it: its box wears the accent ring and tint (issue #405). */
+  readonly yours: boolean;
 };
 
-/** The Team Leader box (board 77i): who leads the team, and whether the viewer may hand the role over: only the team leader. */
-export type StructureLeader = StructurePerson & { readonly handsOver: boolean };
+/**
+ * The Team Leader box (board 77i): who leads the team, whether the viewer may
+ * hand the role over (only the team leader), and whether the viewer is the
+ * team leader, so the box wears the accent ring and tint (issue #405).
+ */
+export type StructureLeader = StructurePerson & { readonly handsOver: boolean; readonly yours: boolean };
 
 export type TeamStructure = {
   readonly leader: StructureLeader | null;
@@ -104,6 +112,8 @@ export function teamStructure(input: {
   if (!editsStructure(actor)) return null;
   const person = (r: PersonRecord): StructurePerson => ({ id: r.id, name: r.name });
   const leader = records.find((r) => r.beyondDivisions.some((b) => b.kind === "team-leader"));
+  // The viewer's own record: their box is the one the edit view marks (issue #405).
+  const self = input.selfId === null ? undefined : records.find((r) => r.id === input.selfId);
 
   const departments = org.departments.map((department): StructureDepartment => {
     const head = records.find((r) => r.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id));
@@ -136,6 +146,7 @@ export function teamStructure(input: {
             })
           : null,
         openPositions: input.openPositions[division.id] ?? 0,
+        yours: self !== undefined && roleIn(self.memberships, division.id) === "lead",
       };
     });
     const headDivisions = head
@@ -153,11 +164,18 @@ export function teamStructure(input: {
       size: (head ? 1 : 0) + inDepartment.size,
       divisionsEditable: editable,
       divisions,
+      yours: self?.beyondDivisions.some((b) => b.kind === "head" && b.departmentId === department.id) ?? false,
     };
   });
 
   return {
-    leader: leader ? { ...person(leader), handsOver: mayHandOverTeamLeader({ seat: input.seat, selfId: input.selfId }, leader.id) } : null,
+    leader: leader
+      ? {
+          ...person(leader),
+          handsOver: mayHandOverTeamLeader({ seat: input.seat, selfId: input.selfId }, leader.id),
+          yours: leader.id === self?.id,
+        }
+      : null,
     departmentsEditable: mayManageDepartments(actor),
     departments,
     takenCodes: org.divisions.map((d) => ({ id: d.id, name: d.name, code: d.code ?? null })),
