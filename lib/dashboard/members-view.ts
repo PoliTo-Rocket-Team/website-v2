@@ -212,8 +212,8 @@ export function matchesWaiting(waiting: Pick<WaitingPerson, "email" | "name">, q
 }
 
 export type ShownMembers = {
-  /** The division chosen and held as its own data: its bar shows above the rows. */
-  readonly division: DivisionHeader | null;
+  /** The one division chosen in the select, for every role: its bar shows above the rows. */
+  readonly division: MembersUnit["divisions"][number] | null;
   readonly people: readonly MemberEntry[];
   readonly waiting: readonly { readonly waiting: WaitingPerson; readonly division: DivisionHeader; readonly editable: boolean }[];
   readonly joining: readonly { readonly joining: Joining; readonly division: string; readonly editable: boolean }[];
@@ -239,7 +239,7 @@ export function shownMembers(page: MembersModel, filter: MembersFilter): ShownMe
   );
   const slices = slice ? [slice] : page.divisions.filter((d) => inDepartment(d.header.id));
   return {
-    division: slice?.header ?? null,
+    division: options.find((d) => d.id === divisionId) ?? null,
     people,
     waiting: slices.flatMap((s) =>
       s.waiting.filter((w) => matchesWaiting(w, filter.query)).map((w) => ({ waiting: w, division: s.header, editable: s.editable })),

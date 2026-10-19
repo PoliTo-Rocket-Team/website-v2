@@ -110,12 +110,19 @@ test("choosing a division lists it as that division does, with the people waitin
   assert.deepEqual(shownMembers(head, { ...NO_MEMBERS_FILTER, query: "elena" }).waiting.map((w) => w.division.code), ["MA"]);
 });
 
+test("a chosen division shows the same division bar for every role", () => {
+  const bar = (page: MembersModel) => shownMembers(page, { ...NO_MEMBERS_FILTER, divisionId: 1 }).division;
+  const expected = { id: 1, name: "Mission Analysis Division", code: "MA" };
+  for (const page of [leaderPage(), headPage(), leadPage()]) assert.deepEqual(bar(page), expected);
+  for (const page of [leaderPage(), headPage(), leadPage()]) assert.equal(shownMembers(page, NO_MEMBERS_FILTER).division, null);
+});
+
 test("on the whole team the selects narrow everyone, and a division from another department reads as all", () => {
   const leader = leaderPage();
   const names = (filter: Partial<typeof NO_MEMBERS_FILTER>) => shownMembers(leader, { ...NO_MEMBERS_FILTER, ...filter }).people.map((p) => p.name);
   assert.deepEqual(names({ department: "Structures" }), ["Federica Leone", "Davide Russo"]);
   assert.deepEqual(names({ divisionId: 2 }), ["Chiara Ferri", "Laura Greco", "Lena Fischer"]);
-  assert.equal(shownMembers(leader, { ...NO_MEMBERS_FILTER, divisionId: 2 }).division, null, "the whole team holds no division of its own");
   assert.equal(names({ department: "Structures", divisionId: 2 }).length, 2);
+  assert.equal(shownMembers(leader, { ...NO_MEMBERS_FILTER, department: "Structures", divisionId: 2 }).division, null);
   assert.deepEqual(names({ query: "lena" }), ["Lena Fischer"]);
 });

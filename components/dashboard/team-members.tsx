@@ -13,6 +13,7 @@ import {
   type MemberEntry,
   type MembersModel,
   type MembersTool,
+  type MembersUnit,
   type ShownMembers,
 } from "@/lib/dashboard/members-view";
 import { divisionLabel, pageCount, pageOf } from "@/lib/dashboard/team";
@@ -282,7 +283,7 @@ function ViewSwitch({ value, onChange }: { value: View; onChange: (view: View) =
 }
 
 /** Board 69b: the chosen division's code and name, and its leads. */
-function DivisionBar({ division, people }: { division: DivisionHeader; people: readonly MemberEntry[] }) {
+function DivisionBar({ division, people }: { division: MembersUnit["divisions"][number]; people: readonly MemberEntry[] }) {
   const leads = people.filter((p) => p.divisions.some((d) => d.divisionId === division.id && d.role === "lead"));
   return (
     <section aria-label={division.name} className={`${PANEL} mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3`}>
