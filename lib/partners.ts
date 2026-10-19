@@ -30,8 +30,9 @@ export type PartnerLogo = {
   kind: "wordmark" | "mark";
   /**
    * Too dark to read on the dark page, so it is drawn all white with a CSS
-   * filter. Set from the measurement (`measureLogo`, lib/logo-luminance.ts),
-   * never by eye: on upload in the dashboard, by `pnpm logos:check` for the record.
+   * filter. Starts from the measurement (`measureLogo`, lib/logo-luminance.ts)
+   * on upload in the dashboard, where the editor may change it (issue #394);
+   * `pnpm logos:check` checks the records here.
    */
   darkLogo: boolean;
 };
