@@ -1,12 +1,8 @@
 import type { ReactNode } from "react";
-import { Suspense } from "react";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { AccountUnresolved } from "@/components/dashboard/account-unresolved";
 import { DashboardShell } from "@/components/dashboard/shell";
-import { sidebarFor, userMenuPageFor } from "@/lib/dashboard/access";
+import { openChrome, type DashboardChrome } from "@/lib/dashboard/chrome";
 import { openDashboard } from "@/lib/dashboard/open";
-import { userCardRole } from "@/lib/dashboard/viewer";
 
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
@@ -15,29 +11,19 @@ export const metadata: Metadata = {
 // Every dashboard page sits in the shell: the viewer's sidebar, their user
 // menu and the page.
 // Who the viewer is comes from the dashboard data interface, read on request
-// only, so a build never reads a cookie or the database.
+// only, so a build never reads a cookie or the database. The frame does not
+// wait for it (issue #397): it paints at once, the sidebar and the user menu
+// stream in when the viewer is read, and the page streams in beside them. The
+// layout and the page share one opening of the dashboard (`openDashboard` is
+// cached per request).
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  return (
-    <Suspense fallback={<div className="min-h-svh bg-ground" />}>
-      <SignedInShell>{children}</SignedInShell>
-    </Suspense>
-  );
+  return <DashboardShell chrome={chromeOf()}>{children}</DashboardShell>;
 }
 
-async function SignedInShell({ children }: { children: ReactNode }) {
+async function chromeOf(): Promise<DashboardChrome> {
   const opening = await openDashboard();
-  if (opening.kind === "signed-out") redirect("/login?cb=/dashboard");
-  // A token holder sent to /login would bounce straight back (proxy.ts).
-  if (opening.kind === "account-unresolved") return <AccountUnresolved />;
+  if (opening.kind !== "open") return { kind: opening.kind };
   const { data } = opening;
   const [counts, hasShownApplications] = await Promise.all([data.navCounts(), data.hasShownApplications()]);
-  return (
-    <DashboardShell
-      viewer={{ ...data.viewer, role: userCardRole(data.viewer, hasShownApplications) }}
-      sections={sidebarFor(data.viewer, { counts, hasShownApplications })}
-      menuPage={userMenuPageFor(data.viewer.kind)}
-    >
-      {children}
-    </DashboardShell>
-  );
+  return openChrome(data.viewer, { counts, hasShownApplications });
 }

@@ -34,11 +34,12 @@ async function LiveProject({ params }: Params) {
   const opening = await openDashboard();
   if (opening.kind === "signed-out") redirect(`/login?cb=/dashboard/projects/${encodeURIComponent(slug)}`);
   if (opening.kind === "account-unresolved") return null;
-  const items = await opening.data.projects.list();
+  // The footer's projects need nothing of the editor's, so both are read at once (issue #397).
+  const [items, projects] = await Promise.all([opening.data.projects.list(), footerProjects()]);
   if (items === null) notFound();
   const item =
     items.find((i) => editorVersion(i.version).slug === slug) ?? items.find((i) => publicVersion(i.version)?.slug === slug);
   const place = item === undefined ? null : placeOf(items, item.id);
   if (item === undefined || place === null) notFound();
-  return <ProjectEdit item={item} place={place} footerProjects={await footerProjects()} />;
+  return <ProjectEdit item={item} place={place} footerProjects={projects} />;
 }

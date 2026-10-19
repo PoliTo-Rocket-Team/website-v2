@@ -3,8 +3,9 @@ import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ApplyPosition } from "./types";
-import { getScopeInfoForCurrentUser } from "./get-member-scopes";
+import { getScopeInfoForCurrentUser, getScopeInfoForMember } from "./get-member-scopes";
 import { getDb, isDatabaseConfigured } from "@/db/client";
+import { PUBLIC_POSITIONS_CACHE_TAG } from "@/lib/cache-tags";
 import {
   applyPositions,
   departments,
@@ -21,7 +22,8 @@ import {
   type RecruitmentControl,
 } from "@/lib/apply/recruitment-switch";
 
-export const PUBLIC_POSITIONS_CACHE_TAG = "public-apply-positions";
+// The tag lives in lib/cache-tags.ts, beside the other reads that carry it (issue #397).
+export { PUBLIC_POSITIONS_CACHE_TAG };
 
 export type PositionSnapshotRow = {
   id: number;
@@ -143,6 +145,21 @@ function toApplyPosition(position: PositionSnapshotRow): ApplyPosition {
 export async function getRecruitmentControl(): Promise<RecruitmentControl> {
   const [scopeInfo, recruitment] = await Promise.all([
     getScopeInfoForCurrentUser("positions"),
+    queryRecruitment(),
+  ]);
+
+  return { recruitment, canSwitch: canSwitchRecruitment(scopeInfo) };
+}
+
+/**
+ * The same switch for a member the caller has already resolved (the
+ * dashboard's identity, issue #397), so the session is not read again.
+ * `getScopeInfoForCurrentUser` reads the scope rows of the signed-in user's
+ * member; this reads that member's rows directly.
+ */
+export async function getRecruitmentControlFor(memberId: number | null): Promise<RecruitmentControl> {
+  const [scopeInfo, recruitment] = await Promise.all([
+    getScopeInfoForMember(memberId, "positions"),
     queryRecruitment(),
   ]);
 

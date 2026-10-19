@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, use, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { DashboardPageKey, MenuPage, NavSection } from "@/lib/dashboard/access";
+import type { DashboardChrome } from "@/lib/dashboard/chrome";
 import type { DashboardViewer } from "@/lib/dashboard/viewer";
 import { UserCard, type UserMenuForm } from "./user-card";
 
@@ -109,25 +110,21 @@ function isCurrent(pathname: string | null, href: string): boolean {
 // user card stays pinned at the foot. The current page sits
 // on white-5 with its icon in accent. On phones it is the menu sheet (board
 // 50m-b): the same column with a close button beside the logo, and the user
-// card opens its menu as a bottom sheet.
+// card opens its menu as a bottom sheet. The logo and the title paint with
+// the frame; the pages and the user card follow when the viewer's chrome
+// arrives (issue #397), with quiet placeholder rows in their place until then.
 export function Sidebar({
-  viewer,
-  sections,
-  menuPage,
+  chrome,
   userMenu,
   onNavigate,
   close,
 }: {
-  viewer: DashboardViewer;
-  sections: readonly NavSection[];
-  menuPage: MenuPage | null;
+  chrome: Promise<DashboardChrome>;
   userMenu: UserMenuForm;
   onNavigate?: () => void;
   /** The sheet's close button, beside the logo; the fixed sidebar has none. */
   close?: ReactNode;
 }) {
-  const pathname = usePathname();
-  const nav = useNavOverflow(pathname);
   return (
     <div className="flex h-full flex-col px-3 pb-[18px] pt-6">
       <div className="flex shrink-0 items-center justify-between gap-3">
@@ -142,6 +139,105 @@ export function Sidebar({
       </div>
       <p className="mt-[22px] shrink-0 text-[18px] font-bold leading-5">Dashboard</p>
 
+      <Suspense fallback={<SidebarPlaceholder />}>
+        <SidebarPages chrome={chrome} userMenu={userMenu} onNavigate={onNavigate} />
+      </Suspense>
+    </div>
+  );
+}
+
+/** Row widths of the placeholder, so it reads as a list of page names rather than one block. */
+const PLACEHOLDER_ROWS = ["w-20", "w-24", "w-16", "w-28", "w-20", "w-24"] as const;
+
+/** Where the pages and the user card will be: the same rows and card, empty, on white-5. */
+function SidebarPlaceholder() {
+  return (
+    <>
+      <div aria-hidden="true" className="mt-[22px] min-h-0 flex-1">
+        <div className="flex flex-col gap-0.5">
+          {PLACEHOLDER_ROWS.map((width, i) => (
+            <div key={i} className="flex h-8 items-center gap-3 px-2.5">
+              <span className="h-4 w-4 shrink-0 rounded bg-white-5" />
+              <span className={`h-2.5 rounded-full bg-white-5 ${width}`} />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div aria-hidden="true" className="mt-3 flex h-[52px] w-full shrink-0 items-center gap-2 rounded-xl border border-hairline pl-2.5 pr-2">
+        <span className="h-8 w-8 shrink-0 rounded-full bg-white-5" />
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="h-2.5 w-24 rounded-full bg-white-5" />
+          <span className="h-2 w-16 rounded-full bg-white-5" />
+        </span>
+      </div>
+    </>
+  );
+}
+
+function SidebarPages({
+  chrome,
+  userMenu,
+  onNavigate,
+}: {
+  chrome: Promise<DashboardChrome>;
+  userMenu: UserMenuForm;
+  onNavigate?: () => void;
+}) {
+  const resolved = use(chrome);
+  if (resolved.kind !== "open") return null;
+  return (
+    <SidebarNav
+      viewer={resolved.viewer}
+      sections={resolved.sections}
+      menuPage={resolved.menuPage}
+      userMenu={userMenu}
+      onNavigate={onNavigate}
+    />
+  );
+}
+
+/**
+ * A sidebar page link. Next prefetches a page's frame as soon as its link
+ * shows; once the pointer rests on the link or it takes focus, this asks for
+ * the page's data as well, so the click finds the page on its way (issue
+ * #397). Only an intent does: prefetching every page's data on every visit
+ * would read the database for pages nobody opens.
+ */
+function PrefetchLink({ onPointerEnter, onFocus, ...props }: Omit<ComponentProps<typeof Link>, "prefetch">) {
+  const [intent, setIntent] = useState(false);
+  return (
+    <Link
+      {...props}
+      prefetch={intent ? true : null}
+      onPointerEnter={(event) => {
+        setIntent(true);
+        onPointerEnter?.(event);
+      }}
+      onFocus={(event) => {
+        setIntent(true);
+        onFocus?.(event);
+      }}
+    />
+  );
+}
+
+function SidebarNav({
+  viewer,
+  sections,
+  menuPage,
+  userMenu,
+  onNavigate,
+}: {
+  viewer: DashboardViewer;
+  sections: readonly NavSection[];
+  menuPage: MenuPage | null;
+  userMenu: UserMenuForm;
+  onNavigate?: () => void;
+}) {
+  const pathname = usePathname();
+  const nav = useNavOverflow(pathname);
+  return (
+    <>
       <nav
         ref={nav.ref}
         aria-label="Dashboard"
@@ -159,7 +255,7 @@ export function Sidebar({
                 const current = isCurrent(pathname, item.href);
                 return (
                   <li key={item.key}>
-                    <Link
+                    <PrefetchLink
                       href={item.href}
                       onClick={onNavigate}
                       aria-current={current ? "page" : undefined}
@@ -175,7 +271,7 @@ export function Sidebar({
                           <span className="sr-only"> new</span>
                         </span>
                       )}
-                    </Link>
+                    </PrefetchLink>
                   </li>
                 );
               })}
@@ -185,6 +281,6 @@ export function Sidebar({
       </nav>
 
       <UserCard viewer={viewer} menuPage={menuPage} form={userMenu} onNavigate={onNavigate} />
-    </div>
+    </>
   );
 }

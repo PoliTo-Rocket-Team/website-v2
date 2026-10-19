@@ -71,9 +71,9 @@ export async function readWaitingHandOvers(filter: { readonly fromId?: number; r
 /** The hand-overs the viewer answers, as their top rows under "Needs your attention" (board 62c). */
 export async function readHandOverAttention(identity: DashboardIdentity, now: Date): Promise<AttentionItem[]> {
   if (identity.memberId === null) return [];
-  const requests = await readWaitingHandOvers();
+  // The cached snapshot needs nothing of the requests, so both are read at once (issue #397).
+  const [requests, snapshot] = await Promise.all([readWaitingHandOvers(), readTeamSnapshot()]);
   if (requests.length === 0) return [];
-  const snapshot = await readTeamSnapshot();
   return handOverAttentionFor(identity.memberId, requests, teamPeopleOf(snapshot), snapshot.org, now);
 }
 

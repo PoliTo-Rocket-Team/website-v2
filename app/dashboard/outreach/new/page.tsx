@@ -33,7 +33,8 @@ async function NewPost() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/outreach/new");
   if (opening.kind === "account-unresolved") return null;
   if (!canReach(opening.data.viewer, "outreach")) notFound();
-  const tags = await opening.data.outreach.tags();
+  // Three independent reads, so they go out together (issue #397).
+  const [tags, published, projects] = await Promise.all([opening.data.outreach.tags(), publishedOutreach(), footerProjects()]);
   if (tags === null) notFound();
   return (
     <OutreachPostEdit
@@ -41,8 +42,8 @@ async function NewPost() {
       today={todayInRome()}
       tags={tags}
       neighbours={{}}
-      published={await publishedOutreach()}
-      footerProjects={await footerProjects()}
+      published={published}
+      footerProjects={projects}
     />
   );
 }
