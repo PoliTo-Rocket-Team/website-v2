@@ -3,7 +3,8 @@
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { Check, ChevronDown, ListFilter, Search, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // The small controls of the recruitment pages (boards 41, 41b, 41c): the
 // switch, the segmented filter with counts, the filter menu and the search

@@ -28,7 +28,8 @@ import {
 } from "@/lib/dashboard/application-flow";
 import { interviewEmailHref } from "@/lib/dashboard/interview-email";
 import { SHEET_FRAME, SHEET_OVERLAY, SheetGrabber } from "./confirm-dialog";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // Move to interview (boards 58c, 58j) and Change times (58d): the lead picks
 // the times they can meet, in a week or a month view with no last week, and how long, then tells the applicant by email
