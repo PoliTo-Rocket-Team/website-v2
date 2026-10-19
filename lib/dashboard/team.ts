@@ -99,8 +99,8 @@ export function withoutDivision(memberships: Memberships, divisionId: number): M
 }
 
 /**
- * The one division a person is drawn under on the Team tree, and named by
- * where a page shows a single division: the oldest one they lead, else their
+ * A person's first division: their first place on the Team tree, and the one
+ * named where a page shows a single division: the oldest one they lead, else their
  * oldest membership. Null when they are in no division.
  */
 export function homeDivision(memberships: Memberships): number | null {
@@ -240,9 +240,9 @@ export type RosterEntry = {
 };
 
 /**
- * The division someone is drawn under on the tree (`homeDivision`); null for
- * someone not placed, and for a seat or a head, who is drawn at that seat
- * whatever division they also lead.
+ * Someone's first division (`homeDivision`); null for someone not placed, and
+ * for a seat or a head, whose first place on the tree is that seat whatever
+ * division they also lead.
  */
 export function homeDivisionOf(placement: Placement): number | null {
   return placement.role === "divisions" ? homeDivision(placement.memberships) : null;
@@ -810,24 +810,32 @@ export function pagerItems(current: number, last: number): (number | null)[] {
 
 // Team tree (boards 54c and 54c-m)
 
+/**
+ * One place a person is drawn on the tree. Someone in several divisions is
+ * drawn in each of them, like anyone else there (Owner decision, 2026-10-19,
+ * on #398), so one person can be several of these.
+ */
 export type TreePerson = {
   readonly id: number;
   readonly name: string;
   /** The viewer: marked "YOU" and on the highlighted path. */
   readonly self: boolean;
-  /** The other divisions they are in, as the tree names them; each gets an "also" tag and a dashed line (board 54e). */
-  readonly also: readonly { readonly divisionId: number; readonly label: string }[];
+  /**
+   * Whether this is their first place: their seat, else the division they
+   * are first in by `homeDivision` (their highest role, then their earliest
+   * division). "Find someone", "Show me" and the viewer's path go only here.
+   */
+  readonly first: boolean;
 };
 
 export type TreeDivision = {
   readonly id: number;
   readonly name: string;
-  /** Its lead, when the tree draws them here: a lead whose home is another division is drawn there. */
+  /** Its lead; when several lead it, one whose first place it is, and the others are listed with the members. */
   readonly lead: TreePerson | null;
+  /** Everyone else in it, by name, whatever other divisions or seat they hold. */
   readonly members: readonly TreePerson[];
-  /** People in it who are drawn under another division (board 54e): the dashed lines run from here to them. */
-  readonly elsewhere: readonly number[];
-  /** Everyone in it, lead and people drawn elsewhere included. */
+  /** Everyone in it, lead included. */
   readonly size: number;
 };
 
@@ -858,9 +866,10 @@ export type TeamTree = {
 
 /**
  * The tree of this year's roster as `selfId` sees it. Departments and
- * divisions with nobody in them are left out. Each person is drawn once,
- * under their home division (`homeDivision`), and every other division they
- * are in lists them as `elsewhere` (Owner decision, 2026-10-11).
+ * divisions with nobody in them are left out. Each division lists everyone in
+ * it, so someone in several divisions is drawn in each (Owner decision,
+ * 2026-10-19, on #398); their first place is their seat, else their home
+ * division (`homeDivision`).
  */
 export function buildTeamTree(
   roster: readonly RosterEntry[],
@@ -870,19 +879,18 @@ export function buildTeamTree(
 ): TeamTree {
   const visible = new Set(org.divisions.map((d) => d.id));
   // The home rule over the divisions still open: a closed home division is not drawn.
-  // A seat or a head is drawn at that seat, and each division they also lead lists them as elsewhere.
-  const drawnUnder = (entry: RosterEntry): number | null =>
+  // A seat or a head is first at that seat: null here.
+  const firstDivision = (entry: RosterEntry): number | null =>
     entry.placement.role !== "divisions"
       ? null
       : homeDivision(membershipsOf(entry.placement.memberships.filter((m) => visible.has(m.divisionId))));
-  const node = (entry: RosterEntry): TreePerson => {
-    const home = drawnUnder(entry);
-    const also = membershipsIn(entry.placement).flatMap((m) => {
-      const division = org.divisions.find((d) => d.id === m.divisionId);
-      return m.divisionId === home || !division ? [] : [{ divisionId: division.id, label: divisionLabel(division.name) }];
-    });
-    return { id: entry.id, name: entry.name, self: entry.id === selfId, also };
-  };
+  /** Them as drawn in `divisionId`, or at their seat for null. */
+  const node = (entry: RosterEntry, divisionId: number | null): TreePerson => ({
+    id: entry.id,
+    name: entry.name,
+    self: entry.id === selfId,
+    first: firstDivision(entry) === divisionId,
+  });
   const byName = (a: RosterEntry, b: RosterEntry) => a.name.localeCompare(b.name);
 
   const departments = org.departments.flatMap((department): TreeDepartment[] => {
@@ -892,17 +900,15 @@ export function buildTeamTree(
       .flatMap((division): TreeDivision[] => {
         const inDivision = roster.filter((e) => isIn(e.placement, division.id));
         if (inDivision.length === 0) return [];
-        const here = inDivision.filter((e) => drawnUnder(e) === division.id);
-        const lead = here.find((e) => roleIn(membershipsIn(e.placement), division.id) === "lead");
-        const members = here.filter((e) => e !== lead).sort(byName);
-        const elsewhere = inDivision.filter((e) => drawnUnder(e) !== division.id).sort(byName);
+        const leads = inDivision.filter((e) => roleIn(membershipsIn(e.placement), division.id) === "lead");
+        const lead = leads.find((e) => firstDivision(e) === division.id) ?? leads[0];
+        const members = inDivision.filter((e) => e !== lead).sort(byName);
         return [
           {
             id: division.id,
             name: division.name,
-            lead: lead ? node(lead) : null,
-            members: members.map(node),
-            elsewhere: elsewhere.map((e) => e.id),
+            lead: lead ? node(lead, division.id) : null,
+            members: members.map((e) => node(e, division.id)),
             size: inDivision.length,
           },
         ];
@@ -910,21 +916,21 @@ export function buildTeamTree(
     // Someone in two of its divisions counts once, and its head once, also when they lead one of them.
     const people = new Set(roster.filter((e) => e !== head && divisions.some((d) => isIn(e.placement, d.id))).map((e) => e.id));
     const size = (head ? 1 : 0) + people.size;
-    return size === 0 ? [] : [{ id: department.id, name: department.name, head: head ? node(head) : null, divisions, size }];
+    return size === 0 ? [] : [{ id: department.id, name: department.name, head: head ? node(head, null) : null, divisions, size }];
   });
 
   const leader = roster.find((e) => e.placement.role === "team-leader");
   const board = BOARD_SEATS.flatMap((seat): TreeBoardMember[] => {
     const holder = roster.find((e) => e.placement.role === "board" && e.placement.seat === seat);
-    return holder ? [{ seat, person: node(holder) }] : [];
+    return holder ? [{ seat, person: node(holder, null) }] : [];
   });
   const me = roster.find((e) => e.id === selfId);
-  const myDivision = me ? drawnUnder(me) : null;
+  const myDivision = me ? firstDivision(me) : null;
   const myDepartment =
     me?.placement.role === "head" ? me.placement.departmentId : (org.divisions.find((d) => d.id === myDivision)?.departmentId ?? null);
   return {
     season,
-    leader: leader ? node(leader) : null,
+    leader: leader ? node(leader, null) : null,
     board,
     departments,
     size: roster.length,
