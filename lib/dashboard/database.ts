@@ -781,16 +781,16 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
  * full-access seat, the team leader, the operations lead and the IT lead alike
  * (boards 73 to 73c, issue #418); for a division lead one of their divisions,
  * with the people waiting for Confirm NDA and the people joining it
- * (./database-team.ts). The operations lead and the IT lead keep the Team
- * page panel's edits (board 46b); the team leader's rows offer none.
+ * (./database-team.ts). Every full-access seat, the team leader included,
+ * gets the Team page panel's edits on every row (board 46b; Owner decision,
+ * 2026-10-19, issue #444).
  */
 async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
   if (opensWholeTeam(identity)) {
     const snapshot = await readTeamSnapshot();
-    const teamPageEdits = isTeamLeader(identity) ? null : rosterOf(snapshot).map((entry) => teamPageEditOf(entry, snapshot.org));
     return {
       scope: "whole-team",
-      teamPageEdits,
+      teamPageEdits: rosterOf(snapshot).map((entry) => teamPageEditOf(entry, snapshot.org)),
       ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }),
     };
   }

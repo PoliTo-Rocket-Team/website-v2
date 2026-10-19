@@ -53,10 +53,10 @@ const records = [
 const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS };
 
 function leaderPage(): MembersModel {
-  return membersModelOf({ scope: "whole-team", teamPageEdits: null, ...wholeTeamMembers({ records, org, selfId: 7 }) })!;
+  return seatPage(7);
 }
 
-// The operations lead's and the IT lead's whole team: the Team page panel's edits for each person (board 46b).
+// Every full-access seat's whole team, the team leader's included (issue #444): the Team page panel's edits for each person (board 46b).
 const teamPageEdits: readonly TeamPageEdit[] = records.map((r) => ({
   id: r.id,
   pageTitle: null,
@@ -101,17 +101,17 @@ test("the operations lead and the IT lead open the whole team like the team lead
   for (const set of tools) assert.deepEqual(set, MEMBERS_TOOLS);
 });
 
-test("the operations lead and the IT lead keep the Team page panel's edits on every row; the team leader's rows offer none (#418)", () => {
+test("every full-access seat, the team leader included, gets the Team page panel's edits on every row (#418, #444)", () => {
   const ops = seatPage(8);
-  assert.equal(ops.panelEdits, true);
-  assert.deepEqual(
-    ops.everyone.map((p) => [p.name, p.actions?.kind === "team-page" ? p.actions.edit.role : "none"]),
-    ops.everyone.map((p) => [p.name, teamPageEdits.find((e) => e.id === p.id)!.role]),
-  );
-  // Same rows and tools as the team leader: only the actions differ.
   const leader = leaderPage();
+  for (const page of [ops, leader]) {
+    assert.equal(page.panelEdits, true);
+    assert.deepEqual(
+      page.everyone.map((p) => [p.name, p.actions?.kind === "team-page" ? p.actions.edit.role : "none"]),
+      page.everyone.map((p) => [p.name, teamPageEdits.find((e) => e.id === p.id)!.role]),
+    );
+  }
   assert.deepEqual(ops.everyone.map((p) => p.id), leader.everyone.map((p) => p.id));
-  assert.ok(leader.everyone.every((p) => p.actions === null));
 });
 
 test("only the rows differ: the whole team, the department, the division", () => {
@@ -122,7 +122,7 @@ test("only the rows differ: the whole team, the department, the division", () =>
   assert.deepEqual(headPage().units.map((u) => [u.name, u.divisions.map((d) => d.code)]), [["Aerodynamics", ["MA", "OA"]]]);
 });
 
-test("actions are the data's own: what the lead's and head's pages allow, none on the whole team or under Can view", () => {
+test("actions are the data's own: what the lead's and head's pages allow, the Team page panel on the whole team, none under Can view", () => {
   const lead = leadPage();
   const lena = lead.everyone.find((p) => p.name === "Lena Fischer")!;
   assert.deepEqual(removalsOf(lena)?.map((r) => [r.short, r.removal.kind]), [["Mission Analysis", "offered"]]);
@@ -134,8 +134,8 @@ test("actions are the data's own: what the lead's and head's pages allow, none o
   assert.equal(viewOnly.panelEdits, false);
 
   const leader = leaderPage();
-  assert.ok(leader.everyone.every((p) => p.actions === null));
-  assert.equal(leader.panelEdits, false);
+  assert.ok(leader.everyone.every((p) => p.actions?.kind === "team-page"));
+  assert.equal(leader.panelEdits, true);
   assert.equal(leader.add?.kind, "department");
 
   const head = headPage();
