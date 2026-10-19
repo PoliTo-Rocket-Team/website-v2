@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
-import { GripVertical, Plus, Trash2, Upload } from "lucide-react";
+import { GripVertical, Plus, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { measurePartnerLogo, removePartner, reorderPartners, savePartner } from "@/app/dashboard/actions";
 import { moveTo } from "@/lib/content/order";
@@ -11,6 +11,7 @@ import { fieldsOf, partnerFieldErrors, websiteLabel, type PartnerFieldErrors, ty
 import type { MeasuredLogo } from "@/lib/partners-editor";
 import { ConfirmDialog } from "./confirm-dialog";
 import { CONTENT_FOCUS as FOCUS, PublishFooter, RowMenu, StatusPill, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { Toggle } from "./controls";
 import { DrawerPage, PanelBody, SidePanel } from "./drawer";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
@@ -304,9 +305,11 @@ function RemoveDialog({
 type PickedLogo = { file: File; preview: string; measured: MeasuredLogo };
 
 // The edit panel (board 76b): the logo on the dark ground with its size and
-// the "drawn white" note, Name and Tier, Website, then the three texts with
-// their counters; Remove, Save draft and Publish at the foot. New partner is
-// the same panel, empty, with no Remove.
+// the "Draw it white" switch, which a picked logo's measurement pre-sets and
+// the editor may flip (issue #394), and a warning, not a block, when the
+// picked file sits on a solid box; Name and Tier, Website, then the three
+// texts with their counters; Remove, Save draft and Publish at the foot. New
+// partner is the same panel, empty, with no Remove.
 function PartnerPanel({
   open,
   item,
@@ -323,6 +326,7 @@ function PartnerPanel({
   const current = item === null ? null : shownOf(item);
   const [fields, setFields] = useState<PartnerFields>(() => fieldsOf(current));
   const [picked, setPicked] = useState<PickedLogo | null>(null);
+  const [darkLogo, setDarkLogo] = useState(current?.logo.darkLogo ?? false);
   const [logoError, setLogoError] = useState<string | undefined>();
   const [errors, setErrors] = useState<PartnerFieldErrors>({});
   const [pending, startTransition] = useTransition();
@@ -351,6 +355,7 @@ function PartnerPanel({
         return;
       }
       setPicked({ file, preview: URL.createObjectURL(file), measured: result.value });
+      setDarkLogo(result.value.logo.darkLogo);
     });
   };
 
@@ -363,6 +368,7 @@ function PartnerPanel({
     const form = new FormData();
     for (const [name, value] of Object.entries(fields)) form.set(name, value);
     if (picked !== null) form.set("logo", picked.file);
+    if (picked !== null || item !== null) form.set("darkLogo", String(darkLogo));
     startTransition(async () => {
       const result = await savePartner(item?.id ?? null, step, form);
       if (!result.ok) {
@@ -376,8 +382,9 @@ function PartnerPanel({
     });
   };
 
-  const logo = picked !== null ? { src: picked.preview, darkLogo: picked.measured.darkLogo } : current?.logo;
-  const size = picked !== null ? picked.measured : current?.logo;
+  const src = picked !== null ? picked.preview : current?.logo.src;
+  const logo = src === undefined ? undefined : { src, darkLogo };
+  const size = picked !== null ? picked.measured.logo : current?.logo;
   const status = item === null ? null : statusOf(item.version);
   const tierLabel = TIERS.find((t) => t.tier === (current?.tier ?? fields.tier))!.label;
 
@@ -419,9 +426,13 @@ function PartnerPanel({
                     {size.width} × {size.height}
                   </p>
                 )}
-                {(picked?.measured.darkLogo ?? current?.logo.darkLogo) && (
-                  <p className="text-text-2">Too dark for the page, so the site draws it white.</p>
+                {logo !== undefined && (
+                  <label className="flex w-fit cursor-pointer items-center gap-2 text-text-2">
+                    <Toggle checked={darkLogo} onCheckedChange={setDarkLogo} label="Draw the logo white" />
+                    Draw it white
+                  </label>
                 )}
+                {picked?.measured.logo.darkLogo && <p className="text-prt-muted">Measured too dark for the page.</p>}
                 <input
                   ref={fileInput}
                   type="file"
@@ -444,6 +455,12 @@ function PartnerPanel({
                 </button>
               </div>
             </div>
+            {picked?.measured.solidBackground && (
+              <p role="status" className="mt-2 flex items-start gap-2 text-[13px] leading-snug text-warning">
+                <TriangleAlert aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                This logo has a solid background, so the page shows a box around it. Use a PNG with a transparent background if you can.
+              </p>
+            )}
             {logoError !== undefined && <p className="mt-1.5 text-[12px] text-danger">{logoError}</p>}
           </div>
 
