@@ -63,7 +63,7 @@ export type ProjectFields = ListFields & {
 
 /** How many key facts the hero holds (`KeyFacts`), and reasons the Why section (`Reasons`). */
 export const FACTS_LIMIT = { min: 1, max: 6 } as const;
-export const REASONS_LIMIT = { min: 1, max: 3 } as const;
+export const REASONS_LIMIT = { min: 1, max: 5 } as const;
 
 const proseText = (prose: Prose): string => prose.text.join("\n\n");
 

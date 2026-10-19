@@ -1,8 +1,9 @@
 import { twoDigits, type Reasons } from "@/lib/project-pages";
 import { SectionHead } from "./parts";
 
-// Numbered reasons (board 25 "Why liquid"): up to three columns, each under
-// a hairline. Board 25m: stacked rows, the number beside the title.
+// Numbered reasons (board 25 "Why liquid"): three columns, each under a
+// hairline; four or five reasons wrap to a second row. Board 25m: stacked
+// rows, the number beside the title.
 export function ProjectReasons({ num, reasons }: { num: string; reasons: Reasons }) {
   return (
     <section className="px-5 pt-14 md:px-16 md:pt-[120px]">

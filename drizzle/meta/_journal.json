@@ -323,6 +323,13 @@
       "when": 1792776000000,
       "tag": "0045_outreach_optional_channels_gallery",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1792862400000,
+      "tag": "0046_efesto_site_content",
+      "breakpoints": true
     }
   ]
 }
