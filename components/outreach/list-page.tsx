@@ -19,7 +19,6 @@ export function OutreachListPage({
   stats,
   feature,
   cards,
-  years,
   footerProjects,
   frame,
   keepInView,
@@ -29,7 +28,6 @@ export function OutreachListPage({
   feature: FeaturedCard;
   /** Newest first. */
   cards: readonly PostCardData[];
-  years: readonly number[];
   /** The published projects the footer lists (issue #378). */
   footerProjects: readonly FooterProject[];
   frame?: PostCardFrame;
@@ -42,7 +40,7 @@ export function OutreachListPage({
         <main className="pb-section pt-16 md:pt-[72px]">
           <PageHeader {...outreachCopy.header} stats={stats} statsOnPhone="two-by-two" />
           <Feature feature={feature} />
-          <Posts title={outreachCopy.postsTitle} posts={cards} years={years} frame={frame} keepInView={keepInView} />
+          <Posts title={outreachCopy.postsTitle} posts={cards} frame={frame} keepInView={keepInView} />
         </main>
         <LandingFooter inSky projects={footerProjects} />
       </PageSky>

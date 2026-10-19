@@ -619,11 +619,6 @@ export function neighboursOf(posts: readonly OutreachPost[], post: Pick<Outreach
   return { older: sorted[i + 1], newer: i > 0 ? sorted[i - 1] : undefined };
 }
 
-/** The years that have posts, newest first: the year filter's pills after All. */
-export function postYears(posts: readonly Pick<OutreachPost, "date">[]): number[] {
-  return [...new Set(newestFirst(posts).map((p) => yearOf(p.date)))];
-}
-
 export function yearOf(date: IsoDate): number {
   return Number(date.slice(0, 4));
 }

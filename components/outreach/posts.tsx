@@ -4,20 +4,16 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { SectionHead } from "@/components/about/section-head";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PostCard, type PostCardData } from "./post-card";
 
-// Boards 32 and 32m, "Where we've been": a centred title, a year filter (All,
-// then each year that has posts, newest first) and the post cards, newest
-// first: three columns from lg, two from md, one on phones. The pills are the
-// repo's Radix tabs, so the arrow keys move between years, in one track that
-// swipes sideways when it does not fit the screen. A list longer than its first cards
-// (9 from md, 5 on phones) shows those and a "Show N more" button.
+// Boards 32 and 32m, "Where we've been": a centred title and the post cards,
+// newest first: three columns from lg, two from md, one on phones. The year
+// filter the boards draw is gone (Owner decision, 2026-10-19). A list longer
+// than its first cards (9 from md, 5 on phones) shows those and a "Show N
+// more" button.
 
 /** How many cards show before "Show N more": on phones, and from md. */
 const FIRST = { phone: 5, desktop: 9 } as const;
-
-const ALL = "all";
 
 /**
  * Which cards show before "Show N more", on phones and from md. Cards past
@@ -78,43 +74,12 @@ function List({ posts, frame, keepInView }: { posts: readonly PostCardData[] } &
   );
 }
 
-export function Posts({
-  title,
-  posts,
-  years,
-  ...framing
-}: { title: string; posts: readonly PostCardData[]; years: readonly number[] } & Framing) {
-  const [year, setYear] = useState(ALL);
+export function Posts({ title, posts, ...framing }: { title: string; posts: readonly PostCardData[] } & Framing) {
   return (
     <section className="px-5 pt-section md:px-16">
       <div className="mx-auto max-w-[1312px]">
         <SectionHead title={title} align="centre" />
-        <Tabs value={year} onValueChange={setYear}>
-          <div className="mt-5 flex justify-center md:mt-6">
-            <TabsList
-              aria-label="Years"
-              className="min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full border border-white-10 bg-white-5 p-1 [scrollbar-width:none] md:gap-1 [&::-webkit-scrollbar]:hidden"
-            >
-              {[ALL, ...years.map(String)].map((y) => (
-                <TabsTrigger
-                  key={y}
-                  value={y}
-                  className="h-9 shrink-0 whitespace-nowrap rounded-full px-4 font-mono text-[13px] tracking-[0.04em] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text data-[state=active]:bg-prt-text data-[state=active]:text-ground md:h-[38px] md:px-5 md:text-[14px]"
-                >
-                  {y === ALL ? "All" : y}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-          <TabsContent value={ALL}>
-            <List posts={posts} {...framing} />
-          </TabsContent>
-          {years.map((y) => (
-            <TabsContent key={y} value={String(y)}>
-              <List posts={posts.filter((p) => p.year === y)} {...framing} />
-            </TabsContent>
-          ))}
-        </Tabs>
+        <List posts={posts} {...framing} />
       </div>
     </section>
   );
