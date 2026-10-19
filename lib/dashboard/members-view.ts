@@ -1,11 +1,12 @@
 import { departmentLine, type DepartmentMembers, type DepartmentPerson, type DivisionRemoval } from "./department-members";
 import { headcountLine, matchesPerson, type DivisionHeader, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "./division-members";
-import { divisionLabel, type Joining, type MemberDirectory } from "./team";
+import { divisionLabel, type Joining, type MemberDirectory, type TeamPageEdit } from "./team";
 import { wholeTeamLine, type TeamMember, type WholeTeamMembers } from "./team-members";
+import type { ViewerStanding } from "./viewer";
 
 // The Members page as one view for every role that opens it (Owner decision,
-// 2026-10-19, issue #408): the team leader, a department head and a division
-// lead get the same tools and views. Each role's page data (the whole team,
+// 2026-10-19, issues #408 and #418): the team leader, the operations lead, the
+// IT lead, a department head and a division lead get the same tools and views. Each role's page data (the whole team,
 // a department, a division) is turned into one model here; what differs is
 // only the rows it holds and the actions its data allows. Who may see or
 // change what is still decided where the data is built (./access.ts,
@@ -27,11 +28,25 @@ export const MEMBERS_TOOLS = [
 ] as const;
 export type MembersTool = (typeof MEMBERS_TOOLS)[number];
 
-/** What the viewer may do to one row: the division page's person the menu acts on, where they may be removed from, and where Edit details sets the title. */
-export type MemberActions = {
+/**
+ * What the viewer may do to one row. On a department or a division: the
+ * division page's person the menu acts on, where they may be removed from,
+ * and where Edit details sets the title. On the whole team, for a seat with
+ * the Team page panel (board 46b): its title, whether they lead their
+ * division, and moving them to Alumni.
+ */
+export type MemberActions = DivisionActions | TeamPageActions;
+
+export type DivisionActions = {
+  readonly kind: "division";
   readonly person: DivisionPerson;
   readonly removals: readonly DivisionRemoval[];
   readonly division: DivisionHeader;
+};
+
+export type TeamPageActions = {
+  readonly kind: "team-page";
+  readonly edit: TeamPageEdit;
 };
 
 /** One person on the page, whichever role opens it; `actions` is null where the page offers no change to them. */
@@ -80,12 +95,22 @@ export type MembersModel = {
   readonly panelEdits: boolean;
 };
 
+/**
+ * Whether the viewer's Members page is the whole team: true for every
+ * full-access seat, the team leader, the operations lead and the IT lead
+ * alike, and for full access from a scope row (issue #418). Anyone else reads
+ * the units their roles reach, built where the data is read.
+ */
+export function opensWholeTeam(viewer: ViewerStanding): boolean {
+  return viewer.kind === "operations-lead";
+}
+
 /** The one place a model is made, so every role's model carries the same tools. */
 function model(parts: Omit<MembersModel, "tools">): MembersModel {
   return { tools: MEMBERS_TOOLS, ...parts };
 }
 
-/** The page for whatever the viewer's directory holds; null for the operations lead's board-46 list and for no list at all. */
+/** The page for whatever the viewer's directory holds; null for no list at all. */
 export function membersModelOf(directory: MemberDirectory): MembersModel | null {
   switch (directory.scope) {
     case "whole-team":
@@ -94,23 +119,32 @@ export function membersModelOf(directory: MemberDirectory): MembersModel | null 
       return departmentModel(directory);
     case "division":
       return divisionModel(directory);
-    case "team":
     case "none":
       return null;
   }
 }
 
-/** The team leader's page (boards 73 to 73c): the whole team, read only per row, with Add member. */
-export function wholeTeamModel(page: WholeTeamMembers): MembersModel {
+/**
+ * A full-access seat's page (boards 73 to 73c, issue #418): the whole team,
+ * with Add member. Each row offers the Team page panel's edits where the
+ * directory holds them (the operations lead and the IT lead, board 46b), and
+ * no change for the team leader.
+ */
+export function wholeTeamModel(page: WholeTeamMembers & { readonly teamPageEdits: readonly TeamPageEdit[] | null }): MembersModel {
+  const edits = page.teamPageEdits;
+  const actionsOf = (id: number): TeamPageActions | null => {
+    const edit = edits?.find((e) => e.id === id);
+    return edit === undefined ? null : { kind: "team-page", edit };
+  };
   return model({
     intro: wholeTeamLine(page),
     notice: null,
     units: page.departments.map((d) => ({ name: d.name, divisions: d.divisions })),
-    everyone: page.people.map((p) => ({ ...p, actions: null })),
+    everyone: page.people.map((p) => ({ ...p, actions: actionsOf(p.id) })),
     divisions: [],
     switcher: null,
     add: page.divisions.length === 0 ? null : { kind: "department", department: "the team", divisions: page.divisions },
-    panelEdits: false,
+    panelEdits: edits !== null,
   });
 }
 
@@ -125,7 +159,7 @@ export function departmentModel(page: DepartmentMembers): MembersModel {
     units: [{ name: page.department.name, divisions: headers.map(unitDivision) }],
     everyone: page.everyone.map((p) => {
       const division = divisionFor(p);
-      return entryOf(p, division === null ? null : { person: p, removals: p.removals, division });
+      return entryOf(p, division === null ? null : { kind: "division", person: p, removals: p.removals, division });
     }),
     divisions: page.tabs.map((tab) => sliceOf(tab)),
     switcher: null,
@@ -159,7 +193,10 @@ function sliceOf(page: DivisionMembers): MembersDivision {
   return {
     header: page.division,
     people: page.people.map((p) =>
-      entryOf(p, page.editable ? { person: p, removals: [{ divisionId: page.division.id, short, removal: p.removal }], division: page.division } : null),
+      entryOf(
+        p,
+        page.editable ? { kind: "division", person: p, removals: [{ divisionId: page.division.id, short, removal: p.removal }], division: page.division } : null,
+      ),
     ),
     waiting: page.waiting,
     joining: page.joining,
@@ -168,7 +205,7 @@ function sliceOf(page: DivisionMembers): MembersDivision {
 }
 
 /** A division page's person as a row of the shared list and table. */
-function entryOf(person: DivisionPerson, actions: MemberActions | null): MemberEntry {
+function entryOf(person: DivisionPerson, actions: DivisionActions | null): MemberEntry {
   const lead = person.role === "lead";
   return {
     id: person.id,

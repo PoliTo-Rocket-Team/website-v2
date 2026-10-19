@@ -10,6 +10,7 @@ import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-mem
 import {
   divisionOptions,
   shownMembers,
+  type DivisionActions,
   type MemberEntry,
   type MembersModel,
   type MembersTool,
@@ -45,6 +46,7 @@ import {
   type Asking,
 } from "./division-members";
 import { DrawerPage } from "./drawer";
+import { TeamPageDrawer, type TeamPageTarget } from "./member-drawer";
 import { AddMemberDrawer, EditDetailsDrawer, PersonDrawer, type AddTarget, type EditTarget } from "./member-panels";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
@@ -55,8 +57,9 @@ import { PANEL } from "./panel";
 // (boards 73 to 73c), the column filters, pages of eight and the phone cards.
 // Only the rows (./lib/dashboard/members-view.ts) and the actions the data
 // allows differ: a row's ⋯ menu removes someone from a division or records
-// that they leave the team, a waiting row confirms their NDA, and Add member
-// adds where the viewer may. Phone, date of birth and gender stay blurred
+// that they leave the team, a waiting row confirms their NDA, Edit details
+// opens the Team page panel (board 46b) on the operations lead's and the IT
+// lead's whole team (issue #418), and Add member adds where the viewer may. Phone, date of birth and gender stay blurred
 // until hover.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -83,6 +86,7 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
   const [editDivision, setEditDivision] = useState<DivisionHeader | null>(null);
   const [adding, setAdding] = useState(false);
   const [asking, setAsking] = useState<Asking | null>(null);
+  const [teamPage, setTeamPage] = useState<TeamPageTarget | null>(null);
 
   const has = (tool: MembersTool) => page.tools.includes(tool);
   const divisions = divisionOptions(page.units, department);
@@ -100,9 +104,14 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
 
   const editPerson = (entry: MemberEntry) => {
     setOpenId(null);
-    if (entry.actions === null) return;
-    setEditDivision(entry.actions.division);
-    setEditing({ kind: "person", person: entry.actions.person });
+    const { actions } = entry;
+    if (actions === null) return;
+    if (actions.kind === "team-page") {
+      setTeamPage({ person: entry, edit: actions.edit });
+      return;
+    }
+    setEditDivision(actions.division);
+    setEditing({ kind: "person", person: actions.person });
   };
   const fillDetails = (w: Waiting) => {
     setEditDivision(w.division);
@@ -110,7 +119,7 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
   };
   const add = writes ? addTarget(page, shownDivision) : null;
   const rowActions = (entry: MemberEntry) => (writes && !entry.self ? entry.actions : null);
-  const drawerOpen = open !== null || editing !== null || adding;
+  const drawerOpen = open !== null || editing !== null || adding || teamPage !== null;
 
   return (
     <DrawerPage drawerOpen={drawerOpen}>
@@ -239,6 +248,7 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
         onEdit={editPerson}
       />
       {editDivision && <EditDetailsDrawer target={editing} division={editDivision} onClose={() => setEditing(null)} />}
+      <TeamPageDrawer target={teamPage} onClose={() => setTeamPage(null)} />
       {add !== null && <AddMemberDrawer open={adding} onOpenChange={setAdding} target={add} />}
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
     </DrawerPage>
@@ -435,14 +445,14 @@ function PersonRow({
       </td>
       <td className={`truncate px-5 py-2.5 text-[14px] ${roleClass(person)}`}>{person.roleLabel}</td>
       <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
-        {actions === null ? <OpenButton person={person} onOpen={onOpen} /> : <PersonMenu actions={actions} onAsk={onAsk} />}
+        {actions?.kind === "division" ? <PersonMenu actions={actions} onAsk={onAsk} /> : <OpenButton person={person} onOpen={onOpen} />}
       </td>
     </tr>
   );
 }
 
 /** A row's ⋯ menu: Remove from each division it may, then Leaves the team; a locked item says why (Owner decision, 2026-10-11). */
-function PersonMenu({ actions, onAsk }: { actions: NonNullable<MemberEntry["actions"]>; onAsk: (asking: Asking) => void }) {
+function PersonMenu({ actions, onAsk }: { actions: DivisionActions; onAsk: (asking: Asking) => void }) {
   const { person } = actions;
   // Not offered where it is their only division: the menu then holds only "Leaves the team".
   const offered = actions.removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");

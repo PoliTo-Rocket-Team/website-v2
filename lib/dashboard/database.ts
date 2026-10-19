@@ -28,13 +28,14 @@ import { DashboardRefused, type DashboardData } from "./data";
 import {
   buildTeamTree,
   seasonAt,
-  teamDirectory,
+  teamPageEditOf,
   type MemberDirectory,
   type RoleType,
 } from "./team";
 import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
 import { wholeTeamMembers } from "./team-members";
+import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
 import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
@@ -776,18 +777,22 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
 }
 
 /**
- * The Members page: the whole team for the operations lead, and with every
- * member field for the team leader (boards 73 to 73c); for a division
- * lead one of their divisions, with the people waiting for Confirm NDA and the
- * people joining it (./database-team.ts).
+ * The Members page: the whole team with every member field for each
+ * full-access seat, the team leader, the operations lead and the IT lead alike
+ * (boards 73 to 73c, issue #418); for a division lead one of their divisions,
+ * with the people waiting for Confirm NDA and the people joining it
+ * (./database-team.ts). The operations lead and the IT lead keep the Team
+ * page panel's edits (board 46b); the team leader's rows offer none.
  */
 async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
-  if (identity.kind === "operations-lead") {
+  if (opensWholeTeam(identity)) {
     const snapshot = await readTeamSnapshot();
-    if (isTeamLeader(identity)) {
-      return { scope: "whole-team", ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }) };
-    }
-    return teamDirectory(rosterOf(snapshot), snapshot.org, identity.memberId);
+    const teamPageEdits = isTeamLeader(identity) ? null : rosterOf(snapshot).map((entry) => teamPageEditOf(entry, snapshot.org));
+    return {
+      scope: "whole-team",
+      teamPageEdits,
+      ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }),
+    };
   }
   return readDivisionMembers(identity, divisionId);
 }
