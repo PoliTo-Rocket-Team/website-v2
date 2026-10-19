@@ -291,7 +291,7 @@ function PositionItem({ row, chosen, onEdit }: RowProps) {
   );
 }
 
-// Board 41: the site-wide switch, the operations lead's alone.
+// Board 41: the site-wide switch, for the team leader and the operations lead.
 function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitch: boolean }) {
   const [open, flip] = useOptimisticSwitch(saved, setRecruitment);
   return (
@@ -317,7 +317,8 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
         <Toggle checked={open} onCheckedChange={flip} label="Recruitment is open" tone="success" disabled={!canSwitch} />
-        <span className="text-[11px] text-prt-muted">Operations lead only</span>
+        {/* Who may switch it: anyone with team-wide positions edit, the team leader by default (Owner decision, 2026-10-19). */}
+        <span className="text-[11px] text-prt-muted">Team leader and operations lead</span>
       </div>
     </section>
   );
