@@ -6,10 +6,11 @@ import type { DepartmentGroup } from "@/lib/about/types";
 // column starts every 333⅓px. The phone layout does not read this; it is
 // always one column.
 //
-// Owner decision on issue #411: a group whose heads have division leads takes
-// two wide columns instead, each wide enough for two lead cells side by side,
-// so a lead's name fits on one line in the common case. The carousel shrinks
-// a group that is wider than its column (`departments.tsx`).
+// Issue #411 asks for wider groups, so a lead's name fits on one line in the
+// common case. The chosen approach: a group whose heads have division leads
+// takes two wide columns instead, each wide enough for two lead cells side by
+// side. The carousel shrinks a group that is wider than its column
+// (`departments.tsx`).
 
 /** The gap between columns, px. */
 export const GAP = 40;
