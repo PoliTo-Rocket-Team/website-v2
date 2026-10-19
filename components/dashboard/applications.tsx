@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useOptimistic, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useOptimistic, useState, useTransition, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ArrowLeft, CalendarClock, CalendarPlus, Check, ChevronDown, ExternalLink, FileText, Signature, UserPlus, X } from "lucide-react";
@@ -35,6 +35,16 @@ import {
 } from "@/lib/dashboard/application-flow";
 import { applicantSections, type ApplicantField } from "@/lib/dashboard/applicant-details";
 import {
+  APPLICATION_FILTER_LABELS,
+  applicationColumnOptions,
+  clearApplicationPicks,
+  NO_APPLICATION_PICKS,
+  toggleApplicationPick,
+  withApplicationPicks,
+  type ApplicationFilter,
+  type ApplicationPicks,
+} from "@/lib/dashboard/application-columns";
+import {
   APPLICATIONS_SORTS,
   applicationsModelOf,
   divisionOptions,
@@ -47,6 +57,7 @@ import { shortUnitName } from "@/lib/dashboard/division-access";
 import { documentsLine, type ApplicationEntry, type ApplicationsPage, type OtherApplication, type PositionRef } from "@/lib/dashboard/recruitment";
 import { divisionLabel } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
+import { ColumnFilter } from "./column-filter";
 import { FilterMenu, SearchField, Segmented } from "./controls";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
 import { InterviewDialog } from "./interview-dialog";
@@ -70,8 +81,10 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 const PANEL_WIDTH = "md:w-[460px]";
 const ROOM_FOR_PANEL = "xl:mr-[448px]";
 
-const COLUMNS_FULL = "grid-cols-[minmax(0,1.35fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,0.65fr)_minmax(0,0.55fr)]";
-const COLUMNS_NARROW = "grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.5fr)]";
+// Documents and Applied are the narrow columns: each keeps room for its whole header name and
+// its column filter (issue #428), so the name is never cut. The wider columns give way.
+const COLUMNS_FULL = "grid-cols-[minmax(0,1.35fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.05fr)_minmax(108px,0.65fr)_minmax(92px,0.55fr)]";
+const COLUMNS_NARROW = "grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(92px,0.5fr)]";
 
 export function ApplicationsView({
   page,
@@ -91,6 +104,8 @@ export function ApplicationsView({
   // Every role's page starts on all departments, all divisions and all stages, newest first.
   const [filter, setFilter] = useState<ApplicationsFilter>({ ...NO_APPLICATIONS_FILTER, position: initialPosition });
   const [chosenId, setChosenId] = useState<number | null>(null);
+  const [picks, setPicks] = useState<ApplicationPicks>(NO_APPLICATION_PICKS);
+  const [filterOpen, setFilterOpen] = useState<ApplicationFilter | null>(null);
 
   // One toolbar for every role (issue #416): only the rows, and so the options, differ.
   const model = applicationsModelOf(page);
@@ -99,7 +114,42 @@ export function ApplicationsView({
   const applications = page.applications.map((a) => ({ ...a, state: states[a.id] ?? a.state }));
   const shown = shownApplications(page, model.units, applications, filter);
   const rows = shown.rows;
+  // The desktop table's column filters narrow what the toolbar leaves; phones list cards of the toolbar's rows, as Members does.
+  const tableRows = withApplicationPicks(rows, picks);
   const chosen = applications.find((a) => a.id === chosenId) ?? null;
+
+  // The popover hangs fixed under its header, so a page scroll closes it, as the Members table's scroll does.
+  useEffect(() => {
+    if (filterOpen === null) return;
+    const close = () => setFilterOpen(null);
+    window.addEventListener("scroll", close, { passive: true });
+    return () => window.removeEventListener("scroll", close);
+  }, [filterOpen]);
+
+  /** A header name and its column filters: the Studies column carries two, its program and its level. */
+  const header = (name: string, filters: readonly ApplicationFilter[]) => (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span aria-hidden="true" className="shrink-0 whitespace-nowrap">
+        {name}
+      </span>
+      {filters.map((column) => {
+        const label = APPLICATION_FILTER_LABELS[column];
+        return (
+          <ColumnFilter
+            key={column}
+            label={label}
+            tooltip={filters.length > 1 ? `Filter by ${label.toLowerCase()}` : undefined}
+            options={applicationColumnOptions(rows, picks, column)}
+            ticked={picks[column] ?? []}
+            onToggle={(value) => setPicks((p) => toggleApplicationPick(p, column, value))}
+            onClear={() => setPicks((p) => clearApplicationPicks(p, column))}
+            open={filterOpen === column}
+            onOpenChange={(next) => setFilterOpen(next ? column : null)}
+          />
+        );
+      })}
+    </span>
+  );
 
   /** Shows the step at once, then saves it; a refusal puts the row back and says why. */
   const move = (application: ApplicationEntry, step: LeadMove, done?: () => void) =>
@@ -182,23 +232,23 @@ export function ApplicationsView({
 
       {/* From xl a table (board 58b, three columns beside the panel as board 58); below it stacked cards (board 58m). */}
       <div className={`${PANEL} mt-4 hidden overflow-hidden xl:block`}>
+        {/* The header's names are for the eye; its column filters (issue #428) are buttons a screen reader reaches. */}
         <div
-          aria-hidden="true"
           className={`grid h-10 items-center gap-4 border-b border-hairline bg-white-5 px-5 font-mono text-[10px] uppercase tracking-[0.2em] text-dim ${chosen ? COLUMNS_NARROW : COLUMNS_FULL}`}
         >
-          <span>Applicant</span>
-          <span>Position</span>
+          <span aria-hidden="true">Applicant</span>
+          {header("Position", ["position"])}
           {!chosen && (
             <>
-              <span>Studies</span>
-              <span>Stage</span>
-              <span>Documents</span>
+              {header("Studies", ["program", "level"])}
+              {header("Stage", ["stage"])}
+              {header("Documents", ["documents"])}
             </>
           )}
-          <span>Applied</span>
+          {header("Applied", ["applied"])}
         </div>
         <ul className="divide-y divide-hairline">
-          {rows.map((a) => (
+          {tableRows.map((a) => (
             <li key={a.id}>
               <button
                 type="button"
@@ -240,7 +290,7 @@ export function ApplicationsView({
             </li>
           ))}
         </ul>
-        {rows.length === 0 && <p className="px-5 py-6 text-[13px] text-prt-muted">No applications here.</p>}
+        {tableRows.length === 0 && <p className="px-5 py-6 text-[13px] text-prt-muted">No applications here.</p>}
       </div>
 
       <ul className="mt-3 flex flex-col gap-2.5 xl:hidden">
