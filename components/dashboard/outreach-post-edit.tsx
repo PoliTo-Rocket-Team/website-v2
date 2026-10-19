@@ -2,8 +2,10 @@
 
 import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil, Pin, PinOff } from "lucide-react";
 import { toast } from "sonner";
 import { addOutreachTag, saveOutreachPost } from "@/app/dashboard/actions";
+import { pinOutreachPost, unpinOutreachPost } from "@/app/dashboard/outreach-actions";
 import { Latest } from "@/components/landing/latest";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
@@ -15,6 +17,18 @@ import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
 import type { FooterProject } from "@/lib/landing-links";
 import { featuredCard, newestFirst, outreachStats, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
+import {
+  featuredCardPin,
+  featuredOpen,
+  listedCardPin,
+  runPinMove,
+  withPinned,
+  type CardPin,
+  type EditedPost,
+  type FeaturedOpen,
+  type PinIds,
+  type PinState,
+} from "@/lib/outreach-pin";
 import {
   blankPost,
   blankPostFields,
@@ -28,7 +42,7 @@ import {
   type PostFields,
 } from "@/lib/outreach-post-fields";
 import { titleOf, type IsoDate, type OutreachContent, type OutreachDraft, type OutreachTag, type PostItem } from "@/lib/outreach-types";
-import { CardInPlace, EditableBlock, EditShell } from "./edit-shell";
+import { CardChip, CardInPlace, EditableBlock, EditShell } from "./edit-shell";
 import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post-panel";
 
 // An Outreach post under the edit shell (boards 74b to 74h, issues #288 and
@@ -74,15 +88,19 @@ const PINNED_PAGE_TARGETS = PAGE_TARGETS.filter((t) => t.id !== "home");
 type Opening = { readonly item: PostItem } | { readonly item: null; readonly today: IsoDate };
 
 export function OutreachPostEdit({
-  pinned,
+  pins,
   tags: initialTags,
   neighbours,
   published,
   footerProjects,
   ...opening
 }: Opening & {
-  /** Whether the post is the one pinned to the top of /outreach (issue #392). */
-  pinned: boolean;
+  /**
+   * The post pinned to the top of /outreach (issue #392) and every published
+   * post's id, so the Outreach list target pins and unpins from its cards
+   * (issue #431).
+   */
+  pins: PinState;
   tags: readonly OutreachTag[];
   neighbours: Neighbouring;
   /** What the public pages show, for the list and home targets. */
@@ -105,11 +123,16 @@ export function OutreachPostEdit({
   const [scrollTo, setScrollTo] = useState<{ section: PostSection } | null>(null);
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState<PostPageId>("post");
+  // The page keeps each pin move's answer, as the Outreach list keeps its rows.
+  const [pinnedId, setPinnedId] = useState(pins.pinned);
+  const [pinning, startPinning] = useTransition();
 
   const opened = item === null ? start : editorVersion(item.version);
   const view = postViewOf(fields, opened);
   const errors = standingErrors(failed, fields);
   const live = item === null ? null : publicVersion(item.version);
+  const pinned = item !== null && item.id === pinnedId;
+  const shown = withPinned(published, pins.ids, pinnedId);
   // A post never published may be saved as a draft as it is; a live post's draft must be whole.
   const unfinishedDraft = live === null;
 
@@ -146,6 +169,28 @@ export function OutreachPostEdit({
       toast.success(step === "publish" ? "The post is published." : live === null ? "Draft saved." : "Draft saved. The published post stays live.");
       if (item === null || slugOf(saved) !== slugOf(opened)) router.replace(`/dashboard/outreach/${slugOf(saved)}`);
     });
+  };
+
+  const movePin = (pin: CardPin) => {
+    if (pin.kind === "locked") {
+      toast.error(pin.reason);
+      return;
+    }
+    if (pinning) return;
+    startPinning(async () => {
+      const result = await runPinMove(pin, { pin: pinOutreachPost, unpin: unpinOutreachPost });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setPinnedId(pin.kind === "pin" ? pin.id : null);
+      toast.success(result.value);
+    });
+  };
+
+  const openFeatured = (open: FeaturedOpen) => {
+    if (open.kind === "details") openSection("details");
+    else router.push(open.href);
   };
 
   const addTag = async (name: string) => {
@@ -194,11 +239,15 @@ export function OutreachPostEdit({
         <CardPage
           page={page}
           view={view}
+          edited={{ id: item.id, live: live !== null }}
           pinned={pinned}
-          published={published}
+          shown={shown}
+          ids={pins.ids}
           footerProjects={footerProjects}
           publishedSlug={live === null ? null : slugOf(live)}
           onEditCard={() => openSection("details")}
+          onOpenFeatured={openFeatured}
+          onPin={movePin}
         />
       )}
     </EditShell>
@@ -211,47 +260,103 @@ export function OutreachPostEdit({
  * lives; the other cards are dimmed. The pinned post's card is the list's
  * Featured card (issue #392), drawn from the fields with the cards below it
  * as they are.
+ *
+ * On the list the Featured card is framed as the post cards are (issue #431):
+ * it offers Unpin, and, while another post is being edited, opens the pinned
+ * post's own editor; every post card offers Pin to top.
  */
 function CardPage({
   page,
   view,
+  edited: editedPost,
   pinned,
-  published,
+  shown,
+  ids,
   footerProjects,
   publishedSlug,
   onEditCard,
+  onOpenFeatured,
+  onPin,
 }: {
   page: Exclude<PostPageId, "post">;
   view: OutreachDraft;
+  edited: EditedPost;
+  /** Whether the post being edited is the pinned one. */
   pinned: boolean;
-  published: OutreachContent;
+  /** What the public pages show, with the pin as the editor last moved it. */
+  shown: OutreachContent;
+  ids: PinIds;
   footerProjects: readonly FooterProject[];
   publishedSlug: string | null;
   onEditCard: () => void;
+  onOpenFeatured: (open: FeaturedOpen) => void;
+  onPin: (pin: CardPin) => void;
 }) {
+  const pinChip = (pin: CardPin | null) => (pin === null ? undefined : <PinChip pin={pin} onMove={onPin} />);
   if (pinned) {
+    const feature = featuredCard(shown.feature, view);
     return (
       <OutreachListPage
-        stats={outreachStats(published)}
-        feature={featuredCard(published.feature, view)}
-        cards={newestFirst(published.posts).map(postCardOf)}
+        stats={outreachStats(shown)}
+        feature={feature}
+        cards={newestFirst(shown.posts).map(postCardOf)}
         footerProjects={footerProjects}
+        featureFrame={(node, layout) => (
+          <CardInPlace edited onEdit={onEditCard} className={layout} actions={pinChip(featuredCardPin(feature))}>
+            {node}
+          </CardInPlace>
+        )}
+        frame={(card, node, layout) => (
+          <CardInPlace edited={false} onEdit={onEditCard} className={layout} actions={pinChip(listedCardPin(card, null, ids))}>
+            {node}
+          </CardInPlace>
+        )}
       />
     );
   }
-  const posts = withEdited(published.posts, publishedSlug, view);
+  const posts = withEdited(shown.posts, publishedSlug, view);
   if (page === "list") {
     const cards = newestFirst(posts).map((p) => ({ post: p, card: postCardOf(p) }));
     const edited = cards.find((c) => c.post === view)?.card;
+    const feature = featuredCard(shown.feature, shown.pinned);
+    const open = featuredOpen(feature, false);
     return (
       <OutreachListPage
-        stats={outreachStats(published)}
-        feature={featuredCard(published.feature, published.pinned)}
+        stats={outreachStats(shown)}
+        feature={feature}
         cards={cards.map((c) => c.card)}
         footerProjects={footerProjects}
         keepInView={edited}
+        featureFrame={(node, layout) => (
+          <CardInPlace
+            edited={false}
+            onEdit={onEditCard}
+            className={layout}
+            actions={
+              open === null ? undefined : (
+                <>
+                  <CardChip
+                    icon={<Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />}
+                    label={`Edit post: ${feature.title}`}
+                    onClick={() => onOpenFeatured(open)}
+                  >
+                    Edit post
+                  </CardChip>
+                  {pinChip(featuredCardPin(feature))}
+                </>
+              )
+            }
+          >
+            {node}
+          </CardInPlace>
+        )}
         frame={(card, node, layout) => (
-          <CardInPlace edited={card === edited} onEdit={onEditCard} className={layout}>
+          <CardInPlace
+            edited={card === edited}
+            onEdit={onEditCard}
+            className={layout}
+            actions={pinChip(listedCardPin(card, card === edited ? editedPost : null, ids))}
+          >
             {node}
           </CardInPlace>
         )}
@@ -264,7 +369,7 @@ function CardPage({
       <PageSky className="pt-16 md:pt-[72px]">
         <Latest
           cards={trackRecordShowing(posts, view)}
-          tags={published.tags}
+          tags={shown.tags}
           edited={view}
           frame={(post, node, layout) => (
             <CardInPlace edited={post === view} onEdit={onEditCard} className={layout}>
@@ -274,5 +379,26 @@ function CardPage({
         />
       </PageSky>
     </div>
+  );
+}
+
+/** A card's pin control: Pin to top, off with the reason while the post is not published, or Unpin. */
+function PinChip({ pin, onMove }: { pin: CardPin; onMove: (pin: CardPin) => void }) {
+  if (pin.kind === "unpin") {
+    return (
+      <CardChip icon={<PinOff aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />} label={`Unpin ${pin.title}`} onClick={() => onMove(pin)}>
+        Unpin
+      </CardChip>
+    );
+  }
+  return (
+    <CardChip
+      icon={<Pin aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
+      label={`Pin to top: ${pin.title}`}
+      locked={pin.kind === "locked" ? pin.reason : null}
+      onClick={() => onMove(pin)}
+    >
+      Pin to top
+    </CardChip>
   );
 }

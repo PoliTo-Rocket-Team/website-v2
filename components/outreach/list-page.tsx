@@ -5,7 +5,7 @@ import { PageSky } from "@/components/landing/page-sky";
 import type { HeaderStats } from "@/lib/about/types";
 import type { FooterProject } from "@/lib/landing-links";
 import { outreachCopy, type FeaturedCard } from "@/lib/outreach";
-import { Feature } from "./feature";
+import { Feature, type FeatureFrame } from "./feature";
 import type { PostCardData } from "./post-card";
 import { Posts, type PostCardFrame } from "./posts";
 
@@ -21,6 +21,7 @@ export function OutreachListPage({
   cards,
   footerProjects,
   frame,
+  featureFrame,
   keepInView,
 }: {
   stats: HeaderStats;
@@ -31,6 +32,8 @@ export function OutreachListPage({
   /** The published projects the footer lists (issue #378). */
   footerProjects: readonly FooterProject[];
   frame?: PostCardFrame;
+  /** Wraps the Featured card in the edit shell (issue #431); /outreach passes none. */
+  featureFrame?: FeatureFrame;
   keepInView?: PostCardData;
 }) {
   return (
@@ -39,7 +42,7 @@ export function OutreachListPage({
       <PageSky>
         <main className="pb-section pt-16 md:pt-[72px]">
           <PageHeader {...outreachCopy.header} stats={stats} statsOnPhone="two-by-two" />
-          <Feature feature={feature} />
+          <Feature feature={feature} frame={featureFrame} />
           <Posts title={outreachCopy.postsTitle} posts={cards} frame={frame} keepInView={keepInView} />
         </main>
         <LandingFooter inSky projects={footerProjects} />

@@ -7,6 +7,7 @@ import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { neighboursOf, slugOf } from "@/lib/outreach";
+import { pinStateOf } from "@/lib/outreach-pin";
 import { publishedOutreach } from "@/lib/outreach-public";
 import { footerProjects } from "@/lib/project-content/public";
 
@@ -63,7 +64,7 @@ async function LivePost({ params }: Params) {
   return (
     <OutreachPostEdit
       item={item}
-      pinned={item.id === pinned}
+      pins={pinStateOf(items, pinned)}
       tags={tags}
       neighbours={neighbours}
       published={content}
