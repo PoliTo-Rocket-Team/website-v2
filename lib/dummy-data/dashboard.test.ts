@@ -350,7 +350,12 @@ test("an accepted member joins a new division with no NDA wait, keeps their othe
   const members = await joined.data.members();
   assert.ok(members.scope === "division" && members.people.some((r) => r.name === "Matteo Greco" && r.role === "member"));
   const tree = await joined.data.teamTree();
-  const drawn = tree.departments.flatMap((d) => d.divisions.flatMap((v) => v.members)).filter((p) => p.name === "Matteo Greco");
-  assert.equal(drawn.length, 1);
-  assert.deepEqual(drawn[0].also.map((a) => a.label).sort(), ["Mission Analysis", "Optimization and Analysis"]);
+  // Listed under every division he is in, and first at one of them.
+  const listedIn = tree.departments
+    .flatMap((d) => d.divisions)
+    .filter((v) => [v.lead, ...v.members].some((p) => p?.name === "Matteo Greco"));
+  assert.equal(listedIn.length, 3);
+  assert.ok(listedIn.some((v) => v.name.startsWith("Mission Analysis")));
+  const places = listedIn.flatMap((v) => [v.lead, ...v.members]).filter((p) => p?.name === "Matteo Greco");
+  assert.equal(places.filter((p) => p?.first).length, 1);
 });

@@ -43,6 +43,67 @@ export function PositionLayout({ position, children }: { position: PositionView;
   );
 }
 
+/**
+ * What the page shows while its reads resolve (issue #395): the back link,
+ * grey bars in the header's and skill lists' places, and the form card with
+ * its eyebrow and rows of empty fields. It sits in the same 1040px column
+ * and margins as the page, so nothing moves when the page arrives. The bars
+ * pulse only under `motion-safe:`.
+ */
+export function PositionSkeleton() {
+  return (
+    <div className="px-5 md:px-16" aria-busy="true">
+      <div className="mx-auto max-w-[1040px]">
+        <Link
+          href="/apply"
+          className="mt-[30px] inline-flex items-center gap-2.5 text-[14px] text-prt-text transition-colors duration-300 ease-out hover:text-accent md:mt-[60px]"
+        >
+          <ArrowLeft aria-hidden className="h-4 w-4" />
+          {positionPage.back}
+        </Link>
+        <div aria-hidden className="motion-safe:animate-pulse">
+          <div className="mt-6 md:mt-14">
+            <Bar className="h-3 w-56 md:w-96" />
+            <Bar className="mt-4 h-9 w-4/5 md:mt-6 md:h-14 md:w-3/5" />
+            <Bar className="mt-5 h-4 w-full md:mt-8 md:h-5" />
+            <Bar className="mt-3 h-4 w-2/3 md:h-5" />
+          </div>
+          <div className="mt-8 grid gap-8 md:mt-14 md:grid-cols-2 md:gap-x-10">
+            {[0, 1].map((column) => (
+              <div key={column}>
+                <Bar className="h-6 w-40 md:h-8 md:w-56" />
+                <Bar className="mt-5 h-4 w-11/12 md:mt-7" />
+                <Bar className="mt-4 h-4 w-4/5" />
+                <Bar className="mt-4 h-4 w-3/5" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-10 md:mt-16">
+            <div className="glass-card rounded-xl p-5 md:p-9">
+              <p className="font-mono text-[11px] tracking-[0.3em] text-accent">{positionPage.eyebrow}</p>
+              <div className="mt-5 border-t border-white-10 pt-5 md:mt-6 md:pt-6">
+                <Bar className="h-5 w-28" />
+                <div className="mt-4 grid gap-x-3 gap-y-5 md:mt-5 md:grid-cols-3">
+                  {[0, 1, 2, 3, 4, 5].map((field) => (
+                    <div key={field}>
+                      <Bar className="h-3.5 w-24" />
+                      <div className="mt-2 h-11 rounded-[10px] border border-white-10 bg-white-5" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Bar({ className }: { className: string }) {
+  return <div className={`rounded-md bg-white-5 ${className}`} />;
+}
+
 function Header({ position }: { position: PositionView }) {
   const [lead, ...body] = position.description
     .split(/\n\s*\n/)

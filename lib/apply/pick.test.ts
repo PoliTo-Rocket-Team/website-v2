@@ -28,6 +28,7 @@ function databaseSpy() {
     publicPositions: db("getDb"),
     faqs: db("getDb"),
     position: db("getDb"),
+    shownPosition: db("getDb"),
     applicant: db("getDb"),
     hasApplied: db("getDb"),
     store: { putPdf: db("uploadPrivateFile"), deletePdf: db("deletePrivateFile"), save: db("getDb"), newFileName: () => "x" },

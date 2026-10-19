@@ -136,10 +136,26 @@ test("an uploaded logo is measured: a dark one is saved with the dark flag, a li
   assert.equal(logos.stored.length, 2);
 
   const measured = await editor.measure(png(300, 100, [20, 20, 30]));
-  assert.deepEqual(measured, { ok: true, value: { width: 300, height: 100, kind: "wordmark", darkLogo: true } });
+  assert.deepEqual(measured, { ok: true, value: { logo: { width: 300, height: 100, kind: "wordmark", darkLogo: true }, solidBackground: true } });
   assert.equal((await editor.measure({ ...png(10, 10, [0, 0, 0]), contentType: "image/jpeg" })).ok, false);
   assert.equal((await editor.save(1, "publish", fields, { name: "x.png", contentType: "image/png", bytes: new Uint8Array([1, 2, 3]) })).ok, false);
   assert.equal(logos.stored.length, 2, "a logo that cannot be measured is not stored");
+});
+
+test("the editor's dark-logo choice is saved over the measurement, with or without a new logo", async () => {
+  const { store, editor } = editorOver();
+  const fields = fieldsOf(record[0]);
+
+  assert.ok((await editor.save(1, "publish", fields, png(300, 100, [20, 20, 30]), false)).ok, "measured dark, kept as drawn in colour");
+  assert.equal(publicItems(await store.list())[0].logo.darkLogo, false);
+
+  assert.ok((await editor.save(1, "publish", fields, null, true)).ok, "a kept logo takes the choice too");
+  const logo = publicItems(await store.list())[0].logo;
+  assert.equal(logo.darkLogo, true);
+  assert.equal(logo.src, "https://blob.example/logos/1.png", "the file stays as it was");
+
+  assert.ok((await editor.save(1, "publish", fields, null)).ok);
+  assert.equal(publicItems(await store.list())[0].logo.darkLogo, true, "no choice sent keeps the stored flag");
 });
 
 test("every logo in the record has the kind its shape gives", () => {
