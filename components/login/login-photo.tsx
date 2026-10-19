@@ -9,9 +9,11 @@ import { loginBlur, type LoginPhotoSrc } from "./login-blur";
 // so the widths above the cap leave the `srcSet`, and every screen gets at
 // most the 1200 file.
 //
-// The photo paints after the heading and the button: it is not preloaded and
-// not high priority, so it never queues ahead of the page's CSS and fonts.
-// Until it arrives, its blurred preview holds the place.
+// The photo paints after the heading and the button. It is not preloaded, and
+// it loads lazily, so the browser asks for it only once the page's CSS has
+// laid the page out: it never shares the first round trips with the CSS and
+// fonts the first paint waits on. Until it arrives, its blurred preview holds
+// the place.
 
 /** The widest file a login photo is served at, in image px. */
 const PHOTO_MAX_WIDTH = 1200;
@@ -31,7 +33,7 @@ export function LoginPhoto({
     alt: "",
     fill: true,
     sizes,
-    loading: "eager",
+    loading: "lazy",
     placeholder: "blur",
     blurDataURL: loginBlur[src],
     style: { objectPosition: position },
