@@ -9,8 +9,10 @@
 // Applications and their answers are private, so every applicant is an
 // invented person (issue #326).
 
-import { applications, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
+import { applicationFiles, applications, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
 import { TESTERS } from "@/lib/dev-tester";
+import { samplePdf } from "@/lib/seed/sample-pdf";
+import { privatePathname } from "@/lib/storage/pathname";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DIVISION as D } from "./structure";
 
@@ -224,7 +226,7 @@ export const APPLICATION = {
   testerNew: 25,
 } as const;
 
-export const APPLICATION_ROWS = rowsOf(applications, [
+const APPLICATIONS: readonly Application[] = [
   application(APPLICATION.ndaArrived, 1, "dddddddd-dddd-dddd-dddd-dddddddddddd", "2026-09-05 16:45:00+02", "accepted", {
     acceptedAt: "2026-10-05 11:00:00+02",
     ndaArrivedAt: "2026-10-08 09:30:00+02",
@@ -288,7 +290,45 @@ export const APPLICATION_ROWS = rowsOf(applications, [
       "Only exploded views for a robotics club so far",
     ]),
   },
+];
+
+// Every application's CV and motivation letter (issue #406, owner decision of
+// 2026-10-19): one shared sample PDF in the private store, at one fixed
+// pathname, and the one `application_files` row that names it. The preview
+// build uploads the PDF once (db/preview-build.ts); every seeded application
+// points both its documents at that row, so the document route streams it from
+// the store like a real file. A file row's pathname is unique, so the
+// applications share the row rather than each holding a copy of it. The row
+// has no owner, so deleting one tester's account never deletes it; the
+// withdrawn-files cleanup keeps a row another live application still holds.
+
+/** The shared sample document: where the preview build stores it, and its bytes. */
+export const SEED_SAMPLE_DOCUMENT = {
+  pathname: privatePathname("application", "seed-sample.pdf"),
+  bytes: samplePdf("Sample document", [
+    "Every seeded application opens this file as its CV and its motivation letter.",
+    "It is preview data only: no applicant sent it.",
+  ]),
+} as const;
+
+const SAMPLE_FILE_ID = 1;
+
+export const APPLICATION_FILE_ROWS = rowsOf(applicationFiles, [
+  {
+    id: SAMPLE_FILE_ID,
+    pathname: SEED_SAMPLE_DOCUMENT.pathname,
+    originalFilename: "sample-document.pdf",
+    mimeType: "application/pdf",
+    fileSize: SEED_SAMPLE_DOCUMENT.bytes.length,
+    uploadedAt: "2026-09-01 09:00:00+02",
+    userId: null,
+  },
 ]);
+
+export const APPLICATION_ROWS = rowsOf(
+  applications,
+  APPLICATIONS.map((app) => ({ ...app, cvFileId: SAMPLE_FILE_ID, coverLetterFileId: SAMPLE_FILE_ID })),
+);
 
 /** One interview time: an hour from `start`, offered when the lead moved the application to interview. */
 function slot(id: number, applicationId: number, start: string, offeredAt: string, chosenAt: string | null = null) {
@@ -324,6 +364,6 @@ export const RECRUITMENT_SETTING_ROWS = rowsOf(recruitmentSetting, [
 
 export const recruitmentSeed = tableSeedModule({
   name: "recruitment",
-  owns: [applyPositions, applications, interviewSlots, recruitmentSetting],
-  rows: [POSITION_ROWS, APPLICATION_ROWS, SLOT_ROWS, RECRUITMENT_SETTING_ROWS],
+  owns: [applyPositions, applicationFiles, applications, interviewSlots, recruitmentSetting],
+  rows: [POSITION_ROWS, APPLICATION_FILE_ROWS, APPLICATION_ROWS, SLOT_ROWS, RECRUITMENT_SETTING_ROWS],
 });

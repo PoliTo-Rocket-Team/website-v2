@@ -15,7 +15,9 @@ import postgres from "postgres";
 import { preparePreviewDatabase, type PreviewBuildSteps } from "@/lib/seed/preview-build";
 import { runSeed } from "@/lib/seed/runner";
 import { guardSeedTarget } from "@/lib/seed/target";
+import { readPrivateFile, uploadPrivateFile } from "@/lib/storage/private-blob";
 import { seedConnection } from "./seed/connection";
+import { SEED_SAMPLE_DOCUMENT } from "./seed/recruitment";
 import { SEED_MODULES } from "./seed/registry";
 
 /** The advisory lock every preview build takes before it migrates and seeds. */
@@ -46,8 +48,36 @@ const steps: PreviewBuildSteps = {
       await client.end();
     }
   },
-  seed: (target) => runSeed(target, SEED_MODULES, seedConnection),
+  // The sample document is stored inside the lock too, so two preview builds
+  // never both find it missing and both upload it.
+  async seed(target) {
+    const report = await runSeed(target, SEED_MODULES, seedConnection);
+    await storeSampleDocument();
+    return report;
+  },
 };
+
+/**
+ * Uploads the one sample PDF every seeded application document points at
+ * (issue #406) to the private store, at its fixed pathname, unless it is
+ * already there. It writes nothing else. A preview with no store token stores
+ * nothing, and says so.
+ */
+async function storeSampleDocument(): Promise<void> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.log("Sample document skipped: this preview has no BLOB_READ_WRITE_TOKEN, so its document cards answer that no file is stored.");
+    return;
+  }
+  const { pathname, bytes } = SEED_SAMPLE_DOCUMENT;
+  const stored = await readPrivateFile(pathname);
+  if (stored !== null) {
+    await stored.stream.cancel();
+    console.log(`Sample document already stored at ${pathname}.`);
+    return;
+  }
+  await uploadPrivateFile(pathname, bytes, "application/pdf");
+  console.log(`Stored the sample document at ${pathname}.`);
+}
 
 async function main() {
   const outcome = await preparePreviewDatabase(

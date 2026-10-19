@@ -8,6 +8,7 @@ import {
   orderStatusEnum,
   type alumniEntries,
   type alumniImportedRoles,
+  type applicationFiles,
   type applications,
   type applyPositions,
   type departments,
@@ -86,7 +87,7 @@ import {
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
 import { MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
-import { APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
+import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
   ADDED_LEAD_DEPARTMENT,
@@ -113,6 +114,7 @@ export type SeedData = {
   readonly orders: readonly InferInsertModel<typeof orders>[];
   readonly positions: readonly InferInsertModel<typeof applyPositions>[];
   readonly applications: readonly InferInsertModel<typeof applications>[];
+  readonly applicationFiles: readonly InferInsertModel<typeof applicationFiles>[];
   readonly interviewSlots: readonly InferInsertModel<typeof interviewSlots>[];
   readonly recruitmentSetting: readonly InferInsertModel<typeof recruitmentSetting>[];
   readonly partners: readonly InferInsertModel<typeof partners>[];
@@ -144,6 +146,7 @@ export const SEED_DATA: SeedData = {
   orders: ORDER_ROWS.rows,
   positions: POSITION_ROWS.rows,
   applications: APPLICATION_ROWS.rows,
+  applicationFiles: APPLICATION_FILE_ROWS.rows,
   interviewSlots: SLOT_ROWS.rows,
   recruitmentSetting: RECRUITMENT_SETTING_ROWS.rows,
   partners: PARTNER_ROWS.rows,
@@ -1030,6 +1033,19 @@ export const SEED_CASES: readonly SeedCase[] = [
     holds: (data) => {
       const theirs = data.applications.filter((a) => a.userId === TEST_VIEWER_PEOPLE["non-member"]);
       return theirs.some((a) => stageOf(data, a) === "interview") && theirs.some((a) => stageOf(data, a) === "new");
+    },
+  },
+  {
+    area: "recruitment",
+    case: "Every application's CV and motivation letter point at the one shared sample PDF",
+    data: "invented",
+    rows: "the one `application_files` row, named by every `applications.cv_file_id` and `cover_letter_file_id`",
+    exercisedBy: issue(406),
+    holds: (data) => {
+      const [sample, ...others] = data.applicationFiles;
+      if (sample === undefined || others.length > 0) return false;
+      const isPdf = sample.mimeType === "application/pdf" && sample.pathname.startsWith("applications/");
+      return isPdf && data.applications.every((a) => a.cvFileId === sample.id && a.coverLetterFileId === sample.id);
     },
   },
   {

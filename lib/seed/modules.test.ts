@@ -124,6 +124,7 @@ test("rows that set their own serial ids move the sequence past them", () => {
   const seeded = tableModules.flatMap((s) => s.rows).filter((set) => sequenceStatement(set) !== null);
   assert.deepEqual(seeded.map((set) => getTableName(set.table)).sort(), [
     "alumni_entries",
+    "application_files",
     "applications",
     "apply_positions",
     "departments",

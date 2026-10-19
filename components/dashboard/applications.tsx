@@ -33,6 +33,7 @@ import {
   type LeadStep,
   type Pronouns,
 } from "@/lib/dashboard/application-flow";
+import { applicantSections, type ApplicantField } from "@/lib/dashboard/applicant-details";
 import {
   APPLICATIONS_SORTS,
   applicationsModelOf,
@@ -224,7 +225,7 @@ export function ApplicationsView({
                 </span>
                 {!chosen && (
                   <>
-                    <span className="truncate text-[13px] text-text-2">{studiesLine(a.studies.degree, a.studies.year)}</span>
+                    <span className="truncate text-[13px] text-text-2">{studiesLine(a.applicant.degree, a.applicant.year)}</span>
                     <span className="min-w-0">
                       <StagePill state={a.state} standing={a.standing} />
                     </span>
@@ -360,15 +361,8 @@ function Detail({
   const close = () => setAsking(null);
   const run = (step: LeadMove) => onMove(a, step, close);
 
-  const contact = rows([
-    ["Email", a.applicant.email],
-    ["Phone", a.applicant.phone],
-    ["PoliTo ID", a.applicant.politoId],
-  ]);
-  const studies = rows([
-    ["Year", a.studies.year],
-    ["Degree", a.studies.degree],
-  ]);
+  // Every field the applicant gave, grouped; empty ones are left out (issue #406).
+  const details = applicantSections(a.applicant);
 
   return (
     <>
@@ -414,8 +408,9 @@ function Detail({
         </div>
 
         <StageCard application={a} first={first} they={they} now={now} pending={pending} onAsk={setAsking} onMove={(step) => onMove(a, step)} />
-        {contact.length > 0 && <Fields title="Contact" fields={contact} />}
-        {studies.length > 0 && <Fields title="Studies" fields={studies} />}
+        {details.map((section) => (
+          <Fields key={section.title} title={section.title} fields={section.fields} />
+        ))}
         {a.otherApplications.length > 0 && (
           <Section title={`Other applications · ${a.otherApplications.length}`}>
             <ul className="flex flex-col gap-2.5">
@@ -752,10 +747,6 @@ function OtherCard({ other }: { other: OtherApplication }) {
   );
 }
 
-function rows(fields: readonly (readonly [string, string | null])[]): [string, string][] {
-  return fields.flatMap(([label, value]) => (value ? [[label, value] as [string, string]] : []));
-}
-
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mb-6 last:mb-0">
@@ -765,14 +756,27 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Fields({ title, fields }: { title: string; fields: readonly [string, string][] }) {
+function Fields({ title, fields }: { title: string; fields: readonly ApplicantField[] }) {
   return (
     <Section title={title}>
       <dl className="flex flex-col gap-1.5">
-        {fields.map(([label, value]) => (
+        {fields.map(({ label, value, href }) => (
           <div key={label} className="flex items-baseline justify-between gap-4 text-[13px]">
             <dt className="shrink-0 text-prt-muted">{label}</dt>
-            <dd className="min-w-0 break-words text-right">{value}</dd>
+            <dd className="min-w-0 break-words text-right">
+              {href ? (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`text-text-2 transition-colors duration-300 ease-out hover:text-accent ${FOCUS}`}
+                >
+                  {value}
+                </a>
+              ) : (
+                value
+              )}
+            </dd>
           </div>
         ))}
       </dl>

@@ -51,7 +51,16 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "./recruitment";
-import { mayChange, readsAsDivisionLead, type ChangeArea, type DivisionUnit } from "./viewer";
+import { mayChange, type ChangeArea, type DivisionUnit } from "./viewer";
+import {
+  documentHref,
+  mayOpenApplication,
+  readsRecruitment,
+  readsRecruitmentIn,
+  type DocumentKind,
+  type StoredDocument,
+} from "./application-documents";
+import { parsePrivatePathname } from "@/lib/storage/pathname";
 import { refused, written, type WriteResult } from "./write";
 
 // The Positions and Applications pages read from and written to the database
@@ -64,10 +73,8 @@ import { refused, written, type WriteResult } from "./write";
 type Identity = DashboardIdentity;
 type DbStatus = (typeof applications.$inferSelect)["status"];
 
-/** Whether the viewer reads the recruitment pages: a lead, a head, full access, or a member holding an area grant. */
-function isLead(identity: Identity): boolean {
-  return identity.kind === "operations-lead" || identity.kind === "department-head" || readsAsDivisionLead(identity);
-}
+/** Whether the viewer reads the recruitment pages (`readsRecruitment`, ./application-documents.ts). */
+const isLead: (identity: Identity) => boolean = readsRecruitment;
 
 /** The division a position is in, with its department; null for a deleted position or a closed unit. */
 async function positionUnit(positionId: number): Promise<DivisionUnit | null> {
@@ -129,10 +136,8 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
       .where(isNull(applications.withdrawnAt))
       .groupBy(applications.applyPositionId, applications.status),
   ]);
-  const scoped =
-    identity.kind === "operations-lead"
-      ? rows
-      : rows.filter((r) => identity.divisionIds.includes(r.division_id) || identity.departmentIds.includes(r.dept_id));
+  // The same rule the document route checks (`readsRecruitmentIn`, ./application-documents.ts).
+  const scoped = rows.filter((r) => readsRecruitmentIn(identity, { divisionId: r.division_id, departmentId: r.dept_id }));
   if (scoped.length === 0) return [];
 
   return scoped.map((r) => {
@@ -351,8 +356,9 @@ async function readOtherApplications(
 }
 
 function documentOf(
-  kind: ApplicationDocument["kind"],
-  file: { name: string | null; size: number | null; hash: string | null },
+  applicationId: number,
+  kind: DocumentKind,
+  file: { id: number | null; name: string | null; size: number | null },
   storedName: string | null,
 ): ApplicationDocument[] {
   const name = file.name ?? storedName;
@@ -362,8 +368,8 @@ function documentOf(
       kind,
       name,
       size: file.size === null ? null : fileSize(file.size),
-      // The file route checks the reader's scope again (app/(legacy)/docs/applications/).
-      href: file.hash === null ? null : `/docs/applications/${file.hash}/${encodeURIComponent(name)}`,
+      // A stored file opens through the document route, which checks the reader again (issue #406).
+      href: file.id === null ? null : documentHref(applicationId, kind),
     },
   ];
 }
@@ -405,13 +411,18 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
       polito_id: users.politoId,
       year: users.levelOfStudy,
       degree: users.program,
+      birth_date: users.dateOfBirth,
       gender: users.gender,
+      country: users.country,
+      origin: users.origin,
+      linkedin: users.linkedin,
+      referral: users.referralSource,
+      cv_file_id: cvFiles.id,
       cv_file_name: cvFiles.originalFilename,
       cv_file_size: cvFiles.fileSize,
-      cv_file_hash: cvFiles.fileHash,
+      letter_file_id: letterFiles.id,
       letter_file_name: letterFiles.originalFilename,
       letter_file_size: letterFiles.fileSize,
-      letter_file_hash: letterFiles.fileHash,
     })
     .from(applications)
     .innerJoin(users, eq(applications.userId, users.id))
@@ -443,17 +454,24 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
             email: r.email,
             phone: r.phone,
             politoId: r.polito_id,
+            year: r.year,
+            degree: r.degree,
+            birthDate: r.birth_date,
             gender: r.gender,
+            country: r.country,
+            origin: r.origin,
+            linkedin: r.linkedin,
+            referral: r.referral,
           },
           standing: standings.get(r.id) ?? NEW_APPLICANT,
-          studies: { year: r.year, degree: r.degree },
           position: { ref: position.ref, title: position.title, division: position.division },
           applied: appliedLabels(new Date(r.applied_at), now),
           documents: [
-            ...documentOf("cv", { name: r.cv_file_name, size: r.cv_file_size, hash: r.cv_file_hash }, r.cv_name),
+            ...documentOf(r.id, "cv", { id: r.cv_file_id, name: r.cv_file_name, size: r.cv_file_size }, r.cv_name),
             ...documentOf(
+              r.id,
               "motivation-letter",
-              { name: r.letter_file_name, size: r.letter_file_size, hash: r.letter_file_hash },
+              { id: r.letter_file_id, name: r.letter_file_name, size: r.letter_file_size },
               r.letter_name,
             ),
           ],
@@ -463,6 +481,36 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
       ];
     }),
   };
+}
+
+/**
+ * One document of an application, for the document route (issue #406): only
+ * for a viewer whose Applications page lists the application
+ * (`mayOpenApplication`, ./application-documents.ts), else DashboardRefused.
+ * Null when no file is stored for it, or its stored pathname is not in the
+ * private store.
+ */
+async function applicationDocument(identity: Identity, applicationId: number, kind: DocumentKind): Promise<StoredDocument | null> {
+  if (!isLead(identity)) throw new DashboardRefused(`application ${applicationId}`);
+  const [row] = await getDb()
+    .select({
+      division_id: divisions.id,
+      dept_id: departments.id,
+      withdrawn_at: applications.withdrawnAt,
+      pathname: applicationFiles.pathname,
+      name: applicationFiles.originalFilename,
+    })
+    .from(applications)
+    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
+    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+    .innerJoin(departments, eq(divisions.deptId, departments.id))
+    .leftJoin(applicationFiles, eq(applicationFiles.id, kind === "cv" ? applications.cvFileId : applications.coverLetterFileId))
+    .where(and(eq(applications.id, applicationId), eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
+    .limit(1);
+  const place = row ? { unit: { divisionId: row.division_id, departmentId: row.dept_id }, withdrawn: row.withdrawn_at !== null } : null;
+  if (!mayOpenApplication(identity, place)) throw new DashboardRefused(`application ${applicationId}`);
+  const pathname = row?.pathname ? parsePrivatePathname(row.pathname) : null;
+  return pathname === null || !row?.name ? null : { pathname, name: row.name };
 }
 
 /** The application as the move reads it, once the viewer is shown to reach it. */
@@ -708,6 +756,7 @@ export function databaseRecruitmentPages(identity: Identity) {
   return {
     positions: () => positionsPage(identity),
     applications: () => applicationsPage(identity),
+    applicationDocument: (id: number, kind: DocumentKind) => applicationDocument(identity, id, kind),
     setPositionOpen: (id: number, open: boolean) => setPositionOpen(identity, id, open),
     createPosition: (input: unknown) => createPosition(identity, input),
     editPosition: (id: number, input: unknown) => editPosition(identity, id, input),

@@ -11,6 +11,7 @@ import type { AccessGrant, AccessPage } from "./division-access";
 import type { Order, OrdersPage } from "./orders";
 import type { TeamSideOverview } from "./overview";
 import type { LeadMove } from "./application-flow";
+import type { DocumentKind, StoredDocument } from "./application-documents";
 import type { CreatedPosition } from "./new-position";
 import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import type { YourDetails } from "./details";
@@ -119,6 +120,12 @@ export interface DashboardData {
   positions(): Promise<PositionsPage>;
   /** Boards 58 and 58b (issue #171). */
   applications(): Promise<ApplicationsPage>;
+  /**
+   * The CV or motivation letter of one application, for the document route
+   * (issue #406): rejects with DashboardRefused unless `applications()` lists
+   * that application for the viewer; null when no file is stored for it.
+   */
+  applicationDocument(applicationId: number, kind: DocumentKind): Promise<StoredDocument | null>;
   setPositionOpen(positionId: number, open: boolean): Promise<void>;
   /**
    * New position (boards 57a, 57b). A division the viewer may not post in
