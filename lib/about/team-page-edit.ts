@@ -199,6 +199,23 @@ export function groupPhotoOf(base: TeamPage, layer: TeamPageLayer): GroupPhoto {
   return layer.groupPhoto ?? base.coreMembers.groupPhoto;
 }
 
+/**
+ * What the editor typed in the group photo box, by photo file (issue #430):
+ * each photo keeps its own description, so picking another photo never
+ * carries the text along. A description is optional.
+ */
+export type GroupPhotoDescriptions = Readonly<Record<string, string>>;
+
+/** The descriptions the box opens on: the photo shown now and the record's own. */
+export function groupPhotoDescriptions(photo: GroupPhoto, original: GroupPhoto): GroupPhotoDescriptions {
+  return { [original.src]: original.alt, [photo.src]: photo.alt };
+}
+
+/** The photo `src` with its own description: the one typed for it, else none. */
+export function describedGroupPhoto(src: Photo, descriptions: GroupPhotoDescriptions): GroupPhoto {
+  return { src, alt: descriptions[src] ?? "" };
+}
+
 /** A group photo put back as the record has it is no edit. */
 export function withGroupPhoto(base: TeamPage, layer: TeamPageLayer, photo: GroupPhoto): TeamPageLayer {
   const original = base.coreMembers.groupPhoto;

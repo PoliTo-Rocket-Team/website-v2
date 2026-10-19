@@ -316,6 +316,13 @@
       "when": 1792689600000,
       "tag": "0044_outreach_pinned_post",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1792776000000,
+      "tag": "0045_outreach_optional_channels_gallery",
+      "breakpoints": true
     }
   ]
 }

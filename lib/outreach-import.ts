@@ -42,7 +42,8 @@ export function importedOutreach(): StoredOutreach {
   };
 }
 
-const POST_COLUMN_NAMES: Readonly<Record<keyof OutreachPostColumns, string>> = {
+/** The columns the imports write. They ran before `gallery` existed (migration 0045), and no record post has one. */
+const POST_COLUMN_NAMES: Readonly<Record<Exclude<keyof OutreachPostColumns, "gallery">, string>> = {
   title: "title",
   date: "date",
   place: "place",
@@ -72,8 +73,8 @@ function literal(value: unknown): string {
   return typeof value === "string" ? quoted(value) : `${quoted(JSON.stringify(value))}::jsonb`;
 }
 
-function namesAndValues<C extends object>(names: Readonly<Record<keyof C, string>>, columns: C): { names: string; values: string } {
-  const keys = Object.keys(names) as (keyof C)[];
+function namesAndValues<C extends object, K extends keyof C>(names: Readonly<Record<K, string>>, columns: C): { names: string; values: string } {
+  const keys = Object.keys(names) as K[];
   return {
     names: keys.map((k) => `"${names[k]}"`).join(", "),
     values: keys.map((k) => literal(columns[k])).join(", "),
@@ -86,6 +87,7 @@ function namesAndValues<C extends object>(names: Readonly<Record<keyof C, string
  * that version's tags follow, written in one go so they find the id.
  */
 function publishedPostSql(postRow: string, post: OutreachPost): string {
+  if (post.gallery !== undefined) throw new Error("an imported post has no gallery");
   const columns = namesAndValues(POST_COLUMN_NAMES, postColumns(post));
   const postTags = post.tags.map((name, i) => `(${literal(name)}, ${i + 1})`).join(", ");
   return [

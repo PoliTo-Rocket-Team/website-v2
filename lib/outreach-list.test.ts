@@ -112,6 +112,16 @@ test("the summit is refused without a title, an edition, or with one year twice"
   assert.equal(checkSummitFields({ ...fields, editions: [{ year: "24", place: "Bari" }] }, feature).ok, false);
 });
 
+test("the summit saves and publishes with no photo description", async () => {
+  const store = freshStore();
+  const editor = outreachEditor(admin, store, dummyPhotoFiles);
+  const edited = { ...summitFieldsOf(outreachRecord.feature), photoAlt: "  " };
+  const published = await editor.saveSummit("publish", async (current) => checkSummitFields(edited, current));
+  assert.ok(published.ok);
+  const { photo } = (await site(store)).feature;
+  assert.deepEqual(photo, { src: outreachRecord.feature.photo.src, alt: "" });
+});
+
 test("the list is newest first, and the Status filter reads a post with draft changes as Draft, as its pill does", async () => {
   const store = freshStore();
   const editor = outreachEditor(admin, store, dummyPhotoFiles);

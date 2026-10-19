@@ -109,10 +109,10 @@ export type DragRow = {
  * order it would drop into; the drag ends on the dragged row, dropped or not,
  * and the order it shows then is the one handed to `onReorder`.
  */
-export function useDragOrder(keys: readonly number[], onReorder: (order: number[]) => void) {
-  const [dragging, setDragging] = useState<{ key: number; order: number[] } | null>(null);
-  const order: readonly number[] = dragging === null ? keys : dragging.order;
-  const row = (key: number, index: number): DragRow => ({
+export function useDragOrder<K extends string | number>(keys: readonly K[], onReorder: (order: K[]) => void) {
+  const [dragging, setDragging] = useState<{ key: K; order: K[] } | null>(null);
+  const order: readonly K[] = dragging === null ? keys : dragging.order;
+  const row = (key: K, index: number): DragRow => ({
     dragged: dragging?.key === key,
     onDragStart: (event) => {
       event.dataTransfer.effectAllowed = "move";

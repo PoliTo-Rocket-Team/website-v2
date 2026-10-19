@@ -157,9 +157,9 @@ const databasePostStore: PostStore = {
     const insertPost = sql`
         WITH "post" AS (INSERT INTO ${outreachPosts} ("site_order") VALUES (${siteOrder}) RETURNING "id"),
         "version" AS (
-          INSERT INTO ${outreachPostVersions} ("post_id", "version", "title", "date", "place", "summary", "summary_phone", "lead", "body", "photos", "channels")
+          INSERT INTO ${outreachPostVersions} ("post_id", "version", "title", "date", "place", "summary", "summary_phone", "lead", "body", "photos", "channels", "gallery")
           SELECT "id", ${only.kind}::content_version, ${c.title}, ${c.date}::date, ${c.place}, ${c.summary}, ${c.summaryPhone}, ${c.lead},
-            ${json(c.body)}, ${json(c.photos)}, ${json(c.channels)}
+            ${json(c.body)}, ${json(c.photos)}, ${json(c.channels)}, ${c.gallery === null ? null : json(c.gallery)}
           FROM "post"
           RETURNING "post_id"
         )`;

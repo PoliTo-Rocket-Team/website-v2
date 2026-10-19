@@ -1,19 +1,24 @@
 import type { PublishCheck } from "@/lib/content/edit-shell";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
+import { galleryProblems, NO_GALLERY, readGalleryFields, type GalleryFields } from "@/lib/gallery-fields";
 import type { NonEmpty } from "./about/alumni-types";
 import { isPhotoSrc } from "./outreach-photos";
-import { isIsoDate, withMainChannel } from "./outreach-rows";
+import { isIsoDate } from "./outreach-rows";
 import {
   CHANNEL_LABELS,
   CHANNEL_NAMES,
   type BodyBlock,
   type Channel,
   type ChannelName,
+  type Channels,
+  type DraftGallery,
   type IsoDate,
   type OutreachPost,
   type OutreachTag,
   type PhotoSrc,
   type OutreachDraft,
+  type PostGallery,
+  type PostGalleryPhoto,
 } from "./outreach-types";
 import type { Copy } from "./projects";
 
@@ -25,6 +30,9 @@ import type { Copy } from "./projects";
 // saved as a draft at any point, blanks and all (board 74f, issue #292), and
 // its Publish waits on the checklist. Photos (issue #291) are uploaded as they are picked, so the
 // fields hold each one's src and its alt text, in the order the panel shows.
+// Original posts and photo descriptions are optional (Owner decision, issue
+// #430), and a post may have a gallery, edited as a project's is
+// (lib/gallery-fields.ts).
 
 /** One original post as the panel edits it: the link and the first line. `account` is kept as it was. */
 export type ChannelFields = {
@@ -34,7 +42,7 @@ export type ChannelFields = {
   readonly account?: string;
 };
 
-/** One photo as the panel edits it: the file, uploaded already, and its alt text, empty until written. */
+/** One photo as the panel edits it: the file, uploaded already, and its alt text, which may stay empty. */
 export type PhotoFields = { readonly src: PhotoSrc; readonly alt: string };
 
 /** Everything the panel edits, as typed: text may be empty and lists may be too, until a save checks them. */
@@ -50,12 +58,14 @@ export type PostFields = {
   readonly body: readonly BodyBlock[];
   /** In order: the first is the cover and the card photo. */
   readonly photos: readonly PhotoFields[];
-  /** In the order the panel lists them; one entry per channel. */
+  /** In the order the panel lists them; one entry per channel, none at all included. */
   readonly channels: readonly ChannelFields[];
+  /** The gallery at the bottom of the page, switched off while the post has none. */
+  readonly gallery: GalleryFields;
 };
 
 /** The panel's sections that a rule can refuse. */
-export type PostField = "title" | "date" | "tags" | "lead" | "summary" | "body" | "photos" | "channels";
+export type PostField = "title" | "date" | "tags" | "lead" | "summary" | "body" | "photos" | "channels" | "gallery";
 
 export type PostFieldErrors = Partial<Record<PostField, string>>;
 
@@ -79,7 +89,38 @@ export function postFieldsOf(post: OutreachDraft): PostFields {
       const channel = post.channels[name];
       return channel === undefined ? [] : [{ name, ...channel }];
     }),
+    gallery:
+      post.gallery === undefined
+        ? NO_GALLERY
+        : {
+            shown: post.gallery.shown,
+            title: post.gallery.title,
+            items: post.gallery.items.map((item) => ({ src: item.src, alt: item.alt, caption: item.caption ?? "" })),
+          },
   };
+}
+
+/**
+ * The gallery as a draft keeps it: each text trimmed, and only photos that
+ * were uploaded (the panel never makes a placeholder). A gallery switched
+ * off with nothing in it is no gallery.
+ */
+function draftGalleryOf(fields: GalleryFields): DraftGallery | undefined {
+  const items = fields.items.flatMap((item): PostGalleryPhoto[] => {
+    if (item.src === null || !isPhotoSrc(item.src)) return [];
+    const caption = item.caption.trim();
+    return [{ src: item.src, alt: item.alt.trim(), ...(caption !== "" && { caption }) }];
+  });
+  const title = fields.title.trim();
+  if (!fields.shown && title === "" && items.length === 0) return undefined;
+  return { shown: fields.shown, title, items };
+}
+
+/** The draft's gallery as a whole post's: switched on, it has its title and a photo; null when it does not. */
+function postGalleryOf(gallery: DraftGallery): PostGallery | null {
+  if (!gallery.shown) return { ...gallery, shown: false };
+  const [first, ...rest] = gallery.items;
+  return gallery.title === "" || first === undefined ? null : { shown: true, title: gallery.title, items: [first, ...rest] };
 }
 
 /** The card summary: a phone text is kept only while the text it shortens is unchanged. */
@@ -95,7 +136,7 @@ function channelOf(fields: ChannelFields): Channel {
   };
 }
 
-function channelRecord(channels: readonly ChannelFields[]): Partial<Record<ChannelName, Channel>> {
+function channelRecord(channels: readonly ChannelFields[]): Channels {
   return Object.fromEntries(channels.map((c) => [c.name, channelOf(c)]));
 }
 
@@ -104,7 +145,7 @@ export type OpenedPost = Pick<OutreachDraft, "date" | "summary">;
 
 /** A new post's fields (board 74f): everything blank but the date, which is `today`. */
 export function blankPostFields(today: IsoDate): PostFields {
-  return { title: "", date: today, place: "", tags: [], lead: "", summary: "", body: [], photos: [], channels: [] };
+  return { title: "", date: today, place: "", tags: [], lead: "", summary: "", body: [], photos: [], channels: [], gallery: NO_GALLERY };
 }
 
 /** What a new post opened on: nothing yet but its date. */
@@ -115,6 +156,7 @@ export function blankPost(today: IsoDate): OutreachDraft {
 /** The page as the editor sees it while typing: every field as typed, and the opened post's date while the date is cleared. */
 export function postViewOf(fields: PostFields, opened: OpenedPost): OutreachDraft {
   const place = fields.place.trim();
+  const gallery = draftGalleryOf(fields.gallery);
   return {
     title: fields.title,
     date: isIsoDate(fields.date) ? fields.date : opened.date,
@@ -125,6 +167,7 @@ export function postViewOf(fields: PostFields, opened: OpenedPost): OutreachDraf
     body: fields.body,
     photos: fields.photos,
     channels: channelRecord(fields.channels),
+    ...(gallery !== undefined && { gallery }),
   };
 }
 
@@ -139,6 +182,7 @@ export function draftOfFields(fields: PostFields, opened: OpenedPost, tags: read
   const unknown = fields.tags.find((name) => !known.has(name));
   if (unknown !== undefined) return refused(`${unknown} is not a tag. Add it to the tag list first.`);
   const place = fields.place.trim();
+  const gallery = draftGalleryOf(fields.gallery);
   return {
     ok: true,
     value: {
@@ -150,7 +194,8 @@ export function draftOfFields(fields: PostFields, opened: OpenedPost, tags: read
       lead: fields.lead.trim(),
       body: fields.body.map(trimmedBlock),
       photos: fields.photos.map((p) => ({ src: p.src, alt: p.alt.trim() })),
-      channels: Object.fromEntries(fields.channels.map((c) => [c.name, channelOf(c)])),
+      channels: channelRecord(fields.channels),
+      ...(gallery !== undefined && { gallery }),
     },
   };
 }
@@ -158,8 +203,9 @@ export function draftOfFields(fields: PostFields, opened: OpenedPost, tags: read
 /**
  * The checklist under Publish (board 74f), in the board's order: Publish
  * stays off until every line is done. A publish runs the whole of
- * `checkPostFields` as well, which asks for more (a lead, a card summary, alt
- * text on every photo), and says which section still needs it.
+ * `checkPostFields` as well, which asks for more (a lead, a card summary, a
+ * whole link on each original post added), and says which section still
+ * needs it. An original post is optional (Owner decision, issue #430).
  */
 export function publishChecklist(fields: PostFields): readonly PublishCheck[] {
   return [
@@ -167,10 +213,6 @@ export function publishChecklist(fields: PostFields): readonly PublishCheck[] {
     { label: "At least 1 tag", done: fields.tags.length > 0 },
     { label: "Cover photo", done: fields.photos.length > 0 },
     { label: "Some text", done: fields.body.some((b) => b.text.trim() !== "") },
-    {
-      label: "An Instagram or LinkedIn link",
-      done: fields.channels.some((c) => (c.name === "instagram" || c.name === "linkedin") && c.url.trim() !== ""),
-    },
     { label: "Date", done: isIsoDate(fields.date) },
   ];
 }
@@ -184,8 +226,8 @@ function bodyError(body: readonly BodyBlock[]): string | undefined {
   return undefined;
 }
 
+/** A channel added needs its link and first line; none at all is fine (issue #430). */
 function channelsError(channels: readonly ChannelFields[]): string | undefined {
-  if (!channels.some((c) => c.name === "instagram" || c.name === "linkedin")) return "Add the Instagram or LinkedIn post.";
   for (const c of channels) {
     const label = CHANNEL_LABELS[c.name];
     if (c.url.trim() === "") return `${label}: paste the post's link.`;
@@ -195,10 +237,9 @@ function channelsError(channels: readonly ChannelFields[]): string | undefined {
   return undefined;
 }
 
+/** The cover is needed; a description on each photo is optional (issue #430). */
 function photosError(photos: readonly PhotoFields[]): string | undefined {
-  if (photos.length === 0) return "Add at least one photo.";
-  const missing = photos.findIndex((p) => p.alt.trim() === "");
-  return missing === -1 ? undefined : `Photo ${missing + 1} has no description. Click it to add one.`;
+  return photos.length === 0 ? "Add at least one photo." : undefined;
 }
 
 function tagsError(picked: readonly string[], tags: readonly OutreachTag[]): string | undefined {
@@ -211,9 +252,10 @@ function tagsError(picked: readonly string[], tags: readonly OutreachTag[]): str
 /**
  * The fields as a post, or what each section still needs: a title, a date,
  * at least one tag from the tag list, a lead, a card summary, at least one
- * text block with its text, at least one photo and alt text on every photo,
- * and the Instagram or LinkedIn post with a link and a first line on every
- * channel. The first photo is the post's cover and its card photo.
+ * text block with its text, at least one photo, a link and a first line on
+ * each channel added, and a gallery on the page with its title and a photo.
+ * The first photo is the post's cover and its card photo. Photo descriptions
+ * and original posts are optional (Owner decision, issue #430).
  */
 export function checkPostFields(fields: PostFields, opened: OpenedPost, tags: readonly OutreachTag[]): PostCheck {
   const errors: PostFieldErrors = {
@@ -226,17 +268,20 @@ export function checkPostFields(fields: PostFields, opened: OpenedPost, tags: re
   const textError = bodyError(fields.body);
   const channelError = channelsError(fields.channels);
   const photoError = photosError(fields.photos);
+  const galleryError = galleryProblems(fields.gallery)[0]?.error;
   if (tagError !== undefined) errors.tags = tagError;
   if (textError !== undefined) errors.body = textError;
   if (photoError !== undefined) errors.photos = photoError;
   if (channelError !== undefined) errors.channels = channelError;
+  if (galleryError !== undefined) errors.gallery = galleryError;
 
   const picked = nonEmpty(fields.tags);
   const body = nonEmpty(fields.body.map(trimmedBlock));
   const photos = nonEmpty(fields.photos.map((p) => ({ src: p.src, alt: p.alt.trim() })));
-  const channels = withMainChannel(channelRecord(fields.channels));
+  const drafted = draftGalleryOf(fields.gallery);
+  const gallery = drafted === undefined ? undefined : postGalleryOf(drafted);
   const { date } = fields;
-  if (Object.keys(errors).length > 0 || picked === null || body === null || photos === null || channels === null || !isIsoDate(date)) {
+  if (Object.keys(errors).length > 0 || picked === null || body === null || photos === null || gallery === null || !isIsoDate(date)) {
     return { ok: false, errors };
   }
   const place = fields.place.trim();
@@ -251,7 +296,8 @@ export function checkPostFields(fields: PostFields, opened: OpenedPost, tags: re
       lead: fields.lead.trim(),
       body,
       photos,
-      channels,
+      channels: channelRecord(fields.channels),
+      ...(gallery !== undefined && { gallery }),
     },
   };
 }
@@ -268,7 +314,7 @@ function trimmedBlock(block: BodyBlock): BodyBlock {
 }
 
 /** The fields in the order the panel shows them. */
-const FIELD_ORDER: readonly PostField[] = ["title", "date", "tags", "lead", "summary", "body", "photos", "channels"];
+const FIELD_ORDER: readonly PostField[] = ["title", "date", "tags", "lead", "summary", "body", "photos", "channels", "gallery"];
 
 /** The first field, in panel order, that still needs work, and what it needs. */
 export function firstPostError(errors: PostFieldErrors): { field: PostField; error: string } | undefined {
@@ -336,6 +382,12 @@ function listOf<T>(value: unknown, read: (item: unknown) => T | null): T[] | nul
   return items.some((item) => item === null) ? null : (items as T[]);
 }
 
+/** The gallery the panel sent: every photo an uploaded one, since the post panel never makes a placeholder; null otherwise. */
+function galleryFieldsOf(value: unknown): GalleryFields | null {
+  const gallery = readGalleryFields(value);
+  return gallery !== null && gallery.items.every((item) => isPhotoSrc(item.src)) ? gallery : null;
+}
+
 /** `value` as the panel's fields: every key in its shape, no channel or photo twice; null otherwise. */
 export function readPostFields(value: unknown): PostFields | null {
   if (!isShape(value)) return null;
@@ -345,7 +397,8 @@ export function readPostFields(value: unknown): PostFields | null {
   const body = listOf(value.body, blockFieldsOf);
   const photos = listOf(value.photos, photoFieldsOf);
   const channels = listOf(value.channels, channelFieldsOf);
-  if (tags === null || body === null || photos === null || channels === null) return null;
+  const gallery = galleryFieldsOf(value.gallery);
+  if (tags === null || body === null || photos === null || channels === null || gallery === null) return null;
   if (new Set(channels.map((c) => c.name)).size !== channels.length || new Set(tags).size !== tags.length) return null;
   if (new Set(photos.map((p) => p.src)).size !== photos.length) return null;
   return {
@@ -358,5 +411,6 @@ export function readPostFields(value: unknown): PostFields | null {
     body,
     photos,
     channels,
+    gallery,
   };
 }
