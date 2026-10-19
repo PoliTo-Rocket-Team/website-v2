@@ -1,15 +1,14 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, UserCheck, UserMinus, UserX } from "lucide-react";
 import { toast } from "sonner";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
 import { noDetailsFilled } from "@/lib/dashboard/details";
 import type { DivisionPerson, WaitingPerson } from "@/lib/dashboard/division-members";
 import type { Joining } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { ConfirmDialog } from "./confirm-dialog";
 import { AlumniDialog } from "./member-drawer";
 import { GHOST_PILL } from "./page-header";

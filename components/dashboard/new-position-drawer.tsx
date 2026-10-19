@@ -1,10 +1,8 @@
 "use client";
 
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, Lock, MessageSquare, Plus, X } from "lucide-react";
 import { toast } from "sonner";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { createPosition, editPosition } from "@/app/dashboard/recruitment-actions";
 import {
   checkNewPosition,
@@ -18,6 +16,7 @@ import {
 } from "@/lib/dashboard/new-position";
 import type { PositionRow } from "@/lib/dashboard/recruitment";
 import { Toggle } from "./controls";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { Drawer } from "./drawer";
 import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 
