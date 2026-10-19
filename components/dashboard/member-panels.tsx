@@ -2,10 +2,8 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Building2, Check, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserPlus, X } from "lucide-react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { addMember, findForAdd, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
@@ -30,6 +28,7 @@ import {
 import { divisionLabel } from "@/lib/dashboard/team";
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { Chips } from "./division-chips";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";

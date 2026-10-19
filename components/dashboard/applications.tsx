@@ -2,11 +2,9 @@
 
 import { useEffect, useId, useOptimistic, useState, useTransition, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ArrowLeft, CalendarClock, CalendarPlus, Check, ChevronDown, ExternalLink, FileText, Signature, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogPortal, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { moveApplication } from "@/app/dashboard/recruitment-actions";
 import {
   APPLICATION_TABS,
@@ -58,6 +56,7 @@ import { documentsLine, type ApplicationEntry, type ApplicationsPage, type Other
 import { divisionLabel } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { ColumnFilter } from "./column-filter";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { FilterMenu, SearchField, Segmented } from "./controls";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
 import { InterviewDialog } from "./interview-dialog";

@@ -1,15 +1,14 @@
 "use client";
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown, ExternalLink, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { setAlumnusShown } from "@/app/dashboard/team-actions";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
 import { alumniRowsFor, RECENT_YEAR_TABS, yearTab, type AlumniDirectory, type AlumnusRow } from "@/lib/dashboard/alumni";
 import { pageCount, pageOf } from "@/lib/dashboard/team";
 import { AddAdvisorPanel, AlumniSwitch, AlumnusPanel } from "./alumni-panels";
+import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { Avatar } from "./avatar";
 import { Controls, DepartmentFilter, Pager, SearchField, TH } from "./directory";
 import { DrawerPage } from "./drawer";
