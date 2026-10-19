@@ -12,8 +12,8 @@
 import type { InterviewSlot } from "./my-applications";
 import { divisionLabel, homeFirst, roleIn, type Memberships } from "./team";
 
-/** How long an interview runs, as the lead picks it (board 58c). */
-export const INTERVIEW_LENGTHS = [30, 45, 60] as const;
+/** How long an interview runs, as the lead picks it (board 58c; 15 min added by Owner decision, 2026-10-19). */
+export const INTERVIEW_LENGTHS = [15, 30, 45, 60] as const;
 export type InterviewLength = (typeof INTERVIEW_LENGTHS)[number];
 
 export function isInterviewLength(value: unknown): value is InterviewLength {
