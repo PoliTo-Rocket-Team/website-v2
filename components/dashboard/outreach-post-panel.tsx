@@ -14,11 +14,14 @@ import {
   type ChannelName,
   type OutreachTag,
 } from "@/lib/outreach-types";
+import { galleryProblems } from "@/lib/gallery-fields";
 import { CONTENT_FOCUS, RowMenu, TextField, useDragOrder, type DragRow } from "./content-parts";
+import { Toggle } from "./controls";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuPrimitive, DropdownMenuTrigger } from "./menu";
 import { EditPanel, ErrorLine, PanelSection, usePanelScroll } from "./edit-panel";
 import { Field, GroupLabel, inputClass } from "./field";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
+import { GalleryEditor, gallerySummary } from "./project-list-sections";
 
 const OUTREACH_UPLOADS: PhotoUploads = { upload: uploadOutreachPhoto, discard: discardOutreachPhoto };
 
@@ -27,9 +30,11 @@ const OUTREACH_UPLOADS: PhotoUploads = { upload: uploadOutreachPhoto, discard: d
 // once. Every change goes straight back to the page, which redraws as the
 // editor types; Save draft and Publish sit on the edit bar. Photos upload,
 // move and take their alt text in ./outreach-post-photos.tsx (issue #291).
+// Original posts are optional, and Gallery is the project panel's own
+// section, with its show-on-page switch (issue #430).
 
 /** The panel's sections, in order; each block's Edit chip opens one. */
-export type PostSection = "details" | "text" | "photos" | "channels";
+export type PostSection = "details" | "text" | "photos" | "channels" | "gallery";
 
 /** Which section a refused field sits in, so a refusal opens it. */
 export const SECTION_OF: Readonly<Record<keyof PostFieldErrors, PostSection>> = {
@@ -41,6 +46,7 @@ export const SECTION_OF: Readonly<Record<keyof PostFieldErrors, PostSection>> = 
   body: "text",
   photos: "photos",
   channels: "channels",
+  gallery: "gallery",
 };
 
 export function OutreachPostPanel({
@@ -98,6 +104,28 @@ export function OutreachPostPanel({
 
       <PanelSection value="channels" cardRef={card("channels")} title="Original posts" summary={channelsSummary(fields.channels)}>
         <ChannelsSection channels={fields.channels} onChange={(channels) => set("channels", channels)} error={errors.channels} />
+      </PanelSection>
+
+      <PanelSection
+        value="gallery"
+        cardRef={card("gallery")}
+        title="Gallery"
+        summary={gallerySummary(fields.gallery)}
+        control={
+          <Toggle
+            label="Show Gallery on the page"
+            checked={fields.gallery.shown}
+            onCheckedChange={(shown) => onChange((f) => ({ ...f, gallery: { ...f.gallery, shown } }))}
+          />
+        }
+      >
+        <GalleryEditor
+          gallery={fields.gallery}
+          // A refused save names the gallery; its fields say which part.
+          errors={errors.gallery === undefined ? {} : Object.fromEntries(galleryProblems(fields.gallery).map((p) => [p.field, p.error]))}
+          onChange={(change) => onChange((f) => ({ ...f, gallery: change(f.gallery) }))}
+          uploads={OUTREACH_UPLOADS}
+        />
       </PanelSection>
     </EditPanel>
   );
@@ -404,7 +432,7 @@ function blockPreview(block: BodyBlock): string {
 const MENU_ITEM =
   "flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-text-2 outline-none transition-colors data-[highlighted]:bg-white-5 data-[highlighted]:text-prt-text";
 
-/** Instagram and LinkedIn first, then any other channel: a link and the post's first line each. */
+/** Instagram and LinkedIn first, then any other channel: a link and the post's first line each. None at all is fine. */
 function ChannelsSection({
   channels,
   onChange,
@@ -425,7 +453,7 @@ function ChannelsSection({
   const alreadyAdded = CHANNEL_NAMES.filter((name) => added.has(name)).map((name) => CHANNEL_LABELS[name]);
   return (
     <>
-      <p className="text-[12px] text-prt-muted">The cards on the right of the post. At least one channel.</p>
+      <p className="text-[12px] text-prt-muted">The cards on the right of the post. Optional: a post may link none.</p>
       {channels.map((channel) => {
         const Icon = CHANNEL_ICONS[channel.name];
         const label = CHANNEL_LABELS[channel.name];

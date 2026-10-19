@@ -5,7 +5,8 @@
 // featured summit, every post of the record, published, each with its photo
 // and alt text, and the summit's story, published and pinned to the top of
 // /outreach (issue #392). The record's posts carry every tag but link Instagram
-// and LinkedIn only, so one more published post links every channel type.
+// and LinkedIn only, so one more published post links every channel type,
+// and it has a gallery at the bottom of its page (issue #430).
 // The IAC 2024 post holds draft changes, and one new post is a draft saved
 // before it is whole (board 74f), never published, so the public pages do
 // not show it.
@@ -15,7 +16,7 @@ import { versionRows } from "@/lib/content/versioned";
 import { outreachRecord } from "@/lib/outreach";
 import { importedOutreach } from "@/lib/outreach-import";
 import { postColumns, summitColumns } from "@/lib/outreach-rows";
-import type { OutreachDraft, OutreachPost, PostItem } from "@/lib/outreach-types";
+import type { OutreachDraft, OutreachPost, PostGallery, PostItem } from "@/lib/outreach-types";
 import { contentVersionRows } from "./content";
 import { rowsOf, tableSeedModule } from "./rows";
 
@@ -50,6 +51,22 @@ const recordPhoto = (title: string) => {
 
 const caption = "We opened the lab to students from three Torino high schools…";
 
+/**
+ * The every-channel post's gallery (issue #430): four photos of the record
+ * at the bottom of its page, one with a caption and one with no description,
+ * which its page draws with `alt=""`.
+ */
+const OPEN_LAB_GALLERY: PostGallery = {
+  shown: true,
+  title: "More from the lab",
+  items: [
+    { ...recordPhoto("Luna e Italia"), caption: "Talks in the main hall" },
+    recordPhoto("Hosting Space Eagle"),
+    { src: recordPhoto("Pininfarina wind tunnel").src, alt: "" },
+    recordPhoto("Cassini Hackathon"),
+  ],
+};
+
 const EVERY_CHANNEL: OutreachPost = {
   title: "Open lab day, Torino",
   date: "2024-02-15",
@@ -81,6 +98,7 @@ const EVERY_CHANNEL: OutreachPost = {
     tiktok: { url: "https://www.example.com/tiktok/open-lab-day", caption: "One minute in the lab." },
     other: { url: "https://www.example.com/news/open-lab-day", caption: "Open lab day at the PoliTo Rocket Team." },
   },
+  gallery: OPEN_LAB_GALLERY,
 };
 
 /** Saved before it is whole: a title, a tag and one paragraph, with no photo or channel yet. */

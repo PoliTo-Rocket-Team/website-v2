@@ -516,7 +516,7 @@ export function outreachItemsOf(data: SeedData): PostItem[] {
       // A column the insert leaves out reads back as null, as the database answers it.
       const rows = data.outreachPostVersions
         .filter((v) => v.postId === post.id)
-        .map((v) => ({ ...v, place: v.place ?? null, summaryPhone: v.summaryPhone ?? null }));
+        .map((v) => ({ ...v, place: v.place ?? null, summaryPhone: v.summaryPhone ?? null, gallery: v.gallery ?? null }));
       const published = rows.find((v) => v.version === "published");
       const draft = rows.find((v) => v.version === "draft");
       const version: PostVersions | null =

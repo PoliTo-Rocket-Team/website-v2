@@ -12,6 +12,7 @@ import {
   type AddedLeader,
   type TeamPageLayer,
 } from "./team-layer";
+import { describedGroupPhoto, groupPhotoDescriptions } from "./team-page-edit";
 import type { TeamPerson } from "./team-person";
 import { team } from "./team";
 import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "./team-roles";
@@ -240,6 +241,8 @@ test("a layer is read back only when this code could have written it", () => {
   };
   assert.ok(isTeamPageLayer(JSON.parse(JSON.stringify(full))));
   assert.ok(isTeamPageLayer(NO_TEAM_LAYER));
+  // The group photo's description is optional (issue #430).
+  assert.ok(isTeamPageLayer({ ...NO_TEAM_LAYER, groupPhoto: { src: "/team/team-2026.jpg", alt: "" } }));
   const bad: unknown[] = [
     null,
     { ...NO_TEAM_LAYER, intro: undefined },
@@ -255,4 +258,16 @@ test("a layer is read back only when this code could have written it", () => {
     { ...NO_TEAM_LAYER, extra: 1 },
   ];
   for (const value of bad) assert.equal(isTeamPageLayer(value), false, JSON.stringify(value));
+});
+
+test("picking another group photo shows that photo's own description, never the one typed for the last", () => {
+  const original = { src: "/team/team-2025.jpg", alt: "The team in 2025" } as const;
+  let descriptions = groupPhotoDescriptions(original, original);
+  // Typed for the record's photo, then another photo picked: it starts with none.
+  descriptions = { ...descriptions, [original.src]: "Edited" };
+  assert.deepEqual(describedGroupPhoto("/team/team-2026.jpg", descriptions), { src: "/team/team-2026.jpg", alt: "" });
+  descriptions = { ...descriptions, "/team/team-2026.jpg": "The team in 2026" };
+  // Back to the first: its own text is still there.
+  assert.deepEqual(describedGroupPhoto(original.src, descriptions), { src: original.src, alt: "Edited" });
+  assert.deepEqual(describedGroupPhoto("/team/team-2026.jpg", descriptions), { src: "/team/team-2026.jpg", alt: "The team in 2026" });
 });

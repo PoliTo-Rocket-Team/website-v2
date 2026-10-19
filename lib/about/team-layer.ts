@@ -435,7 +435,12 @@ const isAddedDepartment: Check = (value) =>
   );
 
 const isGroupPhoto: Check = (value) =>
-  hasShape(value, { src: (src) => typeof src === "string" && src.startsWith("/team/") && isPhoto(src), alt: isText(300) }, ["src", "alt"]);
+  // The description is optional (Owner decision, issue #430): an empty one draws the photo with alt="".
+  hasShape(
+    value,
+    { src: (src) => typeof src === "string" && src.startsWith("/team/") && isPhoto(src), alt: (alt) => typeof alt === "string" && textLength(alt) <= 300 },
+    ["src", "alt"],
+  );
 
 /** A layer this code could have written: every part present, each edit well formed, every added id used once. */
 export function isTeamPageLayer(value: unknown): value is TeamPageLayer {

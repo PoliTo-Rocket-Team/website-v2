@@ -113,6 +113,8 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
   };
 
   const item = items[current];
+  // A photo's description is optional (issue #430): one with none is named by its place alone.
+  const described = item.alt.trim() === "" ? "" : `: ${item.alt}`;
 
   return (
     <div>
@@ -158,7 +160,7 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
               follows the current photo and never lands in a hidden neighbour. */}
           <button
             type="button"
-            aria-label={`Open photo ${current + 1} of ${count}: ${item.alt}`}
+            aria-label={`Open photo ${current + 1} of ${count}${described}`}
             onClick={(e) => tapped(e) && openFrom(e.currentTarget)}
             className="absolute inset-0 z-[2] cursor-zoom-in rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60"
           />
@@ -191,7 +193,8 @@ export function Gallery({ items, label }: { items: FilledGallery; label: string 
       </div>
 
       <p aria-live="polite" className="sr-only">
-        Photo {current + 1} of {count}: {item.alt}
+        Photo {current + 1} of {count}
+        {described}
       </p>
 
       <div className="mt-5 flex items-center justify-center gap-2 md:mt-8">

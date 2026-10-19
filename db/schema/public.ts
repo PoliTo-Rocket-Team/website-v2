@@ -759,8 +759,10 @@ export const outreachPostVersions = pgTable(
     body: jsonb("body").notNull(),
     /** `{ src, alt }` in order; the first is the cover and the card photo. */
     photos: jsonb("photos").notNull(),
-    /** `{ instagram?, linkedin? }`, each `{ url, caption, account? }`. */
+    /** Any of the channels (lib/outreach-types.ts), each `{ url, caption, account? }`; none at all is fine (issue #430). */
     channels: jsonb("channels").notNull(),
+    /** `{ shown, title, items: [{ src, alt, caption? }] }`; null for a post that never had a gallery (issue #430). */
+    gallery: jsonb("gallery"),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),
@@ -786,9 +788,11 @@ export const outreachPostVersions = pgTable(
       "outreach_post_versions_photos",
       sql`jsonb_typeof(${table.photos}) = 'array' and (${table.version} = 'draft' or jsonb_array_length(${table.photos}) >= 1)`,
     ),
-    hasChannel: check(
-      "outreach_post_versions_channels",
-      sql`jsonb_typeof(${table.channels}) = 'object' and (${table.version} = 'draft' or ${table.channels} ? 'instagram' or ${table.channels} ? 'linkedin')`,
+    // Original posts are optional (Owner decision, issue #430, migration 0045).
+    channelsObject: check("outreach_post_versions_channels", sql`jsonb_typeof(${table.channels}) = 'object'`),
+    galleryObject: check(
+      "outreach_post_versions_gallery",
+      sql`${table.gallery} is null or jsonb_typeof(${table.gallery}) = 'object'`,
     ),
   }),
 );

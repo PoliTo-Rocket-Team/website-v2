@@ -7,6 +7,7 @@ import { Photo } from "@/components/outreach/photo";
 import type { WriteResult } from "@/lib/dashboard/write";
 import type { PhotoFields } from "@/lib/outreach-post-fields";
 import type { PhotoSrc } from "@/lib/outreach-types";
+import { describePhoto, movePhoto, neighbourOf, pickedPhoto, removePhoto, reorderPhotos } from "@/lib/photo-list";
 import { CONTENT_FOCUS, useDragOrder } from "./content-parts";
 import { inputClass } from "./field";
 
@@ -19,6 +20,12 @@ import { inputClass } from "./field";
 // deleted from the store again. A launch card of the Edit <project> panel
 // (issue #299) holds its photos here too, through the projects' own upload,
 // with no cover and two photos at most.
+//
+// Each photo is known by its file (lib/photo-list.ts, issue #430): the box
+// shows the picked photo's own description, and every keystroke goes into
+// the panel's fields at once, so Save draft keeps it. The box's arrows pick
+// the previous or next photo and never carry the text along. A description
+// is optional.
 
 /** The longest side a picked photo is sent at. Uploaded photos are served as they are, so they are shrunk first. */
 const PHOTO_EDGE = 2400;
@@ -66,39 +73,23 @@ export function PhotosSection({
   max: number | null;
   error?: string;
 }) {
-  // Each photo keeps one key while it moves, so the open one stays open.
-  const [keys, setKeys] = useState(() => photos.map((_, i) => i));
-  const nextKey = useRef(photos.length);
-  const [open, setOpen] = useState<number | null>(null);
+  // The picked photo, by its file: its place may change, it stays picked.
+  const [open, setOpen] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const altId = useId();
-  const photoOf = new Map(keys.map((key, i) => [key, photos[i]]));
+  const srcs = photos.map((p) => p.src);
+  const photoOf = new Map(photos.map((p) => [p.src, p]));
 
-  const reorder = (order: readonly number[]) => {
-    setKeys([...order]);
-    onChange(() => order.map((key) => photoOf.get(key)!));
-  };
-  const drag = useDragOrder(keys, reorder);
-
-  const update = (key: number, alt: string) => {
-    const src = photoOf.get(key)!.src;
-    onChange((list) => list.map((p) => (p.src === src ? { ...p, alt } : p)));
-  };
-  const remove = (key: number) => {
-    const src = photoOf.get(key)!.src;
-    setKeys((list) => list.filter((k) => k !== key));
-    onChange((list) => list.filter((p) => p.src !== src));
+  const drag = useDragOrder(srcs, (order) => onChange((list) => reorderPhotos(list, order)));
+  const describe = (src: string, alt: string) => onChange((list) => describePhoto(list, src, alt));
+  const remove = (src: string) => {
+    onChange((list) => removePhoto(list, src));
     setOpen(null);
     // The server keeps the file while a stored version of a post shows it.
     void uploads.discard(src);
   };
-  const move = (key: number, by: -1 | 1) => {
-    const at = keys.indexOf(key);
-    const order = [...keys];
-    [order[at], order[at + by]] = [order[at + by], order[at]];
-    reorder(order);
-  };
+  const move = (src: string, by: -1 | 1) => onChange((list) => movePhoto(list, src, by));
 
   const room = max === null ? Infinity : max - photos.length - uploading;
   const add = async (picked: readonly File[]) => {
@@ -115,29 +106,29 @@ export function PhotosSection({
         toast.error(result.error);
         continue;
       }
-      const key = nextKey.current++;
-      setKeys((list) => [...list, key]);
-      onChange((list) => [...list, { src: result.value, alt: "" }]);
+      const src = result.value;
+      onChange((list) => [...list, { src, alt: "" }]);
       // The first new photo opens, so its description is the next thing to write.
-      if (first) setOpen(key);
+      if (first) setOpen(src);
       first = false;
     }
   };
 
-  const openIndex = open === null ? -1 : keys.indexOf(open);
-  const opened = open === null ? undefined : photoOf.get(open);
+  const picked = pickedPhoto(photos, open);
+  const previous = neighbourOf(photos, open, -1);
+  const next = neighbourOf(photos, open, 1);
 
   return (
     <>
       {cover && <p className="text-[12px] text-prt-muted">The first is the top photo and the card photo. Drag to reorder.</p>}
       <ul className="grid grid-cols-3 gap-2" {...drag.list}>
-        {drag.order.map((key, index) => {
-          const photo = photoOf.get(key)!;
-          const row = drag.row(key, index);
-          const undescribed = error !== undefined && photo.alt.trim() === "";
+        {drag.order.map((src, index) => {
+          const photo = photoOf.get(src);
+          if (photo === undefined) return null;
+          const row = drag.row(src, index);
           return (
             <li
-              key={key}
+              key={src}
               draggable
               onDragStart={row.onDragStart}
               onDragOver={row.onDragOver}
@@ -146,16 +137,16 @@ export function PhotosSection({
             >
               <button
                 type="button"
-                aria-pressed={open === key}
-                aria-label={`Photo ${index + 1}${cover && index === 0 ? ", the cover" : ""}: ${photo.alt.trim() || "no description yet"}`}
-                onClick={() => setOpen(open === key ? null : key)}
+                aria-pressed={open === src}
+                aria-label={`Photo ${index + 1}${cover && index === 0 ? ", the cover" : ""}: ${photo.alt.trim() || "no description"}`}
+                onClick={() => setOpen(open === src ? null : src)}
                 className={`absolute inset-0 rounded-lg ${CONTENT_FOCUS}`}
               >
                 <Photo photo={{ src: photo.src, alt: "" }} sizes="140px" />
                 <span
                   aria-hidden
                   className={`absolute inset-0 rounded-lg border transition-colors duration-300 ease-out ${
-                    open === key ? "border-2 border-accent" : undescribed ? "border-danger" : "border-transparent hover:border-border-strong"
+                    open === src ? "border-2 border-accent" : "border-transparent hover:border-border-strong"
                   }`}
                 />
               </button>
@@ -198,49 +189,68 @@ export function PhotosSection({
         </li>
       </ul>
 
-      {opened !== undefined && open !== null && (
+      {picked !== null && (
         <div className="space-y-2.5 rounded-[10px] border border-accent bg-white-5 p-3">
           <div className="flex items-center justify-between gap-3">
             <label htmlFor={altId} className="font-mono text-[10px] uppercase tracking-[0.2em] text-dim">
-              Photo {openIndex + 1}
-              {cover && openIndex === 0 && " · cover"}
+              Photo {picked.index + 1}
+              {cover && picked.index === 0 && " · cover"}
             </label>
             <span className="flex items-center gap-1">
-              <MoveButton label="Move earlier" onClick={openIndex > 0 ? () => move(open, -1) : null}>
+              <ArrowButton label="Previous photo" onClick={previous === null ? null : () => setOpen(previous)}>
                 <ChevronLeft aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              </MoveButton>
-              <MoveButton label="Move later" onClick={openIndex < keys.length - 1 ? () => move(open, 1) : null}>
+              </ArrowButton>
+              <ArrowButton label="Next photo" onClick={next === null ? null : () => setOpen(next)}>
                 <ChevronRight aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              </MoveButton>
+              </ArrowButton>
             </span>
           </div>
+          {/* Keyed by the photo's file: another photo gets a fresh box holding its own text. */}
           <textarea
+            key={picked.photo.src}
             id={altId}
             autoFocus
             rows={2}
-            placeholder="What the photo shows, for screen readers"
-            value={opened.alt}
-            aria-invalid={error !== undefined && opened.alt.trim() === ""}
-            onChange={(e) => update(open, e.target.value)}
+            placeholder="Optional: what the photo shows, for screen readers"
+            value={picked.photo.alt}
+            onChange={(e) => describe(picked.photo.src, e.target.value)}
             className={`${inputClass()} h-auto resize-none py-2 text-[13px] leading-relaxed`}
           />
-          <button
-            type="button"
-            onClick={() => remove(open)}
-            className={`rounded-md text-[13px] text-danger transition-opacity duration-300 ease-out hover:opacity-80 ${CONTENT_FOCUS}`}
-          >
-            Remove photo
-          </button>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <TextButton label="Move earlier" onClick={picked.index > 0 ? () => move(picked.photo.src, -1) : null} />
+            <TextButton label="Move later" onClick={picked.index < photos.length - 1 ? () => move(picked.photo.src, 1) : null} />
+            <button
+              type="button"
+              onClick={() => remove(picked.photo.src)}
+              className={`ml-auto rounded-md text-[13px] text-danger transition-opacity duration-300 ease-out hover:opacity-80 ${CONTENT_FOCUS}`}
+            >
+              Remove photo
+            </button>
+          </div>
         </div>
       )}
 
       {error !== undefined && <p className="text-[12px] text-danger">{error}</p>}
-      <p className="text-[12px] text-prt-muted">Click a photo to add a short description for screen readers.</p>
+      <p className="text-[12px] text-prt-muted">Click a photo to describe it for screen readers (optional). The text is kept as you type.</p>
     </>
   );
 }
 
-function MoveButton({ label, onClick, children }: { label: string; onClick: (() => void) | null; children: ReactNode }) {
+/** A plain text action in the box: Move earlier, Move later; dimmed where it cannot act. */
+function TextButton({ label, onClick }: { label: string; onClick: (() => void) | null }) {
+  return (
+    <button
+      type="button"
+      disabled={onClick === null}
+      onClick={onClick ?? undefined}
+      className={`rounded-md text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text disabled:pointer-events-none disabled:opacity-40 ${CONTENT_FOCUS}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ArrowButton({ label, onClick, children }: { label: string; onClick: (() => void) | null; children: ReactNode }) {
   return (
     <button
       type="button"

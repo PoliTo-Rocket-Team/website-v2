@@ -54,18 +54,19 @@ test("Publish waits on each checklist line, and the server refuses a publish tha
       ["At least 1 tag", false],
       ["Cover photo", false],
       ["Some text", false],
-      ["An Instagram or LinkedIn link", false],
       ["Date", true],
     ],
   );
   assert.ok(checklistDone(publishChecklist(whole)));
+  // An original post is optional (issue #430): none at all, or only another channel, passes the checklist.
+  assert.ok(checklistDone(publishChecklist({ ...whole, channels: [] })));
+  assert.ok(checklistDone(publishChecklist({ ...whole, channels: [{ name: "youtube", url: "https://youtu.be/x", caption: "Video" }] })));
 
   const missing: [string, Partial<PostFields>][] = [
     ["Title", { title: "  " }],
     ["At least 1 tag", { tags: [] }],
     ["Cover photo", { photos: [] }],
     ["Some text", { body: [] }],
-    ["An Instagram or LinkedIn link", { channels: [{ name: "youtube", url: "https://youtu.be/x", caption: "Video" }] }],
     ["Date", { date: "" }],
   ];
   for (const [label, change] of missing) {

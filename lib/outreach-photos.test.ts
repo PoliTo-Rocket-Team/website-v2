@@ -19,8 +19,9 @@ import { publicStorePhotoFiles, type CheckedPhoto, type PhotoFiles, type PublicF
 import type { OutreachPost, PhotoSrc } from "./outreach-types";
 import { publicStoreHost } from "@/lib/storage/pathname";
 
-// Post photos (issue #291): every photo needs alt text before either button
-// saves, the first photo is the cover, uploads wait for the site-content
+// Post photos (issue #291): a post needs a photo, whose description is
+// optional (issue #430), the first photo is the cover, a gallery's photos
+// are checked as the post's are, uploads wait for the site-content
 // gate, a save takes files only from this deployment's own public store, a
 // file no version of any post shows is deleted, and a preview writes no file
 // anywhere.
@@ -44,7 +45,7 @@ function cookie() {
   };
 }
 
-test("every photo needs alt text before Save draft or Publish, and the first photo is the post's cover on the public page", async () => {
+test("a photo's description is optional for Save draft and Publish, and the first photo is the post's cover on the public page", async () => {
   const jar = cookie();
   const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
   const item = (await editor.posts.list())![0];
@@ -52,19 +53,51 @@ test("every photo needs alt text before Save draft or Publish, and the first pho
 
   const uploaded = await editor.uploadPhoto(upload);
   assert.ok(uploaded.ok);
-  const undescribed = { ...fields, photos: [{ src: uploaded.value, alt: "" }, ...fields.photos] };
+  const undescribed = { ...fields, photos: [{ src: uploaded.value, alt: "  " }, ...fields.photos] };
   for (const step of ["save-draft", "publish"] as const) {
-    assert.deepEqual(await editor.savePost(item.id, step, undescribed), { ok: false, error: "Photo 1 has no description. Click it to add one." }, step);
     assert.deepEqual(await editor.savePost(item.id, step, { ...fields, photos: [] }), { ok: false, error: "Add at least one photo." }, step);
   }
 
-  const described = { ...undescribed, photos: [{ src: uploaded.value, alt: "The team at the stand." }, ...fields.photos] };
-  assert.ok((await editor.savePost(item.id, "publish", described)).ok);
+  // Owner decision (issue #430): no description is needed; the page draws the photo with alt="".
+  assert.ok((await editor.savePost(item.id, "publish", undescribed)).ok);
   const shown = (store: ReturnType<typeof dummyOutreachStore>) =>
     store.posts.list().then((posts) => publicOutreach({ ...importedOutreach(), posts }));
   const live = postBySlug((await shown(dummyOutreachStore(jar))).posts, slugOf(editorVersion(item.version)));
-  assert.deepEqual(live?.photos[0], { src: PREVIEW_PHOTO_SRC, alt: "The team at the stand." }, "the new first photo is the cover");
+  assert.deepEqual(live?.photos[0], { src: PREVIEW_PHOTO_SRC, alt: "" }, "the new first photo is the cover, with an empty description");
   assert.deepEqual(live?.photos.slice(1), fields.photos, "the photos it had follow in order");
+});
+
+test("a post's gallery is saved with the post, its photos checked and kept as the post's are", async () => {
+  const jar = cookie();
+  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const item = (await editor.posts.list())![0];
+  const fields = postFieldsOf(editorVersion(item.version));
+  assert.deepEqual(fields.gallery, { shown: false, title: "", items: [] }, "a post with no gallery opens on one switched off");
+
+  const uploaded = await editor.uploadPhoto(upload);
+  assert.ok(uploaded.ok);
+  const photo = { src: uploaded.value, alt: "", caption: "At the stand" };
+  // A gallery on the page needs its title and a photo, as a project's does.
+  assert.deepEqual(await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "", items: [photo] } }), {
+    ok: false,
+    error: "Fill in the gallery title.",
+  });
+  assert.deepEqual(await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "More", items: [] } }), {
+    ok: false,
+    error: "A gallery on the page keeps one photo at least. Switch Gallery off to take it off the page.",
+  });
+  // A save cannot point the gallery at a file nobody uploaded.
+  const stray = { src: "https://elsewhere.example.com/x.jpg", alt: "", caption: "" };
+  assert.deepEqual(await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "More", items: [stray] } }), {
+    ok: false,
+    error: "A photo was not uploaded. Add it again.",
+  });
+
+  assert.ok((await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "More from the day", items: [photo] } })).ok);
+  const posts = await dummyOutreachStore(jar).posts.list();
+  const live = postBySlug(publicOutreach({ ...importedOutreach(), posts }).posts, slugOf(editorVersion(item.version)));
+  assert.deepEqual(live?.gallery, { shown: true, title: "More from the day", items: [{ src: PREVIEW_PHOTO_SRC, alt: "", caption: "At the stand" }] });
+  assert.deepEqual(live?.photos, editorVersion(item.version).photos, "the top photo and the photo grid stay as they were");
 });
 
 test("a photo is uploaded only once the site-content gate admits the viewer, and a save cannot point at a file nobody uploaded", async () => {

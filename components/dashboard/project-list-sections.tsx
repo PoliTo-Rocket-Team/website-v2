@@ -493,7 +493,7 @@ function LaunchCard({
           uploads={PROJECT_UPLOADS}
           cover={false}
           max={LAUNCH_PHOTOS_MAX}
-          error={Object.keys(errors).some((k) => k.startsWith(`${at}.photos`)) ? "Describe each photo for screen readers." : undefined}
+          error={errors[`${at}.photos`]}
         />
       </div>
     </>
@@ -640,14 +640,22 @@ export function planSummary(plan: PlanFields): string {
 
 // Gallery
 
+/**
+ * The Gallery section's fields: its title, then its photos in carousel
+ * order. The Edit post panel (issue #430) holds a post's gallery here too,
+ * through the posts' own upload (`uploads`).
+ */
 export function GalleryEditor({
   gallery,
   errors,
   onChange,
+  uploads = PROJECT_UPLOADS,
 }: {
   gallery: GalleryFields;
   errors: FieldErrors;
   onChange: (change: (gallery: GalleryFields) => GalleryFields) => void;
+  /** Where its photos are stored and let go: the projects' by default. */
+  uploads?: PhotoUploads;
 }) {
   const [uploading, setUploading] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -657,7 +665,7 @@ export function GalleryEditor({
     for (const file of files) {
       const form = new FormData();
       form.set("photo", await shrunkPhoto(file));
-      const result = await PROJECT_UPLOADS.upload(form);
+      const result = await uploads.upload(form);
       setUploading((n) => n - 1);
       if (!result.ok) toast.error(result.error);
       else onChange((g) => ({ ...g, items: [...g.items, { src: result.value, alt: "", caption: "" }] }));
@@ -681,21 +689,15 @@ export function GalleryEditor({
         removeRow={(index) => {
           const result = removeGalleryItem(gallery, index);
           if (!result.ok) return result;
-          // The server keeps the file while a stored version of a project shows it.
-          for (const src of result.value.letGo) void PROJECT_UPLOADS.discard(src);
+          // The server keeps the file while a stored version shows it.
+          for (const src of result.value.letGo) void uploads.discard(src);
           return { ok: true, value: result.value.fields.items };
         }}
-        row={(item: GalleryItemFields, i, update) => (
+        row={(item: GalleryItemFields, _, update) => (
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2.5">
             <GalleryThumb src={item.src} />
             <div className="space-y-2.5">
-              <TextField
-                label="Description"
-                hint="for screen readers"
-                value={item.alt}
-                error={errors[`gallery.items.${i}.alt`]}
-                onChange={(alt) => update({ ...item, alt })}
-              />
+              <TextField label="Description" hint="optional, for screen readers" value={item.alt} onChange={(alt) => update({ ...item, alt })} />
               <TextField label="Caption" hint="optional" value={item.caption} onChange={(caption) => update({ ...item, caption })} />
             </div>
           </div>

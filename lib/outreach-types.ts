@@ -20,8 +20,26 @@ export type IsoDate = `${number}-${number}-${number}`;
  */
 export type PhotoSrc = `/outreach/${string}` | `/project-photos/${string}` | `https://${string}` | `data:image/${string}`;
 
-/** A photo with its alt text, which every photo has. */
+/**
+ * A photo with its alt text. The text is optional (Owner decision, issue
+ * #430): an empty one draws the photo with `alt=""`.
+ */
 export type OutreachPhoto = { src: PhotoSrc; alt: string };
+
+/** A photo of a post's gallery, with a one-line caption the lightbox shows under it when it has one. */
+export type PostGalleryPhoto = OutreachPhoto & { caption?: string };
+
+/**
+ * A post's gallery at the bottom of its page (issue #430): the carousel and
+ * lightbox project pages have. Switched off, it stays with the post and
+ * leaves the page; switched on, it has a title and at least one photo.
+ */
+export type PostGallery =
+  | { shown: true; title: string; items: NonEmpty<PostGalleryPhoto> }
+  | { shown: false; title: string; items: readonly PostGalleryPhoto[] };
+
+/** A draft's gallery: switched on, it may have no title or photo yet. */
+export type DraftGallery = { shown: boolean; title: string; items: readonly PostGalleryPhoto[] };
 
 /**
  * One tag in the tag list: what kind of event a post is about. Tags are data
@@ -53,19 +71,14 @@ export const CHANNEL_LABELS: Readonly<Record<ChannelName, string>> = {
   other: "Other link",
 };
 
-/** The two channels the team always posts on; a post links at least one of them. */
+/** The two channels the team always posts on, which the dashboard's list shows ("Shared on"). */
 export type MainChannelName = "instagram" | "linkedin";
 
-/** The channels "+ Add another channel" offers beside them (board 74h). */
-export type ExtraChannelName = Exclude<ChannelName, MainChannelName>;
-
 /**
- * The channels a post was shared on: Instagram, LinkedIn or both, never
- * neither (the `outreach_post_versions_channels` check holds the same), and
- * any of the extra channels beside them.
+ * The channels a post was first shared on, any of them. A post may link none
+ * (Owner decision, issue #430): its page then shows no original posts.
  */
-export type Channels = ({ instagram: Channel; linkedin?: Channel } | { instagram?: Channel; linkedin: Channel }) &
-  Partial<Record<ExtraChannelName, Channel>>;
+export type Channels = Partial<Record<ChannelName, Channel>>;
 
 /** One block of a post's body, drawn in the 760px text column. */
 export type BodyBlock =
@@ -90,6 +103,8 @@ export type OutreachPost = {
   /** The first is the card photo and the post's top photo; more make the photo grid. */
   photos: NonEmpty<OutreachPhoto>;
   channels: Channels;
+  /** The gallery at the bottom of the page; absent when the post never had one. */
+  gallery?: PostGallery;
 };
 
 /**
@@ -97,14 +112,14 @@ export type OutreachPost = {
  * (boards 74c and 74f), and a new post saved before it is published, since
  * Save draft works at any point (board 74f, issue #292). Its title, lead and
  * summary may be empty; it may have no tag, text block, photo or channel
- * yet; a text block, a photo's alt text or a channel's link may be blank.
+ * yet; a text block, a channel's link or the gallery's title may be blank.
  * Every `OutreachPost` is one too. Only a whole `OutreachPost` is published.
  */
-export type OutreachDraft = Omit<OutreachPost, "tags" | "body" | "photos" | "channels"> & {
+export type OutreachDraft = Omit<OutreachPost, "tags" | "body" | "photos" | "gallery"> & {
   tags: readonly string[];
   body: readonly BodyBlock[];
   photos: readonly OutreachPhoto[];
-  channels: Partial<Record<ChannelName, Channel>>;
+  gallery?: DraftGallery;
 };
 
 /** What a draft with no title yet is called on its page, in the list and in its address (board 74f). */

@@ -34,7 +34,7 @@ export function reorderedSlots<I extends SiteSlot>(
 }
 
 /** `ids` with `id` moved to `index`: what a drag or a "Move up" does to a group's order. */
-export function moveTo(ids: readonly number[], id: number, index: number): number[] {
+export function moveTo<K>(ids: readonly K[], id: K, index: number): K[] {
   const from = ids.indexOf(id);
   if (from === -1) return [...ids];
   const rest = ids.filter((other) => other !== id);

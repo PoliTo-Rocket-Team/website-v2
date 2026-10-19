@@ -39,26 +39,38 @@ async function firstPost(editor: OutreachEditor): Promise<PostItem> {
   return items[0];
 }
 
-test("Save draft and Publish both refuse a post with no tag, or with no Instagram or LinkedIn post", async () => {
+test("Save draft and Publish both refuse a post with no tag, or a channel added with no link", async () => {
   const { editor } = editorOverCookie();
   const item = await firstPost(editor);
   const fields = postFieldsOf(editorVersion(item.version));
 
   const noTag: PostFields = { ...fields, tags: [] };
-  const youtubeOnly: PostFields = { ...fields, channels: [{ name: "youtube", url: "https://youtube.com/watch?v=1", caption: "The talk" }] };
+  const noLink: PostFields = { ...fields, channels: [{ name: "youtube", url: " ", caption: "The talk" }] };
   for (const step of ["save-draft", "publish"] as const) {
     assert.deepEqual(await editor.savePost(item.id, step, noTag), { ok: false, error: "Pick at least one tag." }, step);
-    assert.deepEqual(await editor.savePost(item.id, step, { ...fields, channels: [] }), { ok: false, error: "Add the Instagram or LinkedIn post." }, step);
-    assert.deepEqual(await editor.savePost(item.id, step, youtubeOnly), { ok: false, error: "Add the Instagram or LinkedIn post." }, step);
+    assert.deepEqual(await editor.savePost(item.id, step, noLink), { ok: false, error: "YouTube: paste the post's link." }, step);
   }
   assert.deepEqual((await firstPost(editor)).version, item.version, "a refused save changes nothing");
+});
 
-  // An extra channel beside Instagram or LinkedIn is kept, and reads back from its row.
-  const withYoutube: PostFields = { ...fields, channels: [...fields.channels, ...youtubeOnly.channels] };
-  const saved = await editor.savePost(item.id, "publish", withYoutube);
+test("an original post is optional: a post with no channel, or only another one, publishes and reads back from its row", async () => {
+  const { editor, shown } = editorOverCookie();
+  const item = await firstPost(editor);
+  const fields = postFieldsOf(editorVersion(item.version));
+  const slug = slugOf(editorVersion(item.version));
+
+  // Owner decision (issue #430): no Instagram or LinkedIn post is needed.
+  const none = await editor.savePost(item.id, "publish", { ...fields, channels: [] });
+  assert.ok(none.ok);
+  assert.deepEqual(postBySlug((await shown()).posts, slug)?.channels, {});
+  const bare = editorVersion(none.value.version);
+  assert.deepEqual(postFromColumns(JSON.parse(JSON.stringify(postColumns(bare))), [...bare.tags]), bare);
+
+  const youtubeOnly: PostFields = { ...fields, channels: [{ name: "youtube", url: "https://youtube.com/watch?v=1", caption: "The talk" }] };
+  const saved = await editor.savePost(item.id, "publish", youtubeOnly);
   assert.ok(saved.ok);
   const post = editorVersion(saved.value.version);
-  assert.deepEqual(post.channels.youtube, { url: "https://youtube.com/watch?v=1", caption: "The talk" });
+  assert.deepEqual(post.channels, { youtube: { url: "https://youtube.com/watch?v=1", caption: "The talk" } });
   assert.deepEqual(postFromColumns(JSON.parse(JSON.stringify(postColumns(post))), [...post.tags]), post);
 });
 

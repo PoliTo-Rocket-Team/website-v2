@@ -5,6 +5,7 @@ import {
   type Channel,
   type ChannelName,
   type Channels,
+  type DraftGallery,
   type Edition,
   type IsoDate,
   type OutreachDraft,
@@ -12,6 +13,8 @@ import {
   type OutreachPhoto,
   type OutreachPost,
   type PhotoSrc,
+  type PostGallery,
+  type PostGalleryPhoto,
 } from "./outreach-types";
 import { isPhotoSrc } from "./outreach-photos";
 import type { Copy } from "./projects";
@@ -33,7 +36,9 @@ export type OutreachPostColumns = {
   lead: string;
   body: readonly BodyBlock[];
   photos: readonly OutreachPhoto[];
-  channels: Partial<Record<ChannelName, Channel>>;
+  channels: Channels;
+  /** Null for a post that never had a gallery (issue #430). */
+  gallery: DraftGallery | null;
 };
 
 /** The summit version's columns in `outreach_summit_versions`. */
@@ -58,6 +63,7 @@ export function postColumns(post: OutreachDraft): OutreachPostColumns {
     body: post.body,
     photos: post.photos,
     channels: post.channels,
+    gallery: post.gallery ?? null,
   };
 }
 
@@ -72,6 +78,7 @@ function fromColumns(row: Record<keyof OutreachPostColumns, unknown>, tags: read
     body: row.body,
     photos: row.photos,
     channels: row.channels,
+    ...(row.gallery !== null && { gallery: row.gallery }),
   };
 }
 
@@ -124,6 +131,7 @@ function copyFromColumns(text: unknown, phone: unknown): unknown {
 type Shape = Record<string, unknown>;
 
 const isShape = (value: unknown): value is Shape => typeof value === "object" && value !== null && !Array.isArray(value);
+const isString = (value: unknown): value is string => typeof value === "string";
 const isText = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
 const optionalText = (value: unknown): value is string | undefined => value === undefined || isText(value);
 
@@ -162,9 +170,31 @@ export function isStoredPhotoSrc(src: unknown): src is Exclude<PhotoSrc, `data:$
   return isPhotoSrc(src) && !src.startsWith("data:");
 }
 
+/** A photo; its alt text may be empty (issue #430), but is always a string. */
 function photoOf(value: unknown): OutreachPhoto | null {
-  if (!isShape(value) || !isStoredPhotoSrc(value.src) || !isText(value.alt)) return null;
+  if (!isShape(value) || !isStoredPhotoSrc(value.src) || !isString(value.alt)) return null;
   return { src: value.src, alt: value.alt };
+}
+
+function galleryPhotoOf(value: unknown): PostGalleryPhoto | null {
+  const photo = photoOf(value);
+  if (photo === null || !isShape(value) || !optionalText(value.caption)) return null;
+  return { ...photo, ...(value.caption !== undefined && { caption: value.caption }) };
+}
+
+/** A post's gallery: switched on, a title and a photo at least; switched off, anything it kept. Null otherwise. */
+function galleryOf(value: unknown): PostGallery | null {
+  const gallery = draftGalleryOf(value);
+  if (gallery === null) return null;
+  if (!gallery.shown) return { ...gallery, shown: false };
+  const [first, ...rest] = gallery.items;
+  return isText(gallery.title) && first !== undefined ? { shown: true, title: gallery.title, items: [first, ...rest] } : null;
+}
+
+function draftGalleryOf(value: unknown): DraftGallery | null {
+  if (!isShape(value) || typeof value.shown !== "boolean" || !isString(value.title)) return null;
+  const items = listOf(value.items, galleryPhotoOf);
+  return items === null ? null : { shown: value.shown, title: value.title, items };
 }
 
 function channelOf(value: unknown): Channel | null {
@@ -172,24 +202,17 @@ function channelOf(value: unknown): Channel | null {
   return { url: value.url, caption: value.caption, ...(value.account !== undefined && { account: value.account }) };
 }
 
-/** The channels, each one known and whole, Instagram or LinkedIn among them; null otherwise. */
+/** The channels, each one known and whole, none at all included (issue #430); null otherwise. */
 function channelsOf(value: unknown): Channels | null {
   if (!isShape(value)) return null;
-  const read: Partial<Record<ChannelName, Channel>> = {};
+  const read: Channels = {};
   for (const name of CHANNEL_NAMES) {
     if (value[name] === undefined) continue;
     const channel = channelOf(value[name]);
     if (channel === null) return null;
     read[name] = channel;
   }
-  return withMainChannel(read);
-}
-
-/** `channels` as a post's, when Instagram or LinkedIn is among them; null otherwise. */
-export function withMainChannel(channels: Partial<Record<ChannelName, Channel>>): Channels | null {
-  const { instagram, linkedin, ...extra } = channels;
-  if (instagram !== undefined) return { ...extra, instagram, ...(linkedin !== undefined && { linkedin }) };
-  return linkedin === undefined ? null : { ...extra, linkedin };
+  return read;
 }
 
 function editionOf(value: unknown): Edition | null {
@@ -205,7 +228,8 @@ export function outreachPostOf(value: unknown): OutreachPost | null {
   const body = nonEmpty(value.body, bodyBlockOf);
   const photos = nonEmpty(value.photos, photoOf);
   const channels = channelsOf(value.channels);
-  if (tags === null || summary === null || body === null || photos === null || channels === null) return null;
+  const gallery = value.gallery === undefined ? undefined : galleryOf(value.gallery);
+  if (tags === null || summary === null || body === null || photos === null || channels === null || gallery === null) return null;
   return {
     title: value.title,
     date: value.date,
@@ -216,14 +240,13 @@ export function outreachPostOf(value: unknown): OutreachPost | null {
     body,
     photos,
     channels,
+    ...(gallery !== undefined && { gallery }),
   };
 }
 
 // A draft's readers take what the panel may leave blank: an empty title,
 // lead, summary, text block, alt text or channel link, and lists with no
 // item yet. Every key must still have its type.
-
-const isString = (value: unknown): value is string => typeof value === "string";
 
 function listOf<T>(value: unknown, read: (item: unknown) => T | null): T[] | null {
   if (!Array.isArray(value)) return null;
@@ -238,14 +261,9 @@ function draftBlockOf(value: unknown): BodyBlock | null {
   return null;
 }
 
-function draftPhotoOf(value: unknown): OutreachPhoto | null {
-  if (!isShape(value) || !isStoredPhotoSrc(value.src) || !isString(value.alt)) return null;
-  return { src: value.src, alt: value.alt };
-}
-
-function draftChannelsOf(value: unknown): Partial<Record<ChannelName, Channel>> | null {
+function draftChannelsOf(value: unknown): Channels | null {
   if (!isShape(value)) return null;
-  const read: Partial<Record<ChannelName, Channel>> = {};
+  const read: Channels = {};
   for (const name of CHANNEL_NAMES) {
     const channel = value[name];
     if (channel === undefined) continue;
@@ -262,9 +280,10 @@ export function outreachDraftOf(value: unknown): OutreachDraft | null {
   if (!isShape(summary) || !isString(summary.text) || !optionalText(summary.phone)) return null;
   const tags = listOf(value.tags, (tag) => (isText(tag) ? tag : null));
   const body = listOf(value.body, draftBlockOf);
-  const photos = listOf(value.photos, draftPhotoOf);
+  const photos = listOf(value.photos, photoOf);
   const channels = draftChannelsOf(value.channels);
-  if (tags === null || body === null || photos === null || channels === null) return null;
+  const gallery = value.gallery === undefined ? undefined : draftGalleryOf(value.gallery);
+  if (tags === null || body === null || photos === null || channels === null || gallery === null) return null;
   return {
     title: value.title,
     date: value.date,
@@ -275,6 +294,7 @@ export function outreachDraftOf(value: unknown): OutreachDraft | null {
     body,
     photos,
     channels,
+    ...(gallery !== undefined && { gallery }),
   };
 }
 
