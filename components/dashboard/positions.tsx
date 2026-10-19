@@ -1,26 +1,24 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { Plus, RadioTower } from "lucide-react";
+import { ArrowUpDown, Plus, RadioTower } from "lucide-react";
 import { toast } from "sonner";
 import { setPositionOpen, setRecruitment } from "@/app/dashboard/recruitment-actions";
 import type { WriteResult } from "@/lib/dashboard/write";
 import type { RecruitmentControl } from "@/lib/apply/recruitment-switch";
-import { divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
 import { startingDivisionId } from "@/lib/dashboard/new-position";
 import {
-  departmentLabel,
-  departmentsOf,
-  divisionsOf,
-  filterPositions,
-  POSITION_TABS,
-  positionTabCounts,
-  type PositionRow,
-  type PositionsPage,
-  type PositionTab,
-} from "@/lib/dashboard/recruitment";
+  divisionOptions,
+  NO_POSITIONS_FILTER,
+  POSITIONS_SORTS,
+  positionsModelOf,
+  shownPositions,
+  type PositionsColumn,
+  type PositionsFilter,
+  type PositionsTool,
+} from "@/lib/dashboard/positions-view";
+import { POSITION_TABS, type PositionRow, type PositionsPage } from "@/lib/dashboard/recruitment";
 import { FilterMenu, SearchField, Segmented, Toggle } from "./controls";
-import { DivisionTabs } from "./division-tabs";
 import { DrawerPage } from "./drawer";
 import { NewPositionDrawer } from "./new-position-drawer";
 import { PRIMARY_PILL } from "./page-header";
@@ -57,36 +55,25 @@ export function PositionsView({
   page,
   recruitment,
   initialDivision = null,
-  divisionSelect = false,
 }: {
   page: PositionsPage;
   recruitment: RecruitmentControl;
-  /** The division tab a link from the Overview opens; null is All divisions, where the page starts (board 63, issue #230). */
-  initialDivision?: DivisionTab;
-  /** The team leader's "All divisions" select beside "All departments" (boards 63 and 64 with whole-team selects, issue #252). */
-  divisionSelect?: boolean;
+  /** The division a link from the Overview opens the page on; null is all divisions, where the page starts (issue #230). */
+  initialDivision?: string | null;
 }) {
-  const [tab, setTab] = useState<PositionTab>("all");
-  const [department, setDepartment] = useState<string | null>(null);
-  const [division, setDivision] = useState<string | null>(null);
-  const [divisionTab, setDivisionTab] = useState<DivisionTab>(initialDivision);
-  const [search, setSearch] = useState("");
+  // Every role's page starts on all departments, all divisions and all roles, newest first.
+  const [filter, setFilter] = useState<PositionsFilter>({ ...NO_POSITIONS_FILTER, division: initialDivision });
   const [drawer, setDrawer] = useState<PositionDrawer>(CLOSED);
   const editing = drawer.kind === "edit" ? (page.positions.find((p) => p.id === drawer.id) ?? null) : null;
   const drawerOpen = drawer.kind === "new" || editing !== null;
   const create = () => setDrawer({ kind: "new" });
   const edit = (row: PositionRow) => setDrawer({ kind: "edit", id: row.id });
-  const team = page.scope === "team";
-  const divisionOptions =
-    page.scope === "department"
-      ? divisionTabs(page.department.divisions.map((d) => d.name), page.positions.map((p) => p.division))
-      : null;
-  const inTab = page.positions.filter((p) => inDivisionTab(p.division, divisionTab));
-  const counts = positionTabCounts(inTab);
-  const divisionNames = team && divisionSelect ? divisionsOf(page.positions, department) : [];
-  // A division left chosen from another department reads as all divisions.
-  const shownDivision = division !== null && divisionNames.includes(division) ? division : null;
-  const rows = filterPositions(inTab, { tab, department, division: shownDivision, search });
+  // One toolbar and one set of columns for every role (issue #417): only the rows, and so the options, differ.
+  const model = positionsModelOf(page);
+  const has = (tool: PositionsTool) => model.tools.includes(tool);
+  const narrow = (change: Partial<PositionsFilter>) => setFilter((f) => ({ ...f, ...change }));
+  const shown = shownPositions(model.units, page.positions, filter);
+  const rows = shown.rows;
   const canCreate = page.newPosition.divisions.length > 0;
 
   return (
@@ -95,13 +82,7 @@ export function PositionsView({
       <header className="flex items-start justify-between gap-4 max-md:sr-only">
         <div className="min-w-0">
           <h1 className="text-[28px] font-bold leading-tight tracking-[-0.01em]">Positions</h1>
-          <p className="mt-1 hidden text-[14px] text-prt-muted md:block">
-            {page.scope === "team"
-              ? "Open or close roles. Open roles show on the site while recruitment is on."
-              : page.scope === "department"
-                ? `Roles in every division of the ${departmentLabel(page.department.name)}. Open roles show on the site while recruitment is on.`
-                : `Roles in ${page.division ? `the ${page.division}` : "your division"}. Open roles show on the site while recruitment is on.`}
-          </p>
+          <p className="mt-1 hidden text-[14px] text-prt-muted md:block">{model.intro}</p>
         </div>
         {canCreate && (
           <button type="button" onClick={create} className={`${PRIMARY_PILL} h-10 shrink-0 px-5 max-md:hidden`}>
@@ -125,79 +106,95 @@ export function PositionsView({
         <RecruitmentNotice open={recruitment.recruitment.isOpen} department={page.scope === "department"} />
       )}
 
-      <div className="mt-4 flex flex-col gap-3 md:mt-6 md:flex-row md:items-center">
-        <div
-          className={`flex min-w-0 gap-3 ${divisionOptions ? "flex-col items-start md:flex-row md:flex-wrap md:items-center" : "flex-wrap items-center"}`}
-        >
-          {divisionOptions && (
-            <>
-              <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} />
-              <span aria-hidden className="hidden h-5 w-px bg-hairline md:block" />
-            </>
-          )}
-          <Segmented
-            label="Show positions"
-            value={tab}
-            onChange={setTab}
-            phone="chips"
-            options={POSITION_TABS.map((t) => ({ value: t.tab, label: t.label, count: counts[t.tab] }))}
-          />
-          {team && (
+      <div className="mt-4 flex flex-col gap-3 md:mt-6 md:flex-row md:flex-wrap md:items-center">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          {has("department-filter") && (
             <FilterMenu
+              label="Department"
               allLabel="All departments"
-              value={department}
-              onChange={setDepartment}
-              options={departmentsOf(page.positions).map((d) => ({ value: d, label: d }))}
+              value={filter.department}
+              onChange={(department) => narrow({ department })}
+              options={model.units.map((u) => ({ value: u.name, label: u.name }))}
             />
           )}
-          {team && divisionSelect && (
+          {has("division-filter") && (
             <FilterMenu
+              label="Division"
               allLabel="All divisions"
-              value={shownDivision}
-              onChange={setDivision}
-              options={divisionNames.map((d) => ({ value: d, label: d }))}
+              value={shown.division}
+              onChange={(division) => narrow({ division })}
+              options={divisionOptions(model.units, filter.department).map((d) => ({ value: d, label: d }))}
+            />
+          )}
+          <span aria-hidden className="hidden h-5 w-px bg-hairline md:block" />
+          {has("status-switch") && (
+            <Segmented
+              label="Show positions"
+              value={filter.tab}
+              onChange={(tab) => narrow({ tab })}
+              phone="chips"
+              options={POSITION_TABS.map((t) => ({ value: t.tab, label: t.label, count: shown.counts[t.tab] }))}
             />
           )}
         </div>
-        <div className="hidden md:ml-auto md:block">
-          <SearchField label="Search positions" value={search} onChange={setSearch} />
+        <div className="flex items-center gap-3 md:ml-auto">
+          {/* The sort keeps its whole label on a phone, so it never reads as another select; the search takes what is left. */}
+          {has("sort") && (
+            <div className="shrink-0">
+              <FilterMenu
+                label="Sort"
+                icon={ArrowUpDown}
+                allLabel={POSITIONS_SORTS[0].label}
+                value={filter.sort === "newest" ? null : filter.sort}
+                onChange={(sort) => narrow({ sort: POSITIONS_SORTS.find((s) => s.sort === sort)?.sort ?? "newest" })}
+                options={POSITIONS_SORTS.slice(1).map((s) => ({ value: s.sort, label: s.label }))}
+              />
+            </div>
+          )}
+          {has("search") && (
+            <div className="min-w-0 flex-1 md:flex-none">
+              <SearchField label="Search positions" value={filter.query} onChange={(query) => narrow({ query })} />
+            </div>
+          )}
         </div>
       </div>
 
       {/* From lg a table (board 57); below it stacked cards (board 57m). From xl
           an open drawer moves the page left of it, which leaves the table too
           narrow for its header labels until 2xl, so the cards stand in there (issue #222). */}
-      <div className={`${PANEL} mt-4 hidden overflow-hidden lg:block ${drawerOpen ? "xl:hidden 2xl:block" : ""}`}>
-        <div
-          aria-hidden="true"
-          className={`grid h-10 items-center gap-4 border-b border-hairline bg-white-5 px-5 font-mono text-[10px] uppercase tracking-[0.2em] text-dim ${team ? COLUMNS_TEAM : COLUMNS_DIVISION}`}
-        >
-          <span>Position</span>
-          {team && <span>Department</span>}
-          <span>Applications</span>
-          <span>Updated</span>
-          <span>Status</span>
+      {has("table-view") && (
+        <div className={`${PANEL} mt-4 hidden overflow-hidden lg:block ${drawerOpen ? "xl:hidden 2xl:block" : ""}`}>
+          <div
+            aria-hidden="true"
+            className={`grid h-10 items-center gap-4 border-b border-hairline bg-white-5 px-5 font-mono text-[10px] uppercase tracking-[0.2em] text-dim ${COLUMNS}`}
+          >
+            {model.columns.map((column) => (
+              <span key={column}>{COLUMN_LABELS[column]}</span>
+            ))}
+          </div>
+          <ul className="divide-y divide-hairline">
+            {rows.map((row) => (
+              <PositionItem key={row.id} row={row} chosen={editing?.id === row.id} onEdit={edit} />
+            ))}
+          </ul>
+          {rows.length === 0 && <p className="px-5 py-6 text-[13px] text-prt-muted">No positions match.</p>}
         </div>
-        <ul className="divide-y divide-hairline">
+      )}
+      {has("phone-cards") && (
+        <ul className={`mt-3 flex flex-col gap-2.5 lg:hidden ${drawerOpen ? "xl:flex 2xl:hidden" : ""}`}>
           {rows.map((row) => (
-            <PositionItem key={row.id} row={row} team={team} chosen={editing?.id === row.id} onEdit={edit} />
+            <PositionCard key={row.id} row={row} chosen={editing?.id === row.id} onEdit={edit} />
           ))}
+          {rows.length === 0 && <li className="px-1 py-4 text-[13px] text-prt-muted">No positions match.</li>}
         </ul>
-        {rows.length === 0 && <p className="px-5 py-6 text-[13px] text-prt-muted">No positions match.</p>}
-      </div>
-      <ul className={`mt-3 flex flex-col gap-2.5 lg:hidden ${drawerOpen ? "xl:flex 2xl:hidden" : ""}`}>
-        {rows.map((row) => (
-          <PositionCard key={row.id} row={row} team={team} chosen={editing?.id === row.id} onEdit={edit} />
-        ))}
-        {rows.length === 0 && <li className="px-1 py-4 text-[13px] text-prt-muted">No positions match.</li>}
-      </ul>
+      )}
 
       <NewPositionDrawer
-        key={editing ? `edit-${editing.id}` : `new-${divisionTab ?? "all"}`}
+        key={editing ? `edit-${editing.id}` : `new-${shown.division ?? "all"}`}
         open={drawerOpen}
         onOpenChange={(open) => !open && setDrawer(CLOSED)}
         divisions={page.newPosition.divisions}
-        startDivisionId={startingDivisionId(page.newPosition.divisions, divisionTab)}
+        startDivisionId={startingDivisionId(page.newPosition.divisions, shown.division)}
         divisionHint={
           page.scope === "department" ? `${page.newPosition.divisions.length} in ${page.department.name}` : undefined
         }
@@ -210,8 +207,16 @@ export function PositionsView({
 
 // Each column is at least as wide as its header label (10px mono, 0.2em
 // tracking: 8px a letter), so the labels never run together (issue #222).
-const COLUMNS_TEAM = "grid-cols-[minmax(0,1.7fr)_minmax(80px,0.8fr)_minmax(96px,0.75fr)_minmax(56px,0.6fr)_112px]";
-const COLUMNS_DIVISION = "grid-cols-[minmax(0,2.6fr)_minmax(96px,0.75fr)_minmax(56px,0.6fr)_112px]";
+// Every role's table has the same columns (issue #417).
+const COLUMNS = "grid-cols-[minmax(0,1.7fr)_minmax(80px,0.8fr)_minmax(96px,0.75fr)_minmax(56px,0.6fr)_112px]";
+
+const COLUMN_LABELS: Record<PositionsColumn, string> = {
+  position: "Position",
+  department: "Department",
+  applications: "Applications",
+  updated: "Updated",
+  status: "Status",
+};
 
 function applicationsLine(row: PositionRow): string {
   return `${row.applications} ${row.applications === 1 ? "application" : "applications"}`;
@@ -224,7 +229,7 @@ function applicationsLine(row: PositionRow): string {
 const ROW_TARGET =
   "text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-accent";
 
-type RowProps = { row: PositionRow; team: boolean; chosen: boolean; onEdit: (row: PositionRow) => void };
+type RowProps = { row: PositionRow; chosen: boolean; onEdit: (row: PositionRow) => void };
 
 function EditTarget({ row, onEdit, className }: { row: PositionRow; onEdit: (row: PositionRow) => void; className: string }) {
   return (
@@ -235,7 +240,7 @@ function EditTarget({ row, onEdit, className }: { row: PositionRow; onEdit: (row
 }
 
 /** One role as a card (board 57m): name, division, counts, and its switch top right. */
-function PositionCard({ row, team, chosen, onEdit }: RowProps) {
+function PositionCard({ row, chosen, onEdit }: RowProps) {
   const [open, flip] = useOptimisticSwitch(row.open, (next) => setPositionOpen(row.id, next));
   return (
     <li
@@ -245,7 +250,7 @@ function PositionCard({ row, team, chosen, onEdit }: RowProps) {
     >
       <div className="min-w-0 flex-1">
         <EditTarget row={row} onEdit={onEdit} className="block w-full truncate text-[16px] font-semibold leading-snug" />
-        <p className="truncate text-[13px] leading-snug text-prt-muted">{team ? `${row.department} · ${row.division}` : row.division}</p>
+        <p className="truncate text-[13px] leading-snug text-prt-muted">{`${row.department} · ${row.division}`}</p>
         <p className="mt-2 text-[13px] text-text-2">
           {applicationsLine(row)}
           {row.newApplications > 0 && <> · {row.newApplications} new</>}
@@ -259,11 +264,11 @@ function PositionCard({ row, team, chosen, onEdit }: RowProps) {
   );
 }
 
-function PositionItem({ row, team, chosen, onEdit }: RowProps) {
+function PositionItem({ row, chosen, onEdit }: RowProps) {
   const [open, flip] = useOptimisticSwitch(row.open, (next) => setPositionOpen(row.id, next));
   return (
     <li
-      className={`relative grid items-center gap-4 px-5 py-2.5 transition-colors duration-300 ease-out ${team ? COLUMNS_TEAM : COLUMNS_DIVISION} ${
+      className={`relative grid items-center gap-4 px-5 py-2.5 transition-colors duration-300 ease-out ${COLUMNS} ${
         chosen ? "bg-accent/[0.06]" : "hover:bg-white-5"
       }`}
     >
@@ -271,7 +276,7 @@ function PositionItem({ row, team, chosen, onEdit }: RowProps) {
         <EditTarget row={row} onEdit={onEdit} className="block w-full truncate text-[14px] font-medium leading-snug" />
         <p className="truncate text-[13px] leading-snug text-prt-muted">{row.division}</p>
       </div>
-      {team && <p className="truncate text-[13px] text-text-2">{row.department}</p>}
+      <p className="truncate text-[13px] text-text-2">{row.department}</p>
       <div>
         <p className="text-[14px] leading-snug">{row.applications}</p>
         {row.newApplications > 0 && <p className="text-[12px] leading-snug text-accent">{row.newApplications} new</p>}
