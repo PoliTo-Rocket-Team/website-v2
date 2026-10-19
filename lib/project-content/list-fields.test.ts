@@ -180,6 +180,22 @@ test("a save whose fields break a shape rule is refused with a message, whatever
   assert.deepEqual(fieldProblems({ ...fields, launches: { ...fields.launches, shown: false, items: [] } }), [], "a section off the page never stops a save");
 });
 
+test("a launch photo and a gallery photo with no description pass the checks and publish with an empty alt", async () => {
+  const fields = fieldsOf(ves);
+  const launch: LaunchFields = { ...newLaunch, version: fields.versions.items[0].pill, photos: [{ src: UPLOADED, alt: "  " }] };
+  const sent: ProjectFields = {
+    ...fields,
+    launches: { ...fields.launches, items: [...fields.launches.items, launch] },
+    gallery: { ...fields.gallery, items: [...fields.gallery.items, { src: UPLOADED, alt: "", caption: "" }] },
+  };
+  assert.deepEqual(fieldProblems(sent), []);
+  const saved = await projectEditor(admin, memoryContentStore(importedProjects()), undefined, files).saveFields(2, "publish", sent);
+  assert.ok(saved.ok);
+  const page = pageRecordOf(editorVersion(saved.value.version) as VehicleRecord);
+  assert.deepEqual(page.launches?.entries.at(-1)?.photos, [{ src: UPLOADED, alt: "" }]);
+  assert.equal(page.gallery?.items.at(-1)?.alt, "");
+});
+
 test("switching a list section off drops it and closes up the numbers; its text survives a save", async () => {
   const fields = fieldsOf(cavour);
   const off: ProjectFields = { ...fields, launches: { ...fields.launches, shown: false } };
