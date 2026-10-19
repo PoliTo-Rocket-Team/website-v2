@@ -323,6 +323,30 @@ export type MemberRow = {
 };
 
 /**
+ * What the Team page panel (board 46b) changes for one person, seen from the
+ * whole team: the title the Team page shows under their name, and whether
+ * they lead their home division. `role` is null where the panel does not set
+ * it (the team leader, a board seat, a head, someone in no division); then
+ * only the title changes (`MemberEdit`).
+ */
+export type TeamPageEdit = {
+  readonly id: number;
+  readonly pageTitle: string | null;
+  readonly role: EditableRole | null;
+};
+
+export function teamPageEditOf(entry: RosterEntry, org: OrgChart): TeamPageEdit {
+  const role = teamRoleOf(entry.placement);
+  const home = homeDivisionOf(entry.placement);
+  const placed = org.divisions.some((d) => d.id === home);
+  return {
+    id: entry.id,
+    pageTitle: entry.pageTitle,
+    role: role === "division-lead" ? "division-lead" : role === "member" && placed ? "member" : null,
+  };
+}
+
+/**
  * Someone accepted for one of the division's positions who is not on the
  * team yet (board 59): the lead confirms they join once the signed NDA is in.
  */
@@ -350,10 +374,13 @@ export type DepartmentHead = {
  * lead alike (boards 73 to 73c, issues #252 and #418); one division for a
  * division lead, with every division they are in and what the lead may do to
  * each (boards 61e to 61h2, issue #231); every division of the department for
- * its head (boards 69 to 69c, issue #235); and nothing for anyone else.
+ * its head (boards 69 to 69c, issue #235); and nothing for anyone else. On
+ * the whole team, `teamPageEdits` holds what the Team page panel changes for
+ * each person where the viewer's seat has that panel (the operations lead and
+ * the IT lead); it is null for the team leader, whose rows offer no change.
  */
 export type MemberDirectory =
-  | ({ readonly scope: "whole-team" } & WholeTeamMembers)
+  | ({ readonly scope: "whole-team"; readonly teamPageEdits: readonly TeamPageEdit[] | null } & WholeTeamMembers)
   | ({ readonly scope: "division" } & DivisionMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
   | { readonly scope: "none" };

@@ -27,6 +27,7 @@ import { DashboardRefused, type DashboardData } from "./data";
 import {
   buildTeamTree,
   seasonAt,
+  teamPageEditOf,
   type MemberDirectory,
   type RoleType,
 } from "./team";
@@ -737,12 +738,18 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
  * full-access seat, the team leader, the operations lead and the IT lead alike
  * (boards 73 to 73c, issue #418); for a division lead one of their divisions,
  * with the people waiting for Confirm NDA and the people joining it
- * (./database-team.ts).
+ * (./database-team.ts). The operations lead and the IT lead keep the Team
+ * page panel's edits (board 46b); the team leader's rows offer none.
  */
 async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
   if (opensWholeTeam(identity)) {
     const snapshot = await readTeamSnapshot();
-    return { scope: "whole-team", ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }) };
+    const teamPageEdits = isTeamLeader(identity) ? null : rosterOf(snapshot).map((entry) => teamPageEditOf(entry, snapshot.org));
+    return {
+      scope: "whole-team",
+      teamPageEdits,
+      ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }),
+    };
   }
   return readDivisionMembers(identity, divisionId);
 }

@@ -38,12 +38,18 @@ test("every role that opens Members gets the same tools; the operations lead ope
     const page = membersModelOf(await pages(kind).view.members());
     assert.deepEqual(page?.tools, MEMBERS_TOOLS, kind);
   }
-  const ops = wholeTeam(await pages("operations-lead").view.members());
-  const leader = wholeTeam(await pages("team-leader").view.members());
+  const opsPage = await pages("operations-lead").view.members();
+  const leaderPage = await pages("team-leader").view.members();
+  const ops = wholeTeam(opsPage);
+  const leader = wholeTeam(leaderPage);
   assert.deepEqual(
     ops.map((p) => p.id),
     leader.map((p) => p.id),
   );
+  // The operations lead keeps the Team page panel's edits (board 46b); the team leader's rows offer none.
+  assert.ok(opsPage.scope === "whole-team" && leaderPage.scope === "whole-team");
+  assert.deepEqual(opsPage.teamPageEdits?.map((e) => e.id).sort(), ops.map((p) => p.id).sort());
+  assert.equal(leaderPage.teamPageEdits, null);
 });
 
 test("a division lead lists only their own division, with every division each person is in", async () => {

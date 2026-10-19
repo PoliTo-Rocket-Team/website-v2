@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { departmentMembers } from "./department-members";
 import { NO_MEMBER_DETAILS } from "./details";
 import { divisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
-import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MembersModel } from "./members-view";
-import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
+import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
+import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions, type TeamActor, type TeamPageEdit } from "./team";
 import { wholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
@@ -52,7 +52,23 @@ const records = [
 const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS };
 
 function leaderPage(): MembersModel {
-  return membersModelOf({ scope: "whole-team", ...wholeTeamMembers({ records, org, selfId: 7 }) })!;
+  return membersModelOf({ scope: "whole-team", teamPageEdits: null, ...wholeTeamMembers({ records, org, selfId: 7 }) })!;
+}
+
+// The operations lead's and the IT lead's whole team: the Team page panel's edits for each person (board 46b).
+const teamPageEdits: readonly TeamPageEdit[] = records.map((r) => ({
+  id: r.id,
+  pageTitle: null,
+  role: r.memberships.length === 0 ? null : r.memberships.some((m) => m.role === "lead") ? "division-lead" : "member",
+}));
+
+function seatPage(selfId: number): MembersModel {
+  return membersModelOf({ scope: "whole-team", teamPageEdits, ...wholeTeamMembers({ records, org, selfId }) })!;
+}
+
+/** Where a row's menu may remove someone from; null where the row offers no division change. */
+function removalsOf(entry: MemberEntry) {
+  return entry.actions?.kind === "division" ? entry.actions.removals : null;
 }
 
 function headPage(): MembersModel {
@@ -80,10 +96,21 @@ test("the operations lead and the IT lead open the whole team like the team lead
   for (const kind of ["department-head", "division-lead"] as const) {
     assert.equal(opensWholeTeam({ kind, siteContent: false, approveOrders: false }), false, kind);
   }
-  // The own row is the only thing that tells the full-access seats' pages apart.
-  const seatPage = (selfId: number) => membersModelOf({ scope: "whole-team", ...wholeTeamMembers({ records, org, selfId }) })!;
-  const tools = [seatPage(7), seatPage(8), seatPage(9), headPage(), leadPage()].map((page) => page.tools);
+  const tools = [leaderPage(), seatPage(8), seatPage(9), headPage(), leadPage()].map((page) => page.tools);
   for (const set of tools) assert.deepEqual(set, MEMBERS_TOOLS);
+});
+
+test("the operations lead and the IT lead keep the Team page panel's edits on every row; the team leader's rows offer none (#418)", () => {
+  const ops = seatPage(8);
+  assert.equal(ops.panelEdits, true);
+  assert.deepEqual(
+    ops.everyone.map((p) => [p.name, p.actions?.kind === "team-page" ? p.actions.edit.role : "none"]),
+    ops.everyone.map((p) => [p.name, teamPageEdits.find((e) => e.id === p.id)!.role]),
+  );
+  // Same rows and tools as the team leader: only the actions differ.
+  const leader = leaderPage();
+  assert.deepEqual(ops.everyone.map((p) => p.id), leader.everyone.map((p) => p.id));
+  assert.ok(leader.everyone.every((p) => p.actions === null));
 });
 
 test("only the rows differ: the whole team, the department, the division", () => {
@@ -97,7 +124,7 @@ test("only the rows differ: the whole team, the department, the division", () =>
 test("actions are the data's own: what the lead's and head's pages allow, none on the whole team or under Can view", () => {
   const lead = leadPage();
   const lena = lead.everyone.find((p) => p.name === "Lena Fischer")!;
-  assert.deepEqual(lena.actions?.removals.map((r) => [r.short, r.removal.kind]), [["Mission Analysis", "offered"]]);
+  assert.deepEqual(removalsOf(lena)?.map((r) => [r.short, r.removal.kind]), [["Mission Analysis", "offered"]]);
   assert.deepEqual(lead.add, { kind: "division", division: lead.divisions[0].header });
 
   const viewOnly = leadPage(null);
@@ -112,7 +139,7 @@ test("actions are the data's own: what the lead's and head's pages allow, none o
 
   const head = headPage();
   const lenaHere = head.everyone.find((p) => p.name === "Lena Fischer")!;
-  assert.deepEqual(lenaHere.actions?.removals.map((r) => r.short), ["Mission Analysis", "Optimization and Analysis"]);
+  assert.deepEqual(removalsOf(lenaHere)?.map((r) => r.short), ["Mission Analysis", "Optimization and Analysis"]);
 });
 
 test("choosing a division lists it as that division does, with the people waiting to join it", () => {
@@ -120,7 +147,7 @@ test("choosing a division lists it as that division does, with the people waitin
   const oa = shownMembers(head, { ...NO_MEMBERS_FILTER, divisionId: 2 });
   assert.equal(oa.division?.code, "OA");
   assert.deepEqual(oa.people.map((p) => p.name), ["Laura Greco", "Lena Fischer"]);
-  assert.deepEqual(oa.people.find((p) => p.name === "Lena Fischer")!.actions?.removals.map((r) => r.short), ["Optimization and Analysis"]);
+  assert.deepEqual(removalsOf(oa.people.find((p) => p.name === "Lena Fischer")!)?.map((r) => r.short), ["Optimization and Analysis"]);
   assert.deepEqual(oa.waiting, []);
   assert.deepEqual(shownMembers(head, { ...NO_MEMBERS_FILTER, divisionId: 1 }).waiting.map((w) => w.waiting.email), ["elena@x.it"]);
   assert.deepEqual(shownMembers(head, { ...NO_MEMBERS_FILTER, query: "elena" }).waiting.map((w) => w.division.code), ["MA"]);
