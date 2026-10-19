@@ -67,7 +67,7 @@ import {
   type MyAccount,
   type MyProfile,
 } from "./self";
-import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
+import { refreshAfter } from "@/lib/cache-tags";
 import { isOffTeam } from "./viewer";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -205,7 +205,7 @@ async function leaveTeam(identity: DashboardIdentity, reason: string, removeFrom
         ]
       : []),
   ]);
-  updateTag(TEAM_ROSTER_CACHE_TAG);
+  refreshAfter("team", updateTag);
   return written(null);
 }
 
@@ -309,7 +309,7 @@ async function deleteAccount(identity: DashboardIdentity, options: DeleteAccount
       ? []
       : [db.delete(applicationFiles).where(and(inArray(applicationFiles.id, [...fileIds]), eq(applicationFiles.userId, userId)))]),
   ]);
-  if (memberId !== null) updateTag(TEAM_ROSTER_CACHE_TAG);
+  if (memberId !== null) refreshAfter("team", updateTag);
 
   for (const file of files) {
     const pathname = parsePrivatePathname(file.pathname);

@@ -442,14 +442,18 @@ async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
 }
 
 /** The viewer's Orders scope, read from their scope rows (`ordersScopeOf`, ./orders.ts); null for someone off the team. */
-async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDepartmentUnits[]): Promise<OrdersScope | null> {
+async function readOrdersScope(
+  identity: DashboardIdentity,
+  org: readonly OrgDepartmentUnits[] | Promise<readonly OrgDepartmentUnits[]>,
+): Promise<OrdersScope | null> {
   if (identity.memberId === null || isOffTeam(identity.kind)) return null;
-  const [rows, headDepartment] = await Promise.all([
+  const [rows, headDepartment, units] = await Promise.all([
     getDb()
       .select({ scope: scopes.scope, target: scopes.target, level: scopes.accessLevel, divisionId: scopes.divisionId, deptId: scopes.deptId })
       .from(scopes)
       .where(eq(scopes.memberId, identity.memberId)),
     readHeadDepartment(identity),
+    org,
   ]);
   return ordersScopeOf(
     {
@@ -458,7 +462,7 @@ async function readOrdersScope(identity: DashboardIdentity, org: readonly OrgDep
       headDepartment: headDepartment === null ? null : { id: headDepartment.id, name: headDepartment.name },
     },
     rows,
-    org,
+    units,
   );
 }
 
@@ -608,10 +612,11 @@ export async function readOrdersIn(divisionIds: readonly number[]): Promise<Orde
 
 /** The Orders page (issue #233): every order in the team, for anyone with Orders access; null for anyone else. */
 async function readOrdersPage(identity: DashboardIdentity): Promise<OrdersPage | null> {
-  const org = await readOrgUnits();
-  const scope = await readOrdersScope(identity, org);
+  // The org, the viewer's scope and the orders are independent reads, so they go out together (issue #397).
+  const orgRead = readOrgUnits();
+  const [org, scope, rows] = await Promise.all([orgRead, readOrdersScope(identity, orgRead), readOrderRows()]);
   if (scope === null) return null;
-  return ordersPageFor(scope, org, (await readOrderRows()).flatMap((r) => orderOf(r, identity.memberId)));
+  return ordersPageFor(scope, org, rows.flatMap((r) => orderOf(r, identity.memberId)));
 }
 
 /** The viewer's scope and one stored request, or why there is nothing to act on. */

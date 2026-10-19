@@ -115,9 +115,9 @@ export function projectEditor(
       editor.save(null, "save-draft", async () => checkNewProject(project, takenSlugs(await store.list()), history.now().getUTCFullYear())),
 
     async board() {
-      const items = await editor.list();
+      // The stamps need nothing of the items, so both are read at once (issue #397).
+      const [items, stamps] = await Promise.all([editor.list(), history.stamps()]);
       if (items === null) return null;
-      const stamps = await history.stamps();
       const now = history.now().toISOString();
       const edited = Object.fromEntries(
         items.flatMap((item) => {

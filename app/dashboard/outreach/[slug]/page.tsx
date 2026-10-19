@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { OutreachPostEdit } from "@/components/dashboard/outreach-post-edit";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -26,7 +26,7 @@ type Params = { params: Promise<{ slug: string }> };
 // the dashboard's not found.
 export default function OutreachPostEditPage({ params }: Params) {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="editor" />}>
       <LivePost params={params} />
     </Suspense>
   );
@@ -39,7 +39,13 @@ async function LivePost({ params }: Params) {
   if (opening.kind === "account-unresolved") return null;
   if (!canReach(opening.data.viewer, "outreach")) notFound();
   const { outreach } = opening.data;
-  const [items, tags] = await Promise.all([outreach.posts.list(), outreach.tags()]);
+  // Every read here is independent of the others, so they go out together (issue #397).
+  const [items, tags, content, projects] = await Promise.all([
+    outreach.posts.list(),
+    outreach.tags(),
+    publishedOutreach(),
+    footerProjects(),
+  ]);
   if (items === null || tags === null) notFound();
   const item =
     items.find((i) => slugOf(editorVersion(i.version)) === slug) ??
@@ -50,8 +56,7 @@ async function LivePost({ params }: Params) {
   if (item === undefined) notFound();
   // The posts either side are the public page's: the published ones.
   // The published content also fills the page switch's list and home pages.
-  const content = await publishedOutreach();
   const published = publicVersion(item.version);
   const neighbours = published === null ? {} : neighboursOf(content.posts, published);
-  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} published={content} footerProjects={await footerProjects()} />;
+  return <OutreachPostEdit item={item} tags={tags} neighbours={neighbours} published={content} footerProjects={projects} />;
 }

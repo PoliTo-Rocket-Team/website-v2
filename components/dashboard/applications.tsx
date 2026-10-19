@@ -15,7 +15,6 @@ import {
   firstNameOf,
   footerSteps,
   icsFileName,
-  inTab,
   interviewIcs,
   memberDivisionNames,
   menuSteps,
@@ -28,31 +27,28 @@ import {
   STAGE_LABELS,
   stagePill,
   studiesLine,
-  tabCounts,
   type ApplicationState,
-  type ApplicationTab,
   type SlotTime,
   type LeadMove,
   type LeadStep,
   type Pronouns,
 } from "@/lib/dashboard/application-flow";
 import { applicantSections, type ApplicantField } from "@/lib/dashboard/applicant-details";
-import { shortUnitName } from "@/lib/dashboard/division-access";
-import { divisionTabs, inDivisionTab, type DivisionTab } from "@/lib/dashboard/division-tabs";
 import {
-  departmentLabel,
-  divisionsOf,
-  documentsLine,
-  type ApplicationEntry,
-  type ApplicationsPage,
-  type OtherApplication,
-  type PositionRef,
-} from "@/lib/dashboard/recruitment";
+  APPLICATIONS_SORTS,
+  applicationsModelOf,
+  divisionOptions,
+  NO_APPLICATIONS_FILTER,
+  shownApplications,
+  type ApplicationsFilter,
+  type ApplicationsTool,
+} from "@/lib/dashboard/applications-view";
+import { shortUnitName } from "@/lib/dashboard/division-access";
+import { documentsLine, type ApplicationEntry, type ApplicationsPage, type OtherApplication, type PositionRef } from "@/lib/dashboard/recruitment";
 import { divisionLabel } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
-import { FilterMenu, Segmented } from "./controls";
+import { FilterMenu, SearchField, Segmented } from "./controls";
 import { DecisionDialog, NextSteps } from "./decision-dialog";
-import { DivisionTabs } from "./division-tabs";
 import { InterviewDialog } from "./interview-dialog";
 import { PANEL } from "./panel";
 import { ICON_BUTTON, PhoneTopBar } from "./shell";
@@ -81,51 +77,28 @@ export function ApplicationsView({
   page,
   initialPosition,
   lead,
-  teamSelects = false,
 }: {
   page: ApplicationsPage;
   initialPosition: PositionRef | null;
   /** The viewer's name: the interview email is signed with it. */
   lead: string;
-  /** The team leader's "All departments" and "All divisions" selects (board 64 with whole-team selects, issue #252). */
-  teamSelects?: boolean;
 }) {
   const [states, setState] = useOptimistic(
     Object.fromEntries(page.applications.map((a) => [a.id, a.state])) as Record<number, ApplicationState>,
     (current, change: { id: number; state: ApplicationState }) => ({ ...current, [change.id]: change.state }),
   );
   const [pending, startTransition] = useTransition();
-  const [tab, setTab] = useState<ApplicationTab>("all");
-  const [position, setPosition] = useState<PositionRef | null>(initialPosition);
-  // A department head's page starts on All divisions (board 64, issue #230).
-  const [divisionTab, setDivisionTab] = useState<DivisionTab>(null);
-  const [department, setDepartment] = useState<string | null>(null);
-  const [division, setDivision] = useState<string | null>(null);
+  // Every role's page starts on all departments, all divisions and all stages, newest first.
+  const [filter, setFilter] = useState<ApplicationsFilter>({ ...NO_APPLICATIONS_FILTER, position: initialPosition });
   const [chosenId, setChosenId] = useState<number | null>(null);
 
-  const headDepartment = page.scope.kind === "department" ? page.scope.department : null;
+  // One toolbar for every role (issue #416): only the rows, and so the options, differ.
+  const model = applicationsModelOf(page);
+  const has = (tool: ApplicationsTool) => model.tools.includes(tool);
+  const narrow = (change: Partial<ApplicationsFilter>) => setFilter((f) => ({ ...f, ...change }));
   const applications = page.applications.map((a) => ({ ...a, state: states[a.id] ?? a.state }));
-  const divisionOptions = headDepartment
-    ? divisionTabs(headDepartment.divisions.map((d) => d.name), applications.map((a) => a.position.division))
-    : null;
-  const departmentNames = teamSelects ? [...new Set(page.positions.map((p) => p.department))] : [];
-  const divisionNames = teamSelects ? divisionsOf(page.positions, department) : [];
-  // A division left chosen from another department reads as all divisions.
-  const shownDivision = division !== null && divisionNames.includes(division) ? division : null;
-  const tabPositions = page.positions.filter(
-    (p) =>
-      inDivisionTab(p.division, divisionTab) &&
-      (department === null || p.department === department) &&
-      (shownDivision === null || p.division === shownDivision),
-  );
-  const inUnits = new Set(tabPositions.map((p) => p.ref));
-  // A position filter left on a role of another division shows that division's rows no more.
-  const shownPosition = tabPositions.some((p) => p.ref === position) ? position : null;
-  const inPosition = applications.filter(
-    (a) => inUnits.has(a.position.ref) && (shownPosition === null || a.position.ref === shownPosition),
-  );
-  const counts = tabCounts(inPosition.map((a) => a.state.stage));
-  const rows = inPosition.filter((a) => inTab(a.state.stage, tab));
+  const shown = shownApplications(page, model.units, applications, filter);
+  const rows = shown.rows;
   const chosen = applications.find((a) => a.id === chosenId) ?? null;
 
   /** Shows the step at once, then saves it; a refusal puts the row back and says why. */
@@ -149,50 +122,61 @@ export function ApplicationsView({
       <header className="max-md:sr-only">
         <h1 className="text-[28px] font-bold leading-tight tracking-[-0.01em]">Applications</h1>
         <p className="mt-1 hidden text-[14px] text-prt-muted md:block">
-          {intro(page)}
+          {model.intro}
         </p>
       </header>
 
-      <div className="flex flex-wrap items-center gap-3 md:mt-6">
-        {divisionOptions && (
-          <>
-            <div className="w-full md:w-auto">
-              <DivisionTabs options={divisionOptions} value={divisionTab} onChange={setDivisionTab} />
-            </div>
-            <span aria-hidden className="hidden h-5 w-px bg-hairline md:block" />
-          </>
-        )}
-        {teamSelects && (
-          <div className="hidden items-center gap-3 md:flex">
+      <div className="flex flex-col gap-3 md:mt-6 md:flex-row md:flex-wrap md:items-center">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          {has("department-filter") && (
             <FilterMenu
+              label="Department"
               allLabel="All departments"
-              value={department}
-              onChange={setDepartment}
-              options={departmentNames.map((d) => ({ value: d, label: d }))}
+              value={filter.department}
+              onChange={(department) => narrow({ department })}
+              options={model.units.map((u) => ({ value: u.name, label: u.name }))}
             />
+          )}
+          {has("division-filter") && (
             <FilterMenu
+              label="Division"
               allLabel="All divisions"
-              value={shownDivision}
-              onChange={setDivision}
-              options={divisionNames.map((d) => ({ value: d, label: d }))}
+              value={shown.division}
+              onChange={(division) => narrow({ division })}
+              options={divisionOptions(model.units, filter.department).map((d) => ({ value: d, label: d }))}
             />
-            <span aria-hidden className="h-5 w-px bg-hairline" />
-          </div>
-        )}
-        <Segmented
-          label="Show applications"
-          value={tab}
-          onChange={setTab}
-          phone="chips"
-          options={APPLICATION_TABS.map((t) => ({ value: t.tab, label: t.label, count: counts[t.tab] }))}
-        />
-        <div className="hidden md:block">
-          <FilterMenu
-            allLabel="All positions"
-            value={shownPosition}
-            onChange={setPosition}
-            options={tabPositions.map((p) => ({ value: p.ref, label: p.title }))}
-          />
+          )}
+          <span aria-hidden className="hidden h-5 w-px bg-hairline md:block" />
+          {has("stage-switch") && (
+            <Segmented
+              label="Show applications"
+              value={filter.tab}
+              onChange={(tab) => narrow({ tab })}
+              phone="chips"
+              options={APPLICATION_TABS.map((t) => ({ value: t.tab, label: t.label, count: shown.counts[t.tab] }))}
+            />
+          )}
+          {has("position-filter") && (
+            <FilterMenu
+              label="Position"
+              allLabel="All positions"
+              value={shown.position}
+              onChange={(position) => narrow({ position })}
+              options={shown.positions.map((p) => ({ value: p.ref, label: p.title }))}
+            />
+          )}
+        </div>
+        <div className="flex items-center gap-3 md:ml-auto">
+          {has("sort") && (
+            <FilterMenu
+              label="Sort"
+              allLabel={APPLICATIONS_SORTS[0].label}
+              value={filter.sort === "newest" ? null : filter.sort}
+              onChange={(sort) => narrow({ sort: APPLICATIONS_SORTS.find((s) => s.sort === sort)?.sort ?? "newest" })}
+              options={APPLICATIONS_SORTS.slice(1).map((s) => ({ value: s.sort, label: s.label }))}
+            />
+          )}
+          {has("search") && <SearchField label="Search applicant or position" value={filter.query} onChange={(query) => narrow({ query })} />}
         </div>
       </div>
 
@@ -232,17 +216,11 @@ export function ApplicationsView({
                   </span>
                 </span>
                 <span className="flex min-w-0 items-center gap-2">
-                  {headDepartment || teamSelects ? (
-                    // A head's list says which division each role sits in (board 64), as the team leader's does.
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] leading-snug text-text-2">{a.position.title}</span>
-                      <span className="block truncate text-[12px] leading-snug text-prt-muted">
-                        {shortUnitName(a.position.division)}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="truncate text-[13px] text-text-2">{a.position.title}</span>
-                  )}
+                  {/* Every role's list says which division each role sits in (board 64): one view for all (issue #416). */}
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] leading-snug text-text-2">{a.position.title}</span>
+                    <span className="block truncate text-[12px] leading-snug text-prt-muted">{shortUnitName(a.position.division)}</span>
+                  </span>
                   <OtherTag count={a.otherApplications.length} />
                 </span>
                 {!chosen && (
@@ -305,18 +283,6 @@ export function ApplicationsView({
       />
     </div>
   );
-}
-
-/** The line under the title (boards 58b and 64). */
-function intro(page: ApplicationsPage): string {
-  switch (page.scope.kind) {
-    case "team":
-      return "Applications for the positions you lead.";
-    case "division":
-      return page.scope.division ? `Applications for ${page.scope.division} roles.` : "Applications for the positions you lead.";
-    case "department":
-      return `Applications for ${departmentLabel(page.scope.department.name)} roles. Pick a division to narrow the list.`;
-  }
 }
 
 function OtherTag({ count }: { count: number }) {

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { OverviewView } from "@/components/dashboard/overview";
 import { canReach } from "@/lib/dashboard/access";
 import { applicantOverview } from "@/lib/dashboard/applicant-overview";
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 // viewer's own overview.
 export default function OverviewPage() {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="overview" />}>
       <LiveOverview />
     </Suspense>
   );

@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { AccountUnresolved } from "@/components/dashboard/account-unresolved";
-import { DashboardShell } from "@/components/dashboard/shell";
-import { sidebarFor, userMenuPageFor } from "@/lib/dashboard/access";
+import { Avatar } from "@/components/dashboard/avatar";
+import { ClosedOpening, DashboardShell, TopBarAccount } from "@/components/dashboard/shell";
+import { SidebarPages, SidebarPlaceholder } from "@/components/dashboard/sidebar";
+import { openChrome, type DashboardChrome } from "@/lib/dashboard/chrome";
 import { openDashboard } from "@/lib/dashboard/open";
-import { userCardRole } from "@/lib/dashboard/viewer";
 
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
@@ -15,29 +14,45 @@ export const metadata: Metadata = {
 // Every dashboard page sits in the shell: the viewer's sidebar, their user
 // menu and the page.
 // Who the viewer is comes from the dashboard data interface, read on request
-// only, so a build never reads a cookie or the database.
+// only, so a build never reads a cookie or the database. The frame does not
+// wait for it (issue #397): it paints at once, and each part that needs the
+// viewer streams in behind its own Suspense when the viewer is read, while
+// the page streams in beside them. The layout and the page share one opening
+// of the dashboard (`openDashboard` is cached per request).
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  return (
-    <Suspense fallback={<div className="min-h-svh bg-ground" />}>
-      <SignedInShell>{children}</SignedInShell>
-    </Suspense>
-  );
-}
-
-async function SignedInShell({ children }: { children: ReactNode }) {
-  const opening = await openDashboard();
-  if (opening.kind === "signed-out") redirect("/login?cb=/dashboard");
-  // A token holder sent to /login would bounce straight back (proxy.ts).
-  if (opening.kind === "account-unresolved") return <AccountUnresolved />;
-  const { data } = opening;
-  const [counts, hasShownApplications] = await Promise.all([data.navCounts(), data.hasShownApplications()]);
+  const chrome = chromeOf();
   return (
     <DashboardShell
-      viewer={{ ...data.viewer, role: userCardRole(data.viewer, hasShownApplications) }}
-      sections={sidebarFor(data.viewer, { counts, hasShownApplications })}
-      menuPage={userMenuPageFor(data.viewer.kind)}
+      sidebarPages={
+        <Suspense fallback={<SidebarPlaceholder />}>
+          <SidebarPages chrome={chrome} userMenu="dropdown" />
+        </Suspense>
+      }
+      sheetPages={
+        <Suspense fallback={<SidebarPlaceholder />}>
+          <SidebarPages chrome={chrome} userMenu="sheet" />
+        </Suspense>
+      }
+      account={
+        <Suspense fallback={<Avatar accent />}>
+          <TopBarAccount chrome={chrome} />
+        </Suspense>
+      }
+      closed={
+        <Suspense fallback={null}>
+          <ClosedOpening chrome={chrome} />
+        </Suspense>
+      }
     >
       {children}
     </DashboardShell>
   );
+}
+
+async function chromeOf(): Promise<DashboardChrome> {
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return { kind: opening.kind };
+  const { data } = opening;
+  const [counts, hasShownApplications] = await Promise.all([data.navCounts(), data.hasShownApplications()]);
+  return openChrome(data.viewer, { counts, hasShownApplications });
 }

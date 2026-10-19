@@ -1,42 +1,24 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import Link from "next/link";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, Plus, UserCheck, UserMinus, UserX } from "lucide-react";
+import { Copy, ExternalLink, Lock, Mail, MoreHorizontal, Pencil, UserCheck, UserMinus, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cancelAdd, confirmJoin, confirmNda, removeFromDivision } from "@/app/dashboard/team-actions";
-import type { DivisionRemoval } from "@/lib/dashboard/department-members";
 import { noDetailsFilled } from "@/lib/dashboard/details";
-import {
-  headcountLine,
-  matchesPerson,
-  type DivisionHeader,
-  type DivisionMembers,
-  type DivisionPerson,
-  type WaitingPerson,
-} from "@/lib/dashboard/division-members";
-import { divisionLabel, type Joining } from "@/lib/dashboard/team";
+import type { DivisionPerson, WaitingPerson } from "@/lib/dashboard/division-members";
+import type { Joining } from "@/lib/dashboard/team";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
-import { SearchField, TH } from "./directory";
-import { Chips } from "./division-chips";
-import { DrawerPage } from "./drawer";
 import { AlumniDialog } from "./member-drawer";
-import { AddMemberDrawer, EditDetailsDrawer, PersonDrawer, type EditTarget } from "./member-panels";
-import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
-import { PANEL } from "./panel";
+import { GHOST_PILL } from "./page-header";
 
-// A division's Members page for its lead (boards 61e to 61h2, issue #231):
-// everyone in the division with every division they are in as chips and
-// their role, the people added by email who wait for Confirm NDA, and the
-// amber note that the site sends no emails. Phone and Discord are not in the
-// list; the member panel shows them (Owner decision, 2026-10-16, issue
-// #251). A row opens the member panel (61f); its ⋯ menu removes the person
-// from this division or records that they leave the team, and a waiting row's
-// menu cancels the add, each behind an "are you sure". The leads are
-// read-only here: only the head changes them.
+// The parts a Members page and the Team tree's division panel share (boards
+// 61e to 61h2, issue #231): the people added by email who wait for Confirm
+// NDA, the amber note that the site sends no emails, a row's ⋯ menu and the
+// "are you sure" dialogs behind it. The Members page itself is one view for
+// every role (issue #408, ./team-members.tsx).
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -47,236 +29,7 @@ export type Asking =
   | { readonly kind: "remove"; readonly person: DivisionPerson; readonly divisionId: number; readonly short: string }
   | { readonly kind: "leave"; readonly person: DivisionPerson };
 
-export function DivisionMembersView({ page, editable: writes }: { page: DivisionMembers; editable: boolean }) {
-  // The page offers a change only where the viewer may make it (issue #351): a grant at Can view shows the people and no action.
-  const editable = writes && page.editable;
-  const [query, setQuery] = useState("");
-  const [openId, setOpenId] = useState<number | null>(null);
-  const [editing, setEditing] = useState<EditTarget | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [asking, setAsking] = useState<Asking | null>(null);
-
-  const { division } = page;
-  const people = page.people.filter((p) => matchesPerson(p, query));
-  const waiting = page.waiting.filter((w) => matchesWaiting(w, query));
-  const open = page.people.find((p) => p.id === openId) ?? null;
-  const short = divisionLabel(division.name);
-  const intro = [division.name, division.code, headcountLine(page)].filter(Boolean).join(" · ");
-
-  const editPerson = (person: DivisionPerson) => {
-    setOpenId(null);
-    setEditing({ kind: "person", person });
-  };
-  const fillDetails = (w: WaitingPerson) => setEditing({ kind: "waiting", waiting: w });
-
-  const drawerOpen = open !== null || editing !== null || adding;
-
-  return (
-    <DrawerPage drawerOpen={drawerOpen}>
-      <PageHeader
-        title="Members"
-        intro={intro}
-        phone="bar"
-        action={
-          editable ? (
-            <button type="button" onClick={() => setAdding(true)} className={`${PRIMARY_PILL} md:h-10 md:px-5`}>
-              <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
-              Add member
-            </button>
-          ) : undefined
-        }
-      />
-
-      {page.divisions.length > 1 && (
-        <nav aria-label="Your divisions" className="mt-6 flex flex-wrap gap-1.5">
-          {page.divisions.map((d) => {
-            const current = d.id === division.id;
-            return (
-              <Link
-                key={d.id}
-                href={`/dashboard/members?division=${d.id}`}
-                aria-current={current ? "page" : undefined}
-                className={`flex h-8 items-center whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors duration-300 ease-out ${FOCUS} ${
-                  current ? "border-white-10 bg-white-10 font-semibold text-prt-text" : "border-hairline text-text-2 hover:text-prt-text"
-                }`}
-              >
-                {divisionLabel(d.name)}
-              </Link>
-            );
-          })}
-        </nav>
-      )}
-
-      {page.joining.length > 0 && (
-        <ul className="mt-6 flex flex-col gap-2.5">
-          {page.joining.map((joining) => (
-            <JoiningBanner key={joining.applicationId} joining={joining} division={division.name} editable={editable} />
-          ))}
-        </ul>
-      )}
-
-      <div className="mt-6 flex flex-col gap-3 md:mt-5 md:flex-row md:items-center md:justify-between">
-        <p className="flex items-center gap-2 text-[13px] text-prt-muted">
-          <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-          {division.leadsHint}
-        </p>
-        <SearchField value={query} onChange={setQuery} placeholder="Search name, email, phone" className="md:w-[240px]" />
-      </div>
-
-      <PeopleTable
-        people={people}
-        waiting={waiting}
-        waitingDivision={division}
-        editable={editable}
-        openId={openId}
-        onOpen={setOpenId}
-        removalsOf={(p) => [{ divisionId: division.id, short, removal: p.removal }]}
-        onAsk={setAsking}
-        onFill={fillDetails}
-        phoneCard="chips"
-        drawerOpen={drawerOpen}
-      />
-
-      {page.waiting.map((w) => (
-        <NoEmailNote key={w.joinId} waiting={w} editable={editable} onFill={() => fillDetails(w)} />
-      ))}
-
-      <PersonDrawer person={open} editable={editable} onClose={() => setOpenId(null)} onEdit={editPerson} />
-      <EditDetailsDrawer target={editing} division={division} onClose={() => setEditing(null)} />
-      <AddMemberDrawer open={adding} onOpenChange={setAdding} target={{ kind: "division", division }} />
-      <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
-    </DrawerPage>
-  );
-}
-
-/** A waiting row matches the search by its email or the name given. */
-export function matchesWaiting(waiting: WaitingPerson, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  return q === "" || waiting.email.includes(q) || (waiting.name ?? "").toLowerCase().includes(q);
-}
-
-/**
- * The people of a Members page (boards 61e, 69, 69b): the rows waiting for
- * their NDA, then the people, as a table from md and as cards on a phone.
- * `waitingDivision` is the division the waiting rows wait for. A phone card
- * shows the person's chips beside them (61m) or one line of codes, role and
- * year (69m).
- */
-export function PeopleTable({
-  people,
-  waiting,
-  waitingDivision,
-  editable,
-  openId,
-  onOpen,
-  removalsOf,
-  onAsk,
-  onFill,
-  phoneCard,
-  drawerOpen,
-}: {
-  people: readonly DivisionPerson[];
-  waiting: readonly WaitingPerson[];
-  waitingDivision: DivisionHeader | null;
-  editable: boolean;
-  openId: number | null;
-  onOpen: (id: number) => void;
-  /** The divisions the row's menu offers "Remove from <division>" for. */
-  removalsOf: (person: DivisionPerson) => readonly DivisionRemoval[];
-  onAsk: (asking: Asking) => void;
-  onFill: (waiting: WaitingPerson) => void;
-  phoneCard: "chips" | "line";
-  /**
-   * A side panel is open: from xl it takes 428px of the page, which leaves the
-   * table about 520px wide at 1280, so Divisions and Role take the room they
-   * need (a department chip, the Confirm NDA button) and no cell runs into
-   * the next.
-   */
-  drawerOpen: boolean;
-}) {
-  const waitingRows = waitingDivision === null ? [] : waiting;
-  const name = waitingDivision?.name ?? "";
-  const short = divisionLabel(name);
-  return (
-    <>
-      <ul aria-label="Members" className="mt-4 flex flex-col gap-2.5 md:hidden">
-        {waitingRows.map((w) => (
-          <li key={`w${w.joinId}`} className={`${PANEL} flex items-center gap-3.5 border-warning/30 px-4 py-3.5`}>
-            <MailAvatar />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[15px] font-semibold">{w.email}</span>
-              <WaitingLine waiting={w} />
-            </span>
-            {editable && <ConfirmNdaButton onClick={() => onAsk({ kind: "nda", waiting: w, division: name })} />}
-          </li>
-        ))}
-        {people.map((p) => (
-          <li key={p.id}>
-            <button
-              type="button"
-              onClick={() => onOpen(p.id)}
-              className={`${PANEL} flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`}
-            >
-              <Avatar size="ml" photoUrl={p.photoUrl} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[16px] font-semibold">{p.name}</span>
-                <span className="block truncate text-[13px] text-prt-muted">{phoneCard === "chips" ? roleText(p) : phoneLine(p)}</span>
-              </span>
-              {phoneCard === "chips" && <Chips chips={p.chips} />}
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      <section className={`${PANEL} mt-4 hidden overflow-hidden md:block`}>
-        <table className="w-full table-fixed border-collapse">
-          <thead className="border-b border-hairline">
-            <tr>
-              <th scope="col" className={TH}>
-                Member
-              </th>
-              <th scope="col" className={`${TH} w-[19%] ${drawerOpen ? "xl:w-[22%]" : ""}`}>
-                Divisions
-              </th>
-              <th scope="col" className={`${TH} w-[15%] ${drawerOpen ? "xl:w-[29%]" : ""}`}>
-                Role
-              </th>
-              <th scope="col" className="w-14">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-hairline">
-            {waitingDivision !== null &&
-              waitingRows.map((w) => (
-                <WaitingRow
-                  key={`w${w.joinId}`}
-                  waiting={w}
-                  division={waitingDivision}
-                  editable={editable}
-                  onConfirm={() => onAsk({ kind: "nda", waiting: w, division: name })}
-                  onFill={() => onFill(w)}
-                  onCancel={() => onAsk({ kind: "cancel", waiting: w, short })}
-                />
-              ))}
-            {people.map((p) => (
-              <PersonRow
-                key={p.id}
-                person={p}
-                removals={removalsOf(p)}
-                selected={p.id === openId}
-                editable={editable}
-                onOpen={() => onOpen(p.id)}
-                onRemove={(r) => onAsk({ kind: "remove", person: p, divisionId: r.divisionId, short: r.short })}
-                onLeave={() => onAsk({ kind: "leave", person: p })}
-              />
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </>
-  );
-}
+export { matchesWaiting } from "@/lib/dashboard/members-view";
 
 /** The "are you sure" dialogs a Members page's rows and notes open. */
 export function MemberDialogs({ asking, onClose }: { asking: Asking | null; onClose: () => void }) {
@@ -297,21 +50,10 @@ export function MemberDialogs({ asking, onClose }: { asking: Asking | null; onCl
   );
 }
 
-/** The Role column: "Division Lead" in accent for a lead (board 61e), else their title in this division. */
-function roleText(person: DivisionPerson): string {
-  return person.role === "lead" ? "Division Lead" : (person.title ?? "Member");
-}
-
-/** A head's phone card line (board 69m): "MA · Division lead · since 2023", with no title left out. */
-function phoneLine(person: DivisionPerson): string {
-  const role = person.role === "lead" ? "Division lead" : person.title;
-  return [person.chips.map((c) => c.label).join(", "), role, `since ${person.since}`].filter(Boolean).join(" · ");
-}
-
 /**
  * Private data is blurred until hover (Owner decision, 2026-10-11), and
- * until keyboard focus, so it can be read without a mouse. The division list
- * no longer shows a phone (issue #251); the whole-team Members table does.
+ * until keyboard focus, so it can be read without a mouse. The Members list
+ * shows no phone (issue #251); the Members table does.
  */
 export function Private({ children, label }: { children: ReactNode; label: string }) {
   return (
@@ -351,123 +93,6 @@ export function ConfirmNdaButton({ onClick }: { onClick: () => void }) {
     >
       Confirm NDA
     </button>
-  );
-}
-
-function WaitingRow({
-  waiting,
-  division,
-  editable,
-  onConfirm,
-  onFill,
-  onCancel,
-}: {
-  waiting: WaitingPerson;
-  division: DivisionMembers["division"];
-  editable: boolean;
-  onConfirm: () => void;
-  onFill: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <tr className="bg-warning/[0.04]">
-      <td className="px-5 py-2.5">
-        <span className="flex min-w-0 items-center gap-3.5">
-          <MailAvatar />
-          <span className="min-w-0">
-            <span className="block truncate text-[15px] text-prt-text">{waiting.email}</span>
-            <WaitingLine waiting={waiting} />
-          </span>
-        </span>
-      </td>
-      <td className="px-5 py-2.5">
-        <Chips chips={[{ divisionId: division.id, label: division.code ?? divisionLabel(division.name), code: division.code !== null }]} />
-      </td>
-      <td className="px-5 py-2.5">{editable ? <ConfirmNdaButton onClick={onConfirm} /> : <span className="text-[14px] text-prt-muted">Waiting</span>}</td>
-      <td className="pr-4 text-right">
-        {editable && (
-          <RowMenu label={`Actions for ${waiting.email}`}>
-            <MenuItem onSelect={onFill} icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}>
-              Fill details
-            </MenuItem>
-            <MenuItem onSelect={onCancel} danger icon={<UserX className="h-3.5 w-3.5" strokeWidth={1.75} />}>
-              Cancel add
-            </MenuItem>
-          </RowMenu>
-        )}
-      </td>
-    </tr>
-  );
-}
-
-function PersonRow({
-  person,
-  removals,
-  selected,
-  editable,
-  onOpen,
-  onRemove,
-  onLeave,
-}: {
-  person: DivisionPerson;
-  removals: readonly DivisionRemoval[];
-  selected: boolean;
-  editable: boolean;
-  onOpen: () => void;
-  onRemove: (removal: DivisionRemoval) => void;
-  onLeave: () => void;
-}) {
-  const lead = person.role === "lead";
-  const { leave } = person;
-  // Not offered where it is their only division: the menu then holds only "Leaves the team" (Owner decision, 2026-10-11).
-  const offered = removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
-  return (
-    <tr
-      onClick={onOpen}
-      className={`cursor-pointer transition-colors duration-300 ease-out ${selected ? "bg-accent/[0.08]" : "hover:bg-white-5"}`}
-    >
-      <td className="px-5 py-2.5">
-        <span className="flex min-w-0 items-center gap-3.5">
-          <Avatar photoUrl={person.photoUrl} />
-          <span className="min-w-0">
-            <span className="block truncate text-[15px] text-prt-text">{person.name}</span>
-            <span className="block truncate text-[13px] text-prt-muted">{person.details.prtEmail || person.signInEmail}</span>
-          </span>
-        </span>
-      </td>
-      <td className="px-5 py-2.5">
-        <Chips chips={person.chips} />
-      </td>
-      <td className={`truncate px-5 py-2.5 text-[14px] ${lead ? "text-accent" : "text-prt-text"}`}>{roleText(person)}</td>
-      <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
-        {editable && !person.self ? (
-          <RowMenu label={`Actions for ${person.name}`}>
-            {offered.map((r) => (
-              <MenuItem
-                key={r.divisionId}
-                onSelect={() => onRemove(r)}
-                icon={<UserMinus className="h-3.5 w-3.5" strokeWidth={1.75} />}
-                locked={r.removal.kind === "locked" ? r.removal.reason : null}
-              >
-                Remove from {r.short}
-              </MenuItem>
-            ))}
-            <MenuItem onSelect={onLeave} danger locked={leave.allowed ? null : leave.reason}>
-              Leaves the team
-            </MenuItem>
-          </RowMenu>
-        ) : (
-          <button
-            type="button"
-            onClick={onOpen}
-            aria-label={`Open ${person.name}`}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-prt-muted transition-colors duration-300 ease-out hover:bg-white-5 hover:text-prt-text ${FOCUS}`}
-          >
-            <MoreHorizontal aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-          </button>
-        )}
-      </td>
-    </tr>
   );
 }
 

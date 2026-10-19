@@ -5,8 +5,9 @@ import { dummyDashboardData } from "./index";
 import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
 
-// The team leader's test developer (issue #252): their own Overview and
-// Members (boards 72 and 73), while the operations lead keeps boards 40 and 46.
+// The team leader's test developer (issue #252): their own Overview (board
+// 72), while the operations lead keeps board 40. Both open Members on the
+// whole team (board 73, issue #418).
 
 function dashboard(view: TestViewer) {
   return dummyDashboardData(view, { current: dummyRecruitmentOf(undefined), save: async () => {} }, { current: EMPTY_DUMMY_STATE, save: async () => {} });
@@ -18,7 +19,7 @@ test("the team leader signs in as the team leader, in the team leader's seat", (
   assert.deepEqual([viewer.kind, viewer.kind === "operations-lead" ? viewer.seat : null], ["operations-lead", "team-leader"]);
 });
 
-test("the team leader's Overview and Members are boards 72 and 73; the operations lead keeps boards 40 and 46", async () => {
+test("the team leader's Overview is board 72 and the operations lead's board 40; both list the same whole team on Members (board 73)", async () => {
   const leader = dashboard("team-leader");
   const ops = dashboard("operations-lead");
   const [leaderOverview, leaderMembers, opsOverview, opsMembers] = await Promise.all([
@@ -28,7 +29,7 @@ test("the team leader's Overview and Members are boards 72 and 73; the operation
     ops.members(),
   ]);
   assert.equal(opsOverview.shape, "team");
-  assert.equal(opsMembers.scope, "team");
+  assert.equal(opsMembers.scope, "whole-team");
   assert.equal(leaderOverview.shape, "leader");
   assert.equal(leaderMembers.scope, "whole-team");
   if (leaderOverview.shape !== "leader" || leaderMembers.scope !== "whole-team") return;
