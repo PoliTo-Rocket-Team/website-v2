@@ -57,8 +57,8 @@ import { PANEL } from "./panel";
 // Only the rows (./lib/dashboard/members-view.ts) and the actions the data
 // allows differ: a row's ⋯ menu removes someone from a division or records
 // that they leave the team, a waiting row confirms their NDA, Edit details
-// opens the Team page panel (board 46b) on the operations lead's and the IT
-// lead's whole team (issue #418), and Add member adds where the viewer may. Phone, date of birth and gender stay blurred
+// opens the Team page panel (board 46b) on every full-access seat's whole
+// team, the team leader's included (issues #418, #444), and Add member adds where the viewer may. Phone, date of birth and gender stay blurred
 // until hover.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";

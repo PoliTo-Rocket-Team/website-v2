@@ -80,7 +80,7 @@ import {
   type TeamActor,
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
-import { isTeamLeader, kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { grantActors, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { opensWholeTeam } from "@/lib/dashboard/members-view";
@@ -488,21 +488,25 @@ function actorOf(kind: TestViewer, org: OrgChart, grant: TestGrant | null): Team
   return divisions.length === 0 ? null : { kind: "lead", divisionIds: divisions };
 }
 
-/** Whether `kind` may change this person from the Members page: the whole team, or any division the lead leads; never themselves. */
-function mayEdit(kind: TestViewer, entry: RosterEntry): boolean {
-  if (!canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
-  if (kindOfTestViewer(kind) === "operations-lead") return true;
-  return myDivisions(kind).some((division) => isIn(entry.placement, division));
+/**
+ * Whether `kind` may change this person from the Members page, as `actor`
+ * reaches them (`reachesDivision`): anyone for the team, someone in the
+ * head's department or in a division the lead leads (Owner decisions,
+ * 2026-10-19, issue #444); never themselves.
+ */
+function mayEdit(kind: TestViewer, actor: TeamActor | null, entry: RosterEntry, org: OrgChart): boolean {
+  if (actor === null || !canReach(testDeveloperStanding(kind), "members") || entry.id === SELF_ID[kind]) return false;
+  if (actor.kind === "team") return true;
+  return membershipsIn(entry.placement).some((m) => reachesDivision(actor, m.divisionId, org));
 }
 
 /**
- * The division a drawer's role change is about: the person's home one among
- * the lead's divisions, or the person's home division for the operations lead.
+ * The division a drawer's role change is about: the person's home division
+ * for the team, else their home one among the divisions `actor` reaches.
  */
-function drawerDivision(kind: TestViewer, entry: RosterEntry): number | null {
-  if (kind !== "division-lead") return homeDivisionOf(entry.placement);
-  const mine = myDivisions(kind);
-  return homeFirst(membershipsIn(entry.placement)).find((m) => mine.includes(m.divisionId))?.divisionId ?? null;
+function drawerDivision(actor: TeamActor, entry: RosterEntry, org: OrgChart): number | null {
+  if (actor.kind === "team") return homeDivisionOf(entry.placement);
+  return homeFirst(membershipsIn(entry.placement)).find((m) => reachesDivision(actor, m.divisionId, org))?.divisionId ?? null;
 }
 
 /** One roster entry as the Members page shows it, with the details and titles the test developer saved. */
@@ -857,8 +861,8 @@ function writesFor(
     },
     async saveMember(personId, edit) {
       const entry = find(personId);
-      if (!entry || !mayEdit(kind, entry) || actor === null) return false;
-      const division = drawerDivision(kind, entry);
+      if (!entry || actor === null || !mayEdit(kind, actor, entry, org)) return false;
+      const division = drawerDivision(actor, entry, org);
       // The drawer sets the role in one division; a seat or head, or someone in no division, has none to set.
       if (edit.role !== null && (division === null || !isIn(entry.placement, division))) return false;
       // Changing who leads a division is the head's, never a division lead's (Owner decision on #231).
@@ -1034,13 +1038,12 @@ export function dummyTeamPages(
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
-      // Every full-access seat's page lists every member field (boards 73 to 73c, issues #252 and #418);
-      // the operations lead keeps the Team page panel's edits (board 46b), the team leader's rows offer none.
-      const standing = testDeveloperStanding(kind);
-      if (opensWholeTeam(standing)) {
+      // Every full-access seat's page lists every member field (boards 73 to 73c, issues #252 and #418),
+      // with the Team page panel's edits (board 46b) for every seat, the team leader included (issue #444).
+      if (opensWholeTeam(testDeveloperStanding(kind))) {
         return {
           scope: "whole-team",
-          teamPageEdits: isTeamLeader(standing) ? null : team.map((entry) => teamPageEditOf(entry, org)),
+          teamPageEdits: team.map((entry) => teamPageEditOf(entry, org)),
           ...wholeTeamMembers({ records: team.map((entry) => recordOf(entry, edits)), org, selfId: self }),
         };
       }

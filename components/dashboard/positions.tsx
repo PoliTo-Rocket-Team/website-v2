@@ -317,8 +317,6 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
         <Toggle checked={open} onCheckedChange={flip} label="Recruitment is open" tone="success" disabled={!canSwitch} />
-        {/* Who may switch it: anyone with team-wide positions edit, the team leader by default (Owner decision, 2026-10-19). */}
-        <span className="text-[11px] text-prt-muted">Team leader and operations lead</span>
       </div>
     </section>
   );

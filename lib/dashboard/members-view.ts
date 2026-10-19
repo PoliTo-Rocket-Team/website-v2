@@ -126,14 +126,14 @@ export function membersModelOf(directory: MemberDirectory): MembersModel | null 
 
 /**
  * A full-access seat's page (boards 73 to 73c, issue #418): the whole team,
- * with Add member. Each row offers the Team page panel's edits where the
- * directory holds them (the operations lead and the IT lead, board 46b), and
- * no change for the team leader.
+ * with Add member. Each row offers the Team page panel's edits the directory
+ * holds for it (board 46b), for every full-access seat alike, the team leader
+ * included (Owner decision, 2026-10-19, issue #444).
  */
-export function wholeTeamModel(page: WholeTeamMembers & { readonly teamPageEdits: readonly TeamPageEdit[] | null }): MembersModel {
+export function wholeTeamModel(page: WholeTeamMembers & { readonly teamPageEdits: readonly TeamPageEdit[] }): MembersModel {
   const edits = page.teamPageEdits;
   const actionsOf = (id: number): TeamPageActions | null => {
-    const edit = edits?.find((e) => e.id === id);
+    const edit = edits.find((e) => e.id === id);
     return edit === undefined ? null : { kind: "team-page", edit };
   };
   return model({
@@ -144,7 +144,7 @@ export function wholeTeamModel(page: WholeTeamMembers & { readonly teamPageEdits
     divisions: [],
     switcher: null,
     add: page.divisions.length === 0 ? null : { kind: "department", department: "the team", divisions: page.divisions },
-    panelEdits: edits !== null,
+    panelEdits: true,
   });
 }
 

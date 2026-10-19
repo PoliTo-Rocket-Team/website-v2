@@ -376,11 +376,11 @@ export type DepartmentHead = {
  * each (boards 61e to 61h2, issue #231); every division of the department for
  * its head (boards 69 to 69c, issue #235); and nothing for anyone else. On
  * the whole team, `teamPageEdits` holds what the Team page panel changes for
- * each person where the viewer's seat has that panel (the operations lead and
- * the IT lead); it is null for the team leader, whose rows offer no change.
+ * each person: every full-access seat has that panel, the team leader
+ * included (Owner decision, 2026-10-19, issue #444).
  */
 export type MemberDirectory =
-  | ({ readonly scope: "whole-team"; readonly teamPageEdits: readonly TeamPageEdit[] | null } & WholeTeamMembers)
+  | ({ readonly scope: "whole-team"; readonly teamPageEdits: readonly TeamPageEdit[] } & WholeTeamMembers)
   | ({ readonly scope: "division" } & DivisionMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
   | { readonly scope: "none" };
