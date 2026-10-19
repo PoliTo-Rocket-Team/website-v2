@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { OutreachPostEdit } from "@/components/dashboard/outreach-post-edit";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -26,7 +26,7 @@ type Params = { params: Promise<{ slug: string }> };
 // the dashboard's not found.
 export default function OutreachPostEditPage({ params }: Params) {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="editor" />}>
       <LivePost params={params} />
     </Suspense>
   );

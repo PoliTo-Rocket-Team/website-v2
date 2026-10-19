@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { ProjectEdit } from "@/components/dashboard/project-edit";
 import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -23,7 +23,7 @@ type Params = { params: Promise<{ slug: string }> };
 // else gets the dashboard's not found.
 export default function ProjectEditPage({ params }: Params) {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="editor" />}>
       <LiveProject params={params} />
     </Suspense>
   );

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { TeamTreeView } from "@/components/dashboard/team-tree";
 import { TeamTreeEditView } from "@/components/dashboard/team-tree-edit";
 import { canReach } from "@/lib/dashboard/access";
@@ -21,7 +21,7 @@ const EDIT_HREF = "/dashboard/team-tree?edit=1";
 // a viewer who edits structure; anyone else gets the tree.
 export default function TeamTreePage({ searchParams }: { searchParams: Search }) {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="tree" />}>
       <LiveTeamTree searchParams={searchParams} />
     </Suspense>
   );

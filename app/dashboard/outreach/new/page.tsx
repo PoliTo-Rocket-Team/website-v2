@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { OutreachPostEdit } from "@/components/dashboard/outreach-post-edit";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { todayInRome } from "@/lib/outreach";
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 // reach decides who opens it, as for every post.
 export default function NewOutreachPostPage() {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="editor" />}>
       <NewPost />
     </Suspense>
   );

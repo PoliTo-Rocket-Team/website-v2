@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { DashboardPageFallback } from "@/components/dashboard/page-fallback";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { ApplicationsView } from "@/components/dashboard/applications";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 // "Review" links do. Members and applicants do not reach it.
 export default function ApplicationsPage({ searchParams }: { searchParams: Promise<{ position?: string | string[] }> }) {
   return (
-    <Suspense fallback={<DashboardPageFallback />}>
+    <Suspense fallback={<PageSkeleton kind="list" />}>
       <LiveApplications searchParams={searchParams} />
     </Suspense>
   );
