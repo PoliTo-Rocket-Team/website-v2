@@ -849,11 +849,11 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     sendHandOver: (input) => sendHandOver(identity, input),
     answerHandOver: (requestId, answer) => answerHandOver(identity, requestId, answer),
     // The member this request already resolved, never the session a second time (issue #397).
-    recruitment: () => getRecruitmentControlFor(identity.memberId),
+    recruitment: () => getRecruitmentControlFor(identity.memberId, identity),
     setRecruitment: (next) =>
       switchRecruitment(next, {
-        // Read on the server, from the caller's positions scope rows.
-        maySwitch: async () => canSwitchRecruitment(await getScopeInfoForMember(identity.memberId, "positions")),
+        // Read on the server, from the caller's seat and positions scope rows: the same rule the page shows.
+        maySwitch: async () => canSwitchRecruitment(identity, await getScopeInfoForMember(identity.memberId, "positions")),
         save: saveRecruitment,
         refresh: () => refreshAfter("positions", updateTag),
       }),

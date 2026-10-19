@@ -956,7 +956,7 @@ export function dummyDashboardData(
   const keepApproveOrders = async (change: ApproveOrdersChange | null) => {
     if (change !== null) await teamEdits.save(withApproveOrdersChange(teamEdits.current, change));
   };
-  const canSwitch = canSwitchRecruitmentAs(kind);
+  const canSwitch = canSwitchRecruitmentAs(testDeveloperStanding(viewer));
   // The team as the test developer left it: who was moved to alumni, who joined.
   const teamRoster = editedRoster(teamEdits.current, dummyJoiners(team.applications));
   // Closing a division removes the access given in it (#232).
