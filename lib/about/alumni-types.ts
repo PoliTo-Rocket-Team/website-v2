@@ -21,8 +21,11 @@ export type Founder = {
 /** The small tag beside a name: a founder's, or a department head's or division lead's. */
 export type Tag = "FOUNDER" | "CO-FOUNDER" | "HEAD" | "LEAD";
 
-/** One row of a group's list. A lead's role is printed in accent. */
-export type Entry = { name: string; role: string; lead: boolean; tag?: Tag };
+/**
+ * One row of a group's list. A lead's role is printed in accent. The photo
+ * sits in a small circle beside the name; none shows the PRT mark (#391).
+ */
+export type Entry = { name: string; role: string; lead: boolean; tag?: Tag; photo?: string };
 
 /** A group as the page draws it: a heading, its rows, and how many rows show before "Show all". */
 export type ShownGroup = {

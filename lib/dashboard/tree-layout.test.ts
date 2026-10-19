@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { boardSeatOf, buildTeamTree, homeDivisionOf, inDivisions, NO_MEMBERSHIPS, type OrgChart, type RosterEntry } from "./team";
-import { boxOf, layoutTeamTree, rowWidth } from "./tree-layout";
+import { boxOf, layoutTeamTree } from "./tree-layout";
 
 const org: OrgChart = {
   departments: [
@@ -45,52 +45,7 @@ const leadsOne = person(11, "Giada Rizzo", inDivisions([
   { divisionId: 20, role: "lead", since: "2025-10-01" },
 ]));
 
-test("someone in several divisions is drawn under the one they lead, else under their oldest", () => {
-  assert.equal(homeDivisionOf(both.placement), 20, "the oldest membership: Safety, from 2024");
-  assert.equal(homeDivisionOf(leadsOne.placement), 20, "the division they lead, though Mission Analysis is older");
-  const tree = buildTeamTree([...roster.filter((p) => p.id !== 9), both, leadsOne], org, "2026–27", 6);
-  const safety = tree.departments.flatMap((d) => d.divisions).find((v) => v.id === 20)!;
-  assert.equal(safety.lead?.name, "Giada Rizzo");
-  assert.deepEqual(safety.members.map((m) => m.name), ["Matteo Greco"]);
-  const mission = tree.departments.flatMap((d) => d.divisions).find((v) => v.id === 10)!;
-  assert.deepEqual(mission.elsewhere, [11]);
-  assert.ok(!mission.members.some((m) => m.id === 11));
-  assert.deepEqual(safety.members[0].also, [{ divisionId: 11, label: "Optimization and Analysis" }]);
-});
-
-test("a multi-division person is drawn once, with a dashed line from each other division to them (board 54e)", () => {
-  const layout = layoutTeamTree(buildTeamTree([...roster, both], org, "2026–27", 6));
-  assert.equal(layout.nodes.filter((n) => n.person?.id === 10).length, 1);
-  assert.equal(layout.links.length, 1);
-  const [link] = layout.links;
-  assert.equal(link.divisionId, 11);
-  const me = boxOf(layout, 10)!;
-  const end = link.points[link.points.length - 1];
-  // Nothing is drawn under Matteo's row, so the line comes straight up into its bottom.
-  assert.deepEqual(end, [me.x + me.w / 2, me.y + me.h]);
-  // It runs across under every card and row it passes.
-  const across = link.points[1][1];
-  assert.ok(layout.nodes.every((n) => n.x + n.w <= link.points[0][0] || n.x >= end[0] || n.y + n.h < across));
-  assert.ok(layout.height > across);
-  // Nobody in two divisions: no lines.
-  assert.deepEqual(layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6)).links, []);
-});
-
-test("a row's \"also\" tag gets room in the layout and never reaches the next column (board 54e)", () => {
-  // In Mission Analysis since 2023 and Optimization and Analysis since 2025: drawn
-  // under Mission Analysis, with Optimization and Analysis the column to its right.
-  const tagged = person(12, "Anna Villa", inDivisions([
-    { divisionId: 10, role: "member", since: "2023-10-01" },
-    { divisionId: 11, role: "member", since: "2025-10-01" },
-  ]));
-  const plain = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
-  const layout = layoutTeamTree(buildTeamTree([...roster, tagged], org, "2026–27", 6));
-  const row = layout.nodes.find((n) => n.person?.id === 12)!;
-  assert.equal(row.kind, "row");
-  if (row.kind === "row") assert.ok(row.w >= rowWidth(row.person) && row.w > boxOf(plain, 6)!.w, "the tagged row is drawn wide enough for its tag");
-  const nextLead = boxOf(layout, 8)!;
-  assert.ok(row.x + row.w < nextLead.x, "it ends before the next division's column starts");
-  // No card or row is drawn over another.
+function assertApart(layout: ReturnType<typeof layoutTeamTree>) {
   for (const a of layout.nodes) {
     for (const b of layout.nodes) {
       if (a === b) continue;
@@ -98,6 +53,73 @@ test("a row's \"also\" tag gets room in the layout and never reaches the next co
       assert.ok(apart, `${a.key} overlaps ${b.key}`);
     }
   }
+}
+
+const divisionsOf = (tree: ReturnType<typeof buildTeamTree>) => tree.departments.flatMap((d) => d.divisions);
+
+test("someone in several divisions is listed under each, with the role they hold there (#398)", () => {
+  const tree = buildTeamTree([...roster.filter((p) => p.id !== 9), both, leadsOne], org, "2026–27", 6);
+  const safety = divisionsOf(tree).find((v) => v.id === 20)!;
+  assert.equal(safety.lead?.name, "Giada Rizzo");
+  assert.deepEqual(safety.members.map((m) => m.name), ["Matteo Greco"]);
+  const mission = divisionsOf(tree).find((v) => v.id === 10)!;
+  assert.deepEqual(mission.members.map((m) => m.name), ["Elif Kaya", "Giada Rizzo", "Sofia Neri"], "a member here, by name, like anyone else");
+  const optimization = divisionsOf(tree).find((v) => v.id === 11)!;
+  assert.deepEqual(optimization.members.map((m) => m.name), ["Matteo Greco"]);
+});
+
+test("a seat holder or head who leads a division is that division's lead card too", () => {
+  const leaderLeads = person(1, "Alessandro Greco", { role: "team-leader", memberships: inDivisions([{ divisionId: 20, role: "lead", since: "2025-10-01" }]).memberships });
+  const tree = buildTeamTree([leaderLeads, ...roster.filter((p) => p.id !== 1 && p.id !== 9)], org, "2026–27", 6);
+  const safety = divisionsOf(tree).find((v) => v.id === 20)!;
+  assert.equal(safety.lead?.id, 1);
+  assert.equal(safety.lead?.first, false, "their first place is the leader's seat");
+  assert.equal(tree.leader?.first, true);
+});
+
+test("a multi-division person is drawn in every division, with distinct keys, and nothing overlaps", () => {
+  const layout = layoutTeamTree(buildTeamTree([...roster, both, leadsOne], org, "2026–27", 6));
+  const matteo = layout.nodes.filter((n) => n.person?.id === 10);
+  assert.equal(matteo.length, 2);
+  assert.equal(new Set(layout.nodes.map((n) => n.key)).size, layout.nodes.length, "every node key is distinct");
+  assertApart(layout);
+});
+
+test("Find someone and Show me go to the first place: the highest role, then the earliest division", () => {
+  assert.equal(homeDivisionOf(both.placement), 20, "the oldest membership: Safety, from 2024");
+  assert.equal(homeDivisionOf(leadsOne.placement), 20, "the division they lead, though Mission Analysis is older");
+  const layout = layoutTeamTree(buildTeamTree([...roster.filter((p) => p.id !== 9), both, leadsOne], org, "2026–27", 11));
+  const rizzo = layout.nodes.filter((n) => n.person?.id === 11);
+  assert.equal(rizzo.filter((n) => n.person?.first).length, 1, "one first place");
+  const box = boxOf(layout, 11)!;
+  const safetyLead = layout.nodes.find((n) => n.key === "lead-20")!;
+  assert.deepEqual([box.x, box.y], [safetyLead.x, safetyLead.y], "her Safety lead card, not her Mission Analysis row");
+  // Her path ends there too: only that card is on it, and no row of hers is.
+  assert.ok(layout.nodes.filter((n) => n.person?.id === 11 && n.onPath).every((n) => n.key === "lead-20"));
+  const matteo = boxOf(layout, 10)!;
+  const safetyRow = layout.nodes.find((n) => n.key === "row-20-10")!;
+  assert.deepEqual([matteo.x, matteo.y], [safetyRow.x, safetyRow.y], "Matteo's Safety row, his oldest division");
+});
+
+test("a long name or subtitle wraps: its box grows and pushes the rows under it down (#398)", () => {
+  const longName = "Maria Alessandra Benedetta Castelnuovo di Sant'Agata";
+  const plain = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
+  const long = layoutTeamTree(buildTeamTree(roster.map((p) => (p.id === 6 ? { ...p, name: longName } : p.id === 5 ? { ...p, name: longName } : p)), org, "2026–27", null));
+  const plainRow = boxOf(plain, 6)!;
+  const longRow = boxOf(long, 6)!;
+  assert.ok(longRow.h > plainRow.h, "the member row is taller");
+  assert.equal(longRow.w, plainRow.w, "and keeps the plain width");
+  assert.ok(boxOf(long, 5)!.h > boxOf(plain, 5)!.h, "the lead card is taller");
+  assert.ok(boxOf(long, 7)!.y > boxOf(plain, 7)!.y, "the rows under them move down");
+  assertApart(long);
+});
+
+test("member rows take the plain width and each division column is the lead card's width", () => {
+  const layout = layoutTeamTree(buildTeamTree([...roster, both, leadsOne], org, "2026–27", 6));
+  const rows = layout.nodes.filter((n) => n.kind === "row");
+  assert.ok(rows.every((r) => r.w === rows[0].w));
+  const [mission, optimization] = [layout.nodes.find((n) => n.key === "lead-10")!, layout.nodes.find((n) => n.key === "lead-11")!];
+  assert.equal(optimization.x - mission.x, mission.w + 12, "the next column starts one gap after the lead card");
 });
 
 test("a board seat is read off a role title, in any case and spacing", () => {
@@ -122,7 +144,7 @@ test("the board seats sit under the leader, Project Manager first", () => {
   assert.ok(pm.x < ce.x && pm.y > leader.y);
 });
 
-test("every person is drawn once, heads in one row over their leads", () => {
+test("someone in one place is drawn once, heads in one row over their leads", () => {
   const layout = layoutTeamTree(buildTeamTree(roster, org, "2026–27", 6));
   const ids = layout.nodes.flatMap((n) => (n.person ? [n.person.id] : []));
   assert.deepEqual([...ids].sort((a, b) => a - b), roster.map((p) => p.id));

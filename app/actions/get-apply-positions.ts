@@ -174,16 +174,43 @@ export type PositionWithRecruitment =
   | { status: "database-not-configured" };
 
 /**
- * One position and the recruitment switch, read fresh for the position page
- * and the submit (issue #120), never from the cached snapshot: the submit
- * must see a position closed a minute ago. Deleted positions are read too,
- * so the page can say the position is not public rather than not found.
+ * One position and the recruitment switch, read fresh for the submit (issue
+ * #120), never from a cache: the submit must see a position closed a minute
+ * ago. Deleted positions are read too, so the page can say the position is
+ * not public rather than not found.
  */
 export async function getPositionWithRecruitment(id: number): Promise<PositionWithRecruitment> {
   if (!isDatabaseConfigured()) {
     return { status: "database-not-configured" };
   }
 
+  return queryPositionWithRecruitment(id);
+}
+
+/**
+ * The same read for the position page (issue #395), cached under the public
+ * tag, so a position edit, a division code change and the recruitment switch
+ * refresh it with updateTag(PUBLIC_POSITIONS_CACHE_TAG) as they refresh
+ * /apply. The submit still reads fresh (getPositionWithRecruitment).
+ */
+export async function getShownPositionWithRecruitment(id: number): Promise<PositionWithRecruitment> {
+  if (!isDatabaseConfigured()) {
+    return { status: "database-not-configured" };
+  }
+
+  return getShownPositionCached(id);
+}
+
+async function getShownPositionCached(id: number): Promise<PositionWithRecruitment> {
+  "use cache";
+
+  cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
+  cacheLife("weeks");
+
+  return queryPositionWithRecruitment(id);
+}
+
+async function queryPositionWithRecruitment(id: number): Promise<PositionWithRecruitment> {
   const [[row], recruitment] = await Promise.all([
     getDb()
       .select(basePositionSelection())

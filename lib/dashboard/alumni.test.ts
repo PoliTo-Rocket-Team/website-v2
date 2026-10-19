@@ -125,3 +125,15 @@ test("the year and group filters come only from the people left in the directory
   assert.deepEqual(directory.years, [2023, 2021]);
   assert.deepEqual(directory.groups, ["Advisors", "Aerodynamics", "Operations"]);
 });
+
+test("the year filter offers finished years only; someone who left this year stays under All years (#391)", () => {
+  const leftThisYear: AlumniRecord = {
+    ...record,
+    // Eva joined in 2024–25 and left during this year, 2025–26.
+    roles: [...record.roles, role(5, { title: "Aerodynamicist", startedAt: "2024-10-01", leftAt: "2025-12-01" })],
+    people: [...record.people, { memberId: 5, name: "Eva Gallo", email: null }],
+  };
+  const directory = alumniDirectory(alumniOf(leftThisYear, 2025), 2025);
+  assert.ok(directory.rows.some((r) => r.name === "Eva Gallo" && r.years.includes(2025)));
+  assert.deepEqual(directory.years, [2024, 2023, 2021]);
+});

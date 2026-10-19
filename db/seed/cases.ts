@@ -1243,13 +1243,14 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "team-page",
-    case: "The team leader's photo replaced on the page",
-    data: "invented",
-    rows: "`team_page_layer_versions` published, `leader.photo`",
-    exercisedBy: `${issue(283)}, ${issue(284)}`,
+    case: "The team leader's circle shows his own photo, which the published layer leaves alone",
+    data: "public",
+    rows: "`members` 1 `picture`, `team_page_layer_versions` published with no `leader.photo`",
+    exercisedBy: issue(390),
     holds: (data) => {
-      const { build, layer, shown } = teamPageOfSeed(data);
-      return layer.leader.photo !== undefined && shown.leader?.photo === layer.leader.photo && build.leader?.person.photo !== layer.leader.photo;
+      const { layer, shown } = teamPageOfSeed(data);
+      const own = teamRecord.orgChart.leader.photo;
+      return own !== undefined && layer.leader.photo === undefined && shown.leader?.photo === own;
     },
   },
   {

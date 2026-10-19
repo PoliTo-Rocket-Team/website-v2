@@ -752,12 +752,10 @@ function AccessDrawer({
   const unit = access.unit;
   const canGiveApprove = access.approveOrders.canGive;
   const grantable = access.people.filter((p) => p.standing === "member");
-  // Give access opens on the first person who has no access yet; Edit access on the first place the person holds any.
-  const firstFree = grantable.find((p) => !grants.some((g) => g.person.id === p.id) && !holdsApproveOrders(access, p.id)) ?? grantable[0];
-  const [personId, setPersonId] = useState<number | undefined>(editing?.id ?? firstFree?.id);
+  // Give access opens with no person chosen (Owner decision, 2026-10-19); Edit access on the first place the person holds any.
+  const [personId, setPersonId] = useState<number | undefined>(editing?.id);
   const [place, setPlace] = useState<AccessPlace>(() => {
-    const first = editing ?? firstFree;
-    if (unit.kind === "division") return divisionPlaceOf(unit, first);
+    if (unit.kind === "division") return divisionPlaceOf(unit, editing ?? undefined);
     return editing ? (placesHeldBy(unit, grants, editing.id)[0] ?? homePlace(unit)) : homePlace(unit);
   });
   const [areas, setAreas] = useState<AreaLevels>(() => (personId === undefined ? {} : areaLevelsOf(grants, personId, place)));
@@ -883,8 +881,11 @@ function AccessDrawer({
                   id={id}
                   value={personId ?? ""}
                   onChange={(e) => choosePerson(Number(e.target.value))}
-                  className={`${SELECT} pl-12`}
+                  className={`${SELECT} ${person ? "pl-12" : "text-prt-muted"}`}
                 >
+                  <option value="" disabled>
+                    Choose a person
+                  </option>
                   {grantable.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}

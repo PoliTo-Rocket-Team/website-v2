@@ -55,7 +55,7 @@ async function readPinned(): Promise<number | null> {
   }
 }
 
-/** Everything stored, read in one round trip: the posts with their versions in site order, the summit, the tag list and the pinned post. */
+/** Everything stored: the posts with their versions in site order, the summit and the tag list in one batch, then the pinned post in a second read. */
 export async function readStoredOutreach(): Promise<StoredOutreach> {
   const db = getDb();
   const [versionRowsRead, tagRows, summitRows, tagList] = await db.batch([

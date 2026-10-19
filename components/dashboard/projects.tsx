@@ -14,6 +14,9 @@ import { CONTENT_FOCUS as FOCUS, StatusPill, useDragOrder, type DragRow } from "
 import { NewProjectDialog } from "./new-project-dialog";
 import { PageHeader, PRIMARY_PILL } from "./page-header";
 
+/** The home card at Home's heights, as wide as its dashboard column (210px on phones, as Home). */
+const DASHBOARD_CARD_LAYOUT = "mx-auto h-[360px] w-[210px] md:h-[618px] md:w-full";
+
 // The dashboard Projects page (board 75, issue #297): every stored project as
 // its home card, as Home draws it, at about 0.85 scale and three per row from
 // lg. Over each card: the drag grip, its status and the "edited by" line;
@@ -137,10 +140,11 @@ function ProjectCard({
       {/* The home card at 0.85 from lg: laid out at its full size in a box
           1/0.85 of the column wide, then scaled from its top left corner,
           inside a frame as tall as the scaled card. Below lg it is the card
-          Home draws at that width. */}
+          Home draws at that width. The card fills this column: Home's row
+          layout sizes it against its scroll row, not against a grid cell. */}
       <div className="flex justify-center lg:block lg:h-[calc(618px*0.85)]">
-        <div className="lg:w-[calc(100%/0.85)] lg:origin-top-left lg:scale-[0.85]">
-          <HomeProjectCard project={homeCardOf(record, position)} />
+        <div className="w-full lg:w-[calc(100%/0.85)] lg:origin-top-left lg:scale-[0.85]">
+          <HomeProjectCard project={homeCardOf(record, position)} layout={DASHBOARD_CARD_LAYOUT} />
         </div>
       </div>
 

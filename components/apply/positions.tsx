@@ -240,6 +240,9 @@ function RoleDetails({ role }: { role: Role }) {
       {role.status === "open" ? (
         <div className="mt-6 flex flex-col-reverse gap-4 border-white-5 md:mt-7 md:flex-row md:items-center md:justify-between md:border-t md:pt-5">
           <p className="text-center text-[13px] leading-snug text-prt-muted md:text-left">{applyPage.voluntary}</p>
+          {/* Next prefetches the position page's shell, its skeleton included, as soon as
+              the open row shows this link (issue #395): the default `prefetch`, kept on
+              purpose, since a full prefetch would hold the viewer's form state stale. */}
           <Link
             href={role.href}
             className="group/apply inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-prt-text px-[22px] py-3 text-[15px] font-semibold text-ground transition-opacity hover:opacity-90 active:opacity-80 md:py-2.5 md:text-[14px]"
