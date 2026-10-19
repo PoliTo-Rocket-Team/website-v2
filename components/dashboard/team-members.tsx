@@ -1,10 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Check, List, ListFilter, Lock, MoreHorizontal, Pencil, Plus, Search, Table2, UserMinus, UserX } from "lucide-react";
-import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { List, Lock, MoreHorizontal, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
 import { memberDetailText } from "@/lib/dashboard/details";
 import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-members";
 import {
@@ -31,6 +29,7 @@ import {
 } from "@/lib/dashboard/team-members";
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
+import { ColumnFilter } from "./column-filter";
 import { DepartmentFilter, Pager, SearchField, TH } from "./directory";
 import { Chips } from "./division-chips";
 import {
@@ -658,7 +657,7 @@ function TableView({
                 <span className="flex items-center gap-1.5">
                   {column.label}
                   {withFilters && column.filter && (
-                    <ColumnFilter
+                    <MemberColumnFilter
                       column={column.filter}
                       people={people}
                       picks={picks}
@@ -708,14 +707,8 @@ function TableView({
   );
 }
 
-/**
- * A column's filter (board 73c): a search, a tick per value with how many
- * hold it, the ticked ones first, then Clear and "N selected". Ticking
- * narrows the table at once. Not modal; it hangs under the header in a
- * portal, so the table's scroll does not clip it, and closes on Escape, an
- * outside press or a scroll.
- */
-function ColumnFilter({
+/** A Table column's filter (board 73c): the shared part (./column-filter.tsx) over the Members rules. */
+function MemberColumnFilter({
   column,
   people,
   picks,
@@ -730,105 +723,17 @@ function ColumnFilter({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
-  const [search, setSearch] = useState("");
-  const ticked = picks[column] ?? [];
   const label = TABLE_FILTER_LABELS[column];
-  const options = columnOptions(people, picks, column).filter((o) => o.value.toLowerCase().includes(search.trim().toLowerCase()));
-  const on = options.filter((o) => ticked.includes(o.value));
-  const off = options.filter((o) => !ticked.includes(o.value));
-
-  const change = (next: boolean) => {
-    if (next && trigger.current) {
-      const box = trigger.current.getBoundingClientRect();
-      setAt({ top: box.bottom + 8, left: Math.max(8, Math.min(box.left - 40, window.innerWidth - 280)) });
-      setSearch("");
-    }
-    onOpenChange(next);
-  };
-
-  const row = (option: { value: string; count: number }) => {
-    const checked = ticked.includes(option.value);
-    return (
-      <li key={option.value} className="flex">
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={checked}
-          onClick={() => onPicks(togglePick(picks, column, option.value))}
-          className={`flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors duration-300 ease-out hover:bg-white-5 ${FOCUS} ${
-            checked ? "text-prt-text" : "text-text-2"
-          }`}
-        >
-          <span
-            aria-hidden
-            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border ${
-              checked ? "border-accent bg-accent text-accent-on-accent" : "border-white-10"
-            }`}
-          >
-            {checked && <Check className="h-3 w-3" strokeWidth={3} />}
-          </span>
-          <span className="min-w-0 flex-1 truncate">{option.value}</span>
-          <span className="shrink-0 font-mono text-[11px] text-prt-muted">{option.count}</span>
-        </button>
-      </li>
-    );
-  };
-
   return (
-    <Dialog open={open} onOpenChange={change} modal={false}>
-      <DialogPrimitive.Trigger
-        ref={trigger}
-        aria-label={`Filter by ${label.toLowerCase()}`}
-        onClick={(e) => e.stopPropagation()}
-        className={`flex h-5 w-5 items-center justify-center rounded transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS} ${
-          ticked.length > 0 || open ? "text-accent" : "text-prt-muted"
-        }`}
-      >
-        <ListFilter aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-      </DialogPrimitive.Trigger>
-      <DialogPrimitive.Portal>
-        {at && (
-          <DialogPrimitive.Content
-            aria-describedby={undefined}
-            style={{ top: at.top, left: at.left }}
-            onInteractOutside={(e) => {
-              // The trigger toggles the panel itself; an outside press on it must not close and reopen it.
-              if (trigger.current?.contains(e.target as Node)) e.preventDefault();
-            }}
-            className="fixed z-50 flex w-[272px] flex-col rounded-xl border border-hairline bg-panel p-1.5 font-display normal-case tracking-normal text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] focus:outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0"
-          >
-            <DialogTitle className="sr-only">{label}</DialogTitle>
-            <label className="relative mb-1 block">
-              <span className="sr-only">Search {label.toLowerCase()}</span>
-              <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-prt-muted" strokeWidth={2} />
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={`Search ${column === "role" ? "roles" : label.toLowerCase()}`}
-                className="h-9 w-full rounded-lg border border-hairline bg-white-5 pl-9 pr-3 text-[13px] text-prt-text outline-none transition-colors duration-300 ease-out placeholder:text-prt-muted focus:border-border-strong"
-              />
-            </label>
-            <div className="max-h-[300px] overflow-y-auto">
-              {on.length > 0 && <ul className="pb-1">{on.map(row)}</ul>}
-              {on.length > 0 && off.length > 0 && <div aria-hidden className="-mx-1.5 mb-1 h-px bg-hairline" />}
-              {off.length > 0 && <ul>{off.map(row)}</ul>}
-            </div>
-            <div className="mt-1.5 flex items-center justify-between border-t border-hairline px-1.5 pb-1 pt-2.5">
-              <button
-                type="button"
-                onClick={() => onPicks(clearPicks(picks, column))}
-                className={`rounded-md px-1 text-[13px] font-medium text-prt-text transition-colors duration-300 ease-out hover:text-text-2 ${FOCUS}`}
-              >
-                Clear
-              </button>
-              <span className="text-[12px] text-prt-muted">{ticked.length} selected</span>
-            </div>
-          </DialogPrimitive.Content>
-        )}
-      </DialogPrimitive.Portal>
-    </Dialog>
+    <ColumnFilter
+      label={label}
+      placeholder={`Search ${column === "role" ? "roles" : label.toLowerCase()}`}
+      options={columnOptions(people, picks, column)}
+      ticked={picks[column] ?? []}
+      onToggle={(value) => onPicks(togglePick(picks, column, value))}
+      onClear={() => onPicks(clearPicks(picks, column))}
+      open={open}
+      onOpenChange={onOpenChange}
+    />
   );
 }
