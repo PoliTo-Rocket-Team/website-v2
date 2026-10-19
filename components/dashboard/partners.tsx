@@ -428,7 +428,7 @@ function PartnerPanel({
                 )}
                 {logo !== undefined && (
                   <label className="flex w-fit cursor-pointer items-center gap-2 text-text-2">
-                    <Toggle checked={darkLogo} onCheckedChange={setDarkLogo} label="Draw the logo white" />
+                    <Toggle checked={darkLogo} onCheckedChange={setDarkLogo} label="Draw it white" />
                     Draw it white
                   </label>
                 )}
