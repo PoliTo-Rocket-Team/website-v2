@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, Circle, CircleCheck, Monitor, Pencil, Smartphone } from "lucide-react";
+import { ArrowLeft, Circle, CircleCheck, Lock, Monitor, Pencil, Smartphone } from "lucide-react";
 import {
   checklistDone,
   editChips,
@@ -463,18 +463,26 @@ function keepInViewOnResize(card: HTMLElement): () => void {
  * other card is dimmed. `className` lays the card out where the page puts it;
  * the card fills it. `outline` rounds the outline, 6px outside the card's own
  * corners.
+ *
+ * A content type may give a card its own `actions` (issue #431: Outreach's
+ * Pin to top and Unpin), each a CardChip. On the edited card they sit left of
+ * Edit card; on a dimmed card they show, undimmed, with a hairline outline,
+ * while the card is hovered or holds focus. Without them the card is drawn as
+ * it always was.
  */
 export function CardInPlace({
   edited,
   onEdit,
   className = "",
   outline = "rounded-[18px]",
+  actions,
   children,
 }: {
   edited: boolean;
   onEdit: () => void;
   className?: string;
   outline?: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -484,19 +492,77 @@ export function CardInPlace({
     bringIntoView(card);
     return keepInViewOnResize(card);
   }, [edited]);
-  if (!edited) return <div className={`opacity-40 ${className}`}>{children}</div>;
+  const editCard = (
+    <button
+      type="button"
+      onClick={onEdit}
+      className={`${actions === undefined ? "absolute -top-1.5 right-6 z-10 -translate-y-1/2 " : ""}inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent transition-colors duration-300 ease-out hover:bg-accent-hover ${CONTENT_FOCUS}`}
+    >
+      <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+      Edit card
+    </button>
+  );
+  if (!edited) {
+    if (actions === undefined) return <div className={`opacity-40 ${className}`}>{children}</div>;
+    const shown =
+      "opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
+    return (
+      <div className={`group/card relative ${className}`}>
+        <div className={`opacity-40 ${className}`}>{children}</div>
+        <div aria-hidden className={`pointer-events-none absolute -inset-1.5 z-10 border border-border-strong ${outline} ${shown}`} />
+        <div className={`absolute -top-1.5 right-6 z-10 flex -translate-y-1/2 items-center gap-2 ${shown}`}>{actions}</div>
+      </div>
+    );
+  }
   return (
     <div ref={ref} className={`relative ${CARD_CLEARANCE} ${className}`}>
       {children}
       <div aria-hidden className={`pointer-events-none absolute -inset-1.5 z-10 border-2 border-accent ${outline}`} />
-      <button
-        type="button"
-        onClick={onEdit}
-        className={`absolute -top-1.5 right-6 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent transition-colors duration-300 ease-out hover:bg-accent-hover ${CONTENT_FOCUS}`}
-      >
-        <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-        Edit card
-      </button>
+      {actions === undefined ? (
+        editCard
+      ) : (
+        <div className="absolute -top-1.5 right-6 z-10 flex -translate-y-1/2 items-center gap-2">
+          {actions}
+          {editCard}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * One of a card's own actions over a card in place (issue #431): a pill on
+ * the panel's ground, beside the accent Edit card. `locked` shows it off,
+ * with a lock and the reason as its title; pressing it still says why.
+ */
+export function CardChip({
+  icon,
+  label,
+  locked = null,
+  onClick,
+  children,
+}: {
+  icon: ReactNode;
+  /** The accessible name, naming the card: every card may carry the same chip. */
+  label: string;
+  locked?: string | null;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const off = locked !== null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-disabled={off ? true : undefined}
+      title={locked ?? undefined}
+      className={`inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border border-white-10 bg-panel px-3 text-[13px] font-semibold transition-colors duration-300 ease-out ${
+        off ? "cursor-not-allowed text-prt-muted" : "text-prt-text hover:border-border-strong"
+      } ${CONTENT_FOCUS}`}
+    >
+      {off ? <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} /> : icon}
+      {children}
+    </button>
   );
 }

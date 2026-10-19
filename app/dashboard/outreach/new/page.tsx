@@ -6,6 +6,7 @@ import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { todayInRome } from "@/lib/outreach";
+import { pinStateOf } from "@/lib/outreach-pin";
 import { publishedOutreach } from "@/lib/outreach-public";
 import { footerProjects } from "@/lib/project-content/public";
 
@@ -33,13 +34,22 @@ async function NewPost() {
   if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/outreach/new");
   if (opening.kind === "account-unresolved") return null;
   if (!canReach(opening.data.viewer, "outreach")) notFound();
-  // Three independent reads, so they go out together (issue #397).
-  const [tags, published, projects] = await Promise.all([opening.data.outreach.tags(), publishedOutreach(), footerProjects()]);
-  if (tags === null) notFound();
+  // Independent reads, so they go out together (issue #397). The posts and
+  // the pin let the list target pin from its cards once the post is saved
+  // (issue #431).
+  const { outreach } = opening.data;
+  const [items, tags, pinned, published, projects] = await Promise.all([
+    outreach.posts.list(),
+    outreach.tags(),
+    outreach.pinned(),
+    publishedOutreach(),
+    footerProjects(),
+  ]);
+  if (items === null || tags === null) notFound();
   return (
     <OutreachPostEdit
       item={null}
-      pinned={false}
+      pins={pinStateOf(items, pinned)}
       today={todayInRome()}
       tags={tags}
       neighbours={{}}
