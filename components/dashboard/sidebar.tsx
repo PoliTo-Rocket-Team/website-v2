@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, use, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, use, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -112,16 +112,13 @@ function isCurrent(pathname: string | null, href: string): boolean {
 // 50m-b): the same column with a close button beside the logo, and the user
 // card opens its menu as a bottom sheet. The logo and the title paint with
 // the frame; the pages and the user card follow when the viewer's chrome
-// arrives (issue #397), with quiet placeholder rows in their place until then.
+// arrives (issue #397), with quiet placeholder rows in their place until then:
+// `pages` is `SidebarPages` in a Suspense the layout puts around it.
 export function Sidebar({
-  chrome,
-  userMenu,
-  onNavigate,
+  pages,
   close,
 }: {
-  chrome: Promise<DashboardChrome>;
-  userMenu: UserMenuForm;
-  onNavigate?: () => void;
+  pages: ReactNode;
   /** The sheet's close button, beside the logo; the fixed sidebar has none. */
   close?: ReactNode;
 }) {
@@ -139,18 +136,19 @@ export function Sidebar({
       </div>
       <p className="mt-[22px] shrink-0 text-[18px] font-bold leading-5">Dashboard</p>
 
-      <Suspense fallback={<SidebarPlaceholder />}>
-        <SidebarPages chrome={chrome} userMenu={userMenu} onNavigate={onNavigate} />
-      </Suspense>
+      {pages}
     </div>
   );
 }
+
+/** What a click on a page in the menu sheet does besides navigating: close the sheet. The fixed sidebar has none. */
+export const SidebarNavigate = createContext<(() => void) | undefined>(undefined);
 
 /** Row widths of the placeholder, so it reads as a list of page names rather than one block. */
 const PLACEHOLDER_ROWS = ["w-20", "w-24", "w-16", "w-28", "w-20", "w-24"] as const;
 
 /** Where the pages and the user card will be: the same rows and card, empty, on white-5. */
-function SidebarPlaceholder() {
+export function SidebarPlaceholder() {
   return (
     <>
       <div aria-hidden="true" className="mt-[22px] min-h-0 flex-1">
@@ -174,15 +172,9 @@ function SidebarPlaceholder() {
   );
 }
 
-function SidebarPages({
-  chrome,
-  userMenu,
-  onNavigate,
-}: {
-  chrome: Promise<DashboardChrome>;
-  userMenu: UserMenuForm;
-  onNavigate?: () => void;
-}) {
+/** The viewer's pages and user card, once their chrome arrives; nothing for a request that did not open the dashboard. */
+export function SidebarPages({ chrome, userMenu }: { chrome: Promise<DashboardChrome>; userMenu: UserMenuForm }) {
+  const onNavigate = useContext(SidebarNavigate);
   const resolved = use(chrome);
   if (resolved.kind !== "open") return null;
   return (

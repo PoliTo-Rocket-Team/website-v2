@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, use, useState, type ReactNode } from "react";
+import { use, useState, type ReactNode } from "react";
 import { redirect, usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
@@ -9,7 +9,7 @@ import { pageTitleFor } from "@/lib/dashboard/access";
 import type { DashboardChrome } from "@/lib/dashboard/chrome";
 import { AccountUnresolved } from "./account-unresolved";
 import { Avatar } from "./avatar";
-import { Sidebar } from "./sidebar";
+import { Sidebar, SidebarNavigate } from "./sidebar";
 import { TopBarSlot } from "./top-bar-slot";
 import { UserSheet } from "./user-card";
 
@@ -27,9 +27,24 @@ export const ICON_BUTTON =
 // motion-safe and close at once (issues #79, #80). A page may put its main action
 // in the top bar beside the avatar (board 57m "+ New") with TopBarAction.
 // The frame paints at once and the page streams into it (issue #397): the
-// viewer's chrome (`chrome`) arrives on its own, so the sidebar's pages and
-// user card, and the top bar's avatar, show a quiet placeholder until then.
-export function DashboardShell({ chrome, children }: { chrome: Promise<DashboardChrome>; children: ReactNode }) {
+// viewer's chrome arrives on its own, so the parts that need it come in as
+// slots the layout wraps in their own Suspense, each with a quiet placeholder:
+// the sidebar's pages and user card (`sidebarPages`, `sheetPages`), the top
+// bar's avatar (`account`) and the screen for a request that did not open
+// the dashboard (`closed`).
+export function DashboardShell({
+  sidebarPages,
+  sheetPages,
+  account,
+  closed,
+  children,
+}: {
+  sidebarPages: ReactNode;
+  sheetPages: ReactNode;
+  account: ReactNode;
+  closed: ReactNode;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
   const pathname = usePathname();
@@ -37,7 +52,7 @@ export function DashboardShell({ chrome, children }: { chrome: Promise<Dashboard
   return (
     <div className="min-h-svh bg-ground text-prt-text">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-hairline bg-panel/50 md:block">
-        <Sidebar chrome={chrome} userMenu="dropdown" />
+        <Sidebar pages={sidebarPages} />
       </aside>
 
       <PhoneTopBar
@@ -54,40 +69,36 @@ export function DashboardShell({ chrome, children }: { chrome: Promise<Dashboard
                 className="fixed inset-y-0 left-0 z-50 w-[300px] max-w-[85vw] border-r border-hairline bg-ground focus:outline-none motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-left"
               >
                 <DialogTitle className="sr-only">Dashboard menu</DialogTitle>
-                <Sidebar
-                  chrome={chrome}
-                  userMenu="sheet"
-                  onNavigate={() => setOpen(false)}
-                  close={
-                    <DialogClose aria-label="Close menu" className={`${ICON_BUTTON} -mr-1.5 text-prt-muted hover:text-prt-text`}>
-                      <X aria-hidden className="h-5 w-5" strokeWidth={1.75} />
-                    </DialogClose>
-                  }
-                />
+                <SidebarNavigate.Provider value={() => setOpen(false)}>
+                  <Sidebar
+                    pages={sheetPages}
+                    close={
+                      <DialogClose aria-label="Close menu" className={`${ICON_BUTTON} -mr-1.5 text-prt-muted hover:text-prt-text`}>
+                        <X aria-hidden className="h-5 w-5" strokeWidth={1.75} />
+                      </DialogClose>
+                    }
+                  />
+                </SidebarNavigate.Provider>
               </DialogPrimitive.Content>
             </DialogPortal>
           </Dialog>
         }
       >
         <div ref={setActionSlot} className="mr-1.5 flex shrink-0 items-center empty:hidden" />
-        <Suspense fallback={<Avatar accent />}>
-          <TopBarAccount chrome={chrome} />
-        </Suspense>
+        {account}
       </PhoneTopBar>
 
       <main className="px-4 pb-12 pt-4 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">
         <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
       </main>
 
-      <Suspense fallback={null}>
-        <ClosedOpening chrome={chrome} />
-      </Suspense>
+      {closed}
     </div>
   );
 }
 
 /** The top bar's avatar, which opens the user menu as a bottom sheet. */
-function TopBarAccount({ chrome }: { chrome: Promise<DashboardChrome> }) {
+export function TopBarAccount({ chrome }: { chrome: Promise<DashboardChrome> }) {
   const resolved = use(chrome);
   if (resolved.kind !== "open") return null;
   const { viewer, menuPage } = resolved;
@@ -109,7 +120,7 @@ function TopBarAccount({ chrome }: { chrome: Promise<DashboardChrome> }) {
  * account that did not resolve gets the sign-out screen over the whole frame,
  * whose pages show nothing for it.
  */
-function ClosedOpening({ chrome }: { chrome: Promise<DashboardChrome> }) {
+export function ClosedOpening({ chrome }: { chrome: Promise<DashboardChrome> }) {
   const resolved = use(chrome);
   if (resolved.kind === "signed-out") redirect("/login?cb=/dashboard");
   if (resolved.kind !== "account-unresolved") return null;
