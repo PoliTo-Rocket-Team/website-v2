@@ -5,7 +5,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getRecruitmentControlFor } from "@/app/actions/get-apply-positions";
 import { getScopeInfoForMember } from "@/app/actions/get-member-scopes";
-import { LIVE_POSITIONS_CACHE_TAGS, PUBLIC_POSITIONS_CACHE_TAG } from "@/lib/cache-tags";
+import { cachedReadTags, refreshAfter } from "@/lib/cache-tags";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
   applications,
@@ -252,7 +252,7 @@ type ScopedPosition = Omit<LivePosition, "departmentId"> & {
  */
 async function readLivePositions(): Promise<LivePosition[]> {
   "use cache";
-  cacheTag(...LIVE_POSITIONS_CACHE_TAGS);
+  cacheTag(...cachedReadTags("livePositions"));
   cacheLife("hours");
   const rows = await getDb()
     .select({
@@ -850,7 +850,7 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
         // Read on the server, from the caller's positions scope rows.
         maySwitch: async () => canSwitchRecruitment(await getScopeInfoForMember(identity.memberId, "positions")),
         save: saveRecruitment,
-        refresh: () => updateTag(PUBLIC_POSITIONS_CACHE_TAG),
+        refresh: () => refreshAfter("positions", updateTag),
       }),
     ...databaseRecruitmentPages(identity),
     ...databaseDivisionPages(identity),

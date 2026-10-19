@@ -3,8 +3,8 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { updateTag } from "next/cache";
-import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
 import { getDb } from "@/db/client";
+import { refreshAfter } from "@/lib/cache-tags";
 import {
   applicationFiles,
   applications,
@@ -51,7 +51,6 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "./recruitment";
-import { TEAM_ROSTER_CACHE_TAG } from "./team-database";
 import { mayChange, readsAsDivisionLead, type ChangeArea, type DivisionUnit } from "./viewer";
 import { refused, written, type WriteResult } from "./write";
 
@@ -231,7 +230,7 @@ async function reachablePositionIds(identity: Identity): Promise<Set<number>> {
 async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
   if (!(await mayChangePosition(identity, "positions", positionId))) throw new DashboardRefused(`position ${positionId}`);
   await runAuditQuery((db) => db.update(applyPositions).set({ status: open }).where(eq(applyPositions.id, positionId)));
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
 }
 
 async function createPosition(identity: Identity, input: unknown): Promise<WriteResult<CreatedPosition>> {
@@ -257,7 +256,7 @@ async function createPosition(identity: Identity, input: unknown): Promise<Write
       })
       .returning({ id: applyPositions.id }),
   );
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
   return written({ id: row.id, code: newPositionCode(division, row.id) });
 }
 
@@ -279,7 +278,7 @@ async function editPosition(identity: Identity, positionId: number, input: unkno
       })
       .where(eq(applyPositions.id, positionId)),
   );
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
   return written(null);
 }
 
@@ -538,7 +537,7 @@ export async function moveApplication(identity: Identity, applicationId: number,
       if (!result.joinsTeam) return refused("That move does not add anyone to the team.");
       const change = joinChange(standing);
       if (!(await confirmJoin(identity, row.id, after.joinedAt, change))) return refused(APPLICATION_CHANGED);
-      updateTag(TEAM_ROSTER_CACHE_TAG);
+      refreshAfter("team", updateTag);
       return written(null);
     }
 

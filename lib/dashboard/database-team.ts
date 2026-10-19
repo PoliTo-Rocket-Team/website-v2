@@ -100,8 +100,8 @@ import {
   type TeamPerson,
   type TeamSearch,
 } from "./division-edit";
-import { PUBLIC_POSITIONS_CACHE_TAG } from "@/app/actions/get-apply-positions";
-import { readTeamSnapshot, recordsOf, TEAM_ROSTER_CACHE_TAG, teamPeopleOf, type TeamSnapshot } from "./team-database";
+import { refreshAfter } from "@/lib/cache-tags";
+import { readTeamSnapshot, recordsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -479,7 +479,7 @@ async function rolesTheViewerChanges(identity: DashboardIdentity, actor: TeamAct
 const ROLE_TYPE: Readonly<Record<EditableRole, "lead" | "core">> = { "division-lead": "lead", member: "core" };
 
 function done(): true {
-  updateTag(TEAM_ROSTER_CACHE_TAG);
+  refreshAfter("team", updateTag);
   return true;
 }
 
@@ -1032,7 +1032,7 @@ async function saveDivision(identity: DashboardIdentity, divisionId: number, inp
 }
 
 function refreshPositions() {
-  updateTag(PUBLIC_POSITIONS_CACHE_TAG);
+  refreshAfter("positions", updateTag);
 }
 
 /**

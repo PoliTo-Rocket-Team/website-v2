@@ -1,20 +1,39 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LIVE_POSITIONS_CACHE_TAGS, PUBLIC_POSITIONS_CACHE_TAG, TEAM_ROSTER_CACHE_TAG, WRITE_REFRESHED_TAGS } from "./cache-tags";
+import { CACHED_READS, cachedReadTags, refreshAfter, type CachedRead, type CacheTag, type WriteKind } from "./cache-tags";
 
-// The dashboard's cached read of the live positions (issue #397) must be
-// refreshed by every write that changes what it holds.
+// The cached reads and the writes take their tags from one mapping
+// (lib/cache-tags.ts, issue #397): a read through `cachedReadTags`, a write
+// through `refreshAfter`. These check that every write that changes a cached
+// read refreshes it, and that the read carries no tag no such write refreshes.
 
-test("a position write (open, close, create, edit) refreshes the dashboard's live positions", () => {
-  // database-recruitment.ts's position writes and the recruitment switch call updateTag(PUBLIC_POSITIONS_CACHE_TAG).
-  assert.ok((LIVE_POSITIONS_CACHE_TAGS as readonly string[]).includes(PUBLIC_POSITIONS_CACHE_TAG));
+const READS = Object.keys(CACHED_READS) as CachedRead[];
+
+/** The tags a write of this kind refreshes, as `refreshAfter` hands them to Next's `updateTag`. */
+function refreshedBy(kind: WriteKind): CacheTag[] {
+  const refreshed: CacheTag[] = [];
+  refreshAfter(kind, (tag) => refreshed.push(tag));
+  return refreshed;
+}
+
+test("the live positions are refreshed by a position write and by a team write", () => {
+  const carried = cachedReadTags("livePositions");
+  assert.ok(refreshedBy("positions").some((tag) => carried.includes(tag)), "a position write leaves the live positions stale");
+  assert.ok(refreshedBy("team").some((tag) => carried.includes(tag)), "a division or department write leaves the live positions stale");
 });
 
-test("renaming or closing a division or a department refreshes the dashboard's live positions", () => {
-  // database-team.ts's division and department writes end in `done`, which calls updateTag(TEAM_ROSTER_CACHE_TAG).
-  assert.ok((LIVE_POSITIONS_CACHE_TAGS as readonly string[]).includes(TEAM_ROSTER_CACHE_TAG));
+test("every write that changes a cached read refreshes a tag the read carries", () => {
+  for (const read of READS) {
+    const carried = cachedReadTags(read);
+    for (const kind of CACHED_READS[read].changedBy) {
+      assert.ok(refreshedBy(kind).some((tag) => carried.includes(tag)), `${kind} leaves ${read} stale`);
+    }
+  }
 });
 
-test("the live positions carry no tag that no write refreshes", () => {
-  for (const tag of LIVE_POSITIONS_CACHE_TAGS) assert.ok(WRITE_REFRESHED_TAGS.has(tag), tag);
+test("a cached read carries no tag that the writes changing it never refresh", () => {
+  for (const read of READS) {
+    const refreshed = new Set(CACHED_READS[read].changedBy.flatMap(refreshedBy));
+    for (const tag of cachedReadTags(read)) assert.ok(refreshed.has(tag), `${read} carries ${tag}, which no write refreshes`);
+  }
 });
