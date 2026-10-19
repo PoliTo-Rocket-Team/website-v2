@@ -48,11 +48,11 @@ test("board 26b: eight leaders sit on one symmetric arc, four each side of the t
   assert.ok(arcLayout(4).every((n) => n.photo === 148));
 });
 
-test("board 26d: nine technical departments fill three columns, three rows", () => {
+test("board 26d, widened by issue #411: nine technical departments fill two wide columns, five rows", () => {
   const layout = groupLayout(group("Technical Departments", range(9).map(headWithLeads)));
-  assert.equal(layout.columns, 3);
-  assert.equal(layout.width, 960);
-  assert.equal(Math.ceil(9 / layout.columns), 3);
+  assert.equal(layout.columns, 2);
+  assert.equal(layout.width, 1146);
+  assert.equal(Math.ceil(9 / layout.columns), 5);
 });
 
 test("boards 26e and 26f: five groups each take their own grid in the carousel", () => {
@@ -64,14 +64,11 @@ test("boards 26e and 26f: five groups each take their own grid in the carousel",
     group("Software", range(5).map(divisionAsHead)),
   ];
   const layouts = groups.map(groupLayout);
-  // Heads with leads take three columns; single people two.
-  assert.deepEqual(
-    layouts.map((l) => l.columns),
-    [3, 2, 2, 2, 2],
-  );
+  // Every group takes two columns: wide ones for heads with leads (issue #411).
+  assert.ok(layouts.every((l) => l.columns === 2));
   assert.deepEqual(
     layouts.map((l) => Math.round(l.width)),
-    [960, 627, 627, 627, 627],
+    [1146, 627, 627, 627, 627],
   );
 });
 
@@ -106,6 +103,6 @@ test("the role build fills at most five carousel slides of up to ten heads", () 
   const { groups } = page.departments;
   assert.equal(groups.length, SLIDES);
   assert.ok(groups.every((g) => g.members.length === SLIDE_MEMBERS));
-  // Ten heads with leads take three columns, the fourth row holding the tenth.
-  assert.ok(groups.every((g) => groupLayout(g).columns === 3));
+  // Ten heads with leads take two wide columns, five rows (issue #411).
+  assert.ok(groups.every((g) => groupLayout(g).columns === 2 && groupLayout(g).width === 1146));
 });
