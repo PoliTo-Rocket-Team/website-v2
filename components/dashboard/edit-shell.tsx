@@ -463,19 +463,18 @@ export function EditableBlock({
 
 /**
  * The room a card in place keeps above it when it is scrolled into view: the
- * pages the switch shows sit under the site's fixed navbar (64px, 72px from
- * md, navbar.tsx), and the Edit card chip rises 20px above the card's top, so
- * the card clears both and 12px more (board 75d draws the chip in full). It
- * is a scroll margin, so the frame's own width picks the md value: Phone
- * draws the phone navbar.
+ * Edit card chip rises 20px above the card's top, so the card clears it and
+ * 12px more (board 75d draws the chip in full). The pages the switch shows
+ * draw no site navbar (issue #495), so there is no fixed bar to clear, on
+ * Desktop or on Phone.
  */
-const CARD_CLEARANCE = "scroll-mt-24 md:scroll-mt-[104px]";
+const CARD_CLEARANCE = "scroll-mt-8";
 
 /**
  * Scrolls the page in the frame so the edited card sits in the room under
  * its clearance: centred there when it fits, its top at the clearance when it
  * is taller. Centring it in the whole window put a tall card's top edge, and
- * its chip, under the navbar. A card in a swipe row (Home's Projects) is
+ * its chip, above the frame's top. A card in a swipe row (Home's Projects) is
  * brought in sideways first, to where the row snaps it. Only the frame's page
  * and that row move: scrollIntoView would also scroll the dashboard around
  * the frame, which in Phone hides the frame's top, chip and all.
@@ -518,7 +517,7 @@ function keepInViewOnResize(card: HTMLElement): () => void {
 /**
  * One card on a page the switch shows (board 75d). The edited item's card is
  * outlined, with an "Edit card" chip that hands back to the content type, and
- * is scrolled into view below the page's navbar when the page opens, and
+ * is scrolled into view, chip and all, when the page opens, and
  * again whenever the page changes width while it stays edited; every
  * other card is dimmed. `className` lays the card out where the page puts it;
  * the card fills it. `outline` rounds the outline, 6px outside the card's own

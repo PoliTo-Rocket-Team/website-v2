@@ -3,17 +3,13 @@
 import { useCallback, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { saveProject } from "@/app/dashboard/project-actions";
-import { LandingNavbar } from "@/components/landing/navbar";
-import { PageSky } from "@/components/landing/page-sky";
-import { ProjectsSection } from "@/components/landing/projects-section";
-import { ProjectPageView, type ProjectFrame, type ProjectPart } from "@/components/project-page/view";
-import { ProjectsListPage } from "@/components/projects/list-page";
+import type { ProjectFrame, ProjectPart } from "@/components/project-page/view";
 import type { EditBlocks, EditDevice, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
-import type { FooterProject } from "@/lib/landing-links";
 import { fieldProblems, fieldsAfterSave, fieldsOf, projectViewOf, type PanelSection, type ProjectFields } from "@/lib/project-content/fields";
-import { homeCardOf, lineupWith, listingOf, listingsNewestFirst, pageRecordOf, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
-import { CardInPlace, EditableBlock, EditShell } from "./edit-shell";
+import { homeCardOf, lineupWith, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
+import { EditableBlock, EditShell } from "./edit-shell";
+import { EditedProjectPage, ProjectCardPage, type ProjectPageId } from "./project-edit-pages";
 import { ProjectEditPanel, type FieldErrors } from "./project-edit-panel";
 
 // A project on its real page under the edit shell (boards 75b and 75c,
@@ -28,6 +24,9 @@ import { ProjectEditPanel, type FieldErrors } from "./project-edit-panel";
 // project's card in its place among the published ones, outlined with an
 // Edit card chip that opens the panel's Card section; the other cards are
 // dimmed.
+//
+// The pages themselves, drawn without the site's navbar and footer (issue
+// #495), are in project-edit-pages.tsx.
 
 const PROJECT_BLOCKS: EditBlocks<ProjectPart, PanelSection> = {
   hero: { name: "Top of the page", section: "top", chip: "Edit top of the page" },
@@ -41,8 +40,6 @@ const PROJECT_BLOCKS: EditBlocks<ProjectPart, PanelSection> = {
 };
 
 const outlined: ProjectFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
-
-type ProjectPageId = "page" | "home" | "list";
 
 const PAGE_TARGETS: readonly PageTarget<ProjectPageId>[] = [
   { id: "page", label: "Project page" },
@@ -58,12 +55,9 @@ function errorsOf(fields: ProjectFields): FieldErrors {
 export function ProjectEdit({
   item: opening,
   place,
-  footerProjects,
 }: {
   item: ContentItem<ProjectRecord>;
   place: ProjectPlace;
-  /** The published projects the page's footer lists (issue #378). */
-  footerProjects: readonly FooterProject[];
 }) {
   const [item, setItem] = useState(opening);
   const opened = editorVersion(item.version);
@@ -140,77 +134,10 @@ export function ProjectEdit({
       }
     >
       {page === "page" ? (
-        <ProjectPageView
-          project={listingOf(view, place.position)}
-          record={pageRecordOf(view)}
-          footerProjects={footerProjects}
-          frame={outlined}
-        />
+        <EditedProjectPage view={view} position={place.position} frame={outlined} />
       ) : (
-        <CardPage
-          page={page}
-          lineup={lineupWith(place, view)}
-          position={place.position}
-          footerProjects={footerProjects}
-          onEditCard={() => openSection("card")}
-        />
+        <ProjectCardPage page={page} lineup={lineupWith(place, view)} position={place.position} onEditCard={() => openSection("card")} />
       )}
     </EditShell>
-  );
-}
-
-/**
- * Home or the Projects list, drawn from `lineup`, every project in site order
- * with the one being edited at `position`: its card outlined with an Edit
- * card chip, the other cards dimmed. Home shows its Projects section, as the
- * Outreach editor's Home shows its Track record.
- */
-function CardPage({
-  page,
-  lineup,
-  position,
-  footerProjects,
-  onEditCard,
-}: {
-  page: Exclude<ProjectPageId, "page">;
-  lineup: readonly ProjectRecord[];
-  position: number;
-  footerProjects: readonly FooterProject[];
-  onEditCard: () => void;
-}) {
-  if (page === "list") {
-    // Newest first, as the public list orders them (issue #381). Each entry
-    // keeps its number, its place in the site order, so the number finds the
-    // edited card even while a draft slug repeats another project's.
-    const edited = listingOf(lineup[position], position).index;
-    return (
-      <ProjectsListPage
-        projects={listingsNewestFirst(lineup)}
-        footerProjects={footerProjects}
-        frame={(project, node) => (
-          // The /projects card is rounded-3xl (24px), so its outline is 30px.
-          <CardInPlace edited={project.index === edited} onEdit={onEditCard} outline="rounded-[30px]">
-            {node}
-          </CardInPlace>
-        )}
-      />
-    );
-  }
-  const cards = lineup.map(homeCardOf);
-  const edited = cards[position];
-  return (
-    <div className="relative bg-ground">
-      <LandingNavbar />
-      <PageSky className="pt-16 md:pt-[72px]">
-        <ProjectsSection
-          cards={cards}
-          frame={(card, node, layout) => (
-            <CardInPlace edited={card === edited} onEdit={onEditCard} className={layout}>
-              {node}
-            </CardInPlace>
-          )}
-        />
-      </PageSky>
-    </div>
   );
 }

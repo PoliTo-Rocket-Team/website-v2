@@ -6,12 +6,13 @@
 // upcoming interviews); a department head sees the department shape (board
 // 62, issue #230: the same across their department, plus a Divisions panel);
 // a member sees the personal shape (board 52: who they
-// are and what is theirs). A non-member sees the applicant shape (boards 50e
+// are and what is theirs), with a grant or without one (issue #480). A non-member sees the applicant shape (boards 50e
 // and 50f, ./applicant-overview.ts) and an alumnus the alumni shape (issue
 // #317's board 56, not the division lead's board 56 above; ./my-alumni.ts),
 // which the page builds from My applications and My alumni. The components
 // in components/dashboard/ render these and fetch nothing.
 
+import type { AccessSummary } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
 
@@ -278,9 +279,17 @@ export type PersonalOverview = {
   readonly person: PersonHeader;
   readonly checklist: Checklist | null;
   readonly roster: Roster | null;
-  /** The one-line strip under the panels (board 40m). */
-  readonly hint: string | null;
+  /**
+   * "Your access" (issue #480): one summary per area the member is granted,
+   * in `GRANT_AREAS` order, at the grant's scope; none when they hold no
+   * grant, and then the access hint (`ACCESS_HINT`) shows in its place. A
+   * grant adds these lines and nothing else: no attention row and no panel.
+   */
+  readonly access: readonly AccessSummary[];
 };
+
+/** The one-line strip under a member's panels when they hold no grant (board 40m). */
+export const ACCESS_HINT = "Need to work on recruitment or site content? Ask your division lead or the admin team for access.";
 
 /** What the dashboard data interface answers: the team's own Overviews. */
 export type TeamSideOverview = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
