@@ -97,7 +97,6 @@ import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { BarButton, EditableBlock, EditShell } from "./edit-shell";
 import { shrunkPhoto } from "./outreach-post-photos";
 import { PHOTO_ACCEPT } from "./photo-crop-dialog";
-import { useBackLink } from "./visited-pages";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
 import { TeamHeadPanel } from "./team-head-panel";
 import { TeamLeaderPanel } from "./team-leader-panel";
@@ -110,7 +109,7 @@ import { TeamPersonPanel } from "./team-person-panel";
 // block outlines it with where it comes from and an Edit chip, which opens
 // its panel; the intro text with its four figures, and the group photo, which
 // may be uploaded (issue #510), are edited in place. The bar's arrow goes back
-// to the dashboard page the editor was opened from (issue #510). Board
+// to the dashboard home (Owner decision). Board
 // 80e's add affordances sit on the page while no panel is open: a "+" at each
 // place on the arc (gone at eight leaders), "+ Add department" beside each
 // slide's heading, and "+ Add division lead" on a hovered head block, under a
@@ -142,8 +141,8 @@ const addedId = (at: AddedRef) => Number(at.slice("added:".length));
 
 const PLACE = "Org chart";
 
-/** The editor's own address: its back arrow never returns to it. */
-const TEAM_PAGE_EDITOR = "/dashboard/team-page";
+/** The bar's arrow and the breadcrumb's first step. */
+const BACK = { label: "Dashboard", href: "/dashboard" } as const;
 
 /** The layer with the open panel's edit laid on: the page shows it as the editor types, and Cancel drops it. */
 function previewOf(build: TeamBuild, layer: TeamPageLayer, panel: Panel | null): TeamPageLayer {
@@ -205,7 +204,6 @@ export function TeamPageEdit({
   const [device, setDevice] = useState<EditDevice>("desktop");
   const [resetOpen, setResetOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const back = useBackLink(TEAM_PAGE_EDITOR);
 
   const status = teamPageStatus(layerStatus, advisorItems);
   const preview = previewOf(build, layer, panel);
@@ -457,7 +455,7 @@ export function TeamPageEdit({
   return (
     <>
       <EditShell
-        section={back}
+        section={BACK}
         heading="Editing the Team page"
         onDeviceChange={setDevice}
         status={status}

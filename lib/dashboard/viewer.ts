@@ -285,6 +285,8 @@ export type DashboardViewer = ViewerStanding & {
   readonly name: string;
   /** The line under the name in the user card: "Operations Lead", "Member". */
   readonly role: string;
+  /** Their profile photo, which the user card draws in place of the PRT mark. */
+  readonly photoUrl: string | null;
   readonly session: ViewerSession;
 };
 

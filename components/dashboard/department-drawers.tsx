@@ -635,8 +635,8 @@ const SELECT = `${inputClass()} cursor-pointer appearance-none pr-10`;
 
 /**
  * Close department (Owner decision, 2026-10-19): the department and every
- * division in it close, and every person in it moves to a department or
- * division picked for them, one each, with "Move everyone to…" to pick one
+ * division in it close, and every person in it moves to a division picked
+ * for them, one each, with "Move everyone to…" to pick one
  * for all at once. A former head or lead picks Advisor or member there.
  * Nobody leaves the team from here. Nothing is picked at first (Owner
  * decision, 2026-10-16), so Close department stays disabled until every
@@ -764,7 +764,6 @@ function CloseDepartment({
               placeholder="Move everyone to…"
               value={null}
               departments={others}
-              withDepartments={false}
               taken={() => false}
               onChange={moveEveryone}
               className="mt-2.5"
@@ -815,16 +814,15 @@ function CloseDepartment({
 
 /**
  * A destination picker on Close department: every open division outside the
- * closing department, grouped by department, and, where `withDepartments`,
- * each department itself (an Advisor role can sit on one). A unit `taken`
- * names is listed but cannot be picked.
+ * closing department, grouped by department; a department itself is never a
+ * destination (Owner decision, 2026-10-21). A unit `taken` names is listed
+ * but cannot be picked.
  */
 function DestinationSelect({
   label,
   placeholder,
   value,
   departments,
-  withDepartments,
   taken,
   onChange,
   className = "",
@@ -833,7 +831,6 @@ function DestinationSelect({
   placeholder: string;
   value: Unit | null;
   departments: readonly StructureDepartment[];
-  withDepartments: boolean;
   taken: (unit: Unit) => boolean;
   onChange: (unit: Unit) => void;
   className?: string;
@@ -862,7 +859,6 @@ function DestinationSelect({
         </option>
         {departments.map((d) => (
           <optgroup key={d.id} label={`${d.name} Department`} className="bg-panel text-prt-muted">
-            {withDepartments && option({ kind: "department", departmentId: d.id }, `${d.name} Department`)}
             {d.divisions.map((v) => option({ kind: "division", divisionId: v.id }, divisionLabel(v.name)))}
           </optgroup>
         ))}
@@ -895,7 +891,6 @@ function PersonCard({
 }) {
   const choosesRole = stepsDown(person.standing);
   const where = pick.to === null ? null : destination(pick.to);
-  const onDepartment = pick.to?.kind === "department";
   return (
     <li className="rounded-xl border border-hairline p-3.5">
       <div className="flex items-center gap-3">
@@ -908,9 +903,8 @@ function PersonCard({
         placeholder="Pick where they go"
         value={pick.to}
         departments={departments}
-        withDepartments={person.standing !== "member"}
         taken={(unit) => holdsUnit(person, unit)}
-        onChange={(to) => onChange({ to, role: to.kind === "department" && pick.role === "member" ? null : pick.role })}
+        onChange={(to) => onChange({ ...pick, to })}
         className="mt-3"
       />
       {choosesRole && (
@@ -921,13 +915,8 @@ function PersonCard({
             value={pick.role}
             onChange={(role) => onChange({ ...pick, role })}
             options={[
-              { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorInDestinationDetail(where ?? "the place you pick") },
-              {
-                value: "member",
-                title: "Member",
-                detail: `Joins ${where ?? "the division you pick"} as a member`,
-                permission: onDepartment ? { allowed: false, reason: "A member goes to a division" } : { allowed: true },
-              },
+              { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorInDestinationDetail(where ?? "the division you pick") },
+              { value: "member", title: "Member", detail: `Joins ${where ?? "the division you pick"} as a member` },
             ]}
           />
         </div>
