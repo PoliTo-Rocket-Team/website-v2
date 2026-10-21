@@ -10,14 +10,12 @@ export const metadata: Metadata = {
   title: "Projects · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 75 (issue #297): every stored project as its home card, in site
-// order, with its status and "edited by" line; dragging a card sets the
-// order Home and /projects follow. Full access and anyone with site-content
-// access reach it (lib/content/gate.ts); everyone else gets the dashboard's
-// not found.
+// Board 91 (issue #506): one row per stored project, newest first, drafts
+// included. Full access and anyone with site-content access reach it
+// (lib/content/gate.ts); everyone else gets the dashboard's not found.
 export default function ProjectsPage() {
   return (
-    <Suspense fallback={<PageSkeleton kind="cards" />}>
+    <Suspense fallback={<PageSkeleton kind="list" />}>
       <LiveProjects />
     </Suspense>
   );
@@ -31,5 +29,5 @@ async function LiveProjects() {
   if (!canReach(data.viewer, "projects")) notFound();
   const board = await data.projects.board();
   if (board === null) notFound();
-  return <ProjectsView items={board.items} edited={board.edited} />;
+  return <ProjectsView items={board.items} />;
 }

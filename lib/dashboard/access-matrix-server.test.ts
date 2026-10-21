@@ -270,6 +270,8 @@ const DIRECT_WRITES = new Map<string, { readonly args: readonly unknown[]; reado
   ["projects.remove", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.unpublish", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
+  // The dashboard no longer sets the project order (issue #506); the stored write stays behind the gate.
+  ["projects.setSiteOrder", { args: [[]], may: (r) => r.expect.siteContent, proves: "gate" }],
 ]);
 
 describe("the data interface opens only for a resolved account, and every method on it is called here", () => {
@@ -536,7 +538,6 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "outreach-actions.saveOutreachSummit", run: () => outreachActions.saveOutreachSummit("save-draft", {}), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.saveProject", run: () => projectActions.saveProject(1, "save-draft", {}), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.createProject", run: () => projectActions.createProject({ name: "Rocket" }), may: siteContent, control: by("team leader", "gate") },
-  { action: "project-actions.reorderProjects", run: () => projectActions.reorderProjects([]), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.uploadProjectPhoto", run: () => projectActions.uploadProjectPhoto(form({ photo: PHOTO() })), may: siteContent, control: by("team leader") },
   { action: "project-actions.discardProjectPhoto", run: () => projectActions.discardProjectPhoto(`https://${HOST}/project-photos/x.jpg`), may: siteContent, control: by("team leader") },
 
