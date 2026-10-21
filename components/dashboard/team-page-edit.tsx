@@ -316,7 +316,9 @@ export function TeamPageEdit({
         const at = carouselSpots[index];
         if (at === undefined || at === null) return node;
         return (
-          <EditableBlock id={at}>
+          // The departments' swipe row clips what hangs below it, so a head
+          // keeps room under them for the outline's foot.
+          <EditableBlock id={at} className="mb-3 md:mb-[22px]">
             {node}
             {adding && <AddLeadButton onClick={() => openHead(at, true)} />}
           </EditableBlock>

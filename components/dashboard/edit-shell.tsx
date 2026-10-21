@@ -239,13 +239,18 @@ export function EditShell<Id extends string, Section extends string, Page extend
 /**
  * The checklist under Publish (board 74f): "To publish, add:" and a line per
  * need, an open ring while it is missing and a check once it is there.
+ * Below md the window is a phone, where a pinned checklist would sit over
+ * most of the page's top, chips and all, so there it shows only while
+ * Publish is tapped, hovered or focused.
  */
 function PublishChecklist({ id, checks, pinned }: { id: string; checks: readonly PublishCheck[]; pinned: boolean }) {
   return (
     <div
       id={id}
       className={`absolute right-4 top-full z-50 mt-2 w-[244px] rounded-xl border border-hairline bg-panel p-3.5 shadow-lg ${
-        pinned ? "block" : "hidden group-focus-within/publish:block group-hover/publish:block"
+        pinned
+          ? "block max-md:hidden max-md:group-focus-within/publish:block max-md:group-hover/publish:block"
+          : "hidden group-focus-within/publish:block group-hover/publish:block"
       }`}
     >
       <p className="text-[12px] font-semibold text-prt-text">To publish, add:</p>
