@@ -75,6 +75,8 @@ export function OutreachView({
         return;
       }
       setRows((list) => list.map((r) => (r.id === row.id ? outreachRow(result.value, row.slug) : r)));
+      // The server freed its featured slot in the same write (issue #502).
+      setFeatured((ids) => unfeaturing(ids, row.id));
       toast.success(`${titleOf(row.post)} is off the Outreach page and kept as a draft.`);
     });
   };

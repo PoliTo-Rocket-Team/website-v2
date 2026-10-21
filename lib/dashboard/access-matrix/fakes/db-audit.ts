@@ -1,4 +1,4 @@
-import { fakeDb } from "../fake-db";
+import { fakeDb, inBatch } from "../fake-db";
 
 // Stands in for `@/lib/db-audit` in the server-side access tests: an audited
 // write runs against the fake database, which records each row it would
@@ -13,5 +13,5 @@ export async function runAuditQuery(buildQuery: (db: typeof fakeDb) => Built): P
 }
 
 export async function runAuditBatch(buildQueries: (db: typeof fakeDb) => readonly Built[]): Promise<unknown[]> {
-  return Promise.all(buildQueries(fakeDb));
+  return inBatch(() => Promise.all(buildQueries(fakeDb)));
 }

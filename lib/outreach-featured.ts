@@ -1,7 +1,7 @@
 import { publicVersion } from "@/lib/content/versioned";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { newestFirst, postsWithPages, slugOf, type FeaturedCard } from "@/lib/outreach";
-import type { OutreachContent, PostItem, UpToTwo } from "@/lib/outreach-types";
+import type { OutreachContent, PostItem, PostVersions, UpToTwo } from "@/lib/outreach-types";
 
 // Featured posts (Owner decision, issue #496). Featured is a setting on any
 // published post: a featured post leaves the list on /outreach for its own
@@ -53,6 +53,23 @@ export function featuring(current: FeaturedIds, id: number): WriteResult<Feature
 export function unfeaturing(current: FeaturedIds, id: number): FeaturedIds {
   // Fewer ids than before are still two at most.
   return upToTwo((current as readonly number[]).filter((other) => other !== id)) ?? current;
+}
+
+/**
+ * Whether a post written as `version` keeps a featured slot: only a post on
+ * the site holds one (Owner decision, issue #502). Unpublish leaves a post
+ * with no published version, so it frees the slot in the same write, on both
+ * stores, and the post offers Feature again once it is published.
+ */
+export function holdsFeature(version: PostVersions): boolean {
+  return publicVersion(version) !== null;
+}
+
+/** The featured ids once the posts are `items`: a post removed or taken off the site gives up its slot. */
+export function featuredAmong(current: FeaturedIds, items: readonly PostItem[]): FeaturedIds {
+  const kept = (current as readonly number[]).filter((id) => items.some((item) => item.id === id && holdsFeature(item.version)));
+  // Fewer ids than before are still two at most.
+  return upToTwo(kept) ?? current;
 }
 
 /** The database's two places for a featured post (migration 0048): each holds one post at most. */
