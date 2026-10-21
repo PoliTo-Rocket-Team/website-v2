@@ -769,7 +769,8 @@ export function seasonOf(leftIn: number): string {
 
 // Paging (boards 46 and 46c)
 
-export const PAGE_SIZE = 9;
+/** Every paged dashboard list shows 12 rows a page (Owner decision, 2026-10-21). */
+export const PAGE_SIZE = 12;
 
 export function pageCount(total: number, size = PAGE_SIZE): number {
   return Math.max(1, Math.ceil(total / size));
