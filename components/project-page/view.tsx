@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
-import type { FooterProject } from "@/lib/landing-links";
+import { siteFooterOf, type PageChrome } from "@/lib/page-chrome";
 import { sectionsOf, type NumberedSection, type ProjectPageRecord } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
 import { ProjectGallery } from "./gallery";
@@ -16,7 +16,8 @@ import { ProjectVersions } from "./versions";
 // One project page as drawn, from a page record and the project's /projects
 // entry: the public route draws the published record (./project-page.tsx),
 // and the editor draws the record being typed under the edit shell, with each
-// part outlined through `frame` (issue #298).
+// part outlined through `frame` (issue #298), with no navbar and no footer
+// (`chrome="none"`, issue #495).
 
 /** The page's parts, each one block the editor can outline. */
 export type ProjectPart = "hero" | "name" | "design" | NumberedSection["kind"];
@@ -41,30 +42,27 @@ function Section({ section, project }: { section: NumberedSection; project: Proj
   }
 }
 
-export function ProjectPageView({
-  project,
-  record,
-  footerProjects,
-  frame = bare,
-}: {
-  project: Project;
-  record: ProjectPageRecord;
-  /** The published projects the footer lists (issue #378). */
-  footerProjects: readonly FooterProject[];
-  frame?: ProjectFrame;
-}) {
+export function ProjectPageView(
+  props: {
+    project: Project;
+    record: ProjectPageRecord;
+    frame?: ProjectFrame;
+  } & PageChrome,
+) {
+  const { project, record, frame = bare } = props;
+  const footer = siteFooterOf(props);
   return (
     <div className="relative bg-ground">
-      <LandingNavbar />
+      {footer !== null && <LandingNavbar />}
       <PageSky>
         <main>
-          {frame("hero", <ProjectHero project={project} hero={record.hero} />)}
+          {frame("hero", <ProjectHero project={project} hero={record.hero} underNavbar={footer !== null} />)}
           <ProjectStory name={record.name} design={record.design} frame={frame} />
           {sectionsOf(record).map((s) => (
             <Fragment key={s.kind}>{frame(s.kind, <Section section={s} project={project} />)}</Fragment>
           ))}
         </main>
-        <LandingFooter inSky projects={footerProjects} />
+        {footer !== null && <LandingFooter inSky projects={footer} />}
       </PageSky>
     </div>
   );

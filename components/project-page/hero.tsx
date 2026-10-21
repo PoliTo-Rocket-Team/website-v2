@@ -68,10 +68,23 @@ function VisualPanel({ texture, visual }: { texture: string; visual: NonNullable
   );
 }
 
-export function ProjectHero({ project, hero }: { project: Pick<Project, "index" | "name" | "texture">; hero: Hero }) {
+export function ProjectHero({
+  project,
+  hero,
+  underNavbar = true,
+}: {
+  project: Pick<Project, "index" | "name" | "texture">;
+  hero: Hero;
+  /**
+   * The top clears the site's fixed bar (64px, 72px from md, navbar.tsx) and
+   * then keeps 24px, 92px from md. The editor draws the page with no navbar
+   * (issue #495), so it keeps the second part alone.
+   */
+  underNavbar?: boolean;
+}) {
   const facts = factLayout(hero.facts);
   return (
-    <section className="px-5 pt-[88px] md:px-16 md:pt-[164px]">
+    <section className={underNavbar ? "px-5 pt-[88px] md:px-16 md:pt-[164px]" : "px-5 pt-6 md:px-16 md:pt-[92px]"}>
       <div className="mx-auto max-w-[1312px]">
         <nav aria-label="Breadcrumb" className="font-mono text-[11px] tracking-[0.2em] md:text-xs">
           <Link href="/projects" className="text-text-2 transition-colors duration-300 ease-out hover:text-accent">
