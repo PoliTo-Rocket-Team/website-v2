@@ -73,10 +73,18 @@ export function checklistDone(checks: readonly PublishCheck[]): boolean {
   return checks.every((c) => c.done);
 }
 
-/** One page the switch shows (board 75d: Project page, Home, Projects list). */
+/**
+ * Whether the editor still has to check the item on a page of the switch
+ * before Publish (board 93e): a red cross until they confirm it looks right,
+ * then a green tick.
+ */
+export type PageCheck = "unchecked" | "checked";
+
+/** One page the switch shows (board 75d: Project page, Home, Projects list), with its check mark where it has one. */
 export type PageTarget<Page extends string> = {
   readonly id: Page;
   readonly label: string;
+  readonly check?: PageCheck;
 };
 
 /** The page switch shows only when there is another page to switch to. */

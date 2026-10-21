@@ -18,6 +18,17 @@ import {
   type PlacedSection,
   type ProjectFields,
 } from "@/lib/project-content/fields";
+import {
+  cardLookOf,
+  checksAfterEdit,
+  confirmTab,
+  holdsPublish,
+  liveLookOf,
+  publishHoldOf,
+  uncheckedFor,
+  type CardChecks,
+  type PublishHold,
+} from "@/lib/project-content/publish-hold";
 import { homeCardOf, lineupWith, type ProjectBlock, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
 import { EditableBlock, EditShell, type BlockShape } from "./edit-shell";
 import { BLOCK_LABELS } from "./project-blocks";
@@ -38,6 +49,10 @@ import { ProjectEditPanel, type FieldErrors, type PanelView } from "./project-ed
 // project's card in its place among the published ones, outlined with an
 // Edit card chip that opens the panel's Card section; the other cards are
 // dimmed.
+//
+// Publish is held (board 93e, issue #530) after the visual or the background
+// changes, and on a project never published, until the editor has ticked
+// Home and the Projects list through the bar each of those tabs shows.
 //
 // The pages themselves, drawn without the site's navbar and footer (issue
 // #495), are in project-edit-pages.tsx.
@@ -79,11 +94,23 @@ function InView({ when, children }: { when: boolean; children: ReactNode }) {
   return <div ref={ref}>{children}</div>;
 }
 
-const PAGE_TARGETS: readonly PageTarget<ProjectPageId>[] = [
-  { id: "page", label: "Project page" },
-  { id: "home", label: "Home" },
-  { id: "list", label: "Projects list" },
-];
+/**
+ * The page switch's pages; while Publish is held, Home and the Projects list
+ * each carry their cross or tick (board 93e).
+ */
+function pageTargetsOf(hold: PublishHold): readonly PageTarget<ProjectPageId>[] {
+  const check = (done: boolean) => (hold.kind === "checking" ? { check: done ? ("checked" as const) : ("unchecked" as const) } : {});
+  return [
+    { id: "page", label: "Project page" },
+    { id: "home", label: "Home", ...check(hold.kind === "checking" && hold.home) },
+    { id: "list", label: "Projects list", ...check(hold.kind === "checking" && hold.list) },
+  ];
+}
+
+const CHECK_NOTICE = "This changes how the project looks on Home and the Projects list. Check both tabs before publishing.";
+
+/** Where the confirm bar asks about the card, by tab (board 93e). */
+const CHECKED_PLACE: Readonly<Record<Exclude<ProjectPageId, "page">, string>> = { home: "Home", list: "the Projects list" };
 
 /** Each field's error, once a save was refused; fixing a field drops its error. */
 function errorsOf(fields: ProjectFields): FieldErrors {
@@ -113,6 +140,15 @@ export function ProjectEdit({
   const [pending, startTransition] = useTransition();
 
   const view = projectViewOf(fields, opened);
+
+  // The Publish hold (board 93e, issue #530): the tabs ticked for the card's
+  // look, cleared by every edit that changes it. The checks follow the look
+  // while drawing, as React adjusts state that follows another value.
+  const look = cardLookOf(view);
+  const [checks, setChecks] = useState<CardChecks>(() => uncheckedFor(look));
+  if (checks.look !== look) setChecks(checksAfterEdit(checks, look));
+  const hold = publishHoldOf(checksAfterEdit(checks, look), liveLookOf(item.version));
+  const toCheck = page !== "page" && hold.kind === "checking" && !hold[page] ? page : null;
 
   const openSection = useCallback((section: PanelSection) => {
     setPanelOpen(true);
@@ -164,8 +200,17 @@ export function ProjectEdit({
       status={statusOf(item.version)}
       saved={panelOpen ? "Changes show on the page as you type" : undefined}
       onSaveDraft={pending ? null : () => save("save-draft")}
-      onPublish={pending ? null : () => save("publish")}
-      pages={{ targets: PAGE_TARGETS, current: page, onSelect: setPage }}
+      onPublish={pending || holdsPublish(hold) ? null : () => save("publish")}
+      pages={{ targets: pageTargetsOf(hold), current: page, onSelect: setPage }}
+      notice={hold.kind === "checking" ? CHECK_NOTICE : undefined}
+      pageCheck={
+        toCheck === null
+          ? undefined
+          : {
+              question: `Is the ${view.name} card right on ${CHECKED_PLACE[toCheck]}?`,
+              onConfirm: () => setChecks((c) => confirmTab(c, toCheck)),
+            }
+      }
       blocks={editBlocksOf(view)}
       selected={page === "page" ? selected : undefined}
       onEdit={openSection}

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
-import { ArrowLeft, Circle, CircleCheck, Lock, Monitor, Pencil, Smartphone } from "lucide-react";
+import { ArrowLeft, Check, Circle, CircleCheck, CircleX, Lock, Monitor, Pencil, Smartphone, TriangleAlert } from "lucide-react";
 import {
   checklistDone,
   editChips,
@@ -12,6 +12,7 @@ import {
   type EditBlocks,
   type EditChip,
   type EditDevice,
+  type PageCheck,
   type PageTarget,
   type PublishCheck,
   type ScaledFrame,
@@ -52,6 +53,12 @@ import { EditFrame } from "./edit-frame";
 // scales it down to the room left of the panel, outlines and chips with it,
 // instead of reflowing the page to that narrower width. Below md the panel
 // covers the page, so there it changes nothing.
+//
+// A content type may hold Publish behind a check of other pages (board 93e,
+// issue #530): a warning strip under the bar, a cross or a tick after each
+// page of the switch the editor has to check, and, on a page still to check,
+// a bar over the page's foot asking whether it looks right. A shell given
+// none of these draws as before.
 
 const ChipContext = createContext<{
   readonly chipOf: (id: string) => EditChip;
@@ -123,6 +130,9 @@ function useScaledFrame(room: RefObject<HTMLDivElement | null>, on: boolean): Sc
   return frame;
 }
 
+/** The question a page still to check asks, and what confirming it does. */
+export type PageCheckPrompt = { readonly question: string; readonly onConfirm: () => void };
+
 /** The page switch: the pages this item shows on, and the one in view. */
 export type PageSwitch<Page extends string> = {
   readonly targets: readonly PageTarget<Page>[];
@@ -149,6 +159,8 @@ export function EditShell<Id extends string, Section extends string, Page extend
   children,
   panel,
   scalesDesktop = false,
+  notice,
+  pageCheck,
 }: {
   /** The dashboard page this item belongs to, as the breadcrumb's first step and where the arrow goes back to. */
   section: { readonly label: string; readonly href: string };
@@ -191,6 +203,10 @@ export function EditShell<Id extends string, Section extends string, Page extend
   panel?: ReactNode;
   /** While the panel is open, Desktop keeps the desktop layout scaled to fit beside it (board 93) rather than reflowing. */
   scalesDesktop?: boolean;
+  /** A warning strip under the bar, as while Publish waits on a check of other pages (board 93e). */
+  notice?: string;
+  /** On a page still to check, the bar over the page's foot: the question and its "Looks right" (board 93e). */
+  pageCheck?: PageCheckPrompt;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
   const roomRef = useRef<HTMLDivElement>(null);
@@ -260,32 +276,65 @@ export function EditShell<Id extends string, Section extends string, Page extend
         </div>
       </header>
 
+      {notice !== undefined && (
+        <p role="status" className="flex shrink-0 items-center gap-2.5 border-b border-warning/20 bg-warning-soft px-4 py-3 text-[13px] text-warning md:px-6">
+          <TriangleAlert aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          {notice}
+        </p>
+      )}
+
       {/* One frame for both devices: switching only resizes it, so the page
           keeps its state and scroll. Below md there is no Phone mode: the
           window is a phone already. */}
       <div className="flex min-h-0 flex-1">
-        <div
-          ref={roomRef}
-          className={`min-h-0 min-w-0 flex-1 ${scaled === null ? "overflow-auto" : "overflow-auto md:overflow-hidden"} ${phone ? "md:flex md:justify-center md:py-7" : ""}`}
-        >
-          <EditFrame
-            title={`Page preview: ${heading}`}
-            page={switcher?.current}
-            className={`block bg-ground ${
-              phone
-                ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline"
-                : scaled === null
-                  ? "h-full w-full"
-                  : SCALED_FRAME
-            }`}
-            style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px`, ...(scaled === null ? {} : scaledFrameStyle(scaled)) } as CSSProperties}
+        {/* The room and what floats over its foot, which stays put while the page scrolls. */}
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+          <div
+            ref={roomRef}
+            className={`min-h-0 min-w-0 flex-1 ${scaled === null ? "overflow-auto" : "overflow-auto md:overflow-hidden"} ${phone ? "md:flex md:justify-center md:py-7" : ""}`}
           >
-            <BlockChips blocks={blocks} onEdit={onEdit} startHere={startHere} selected={selected} checklistPinned={checklistPinned}>
-              {children}
-            </BlockChips>
-          </EditFrame>
+            <EditFrame
+              title={`Page preview: ${heading}`}
+              page={switcher?.current}
+              className={`block bg-ground ${
+                phone
+                  ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline"
+                  : scaled === null
+                    ? "h-full w-full"
+                    : SCALED_FRAME
+              }`}
+              style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px`, ...(scaled === null ? {} : scaledFrameStyle(scaled)) } as CSSProperties}
+            >
+              <BlockChips blocks={blocks} onEdit={onEdit} startHere={startHere} selected={selected} checklistPinned={checklistPinned}>
+                {children}
+              </BlockChips>
+            </EditFrame>
+          </div>
+          {pageCheck !== undefined && <PageCheckBar {...pageCheck} />}
         </div>
         {panel}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The bar over the page's foot on a page still to check (board 93e): the
+ * question on the left, "Looks right" on the right, which ticks the page.
+ */
+function PageCheckBar({ question, onConfirm }: PageCheckPrompt) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-4">
+      <div className="pointer-events-auto flex w-full max-w-[500px] items-center justify-between gap-4 rounded-full border border-white-10 bg-panel py-2 pl-5 pr-2 shadow-lg">
+        <p className="min-w-0 text-[13px] text-prt-text">{question}</p>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className={`${BAR_BUTTON} shrink-0 gap-1.5 bg-prt-text text-ground transition-opacity duration-300 ease-out hover:opacity-90`}
+        >
+          <Check aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+          Looks right
+        </button>
       </div>
     </div>
   );
@@ -345,7 +394,7 @@ function StatePill({ status, folds }: { status: ContentStatus; folds: boolean })
   );
 }
 
-type Segment<T extends string> = { readonly id: T; readonly label: string; readonly icon?: ReactNode };
+type Segment<T extends string> = { readonly id: T; readonly label: string; readonly icon?: ReactNode; readonly trail?: ReactNode };
 
 /** A row of buttons, one of them pressed: Desktop | Phone, and the page switch. */
 function Segmented<T extends string>({
@@ -375,6 +424,7 @@ function Segmented<T extends string>({
           >
             {segment.icon}
             {segment.label}
+            {segment.trail}
           </button>
         );
       })}
@@ -391,8 +441,20 @@ function DeviceToggle({ device, onChange }: { device: EditDevice; onChange: (dev
   return <Segmented label="Preview size" segments={DEVICES} value={device} onChange={onChange} />;
 }
 
+/** A page's check mark after its name (board 93e): a red cross until it is checked, then a green tick. */
+function CheckMark({ check }: { check: PageCheck }) {
+  const Mark = check === "checked" ? CircleCheck : CircleX;
+  return (
+    <>
+      <Mark aria-hidden className={`h-[13px] w-[13px] shrink-0 ${check === "checked" ? "text-success" : "text-danger"}`} strokeWidth={1.75} />
+      <span className="sr-only">{check === "checked" ? ", checked" : ", not checked yet"}</span>
+    </>
+  );
+}
+
 function PageSwitcher<Page extends string>({ targets, current, onSelect }: PageSwitch<Page>) {
-  return <Segmented label="Page" segments={targets} value={current} onChange={onSelect} />;
+  const segments = targets.map((t) => (t.check === undefined ? t : { ...t, trail: <CheckMark check={t.check} /> }));
+  return <Segmented label="Page" segments={segments} value={current} onChange={onSelect} />;
 }
 
 /**
