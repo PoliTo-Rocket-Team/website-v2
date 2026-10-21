@@ -22,8 +22,8 @@ import { EditFrame } from "./edit-frame";
 // real page under an edit bar, on top of the dashboard. Any content type
 // mounts it: it is handed the page, the page's blocks and their panel
 // sections, the publish state, the callbacks and its own edit panel, and
-// knows nothing of what the page shows. The page marks each block with EditableBlock; hovering one
-// outlines it with its name and an Edit chip that hands its section back.
+// knows nothing of what the page shows. The page marks each block with EditableBlock, always
+// outlined with its name and an Edit chip that hands its section back.
 //
 // The bar: "<Section> / Editing <item>" and the state on the left; Save draft
 // and Publish on the right. Desktop | Phone sits in the middle (74b), unless
@@ -147,10 +147,6 @@ export function EditShell<Id extends string, Section extends string, Page extend
   panel?: ReactNode;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
-  const chips = useMemo(
-    () => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null, selected: selected ?? null }),
-    [blocks, onEdit, startHere, selected],
-  );
   const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
   const changeDevice = (next: EditDevice) => {
     setDevice(next);
@@ -226,7 +222,9 @@ export function EditShell<Id extends string, Section extends string, Page extend
             className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
             style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
           >
-            <ChipContext.Provider value={chips}>{children}</ChipContext.Provider>
+            <BlockChips blocks={blocks} onEdit={onEdit} startHere={startHere} selected={selected}>
+              {children}
+            </BlockChips>
           </EditFrame>
         </div>
         {panel}
@@ -335,11 +333,49 @@ function PageSwitcher<Page extends string>({ targets, current, onSelect }: PageS
 }
 
 /**
- * One named block of the page in the shell. Hovered, or with focus inside,
- * it shows an accent outline with its name and an Edit chip that hands the
- * block's section to the shell's `onEdit` (board 74b). The shell's
- * `startHere` block shows its outline from the start, with a "Start here"
- * chip in place of Edit (board 74f).
+ * Hands each EditableBlock under it its chip, and which block starts the
+ * page or is being edited. EditShell draws it round the page in its frame.
+ */
+export function BlockChips<Id extends string, Section extends string>({
+  blocks,
+  onEdit,
+  startHere,
+  selected,
+  children,
+}: {
+  blocks: EditBlocks<Id, Section>;
+  onEdit: (section: Section) => void;
+  startHere?: Id;
+  selected?: Id;
+  children: ReactNode;
+}) {
+  const chips = useMemo(
+    () => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null, selected: selected ?? null }),
+    [blocks, onEdit, startHere, selected],
+  );
+  return <ChipContext.Provider value={chips}>{children}</ChipContext.Provider>;
+}
+
+/**
+ * How a block's outline is drawn (Owner decision, 2026-10-21: what is
+ * editable shows at all times, on every device). At rest a dashed accent
+ * hairline with no fill, which hover or focus inside only brightens to the
+ * full accent; the `startHere` block keeps board 74f's outline; the
+ * `selected` block, the one its panel edits, is drawn strongest (board 80b).
+ */
+const BLOCK_OUTLINE = {
+  rest: "border border-dashed border-accent/50 group-hover/block:border-accent group-focus-within/block:border-accent motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out",
+  start: "border-[1.5px] border-accent bg-accent/5",
+  selected: "border-2 border-accent bg-accent/5",
+} as const;
+
+/**
+ * One named block of the page in the shell. It always shows its outline,
+ * with its name and an Edit chip that hands the block's section to the
+ * shell's `onEdit` (board 74b), on Desktop, Phone and touch alike; hover or
+ * focus inside only brightens the outline. The shell's `startHere` block
+ * shows a "Start here" chip in place of Edit (board 74f), and the
+ * `selected` block a stronger outline with no chips (board 80b).
  */
 export function EditableBlock({
   id,
@@ -362,9 +398,7 @@ export function EditableBlock({
   const start = chips.startHere === id;
   const selected = chips.selected === id;
   const chip = start ? { ...chips.chipOf(id), label: "Start here" } : chips.chipOf(id);
-  const shown = start
-    ? "opacity-100"
-    : "opacity-0 group-hover/block:opacity-100 group-focus-within/block:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
+  const outline = selected ? BLOCK_OUTLINE.selected : start ? BLOCK_OUTLINE.start : BLOCK_OUTLINE.rest;
   // The publish checklist hangs pinned under Publish while a new item opens
   // (board 74f): 244px wide, 16px in from the window's right edge. "Start
   // here" sits left of it, so it moves in from the block's right edge far
@@ -380,7 +414,7 @@ export function EditableBlock({
       {children}
       <div
         aria-hidden
-        className={`pointer-events-none absolute -inset-3 z-10 rounded-xl border-[1.5px] border-accent bg-accent/5 md:-inset-[22px] ${selected ? "opacity-100" : shown}`}
+        className={`pointer-events-none absolute -inset-3 z-10 rounded-xl md:-inset-[22px] ${outline}`}
       >
         {!selected && (
           <span className="absolute left-4 top-0 -translate-y-1/2 whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent">
@@ -393,7 +427,7 @@ export function EditableBlock({
           type="button"
           onClick={chip.edit}
           aria-label={`${chip.label}: ${chip.name}`}
-          className={`absolute -top-3 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] ${chipPlace} ${shown} focus-visible:opacity-100 ${CONTENT_FOCUS}`}
+          className={`absolute -top-3 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] ${chipPlace} hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS}`}
         >
           <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
           {chip.label}
@@ -468,9 +502,9 @@ function keepInViewOnResize(card: HTMLElement): () => void {
  *
  * A content type may give a card its own `actions` (issue #431: Outreach's
  * Pin to top and Unpin), each a CardChip. On the edited card they sit left of
- * Edit card; on a dimmed card they show, undimmed, with a hairline outline,
- * while the card is hovered or holds focus. Without them the card is drawn as
- * it always was.
+ * Edit card; on a dimmed card they always show, undimmed, with a hairline
+ * outline that hover or focus inside only brightens (Owner decision,
+ * 2026-10-21). Without them the card is drawn as it always was.
  */
 export function CardInPlace({
   edited,
@@ -506,13 +540,14 @@ export function CardInPlace({
   );
   if (!edited) {
     if (actions === undefined) return <div className={`opacity-40 ${className}`}>{children}</div>;
-    const shown =
-      "opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
     return (
       <div className={`group/card relative ${className}`}>
         <div className={`opacity-40 ${className}`}>{children}</div>
-        <div aria-hidden className={`pointer-events-none absolute -inset-1.5 z-10 border border-border-strong ${outline} ${shown}`} />
-        <div className={`absolute -top-1.5 right-6 z-10 flex -translate-y-1/2 items-center gap-2 ${shown}`}>{actions}</div>
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute -inset-1.5 z-10 border border-border-strong group-hover/card:border-dim group-focus-within/card:border-dim motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${outline}`}
+        />
+        <div className="absolute -top-1.5 right-6 z-10 flex -translate-y-1/2 items-center gap-2">{actions}</div>
       </div>
     );
   }
