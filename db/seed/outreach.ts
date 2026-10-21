@@ -132,12 +132,31 @@ const recordPostId = (title: string): number => {
   return item.id;
 };
 
+/** The pinned summit story's id; the import always pins it. */
+const pinnedPostId = (): number => {
+  if (PINNED_POST === null) throw new Error("the outreach import pins no post");
+  return PINNED_POST;
+};
+
 /**
  * Placeholder galleries for three published record posts (issue #456): the
- * newest one, Wings for Life, and two more. Their photos are the record's and
+ * newest one, Wings for Life, and two more; and for the pinned summit story,
+ * the post the top of /outreach leads to. Their photos are the record's and
  * the project pages' own, so each alt text says what its photo shows.
  */
 const RECORD_GALLERIES: ReadonlyMap<number, PostGallery> = new Map<number, PostGallery>([
+  [
+    pinnedPostId(),
+    {
+      items: [
+        { ...recordPhoto("IRESS, 1st edition"), caption: "The 1st edition, Torino" },
+        { ...recordPhoto("IRESS, 2nd edition"), caption: "The 2nd edition, Padova" },
+        { ...recordPhoto("IRESS, 3rd edition"), caption: "The 3rd edition, Rome" },
+        projectPhoto("cavour/sa-cup-expo", "Cavour and its poster on the Team's table at the competition expo", "Spaceport America Cup 2023, New Mexico"),
+        projectPhoto("ves/irec-2025-expo", "VES Mark II and its poster at the competition expo", "IREC 2025, Texas"),
+      ],
+    },
+  ],
   [
     recordPostId("Wings for Life, Aosta"),
     {
