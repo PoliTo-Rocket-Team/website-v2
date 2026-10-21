@@ -238,17 +238,17 @@ function headDepartment() {
  */
 export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersHolding[], grant: TestGrant | null = null): DashboardViewer {
   if (viewer === "non-member") {
-    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", session: "test-developer" };
+    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", photoUrl: null, session: "test-developer" };
   }
   if (viewer === "alumni") {
-    return { ...testDeveloperStanding(viewer), name: formerMember.name, role: VIEWER_KIND_LABELS.alumni, session: "test-developer" };
+    return { ...testDeveloperStanding(viewer), name: formerMember.name, role: VIEWER_KIND_LABELS.alumni, photoUrl: null, session: "test-developer" };
   }
   const person = personFor[viewer];
   const approveOrders = holders.some((h) => h.personId === person.id);
   const standing = testDeveloperStanding(viewer, approveOrders);
   const withGrant =
     standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant), siteContent: testGrantHoldsContent(grant) } : standing;
-  return { ...withGrant, name: person.name, role: person.title, session: "test-developer" };
+  return { ...withGrant, name: person.name, role: person.title, photoUrl: null, session: "test-developer" };
 }
 
 /** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */

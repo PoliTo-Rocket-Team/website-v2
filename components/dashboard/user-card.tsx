@@ -44,7 +44,7 @@ export function UserCard({
 }) {
   const trigger = (
     <>
-      <Avatar accent />
+      <Avatar accent photoUrl={viewer.photoUrl} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-prt-text">{viewer.name}</span>
         <span className="block truncate text-[12px] text-prt-muted">{viewer.role}</span>
@@ -172,7 +172,7 @@ export function UserSheet({
         >
           <span aria-hidden="true" className="mx-auto block h-1 w-10 rounded-full bg-white-10" />
           <div className="mt-4 flex items-center gap-3 px-1">
-            <Avatar accent size="ml" />
+            <Avatar accent size="ml" photoUrl={viewer.photoUrl} />
             <div className="min-w-0">
               <DialogTitle className="truncate text-[16px] font-semibold leading-snug">{viewer.name}</DialogTitle>
               <p className="truncate text-[13px] text-prt-muted">{viewer.role}</p>
