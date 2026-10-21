@@ -14,8 +14,9 @@ import { TEST_VIEWER_PEOPLE } from "@/lib/test-viewer-people";
 // (lib/dummy-data/mode.ts), the dashboard reads them too. Where they read a
 // database, as on a preview with its seeded database (issue #307), the
 // test developer is read as that viewer's seeded person. On a preview that
-// person may write to the shared preview database, which the next preview
-// build wipes and re-seeds; under `next dev` they may not (ADR 0016).
+// person may write to the shared preview database, where the rows last across
+// preview builds (a build seeds it only while it is empty); under `next dev`
+// they may not (ADR 0016).
 //
 // Production never offers it and never accepts it: every path asks
 // `testDeveloperOn()` first, at request time, so a cookie set elsewhere is
@@ -127,8 +128,9 @@ function processWriteGateEnv(): WriteGateEnv {
 /**
  * Whether a test developer read as a seeded person may write to the database
  * (ADR 0016, amendment of 2026-10-17): only on a Vercel preview whose
- * `DATABASE_URL` names the shared `preview` branch, which the next preview
- * build wipes and re-seeds. The branch is proven by the seed guard's own
+ * `DATABASE_URL` names the shared `preview` branch, which holds only seeded
+ * and tester-made rows and which a preview build seeds only while it is
+ * empty (amendment of 2026-10-21). The branch is proven by the seed guard's own
  * check (`isPreviewDatabase`, issue #364), so a preview pointed at any other
  * database is refused too. Refused in production (where the gate is off
  * anyway), on any other Vercel environment, and under `next dev`, where the

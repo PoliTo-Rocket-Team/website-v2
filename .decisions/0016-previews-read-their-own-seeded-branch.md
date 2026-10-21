@@ -95,6 +95,23 @@ The test developer may save on previews (Owner decision, recorded on [#260](http
 - **The write gate and the seed guard share one check** ([#364](https://github.com/PoliTo-Rocket-Team/website-v2/issues/364)). `isPreviewDatabase` in [lib/seed/target.ts](../lib/seed/target.ts) reads a connection string's host alone and is true only for the `PREVIEW_ENDPOINT` endpoint, by its direct or its `-pooler` host. The seed guard asks it before it lets a Neon target through, and `testDeveloperMayWrite` asks it of `DATABASE_URL`, the variable the database client connects with. So a preview whose `DATABASE_URL` names any other database refuses a test developer's write, and the Preview environment variables are no longer the only thing keeping those writes off production data.
 - **The Gap is closed.** The first text left open whether a test developer may ever write to the `preview` branch; this amendment decides it, so that Gap is gone.
 
+## Amendment, 2026-10-21
+
+Preview builds no longer reset and re-seed the shared `preview` branch (Owner decision, recorded on [#465](https://github.com/PoliTo-Rocket-Team/website-v2/issues/465)). A reset on every build erased what a reviewer saved on a preview before anyone could check it, which defeated the amendment of 2026-10-17. The build step works as follows:
+
+- **Migrate always, under the lock.** Every approved preview build migrates the branch while it holds the advisory lock on the direct connection, as before.
+- **Seed only an empty branch.** Under the same lock, after the migration, the step reads whether the branch holds any seeded rows. It seeds only when the branch is empty. A branch that already holds data is migrated and left as it was.
+- **Never reset.** No preview build runs the seed's reset on the shared branch. `pnpm db:seed` on a local database keeps its reset-then-insert behaviour.
+- **Preview changes persist across preview builds.** Rows made on a preview, by a test developer or anyone else, stay until someone removes them.
+- **Seed changes reach the branch only when it is empty.** A seed module or seed row merged later does not appear on an existing `preview` branch by itself. Re-seeding the branch is a deliberate owner step, never part of a build.
+
+This amendment overrides these earlier lines, which stay as written:
+
+- the 2026-10-16 amendment's "A preview's changes last only until the next preview build", and its "migrates it and resets and re-seeds it";
+- the 2026-10-17 amendment's "The next preview build wipes and re-seeds the branch";
+- Decision 2's "re-seeds it";
+- the Consequences line "each preview build resets the rows every other preview reads".
+
 ## Records
 
 Pattern: [.patterns/schema-migrations.md](../.patterns/schema-migrations.md) (how `pnpm db:seed` runs).

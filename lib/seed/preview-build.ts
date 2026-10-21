@@ -1,12 +1,14 @@
 // The preview build's database step (issue #307, ADR 0016). Every preview
 // deployment reads one shared Neon branch named `preview`. Before
 // `next build`, a Vercel preview build migrates the database it is given and
-// then resets and re-seeds it; production and development builds, and a
-// preview given no database, never touch a database here. The steps run
-// against a target the seed guard approved, one build at a time: they hold
-// one lock across the migration and the seed, and the seed itself is one
-// transaction, so a second build that runs anyway cannot leave the branch
-// half-seeded.
+// seeds it only when it is still empty; it never resets it, so what testers
+// make on a preview lasts across preview builds (issue #465, ADR 0016
+// amendment of 2026-10-21). Production and development builds, and a preview
+// given no database, never touch a database here. The steps run against a
+// target the seed guard approved, one build at a time: they hold one lock
+// across the migration, the emptiness read and the seed, and the seed itself
+// is one transaction, so a second build that runs anyway cannot leave the
+// branch half-seeded.
 
 import type { SeedReport } from "./runner";
 import { parseTarget, type ApprovedSeedTarget, type GuardVerdict } from "./target";
@@ -70,18 +72,27 @@ export type PreviewBuildSteps = {
   /** Runs `work` while this build holds the one preview-seed lock on `target`; releases it however `work` ends. */
   exclusive<T>(target: ApprovedSeedTarget, work: () => Promise<T>): Promise<T>;
   migrate(target: ApprovedSeedTarget): Promise<void>;
+  /** Reads, and never writes, whether `target` holds no seeded rows yet. */
+  contents(target: ApprovedSeedTarget): Promise<PreviewDatabaseContents>;
   seed(target: ApprovedSeedTarget): Promise<SeedReport>;
 };
+
+/** What the emptiness read found: a database the seed never filled, or one that holds rows. */
+export type PreviewDatabaseContents = "empty" | "has-data";
 
 export type PreviewBuildOutcome =
   | { readonly kind: "skipped"; readonly why: string }
   | { readonly kind: "refused"; readonly why: string }
-  | { readonly kind: "seeded"; readonly report: SeedReport };
+  /** The database was empty: it was migrated, then seeded. */
+  | { readonly kind: "migrated-and-seeded"; readonly report: SeedReport }
+  /** The database already held rows: it was migrated and its rows were left as they were. */
+  | { readonly kind: "migrated"; readonly target: ApprovedSeedTarget };
 
 /**
- * Migrates, then resets and re-seeds, the preview's database. Nothing runs
- * unless the plan says prepare and the guard approves the exact target; the
- * migration and the seed run under one lock, in that order.
+ * Migrates the preview's database, then seeds it only when it is empty. It
+ * never resets it. Nothing runs unless the plan says prepare and the guard
+ * approves the exact target; the migration, the emptiness read and the seed
+ * run under one lock, in that order.
  */
 export async function preparePreviewDatabase(env: PreviewBuildEnv, steps: PreviewBuildSteps): Promise<PreviewBuildOutcome> {
   const plan = previewBuildPlan(env);
@@ -92,9 +103,9 @@ export async function preparePreviewDatabase(env: PreviewBuildEnv, steps: Previe
     return { kind: "refused", why: `the seed guard refused (${verdict.refusal.reason}): ${verdict.refusal.detail}` };
   }
   const { target } = verdict;
-  const report = await steps.exclusive(target, async () => {
+  return steps.exclusive(target, async (): Promise<PreviewBuildOutcome> => {
     await steps.migrate(target);
-    return steps.seed(target);
+    if ((await steps.contents(target)) === "has-data") return { kind: "migrated", target };
+    return { kind: "migrated-and-seeded", report: await steps.seed(target) };
   });
-  return { kind: "seeded", report };
 }
