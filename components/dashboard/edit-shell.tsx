@@ -408,37 +408,54 @@ export function EditableBlock({
   // here" sits left of it, so it moves in from the block's right edge far
   // enough to clear the checklist; from 1440px the page's centred column
   // leaves room for the board's own spot.
-  const onTop = "-top-3 -translate-y-1/2 md:-top-[22px]";
-  const chipPlace = narrow
-    ? "-bottom-3 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[22px] xl:bottom-auto xl:-top-[22px] xl:left-[calc(100%-8px)] xl:translate-x-0 xl:-translate-y-1/2"
+  //
+  // The chips ride one row on the outline's top edge: the name on the left,
+  // cut short when the row runs out of room, and Edit on the right, so with
+  // every chip shown at once the two never overlap. The name sits at the
+  // block's own left edge, so a block that fills the page's width keeps its
+  // name inside the frame. A narrow block's Edit chip is not in the row:
+  // from xl it hangs off the outline's right edge (board 80), and below xl,
+  // where the chart is a grid with no room beside a person, it sits on the
+  // outline's foot, the block keeping room under it.
+  const rowEnd = narrow
+    ? "right-1 md:-right-1.5 xl:right-3"
     : start
-      ? `${onTop} right-6 md:right-[220px] min-[1440px]:right-[145px]`
-      : `${onTop} right-6 md:right-[33px]`;
+      ? "right-6 md:right-[220px] min-[1440px]:right-[145px]"
+      : "right-6 md:right-[33px]";
+  const edit = (
+    <button
+      type="button"
+      onClick={chip.edit}
+      aria-label={`${chip.label}: ${chip.name}`}
+      className={`pointer-events-auto z-10 inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS} ${
+        narrow
+          ? "absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[22px] xl:bottom-auto xl:-top-[22px] xl:left-[calc(100%-8px)] xl:translate-x-0 xl:-translate-y-1/2"
+          : "ml-auto"
+      }`}
+    >
+      <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+      {chip.label}
+    </button>
+  );
   return (
     <div className={`group/block relative ${narrow ? "max-xl:mb-8" : ""} ${className}`}>
       {children}
-      <div
-        aria-hidden
-        className={`pointer-events-none absolute -inset-3 z-10 rounded-xl md:-inset-[22px] ${outline}`}
-      >
-        {!selected && (
-          <span
-            className={`absolute left-4 top-0 -translate-y-1/2 whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent ${narrow ? "max-w-[calc(100%-32px)] truncate" : ""}`}
-          >
-            {chip.name}
-          </span>
-        )}
-      </div>
+      <div aria-hidden className={`pointer-events-none absolute -inset-3 z-10 rounded-xl md:-inset-[22px] ${outline}`} />
       {!selected && (
-        <button
-          type="button"
-          onClick={chip.edit}
-          aria-label={`${chip.label}: ${chip.name}`}
-          className={`absolute z-10 inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent ${chipPlace} hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS}`}
-        >
-          <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-          {chip.label}
-        </button>
+        <>
+          <div
+            className={`pointer-events-none absolute -top-3 left-1 z-10 flex -translate-y-1/2 items-center gap-2 md:-top-[22px] md:left-0 ${rowEnd}`}
+          >
+            <span
+              aria-hidden
+              className="min-w-0 truncate whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent"
+            >
+              {chip.name}
+            </span>
+            {!narrow && edit}
+          </div>
+          {narrow && edit}
+        </>
       )}
     </div>
   );
