@@ -10,8 +10,10 @@ import { openDashboard } from "@/lib/dashboard/open";
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
   // No share image here or on any dashboard page: this drops the root's
-  // default one (app/opengraph-image.tsx, issue #454).
-  openGraph: null,
+  // default one (app/opengraph-image.tsx, issue #454). On a layout it takes
+  // an empty image list: `openGraph: null` here lets the root's image back
+  // in on the pages below (measured on a Next.js 16.2 build).
+  openGraph: { images: [] },
 };
 
 // Every dashboard page sits in the shell: the viewer's sidebar, their user
