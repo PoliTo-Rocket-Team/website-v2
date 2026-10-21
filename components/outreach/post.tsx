@@ -34,8 +34,27 @@ import { Photo } from "./photo";
 // is the 760px text column plus the 300px column of original-post cards
 // beside it, sticky, 56px apart. Below lg the cards follow the article, after
 // the photo grid.
+//
+// A post with no original posts has no second column, so from lg its article
+// (header, text and photo grid) is one column at the 760px reading width,
+// centred (Owner decision, issue #519). The gallery and the older / newer
+// cards keep the 1116px width either way.
 
 const width = "mx-auto max-w-[1116px]";
+
+/**
+ * How a post's article is laid out from lg: beside its original posts, or
+ * alone and centred when it has none. Read off the post, never off `hints`,
+ * so the editor's page follows the public one: the editor still draws the
+ * empty "Original posts" block, inside the centred column.
+ */
+type ArticleLayout = "beside-channels" | "centred";
+
+const layoutOf = (post: OutreachDraft): ArticleLayout =>
+  channelsOf(post).length > 0 ? "beside-channels" : "centred";
+
+/** The article's width: the shared 1116px, narrowed to the 760px reading width from lg when centred. */
+const articleWidth = (layout: ArticleLayout) => (layout === "centred" ? `${width} lg:max-w-[760px]` : width);
 
 /** The parts of a post page an editor outlines as blocks (board 74b). */
 export type PostPart = "details" | "cover" | "text" | "photos" | "channels" | "gallery";
@@ -122,7 +141,7 @@ export function PostHeader({ post, frame = bare, hints = false }: PostPartsProps
   );
   const cover = post.photos[0];
   return (
-    <header className={width}>
+    <header className={articleWidth(layoutOf(post))}>
       {frame("details", details)}
       <div className="mt-8 md:mt-12">
         {frame(
@@ -246,14 +265,33 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
   );
 }
 
+/**
+ * The body's lg-only grid classes per layout. Below lg both are the same one
+ * column, so nothing here applies under lg. Centred, every part simply
+ * follows the one before it, as on phones: the editor's empty "Original
+ * posts" block comes after the text and the photo grid.
+ */
+const BODY_GRID: Record<ArticleLayout, { grid: string; text: string; photos: string; channels: string; sticky: string }> = {
+  "beside-channels": {
+    grid: "lg:grid-cols-[minmax(0,760px)_300px] lg:gap-x-14",
+    text: "lg:col-start-1 lg:row-start-1",
+    photos: "lg:col-span-2 lg:row-start-2",
+    channels: "lg:col-start-2 lg:row-start-1",
+    sticky: "lg:sticky lg:top-[96px]",
+  },
+  centred: { grid: "", text: "", photos: "", channels: "", sticky: "" },
+};
+
 export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) {
   const channels = channelsOf(post);
   const more = post.photos.slice(1);
   // Original posts are optional (issue #430): the public page leaves the column out when there are none.
   const showChannels = channels.length > 0 || hints;
+  const layout = layoutOf(post);
+  const grid = BODY_GRID[layout];
   return (
-    <div className={`${width} mt-10 grid gap-y-14 md:mt-14 lg:grid-cols-[minmax(0,760px)_300px] lg:gap-x-14 lg:gap-y-24`}>
-      <div className="lg:col-start-1 lg:row-start-1">
+    <div className={`${articleWidth(layout)} mt-10 grid gap-y-14 md:mt-14 ${grid.grid} lg:gap-y-24`}>
+      <div className={grid.text}>
         {frame(
           "text",
           <article className="space-y-5 text-[16px] leading-[1.75] text-text-2 md:text-[17px] md:leading-[1.8]">
@@ -266,15 +304,15 @@ export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) 
       </div>
 
       {more.length > 0 && (
-        <div className="lg:col-span-2 lg:row-start-2">
+        <div className={grid.photos}>
           <h2 className="sr-only">Photos</h2>
           {frame("photos", <PhotoGrid photos={more} />)}
         </div>
       )}
 
       {showChannels && (
-        <aside aria-label="Original posts" className="lg:col-start-2 lg:row-start-1">
-          <div className="lg:sticky lg:top-[96px]">
+        <aside aria-label="Original posts" className={grid.channels}>
+          <div className={grid.sticky}>
             {frame(
               "channels",
               <div className="space-y-3">
