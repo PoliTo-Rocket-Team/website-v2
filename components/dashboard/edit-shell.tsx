@@ -49,6 +49,8 @@ const ChipContext = createContext<{
   readonly chipOf: (id: string) => EditChip;
   readonly startHere: string | null;
   readonly selected: string | null;
+  /** The publish checklist hangs pinned over the page's top right, so every chip row keeps clear of it. */
+  readonly checklistPinned: boolean;
 } | null>(null);
 
 const STATE_TONE: Readonly<Record<ContentStatus, { pill: string; dot: string }>> = {
@@ -156,6 +158,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   const phone = device === "phone";
   const ready = checklistDone(publishChecklist);
   const checklistId = useId();
+  const checklistPinned = !ready && !panel;
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-ground text-prt-text">
       {/* Three columns: the middle one is centred while the right group fits
@@ -206,7 +209,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
             >
               Publish
             </button>
-            {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={!panel} />}
+            {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={checklistPinned} />}
           </div>
         </div>
       </header>
@@ -222,7 +225,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
             className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
             style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
           >
-            <BlockChips blocks={blocks} onEdit={onEdit} startHere={startHere} selected={selected}>
+            <BlockChips blocks={blocks} onEdit={onEdit} startHere={startHere} selected={selected} checklistPinned={checklistPinned}>
               {children}
             </BlockChips>
           </EditFrame>
@@ -341,17 +344,24 @@ export function BlockChips<Id extends string, Section extends string>({
   onEdit,
   startHere,
   selected,
+  checklistPinned = false,
   children,
 }: {
   blocks: EditBlocks<Id, Section>;
   onEdit: (section: Section) => void;
   startHere?: Id;
   selected?: Id;
+  checklistPinned?: boolean;
   children: ReactNode;
 }) {
   const chips = useMemo(
-    () => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null, selected: selected ?? null }),
-    [blocks, onEdit, startHere, selected],
+    () => ({
+      chipOf: editChips(blocks, onEdit) as (id: string) => EditChip,
+      startHere: startHere ?? null,
+      selected: selected ?? null,
+      checklistPinned,
+    }),
+    [blocks, onEdit, startHere, selected, checklistPinned],
   );
   return <ChipContext.Provider value={chips}>{children}</ChipContext.Provider>;
 }
@@ -377,14 +387,19 @@ const BLOCK_OUTLINE = {
  * - `around`: a block with room round it. The outline stands 12px (22px
  *   from md) outside the block and one row rides its top edge: the name on
  *   the left, cut short when the row runs out of room, and Edit on the
- *   right. The name sits at the block's own left edge.
+ *   right. The name sits at the block's own left edge. Below md a page has
+ *   too little room between its parts for a row on the edge, which would sit
+ *   on the heading or text above, so the block keeps 32px at its top and the
+ *   row sits there, inside the outline.
  * - `narrow`: a block about as wide as its name chip, such as one person on
  *   the Team page's org chart (board 80). The name chip spans the outline's
  *   top edge, and the Edit chip sits on the outline's foot, the block keeping
  *   room under it. Board 80 hangs that chip off the outline's right edge, but
  *   with every chip shown at once it would sit on the arc's end labels, its
  *   add buttons and the next person's outline; under a person nothing else
- *   is drawn, on the arc or in the grid below xl.
+ *   is drawn, on the arc or in the grid below xl. The outline's foot stands
+ *   further out than its other sides, so the chip on it stays clear of the
+ *   person's contact icons.
  * - `bleed`: a block that fills the page's width, as a project's hero and
  *   numbered sections do. Outside it, the outline's sides would fall past the
  *   frame's edges, and the hero's chip row past its top, so both sit inside
@@ -397,12 +412,48 @@ export type BlockShape = "around" | "narrow" | "bleed";
 const AROUND_OUTLINE = "-inset-3 md:-inset-[22px]";
 const ON_TOP_EDGE = "-top-3 -translate-y-1/2 md:-top-[22px]";
 
+/**
+ * Each shape's placement. `rowEnd` is where the chip row ends; `clearEnd`
+ * where it ends while the publish checklist hangs pinned under Publish
+ * (board 74f): 244px wide, 16px in from the window's right edge, so the row
+ * moves in from the block's right edge far enough to clear it. An `around`
+ * block sits in the page's column, 64px in from md; from 1440px the column
+ * is centred and leaves room for the board's own spot. A `bleed` block's
+ * edge is the frame's.
+ */
 const BLOCK_SHAPE: Readonly<
-  Record<BlockShape, { outline: string; row: string; rowStart: string; rowEnd: string; editAtFoot: boolean; room: string }>
+  Record<
+    BlockShape,
+    { outline: string; row: string; rowStart: string; rowEnd: string; clearEnd: string; editAtFoot: boolean; room: string }
+  >
 > = {
-  around: { outline: AROUND_OUTLINE, row: ON_TOP_EDGE, rowStart: "left-1 md:left-0", rowEnd: "right-6 md:right-[33px]", editAtFoot: false, room: "" },
-  narrow: { outline: AROUND_OUTLINE, row: ON_TOP_EDGE, rowStart: "left-1 md:-left-3", rowEnd: "right-1 md:-right-3", editAtFoot: true, room: "mb-8" },
-  bleed: { outline: "inset-1.5 md:inset-2", row: "top-3 md:top-4", rowStart: "left-3 md:left-4", rowEnd: "right-6 md:right-[33px]", editAtFoot: false, room: "" },
+  around: {
+    outline: AROUND_OUTLINE,
+    row: "top-0 md:-top-[22px] md:-translate-y-1/2",
+    rowStart: "left-1 md:left-0",
+    rowEnd: "right-6 md:right-[33px]",
+    clearEnd: "right-6 md:right-[220px] min-[1440px]:right-[145px]",
+    editAtFoot: false,
+    room: "max-md:pt-8",
+  },
+  narrow: {
+    outline: "-inset-x-3 -top-3 -bottom-6 md:-inset-x-[22px] md:-top-[22px] md:-bottom-[30px]",
+    row: ON_TOP_EDGE,
+    rowStart: "left-1 md:-left-3",
+    rowEnd: "right-1 md:-right-3",
+    clearEnd: "right-1 md:-right-3",
+    editAtFoot: true,
+    room: "mb-10",
+  },
+  bleed: {
+    outline: "inset-1.5 md:inset-2",
+    row: "top-3 md:top-4",
+    rowStart: "left-3 md:left-4",
+    rowEnd: "right-6 md:right-[33px]",
+    clearEnd: "right-6 md:right-[284px]",
+    editAtFoot: false,
+    room: "",
+  },
 };
 
 /**
@@ -432,19 +483,16 @@ export function EditableBlock({
   const chip = start ? { ...chips.chipOf(id), label: "Start here" } : chips.chipOf(id);
   const outline = selected ? BLOCK_OUTLINE.selected : start ? BLOCK_OUTLINE.start : BLOCK_OUTLINE.rest;
   const place = BLOCK_SHAPE[shape];
-  // The publish checklist hangs pinned under Publish while a new item opens
-  // (board 74f): 244px wide, 16px in from the window's right edge. "Start
-  // here" sits left of it, so it moves in from the block's right edge far
-  // enough to clear the checklist; from 1440px the page's centred column
-  // leaves room for the board's own spot.
-  const rowEnd = start && !place.editAtFoot ? "right-6 md:right-[220px] min-[1440px]:right-[145px]" : place.rowEnd;
+  // "Start here" keeps board 74f's spot, left of the checklist; while the
+  // checklist hangs pinned, every chip row keeps clear of it the same way.
+  const rowEnd = start || chips.checklistPinned ? place.clearEnd : place.rowEnd;
   const edit = (
     <button
       type="button"
       onClick={chip.edit}
       aria-label={`${chip.label}: ${chip.name}`}
       className={`pointer-events-auto z-10 inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS} ${
-        place.editAtFoot ? "absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[22px]" : "ml-auto"
+        place.editAtFoot ? "absolute -bottom-6 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[30px]" : "ml-auto"
       }`}
     >
       <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
