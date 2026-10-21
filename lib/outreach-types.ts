@@ -31,15 +31,14 @@ export type PostGalleryPhoto = OutreachPhoto & { caption?: string };
 
 /**
  * A post's gallery at the bottom of its page (issue #430): the carousel and
- * lightbox project pages have. Switched off, it stays with the post and
- * leaves the page; switched on, it has a title and at least one photo.
+ * lightbox project pages have. It is its photos in carousel order and nothing
+ * else (Owner decision, issue #451): no switch and no title. A post with no
+ * gallery photo has no gallery, so one that has a gallery shows it.
  */
-export type PostGallery =
-  | { shown: true; title: string; items: NonEmpty<PostGalleryPhoto> }
-  | { shown: false; title: string; items: readonly PostGalleryPhoto[] };
+export type PostGallery = { items: NonEmpty<PostGalleryPhoto> };
 
-/** A draft's gallery: switched on, it may have no title or photo yet. */
-export type DraftGallery = { shown: boolean; title: string; items: readonly PostGalleryPhoto[] };
+/** A draft's gallery is a post's: its photos, one at least, each caption optional. */
+export type DraftGallery = PostGallery;
 
 /**
  * One tag in the tag list: what kind of event a post is about. Tags are data
@@ -103,7 +102,7 @@ export type OutreachPost = {
   /** The first is the card photo and the post's top photo; more make the photo grid. */
   photos: NonEmpty<OutreachPhoto>;
   channels: Channels;
-  /** The gallery at the bottom of the page; absent when the post never had one. */
+  /** The gallery at the bottom of the page; absent when the post has no gallery photo. */
   gallery?: PostGallery;
 };
 
@@ -112,7 +111,7 @@ export type OutreachPost = {
  * (boards 74c and 74f), and a new post saved before it is published, since
  * Save draft works at any point (board 74f, issue #292). Its title, lead and
  * summary may be empty; it may have no tag, text block, photo or channel
- * yet; a text block, a channel's link or the gallery's title may be blank.
+ * yet; a text block or a channel's link may be blank.
  * Every `OutreachPost` is one too. Only a whole `OutreachPost` is published.
  */
 export type OutreachDraft = Omit<OutreachPost, "tags" | "body" | "photos" | "gallery"> & {

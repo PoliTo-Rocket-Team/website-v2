@@ -5,12 +5,12 @@ import { importedOutreach } from "@/lib/outreach-import";
 import type { PhotoFiles } from "@/lib/outreach-photos";
 import { outreachDraftOf, outreachFeatureOf, outreachPostOf } from "@/lib/outreach-rows";
 import type {
-  DraftGallery,
   OutreachDraft,
   OutreachFeature,
   OutreachPhoto,
   OutreachPost,
   OutreachTag,
+  PostGallery,
   PostItem,
   PostVersions,
 } from "@/lib/outreach-types";
@@ -183,20 +183,20 @@ function keptPhoto<P extends OutreachPhoto>(photo: P): P {
 }
 
 /** A gallery the cookie can hold, its uploaded photos replaced as the post's are. */
-function keptGallery<G extends DraftGallery>(gallery: G): G {
-  return { ...gallery, items: gallery.items.map(keptPhoto) };
+function keptGallery(gallery: PostGallery): PostGallery {
+  const [first, ...rest] = gallery.items;
+  return { items: [keptPhoto(first), ...rest.map(keptPhoto)] };
 }
 
 /** A version the cookie can hold: an uploaded photo (a data URL) is not kept. */
 function keptVersion(version: PostVersions): PostVersions {
   const keep = (post: OutreachPost): OutreachPost => {
     const [cover, ...more] = post.photos;
-    const { gallery } = post;
-    const kept: OutreachPost = { ...post, photos: [keptPhoto(cover), ...more.map(keptPhoto)] };
-    if (gallery === undefined) return kept;
-    if (!gallery.shown) return { ...kept, gallery: keptGallery(gallery) };
-    const [first, ...rest] = gallery.items;
-    return { ...kept, gallery: { ...gallery, items: [keptPhoto(first), ...rest.map(keptPhoto)] } };
+    return {
+      ...post,
+      photos: [keptPhoto(cover), ...more.map(keptPhoto)],
+      ...(post.gallery !== undefined && { gallery: keptGallery(post.gallery) }),
+    };
   };
   const keepDraft = (draft: OutreachDraft): OutreachDraft => ({
     ...draft,

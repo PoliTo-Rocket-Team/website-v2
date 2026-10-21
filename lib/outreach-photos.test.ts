@@ -72,31 +72,23 @@ test("a post's gallery is saved with the post, its photos checked and kept as th
   const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
   const item = (await editor.posts.list())![0];
   const fields = postFieldsOf(editorVersion(item.version));
-  assert.deepEqual(fields.gallery, { shown: false, title: "", items: [] }, "a post with no gallery opens on one switched off");
+  assert.deepEqual(fields.gallery, [], "a post with no gallery opens on no photos");
 
   const uploaded = await editor.uploadPhoto(upload);
   assert.ok(uploaded.ok);
   const photo = { src: uploaded.value, alt: "", caption: "At the stand" };
-  // A gallery on the page needs its title and a photo, as a project's does.
-  assert.deepEqual(await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "", items: [photo] } }), {
-    ok: false,
-    error: "Fill in the gallery title.",
-  });
-  assert.deepEqual(await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "More", items: [] } }), {
-    ok: false,
-    error: "A gallery on the page keeps one photo at least. Switch Gallery off to take it off the page.",
-  });
   // A save cannot point the gallery at a file nobody uploaded.
   const stray = { src: "https://elsewhere.example.com/x.jpg", alt: "", caption: "" };
-  assert.deepEqual(await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "More", items: [stray] } }), {
+  assert.deepEqual(await editor.savePost(item.id, "publish", { ...fields, gallery: [stray] }), {
     ok: false,
     error: "A photo was not uploaded. Add it again.",
   });
 
-  assert.ok((await editor.savePost(item.id, "publish", { ...fields, gallery: { shown: true, title: "More from the day", items: [photo] } })).ok);
+  // A gallery has no switch and no title (issue #451): its photos are all it is.
+  assert.ok((await editor.savePost(item.id, "publish", { ...fields, gallery: [photo] })).ok);
   const posts = await dummyOutreachStore(jar).posts.list();
   const live = postBySlug(publicOutreach({ ...importedOutreach(), posts }).posts, slugOf(editorVersion(item.version)));
-  assert.deepEqual(live?.gallery, { shown: true, title: "More from the day", items: [{ src: PREVIEW_PHOTO_SRC, alt: "", caption: "At the stand" }] });
+  assert.deepEqual(live?.gallery, { items: [{ src: PREVIEW_PHOTO_SRC, alt: "", caption: "At the stand" }] });
   assert.deepEqual(live?.photos, editorVersion(item.version).photos, "the top photo and the photo grid stay as they were");
 });
 

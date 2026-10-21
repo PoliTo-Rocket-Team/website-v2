@@ -761,7 +761,7 @@ export const outreachPostVersions = pgTable(
     photos: jsonb("photos").notNull(),
     /** Any of the channels (lib/outreach-types.ts), each `{ url, caption, account? }`; none at all is fine (issue #430). */
     channels: jsonb("channels").notNull(),
-    /** `{ shown, title, items: [{ src, alt, caption? }] }`; null for a post that never had a gallery (issue #430). */
+    /** `{ items: [{ src, alt, caption? }] }`; null for a post with no gallery photo (issues #430, #451). Rows saved before #451 may also hold `shown` and `title`, which reads ignore. */
     gallery: jsonb("gallery"),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
       .defaultNow()

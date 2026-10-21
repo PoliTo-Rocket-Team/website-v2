@@ -657,6 +657,47 @@ export function GalleryEditor({
   /** Where its photos are stored and let go: the projects' by default. */
   uploads?: PhotoUploads;
 }) {
+  return (
+    <>
+      <OffNote shown={gallery.shown} />
+      <TextField label="Title" value={gallery.title} error={errors["gallery.title"]} onChange={(title) => onChange((g) => ({ ...g, title }))} />
+      <GalleryPhotosEditor
+        items={gallery.items}
+        error={errors["gallery.items"]}
+        onChange={(change) => onChange((g) => ({ ...g, items: change(g.items) }))}
+        remove={(index) => {
+          const result = removeGalleryItem(gallery, index);
+          return result.ok ? { ok: true, value: { items: result.value.fields.items, letGo: result.value.letGo } } : result;
+        }}
+        uploads={uploads}
+      />
+    </>
+  );
+}
+
+/** A removed gallery photo: the photos without it, and its uploaded file, which the editor lets go. */
+export type GalleryPhotoRemoval = { readonly items: readonly GalleryItemFields[]; readonly letGo: readonly string[] };
+
+/**
+ * A gallery's photos in carousel order, each with its optional description
+ * and caption, and Add photos under them. The Edit post panel's Gallery
+ * section is this alone (issue #451); a project's has its title above.
+ * `remove` keeps the gallery's own rule on taking a photo out.
+ */
+export function GalleryPhotosEditor({
+  items,
+  error,
+  onChange,
+  remove,
+  uploads,
+}: {
+  items: readonly GalleryItemFields[];
+  error?: string;
+  onChange: (change: (items: readonly GalleryItemFields[]) => readonly GalleryItemFields[]) => void;
+  remove: (index: number) => WriteResult<GalleryPhotoRemoval>;
+  /** Where its photos are stored and let go. */
+  uploads: PhotoUploads;
+}) {
   const [uploading, setUploading] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
@@ -668,30 +709,28 @@ export function GalleryEditor({
       const result = await uploads.upload(form);
       setUploading((n) => n - 1);
       if (!result.ok) toast.error(result.error);
-      else onChange((g) => ({ ...g, items: [...g.items, { src: result.value, alt: "", caption: "" }] }));
+      else onChange((now) => [...now, { src: result.value, alt: "", caption: "" }]);
     }
   };
 
   return (
     <>
-      <OffNote shown={gallery.shown} />
-      <TextField label="Title" value={gallery.title} error={errors["gallery.title"]} onChange={(title) => onChange((g) => ({ ...g, title }))} />
       <EditableList
         label="Photos"
         hint="in carousel order"
-        items={gallery.items}
+        items={items}
         limit={{ min: 0, max: 50 }}
-        error={errors["gallery.items"]}
+        error={error}
         blank={() => ({ src: null, alt: "", caption: "" })}
         rowName={(i) => `photo ${i + 1}`}
         addLabel={null}
-        onChange={(items) => onChange((g) => ({ ...g, items }))}
+        onChange={(next) => onChange(() => next)}
         removeRow={(index) => {
-          const result = removeGalleryItem(gallery, index);
+          const result = remove(index);
           if (!result.ok) return result;
           // The server keeps the file while a stored version shows it.
           for (const src of result.value.letGo) void uploads.discard(src);
-          return { ok: true, value: result.value.fields.items };
+          return { ok: true, value: result.value.items };
         }}
         row={(item: GalleryItemFields, _, update) => (
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2.5">
