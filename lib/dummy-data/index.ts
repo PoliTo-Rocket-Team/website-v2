@@ -57,6 +57,7 @@ import {
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
 import { kindOfTestViewer, readsArea, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
+import { mayChangePositionIn, type PositionWriter } from "@/lib/dashboard/position-access";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
 import { openPositionsDetail } from "@/lib/dashboard/open-positions-detail";
 import { applications as baseApplications, type DummyApplication } from "./applications";
@@ -646,8 +647,30 @@ function navCountsFor(kind: ViewerKind, team: Team): NavCounts {
 
 // Positions and Applications (boards 41, 41b, 41c) -----------------------------
 
-/** A role as the Positions page lists it; its application counts only when `tallied`, the viewer reading Applications on it (issue #477). */
-function positionRow(p: DummyPosition, team: Team, tallied: boolean): PositionRow {
+/**
+ * The test viewer of `kind` as a position write reads them (issue #487): a
+ * full-access seat; a head over the head's department; a lead of the lead's
+ * division. No test viewer holds a Positions or Applications grant.
+ */
+function positionWriter(kind: ViewerKind): PositionWriter {
+  const standing = testDeveloperStanding(kind);
+  if (kind === "department-head") {
+    return { ...standing, roles: [{ type: "head", divisionId: null, departmentId: headDepartment().id }], grants: [] };
+  }
+  if (kind === "division-lead" || kind === "member") {
+    const divisionId = myDivisionId(kind);
+    const type = kind === "division-lead" ? "lead" : null;
+    return { ...standing, roles: [{ type, divisionId, departmentId: divisionOf(divisionId).departmentId }], grants: [] };
+  }
+  return { ...standing, roles: [], grants: [] };
+}
+
+/**
+ * A role as the Positions page lists it; its application counts only when
+ * `tallied`, the viewer reading Applications on it (issue #477), and its
+ * switch live only where `writer` may change it (issue #487).
+ */
+function positionRow(p: DummyPosition, team: Team, tallied: boolean, writer: PositionWriter): PositionRow {
   const received = applicationsTo([p], team);
   return {
     id: p.id,
@@ -663,6 +686,7 @@ function positionRow(p: DummyPosition, team: Team, tallied: boolean): PositionRo
           quiet: quietNote(quietDays(p.open, lastActivity(p, team), NOW)),
         }
       : null,
+    canChange: mayChangePositionIn(writer, "positions", { divisionId: p.divisionId, departmentId: divisionOf(p.divisionId).departmentId }),
     updated: ago(new Date(p.updatedAt), NOW),
     code: positionCode({
       id: p.id,
@@ -705,17 +729,19 @@ function nextPositionId(team: Team): number {
 
 function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
   const tallied = new Set(positionsFor(kind, team, "applications").map((p) => p.id));
-  const rows = positionsFor(kind, team, "positions").map((p) => positionRow(p, team, tallied.has(p.id)));
+  const writer = positionWriter(kind);
+  const rows = positionsFor(kind, team, "positions").map((p) => positionRow(p, team, tallied.has(p.id), writer));
   const newPosition = { divisions: postableDivisions(kind), nextId: nextPositionId(team) };
+  const readsApplications = readsArea(testDeveloperStanding(kind), "applications");
   if (kind === "operations-lead") {
-    return { scope: "team", positions: rows, newPosition };
+    return { scope: "team", positions: rows, newPosition, readsApplications };
   }
   if (kind === "department-head") {
-    return { scope: "department", department: departmentUnit(), positions: rows, newPosition };
+    return { scope: "department", department: departmentUnit(), positions: rows, newPosition, readsApplications };
   }
   if (kind === "division-lead") {
     const division = divisionOf(myDivisionId(kind)).name;
-    return { scope: "division", division, positions: rows, newPosition };
+    return { scope: "division", division, positions: rows, newPosition, readsApplications };
   }
   throw new DashboardRefused("positions");
 }

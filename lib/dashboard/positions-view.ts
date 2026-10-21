@@ -23,7 +23,10 @@ import {
 export const POSITIONS_TOOLS = ["department-filter", "division-filter", "status-switch", "search", "sort", "table-view", "phone-cards"] as const;
 export type PositionsTool = (typeof POSITIONS_TOOLS)[number];
 
-/** The table's columns, the same for every role. */
+/**
+ * The table's columns, the same for every role. Applications shows only for
+ * a viewer who reads Applications (issue #487).
+ */
 export const POSITIONS_COLUMNS = ["position", "department", "applications", "updated", "status"] as const;
 export type PositionsColumn = (typeof POSITIONS_COLUMNS)[number];
 
@@ -57,7 +60,8 @@ export function positionsModelOf(page: PositionsPage): PositionsModel {
   const departments = [...new Set(reached.map((r) => r.department))];
   return {
     tools: POSITIONS_TOOLS,
-    columns: POSITIONS_COLUMNS,
+    // No empty column where the rows carry no counts (issue #487).
+    columns: page.readsApplications ? POSITIONS_COLUMNS : POSITIONS_COLUMNS.filter((c) => c !== "applications"),
     intro: introOf(page),
     units: departments.map((name) => ({ name, divisions: divisionsOf(reached, name) })),
   };
@@ -73,6 +77,8 @@ function introOf(page: PositionsPage): string {
       return `Roles in every division of the ${departmentLabel(page.department.name)}. ${after}`;
     case "division":
       return `Roles in ${page.division ? `the ${page.division}` : "your division"}. ${after}`;
+    case "granted":
+      return `Roles in ${page.places.map((p) => `the ${p.kind === "department" ? departmentLabel(p.name) : p.name}`).join(" and ")}. ${after}`;
   }
 }
 

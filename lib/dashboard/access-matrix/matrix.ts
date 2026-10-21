@@ -231,6 +231,12 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([MEMBER_ROLE], [row("division", "positions", "view", { divisionId: 1 })]),
     expect: { ...singleGrant("positions", ["MA"]), changes: { positions: NONE, applications: NONE, members: NONE } },
   },
+  // Can edit changes only the unit it names, beside a unit read at Can view (issue #487).
+  {
+    name: "member with a Positions grant (Can edit) in MA and (Can view) in DM",
+    viewer: viewerOf([MEMBER_ROLE], [row("division", "positions", "edit", { divisionId: 1 }), row("division", "positions", "view", { divisionId: 3 })]),
+    expect: { ...singleGrant("positions", ["MA", "DM"]), changes: { positions: ["MA"], applications: NONE, members: NONE } },
+  },
   {
     name: "member with site-content access",
     viewer: viewerOf([MEMBER_ROLE], [row("website", "all", "edit")]),

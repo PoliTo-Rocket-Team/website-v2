@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NO_POSITIONS_FILTER, POSITIONS_COLUMNS, POSITIONS_TOOLS, positionsModelOf, shownPositions, type PositionsFilter } from "./positions-view";
-import type { PositionRow, PositionsPage } from "./recruitment";
+import type { GrantPlace, PositionRow, PositionsPage } from "./recruitment";
 
 // Issue #417: the team leader, the operations lead, the IT lead, a department
 // head and a division lead open one Positions toolbar with the same columns;
@@ -20,6 +20,7 @@ function position(id: number, title: string, division: string, department: strin
     department,
     open,
     applications: applications === null ? null : { total: applications, fresh: 0, quiet: null },
+    canChange: true,
     updated: "2 days ago",
     code: `X-${id}`,
     content: { title, description: "", required: [], desirable: [], questions: [], motivationLetter: false },
@@ -32,8 +33,9 @@ const cfd = position(2, "CFD Analyst", OA, "Aerodynamics", false, 5);
 const composites = position(3, "Composites Technician", DM, "Structures", true, 0);
 const all = [trajectory, cfd, composites];
 const newPosition = { divisions: [], nextId: 4 };
+const page = { newPosition, readsApplications: true };
 
-const wholeTeam: PositionsPage = { scope: "team", positions: all, newPosition };
+const wholeTeam: PositionsPage = { scope: "team", positions: all, ...page };
 const aerodynamics = {
   name: "Aerodynamics",
   divisions: [
@@ -47,9 +49,18 @@ const byRole: Record<string, PositionsPage> = {
   "team leader": wholeTeam,
   "operations lead": wholeTeam,
   "IT lead": wholeTeam,
-  "department head": { scope: "department", department: aerodynamics, positions: [trajectory, cfd], newPosition },
-  "division lead": { scope: "division", division: MA, positions: [trajectory], newPosition },
+  "department head": { scope: "department", department: aerodynamics, positions: [trajectory, cfd], ...page },
+  "division lead": { scope: "division", division: MA, positions: [trajectory], ...page },
 };
+
+// A member holding a Positions grant reads no Applications (issue #487).
+const granted = (...places: [GrantPlace, ...GrantPlace[]]): PositionsPage => ({
+  scope: "granted",
+  places,
+  positions: [{ ...trajectory, applications: null, canChange: false }],
+  newPosition,
+  readsApplications: false,
+});
 
 const ids = (p: PositionsPage, filter: PositionsFilter = NO_POSITIONS_FILTER) =>
   shownPositions(positionsModelOf(p).units, p.positions, filter).rows.map((r) => r.id);
@@ -60,6 +71,31 @@ test("every role that opens Positions gets the same tools and columns", () => {
     assert.deepEqual(model.tools, POSITIONS_TOOLS, role);
     assert.deepEqual(model.columns, POSITIONS_COLUMNS, role);
   }
+  // A grant holder gets the same tools too; only the Applications column differs (issue #487).
+  assert.deepEqual(positionsModelOf(granted({ kind: "department", name: "Propulsion" })).tools, POSITIONS_TOOLS);
+});
+
+test("the Applications column shows only for a viewer who reads Applications (issue #487)", () => {
+  for (const [role, p] of Object.entries(byRole)) assert.ok(positionsModelOf(p).columns.includes("applications"), role);
+  assert.deepEqual(positionsModelOf(granted({ kind: "department", name: "Propulsion" })).columns, ["position", "department", "updated", "status"]);
+  // A lead whose Applications reach is narrower than their Positions reach keeps the column (issue #477's empty cells).
+  assert.ok(positionsModelOf({ ...byRole["division lead"], positions: [{ ...trajectory, applications: null }] }).columns.includes("applications"));
+});
+
+test("the line under the title names each role's reach (issue #487)", () => {
+  const after = "Open roles show on the site while recruitment is on.";
+  const intro = (p: PositionsPage) => positionsModelOf(p).intro;
+  // Full access, a head and a lead read as before.
+  assert.equal(intro(byRole["team leader"]), `Open or close roles. ${after}`);
+  assert.equal(intro(byRole["department head"]), `Roles in every division of the Aerodynamics Department. ${after}`);
+  assert.equal(intro(byRole["division lead"]), `Roles in the ${MA}. ${after}`);
+  // A grant holder's line names the places the grant covers.
+  assert.equal(intro(granted({ kind: "department", name: "Propulsion" })), `Roles in the Propulsion Department. ${after}`);
+  assert.equal(intro(granted({ kind: "division", name: "Test Bench" })), `Roles in the Test Bench. ${after}`);
+  assert.equal(
+    intro(granted({ kind: "department", name: "Propulsion" }, { kind: "division", name: MA })),
+    `Roles in the Propulsion Department and the ${MA}. ${after}`,
+  );
 });
 
 test("the selects offer only the departments and divisions the viewer reaches", () => {
@@ -69,7 +105,7 @@ test("the selects offer only the departments and divisions the viewer reaches", 
   ]);
   assert.deepEqual(positionsModelOf(byRole["division lead"]).units, [{ name: "Aerodynamics", divisions: [MA] }]);
   // A head's division with no role yet is still offered, so the Overview's link finds it.
-  const empty: PositionsPage = { scope: "department", department: aerodynamics, positions: [trajectory], newPosition };
+  const empty: PositionsPage = { scope: "department", department: aerodynamics, positions: [trajectory], ...page };
   assert.deepEqual(positionsModelOf(empty).units, [{ name: "Aerodynamics", divisions: [MA, OA] }]);
 });
 

@@ -40,6 +40,7 @@ import {
   ago,
   appliedLabels,
   fileSize,
+  grantPlacesOf,
   quietDays,
   quietNote,
   type ApplicationDocument,
@@ -47,6 +48,7 @@ import {
   type ApplicationsPage,
   type ApplicationsScope,
   type DepartmentUnit,
+  type GrantPlace,
   type OtherApplication,
   type PositionRow,
   type PositionsPage,
@@ -150,7 +152,8 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
 
   return scoped.map((r) => {
     const created = new Date(r.created_at);
-    const tallied = readsRecruitmentIn(identity, "applications", { divisionId: r.division_id, departmentId: r.dept_id });
+    const unit = { divisionId: r.division_id, departmentId: r.dept_id };
+    const tallied = readsRecruitmentIn(identity, "applications", unit);
     const own = tallies.filter((t) => t.position_id === r.id);
     const latest = own.reduce<string | null>((at, t) => (t.last !== null && (at === null || t.last > at) ? t.last : at), null);
     return {
@@ -167,6 +170,8 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
             quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
           }
         : null,
+      // The rule the open switch's write asks (`setPositionOpen`), so the page never offers what the server refuses (issue #487).
+      canChange: mayChangePositionIn(identity, "positions", unit),
       // The table has no edit time; a role's creation is the last change it records.
       updated: ago(created, now),
       code: positionCode({ id: r.id, dept_code: r.dept_code ?? "", div_code: r.div_code ?? "" }),
@@ -215,16 +220,33 @@ async function readNextPositionId(): Promise<number> {
 async function positionsPage(identity: Identity): Promise<PositionsPage> {
   if (!readsRecruitment(identity, "positions")) throw new DashboardRefused("positions");
   // The head's department needs nothing of the positions, so it is read beside them (issue #397).
-  const [positions, divisionChoices, nextId, department] = await Promise.all([
+  const [positions, divisionChoices, nextId, department, places] = await Promise.all([
     readPositionRows(identity, "positions", new Date()),
     readPostableDivisions(identity),
     readNextPositionId(),
     identity.kind === "operations-lead" ? null : readDepartmentUnit(identity),
+    identity.kind === "member" ? readGrantPlaces(identity) : [],
   ]);
-  const newPosition = { divisions: divisionChoices, nextId };
-  if (identity.kind === "operations-lead") return { scope: "team", positions, newPosition };
-  if (department !== null) return { scope: "department", department, positions, newPosition };
-  return { scope: "division", division: identity.role?.divisionName ?? null, positions, newPosition };
+  const shared = { positions, newPosition: { divisions: divisionChoices, nextId }, readsApplications: readsRecruitment(identity, "applications") };
+  if (identity.kind === "operations-lead") return { scope: "team", ...shared };
+  if (department !== null) return { scope: "department", department, ...shared };
+  const [first, ...rest] = places;
+  if (first !== undefined) return { scope: "granted", places: [first, ...rest], ...shared };
+  return { scope: "division", division: identity.role?.divisionName ?? null, ...shared };
+}
+
+/** The places a member's Positions grants cover (`grantPlacesOf`, issue #487), named from the open departments and divisions. */
+async function readGrantPlaces(identity: Identity): Promise<GrantPlace[]> {
+  const db = getDb();
+  const [openDepartments, openDivisions] = await Promise.all([
+    db.select({ id: departments.id, name: departments.name }).from(departments).where(isNull(departments.closedAt)),
+    db
+      .select({ id: divisions.id, name: divisions.name })
+      .from(divisions)
+      .innerJoin(departments, eq(divisions.deptId, departments.id))
+      .where(and(isNull(divisions.closedAt), isNull(departments.closedAt))),
+  ]);
+  return grantPlacesOf(identity, { departments: openDepartments, divisions: openDivisions });
 }
 
 /** A department head's department as the recruitment pages name it, with its division tabs (issue #230). */
