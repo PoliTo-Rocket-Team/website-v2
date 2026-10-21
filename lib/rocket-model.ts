@@ -34,16 +34,7 @@ export function isEngineModel(model: RocketModel | undefined): model is OwnEngin
   return (ownEngineModels as readonly string[]).includes(model ?? "");
 }
 
-/**
- * The models a project's top visual may draw, as the project editor lists
- * them (epic #522): the models built for a project of that kind, then the
- * placeholder. A rocket's names a rocket only; an engine's may name any.
- */
-export function modelsFor(kind: "vehicle" | "engine"): readonly RocketModel[] {
-  return [...(kind === "vehicle" ? ownRocketModels : ownModels), "placeholder"];
-}
-
-/** What the project editor's model list calls each model. */
+/** What the project editor's Visual help text calls each model (board 93d). */
 export const MODEL_NAMES: Readonly<Record<RocketModel, string>> = {
   cavour: "Cavour",
   ves: "VES Mark I",

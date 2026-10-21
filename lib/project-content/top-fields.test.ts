@@ -4,7 +4,7 @@ import { memoryContentStore } from "@/lib/content/memory";
 import { publicItems } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { projectEditor } from "./editor";
-import { fieldProblems, fieldsOf, heldPhotos, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
+import { fieldProblems, fieldsOf, heldPhotos, projectModelOf, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
 import { importedProjects, importedRecords } from "./import";
 import { backgroundSrc, homeCardOf, landingCardOf, listingOf, pageRecordOf } from "./record";
 
@@ -57,7 +57,7 @@ test("publishing a preset changes the public page, Home card and Projects list; 
   assert.deepEqual(fieldsOf(published).background, { kind: "preset", preset: "ember" }, "the panel reopens on the preset");
 });
 
-test("the visual is a model from the list, a photo or none; the caption is optional", () => {
+test("the visual is a model, a photo or none; the caption is optional", () => {
   const fields = fieldsOf(ves);
   assert.deepEqual(fields.hero.visual, { kind: "model", model: "ves" });
 
@@ -82,6 +82,13 @@ test("the visual is a model from the list, a photo or none; the caption is optio
   const photo = withTop(fields, { visual: { kind: "photo", photo: { src: PHOTO as never, alt: " The team " } }, caption: "EUROC" });
   assert.deepEqual(pageRecordOf(projectViewOf(photo, ves)).hero.visual, { kind: "photo", caption: "EUROC", photo: { src: PHOTO, alt: "The team" } });
   assert.deepEqual(heldPhotos(photo).includes(PHOTO), true, "no save deletes the visual's photo while the panel holds it");
+});
+
+test("3D model draws the project's own model after a switch to Photo or None, from the opened or the published version", () => {
+  const asPhoto = projectViewOf(withTop(fieldsOf(ves), { visual: { kind: "photo", photo: { src: PHOTO as never, alt: "" } } }), ves);
+  assert.equal(projectModelOf({ state: "published", published: ves, draft: null }), "ves");
+  assert.equal(projectModelOf({ state: "published", published: ves, draft: asPhoto }), "ves", "a draft on a photo keeps the published model");
+  assert.equal(projectModelOf({ state: "draft", draft: asPhoto }), "placeholder", "a project with no model of its own draws the outline rocket");
 });
 
 test("a visual photo is one the panel uploaded or the site ships; a save cannot point it at a file elsewhere", async () => {

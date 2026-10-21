@@ -7,13 +7,15 @@ import type { ProjectFrame, ProjectPart } from "@/components/project-page/view";
 import type { EditBlock, EditBlocks, EditDevice, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import {
-  blockIdOf,
   blockSection,
   fieldProblems,
   fieldsAfterSave,
   fieldsOf,
+  opensInPlace,
+  projectModelOf,
   projectViewOf,
   type PanelSection,
+  type PlacedSection,
   type ProjectFields,
 } from "@/lib/project-content/fields";
 import { homeCardOf, lineupWith, type ProjectBlock, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
@@ -27,9 +29,9 @@ import { ProjectEditPanel, type FieldErrors, type PanelView } from "./project-ed
 // changes as the editor types; Save draft and Publish on the bar send the
 // fields to the projects editor, which checks them again. Save draft leaves
 // the published page live. The top of the page and every page block is
-// outlined with its Edit chip, which opens its panel; the block whose panel
-// is open, or which was picked last in the Page blocks card, is outlined
-// strongest and scrolled into view.
+// outlined with its Edit chip, which opens its panel; the top or the block
+// whose panel is open, or which was picked last, is outlined strongest and
+// scrolled into view.
 //
 // The page switch (board 75d, issue #300): the project's own page, then Home
 // and the Projects list, each drawn from the fields being edited with the
@@ -60,6 +62,12 @@ function shapeOf(record: ProjectRecord, part: ProjectPart): BlockShape {
   const blocks: readonly ProjectBlock[] = record.blocks;
   const id = part === "hero" ? null : part.slice("block:".length);
   return blocks.find((b) => b.id === id)?.kind === "text" ? "around" : "bleed";
+}
+
+/** The part of the page the panel's pick outlines: the top for the Top of the page card, else the block. */
+function partOf(section: PlacedSection | null): ProjectPart | undefined {
+  if (section === null) return undefined;
+  return section === "top" ? "hero" : section;
 }
 
 /** Brings the part into view when it becomes the selected one. */
@@ -108,9 +116,8 @@ export function ProjectEdit({
 
   const openSection = useCallback((section: PanelSection) => {
     setPanelOpen(true);
-    const id = blockIdOf(section);
-    if (id !== null) {
-      setBlockView({ selected: id, open: true });
+    if (opensInPlace(section)) {
+      setBlockView({ selected: section, open: true });
       return;
     }
     setBlockView((v) => ({ ...v, open: false }));
@@ -140,7 +147,7 @@ export function ProjectEdit({
     });
   };
 
-  const selected = panelOpen && blockView.selected !== null ? (`block:${blockView.selected}` as const) : undefined;
+  const selected = panelOpen ? partOf(blockView.selected) : undefined;
   const outlined: ProjectFrame = (part, node) => (
     <InView when={part === selected}>
       {/* On phones the hero leaves only 24px over its first line, so it keeps room there for its chip row. */}
@@ -171,6 +178,7 @@ export function ProjectEdit({
             key={revision}
             name={view.name}
             kind={view.kind}
+            model={projectModelOf(item.version)}
             card={homeCardOf(view, place.position)}
             fields={fields}
             onChange={setFields}

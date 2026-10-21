@@ -1,13 +1,14 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { isPhotoSrc } from "@/lib/outreach-photos";
 import type { Fact, KeyFacts, Photo, TopVisual } from "@/lib/project-pages/types";
-import { MODEL_ALTS, ownModels, type RocketModel } from "@/lib/rocket-model";
+import { editorVersion, type Versioned } from "@/lib/content/versioned";
+import { MODEL_ALTS, ownModels, rocketModelOf, type OwnModel, type RocketModel } from "@/lib/rocket-model";
 import { blockFieldsOf, blockOf, blockPhotos, blockProblems, readBlockFields, type BlockFields, type FactFields } from "./block-fields";
 import { BLOCKS_MAX } from "./block-list";
 import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
 import { isProjectRecord } from "./check";
 import { copyFields, copyOf, type CopyFields } from "./copy-fields";
-import { BACKGROUND_PRESETS, type Background, type BackgroundPreset, type ProjectBlock, type ProjectRecord } from "./record";
+import { BACKGROUND_PRESETS, visualModelOf, type Background, type BackgroundPreset, type ProjectBlock, type ProjectRecord } from "./record";
 
 // The Edit <project> panel's fields (boards 75c, 93 and 93d, issues #298 and
 // #299, epic #522): the top of the page with its visual, caption and
@@ -27,8 +28,8 @@ import { BACKGROUND_PRESETS, type Background, type BackgroundPreset, type Projec
 
 /**
  * The panel's sections: the top of the page, the Page blocks card, one
- * block's panel by the block's id, and the home card. Each block's Edit chip
- * on the page opens its block's panel.
+ * block's panel by the block's id, and the home card. The top's Edit chip on
+ * the page opens its panel, and each block's chip its block's panel.
  */
 export type PanelSection = "top" | "blocks" | BlockSection | "card";
 
@@ -40,12 +41,17 @@ export const blockSection = (id: string): BlockSection => `block:${id}`;
 /** The block id a block's panel names; null for every other section. */
 export const blockIdOf = (section: PanelSection): string | null => (section.startsWith("block:") ? section.slice("block:".length) : null);
 
+/** The sections whose panel opens in the cards' place (boards 93c and 93d): the top of the page and each block. */
+export type PlacedSection = "top" | BlockSection;
+
+export const opensInPlace = (section: PanelSection): section is PlacedSection => section === "top" || blockIdOf(section) !== null;
+
 export type { BlockFields, CardFields, CopyFields, FactFields };
 
 /**
- * The top of the page's visual as the panel picks it (board 93d): a model
- * from the list (`modelsFor`), a photo, none until it is uploaded, or no
- * visual at all.
+ * The top of the page's visual as the panel picks it (board 93d): the
+ * project's own model or the outline rocket (`projectModelOf`), a photo, none
+ * until it is uploaded, or no visual at all.
  */
 export type VisualFields =
   | { readonly kind: "model"; readonly model: RocketModel }
@@ -90,6 +96,17 @@ function visualFieldsOf(visual: TopVisual): VisualFields {
     case "none":
       return { kind: "none" };
   }
+}
+
+/**
+ * The model the panel's 3D model draws (board 93d draws no model list): the
+ * project's own, from the version the panel opened or else the published one,
+ * so a visual switched to Photo or None and back keeps it; the outline rocket
+ * for a project whose model is not built yet.
+ */
+export function projectModelOf(version: Versioned<ProjectRecord>): RocketModel {
+  const own = visualModelOf<OwnModel>(editorVersion(version).hero) ?? (version.state === "published" ? visualModelOf<OwnModel>(version.published.hero) : undefined);
+  return rocketModelOf(own);
 }
 
 export function backgroundFieldsOf(background: Background): BackgroundFields {

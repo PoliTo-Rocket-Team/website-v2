@@ -1,23 +1,27 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import Image from "next/image";
-import { ImagePlus } from "lucide-react";
-import type { BackgroundFields, VisualFields } from "@/lib/project-content/fields";
+import { ChevronDown, ImagePlus } from "lucide-react";
+import { FACTS_LIMIT, type BackgroundFields, type FactFields, type ProjectFields, type VisualFields } from "@/lib/project-content/fields";
 import { BACKGROUND_PRESETS, backgroundSrc, type BackgroundPreset } from "@/lib/project-content/record";
-import { MODEL_NAMES, modelsFor, type RocketModel } from "@/lib/rocket-model";
+import { MODEL_NAMES, type RocketModel } from "@/lib/rocket-model";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
-import { Field, inputClass } from "./field";
+import { SECTION_CARD } from "./edit-panel";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
-import type { FieldErrors } from "./project-panel-parts";
+import { BackToBlocks } from "./project-blocks";
+import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts";
 
-// The visual, caption and background of the Top of the page card (board 93d,
-// epic #522). The visual is a 3D model from the models built in code (or the
-// outline placeholder), one photo, or none. The background is one of the 18
-// presets; the home card draws its tall file and the page and the Projects
-// list its wide one (`backgroundSrc`). A project that kept its brand texture
-// from before presets shows no preset picked until an editor picks one. The
-// Upload tile closes the grid and stays inactive until uploads land (#529).
+// The Top of the page card of the Edit <project> panel (boards 93 and 93d,
+// epic #522). Closed, it is a card over Page blocks; opened, it takes the
+// cards' place with "Page blocks" to go back, and the page's top is outlined.
+// Its visual is the project's own model (the outline rocket until one is
+// built), one photo, or none, with an optional caption. Its background is one
+// of the 18 presets; the home card draws its tall file and the page and the
+// Projects list its wide one (`backgroundSrc`). A project that kept its brand
+// texture from before presets shows no preset picked until an editor picks
+// one. The Upload tile closes the grid and stays inactive until uploads land
+// (#529). Intro, status, dates and key facts follow the background.
 
 /** What each preset is called under its swatch (board 93d). */
 const PRESET_NAMES: Readonly<Record<BackgroundPreset, string>> = {
@@ -49,7 +53,7 @@ const VISUALS: readonly { value: VisualKind; label: string }[] = [
   { value: "none", label: "None" },
 ];
 
-/** The visual a new pick starts from: a model keeps the last one picked, a photo starts empty. */
+/** The visual a new pick starts from: 3D model draws the project's own model, a photo starts empty. */
 function switchedTo(kind: VisualKind, model: RocketModel): VisualFields {
   switch (kind) {
     case "model":
@@ -66,7 +70,7 @@ function visualNote(visual: VisualFields): string {
     case "model":
       return visual.model === "placeholder"
         ? "The outline rocket, for a project whose model is not built yet."
-        : `${MODEL_NAMES[visual.model]}. A new project shows the outline rocket until its model is built.`;
+        : `${MODEL_NAMES[visual.model]}, the project's own model. A new project shows the outline rocket until its model is built.`;
     case "photo":
       return "One photo fills the panel on the page.";
     case "none":
@@ -74,8 +78,99 @@ function visualNote(visual: VisualFields): string {
   }
 }
 
-export function TopVisualEditor({
-  kind,
+/** The closed Top of the page card over Page blocks (board 93); it opens the card in the cards' place. */
+export function TopCard({ fields, onOpen }: { fields: ProjectFields; onOpen: () => void }) {
+  const n = fields.hero.facts.length;
+  return (
+    <div className={SECTION_CARD}>
+      <h3>
+        <button
+          type="button"
+          onClick={onOpen}
+          className={`flex w-full items-center justify-between gap-4 rounded-xl px-4 py-3.5 text-left ${CONTENT_FOCUS}`}
+        >
+          <span className="min-w-0">
+            <span className="block text-[14px] font-semibold leading-snug">Top of the page</span>
+            <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{`Intro, status, dates, ${n} key ${n === 1 ? "fact" : "facts"}`}</span>
+          </span>
+          <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+        </button>
+      </h3>
+    </div>
+  );
+}
+
+/** The Top of the page card opened in the cards' place (board 93d). */
+export function TopPanel({
+  fields,
+  model,
+  phone,
+  errors,
+  uploads,
+  onChange,
+  onBack,
+}: {
+  fields: ProjectFields;
+  /** The model 3D model draws (`projectModelOf`). */
+  model: RocketModel;
+  phone: boolean;
+  errors: FieldErrors;
+  uploads: PhotoUploads;
+  onChange: (change: (fields: ProjectFields) => ProjectFields) => void;
+  onBack: () => void;
+}) {
+  const { hero } = fields;
+  const setHero = (change: Partial<ProjectFields["hero"]>) => onChange((f) => ({ ...f, hero: { ...f.hero, ...change } }));
+  return (
+    <div className="space-y-4">
+      <BackToBlocks onBack={onBack} />
+      <section aria-label="Top of the page" className="space-y-4 rounded-xl border border-accent px-4 pb-4 pt-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Top of the page</p>
+        <TopVisualEditor
+          model={model}
+          visual={hero.visual}
+          caption={hero.caption}
+          errors={errors}
+          uploads={uploads}
+          onVisualChange={(change) => onChange((f) => ({ ...f, hero: { ...f.hero, visual: change(f.hero.visual) } }))}
+          onCaptionChange={(caption) => setHero({ caption })}
+        />
+        <BackgroundPicker background={fields.background} onChange={(background) => onChange((f) => ({ ...f, background }))} />
+        <CopyField label="Intro" rows={3} copy={hero.intro} phone={phone} error={errors["hero.intro"]} onChange={(intro) => setHero({ intro })} />
+        <div className="grid grid-cols-2 gap-2.5">
+          <TextField label="Status" value={hero.status} error={errors["hero.status"]} onChange={(status) => setHero({ status })} />
+          <TextField label="Dates" value={hero.dates} error={errors["hero.dates"]} onChange={(dates) => setHero({ dates })} />
+        </div>
+        <EditableList
+          label="Key facts"
+          hint={`${FACTS_LIMIT.min} to ${FACTS_LIMIT.max}`}
+          items={hero.facts}
+          limit={FACTS_LIMIT}
+          error={errors["hero.facts"]}
+          blank={() => ({ value: "", label: { text: "", phone: "" } })}
+          rowName={(i) => `key fact ${i + 1}`}
+          addLabel="Add key fact"
+          onChange={(facts) => setHero({ facts })}
+          row={(fact: FactFields, i, update) => (
+            <div className="grid grid-cols-2 gap-2.5">
+              <TextField label="Value" value={fact.value} error={errors[`hero.facts.${i}.value`]} onChange={(value) => update({ ...fact, value })} />
+              <CopyField
+                label="Label"
+                copy={fact.label}
+                phone={phone}
+                error={errors[`hero.facts.${i}.label`]}
+                onChange={(label) => update({ ...fact, label })}
+              />
+            </div>
+          )}
+        />
+      </section>
+    </div>
+  );
+}
+
+function TopVisualEditor({
+  model,
   visual,
   caption,
   errors,
@@ -83,7 +178,7 @@ export function TopVisualEditor({
   onVisualChange,
   onCaptionChange,
 }: {
-  kind: "vehicle" | "engine";
+  model: RocketModel;
   visual: VisualFields;
   caption: string;
   errors: FieldErrors;
@@ -92,12 +187,6 @@ export function TopVisualEditor({
   onCaptionChange: (caption: string) => void;
 }) {
   const id = useId();
-  // The model 3D model goes back to after a photo or none: the last one picked.
-  const [lastModel, setLastModel] = useState<RocketModel>(visual.kind === "model" ? visual.model : "placeholder");
-  const pickModel = (model: RocketModel) => {
-    setLastModel(model);
-    onVisualChange(() => ({ kind: "model", model }));
-  };
   return (
     <>
       <div>
@@ -110,7 +199,7 @@ export function TopVisualEditor({
               key={v.value}
               type="button"
               aria-pressed={visual.kind === v.value}
-              onClick={() => visual.kind !== v.value && onVisualChange(() => switchedTo(v.value, lastModel))}
+              onClick={() => visual.kind !== v.value && onVisualChange(() => switchedTo(v.value, model))}
               className={`h-9 rounded-lg text-[14px] transition-colors duration-300 ease-out ${CONTENT_FOCUS} ${
                 visual.kind === v.value ? "bg-white-10 font-semibold text-prt-text" : "text-text-2 hover:text-prt-text"
               }`}
@@ -121,25 +210,6 @@ export function TopVisualEditor({
         </div>
         <p className="mt-2 text-[13px] leading-relaxed text-text-2">{visualNote(visual)}</p>
       </div>
-
-      {visual.kind === "model" && (
-        <Field label="Model">
-          {(fieldId) => (
-            <select
-              id={fieldId}
-              value={visual.model}
-              onChange={(e) => pickModel(e.target.value as RocketModel)}
-              className={`${inputClass()} px-2.5`}
-            >
-              {modelsFor(kind).map((model) => (
-                <option key={model} value={model}>
-                  {MODEL_NAMES[model]}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-      )}
 
       {visual.kind === "photo" && (
         <div>
@@ -168,9 +238,8 @@ export function TopVisualEditor({
   );
 }
 
-export function BackgroundPicker({ background, onChange }: { background: BackgroundFields; onChange: (background: BackgroundFields) => void }) {
+function BackgroundPicker({ background, onChange }: { background: BackgroundFields; onChange: (background: BackgroundFields) => void }) {
   const id = useId();
-  const uploadId = useId();
   const picked = background.kind === "preset" ? background.preset : null;
   return (
     <div>
@@ -205,18 +274,17 @@ export function BackgroundPicker({ background, onChange }: { background: Backgro
           <button
             type="button"
             disabled
-            aria-describedby={uploadId}
+            aria-label="Upload your own background"
             className="flex aspect-[16/15] w-full flex-col items-center justify-center gap-1 rounded-md border border-dashed border-white-10 text-[12px] text-prt-muted disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ImagePlus aria-hidden className="h-4 w-4" strokeWidth={1.75} />
             Upload
           </button>
-          <span id={uploadId} className="mt-1 block truncate text-[12px] leading-snug text-prt-muted">
-            Your own · coming later
+          <span aria-hidden className="mt-1 block truncate text-[12px] leading-snug text-prt-muted">
+            Your own
           </span>
         </div>
       </div>
-      {picked === null && <p className="mt-2 text-[12px] text-prt-muted">The project keeps its current background until you pick one.</p>}
     </div>
   );
 }
