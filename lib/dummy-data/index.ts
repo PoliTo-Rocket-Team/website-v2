@@ -619,7 +619,8 @@ function memberOverview(notices: DummyNotices): PersonalOverview {
       size,
       people: rosterPreview(me),
     },
-    hint: "Need to work on recruitment or site content? Ask your division lead or the admin team for access.",
+    // The dummy member holds no grant, so the access hint shows (issue #480).
+    access: [],
   };
 }
 

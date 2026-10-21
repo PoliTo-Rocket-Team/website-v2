@@ -4,10 +4,11 @@ import { divisionShortName, noPhotoItem, oldestLine, type AttentionItem, type Di
 import { GRANT_AREAS, readsArea, type GrantArea, type ViewerStanding } from "./viewer";
 
 // The division Overview (board 56), built area by area (issue #471). A
-// division lead reads every area, so their Overview is the whole board. A
-// member granted some areas gets the same board with only those areas'
-// figures and rows: each figure, attention row and panel belongs to one area,
-// and an area the viewer does not read adds nothing, whatever was read for it.
+// division lead reads every area, so their Overview is the whole board. Each
+// figure, attention row and panel belongs to one area, and an area the viewer
+// does not read adds nothing, whatever was read for it. A granted member keeps
+// their own Overview instead, with one "Your access" line per granted area
+// (issue #480, ./access-summary.ts).
 
 /** A live position as the division Overview's Positions figure counts it: no figure about its applications. */
 export type OverviewPosition = {
