@@ -121,7 +121,7 @@ export function TopBarAccount({ chrome }: { chrome: Promise<DashboardChrome> }) 
         aria-label={`${viewer.name}, ${viewer.role}. Open account menu`}
         className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
-        <Avatar accent />
+        <Avatar accent photoUrl={viewer.photoUrl} />
       </button>
     </UserSheet>
   );
