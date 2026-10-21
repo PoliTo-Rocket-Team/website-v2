@@ -2,7 +2,7 @@ import { closingPeople, mayManageDepartments, type ClosingPerson } from "./depar
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
 import { divisionLabel, roleIn, type DepartmentKind, type Joining, type OrgChart, type TeamActor } from "./team";
-import { mayHandOverTeamLeader } from "./hand-over";
+import { mayHandOverTeamLeader, type HeldSeat } from "./hand-over";
 import type { FullAccessSeat, ViewerStanding } from "./viewer";
 
 // The Team tree's edit view (issue #251, boards 77b and 66t-b): every open
@@ -69,6 +69,8 @@ export type TeamStructure = {
   readonly departments: readonly StructureDepartment[];
   /** The code of every open division of the team: a division code is unique among them (#232). */
   readonly takenCodes: readonly { readonly id: number; readonly name: string; readonly code: string | null }[];
+  /** The full-access seats on the team's lead and head roles: Change head and lead replace say when one moves (`fullAccessMovesLine`, issue #501). */
+  readonly seats: readonly HeldSeat[];
 };
 
 /** Whether the actor edits any structure at all: a division lead and a member get no Edit button (boards 77, 66t). */
@@ -109,6 +111,8 @@ export function teamStructure(input: {
   readonly waiting: Readonly<Record<number, readonly WaitingPerson[]>>;
   readonly joining: Readonly<Record<number, readonly Joining[]>>;
   readonly openPositions: Readonly<Record<number, number>>;
+  /** The full-access seats on the team's roles, as the data source reads them; none when the team holds none. */
+  readonly seats?: readonly HeldSeat[];
 }): TeamStructure | null {
   const { records, org, actor } = input;
   if (!editsStructure(actor)) return null;
@@ -182,5 +186,6 @@ export function teamStructure(input: {
     departmentsEditable: mayManageDepartments(actor),
     departments,
     takenCodes: org.divisions.map((d) => ({ id: d.id, name: d.name, code: d.code ?? null })),
+    seats: input.seats ?? [],
   };
 }

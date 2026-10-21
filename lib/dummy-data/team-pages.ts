@@ -88,6 +88,7 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type TeamEdits } from "./edits";
+import { dummySeatsOf } from "./division";
 import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver, withLapsedHandOvers } from "./hand-overs";
 import { withDummyNotices } from "./notices";
 import {
@@ -1110,6 +1111,7 @@ export function dummyTeamPages(
         waiting: Object.fromEntries(ids.map((id) => [id, waitingIn(edits, id)])),
         joining: Object.fromEntries(ids.map((id) => [id, joiningIn(team, id)])),
         openPositions: Object.fromEntries(ids.map((id) => [id, openPositionsIn(id)])),
+        seats: dummySeatsOf(team),
       });
     },
     teamWrites: writesFor(kind, edits, save, joiners, move, grant),
@@ -1177,12 +1179,13 @@ export function dummyHandOverPages(
   const all = dummyHandOversOf(edits);
   const waiting = waitingHandOvers(all);
   const mine = waiting.find((h) => h.fromId === self && !hasLapsed(h, team)) ?? null;
+  const seats = dummySeatsOf(roster);
   return {
     offer: () => {
       const person = team.find((p) => p.id === self);
-      return person ? handOverOfferOf(person, team, org, mine) : null;
+      return person ? handOverOfferOf(person, team, org, mine, seats) : null;
     },
-    attention: (now) => handOverAttentionFor(self, waiting, team, org, now),
+    attention: (now) => handOverAttentionFor(self, waiting, team, org, now, seats),
     async sendHandOver(input) {
       if (self === null) return refused("This page is for team members.");
       const checked = checkHandOverSend(input);

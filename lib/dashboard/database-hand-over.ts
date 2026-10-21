@@ -15,7 +15,7 @@ import {
   type RequestedRole,
 } from "./hand-over-request";
 import type { AttentionItem } from "./overview";
-import { readTeamSnapshot, teamPeopleOf } from "./team-database";
+import { readTeamSnapshot, seatsOf, teamPeopleOf } from "./team-database";
 import { refused, written, type WriteResult } from "./write";
 
 // Hand-overs sent from My profile on the database (issue #262): the requests
@@ -74,7 +74,7 @@ export async function readHandOverAttention(identity: DashboardIdentity, now: Da
   // The cached snapshot needs nothing of the requests, so both are read at once (issue #397).
   const [requests, snapshot] = await Promise.all([readWaitingHandOvers(), readTeamSnapshot()]);
   if (requests.length === 0) return [];
-  return handOverAttentionFor(identity.memberId, requests, teamPeopleOf(snapshot), snapshot.org, now);
+  return handOverAttentionFor(identity.memberId, requests, teamPeopleOf(snapshot), snapshot.org, now, seatsOf(snapshot));
 }
 
 /** My profile's "Hand over your role" (board 55d): the viewer's role, who may take over, and their request waiting. */
@@ -84,7 +84,7 @@ export async function readHandOverOffer(identity: DashboardIdentity): Promise<Ha
   const [snapshot, [waiting]] = await Promise.all([readTeamSnapshot(), readWaitingHandOvers({ fromId: memberId })]);
   const team = teamPeopleOf(snapshot);
   const person = team.find((p) => p.id === memberId);
-  return person ? handOverOfferOf(person, team, snapshot.org, waiting ?? null) : null;
+  return person ? handOverOfferOf(person, team, snapshot.org, waiting ?? null, seatsOf(snapshot)) : null;
 }
 
 /**

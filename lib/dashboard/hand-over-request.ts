@@ -1,10 +1,20 @@
 import { z } from "zod";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
-import { HAND_OVER_OUTCOMES, steppingDown, type HandedRole, type HandOverOutcome, type SteppingDown } from "./hand-over";
+import {
+  fullAccessMovesLine,
+  HAND_OVER_OUTCOMES,
+  seatOfHandedRole,
+  steppingDown,
+  type HandedRole,
+  type HandOverOutcome,
+  type HeldSeat,
+  type SteppingDown,
+} from "./hand-over";
 import { handOverAnsweredNotice, type AddressedNotice } from "./notices";
 import { divisionShortName, type AttentionItem } from "./overview";
 import type { OrgChart } from "./team";
+import type { FullAccessSeat } from "./viewer";
 import { shortDate } from "./write";
 
 // Hand over your role from My profile (issue #262, boards 55d and 62c; Owner
@@ -128,16 +138,23 @@ export type HandOverOffer = {
   readonly unit: string;
   readonly approver: Approver;
   readonly successors: readonly Successor[];
+  /** The full-access seat the role carries, which moves to whoever takes over (`fullAccessMovesLine`); null for a role with none. */
+  readonly seat: FullAccessSeat | null;
   /** The request they sent, until the next level up answers it. */
   readonly waiting: { readonly to: string; readonly outcome: HandOverOutcome; readonly sentAt: string } | null;
 };
 
-/** My profile's offer for `person`, or null when they hold no role to hand over from there. */
+/**
+ * My profile's offer for `person`, or null when they hold no role to hand
+ * over from there. `seats` are the full-access seats on the team's roles
+ * (`HeldSeat`); none when the team holds none.
+ */
 export function handOverOfferOf(
   person: TeamPerson,
   team: readonly TeamPerson[],
   org: OrgChart,
   waiting: HandOverRequest | null,
+  seats: readonly HeldSeat[] = [],
 ): HandOverOffer | null {
   const role = roleToHandOver(person);
   if (role === null) return null;
@@ -148,6 +165,7 @@ export function handOverOfferOf(
     unit: unitOf(role, org),
     approver: approverOf(role),
     successors: successorsFor(role, person.id, team, org),
+    seat: seatOfHandedRole(seats, person.id, role),
     waiting:
       pending === null
         ? null
@@ -324,34 +342,40 @@ export function thenLine(outcome: HandOverOutcome): string {
 /**
  * The request as the approver's top row under "Needs your attention" (board
  * 62c): who hands over which role to whom, when it was sent and what the
- * sender does next, with Decline and Confirm.
+ * sender does next, with Decline and Confirm. For a role that carries a
+ * full-access seat it also says, before Confirm, that full access moves
+ * (`fullAccessMovesLine`, issue #501).
  */
 export function handOverAttention(
   request: HandOverRequest,
   names: { readonly from: string; readonly to: string },
   org: OrgChart,
   now: Date,
+  seat: FullAccessSeat | null = null,
 ): AttentionItem {
   const first = names.from.split(" ")[0] || names.from;
+  const sent = `Sent ${sentWhen(request.sentAt, now)} · ${first} ${thenLine(request.outcome)}`;
+  const access = fullAccessMovesLine({ seat, successor: names.to, from: first, step: steppingDown(request.role, request.outcome) });
   return {
     kind: "hand-over",
     title: `${names.from} wants to hand over ${roleName(request.role, org)} to ${names.to}`,
-    detail: `Sent ${sentWhen(request.sentAt, now)} · ${first} ${thenLine(request.outcome)}`,
+    detail: access === null ? sent : `${sent}. ${access}`,
     action: { answerHandOver: request.id },
   };
 }
 
-/** The requests `viewerId` answers, oldest first, as their top rows under "Needs your attention". */
+/** The requests `viewerId` answers, oldest first, as their top rows under "Needs your attention". `seats` as `handOverOfferOf` reads them. */
 export function handOverAttentionFor(
   viewerId: number | null,
   requests: readonly HandOverRequest[],
   team: readonly TeamPerson[],
   org: OrgChart,
   now: Date,
+  seats: readonly HeldSeat[] = [],
 ): AttentionItem[] {
   const nameOf = (id: number) => team.find((p) => p.id === id)?.name ?? "Someone";
   return requests
     .filter((r) => answersRequest(viewerId, r, team, org))
     .sort((a, b) => Date.parse(a.sentAt) - Date.parse(b.sentAt))
-    .map((r) => handOverAttention(r, { from: nameOf(r.fromId), to: nameOf(r.toId) }, org, now));
+    .map((r) => handOverAttention(r, { from: nameOf(r.fromId), to: nameOf(r.toId) }, org, now, seatOfHandedRole(seats, r.fromId, r.role)));
 }

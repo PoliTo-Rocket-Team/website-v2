@@ -16,8 +16,9 @@ import {
   type TeamSearch,
 } from "@/lib/dashboard/division-edit";
 import { matchesPerson, type DivisionMembers, type DivisionPerson, type WaitingPerson } from "@/lib/dashboard/division-members";
-import { steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { fullAccessMovesLine, seatOfHandedRole, steppingDown, steppingDownLine, type HandOverOutcome, type HeldSeat } from "@/lib/dashboard/hand-over";
 import { divisionLabel, type Permission } from "@/lib/dashboard/team";
+import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
@@ -89,6 +90,7 @@ function firstName(name: string): string {
 export function DivisionDrawer({
   target,
   takenCodes,
+  seats,
   editable,
   onClose,
   onFill,
@@ -96,6 +98,8 @@ export function DivisionDrawer({
 }: {
   target: DivisionDrawerTarget | null;
   takenCodes: readonly TakenCode[];
+  /** The full-access seats on the team's roles: replacing a lead whose role carries one says it moves (issue #501). */
+  seats: readonly HeldSeat[];
   editable: boolean;
   onClose: () => void;
   /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
@@ -114,6 +118,7 @@ export function DivisionDrawer({
       open={target !== null}
       target={shown}
       takenCodes={takenCodes}
+      seats={seats}
       editable={editable}
       onClose={onClose}
       onFill={onFill}
@@ -126,6 +131,7 @@ function DrawerForm({
   open,
   target,
   takenCodes,
+  seats,
   editable,
   onClose,
   onFill,
@@ -134,6 +140,7 @@ function DrawerForm({
   open: boolean;
   target: DivisionDrawerTarget;
   takenCodes: readonly TakenCode[];
+  seats: readonly HeldSeat[];
   editable: boolean;
   onClose: () => void;
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
@@ -152,6 +159,8 @@ function DrawerForm({
   const short = draft.name.trim() === "" ? unnamed : divisionLabel(draft.name.trim());
   const leads = tab?.people.filter((p) => p.role === "lead") ?? [];
   const replacedBy = (leadId: number) => draft.added.find((a) => a.replaces === leadId) ?? null;
+  // The full-access seat a lead's role carries moves to whoever replaces them (issue #501).
+  const seatOfLead = (leadId: number) => (divisionId === null ? null : seatOfHandedRole(seats, leadId, { kind: "lead", divisionId }));
   const gone = leads.filter((l) => draft.removed.includes(l.id) || replacedBy(l.id) !== null);
   const leadCount = leads.length - gone.length + draft.added.length;
 
@@ -347,9 +356,10 @@ function DrawerForm({
                 />
               ),
             )}
-            {gone.map((lead) =>
+            {gone.map((lead) => {
+              const by = replacedBy(lead.id);
               // Only an open division has leads to replace, so a replaced lead always has its division.
-              replacedBy(lead.id) !== null && divisionId !== null ? (
+              return by !== null && divisionId !== null ? (
                 <div key={lead.id} className="mt-5">
                   <HandOverChoice
                     name={`hand-over-${lead.id}`}
@@ -358,6 +368,8 @@ function DrawerForm({
                     unit={short}
                     value={draft.handOvers[lead.id] ?? null}
                     leave={lead.leave}
+                    seat={seatOfLead(lead.id)}
+                    successor={by.pick.name}
                     onChange={(outcome) => set({ handOvers: { ...draft.handOvers, [lead.id]: outcome } })}
                   />
                 </div>
@@ -369,8 +381,8 @@ function DrawerForm({
                   value={draft.outcomes[lead.id] ?? "member"}
                   onChange={(outcome) => set({ outcomes: { ...draft.outcomes, [lead.id]: outcome } })}
                 />
-              ),
-            )}
+              );
+            })}
             {showErrors && handOverError !== null && <p className="mt-2 text-[12px] text-danger">{handOverError}</p>}
           </section>
 
@@ -403,9 +415,15 @@ function DrawerForm({
         nameChanged={nameChanged}
         codeChanged={codeChanged}
         added={draft.added}
-        gone={gone.map((l) =>
-          goneLine(l, replacedBy(l.id) === null ? { via: "removed", outcome: draft.outcomes[l.id] ?? "member" } : { via: "replaced", outcome: draft.handOvers[l.id] ?? null }, divisionId, short),
-        )}
+        gone={gone.map((l) => {
+          const by = replacedBy(l.id);
+          return goneLine(
+            l,
+            by === null ? { via: "removed", outcome: draft.outcomes[l.id] ?? "member" } : { via: "replaced", outcome: draft.handOvers[l.id] ?? null, by: by.pick.name, seat: seatOfLead(l.id) },
+            divisionId,
+            short,
+          );
+        })}
         members={draft.members.length + draft.emails.length}
         onConfirm={confirm}
       />
@@ -1009,19 +1027,26 @@ const OUTCOME_LINES: Readonly<Record<RemovedLeadOutcome, (short: string) => stri
   "leave-team": () => "leaves the team: they move to Alumni and all their access ends",
 };
 
-/** An old lead as the confirm lists them: what becomes of them, and whether they leave the team. */
-type GoneLine = { readonly lead: DivisionPerson; readonly line: string; readonly leaving: boolean };
+/**
+ * An old lead as the confirm lists them: what becomes of them, whether they
+ * leave the team, and, for a replaced lead whose role carries a full-access
+ * seat, that the seat moves (`fullAccessMovesLine`, issue #501).
+ */
+type GoneLine = { readonly lead: DivisionPerson; readonly line: string; readonly leaving: boolean; readonly fullAccess: string | null };
 
 function goneLine(
   lead: DivisionPerson,
-  old: { readonly via: "removed"; readonly outcome: RemovedLeadOutcome } | { readonly via: "replaced"; readonly outcome: HandOverOutcome | null },
+  old:
+    | { readonly via: "removed"; readonly outcome: RemovedLeadOutcome }
+    | { readonly via: "replaced"; readonly outcome: HandOverOutcome | null; readonly by: string; readonly seat: FullAccessSeat | null },
   divisionId: number | null,
   short: string,
 ): GoneLine {
-  if (old.via === "removed") return { lead, line: `${lead.name} ${OUTCOME_LINES[old.outcome](short)}.`, leaving: old.outcome === "leave-team" };
-  if (old.outcome === null || divisionId === null) return { lead, line: `${lead.name} is replaced.`, leaving: false };
-  const step = steppingDown({ kind: "lead", divisionId }, old.outcome);
-  return { lead, line: `${lead.name} is replaced and ${steppingDownLine(step, short)}.`, leaving: step.kind === "leave" };
+  if (old.via === "removed") return { lead, line: `${lead.name} ${OUTCOME_LINES[old.outcome](short)}.`, leaving: old.outcome === "leave-team", fullAccess: null };
+  const step = old.outcome === null || divisionId === null ? null : steppingDown({ kind: "lead", divisionId }, old.outcome);
+  const fullAccess = fullAccessMovesLine({ seat: old.seat, successor: old.by, from: lead.name, step });
+  if (step === null) return { lead, line: `${lead.name} is replaced.`, leaving: false, fullAccess };
+  return { lead, line: `${lead.name} is replaced and ${steppingDownLine(step, short)}.`, leaving: step.kind === "leave", fullAccess };
 }
 
 /** The "are you sure" before Save changes or Create division, saying what will change. */
@@ -1066,7 +1091,10 @@ function SaveConfirm({
     );
   }
   for (const a of added) lines.push(`${a.pick.name} becomes a lead and keeps their other divisions.`);
-  for (const g of gone) lines.push(g.line);
+  for (const g of gone) {
+    lines.push(g.line);
+    if (g.fullAccess !== null) lines.push(g.fullAccess);
+  }
   if (target.kind !== "edit" && members > 0) lines.push(`${members} ${members === 1 ? "member joins" : "members join"}.`);
   const leaving = gone.some((g) => g.leaving);
 

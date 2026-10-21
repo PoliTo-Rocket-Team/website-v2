@@ -1,8 +1,16 @@
 "use client";
 
-import { Lock } from "lucide-react";
-import { advisorOptionDetail, BECOME_AN_ADVISOR, type HandedRole, type HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { KeyRound, Lock } from "lucide-react";
+import {
+  advisorOptionDetail,
+  BECOME_AN_ADVISOR,
+  fullAccessMovesLine,
+  steppingDown,
+  type HandedRole,
+  type HandOverOutcome,
+} from "@/lib/dashboard/hand-over";
 import type { Permission } from "@/lib/dashboard/team";
+import type { FullAccessSeat } from "@/lib/dashboard/viewer";
 
 // The one-of choice the structure panels ask about the person stepping down
 // (issue #253): "What happens to Marco?" on lead replace (board 68b4) and
@@ -80,9 +88,28 @@ export function RadioChoice<T extends string>({
 }
 
 /**
+ * "Pietro Ricci becomes Operations lead and gets full access. You lose full
+ * access." (issue #501): the one note every hand-over and replacement screen
+ * shows before its confirm when the role handed over carries a full-access
+ * seat. Its words are `fullAccessMovesLine`'s; a role with no seat shows
+ * nothing.
+ */
+export function FullAccessMoves({ className = "", ...words }: Parameters<typeof fullAccessMovesLine>[0] & { className?: string }) {
+  const line = fullAccessMovesLine(words);
+  if (line === null) return null;
+  return (
+    <p className={`flex gap-3 rounded-xl border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2 ${className}`}>
+      <KeyRound aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+      <span>{line}</span>
+    </p>
+  );
+}
+
+/**
  * "Become an advisor" / "Leave the team" for a lead or head who is replaced
  * (boards 68b4 and 77e): an advisor in `unit`, whose access ends, or Alumni.
- * No third option, and neither is picked at first.
+ * No third option, and neither is picked at first. When the role carries a
+ * full-access seat, the note under it says the seat moves (`FullAccessMoves`).
  */
 export function HandOverChoice({
   name,
@@ -91,6 +118,8 @@ export function HandOverChoice({
   unit,
   value,
   leave,
+  seat,
+  successor,
   onChange,
 }: {
   name: string;
@@ -103,18 +132,25 @@ export function HandOverChoice({
   value: HandOverOutcome | null;
   /** Whether this editor may move them to Alumni (`mayLeaveTeam`). */
   leave: Permission;
+  /** The full-access seat the role carries (`seatOfHandedRole`), or null. */
+  seat: FullAccessSeat | null;
+  /** Who takes the role over: "Pietro Ricci". */
+  successor: string;
   onChange: (outcome: HandOverOutcome) => void;
 }) {
   return (
-    <RadioChoice
-      name={name}
-      legend={`What happens to ${person.split(" ")[0] ?? person}?`}
-      value={value}
-      onChange={onChange}
-      options={[
-        { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorOptionDetail(handed, unit, "they") },
-        { value: "leave", title: "Leave the team", detail: "Moves to Alumni; their access ends", danger: true, permission: leave },
-      ]}
-    />
+    <>
+      <RadioChoice
+        name={name}
+        legend={`What happens to ${person.split(" ")[0] ?? person}?`}
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: "advisor", title: BECOME_AN_ADVISOR, detail: advisorOptionDetail(handed, unit, "they") },
+          { value: "leave", title: "Leave the team", detail: "Moves to Alumni; their access ends", danger: true, permission: leave },
+        ]}
+      />
+      <FullAccessMoves className="mt-3" seat={seat} successor={successor} from={person} step={value === null ? null : steppingDown(handed, value)} />
+    </>
   );
 }
