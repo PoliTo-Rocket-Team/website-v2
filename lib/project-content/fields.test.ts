@@ -92,7 +92,7 @@ test("only the full admins and holders of site-content access save; a blank fiel
   const fields = { ...fieldsOf(cavour), hero: { ...fieldsOf(cavour).hero, dates: "Edited dates" } };
   const outsiders: ViewerStanding[] = [
     { kind: "division-lead", siteContent: false, approveOrders: false },
-    { kind: "member", areaGrant: false, siteContent: false, approveOrders: false },
+    { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false },
     { kind: "alumni", siteContent: false, approveOrders: false },
   ];
   for (const viewer of outsiders) {
@@ -101,7 +101,7 @@ test("only the full admins and holders of site-content access save; a blank fiel
     assert.deepEqual(result, { ok: false, error: SITE_CONTENT_REFUSAL }, viewer.kind);
     assert.deepEqual(publicItems(await store.list()), importedRecords);
   }
-  const holder: ViewerStanding = { kind: "member", areaGrant: false, siteContent: true, approveOrders: false };
+  const holder: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
   assert.ok((await projectEditor(holder, memoryContentStore(importedProjects())).saveFields(1, "publish", fields)).ok);
 
   const store = memoryContentStore(importedProjects());

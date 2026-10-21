@@ -22,8 +22,8 @@ const covering = { divisionIds: [TEST_BENCH.divisionId], departmentIds: [] };
 const teamLeader: RecruitmentReader = { kind: "operations-lead", seat: "team-leader", ...flags, divisionIds: [], departmentIds: [] };
 const divisionLead: RecruitmentReader = { kind: "division-lead", ...flags, ...covering };
 const departmentHead: RecruitmentReader = { kind: "department-head", ...flags, divisionIds: [], departmentIds: [TEST_BENCH.departmentId] };
-const grantHolder: RecruitmentReader = { kind: "member", areaGrant: true, ...flags, ...covering };
-const plainMember: RecruitmentReader = { kind: "member", areaGrant: false, ...flags, ...covering };
+const grantHolder: RecruitmentReader = { kind: "member", grantedAreas: ["applications"], ...flags, ...covering };
+const plainMember: RecruitmentReader = { kind: "member", grantedAreas: [], ...flags, ...covering };
 const applicant: RecruitmentReader = { kind: "non-member", siteContent: false, approveOrders: false, ...covering };
 const alumnus: RecruitmentReader = { kind: "alumni", siteContent: false, approveOrders: false, ...covering };
 

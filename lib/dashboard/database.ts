@@ -79,7 +79,7 @@ import { blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { upcomingInterviews } from "./interview-slots";
-import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, isOffTeam, isTeamLeader, readsAsDivisionLead, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
+import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, holdsAreaGrant, isOffTeam, isTeamLeader, readsAsDivisionLead, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -747,7 +747,7 @@ function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
       return divisionOverview(identity);
     case "member":
       // An area grant opens a lead's division pages, so its Overview too (issue #160).
-      return identity.areaGrant ? divisionOverview(identity) : memberOverview(identity);
+      return holdsAreaGrant(identity) ? divisionOverview(identity) : memberOverview(identity);
     case "non-member":
     case "alumni":
       return Promise.reject(new DashboardRefused("an Overview off the team is built from My applications"));

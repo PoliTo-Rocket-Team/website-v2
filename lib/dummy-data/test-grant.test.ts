@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { canReach, sidebarFor } from "@/lib/dashboard/access";
 import type { MemberDirectory } from "@/lib/dashboard/team";
 import { NO_EDITS } from "./edits";
+import { dummyViewer } from "./index";
 import { dummyTeamPages } from "./team-pages";
-import type { TestGrant } from "./test-grant";
+import { TEST_GRANTS, type TestGrant } from "./test-grant";
 
 // Issue #351: the member test viewer holding a Members grant sees the Members
 // page as the database side builds it for a grant holder.
@@ -16,6 +18,17 @@ function divisionPage(directory: MemberDirectory) {
   if (directory.scope !== "division") throw new Error(`expected a division page, got ${directory.scope}`);
   return directory;
 }
+
+test("the member holding a test grant is granted Members, so their sidebar lists Members and no other grant page (issue #471)", () => {
+  for (const grant of TEST_GRANTS) {
+    const viewer = dummyViewer("member", [], grant);
+    assert.deepEqual(viewer.kind === "member" ? viewer.grantedAreas : null, ["members"], grant);
+    const listed = sidebarFor(viewer, { counts: {}, hasShownApplications: false }).flatMap((s) => s.items.map((item) => item.key));
+    const grantPages = ["positions", "applications", "members", "division-access", "orders"] as const;
+    assert.deepEqual(listed.filter((key) => (grantPages as readonly string[]).includes(key)), ["members"], grant);
+    assert.deepEqual(grantPages.filter((key) => canReach(viewer, key)), ["members"], grant);
+  }
+});
 
 test("a member with Members at Can view sees their division's people and no action", async () => {
   const view = members("members-view");

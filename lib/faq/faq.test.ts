@@ -84,10 +84,10 @@ test("the FAQ page reaches full access and site-content access only, and the ser
   const reaches: readonly [ViewerStanding, boolean][] = [
     [admin, true],
     [{ kind: "operations-lead", seat: "it-lead", siteContent: false, approveOrders: false }, true],
-    [{ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, true],
     [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
     [{ kind: "department-head", siteContent: false, approveOrders: false }, false],
-    [{ kind: "member", areaGrant: false, siteContent: false, approveOrders: false }, false],
+    [{ kind: "member", grantedAreas: [], siteContent: false, approveOrders: false }, false],
     [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, allowed] of reaches) {

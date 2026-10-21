@@ -5,7 +5,10 @@ import {
   areaGrantsOf,
   coveredDivisionIds,
   fullAccessSeatOf,
+  GRANT_AREAS,
+  grantedAreasOf,
   headDivisionsOf,
+  holdsAreaGrant,
   isTeamLeader,
   ledDivisionIds,
   mayChange,
@@ -94,7 +97,7 @@ test("someone who leads division A and is a member of division B is a lead for A
 });
 
 test("a website scope row gives site-content access, but not to someone who left the team (issue #234)", () => {
-  assert.deepEqual(viewerStandingOf({ scopes: [row("website")], activeRoles: [role("core")] }), { kind: "member", areaGrant: false, siteContent: true, approveOrders: false });
+  assert.deepEqual(viewerStandingOf({ scopes: [row("website")], activeRoles: [role("core")] }), { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false });
   assert.deepEqual(viewerStandingOf({ scopes: [row("division")], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: false, approveOrders: false });
   assert.deepEqual(viewerStandingOf({ scopes: [row("website")], activeRoles: [] }), { kind: "non-member", siteContent: false, approveOrders: false });
 });
@@ -236,25 +239,49 @@ test("a Members, an Applications or a Positions grant, at either level, makes a 
         const access = { scopes: [row(scope, target, level)], activeRoles: [role("core", MSA)] };
         const label = `${target} at ${level} on a ${scope}`;
         assert.equal(viewerKindOf(access), "member", label);
-        assert.deepEqual(viewerStandingOf(access), { kind: "member", areaGrant: true, siteContent: false, approveOrders: false }, label);
+        assert.deepEqual(viewerStandingOf(access), { kind: "member", grantedAreas: [target], siteContent: false, approveOrders: false }, label);
       }
     }
   }
 });
 
-test("an area grant still opens the pages a division lead reaches, and only those (issue #160)", () => {
+test("an area grant opens its own area's page as a division lead reaches it, and no other lead page (issues #160, #471)", () => {
   const holder = viewerStandingOf({ scopes: [row("division", "members", "view")], activeRoles: [role("core", MSA)] });
   const lead = viewerStandingOf({ scopes: [], activeRoles: [role("lead", MSA)] });
   const plain = viewerStandingOf({ scopes: [], activeRoles: [role("core", MSA)] });
   assert.equal(readsAsDivisionLead(holder), true);
   assert.equal(readsAsDivisionLead(lead), true);
   assert.equal(readsAsDivisionLead(plain), false);
-  for (const page of ["positions", "applications", "members", "division-access", "orders", "team-tree", "my-profile", "alumni"] as const) {
+  assert.equal(holdsAreaGrant(holder), true);
+  assert.equal(holdsAreaGrant(plain), false);
+  assert.equal(holdsAreaGrant(lead), false);
+  for (const page of ["members", "team-tree", "my-profile", "alumni"] as const) {
     assert.equal(canReach(holder, page), canReach(lead, page), page);
+  }
+  for (const page of ["positions", "applications", "division-access", "orders"] as const) {
+    assert.equal(canReach(holder, page), false, page);
   }
   for (const page of ["positions", "applications", "members", "division-access", "orders"] as const) {
     assert.equal(canReach(plain, page), false, page);
   }
+});
+
+test("a member's standing carries the areas their division and department rows grant; a row on all grants every area (issue #471)", () => {
+  const standing = (...scopes: ScopeRef[]) => viewerStandingOf({ scopes, activeRoles: [role("core", MSA)] });
+  assert.deepEqual(standing(row("division", "positions", "view")), { kind: "member", grantedAreas: ["positions"], siteContent: false, approveOrders: false });
+  assert.deepEqual(standing(row("division", "all", "view")), {
+    kind: "member",
+    grantedAreas: ["positions", "applications", "members", "orders"],
+    siteContent: false,
+    approveOrders: false,
+  });
+  assert.deepEqual(
+    standing(row("department", "orders", "edit"), row("division", "applications", "view"), row("division", "orders", "view")),
+    { kind: "member", grantedAreas: ["applications", "orders"], siteContent: false, approveOrders: false },
+  );
+  // Site content and "Approve orders" are no grant area.
+  assert.deepEqual(standing(row("website"), row("team", "approve_orders", "edit")), { kind: "member", grantedAreas: [], siteContent: true, approveOrders: true });
+  assert.deepEqual(grantedAreasOf([row("division", "all", "edit")]), GRANT_AREAS);
 });
 
 test("each area grant keeps its area, level and unit", () => {

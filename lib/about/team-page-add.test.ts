@@ -37,7 +37,7 @@ import { teamBuildOf } from "./team-roles";
 
 const roles = dummyTeamRoles();
 const build = teamBuildOf(roles);
-const siteContent: ViewerStanding = { kind: "member", areaGrant: false, siteContent: true, approveOrders: false };
+const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 
 /** `layer` with a new leader added at `gap`, and the ref they take. */
 function addAt(layer: TeamPageLayer, gap: number): { layer: TeamPageLayer; ref: AddedRef } {

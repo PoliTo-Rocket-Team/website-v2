@@ -75,6 +75,13 @@ export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead", Flagge
 };
 
 /**
+ * The areas an area grant opens a dashboard page in (docs/dashboard-rules.md,
+ * "Access"): each names the one page it opens to a member (issue #471).
+ */
+export const GRANT_AREAS = ["positions", "applications", "members", "orders"] as const;
+export type GrantArea = (typeof GRANT_AREAS)[number];
+
+/**
  * What decides the dashboard pages a viewer reaches: their kind, and whether
  * they hold site-content access (a `website` scope row) or "Approve orders"
  * (the `team` row on `approve_orders`, issue #270) on top of it. Someone off
@@ -94,12 +101,13 @@ export type ViewerStanding =
   | {
       readonly kind: "member";
       /**
-       * They hold an area grant in a division or department (issue #160): it
-       * opens the pages a division lead reaches, over the units the grants
-       * name, and makes them no division lead. What they may change there
-       * follows the grant's area and level (`mayChange`).
+       * The areas their grants in a division or department name (issues #160,
+       * #471), in `GRANT_AREAS` order; none when they hold no grant. Each opens
+       * its own page, over the units the grants name, and makes them no
+       * division lead. What they may change there follows the grant's area
+       * and level (`mayChange`).
        */
-      readonly areaGrant: boolean;
+      readonly grantedAreas: readonly GrantArea[];
       readonly siteContent: boolean;
       readonly approveOrders: boolean;
     };
@@ -142,7 +150,7 @@ export function testDeveloperStanding(viewer: TestViewer, approveOrders = false)
     case "operations-lead":
       return { kind: viewer, seat: "operations-lead", siteContent: false, approveOrders };
     case "member":
-      return { kind: viewer, areaGrant: false, siteContent: false, approveOrders };
+      return { kind: viewer, grantedAreas: [], siteContent: false, approveOrders };
     default:
       return { kind: viewer, siteContent: false, approveOrders };
   }
@@ -162,7 +170,7 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
     case "operations-lead":
       return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
     case "member":
-      return { kind: viewer.kind, areaGrant: viewer.areaGrant, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
+      return { kind: viewer.kind, grantedAreas: viewer.grantedAreas, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
     default:
       return { kind: viewer.kind, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
   }
@@ -172,10 +180,26 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
  * Whether the viewer reads the division pages a lead reads (Positions,
  * Applications, Members, Access, Orders) over the units they cover: a
  * division lead, or a member holding an area grant (issue #160). Reading is
- * all it decides; a recruitment or Members change checks `mayChange`.
+ * all it decides; which of those pages a member reaches follows their granted
+ * areas (./access.ts), and a recruitment or Members change checks `mayChange`.
  */
 export function readsAsDivisionLead(viewer: ViewerStanding): boolean {
-  return viewer.kind === "division-lead" || (viewer.kind === "member" && viewer.areaGrant);
+  return viewer.kind === "division-lead" || holdsAreaGrant(viewer);
+}
+
+/** Whether the viewer is a member holding a grant on any area (issue #160). */
+export function holdsAreaGrant(viewer: ViewerStanding): boolean {
+  return viewer.kind === "member" && viewer.grantedAreas.length > 0;
+}
+
+/**
+ * The areas a member's `division` and `department` scope rows grant (issue
+ * #471), in `GRANT_AREAS` order: a row on one of them grants it, and a row on
+ * `all` grants every one. A row of any other kind grants none.
+ */
+export function grantedAreasOf(scopes: readonly ScopeRef[]): GrantArea[] {
+  const targets = scopes.flatMap((s) => (s.scope === "division" || s.scope === "department" ? [s.target] : []));
+  return GRANT_AREAS.filter((area) => targets.includes("all") || targets.includes(area));
 }
 
 /** The full-access seat the viewer holds; null for anyone else, and for full access from a scope row alone. */
@@ -313,7 +337,7 @@ export function ledDivisionIds(access: MemberAccess): number[] {
  * A real account's standing: its viewer kind, its full-access seat,
  * site-content access from a `website` scope row, "Approve orders" from a
  * `team` one (`unitRowsOf` leaves no other `team` row), and, for a member,
- * whether a `division` or `department` row gives them an area grant.
+ * the areas their `division` and `department` rows grant (`grantedAreasOf`).
  */
 export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const kind = viewerKindOf(access);
@@ -323,10 +347,7 @@ export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const siteContent = access.scopes.some((s) => s.scope === "website");
   const approveOrders = access.scopes.some((s) => s.scope === "team");
   if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, approveOrders };
-  if (kind === "member") {
-    const areaGrant = access.scopes.some((s) => s.scope === "division" || s.scope === "department");
-    return { kind, areaGrant, siteContent, approveOrders };
-  }
+  if (kind === "member") return { kind, grantedAreas: grantedAreasOf(access.scopes), siteContent, approveOrders };
   return { kind, siteContent, approveOrders };
 }
 

@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { canReach, DASHBOARD_PAGES, pageTitleFor, sidebarFor, userMenuPageFor, type SidebarFacts } from "./access";
 import { maySiteContent } from "@/lib/content/gate";
-import { FULL_ACCESS_SEATS, testDeveloperStanding as kindOnly, type FullAccessSeat, type ViewerKind, type ViewerStanding } from "./viewer";
+import {
+  FULL_ACCESS_SEATS,
+  GRANT_AREAS,
+  testDeveloperStanding as kindOnly,
+  type FullAccessSeat,
+  type GrantArea,
+  type ViewerKind,
+  type ViewerStanding,
+} from "./viewer";
 
 /** Each group as its heading and item labels: [heading, [labels]]. */
 function shape(viewer: ViewerKind | ViewerStanding, facts: SidebarFacts) {
@@ -101,10 +109,10 @@ const EVERY_STANDING: readonly [string, ViewerStanding][] = [
   ["department head with site content", { kind: "department-head", siteContent: true, approveOrders: true }],
   ["division lead", { kind: "division-lead", siteContent: false, approveOrders: false }],
   ["division lead with site content", { kind: "division-lead", siteContent: true, approveOrders: true }],
-  ["member", { kind: "member", areaGrant: false, siteContent: false, approveOrders: false }],
-  ["member with an area grant", { kind: "member", areaGrant: true, siteContent: false, approveOrders: false }],
-  ["member with site content", { kind: "member", areaGrant: false, siteContent: true, approveOrders: false }],
-  ["member with Approve orders", { kind: "member", areaGrant: false, siteContent: false, approveOrders: true }],
+  ["member", { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false }],
+  ["member with a grant on every area", { kind: "member", grantedAreas: GRANT_AREAS, siteContent: false, approveOrders: false }],
+  ["member with site content", { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }],
+  ["member with Approve orders", { kind: "member", grantedAreas: [], siteContent: false, approveOrders: true }],
   ["alumni", { kind: "alumni", siteContent: false, approveOrders: false }],
   ["non-member", { kind: "non-member", siteContent: false, approveOrders: false }],
 ];
@@ -155,7 +163,8 @@ test("the one sidebar structure leaves which pages each viewer reaches as it was
     "division lead": head,
     "division lead with site content": inOrder([...head, ...content]),
     member: ["overview", "my-applications", "team-tree", "my-profile"],
-    "member with an area grant": head,
+    // Access is no grant area, so a grant never opens it (issue #471).
+    "member with a grant on every area": head.filter((key) => key !== "division-access"),
     "member with site content": inOrder(["overview", "my-applications", "team-tree", ...content, "my-profile"]),
     "member with Approve orders": ["overview", "my-applications", "team-tree", "orders", "my-profile"],
     alumni: ["overview", "my-alumni", "my-applications", "my-account"],
@@ -186,8 +195,8 @@ test("the Alumni page is for full admins and site-content access, never from a l
     [{ kind: "operations-lead", seat: "operations-lead", siteContent: false, approveOrders: false }, true],
     [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
-    [{ kind: "member", areaGrant: false, siteContent: false, approveOrders: false }, false],
-    [{ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", grantedAreas: [], siteContent: false, approveOrders: false }, false],
+    [{ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, true],
     [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, reached] of reaches) {
@@ -195,7 +204,7 @@ test("the Alumni page is for full admins and site-content access, never from a l
     assert.equal(canReach(viewer, "alumni"), reached, JSON.stringify(viewer));
     assert.equal(listed, reached, JSON.stringify(viewer));
   }
-  assert.deepEqual(shape({ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, withoutApplications), [
+  assert.deepEqual(shape({ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, withoutApplications), [
     [null, ["Overview", "Team tree"]],
     ["Content", ["Projects", "Outreach", "Partners", "Alumni", "FAQ", "Team page"]],
   ]);
@@ -209,8 +218,8 @@ test("the Outreach and Team page pages are for whoever the site-content gate adm
     [{ kind: "department-head", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
-    [{ kind: "member", areaGrant: false, siteContent: false, approveOrders: true }, false],
-    [{ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, true],
+    [{ kind: "member", grantedAreas: [], siteContent: false, approveOrders: true }, false],
+    [{ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, true],
     [{ kind: "non-member", siteContent: false, approveOrders: false }, false],
   ];
   for (const [viewer, reached] of reaches) {
@@ -225,7 +234,7 @@ test("the Outreach and Team page pages are for whoever the site-content gate adm
 });
 
 test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue #270)", () => {
-  const holder: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: true };
+  const holder: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: true };
   assert.equal(canReach(holder, "orders"), true);
   assert.deepEqual(shape(holder, withoutApplications), [
     [null, ["Overview", "Team tree"]],
@@ -238,7 +247,7 @@ test("\"Approve orders\" alone opens Orders, under Team, and nothing else (issue
 
 test("a member with no \"Approve orders\" and no Orders access does not reach Orders (issue #270)", () => {
   assert.equal(canReach(kindOnly("member"), "orders"), false);
-  assert.equal(canReach({ kind: "member", areaGrant: false, siteContent: true, approveOrders: false }, "orders"), false);
+  assert.equal(canReach({ kind: "member", grantedAreas: [], siteContent: true, approveOrders: false }, "orders"), false);
   assert.equal(canReach(kindOnly("non-member"), "orders"), false);
 });
 
@@ -247,6 +256,94 @@ test("a lead who also holds \"Approve orders\" keeps Orders once, under Team (is
     "Team",
     ["Members", "Access", "Orders"],
   ]);
+});
+
+/** The pages a lead reaches over their units; a member reaches each only by a grant on its area (issue #471). */
+const GRANT_PAGES = ["positions", "applications", "members", "division-access", "orders"] as const;
+
+/** A member granted `areas` and nothing else. */
+const granted = (areas: readonly GrantArea[]): ViewerStanding => ({ kind: "member", grantedAreas: areas, siteContent: false, approveOrders: false });
+
+/** The keys of every page the viewer's sidebar lists, in sidebar order. */
+const listedKeys = (viewer: ViewerStanding, facts: SidebarFacts = withoutApplications) =>
+  sidebarFor(viewer, facts).flatMap((section) => section.items.map((item) => item.key));
+
+const reachedGrantPages = (viewer: ViewerStanding) => GRANT_PAGES.filter((key) => canReach(viewer, key));
+const listedGrantPages = (viewer: ViewerStanding) => listedKeys(viewer).filter((key) => (GRANT_PAGES as readonly string[]).includes(key));
+
+test("a member with a Positions-only grant reaches and lists Positions alone among the grant pages (issue #471)", () => {
+  const viewer = granted(["positions"]);
+  assert.equal(canReach(viewer, "positions"), true);
+  for (const key of ["applications", "members", "division-access", "orders"] as const) assert.equal(canReach(viewer, key), false, key);
+  assert.deepEqual(listedGrantPages(viewer), ["positions"]);
+  assert.deepEqual(shape(viewer, withoutApplications), [
+    [null, ["Overview", "Team tree"]],
+    ["Recruitment", ["Positions"]],
+  ]);
+});
+
+test("a member with an Applications-only grant reaches and lists Applications alone among the grant pages (issue #471)", () => {
+  const viewer = granted(["applications"]);
+  assert.deepEqual(reachedGrantPages(viewer), ["applications"]);
+  assert.deepEqual(listedGrantPages(viewer), ["applications"]);
+});
+
+test("a Members-only grant reaches and lists Members alone, an Orders-only grant Orders alone (issue #471)", () => {
+  for (const area of ["members", "orders"] as const) {
+    const viewer = granted([area]);
+    assert.deepEqual(reachedGrantPages(viewer), [area], area);
+    assert.deepEqual(listedGrantPages(viewer), [area], area);
+  }
+});
+
+test("a grant on every area reaches and lists Positions, Applications, Members and Orders, and never Access (issue #471)", () => {
+  const viewer = granted(GRANT_AREAS);
+  assert.deepEqual(reachedGrantPages(viewer), ["positions", "applications", "members", "orders"]);
+  assert.deepEqual(listedGrantPages(viewer), ["positions", "applications", "members", "orders"]);
+});
+
+test("the Applications badge shows only to a viewer whose sidebar lists Applications (issue #471)", () => {
+  const facts: SidebarFacts = { counts: { applications: 8 }, hasShownApplications: false };
+  const items = (viewer: ViewerStanding) => sidebarFor(viewer, facts).flatMap((section) => section.items);
+  const positionsOnly = items(granted(["positions"]));
+  assert.equal(positionsOnly.some((item) => item.key === "applications"), false);
+  assert.ok(positionsOnly.every((item) => item.count === null));
+  assert.equal(items(granted(["applications"])).find((item) => item.key === "applications")?.count, 8);
+});
+
+test("\"Approve orders\" with no area grant still opens Orders; site content with no area grant opens the Content pages only (issue #471)", () => {
+  const approver: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: true };
+  assert.deepEqual(reachedGrantPages(approver), ["orders"]);
+  const editor: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
+  assert.deepEqual(reachedGrantPages(editor), []);
+  assert.deepEqual(listedKeys(editor), ["overview", "team-tree", "projects", "outreach", "partners", "alumni", "faq", "team-page"]);
+});
+
+test("heads, leads and every full-access seat reach and list the pages they did before grant areas, and the user menu is unchanged (issue #471)", () => {
+  const lead = ["overview", "team-tree", "positions", "applications", "members", "division-access", "orders"];
+  const full = [...lead, "projects", "outreach", "partners", "alumni", "faq", "team-page"];
+  const listed: readonly [string, ViewerStanding, readonly string[]][] = [
+    ["department head", kindOnly("department-head"), lead],
+    ["division lead", kindOnly("division-lead"), lead],
+    ["team leader", fullAccess("team-leader"), full],
+    ["operations lead", fullAccess("operations-lead"), full],
+    ["IT lead", fullAccess("it-lead"), full],
+  ];
+  for (const [who, viewer, keys] of listed) {
+    assert.deepEqual(listedKeys(viewer), keys, who);
+    assert.deepEqual(reachedGrantPages(viewer), GRANT_PAGES, who);
+  }
+  const menu = Object.fromEntries(
+    (["operations-lead", "department-head", "division-lead", "member", "alumni", "non-member"] as const).map((kind) => [kind, userMenuPageFor(kind)?.key]),
+  );
+  assert.deepEqual(menu, {
+    "operations-lead": "my-profile",
+    "department-head": "my-profile",
+    "division-lead": "my-profile",
+    member: "my-profile",
+    alumni: "my-account",
+    "non-member": "my-account",
+  });
 });
 
 test("My profile and My account are in the user menu, never the sidebar", () => {

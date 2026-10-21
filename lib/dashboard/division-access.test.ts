@@ -324,7 +324,7 @@ test("a member whose only access is \"Approve orders\" reaches the Orders page, 
     return viewerStandingOf({ scopes: units, activeRoles: [member] });
   };
   const holder = standingFrom("approve_orders");
-  assert.deepEqual(holder, { kind: "member", areaGrant: false, siteContent: false, approveOrders: true });
+  assert.deepEqual(holder, { kind: "member", grantedAreas: [], siteContent: false, approveOrders: true });
   assert.equal(canReach(holder, "orders"), true);
   assert.equal(canReach(holder, "members"), false);
   // An area given across the whole team is no "Approve orders".
