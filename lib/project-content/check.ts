@@ -1,7 +1,7 @@
 import { isPhotoSrc } from "@/lib/outreach-photos";
 import { specRows } from "@/lib/project-pages/types";
 import { ownModels, ownRocketModels } from "@/lib/rocket-model";
-import { BACKGROUND_PRESETS, isUploadedSrc, type ProjectRecord } from "./record";
+import { BACKGROUND_PRESETS, isUploadedSrc, presetNamed, type ProjectRecord } from "./record";
 
 // Whether a value read back is a project record (./record.ts): a stored JSON
 // document from the database, or a test developer's changes from their
@@ -199,13 +199,22 @@ export function isProjectRecord(value: unknown): value is ProjectRecord {
  */
 export const RETIRED_KEYS: ReadonlySet<string> = new Set(["teaser"]);
 
+/** A stored background naming a retired preset reads as the preset that replaced it (`presetNamed`). */
+function currentBackground(v: unknown): unknown {
+  if (!isObject(v) || v.kind !== "preset") return v;
+  const preset = presetNamed(v.preset);
+  return preset === undefined ? v : { ...v, preset };
+}
+
 /**
  * A record read back from the store: the record with any retired key left
- * out, or null when what is left is not a record.
+ * out and a retired preset read as its successor, or null when what is left
+ * is not a record.
  */
 export function storedProjectRecord(value: unknown): ProjectRecord | null {
   if (!isObject(value)) return null;
-  const record = Object.fromEntries(Object.entries(value).filter(([key]) => !RETIRED_KEYS.has(key)));
+  const kept = Object.fromEntries(Object.entries(value).filter(([key]) => !RETIRED_KEYS.has(key)));
+  const record = "background" in kept ? { ...kept, background: currentBackground(kept.background) } : kept;
   return isProjectRecord(record) ? record : null;
 }
 

@@ -1,5 +1,6 @@
 import type { Copy, ProjectPage } from "@/lib/projects";
 import { editorVersion, publicVersion, statusOf, type ContentItem, type ContentStatus } from "@/lib/content/versioned";
+import { cardPosterOf, rocketModelOf } from "@/lib/rocket-model";
 import { homeCardOf, newestFirst, pageOf, type ProjectRecord } from "./record";
 
 // The dashboard Projects list (board 91, issue #506): one row per stored
@@ -15,6 +16,29 @@ export const PROJECT_KIND_LABELS: Readonly<Record<ProjectRecord["kind"], string>
   engine: "Engine",
 };
 
+/**
+ * A row thumbnail's top-of-page visual (board 91, Owner decision on #522): a
+ * model draws its offline card still, the one a home card shows before its
+ * canvas, so the list mounts no 3D canvas; a photo draws itself; None draws
+ * nothing over the background.
+ */
+export type RowVisual =
+  | { readonly kind: "still"; readonly src: string }
+  | { readonly kind: "photo"; readonly src: string; readonly alt: string }
+  | { readonly kind: "none" };
+
+export function rowVisualOf(record: ProjectRecord): RowVisual {
+  const { visual } = record.hero;
+  switch (visual.kind) {
+    case "model":
+      return { kind: "still", src: cardPosterOf(rocketModelOf(visual.own?.model)) };
+    case "photo":
+      return { kind: "photo", src: visual.photo.src, alt: visual.photo.alt };
+    case "none":
+      return { kind: "none" };
+  }
+}
+
 export type ProjectRow = {
   readonly id: number;
   /** Where Edit page opens it: /dashboard/projects/<slug>. */
@@ -22,6 +46,8 @@ export type ProjectRow = {
   readonly name: string;
   /** The project's background, as its home card draws it. */
   readonly texture: string;
+  /** What the thumbnail draws on that background, as a small home card. */
+  readonly visual: RowVisual;
   /** The card line under the name. */
   readonly desc: Copy;
   readonly kind: string;
@@ -52,6 +78,7 @@ export function projectRows(items: readonly ContentItem<ProjectRecord>[]): Proje
       slug: record.slug,
       name: record.name,
       texture,
+      visual: rowVisualOf(record),
       desc: record.card.desc,
       kind: PROJECT_KIND_LABELS[record.kind],
       years: record.listing.years,

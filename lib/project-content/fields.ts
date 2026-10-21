@@ -9,8 +9,8 @@ import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCa
 import { isProjectRecord } from "./check";
 import { copyFields, copyOf, type CopyFields } from "./copy-fields";
 import {
-  BACKGROUND_PRESETS,
   isUploadedSrc,
+  presetNamed,
   visualModelOf,
   type Background,
   type BackgroundPreset,
@@ -346,7 +346,7 @@ function readBackground(v: unknown): BackgroundFields | null {
   if (!isObject(v)) return null;
   if (v.kind === "kept") return { kind: "kept" };
   if (v.kind === "upload") return isUploadedSrc(v.tall) && isUploadedSrc(v.wide) ? { kind: "upload", tall: v.tall, wide: v.wide } : null;
-  const preset = BACKGROUND_PRESETS.find((p) => p === v.preset);
+  const preset = presetNamed(v.preset);
   return v.kind === "preset" && preset !== undefined ? { kind: "preset", preset } : null;
 }
 

@@ -263,6 +263,17 @@ test("a record stored before issue #377 still reads, without the retired next-pr
   assert.equal(storedProjectRecord({ ...cavour, extra: 1 }), null, "only a retired key is let through");
 });
 
+test("a record stored with a retired preset reads the Dark stripes preset that replaced it (Owner decision on #522)", () => {
+  const cavour = plain(importedRecords[0]) as VehicleRecord;
+  const darkStripes = { ...cavour, background: { kind: "preset", preset: "dark-stripes" } };
+  for (const retired of ["projects-page", "cavour-page"]) {
+    const stored = { ...cavour, background: { kind: "preset", preset: retired } };
+    assert.equal(isProjectRecord(stored), false, `${retired} is no preset now`);
+    assert.deepEqual(storedProjectRecord(stored), darkStripes, retired);
+  }
+  assert.equal(storedProjectRecord({ ...cavour, background: { kind: "preset", preset: "toString" } }), null, "a name that never was a preset still refuses");
+});
+
 test("the public pages read only the published version: a draft-only change and a draft-only project are not shown", async () => {
   const store = memoryContentStore(importedProjects());
   const editor = contentEditor(admin, store);

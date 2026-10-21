@@ -454,7 +454,8 @@ page is the layout reference.
   (`/textures/project-ves.webp`) in place of that texture (`stageTextureOf`, Owner decision,
   issue #382); its cards keep the grey texture. An engine whose editor picked a preset lies on the
   preset. Backgrounds (epic #522): a project keeps its brand texture from `public/textures/` until
-  an editor picks one of the 18 presets in `public/backgrounds/` (board 93d) or uploads a picture
+  an editor picks one of the 17 presets in `public/backgrounds/` (board 93d; one "Dark stripes"
+  preset replaced two copies of one file, Owner decision on #522) or uploads a picture
   of their own; a preset's tall file is the Home card's, its wide file the page panel's and the
   Projects list's. An upload is cropped twice in the crop dialog (board 93f, issue #529): Tall
   (9:16) for the Home card and Wide (2:1) for the page panel and the Projects list, each crop

@@ -113,6 +113,7 @@ test("a request names a preset or keeps the opened background, never a file the 
   const sent = (v: unknown) => readProjectFields(JSON.parse(JSON.stringify(v)));
   assert.deepEqual(sent({ ...fields, background: { kind: "preset", preset: "flare" } })?.background, { kind: "preset", preset: "flare" });
   assert.deepEqual(sent({ ...fields, background: { kind: "kept", src: "/elsewhere.webp" } })?.background, { kind: "kept" });
+  assert.deepEqual(sent({ ...fields, background: { kind: "preset", preset: "cavour-page" } })?.background, { kind: "preset", preset: "dark-stripes" }, "a retired preset reads its successor");
   for (const broken of [
     { ...fields, background: { kind: "preset", preset: "blue" } },
     { ...fields, background: { kind: "texture", src: "/textures/project-cavour.webp" } },

@@ -42,7 +42,7 @@ export type FlightCount = { readonly count: "flights" };
 /** A rocket's home card: its pill is text or its flight count. */
 export type VehicleCard = Omit<HomeCard, "status"> & { status: string | FlightCount };
 
-/** The 18 background presets (board 93d, Owner decisions on #522). Each has a tall and a wide file. */
+/** The 17 background presets (board 93d, Owner decisions on #522). Each has a tall and a wide file. */
 export const BACKGROUND_PRESETS = [
   "gradient",
   "orange",
@@ -60,11 +60,27 @@ export const BACKGROUND_PRESETS = [
   "grey-streaks",
   "ember",
   "flare",
-  "projects-page",
-  "cavour-page",
+  "dark-stripes",
 ] as const;
 
 export type BackgroundPreset = (typeof BACKGROUND_PRESETS)[number];
+
+/**
+ * Preset names a project could pick once and the preset each reads as now.
+ * "projects-page" and "cavour-page" were one file twice; they became the one
+ * "dark-stripes" (Owner decision on #522, 2026-10-22). A stored version or a
+ * request naming either still reads, so no stored project needs rewriting.
+ */
+const RETIRED_PRESETS: ReadonlyMap<string, BackgroundPreset> = new Map([
+  ["projects-page", "dark-stripes"],
+  ["cavour-page", "dark-stripes"],
+]);
+
+/** The preset a name picks today: a current preset, a retired one's successor, else none. */
+export function presetNamed(name: unknown): BackgroundPreset | undefined {
+  if (typeof name !== "string") return undefined;
+  return BACKGROUND_PRESETS.find((preset) => preset === name) ?? RETIRED_PRESETS.get(name);
+}
 
 /**
  * What a project's card, its /projects panel and its page visual lie on: a

@@ -20,7 +20,7 @@ import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts
 // cards' place with "Page blocks" to go back, and the page's top is outlined.
 // Its visual is the project's own model (the outline rocket until one is
 // built), one photo, or none, with an optional caption. Its background is one
-// of the 18 presets; the home card draws its tall file and the page and the
+// of the 17 presets; the home card draws its tall file and the page and the
 // Projects list its wide one (`backgroundSrc`). A project that kept its brand
 // texture from before presets shows no preset picked until an editor picks
 // one. The Upload tile closes the grid: it uploads the editor's own picture,
@@ -45,8 +45,7 @@ const PRESET_NAMES: Readonly<Record<BackgroundPreset, string>> = {
   "grey-streaks": "Grey streaks",
   ember: "Ember",
   flare: "Flare",
-  "projects-page": "Projects page",
-  "cavour-page": "Cavour page",
+  "dark-stripes": "Dark stripes",
 };
 
 type VisualKind = VisualFields["kind"];
@@ -246,7 +245,7 @@ function TopVisualEditor({
 const PICTURE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 /**
- * The Background picker (board 93d): the 18 presets, then the Upload tile.
+ * The Background picker (board 93d): the 17 presets, then the Upload tile.
  * The tile picks a picture and opens the crop dialog (board 93f); "Use this
  * background" uploads its Tall and Wide crops, one at a time, and picks them.
  * Picked, the tile shows the Tall crop; clicking it uploads another picture.
