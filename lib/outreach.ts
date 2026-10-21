@@ -1,4 +1,4 @@
-import type { HeaderStats } from "./about/types";
+import type { HeaderStat } from "./about/types";
 import type { NonEmpty } from "./about/alumni-types";
 import type { Copy } from "./projects";
 import {
@@ -38,9 +38,6 @@ export const outreachCopy: OutreachCopy = {
     intro:
       "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
   },
-
-  // IRESS: Torino 2023, Padova 2024, Rome 2025.
-  summit: { editions: 3, started: 2023 },
 
   postsTitle: "Where we’ve been",
 };
@@ -645,8 +642,11 @@ export function awardPosts(content: Pick<OutreachContent, "posts" | "tags">): Ou
   return content.posts.filter((p) => p.tags.some((name) => award.has(name)));
 }
 
-/** The header's four figures, counted from the listed posts and the tags, with the summit's two from the page's own words. */
-export function outreachStats(content: Pick<OutreachContent, "posts" | "tags">): HeaderStats {
+/** The Outreach header's figures: the events and the awards. */
+export type OutreachStats = readonly [events: HeaderStat, awards: HeaderStat];
+
+/** The header's two figures, both counted from the listed posts and the tags (issue #496). */
+export function outreachStats(content: Pick<OutreachContent, "posts" | "tags">): OutreachStats {
   const years = content.posts.map((p) => yearOf(p.date));
   const awards = awardPosts(content).length;
   return [
@@ -654,8 +654,6 @@ export function outreachStats(content: Pick<OutreachContent, "posts" | "tags">):
       value: String(content.posts.length),
       label: { text: years.length === 0 ? "EVENTS" : `EVENTS SINCE ${Math.min(...years)}` },
     },
-    { value: String(outreachCopy.summit.editions), label: { text: "IRESS EDITIONS" } },
-    { value: String(outreachCopy.summit.started), label: { text: "WE STARTED IRESS" } },
     { value: String(awards), label: { text: awards === 1 ? "AWARD" : "AWARDS" } },
   ];
 }

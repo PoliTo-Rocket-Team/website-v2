@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import { CopyText } from "@/components/project-page/parts";
-import type { HeaderStats } from "@/lib/about/types";
+import type { HeaderFigures } from "@/lib/about/types";
 
 // An About page's header (boards 26, 26m, 28, 29, 29m, 30 and 30m): the
 // eyebrow, the title, the intro and, on a page that has them, four figures
-// over a hairline. The About pages are in the navbar's About menu (board 27),
+// (two on the Outreach page, in the first two columns) over a hairline. The About pages are in the navbar's About menu (board 27),
 // so a page starts with this header: 40px under the bar on phones, 96px from
 // md. From md the figures are one row of four. On phones they stay one row
 // (boards 26m, 28) unless the page asks for 2 x 2 (board 30m), where each
@@ -18,7 +18,7 @@ const INTRO_BOX = "mt-4 max-w-[600px] md:mt-7";
 
 type Figures =
   | { stats?: undefined; statsOnPhone?: undefined }
-  | { stats: HeaderStats; statsOnPhone?: "row" | "two-by-two" };
+  | { stats: HeaderFigures; statsOnPhone?: "row" | "two-by-two" };
 
 export function PageHeader({
   eyebrow,
@@ -64,7 +64,7 @@ const layout = {
   },
 } as const;
 
-function Stats({ stats, onPhone }: { stats: HeaderStats; onPhone: keyof typeof layout }) {
+function Stats({ stats, onPhone }: { stats: HeaderFigures; onPhone: keyof typeof layout }) {
   const { list, cell } = layout[onPhone];
   return (
     <dl className={`mt-5 grid md:mt-7 md:pt-7 ${list}`}>

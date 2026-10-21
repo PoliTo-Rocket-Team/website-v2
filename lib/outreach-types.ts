@@ -154,8 +154,6 @@ export function mapUpToTwo<T, U>(items: UpToTwo<T>, f: (item: T) => U): UpToTwo<
 export type OutreachCopy = {
   description: string;
   header: { eyebrow: string; title: string; intro: string };
-  /** The student summit the team started, as the header's two IRESS figures count it. */
-  summit: { editions: number; started: number };
   /** Section title over the post cards. */
   postsTitle: string;
 };
