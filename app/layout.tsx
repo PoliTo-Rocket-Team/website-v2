@@ -1,5 +1,6 @@
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import type { Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import { Archivo, Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
@@ -16,6 +17,12 @@ export const metadata = {
   title: "PoliTo Rocket Team",
   description:
     "The rocket engineering student team of Politecnico di Torino. Born for space, built in Torino.",
+};
+
+// The accent orange as the theme colour: chat apps paint a shared link's
+// card bar with it (issue #454).
+export const viewport: Viewport = {
+  themeColor: brand.accent,
 };
 
 const archivo = Archivo({

@@ -9,6 +9,9 @@ import { openDashboard } from "@/lib/dashboard/open";
 
 export const metadata: Metadata = {
   title: "Dashboard · PoliTo Rocket Team",
+  // No share image here or on any dashboard page: this drops the root's
+  // default one (app/opengraph-image.tsx, issue #454).
+  openGraph: null,
 };
 
 // Every dashboard page sits in the shell: the viewer's sidebar, their user

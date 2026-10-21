@@ -690,6 +690,12 @@ export function monthYear(date: IsoDate): string {
   return `${month.slice(0, 3).toUpperCase()} ${year}`;
 }
 
+/** "OCTOBER 2024" in a post's share image eyebrow (board 90). */
+export function longMonthYear(date: IsoDate): string {
+  const { year, month } = parts(date);
+  return `${month.toUpperCase()} ${year}`;
+}
+
 /** "03 MAY 2025" on a home Track record card (board 21). */
 export function dayMonthYear(date: IsoDate): string {
   const { year, month, day } = parts(date);

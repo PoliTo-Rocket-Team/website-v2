@@ -11,6 +11,22 @@ const nextConfig: NextConfig = {
     // code runs. The default limit is 1 MB.
     serverActions: { bodySizeLimit: "4.5mb" },
   },
+  // The share images (issue #454) read their fonts and images from disk.
+  // Most are built ahead, but a project or post published later is drawn on
+  // its first visit, so the files it may name ship with those functions.
+  outputFileTracingIncludes: {
+    "/**/opengraph-image*": [
+      "./components/share-image/fonts/*.ttf",
+      "./design/cavour-render-vert.png",
+      "./public/brand/prt-logo-white.svg",
+      "./public/design/news/tex-streaks.jpg",
+      "./public/design/*/stage-poster.webp",
+      "./public/textures/**/*",
+      "./public/outreach/**/*",
+      "./public/team/team-*.jpg",
+      "./public/about/**/*",
+    ],
+  },
   turbopack: {
     root: path.join(__dirname),
   },

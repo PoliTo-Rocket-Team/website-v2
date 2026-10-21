@@ -34,7 +34,7 @@ const config = {
         hairline: "#232326",
         "border-strong": "#34343A",
         "prt-text": brand.text,
-        "text-2": "#C9C9CE",
+        "text-2": brand.text2,
         "prt-muted": "#8A8A8F",
         dim: "#5E5E64",
         accent: {

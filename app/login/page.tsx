@@ -12,6 +12,9 @@ import { brand } from "@/lib/brand-colors";
 export const metadata: Metadata = {
   title: "Sign in | Polito Rocket Team",
   description: "Sign in with your Google account.",
+  // No share image on the sign-in page: this drops the root's default one
+  // (app/opengraph-image.tsx, issue #454).
+  openGraph: null,
 };
 
 // Boards 36 (desktop) and 36m (phone): a full-height split with no navbar and
