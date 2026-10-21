@@ -1,75 +1,162 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Check, ChevronDown, CornerDownLeft, MailPlus } from "lucide-react";
+import { activeAt, filtering, shownPeople, stepActive } from "@/lib/dashboard/person-combobox";
 import { Avatar } from "./avatar";
 
-/** Someone the combobox can offer: the page's own people, already in the viewer's reach. */
-export type ComboboxPerson = { readonly id: number; readonly name: string };
+/** Someone the field can offer, already in the place's reach. */
+export type ComboboxPerson = {
+  readonly id: number;
+  readonly name: string;
+  /** Beside the name: their place or unit ("Aerodynamics · Mission Analysis"). */
+  readonly aside?: string | null;
+  /** Under the name: their role or email. */
+  readonly line?: string | null;
+  /** Why they cannot be chosen here ("Already a lead"): shown in place of the line, and the row cannot be chosen. */
+  readonly taken?: string | null;
+  /** At the row's end: their chips. */
+  readonly trail?: ReactNode;
+};
+
+/** A row the field adds to the people: a choice of nobody first, or someone new last ("Add ana@prt.it"). */
+type OwnRow = { readonly label: string; readonly onChoose: () => void };
+
+type Row =
+  | { readonly kind: "nobody"; readonly key: string; readonly name: string }
+  | { readonly kind: "person"; readonly key: string; readonly name: string; readonly taken?: string | null; readonly person: ComboboxPerson }
+  | { readonly kind: "extra"; readonly key: string; readonly name: string; readonly detail: string };
 
 /**
- * A type-to-search person field (issue #481): a text input with a listbox of
- * the people it is given, in PeoplePicker's look (an avatar and a name per
- * row, the dropdown panel). Clicking or focusing the input opens the list;
- * typing narrows it by name, case-insensitive; Arrow Down and Arrow Up move
- * the active row, Enter chooses it, and Escape closes the list only, never the
- * drawer around it. It filters the list it is handed and asks the server for
- * nothing, so it can never offer someone outside the caller's reach.
+ * The dashboard's one person field (issues #481 and #511): a text input with
+ * a listbox of people, an avatar and a name per row. Clicking or focusing the
+ * input opens the list; typing narrows it by name, case-insensitive; Arrow
+ * Down and Arrow Up move the active row, past any row that is taken; Enter
+ * chooses it and never submits the form under it; and Escape closes the list
+ * only, never the drawer, dialog or panel around it.
+ *
+ * It filters the list it is handed, so it can never offer someone outside the
+ * place's reach. A place that searches the server passes `search` instead:
+ * the box's text is then the place's own, and the people it hands back are
+ * shown as they arrive.
  */
 export function PersonCombobox({
   id,
+  label,
   people,
   value,
   onChoose,
   placeholder,
+  search,
+  nobody,
+  extra,
+  heading,
+  note,
+  hint,
+  photo,
+  multi = false,
+  autoFocus = false,
+  onEscape,
+  describedBy,
+  invalid = false,
 }: {
   /** The input's id, from the Field that labels it. */
-  id: string;
+  id?: string;
+  /** The input's name when no Field labels it. */
+  label?: string;
   people: readonly ComboboxPerson[];
-  value: number | undefined;
+  /** Who is chosen; none (or nobody, with `nobody`) when null or undefined. */
+  value: number | null | undefined;
   onChoose: (id: number) => void;
   placeholder: string;
+  /** A server search: the text the place keeps, and the people it found for it. */
+  search?: { readonly text: string; readonly onText: (text: string) => void };
+  /** A first row that chooses nobody, and what the box reads while nobody is chosen. */
+  nobody?: OwnRow;
+  /** A last row that adds someone new to the team. */
+  extra?: (OwnRow & { readonly detail: string }) | null;
+  /** Over the people: "In the team". */
+  heading?: string;
+  /** Under the people: "No one in the team uses this email." */
+  note?: string | null;
+  /** At the list's foot: what a pick here does. */
+  hint?: string;
+  /** The chosen person's own photo in the box, in place of the PRT mark. */
+  photo?: ReactNode;
+  /** Each choice adds one person, so the box empties for the next. */
+  multi?: boolean;
+  autoFocus?: boolean;
+  /** Escape also closes what holds the field (a picker under "+ Add lead"). */
+  onEscape?: () => void;
+  describedBy?: string;
+  invalid?: boolean;
 }) {
+  const ownId = useId();
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const chosen = people.find((p) => p.id === value);
-  // What the input shows: the chosen name until the person types.
-  const [text, setText] = useState(chosen?.name ?? "");
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  const chosen = value === null || value === undefined ? undefined : people.find((p) => p.id === value);
+  const chosenLabel = chosen?.name ?? (nobody !== undefined && (value === null || value === undefined) ? nobody.label : "");
 
-  // The whole list while the input still reads the chosen name, else the names that hold what was typed.
-  const needle = text.trim().toLowerCase();
-  const shown = needle === "" || text === chosen?.name ? people : people.filter((p) => p.name.toLowerCase().includes(needle));
-  const activeRow = open ? shown[Math.min(active, shown.length - 1)] : undefined;
-  const optionId = (personId: number) => `${listId}-${personId}`;
+  // What the box reads: the chosen name until the person types, or the place's own search text.
+  const [ownText, setOwnText] = useState(chosenLabel);
+  const [seen, setSeen] = useState(chosenLabel);
+  if (seen !== chosenLabel) {
+    // The place chose someone else (Back to the team record): the box reads them.
+    setSeen(chosenLabel);
+    if (search === undefined) setOwnText(chosenLabel);
+  }
+  const text = search === undefined ? ownText : search.text;
+  const setText = search === undefined ? setOwnText : search.onText;
+  const [open, setOpen] = useState(false);
+  const [asked, setAsked] = useState(0);
+
+  const narrowing = search === undefined && filtering(text, chosenLabel);
+  const shown = shownPeople(people, text, chosenLabel, search !== undefined);
+  const rows: readonly Row[] = [
+    ...(nobody !== undefined && !narrowing ? [{ kind: "nobody" as const, key: "nobody", name: nobody.label }] : []),
+    ...shown.map((person) => ({ kind: "person" as const, key: `p${person.id}`, name: person.name, taken: person.taken, person })),
+    ...(extra ? [{ kind: "extra" as const, key: "extra", name: extra.label, detail: extra.detail }] : []),
+  ];
+  const noOne = search === undefined && shown.length === 0;
+  const listShown = open && (rows.length > 0 || noOne || Boolean(note) || hint !== undefined);
+  const active = listShown ? activeAt(rows, asked) : -1;
+  const activeRow = active >= 0 ? rows[active] : undefined;
+  const optionId = (row: Row) => `${listId}-${row.key}`;
+  const isChosen = (row: Row) => (row.kind === "person" ? row.person.id === value : row.kind === "nobody" && (value === null || value === undefined));
 
   const show = () => {
     if (open) return;
-    const at = chosen === undefined ? 0 : shown.findIndex((p) => p.id === chosen.id);
-    setActive(Math.max(at, 0));
+    setAsked(Math.max(rows.findIndex(isChosen), 0));
     setOpen(true);
   };
   const close = () => {
     setOpen(false);
-    setText(chosen?.name ?? "");
+    // Typed text that chose no one goes back to what is chosen; a search keeps its text.
+    if (search === undefined) setOwnText(chosenLabel);
   };
-  const choose = (person: ComboboxPerson) => {
-    onChoose(person.id);
-    setText(person.name);
+  const choose = (row: Row) => {
+    if (row.kind === "person") {
+      if (row.taken) return;
+      onChoose(row.person.id);
+    } else if (row.kind === "nobody") nobody?.onChoose();
+    else extra?.onChoose();
     setOpen(false);
+    if (multi) setText("");
+    else if (search === undefined) setOwnText(row.kind === "extra" ? chosenLabel : row.name);
   };
 
-  // The drawer is a Radix dialog, which closes on an Escape it hears on the
-  // document while capturing. While the list is open, Escape is the list's:
-  // this listener on the window hears it first, and a prevented Escape is one
-  // the dialog leaves alone.
+  // A drawer or dialog is a Radix layer, which closes on an Escape it hears on
+  // the document while capturing. While the list is open, Escape is the
+  // list's: this listener on the window hears it first, and a prevented
+  // Escape is one the layer leaves alone. With `onEscape`, Escape is the
+  // field's even with the list closed, and closes what holds it.
   useEffect(() => {
-    if (!open) return;
+    if (!open && onEscape === undefined) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape" || e.target !== inputRef.current) return;
       e.preventDefault();
       close();
+      onEscape?.();
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });
@@ -77,7 +164,7 @@ export function PersonCombobox({
 
   // The active row stays in view as the arrows move it.
   useEffect(() => {
-    if (activeRow) document.getElementById(optionId(activeRow.id))?.scrollIntoView({ block: "nearest" });
+    if (activeRow) document.getElementById(optionId(activeRow))?.scrollIntoView?.({ block: "nearest" });
   });
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -85,39 +172,42 @@ export function PersonCombobox({
       case "ArrowDown":
         e.preventDefault();
         if (!open) return show();
-        setActive((i) => Math.min(Math.min(i, shown.length - 1) + 1, shown.length - 1));
+        setAsked(stepActive(rows, active, 1));
         return;
       case "ArrowUp":
         e.preventDefault();
         if (!open) return show();
-        setActive((i) => Math.max(Math.min(i, shown.length - 1) - 1, 0));
+        setAsked(stepActive(rows, active, -1));
         return;
       case "Enter":
         // Enter in an open list chooses; it never submits the form under it.
-        if (!open) return;
+        if (!listShown) return;
         e.preventDefault();
         if (activeRow) choose(activeRow);
         return;
     }
   };
 
+  const boxPhoto = chosen !== undefined && !open;
+  const padded = rows.length > 0 || noOne || Boolean(note);
+
   return (
     <div className="relative">
-      {chosen && !open && (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-          <Avatar size="sm" />
-        </span>
-      )}
+      {boxPhoto && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">{photo ?? <Avatar size="sm" />}</span>}
       <input
         ref={inputRef}
-        id={id}
+        id={id ?? ownId}
+        aria-label={label}
         type="text"
         role="combobox"
         aria-autocomplete="list"
-        aria-expanded={open}
+        aria-expanded={listShown}
         aria-controls={listId}
-        aria-activedescendant={activeRow ? optionId(activeRow.id) : undefined}
+        aria-activedescendant={activeRow ? optionId(activeRow) : undefined}
+        aria-describedby={describedBy}
+        aria-invalid={invalid || undefined}
         autoComplete="off"
+        autoFocus={autoFocus}
         value={text}
         placeholder={placeholder}
         onFocus={show}
@@ -125,44 +215,107 @@ export function PersonCombobox({
         onBlur={close}
         onChange={(e) => {
           setText(e.target.value);
-          setActive(0);
+          setAsked(0);
           setOpen(true);
         }}
         onKeyDown={onKeyDown}
-        className={`h-11 w-full rounded-[10px] border border-white-10 bg-white-5 pr-10 text-[15px] text-prt-text transition-colors duration-300 ease-out placeholder:text-prt-muted focus:border-accent focus:outline-none ${
-          chosen && !open ? "pl-12" : "pl-3"
-        }`}
+        className={`h-11 w-full rounded-[10px] border bg-white-5 pr-10 text-[15px] text-prt-text transition-colors duration-300 ease-out placeholder:text-prt-muted focus:outline-none ${
+          invalid ? "border-danger" : "border-white-10 focus:border-accent"
+        } ${boxPhoto ? "pl-12" : "pl-3"}`}
       />
       <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-2" />
       <div
-        className={`absolute inset-x-0 top-full z-50 mt-1.5 max-h-[320px] overflow-y-auto rounded-xl border border-hairline bg-panel p-1.5 text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] ${
-          open ? "" : "hidden"
+        className={`absolute inset-x-0 top-full z-50 mt-1.5 max-h-[320px] overflow-y-auto rounded-xl border border-hairline bg-panel text-prt-text shadow-[0_16px_40px_rgba(0,0,0,0.6)] ${
+          listShown ? "" : "hidden"
         }`}
       >
-        <ul id={listId} role="listbox" aria-label="People">
-          {shown.map((p) => {
-            const isActive = activeRow?.id === p.id;
-            return (
-              <li
-                key={p.id}
-                id={optionId(p.id)}
-                role="option"
-                aria-selected={p.id === value}
-                // A press keeps the focus in the input, so the list is not closed by its blur before the click lands.
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseMove={() => setActive(shown.indexOf(p))}
-                onClick={() => choose(p)}
-                className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 transition-colors duration-300 ease-out ${isActive ? "bg-white-5" : ""}`}
-              >
-                <Avatar size="md" />
-                <span className="min-w-0 flex-1 truncate text-[14px] text-prt-text">{p.name}</span>
-                {p.id === value && <Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} />}
-              </li>
-            );
-          })}
-        </ul>
-        {shown.length === 0 && <p className="px-2.5 py-2 text-[13px] text-prt-muted">No one matches</p>}
+        <div className={padded ? "p-1.5" : undefined}>
+          {heading !== undefined && shown.length > 0 && (
+            <p className="px-2.5 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-[0.3em] text-dim">{heading}</p>
+          )}
+          <ul id={listId} role="listbox" aria-label="People">
+            {rows.map((row, at) => (
+              <ComboboxRow
+                key={row.key}
+                row={row}
+                id={optionId(row)}
+                active={at === active}
+                selected={isChosen(row)}
+                note={row.kind === "extra" && note ? note : null}
+                onHover={() => setAsked(at)}
+                onChoose={() => choose(row)}
+              />
+            ))}
+          </ul>
+          {note && !extra &&<p className="px-2.5 py-2 text-[13px] text-prt-muted">{note}</p>}
+          {noOne && <p className="px-2.5 py-2 text-[13px] text-prt-muted">No one matches</p>}
+        </div>
+        {hint !== undefined && <p className="border-t border-hairline px-3.5 py-2.5 text-[12px] leading-relaxed text-prt-muted">{hint}</p>}
       </div>
     </div>
+  );
+}
+
+function ComboboxRow({
+  row,
+  id,
+  active,
+  selected,
+  note,
+  onHover,
+  onChoose,
+}: {
+  row: Row;
+  id: string;
+  active: boolean;
+  selected: boolean;
+  /** Over someone new: why the email is new. */
+  note: string | null;
+  onHover: () => void;
+  onChoose: () => void;
+}) {
+  const taken = row.kind === "person" && Boolean(row.taken);
+  const option = (
+    <li
+      id={id}
+      role="option"
+      aria-selected={selected}
+      aria-disabled={taken || undefined}
+      // A press keeps the focus in the input, so the list is not closed by its blur before the click lands.
+      onMouseDown={(e) => e.preventDefault()}
+      onMouseMove={taken ? undefined : onHover}
+      onClick={onChoose}
+      className={`flex items-center gap-3 rounded-lg px-2.5 py-2 transition-colors duration-300 ease-out ${
+        taken ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+      } ${active ? (row.kind === "extra" ? "bg-white-10" : "bg-white-5") : row.kind === "extra" ? "bg-white-5" : ""}`}
+    >
+      {row.kind === "person" && <Avatar size="md" />}
+      {row.kind === "nobody" && <span aria-hidden className="h-8 w-8 shrink-0 rounded-full border border-dashed border-white-10" />}
+      {row.kind === "extra" && (
+        <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+          <MailPlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className={`text-[14px] text-prt-text ${row.kind === "person" && row.person.aside ? "shrink-0" : "truncate"}`}>{row.name}</span>
+          {row.kind === "person" && row.person.aside && <span className="truncate text-[12px] text-prt-muted">{row.person.aside}</span>}
+        </span>
+        {row.kind === "person" && (row.taken || row.person.line) && <span className="block truncate text-[12px] text-prt-muted">{row.taken || row.person.line}</span>}
+        {row.kind === "extra" && <span className="block truncate text-[12px] text-prt-muted">{row.detail}</span>}
+      </span>
+      {row.kind === "person" && row.person.trail}
+      {row.kind === "extra" && <CornerDownLeft aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />}
+      {selected && <Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} />}
+    </li>
+  );
+  if (note === null) return option;
+  return (
+    <>
+      <li role="presentation" className="px-2.5 pb-1.5 pt-1 text-[12px] text-prt-muted">
+        {note}
+      </li>
+      {option}
+    </>
   );
 }
