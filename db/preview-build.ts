@@ -1,10 +1,12 @@
 // The first half of `pnpm build` (issue #307, ADR 0016). On a Vercel preview
-// build that was given a database, it migrates that database and then resets
-// and re-seeds it, holding a Postgres advisory lock so concurrent preview
-// builds take turns on the one shared `preview` branch. Every other build
-// skips it and touches no database. A refusal or a failure fails the build:
-// a preview whose database was not seeded must not deploy, because its pages
-// read that database (lib/dummy-data/mode.ts).
+// build that was given a database, it migrates that database and seeds it
+// only when it is still empty, holding a Postgres advisory lock so concurrent
+// preview builds take turns on the one shared `preview` branch. It never
+// resets that branch, so rows made on a preview last across preview builds
+// (issue #465). Every other build skips it and touches no database. A refusal
+// or a failure fails the build: a preview whose database was not migrated, or
+// not seeded while empty, must not deploy, because its pages read that
+// database (lib/dummy-data/mode.ts).
 //
 // It reads the real environment only, never a .env file, so a local build
 // never seeds.
@@ -44,6 +46,19 @@ const steps: PreviewBuildSteps = {
     const client = postgres(target.connectionString, { max: 1 });
     try {
       await migrate(drizzle(client), { migrationsFolder: "./drizzle" });
+    } finally {
+      await client.end();
+    }
+  },
+  // `departments` is the first table the first seed module (`structure`)
+  // fills, and the seed never leaves it empty, so a database with no
+  // department is one the seed never filled. It reads on its own direct
+  // connection and writes nothing.
+  async contents(target) {
+    const client = postgres(target.connectionString, { max: 1 });
+    try {
+      const [row] = await client<{ seeded: boolean }[]>`select exists (select 1 from departments) as seeded`;
+      return row?.seeded ? "has-data" : "empty";
     } finally {
       await client.end();
     }
@@ -95,11 +110,14 @@ async function main() {
     case "refused":
       console.error(`Preview database step refused: ${outcome.why}.`);
       process.exit(2);
-    case "seeded": {
+    case "migrated-and-seeded": {
       const { target, modules } = outcome.report;
-      console.log(`Migrated and seeded ${target.kind} ${target.label}: ${modules.join(", ")}.`);
+      console.log(`Migrated and seeded ${target.kind} ${target.label}, which was empty: ${modules.join(", ")}.`);
       return;
     }
+    case "migrated":
+      console.log(`Migrated ${outcome.target.kind} ${outcome.target.label}; it already holds data, so it was not seeded and its rows were left as they were.`);
+      return;
   }
 }
 
