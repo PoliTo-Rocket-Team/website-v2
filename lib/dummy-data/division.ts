@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import {
   canGiveApproveOrders,
   checkRemoveAllAccess,
+  checkRemoveGrant,
   checkSaveAccess,
   NO_APPROVE_ORDERS,
   placesOf,
@@ -380,5 +381,26 @@ export function dummyRemoveAllAccess(
   const checked = checkRemoveAllAccess(access, personId);
   if (!checked.ok) return refused(checked.error);
   return written(checked.value.find((w) => w.approveOrders !== null)?.approveOrders ?? null);
+}
+
+/**
+ * Checks Remove on one grant as the database side does (issue #483) and
+ * answers the person's grants as they would read: every one but the removed
+ * area in that place. As with a Save, the check runs against the stored grants.
+ */
+export function dummyRemoveGrant(
+  kind: AccessViewerKind,
+  viewer: DummyPerson,
+  roster: readonly RosterEntry[],
+  input: unknown,
+  closed: ReadonlySet<number> = new Set(),
+  holders: readonly ApproveOrdersHolding[] = approveOrdersHolders,
+): WriteResult<readonly AccessGrant[]> {
+  const access = dummyAccessPage(kind, viewer, roster, closed, holders);
+  if (access === null) return refused("Only a division lead or a department head removes access here.");
+  const checked = checkRemoveGrant(access, input);
+  if (!checked.ok) return refused(checked.error);
+  const { personId, place, changes } = checked.value;
+  return written(access.grants.filter((g) => g.person.id === personId && !(samePlace(g.place, place) && changes.some((c) => c.target === g.target))));
 }
 

@@ -66,6 +66,11 @@ export async function removeAllAccess(personId: number): Promise<WriteResult<nul
   return write("division-access", (data) => data.removeAllAccess(personId));
 }
 
+/** Remove on one "Current access" row in Edit access (issue #483). */
+export async function removeGrant(input: unknown): Promise<WriteResult<readonly AccessGrant[]>> {
+  return write("division-access", (data) => data.removeGrant(input));
+}
+
 // `division` is the division a new order is for (issue #233); an edit keeps the order's own.
 const ORDER_FIELDS = ["item", "link", "price", "quantity", "reason", "division"] as const;
 
