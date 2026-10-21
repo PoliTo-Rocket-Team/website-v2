@@ -30,13 +30,13 @@ import {
 
 export const outreachCopy: OutreachCopy = {
   description:
-    "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
+    "We share rocketry beyond our workshop: student summits, talks at congresses, school fairs and workshops, and runs for a good cause.",
 
   header: {
     eyebrow: "OUTREACH",
     title: "Outreach",
     intro:
-      "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
+      "We share rocketry beyond our workshop: student summits, talks at congresses, school fairs and workshops, and runs for a good cause.",
   },
 
   postsTitle: "Where we’ve been",
