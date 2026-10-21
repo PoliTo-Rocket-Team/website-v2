@@ -4,10 +4,12 @@ import { team } from "@/lib/about/team";
 import { university } from "@/lib/about/university";
 import { applyPage } from "@/lib/apply/page";
 import { longMonthYear, outreachCopy } from "@/lib/outreach";
+import { storedPhotoPathname } from "@/lib/outreach-photos";
 import type { OutreachPost } from "@/lib/outreach-types";
 import { partnersPage } from "@/lib/partners";
 import { listingOf, type ProjectRecord } from "@/lib/project-content/record";
 import { stageStillOf } from "@/lib/rocket-model";
+import type { PublicStoreHost } from "@/lib/storage/pathname";
 
 // What each public page's share image (Open Graph, 1200 x 630) says and
 // shows: board 90, "Share images", issue #454. Four layouts share one frame:
@@ -20,12 +22,22 @@ import { stageStillOf } from "@/lib/rocket-model";
 
 /**
  * A file the image reads from disk, by its path from the repo root: a site
- * file under public/, or a design file. An image never fetches anything.
+ * file under public/, or a design file. Only a post's stored photo (below)
+ * is ever fetched; every other image reads repo files alone.
  */
 export type RepoFile = `public/${string}` | `design/${string}`;
 
-/** What fills the frame behind the words: a texture, or a photo shaded dark toward the bottom. */
-export type Backdrop = { readonly kind: "texture"; readonly file: RepoFile } | { readonly kind: "photo"; readonly file: RepoFile };
+/**
+ * What fills a post's frame behind the words: a texture, or a photo shaded
+ * dark toward the bottom. A photo is a file of the site, or one uploaded in
+ * the dashboard to this deployment's own public Blob store (issue #469):
+ * that one is fetched from its URL, and the image lies on the streak texture
+ * when the fetch fails (lib/share-image-backdrop.ts).
+ */
+export type Backdrop =
+  | { readonly kind: "texture"; readonly file: RepoFile }
+  | { readonly kind: "photo"; readonly file: RepoFile }
+  | { readonly kind: "stored-photo"; readonly url: string };
 
 type Words = { readonly eyebrow: string; readonly title: string; readonly url: string };
 
@@ -39,7 +51,7 @@ export type ShareCard =
   | (Words & { readonly layout: "post"; readonly backdrop: Backdrop })
   | (Words & { readonly layout: "page"; readonly subtitle: string; readonly texture: RepoFile; readonly photo: RepoFile | null });
 
-/** The orange streak texture of the default image, and the backdrop of a post with no photo on disk. */
+/** The orange streak texture of the default image, and the backdrop of a post whose photo cannot be drawn. */
 export const STREAK_TEXTURE: RepoFile = "public/design/news/tex-streaks.jpg";
 
 /** The dark streak tile the pages' sky repeats: the "other pages" texture. */
@@ -50,7 +62,7 @@ const SITE = "POLITOROCKETTEAM.IT";
 /**
  * The file behind a site address ("/textures/x.webp" is public/textures/x.webp).
  * Null for anything that is not a file of this site: a Blob store
- * `https://` URL or a preview's `data:` upload, which an image may not fetch.
+ * `https://` URL or a preview's `data:` upload.
  */
 export function siteFile(src: string): RepoFile | null {
   if (!src.startsWith("/") || src.startsWith("//") || src.split("/").includes("..")) return null;
@@ -89,19 +101,30 @@ export function projectShareCard(record: ProjectRecord, position: number): Share
 }
 
 /**
- * A post's image: its month and title over its first photo. A photo kept in
- * the Blob store (or a preview's upload) is not a file of the site, so that
- * post's image lies on the streak texture instead.
+ * A post's image: its month and title over its first photo. `store` is the
+ * host of this deployment's public Blob store, null while none is set up.
  */
-export function postShareCard(post: OutreachPost): ShareCard {
-  const photo = siteFile(post.photos[0].src);
+export function postShareCard(post: OutreachPost, store: PublicStoreHost | null): ShareCard {
   return {
     layout: "post",
     eyebrow: `OUTREACH · ${longMonthYear(post.date)}`,
     title: post.title,
     url: `${SITE}/OUTREACH`,
-    backdrop: photo === null ? { kind: "texture", file: STREAK_TEXTURE } : { kind: "photo", file: photo },
+    backdrop: postBackdrop(post.photos[0].src, store),
   };
+}
+
+/**
+ * A file of the site is read from disk. A post photo in this deployment's own
+ * public store is fetched. Anything else (a preview's `data:` upload, a URL
+ * on any other host, another Blob store included) is never fetched: that
+ * post's image lies on the streak texture.
+ */
+function postBackdrop(src: string, store: PublicStoreHost | null): Backdrop {
+  const file = siteFile(src);
+  if (file !== null) return { kind: "photo", file };
+  if (store !== null && storedPhotoPathname(src, store, "post-photo") !== null) return { kind: "stored-photo", url: src };
+  return { kind: "texture", file: STREAK_TEXTURE };
 }
 
 /** The public pages with an image of their own that is neither a project nor a post. */
