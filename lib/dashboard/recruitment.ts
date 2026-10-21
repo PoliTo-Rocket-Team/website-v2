@@ -30,6 +30,16 @@ export function departmentLabel(name: string): string {
   return /\bDepartment$/.test(name) ? name : `${name} Department`;
 }
 
+/** What a role's applications say on the Positions page: Applications data, so only where the viewer reads Applications. */
+export type PositionApplications = {
+  /** Every live application to it. */
+  readonly total: number;
+  /** Applications nobody has looked at yet. */
+  readonly fresh: number;
+  /** "No applications in 30 days": an open role that has gone quiet. */
+  readonly quiet: string | null;
+};
+
 export type PositionRow = {
   readonly id: number;
   readonly ref: PositionRef;
@@ -37,11 +47,11 @@ export type PositionRow = {
   readonly division: string;
   readonly department: string;
   readonly open: boolean;
-  readonly applications: number;
-  /** Applications nobody has looked at yet. */
-  readonly newApplications: number;
-  /** "No applications in 30 days": an open role that has gone quiet. */
-  readonly quiet: string | null;
+  /**
+   * Null where the viewer reads Positions but not Applications: a Positions
+   * grant shows the role, never a figure about who applied (issue #477).
+   */
+  readonly applications: PositionApplications | null;
   /** "2 days ago" */
   readonly updated: string;
   /** "AER-MSA-001": the code the role was saved under, made from its division. */

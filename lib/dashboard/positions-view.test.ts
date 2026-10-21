@@ -11,7 +11,7 @@ const MA = "Mission Analysis Division";
 const OA = "Optimization and Analysis Division";
 const DM = "Design & Manufacturing Division";
 
-function position(id: number, title: string, division: string, department: string, open: boolean, applications: number): PositionRow {
+function position(id: number, title: string, division: string, department: string, open: boolean, applications: number | null): PositionRow {
   return {
     id,
     ref: String(id),
@@ -19,9 +19,7 @@ function position(id: number, title: string, division: string, department: strin
     division,
     department,
     open,
-    applications,
-    newApplications: 0,
-    quiet: null,
+    applications: applications === null ? null : { total: applications, fresh: 0, quiet: null },
     updated: "2 days ago",
     code: `X-${id}`,
     content: { title, description: "", required: [], desirable: [], questions: [], motivationLetter: false },
@@ -113,4 +111,13 @@ test("the status counts follow the selects and search; the sort orders what is l
   assert.deepEqual(order("oldest"), [3, 2, 1]);
   assert.deepEqual(order("title"), [2, 3, 1]);
   assert.deepEqual(order("applications"), [2, 1, 3]);
+});
+
+test("a role whose applications the viewer does not read sorts after every counted one, even one with none (issue #477)", () => {
+  const uncounted = position(4, "Avionics Lead", MA, "Aerodynamics", true, null);
+  const shown = shownPositions([], [uncounted, trajectory, composites], { ...NO_POSITIONS_FILTER, sort: "applications" });
+  assert.deepEqual(
+    shown.rows.map((r) => r.id),
+    [1, 3, 4],
+  );
 });

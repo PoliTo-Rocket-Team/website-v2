@@ -93,6 +93,11 @@ describe("the test-developer path follows the access matrix", () => {
         assert.equal(await refusedWith(() => data[area]()), readsArea(viewer, area) ? "allowed" : "refused", area);
       }
       if (!readsArea(viewer, "applications")) assert.deepEqual(await data.navCounts(), {}, "badge");
+      // A role's application counts are Applications data: only on a role the viewer's Applications page lists (issue #477).
+      if (readsArea(viewer, "positions")) {
+        const tallied = readsArea(viewer, "applications") ? new Set((await data.applications()).positions.map((p) => p.ref)) : new Set<string>();
+        for (const row of (await data.positions()).positions) assert.equal(row.applications !== null, tallied.has(row.ref), `counts on ${row.ref}`);
+      }
       const team = await wholeTeam();
       const listed = readsArea(viewer, "applications") ? new Set((await data.applications()).applications.map((a) => a.id)) : new Set<number>();
       for (const application of team.applications) {

@@ -56,7 +56,7 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "@/lib/dashboard/recruitment";
-import { kindOfTestViewer, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
+import { kindOfTestViewer, readsArea, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
 import { openPositionsDetail } from "@/lib/dashboard/open-positions-detail";
 import { applications as baseApplications, type DummyApplication } from "./applications";
@@ -264,8 +264,16 @@ function departmentOf(divisionId: number) {
   return departments.find((d) => d.id === division.departmentId)!;
 }
 
-/** The positions a viewer reaches: the whole team, the head's department, or the lead's division. */
-function positionsFor(kind: ViewerKind, team: Team): readonly DummyPosition[] {
+/**
+ * The positions where a viewer reads `area`: the whole team, the head's
+ * department, or the lead's division; none for a viewer who does not read
+ * it. No test viewer holds a Positions or Applications grant, so both areas
+ * reach the same roles today; each caller still names its area, so a figure
+ * about applications always comes from the Applications reach, as on the
+ * database side (issue #477).
+ */
+function positionsFor(kind: ViewerKind, team: Team, area: "positions" | "applications"): readonly DummyPosition[] {
+  if (!readsArea(testDeveloperStanding(kind), area)) return [];
   if (kind === "operations-lead") return team.positions;
   if (kind === "department-head") {
     const ids = headDepartment().divisionIds;
@@ -308,7 +316,8 @@ function oldestNew(position: DummyPosition, team: Team): Date {
 }
 
 function attentionFor(kind: ViewerKind, team: Team, dummyNotices: DummyNotices): AttentionItem[] {
-  const scoped = positionsFor(kind, team);
+  // The new-application and quiet-role rows are about applications: the Applications reach (issue #477).
+  const scoped = positionsFor(kind, team, "applications");
   const fresh = scoped.flatMap((p): AttentionItem[] => {
     const n = newApplications([p], team);
     if (n === 0) return [];
@@ -380,13 +389,13 @@ function activityFor(kind: Exclude<ViewerKind, OffTeamKind | "member">, me: Dumm
 /** Board 40: the operations lead's figures, attention and activity across the team. */
 function teamOverview(team: Team, notices: DummyNotices): TeamOverview {
   const kind = "operations-lead";
-  const scoped = positionsFor(kind, team);
-  const open = scoped.filter((p) => p.open);
+  const read = positionsFor(kind, team, "applications");
+  const open = positionsFor(kind, team, "positions").filter((p) => p.open);
   const openDepartments = new Set(open.map((p) => departmentOf(p.divisionId).id));
   return {
     shape: "team",
     stats: [
-      { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
+      { label: "New applications", value: String(newApplications(read, team)), detail: sinceMonday(read, team) },
       { label: "Open positions", value: String(open.length), detail: `In ${openDepartments.size} departments` },
       {
         label: "Recruitment",
@@ -434,7 +443,8 @@ function leaderOverview(team: Team, edits: TeamEdits, notices: DummyNotices): Te
     departments: departmentSummaries(
       records,
       org,
-      team.positions.map((p) => ({ divisionId: p.divisionId, open: p.open, newApplications: newApplications([p], team) })),
+      team.positions.map((p) => ({ divisionId: p.divisionId, open: p.open })),
+      team.positions.map((p) => ({ divisionId: p.divisionId, newApplications: newApplications([p], team) })),
     ),
     people: records.length,
     activity: activityFor("operations-lead", me),
@@ -465,8 +475,8 @@ function interviewsFor(divisionIds: readonly number[], team: Team): UpcomingInte
 /** Board 56: the division lead's figures, attention, interviews and activity, all scoped to their division. */
 function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
   const kind = "division-lead";
-  const scoped = positionsFor(kind, team);
-  const open = scoped.filter((p) => p.open);
+  const read = positionsFor(kind, team, "applications");
+  const open = positionsFor(kind, team, "positions").filter((p) => p.open);
   const division = divisionOf(myDivisionId(kind));
   const members = people.filter((p) => isIn(p.placement, division.id));
   // The figure counts the lead's own division's orders, though Orders shows the whole team (issue #233).
@@ -474,7 +484,7 @@ function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
   return {
     shape: "division",
     stats: [
-      { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
+      { label: "New applications", value: String(newApplications(read, team)), detail: sinceMonday(read, team) },
       {
         label: "Open positions",
         value: String(open.length),
@@ -502,7 +512,8 @@ function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
 function departmentOverview(team: Team, notices: DummyNotices): DepartmentOverview {
   const kind = "department-head";
   const department = headDepartment();
-  const scoped = positionsFor(kind, team);
+  const scoped = positionsFor(kind, team, "positions");
+  const read = positionsFor(kind, team, "applications");
   const open = scoped.filter((p) => p.open);
   // Someone in two of the department's divisions counts once here (issue #229).
   const inDepartment = people.filter((p) => department.divisionIds.some((id) => isIn(p.placement, id)));
@@ -511,7 +522,7 @@ function departmentOverview(team: Team, notices: DummyNotices): DepartmentOvervi
   return {
     shape: "department",
     stats: [
-      { label: "New applications", value: String(newApplications(scoped, team)), detail: sinceMonday(scoped, team) },
+      { label: "New applications", value: String(newApplications(read, team)), detail: sinceMonday(read, team) },
       { label: "Open positions", value: String(open.length), detail: `In ${plural(openDivisions, "division", "divisions")}` },
       {
         label: "Orders",
@@ -534,7 +545,10 @@ function departmentOverview(team: Team, notices: DummyNotices): DepartmentOvervi
         name: division.name,
         leads: members.filter((p) => roleInDivision(p, division.id) === "lead").map((p) => p.name),
         people: members.length,
-        newApplications: newApplications(own, team),
+        newApplications: newApplications(
+          read.filter((p) => p.divisionId === division.id),
+          team,
+        ),
         openPositions: own.filter((p) => p.open).length,
       };
     }),
@@ -626,13 +640,14 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamS
 }
 
 function navCountsFor(kind: ViewerKind, team: Team): NavCounts {
-  const fresh = newApplications(positionsFor(kind, team), team);
+  const fresh = newApplications(positionsFor(kind, team, "applications"), team);
   return fresh > 0 ? { applications: fresh } : {};
 }
 
 // Positions and Applications (boards 41, 41b, 41c) -----------------------------
 
-function positionRow(p: DummyPosition, team: Team): PositionRow {
+/** A role as the Positions page lists it; its application counts only when `tallied`, the viewer reading Applications on it (issue #477). */
+function positionRow(p: DummyPosition, team: Team, tallied: boolean): PositionRow {
   const received = applicationsTo([p], team);
   return {
     id: p.id,
@@ -641,9 +656,13 @@ function positionRow(p: DummyPosition, team: Team): PositionRow {
     division: divisionOf(p.divisionId).name,
     department: departmentOf(p.divisionId).name,
     open: p.open,
-    applications: received.length,
-    newApplications: received.filter((a) => a.state.stage === "new").length,
-    quiet: quietNote(quietDays(p.open, lastActivity(p, team), NOW)),
+    applications: tallied
+      ? {
+          total: received.length,
+          fresh: received.filter((a) => a.state.stage === "new").length,
+          quiet: quietNote(quietDays(p.open, lastActivity(p, team), NOW)),
+        }
+      : null,
     updated: ago(new Date(p.updatedAt), NOW),
     code: positionCode({
       id: p.id,
@@ -685,7 +704,8 @@ function nextPositionId(team: Team): number {
 }
 
 function positionsPage(kind: ViewerKind, team: Team): PositionsPage {
-  const rows = positionsFor(kind, team).map((p) => positionRow(p, team));
+  const tallied = new Set(positionsFor(kind, team, "applications").map((p) => p.id));
+  const rows = positionsFor(kind, team, "positions").map((p) => positionRow(p, team, tallied.has(p.id)));
   const newPosition = { divisions: postableDivisions(kind), nextId: nextPositionId(team) };
   if (kind === "operations-lead") {
     return { scope: "team", positions: rows, newPosition };
@@ -774,7 +794,7 @@ function applicationsScope(kind: "operations-lead" | "department-head" | "divisi
 
 function applicationsPage(kind: ViewerKind, team: Team, onTeam: readonly RosterEntry[]): ApplicationsPage {
   if (kind !== "operations-lead" && kind !== "department-head" && kind !== "division-lead") throw new DashboardRefused("applications");
-  const scoped = positionsFor(kind, team);
+  const scoped = positionsFor(kind, team, "applications");
   const byId = new Map(scoped.map((p) => [p.id, p]));
   return {
     scope: applicationsScope(kind),
@@ -939,13 +959,13 @@ export function dummyDashboardData(
       : overviewFor(kind, team, dummyNoticesOf(teamEdits.current));
 
   /**
-   * Whether the viewer may change the role and its applications: it is one
-   * they reach (`positionsFor`), whether the arrays hold it or it was posted
-   * in this session (issue #461). Full access, the team leader's standing
+   * Whether the viewer may change `area` on the role: it is one they reach
+   * there (`positionsFor`), whether the arrays hold it or it was posted in
+   * this session (issue #461). Full access, the team leader's standing
    * (issue #444), reaches every role.
    */
-  const changeable = (positionId: number): DummyPosition | null =>
-    positionsFor(kind, team).find((p) => p.id === positionId) ?? null;
+  const changeable = (positionId: number, area: "positions" | "applications"): DummyPosition | null =>
+    positionsFor(kind, team, area).find((p) => p.id === positionId) ?? null;
 
   // One move for both pages: the Applications panel and the Members page's
   // Confirm join (board 59) run it, so the application is the one record of
@@ -953,7 +973,7 @@ export function dummyDashboardData(
   async function moveApplication(id: number, move: LeadMove) {
     const base = baseApplications.find((a) => a.id === id);
     const current = team.applications.find((a) => a.id === id);
-    const position = base ? changeable(base.positionId) : null;
+    const position = base ? changeable(base.positionId, "applications") : null;
     if (!base || !current || position === null) throw new DashboardRefused(`application ${id}`);
     // The dummy team is seen from DUMMY_NOW, so its moves happen then too.
     const result = applyMove(current.state, move, NOW, dummyStanding(current.applicant.email, position.divisionId, teamRoster));
@@ -1000,7 +1020,7 @@ export function dummyDashboardData(
     // Dummy mode stores no files: an application the viewer reaches has no document to open.
     async applicationDocument(id) {
       const application = baseApplications.find((a) => a.id === id);
-      if (!application || !positionsFor(kind, team).some((p) => p.id === application.positionId)) {
+      if (!application || !positionsFor(kind, team, "applications").some((p) => p.id === application.positionId)) {
         throw new DashboardRefused(`application ${id}`);
       }
       return null;
@@ -1009,7 +1029,7 @@ export function dummyDashboardData(
     async setPositionOpen(id, open) {
       // A role posted in this session switches too, not only one the arrays hold (issue #461).
       const initial = openAsPosted(id, changes.current);
-      if (initial === null || changeable(id) === null) throw new DashboardRefused(`position ${id}`);
+      if (initial === null || changeable(id, "positions") === null) throw new DashboardRefused(`position ${id}`);
       await change({ kind: "position", id, open, initial });
     },
 
@@ -1037,7 +1057,7 @@ export function dummyDashboardData(
     },
 
     async editPosition(id, input) {
-      if (changeable(id) === null) throw new DashboardRefused(`position ${id}`);
+      if (changeable(id, "positions") === null) throw new DashboardRefused(`position ${id}`);
       const checked = checkPositionContent(input);
       if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
       const base = basePositions.find((p) => p.id === id);

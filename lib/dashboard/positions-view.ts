@@ -122,6 +122,7 @@ function sorted(rows: readonly PositionRow[], sort: PositionsSort): PositionRow[
     case "title":
       return [...rows].sort((a, b) => a.title.localeCompare(b.title));
     case "applications":
-      return [...rows].sort((a, b) => b.applications - a.applications);
+      // A role whose applications the viewer does not read counts below one with none (issue #477).
+      return [...rows].sort((a, b) => (b.applications?.total ?? -1) - (a.applications?.total ?? -1));
   }
 }

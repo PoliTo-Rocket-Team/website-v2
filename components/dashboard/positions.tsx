@@ -17,7 +17,7 @@ import {
   type PositionsFilter,
   type PositionsTool,
 } from "@/lib/dashboard/positions-view";
-import { POSITION_TABS, type PositionRow, type PositionsPage } from "@/lib/dashboard/recruitment";
+import { POSITION_TABS, type PositionApplications, type PositionRow, type PositionsPage } from "@/lib/dashboard/recruitment";
 import { FilterMenu, SearchField, Segmented, Toggle } from "./controls";
 import { DrawerPage } from "./drawer";
 import { NewPositionDrawer } from "./new-position-drawer";
@@ -218,8 +218,8 @@ const COLUMN_LABELS: Record<PositionsColumn, string> = {
   status: "Status",
 };
 
-function applicationsLine(row: PositionRow): string {
-  return `${row.applications} ${row.applications === 1 ? "application" : "applications"}`;
+function applicationsLine({ total }: PositionApplications): string {
+  return `${total} ${total === 1 ? "application" : "applications"}`;
 }
 
 // A row or card is one target: the title is a button whose ::after covers
@@ -251,11 +251,14 @@ function PositionCard({ row, chosen, onEdit }: RowProps) {
       <div className="min-w-0 flex-1">
         <EditTarget row={row} onEdit={onEdit} className="block w-full truncate text-[16px] font-semibold leading-snug" />
         <p className="truncate text-[13px] leading-snug text-prt-muted">{`${row.department} · ${row.division}`}</p>
-        <p className="mt-2 text-[13px] text-text-2">
-          {applicationsLine(row)}
-          {row.newApplications > 0 && <> · {row.newApplications} new</>}
-          {row.quiet && <span className="text-prt-muted"> · {row.quiet}</span>}
-        </p>
+        {/* No counts where the viewer does not read Applications (issue #477). */}
+        {row.applications !== null && (
+          <p className="mt-2 text-[13px] text-text-2">
+            {applicationsLine(row.applications)}
+            {row.applications.fresh > 0 && <> · {row.applications.fresh} new</>}
+            {row.applications.quiet && <span className="text-prt-muted"> · {row.applications.quiet}</span>}
+          </p>
+        )}
       </div>
       <span className="relative z-10 flex">
         <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} />
@@ -277,10 +280,15 @@ function PositionItem({ row, chosen, onEdit }: RowProps) {
         <p className="truncate text-[13px] leading-snug text-prt-muted">{row.division}</p>
       </div>
       <p className="truncate text-[13px] text-text-2">{row.department}</p>
+      {/* The cell stays, empty, where the viewer does not read Applications (issue #477). */}
       <div>
-        <p className="text-[14px] leading-snug">{row.applications}</p>
-        {row.newApplications > 0 && <p className="text-[12px] leading-snug text-accent">{row.newApplications} new</p>}
-        {row.quiet && <p className="text-[12px] leading-snug text-prt-muted">{row.quiet}</p>}
+        {row.applications !== null && (
+          <>
+            <p className="text-[14px] leading-snug">{row.applications.total}</p>
+            {row.applications.fresh > 0 && <p className="text-[12px] leading-snug text-accent">{row.applications.fresh} new</p>}
+            {row.applications.quiet && <p className="text-[12px] leading-snug text-prt-muted">{row.applications.quiet}</p>}
+          </>
+        )}
       </div>
       <p className="text-[13px] text-prt-muted">{row.updated}</p>
       <div className="relative z-10 flex items-center gap-2.5">
