@@ -8,15 +8,15 @@ import { positions } from "./team";
 
 const fresh = () => new SentApplications();
 
-test("/apply lists five or more open positions by default, and 0 or 1 to 4 by its open selector", async () => {
+test("/apply lists open positions by default and by its open selector, and the closed roles at open=0", async () => {
   const kinds = async (selector: string | null) =>
     applyListing(await dummyApplyData(null, selector, DEFAULT_DUMMY_RECRUITMENT, fresh()).publicPositions()).kind;
   const all = await dummyApplyData(null, null, DEFAULT_DUMMY_RECRUITMENT, fresh()).publicPositions();
   assert.ok(all.length >= 5);
-  assert.equal(await kinds(null), "many");
-  assert.equal(await kinds("0"), "none");
-  for (const n of ["1", "2", "3", "4"]) assert.equal(await kinds(n), "few", n);
-  assert.equal(await kinds("nope"), "many");
+  assert.equal(await kinds(null), "open");
+  assert.equal(await kinds("0"), "closed");
+  for (const n of ["1", "2", "3", "4"]) assert.equal(await kinds(n), "open", n);
+  assert.equal(await kinds("nope"), "open");
 });
 
 test("each position-page state has a position: closed, signed out, form and sent", async () => {
@@ -38,8 +38,8 @@ test("each position-page state has a position: closed, signed out, form and sent
 test("every closed dummy position named like a placeholder role shows one code on /apply?open=0 and on its own page", async () => {
   const data = dummyApplyData(null, "0", DEFAULT_DUMMY_RECRUITMENT, fresh());
   const listing = applyListing(await data.publicPositions());
-  assert.equal(listing.kind, "none");
-  const listed = listing.kind === "none" ? listing.placeholders.flatMap((g) => g.roles) : [];
+  assert.equal(listing.kind, "closed");
+  const listed = listing.kind === "closed" ?listing.placeholders.flatMap((g) => g.roles) : [];
   const placeholderTitles = new Set<string>(placeholderRoles.map((r) => r.title));
   const shared = positions.filter((p) => !p.open && placeholderTitles.has(p.title));
   assert.ok(shared.some((p) => p.title === "Flight Simulator Developer"), "the closed Flight Simulator Developer (#157)");

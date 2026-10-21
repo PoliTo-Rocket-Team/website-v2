@@ -471,14 +471,13 @@ page is the layout reference.
   photos from the current public site (issue #371): webp files in `public/project-photos/`,
   named in the project's stored record, never in a component.
 
-**/apply** (boards 34, 34b, 34c, 34m and 34bm, issue #119, `app/apply/page.tsx`,
+**/apply** (boards 34, 34b, 34m and 34bm, issue #119, `app/apply/page.tsx`,
 `components/apply/`): the About page header with four figures (2 x 2 on phones), the
-positions, then the questions; the footer sits in the sky. The number of public positions
-picks one of three states (`applyListing` in `lib/apply/positions.ts`): none open shows
-"Roles we recruit for", an accent notice card with "Follow for updates" and every placeholder
-role (34b); one to four show the open ones, then "Other roles we recruit for" with the
-placeholders of departments that have nothing open (34c); five or more show only the open
-ones (34). A position is public when it is open, not deleted and the site-wide recruitment
+positions, then the questions; the footer sits in the sky. Whether any position is public
+picks one of two states (`applyListing` in `lib/apply/positions.ts`, issue #470): none public
+shows "Roles we recruit for", an accent notice card with "Follow for updates" and every
+placeholder role (34b); one or more show only the open positions (34). No state mixes the
+two. A position is public when it is open, not deleted and the site-wide recruitment
 switch is on (`isPublic`). Placeholder roles are a typed record in code
 (`lib/apply/placeholder-roles.ts`), never read from the database, and carry a grey "CLOSED"
 tag. Department pills filter the list when more than one department shows. Each department is
