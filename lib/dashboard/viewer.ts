@@ -197,26 +197,27 @@ export function readsArea(viewer: ViewerStanding, area: GrantArea): boolean {
   }
 }
 
-/** A viewer as an area's reads see them: their standing, the units their roles and scope rows cover, and each area grant. */
-export type AreaReader = ViewerStanding &
-  ViewerUnits & {
-    readonly grants: readonly AreaGrant[];
-  };
+/** A viewer as an area's reads see them: their standing, their active roles, and each area grant. */
+export type AreaReader = ViewerStanding & {
+  readonly roles: readonly ScopedRole[];
+  readonly grants: readonly AreaGrant[];
+};
 
 /**
- * The units where the viewer reads `area` (issue #471): a head's or a lead's
- * own units, the ones their roles and scope rows cover; for a member, only
- * the units their grants on that area (or on every area) name; none for
- * anyone who does not read the area. Full access reads it everywhere
- * (`readsAreaIn`), whatever units it names.
+ * The units where the viewer reads `area` (issues #471, #477): the units
+ * their grants on that area (or on every area) name, plus, for a head or a
+ * lead, the units their roles lead (`viewerUnitsOf`); none for anyone who
+ * does not read the area. A grant on another area adds no unit here, for a
+ * lead or a head as for a member: no grant opens another area. Full access
+ * reads it everywhere (`readsAreaIn`), whatever units it names.
  */
 export function areaUnitsOf(viewer: AreaReader, area: GrantArea): ViewerUnits {
   if (!readsArea(viewer, area)) return { divisionIds: [], departmentIds: [] };
-  if (viewer.kind !== "member") return { divisionIds: viewer.divisionIds, departmentIds: viewer.departmentIds };
   const onArea = viewer.grants.filter((g) => g.target === area || g.target === "all");
+  const byRole = viewer.kind === "member" ? { divisionIds: [], departmentIds: [] } : viewerUnitsOf([], viewer.roles);
   return {
-    divisionIds: [...new Set(onArea.flatMap((g) => (g.unit.kind === "division" ? [g.unit.divisionId] : [])))],
-    departmentIds: [...new Set(onArea.flatMap((g) => (g.unit.kind === "department" ? [g.unit.departmentId] : [])))],
+    divisionIds: [...new Set([...byRole.divisionIds, ...onArea.flatMap((g) => (g.unit.kind === "division" ? [g.unit.divisionId] : []))])],
+    departmentIds: [...new Set([...byRole.departmentIds, ...onArea.flatMap((g) => (g.unit.kind === "department" ? [g.unit.departmentId] : []))])],
   };
 }
 

@@ -71,10 +71,11 @@ session cookie; server code reads the user id from that cookie, then turns the m
    (`readPositionRows` in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts),
    which reads the viewer's reach from the dashboard identity rather than from `ScopeInfo`)
 
-   Call site: the file route
-   [docs/applications/[r2key]/[filename]/route.ts](../app/(legacy)/docs/applications/[r2key]/[filename]/route.ts),
-   which returns 401 with no user, lets applicants read their own files, and otherwise checks
-   `ScopeInfo`, returning 403 when access fails.
+   A route that serves dashboard data asks the dashboard's rule, never `ScopeInfo`: the file route
+   [docs/applications/[r2key]/[filename]/route.ts](../app/(legacy)/docs/applications/[r2key]/[filename]/route.ts)
+   returns 401 with no user, lets applicants read their own files, and otherwise opens a file only
+   when `applicationDocument` (the rule the dashboard's document route answers by) hands it over,
+   returning 403 when it does not (issue #477).
 
 ## When this applies
 
@@ -101,8 +102,8 @@ scopes have no tests of their own.
   `SCOPE_RANK` and `TARGET_MIN_REQUIREMENTS`, but nothing imports them.
 - **Two entry points to the same check.** Callers use `getScopeInfoForCurrentUser(target)` (one
   join on `users.id`) or `getCurrentMemberId()` + `getScopeInfoForMember(memberId, target)` (two
-  queries). The file route goes a third way, through `getUserScope` in
-  [get-user-scope.ts](../app/actions/get-user-scope.ts), and narrows a union with a cast.
+  queries). [get-user-scope.ts](../app/actions/get-user-scope.ts) is a third, which nothing calls
+  since the file route moved to the dashboard's rule (issue #477).
 - **Fallback cannot refresh the cache.** When the cookie cache has lapsed, `getCurrentUserId()`
   asks Better Auth's `getSession`, which reads the database. A Server Component cannot set cookies,
   so the cache stays lapsed and every request reads the database until a client call refreshes it.

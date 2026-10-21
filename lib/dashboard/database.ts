@@ -37,7 +37,7 @@ import { departmentSummaries, leaderAttention, leaderStats } from "./leader-over
 import { wholeTeamMembers } from "./team-members";
 import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
-import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
+import { formatEuro, waitingOrders } from "./orders";
 import {
   checklistProgress,
   divisionRoster,
@@ -525,14 +525,14 @@ async function readApplicationFigures(identity: Identity): Promise<NonNullable<D
 }
 
 /**
- * The orders waiting in the units the viewer reads Orders in. A lead's figure
- * counts their own divisions' orders, though Orders shows the whole team
- * (issue #233); a member's, the divisions their Orders grants cover.
+ * The orders waiting in the units the viewer reads Orders in (`readsAreaIn`):
+ * a lead's own divisions, though Orders shows the whole team (issue #233),
+ * and the units their Orders grants cover; a grant on another area adds none
+ * (issue #477).
  */
 async function readOrderFigures(identity: Identity): Promise<NonNullable<DivisionFigures["orders"]>> {
   const ordersPage = await databaseDivisionPages(identity).orders();
   if (!ordersPage) return { count: 0, total: 0 };
-  if (identity.kind !== "member") return waitingOrders(ordersOfDivisions(ordersPage.orders, identity.divisionIds));
   const granted = ordersPage.orders.filter(
     (o) => o.unit !== null && readsAreaIn(identity, "orders", { divisionId: o.unit.division.id, departmentId: o.unit.department?.id ?? -1 }),
   );
@@ -556,7 +556,10 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const db = getDb();
   // The positions, their interviews and the notices need nothing of the
   // department, so they start beside its read; the rest wait for its divisions.
+  // The interviews name applicants, so they come from the positions the head
+  // reads Applications on, never from a Positions grant alone (issue #477).
   const scoped = scopedPositions(identity, "positions");
+  const interviewed = scopedPositions(identity, "applications");
   const departmentRead = readHeadDepartment(identity).then(async (department) => {
     const divisionIds = department?.divisions.map((d) => d.id) ?? [];
     const [team, orders, withoutPhoto] = await Promise.all([
@@ -581,7 +584,7 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   });
   const [positions, interviews, notices, { department, team, orders, withoutPhoto }] = await Promise.all([
     withUnread(scoped),
-    scoped.then(readInterviews),
+    interviewed.then(readInterviews),
     readNoticeAttention(identity, now),
     departmentRead,
   ]);

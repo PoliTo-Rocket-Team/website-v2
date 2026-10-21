@@ -1,119 +1,63 @@
-import { and, eq, isNull, or } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
-import { getUserScope, type ScopeInfo } from "@/app/actions/get-user-scope";
 import { getDb } from "@/db/client";
-import {
-  applicationFiles,
-  applications,
-  applyPositions,
-  departments,
-  divisions,
-} from "@/db/schema";
+import { applicationFiles, applications } from "@/db/schema";
+import type { DocumentKind, StoredDocument } from "@/lib/dashboard/application-documents";
+import { DashboardRefused } from "@/lib/dashboard/data";
+import { openDashboard } from "@/lib/dashboard/open";
 import { getCurrentUserId } from "@/lib/current-user";
 import { parsePrivatePathname } from "@/lib/storage/pathname";
 import { readPrivateFile } from "@/lib/storage/private-store";
 
-type MatchedFile = {
-  id: number;
-  pathname: string;
-  originalFilename: string;
-  fileHash: string | null;
-};
+// The old address of an application's CV or motivation letter, by the file's
+// hash. The applicant opens their own file here. Anyone else opens it only
+// when the dashboard's document rule lets them (`applicationDocument`,
+// lib/dashboard/data.ts, the rule app/dashboard/applications/[id]/[document]
+// answers by): the same viewers, the same units, nothing withdrawn, and no
+// scope row that outlived its holder's roles (issue #477).
 
-type ApplicationAccessRow = {
-  id: number;
-  userId: string | null;
-  positionTitle: string | null;
-  divisionId: number | null;
-  divisionName: string;
-  departmentId: number | null;
-  departmentName: string;
-};
+type FileApplication = { id: number; userId: string | null; kind: DocumentKind };
 
-async function validateFileAccessByFileHash(
-  fileHash: string,
-  requestingUserId: string,
-): Promise<{
-  isValid: boolean;
-  application?: ApplicationAccessRow;
-  matchedFile?: MatchedFile;
-}> {
+/** The stored file the hash names, and every application that sent it, each with the document it is there. */
+async function readFile(fileHash: string): Promise<{ file: StoredDocument; applications: FileApplication[] } | null> {
   const db = getDb();
-
-  const [matchedFile] = await db
-    .select({
-      id: applicationFiles.id,
-      pathname: applicationFiles.pathname,
-      originalFilename: applicationFiles.originalFilename,
-      fileHash: applicationFiles.fileHash,
-    })
+  const [matched] = await db
+    .select({ id: applicationFiles.id, pathname: applicationFiles.pathname, name: applicationFiles.originalFilename })
     .from(applicationFiles)
     .where(eq(applicationFiles.fileHash, fileHash))
     .limit(1);
-
-  if (!matchedFile) {
-    return { isValid: false };
-  }
-
-  const fileApplications = await db
-    .select({
-      id: applications.id,
-      userId: applications.userId,
-      positionTitle: applyPositions.title,
-      divisionId: divisions.id,
-      divisionName: divisions.name,
-      departmentId: departments.id,
-      departmentName: departments.name,
-    })
+  const pathname = matched ? parsePrivatePathname(matched.pathname) : null;
+  if (!matched || pathname === null) return null;
+  const rows = await db
+    .select({ id: applications.id, userId: applications.userId, cvFileId: applications.cvFileId })
     .from(applications)
-    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
-    .innerJoin(departments, eq(divisions.deptId, departments.id))
-    .where(
-      and(
-        isNull(divisions.closedAt),
-        isNull(departments.closedAt),
-        or(
-          eq(applications.cvFileId, matchedFile.id),
-          eq(applications.coverLetterFileId, matchedFile.id),
-        ),
-      ),
-    );
+    .where(or(eq(applications.cvFileId, matched.id), eq(applications.coverLetterFileId, matched.id)));
+  return {
+    file: { pathname, name: matched.name },
+    applications: rows.map((r) => ({ id: r.id, userId: r.userId, kind: r.cvFileId === matched.id ? "cv" : "motivation-letter" })),
+  };
+}
 
-  if (fileApplications.length === 0) {
-    return { isValid: false };
-  }
-
-  for (const application of fileApplications) {
-    if (application.userId === requestingUserId) {
-      return { isValid: true, application, matchedFile };
+/**
+ * The file the viewer may open: the matched file when one of its applications
+ * is theirs, else the document the dashboard's rule hands them for one of its
+ * applications; null when neither lets them.
+ */
+async function openableFile(fileHash: string, userId: string): Promise<StoredDocument | null> {
+  const found = await readFile(fileHash);
+  if (found === null) return null;
+  if (found.applications.some((a) => a.userId === userId)) return found.file;
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return null;
+  for (const application of found.applications) {
+    try {
+      const stored = await opening.data.applicationDocument(application.id, application.kind);
+      if (stored !== null && stored.pathname === found.file.pathname) return stored;
+    } catch (error) {
+      if (!(error instanceof DashboardRefused)) throw error;
     }
   }
-
-  const { scope } = await getUserScope("applications");
-  if (Array.isArray(scope)) {
-    return { isValid: false };
-  }
-
-  const scopeInfo = scope as ScopeInfo;
-
-  if (scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess) {
-    return { isValid: true, application: fileApplications[0], matchedFile };
-  }
-
-  for (const application of fileApplications) {
-    const hasPermission =
-      (application.divisionId !== null &&
-        scopeInfo.divisionIds.has(application.divisionId)) ||
-      (application.departmentId !== null &&
-        scopeInfo.departmentIds.has(application.departmentId));
-
-    if (hasPermission) {
-      return { isValid: true, application, matchedFile };
-    }
-  }
-
-  return { isValid: false };
+  return null;
 }
 
 export async function GET(
@@ -133,16 +77,13 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const download = searchParams.get("download") === "true";
 
-    const { isValid, application, matchedFile } =
-      await validateFileAccessByFileHash(fileHash, userId);
-
-    if (!isValid || !application || !matchedFile) {
+    const openable = await openableFile(fileHash, userId);
+    if (openable === null) {
       return new NextResponse("Access denied", { status: 403 });
     }
 
     // The bytes are streamed from the private store; its URL never leaves the server.
-    const pathname = parsePrivatePathname(matchedFile.pathname);
-    const file = pathname === null ? null : await readPrivateFile(pathname);
+    const file = await readPrivateFile(openable.pathname);
     if (file === null) {
       return new NextResponse("File not found", { status: 404 });
     }
