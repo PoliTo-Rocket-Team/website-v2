@@ -3,13 +3,13 @@
 import { useState, useTransition } from "react";
 import { ChevronDown, LogOut } from "lucide-react";
 import { toast } from "sonner";
-import { advisorOptionDetail, BECOME_AN_ADVISOR, type HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { advisorOptionDetail, BECOME_AN_ADVISOR, steppingDown, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import { approverName, type HandOverOffer, type HandOverSend } from "@/lib/dashboard/hand-over-request";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { Field, inputClass } from "./field";
-import { RadioChoice } from "./hand-over-choice";
+import { FullAccessMoves, RadioChoice } from "./hand-over-choice";
 
 // "Hand over your role" on My profile (board 55d, issue #262): a division lead
 // or a department head picks who takes over, from their unit, and what they do
@@ -125,6 +125,7 @@ export function HandOverDialog({
             { value: "leave", title: "Leave the team", detail: "Move to Alumni. Your account stays, so you can apply again later." },
           ]}
         />
+        <FullAccessMoves seat={offer.seat} successor={picked?.name ?? null} from={null} step={outcome === null ? null : steppingDown(offer.role, outcome)} />
       </div>
     </ConfirmDialog>
   );

@@ -70,12 +70,23 @@ export type FullAccessSeat = (typeof FULL_ACCESS_SEATS)[number];
  */
 export type FlaggedSeat = Exclude<FullAccessSeat, "team-leader">;
 
+/** A `roles.full_access` value, as stored. */
+export type SeatFlag = "operations_lead" | "it_lead" | "project_manager" | "chief_engineer";
+
 /** The seat each `roles.full_access` value flags. */
-export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead" | "project_manager" | "chief_engineer", FlaggedSeat>> = {
+export const SEAT_OF_FLAG: Readonly<Record<SeatFlag, FlaggedSeat>> = {
   operations_lead: "operations-lead",
   it_lead: "it-lead",
   project_manager: "project-manager",
   chief_engineer: "chief-engineer",
+};
+
+/** The `roles.full_access` value each seat is stored as: `SEAT_OF_FLAG` read the other way. */
+export const FLAG_OF_SEAT: Readonly<Record<FlaggedSeat, SeatFlag>> = {
+  "operations-lead": "operations_lead",
+  "it-lead": "it_lead",
+  "project-manager": "project_manager",
+  "chief-engineer": "chief_engineer",
 };
 
 /**

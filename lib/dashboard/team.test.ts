@@ -146,6 +146,15 @@ test("a team year starts in October", () => {
   assert.equal(seasonAt(new Date("2026-09-30T00:00:00Z")), "2025–26");
 });
 
+test("the team year turns over at midnight on 1 October in Turin, not in UTC (#515)", () => {
+  // 30 September 23:59 in Turin (summer time, UTC+2).
+  assert.equal(seasonAt(new Date("2026-09-30T21:59:00Z")), "2025–26");
+  // 1 October 00:01 in Turin.
+  assert.equal(seasonAt(new Date("2026-09-30T22:01:00Z")), "2026–27");
+  // Still 30 September in UTC, already 1 October in Turin.
+  assert.equal(seasonAt(new Date("2026-09-30T23:30:00Z")), "2026–27");
+});
+
 test("Promote names the department's heads it tells, never the head promoting (#188, #227)", () => {
   const chiara = { memberId: 2, name: "Chiara Rinaldi", department: "Aerodynamics" };
   const luca = { memberId: 8, name: "Luca Moretti", department: "Aerodynamics" };

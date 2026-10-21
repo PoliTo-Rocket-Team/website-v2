@@ -5,12 +5,12 @@ import { Info } from "lucide-react";
 import { toast } from "sonner";
 import { handOverTeamLeader } from "@/app/dashboard/team-actions";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
-import { advisorOptionDetail, BECOME_AN_ADVISOR, type HandOverOutcome } from "@/lib/dashboard/hand-over";
+import { advisorOptionDetail, BECOME_AN_ADVISOR, steppingDown, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { StructureLeader } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { PeoplePicker } from "./division-drawer";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
-import { RadioChoice } from "./hand-over-choice";
+import { FullAccessMoves, RadioChoice } from "./hand-over-choice";
 
 // "Hand over your role" on the Team Leader box (board 77i, issue #253): only
 // the team leader opens it. They pick who takes over and what they do next,
@@ -108,6 +108,13 @@ export function TeamLeaderDrawer({ open, leader, onClose }: { open: boolean; lea
             ]}
           />
         </section>
+        <FullAccessMoves
+          className="mt-6"
+          seat="team-leader"
+          successor={next?.name ?? null}
+          from={null}
+          step={outcome === null ? null : steppingDown({ kind: "team-leader" }, outcome)}
+        />
         <p className="mt-6 flex gap-3 rounded-xl border border-hairline px-4 py-3.5 text-[13px] leading-relaxed text-text-2">
           <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
           <span>
