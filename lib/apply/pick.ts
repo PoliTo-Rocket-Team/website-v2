@@ -1,3 +1,4 @@
+import { parseEdits, type TeamEdits } from "@/lib/dummy-data/edits";
 import { dummyDataOn, type DummyModeEnv } from "@/lib/dummy-data/mode";
 import { NO_OWN_CHANGES, ownApplicationsStartOf, parseOwnChanges, type OwnApplicationsStart, type OwnChanges } from "@/lib/dummy-data/own";
 import { dummyRecruitmentOf } from "@/lib/dummy-data/recruitment";
@@ -22,6 +23,8 @@ export type ApplyRequest = {
   readonly ownStartCookie?: string | null | undefined;
   /** The test developer's dashboard state (lib/dummy-data/state.ts): the positions they posted, edited, opened and closed. */
   readonly stateCookie?: string | null | undefined;
+  /** The test developer's Team page edits (lib/dummy-data/edits.ts): the divisions and departments they closed. */
+  readonly editsCookie?: string | null | undefined;
 };
 
 export type ApplySides = {
@@ -33,6 +36,7 @@ export type ApplySides = {
     own: OwnChanges,
     ownStart: OwnApplicationsStart,
     dashboard: DummyState,
+    team: TeamEdits,
   ): ApplyData;
 };
 
@@ -50,29 +54,32 @@ export function pickApplyData(request: ApplyRequest, sides: ApplySides): ApplyDa
     request.ownCookie == null ? NO_OWN_CHANGES : parseOwnChanges(request.ownCookie),
     ownApplicationsStartOf(request.ownStartCookie),
     parseDummyState(request.stateCookie),
+    parseEdits(request.editsCookie),
   );
 }
 
 /**
  * What a request to /apply carries that can change its list: the `open`
- * query value, the dummy recruitment cookie and the test developer's
- * dashboard state.
+ * query value, the dummy recruitment cookie, the test developer's dashboard
+ * state and their Team page edits.
  */
-export type ApplyListRequest = Pick<ApplyRequest, "env" | "openSelector" | "recruitmentCookie" | "stateCookie">;
+export type ApplyListRequest = Pick<ApplyRequest, "env" | "openSelector" | "recruitmentCookie" | "stateCookie" | "editsCookie">;
 
 /**
  * Whether /apply has to be rendered for this request (issue #163). Only in
  * dummy mode, and only when the request carries the `open` selector, the
- * dummy recruitment cookie or the dashboard state cookie (issue #463): those
- * are the only request data that change the list. Every other visit gets the
- * prerendered page, which reads the environment alone (plainApplyRequest).
+ * dummy recruitment cookie, the dashboard state cookie (issue #463) or the
+ * Team page edits cookie (issue #474): those are the only request data that
+ * change the list. Every other visit gets the prerendered page, which reads
+ * the environment alone (plainApplyRequest).
  */
 export function applyListIsPerRequest(request: ApplyListRequest): boolean {
   if (!dummyDataOn(request.env)) return false;
   return (
     (request.openSelector ?? null) !== null ||
     (request.recruitmentCookie ?? null) !== null ||
-    (request.stateCookie ?? null) !== null
+    (request.stateCookie ?? null) !== null ||
+    (request.editsCookie ?? null) !== null
   );
 }
 
@@ -86,5 +93,6 @@ export function plainApplyRequest(env: DummyModeEnv): ApplyRequest {
     ownCookie: null,
     ownStartCookie: null,
     stateCookie: null,
+    editsCookie: null,
   };
 }

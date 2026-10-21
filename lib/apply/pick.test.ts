@@ -5,7 +5,7 @@ import type { ApplyData } from "./data";
 import { submitDepsOf } from "./data";
 import type { DummyModeEnv } from "@/lib/dummy-data/mode";
 import { DUMMY_RECRUITMENT_COOKIE } from "@/lib/dummy-data/recruitment";
-import { TEST_DEVELOPER_STATE_COOKIE } from "@/lib/test-developer";
+import { TEST_DEVELOPER_EDITS_COOKIE, TEST_DEVELOPER_STATE_COOKIE } from "@/lib/test-developer";
 import { config as proxyConfig } from "@/proxy";
 import { applyListIsPerRequest, pickApplyData, plainApplyRequest, type ApplySides } from "./pick";
 import { submitApplication } from "./submit";
@@ -89,9 +89,15 @@ describe("/apply is rendered per request only for a dummy-mode request carrying 
     assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: null, recruitmentCookie: null, stateCookie: null }), false);
   });
 
+  test("on a preview, the test developer's Team page edits alone make it per request (issue #474)", () => {
+    assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: null, recruitmentCookie: null, stateCookie: null, editsCookie: "{}" }), true);
+    assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: null, recruitmentCookie: null, stateCookie: null, editsCookie: null }), false);
+  });
+
   test("in production, none does: the database side ignores them all", () => {
     for (const env of [PRODUCTION, PRODUCTION_NO_DB]) {
-      assert.equal(applyListIsPerRequest({ env, openSelector: "0", recruitmentCookie: "closed", stateCookie: "{}" }), false);
+      assert.equal(applyListIsPerRequest({ env, openSelector: "0", recruitmentCookie: "closed", stateCookie: "{}", editsCookie: "{}" }), false);
+      assert.equal(applyListIsPerRequest({ env, openSelector: null, recruitmentCookie: null, stateCookie: null, editsCookie: "{}" }), false);
     }
   });
 
@@ -103,12 +109,13 @@ describe("/apply is rendered per request only for a dummy-mode request carrying 
     assert.deepEqual(dummyCalls, [[null, null]]);
   });
 
-  test("the proxy runs on /apply only for the open query, the dummy recruitment cookie and the dashboard state cookie", () => {
+  test("the proxy runs on /apply only for the open query, the dummy recruitment cookie, the dashboard state cookie and the Team page edits cookie", () => {
     const apply = proxyConfig.matcher.filter((m) => typeof m !== "string");
     assert.deepEqual(apply, [
       { source: "/apply", has: [{ type: "query", key: "open" }] },
       { source: "/apply", has: [{ type: "cookie", key: DUMMY_RECRUITMENT_COOKIE }] },
       { source: "/apply", has: [{ type: "cookie", key: TEST_DEVELOPER_STATE_COOKIE }] },
+      { source: "/apply", has: [{ type: "cookie", key: TEST_DEVELOPER_EDITS_COOKIE }] },
     ]);
     assert.ok(!proxyConfig.matcher.includes("/apply"), "a plain visit never reaches the proxy");
   });
