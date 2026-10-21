@@ -51,27 +51,31 @@ export function isViewerSession(value: unknown): value is ViewerSession {
 }
 
 /**
- * The three seats that hold every access in the dashboard from the role alone
+ * The seats that hold every access in the dashboard from the role alone
  * (Owner decision, 2026-10-11, issue #238): the team leader, the operations
- * lead and the IT lead. Two things stay apart from full access: deciding
- * orders is the team leader's unless they gave "Approve orders" (./orders.ts),
- * and only the IT lead reaches the Activity log (./access.ts).
+ * lead and the IT lead, and since issue #485 the Project Manager and the
+ * Chief Engineer. Two things stay apart from full access: deciding orders is
+ * the team leader's unless they gave "Approve orders" (./orders.ts), and only
+ * the IT lead reaches the Activity log (./access.ts).
  */
-export const FULL_ACCESS_SEATS = ["team-leader", "operations-lead", "it-lead"] as const;
+export const FULL_ACCESS_SEATS = ["team-leader", "operations-lead", "it-lead", "project-manager", "chief-engineer"] as const;
 export type FullAccessSeat = (typeof FULL_ACCESS_SEATS)[number];
 
 /**
- * The full-access flag a role row carries (`roles.full_access`, drizzle/0018):
- * the operations lead's and the IT lead's seats are marked once in the data,
- * never read from a unit's code or a title. The team leader needs no flag:
- * their role is the `president` type.
+ * The full-access flag a role row carries (`roles.full_access`, drizzle/0018,
+ * drizzle/0047): every seat but the team leader's is marked on the seat's
+ * role row in the data, and the code reads only that flag, never a unit's
+ * code or a title. The team leader needs no flag: their role is the
+ * `president` type.
  */
 export type FlaggedSeat = Exclude<FullAccessSeat, "team-leader">;
 
 /** The seat each `roles.full_access` value flags. */
-export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead", FlaggedSeat>> = {
+export const SEAT_OF_FLAG: Readonly<Record<"operations_lead" | "it_lead" | "project_manager" | "chief_engineer", FlaggedSeat>> = {
   operations_lead: "operations-lead",
   it_lead: "it-lead",
+  project_manager: "project-manager",
+  chief_engineer: "chief-engineer",
 };
 
 /**
@@ -314,18 +318,23 @@ export type MemberAccess = {
 };
 
 /**
+ * The flagged seats, highest first: the IT lead, the operations lead, the
+ * Project Manager, then the Chief Engineer (issue #485). It decides only which
+ * seat shows for someone who holds two; the newer seats rank last, so no
+ * earlier seat holder's seat changes.
+ */
+const SEAT_PRECEDENCE: readonly FlaggedSeat[] = ["it-lead", "operations-lead", "project-manager", "chief-engineer"];
+
+/**
  * The one rule that recognises a full-access seat (issue #238), from the
  * active roles alone, with no scope row: a `president` role is the team
- * leader; a role flagged `operations-lead` or `it-lead` is that seat. A
- * division lead, a department head or a member holds none. Someone in two
- * seats is read as the higher: the team leader, then the IT lead, then the
- * operations lead.
+ * leader; a role flagged with a seat (`FlaggedSeat`) is that seat. A division
+ * lead, a department head or a member holds none. Someone in two seats is
+ * read as the higher, in `SEAT_PRECEDENCE` order.
  */
 export function fullAccessSeatOf(activeRoles: readonly ActiveRoleRef[]): FullAccessSeat | null {
   if (activeRoles.some((r) => r.type === "president")) return "team-leader";
-  if (activeRoles.some((r) => r.fullAccess === "it-lead")) return "it-lead";
-  if (activeRoles.some((r) => r.fullAccess === "operations-lead")) return "operations-lead";
-  return null;
+  return SEAT_PRECEDENCE.find((seat) => activeRoles.some((r) => r.fullAccess === seat)) ?? null;
 }
 
 /**
