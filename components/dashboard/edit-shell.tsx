@@ -1,18 +1,20 @@
 "use client";
 
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
 import { ArrowLeft, Circle, CircleCheck, Lock, Monitor, Pencil, Smartphone } from "lucide-react";
 import {
   checklistDone,
   editChips,
   PHONE_FRAME_WIDTH,
+  scaledFrameOf,
   showsPageSwitch,
   type EditBlocks,
   type EditChip,
   type EditDevice,
   type PageTarget,
   type PublishCheck,
+  type ScaledFrame,
 } from "@/lib/content/edit-shell";
 import { CONTENT_STATUS_LABELS, type ContentStatus } from "@/lib/content/versioned";
 import { CONTENT_FOCUS } from "./content-parts";
@@ -44,6 +46,12 @@ import { EditFrame } from "./edit-frame";
 // a bar with no actions (Outreach) keeps its layout. While its panel edits one
 // block, it names that block `selected`, which keeps its outline with no
 // chips (board 80b).
+//
+// A content type may opt in to a scaled Desktop preview (board 93, issue
+// #526): while its panel is open, Desktop keeps the page's desktop layout and
+// scales it down to the room left of the panel, outlines and chips with it,
+// instead of reflowing the page to that narrower width. Below md the panel
+// covers the page, so there it changes nothing.
 
 const ChipContext = createContext<{
   readonly chipOf: (id: string) => EditChip;
@@ -82,6 +90,39 @@ export function BarButton({ onClick, icon, children }: { onClick: (() => void) |
   );
 }
 
+/**
+ * The frame of a scaled Desktop preview, from md: laid out at the size
+ * `scaledFrameStyle` names and scaled from its top left corner, so it fills
+ * the room exactly. Below md it keeps the plain frame under the panel.
+ */
+const SCALED_FRAME =
+  "h-full w-full md:h-[var(--frame-h)] md:w-[var(--frame-w)] md:max-w-none md:origin-top-left md:scale-[var(--frame-scale)]";
+
+function scaledFrameStyle(frame: ScaledFrame): CSSProperties {
+  return { "--frame-w": `${frame.width}px`, "--frame-h": `${frame.height}px`, "--frame-scale": frame.scale } as CSSProperties;
+}
+
+/**
+ * The scaled frame for the room the preview sits in, kept in step as the
+ * room resizes; null while `on` is false or the room has no size yet.
+ */
+function useScaledFrame(room: RefObject<HTMLDivElement | null>, on: boolean): ScaledFrame | null {
+  const [frame, setFrame] = useState<ScaledFrame | null>(null);
+  useEffect(() => {
+    const node = room.current;
+    if (!on || node === null) {
+      setFrame(null);
+      return;
+    }
+    const measure = () => setFrame(scaledFrameOf({ width: node.clientWidth, height: node.clientHeight }));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [room, on]);
+  return frame;
+}
+
 /** The page switch: the pages this item shows on, and the one in view. */
 export type PageSwitch<Page extends string> = {
   readonly targets: readonly PageTarget<Page>[];
@@ -107,6 +148,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   actions,
   children,
   panel,
+  scalesDesktop = false,
 }: {
   /** The dashboard page this item belongs to, as the breadcrumb's first step and where the arrow goes back to. */
   section: { readonly label: string; readonly href: string };
@@ -147,8 +189,12 @@ export function EditShell<Id extends string, Section extends string, Page extend
   children: ReactNode;
   /** The content type's edit panel, drawn right of the page below the bar while open (board 74c); it sets its own width. */
   panel?: ReactNode;
+  /** While the panel is open, Desktop keeps the desktop layout scaled to fit beside it (board 93) rather than reflowing. */
+  scalesDesktop?: boolean;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
+  const roomRef = useRef<HTMLDivElement>(null);
+  const scaled = useScaledFrame(roomRef, scalesDesktop && device === "desktop" && Boolean(panel));
   const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
   const changeDevice = (next: EditDevice) => {
     setDevice(next);
@@ -218,12 +264,21 @@ export function EditShell<Id extends string, Section extends string, Page extend
           keeps its state and scroll. Below md there is no Phone mode: the
           window is a phone already. */}
       <div className="flex min-h-0 flex-1">
-        <div className={`min-h-0 min-w-0 flex-1 overflow-auto ${phone ? "md:flex md:justify-center md:py-7" : ""}`}>
+        <div
+          ref={roomRef}
+          className={`min-h-0 min-w-0 flex-1 ${scaled === null ? "overflow-auto" : "overflow-auto md:overflow-hidden"} ${phone ? "md:flex md:justify-center md:py-7" : ""}`}
+        >
           <EditFrame
             title={`Page preview: ${heading}`}
             page={switcher?.current}
-            className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
-            style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
+            className={`block bg-ground ${
+              phone
+                ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline"
+                : scaled === null
+                  ? "h-full w-full"
+                  : SCALED_FRAME
+            }`}
+            style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px`, ...(scaled === null ? {} : scaledFrameStyle(scaled)) } as CSSProperties}
           >
             <BlockChips blocks={blocks} onEdit={onEdit} startHere={startHere} selected={selected} checklistPinned={checklistPinned}>
               {children}
