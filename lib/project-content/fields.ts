@@ -1,21 +1,23 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import type { Fact, KeyFacts } from "@/lib/project-pages/types";
+import { isPhotoSrc } from "@/lib/outreach-photos";
+import type { Fact, KeyFacts, Photo, TopVisual } from "@/lib/project-pages/types";
+import { MODEL_ALTS, ownModels, type RocketModel } from "@/lib/rocket-model";
 import { blockFieldsOf, blockOf, blockPhotos, blockProblems, readBlockFields, type BlockFields, type FactFields } from "./block-fields";
 import { BLOCKS_MAX } from "./block-list";
 import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
 import { isProjectRecord } from "./check";
 import { copyFields, copyOf, type CopyFields } from "./copy-fields";
-import type { ProjectBlock, ProjectRecord } from "./record";
+import { BACKGROUND_PRESETS, type Background, type BackgroundPreset, type ProjectBlock, type ProjectRecord } from "./record";
 
-// The Edit <project> panel's fields (boards 75c and 93, issues #298 and #299,
-// epic #522): the top of the page, the page blocks in order (each typed as
-// ./block-fields.ts says, and added, duplicated, hidden, removed and moved as
-// ./block-list.ts says), and the home card (./card-fields.ts, issue #300).
-// The page under the edit shell is drawn from `projectViewOf`, so it changes
-// as the editor types; Save draft and Publish send the fields, and
-// `checkProjectFields` turns them back into a record. What the panel does not
-// edit (the /projects entry's own copy, the background) is carried over from
-// the version the panel opened on.
+// The Edit <project> panel's fields (boards 75c, 93 and 93d, issues #298 and
+// #299, epic #522): the top of the page with its visual, caption and
+// background, the page blocks in order (each typed as ./block-fields.ts says,
+// and added, duplicated, hidden, removed and moved as ./block-list.ts says),
+// and the home card (./card-fields.ts, issue #300). The page under the edit
+// shell is drawn from `projectViewOf`, so it changes as the editor types;
+// Save draft and Publish send the fields, and `checkProjectFields` turns them
+// back into a record. What the panel does not edit (the /projects entry's own
+// copy) is carried over from the version the panel opened on.
 //
 // Desktop and phone copy: a text with a shorter phone version keeps both, and
 // an empty phone field means the phone shows the desktop text (`Copy`).
@@ -40,15 +42,36 @@ export const blockIdOf = (section: PanelSection): string | null => (section.star
 
 export type { BlockFields, CardFields, CopyFields, FactFields };
 
+/**
+ * The top of the page's visual as the panel picks it (board 93d): a model
+ * from the list (`modelsFor`), a photo, none until it is uploaded, or no
+ * visual at all.
+ */
+export type VisualFields =
+  | { readonly kind: "model"; readonly model: RocketModel }
+  | { readonly kind: "photo"; readonly photo: Photo | null }
+  | { readonly kind: "none" };
+
+/**
+ * The background as the panel picks it (board 93d): one of the 18 presets, or
+ * the one the panel opened on when that is not a preset (a brand texture kept
+ * from before presets, or an upload). A request can name a preset, never a
+ * file: a kept background is the opened version's, whatever the request says.
+ */
+export type BackgroundFields = { readonly kind: "preset"; readonly preset: BackgroundPreset } | { readonly kind: "kept" };
+
 export type ProjectFields = {
   readonly hero: {
     readonly intro: CopyFields;
     readonly status: string;
     readonly dates: string;
-    /** The visual panel's caption; null for a project whose top visual is none. */
-    readonly caption: string | null;
+    readonly visual: VisualFields;
+    /** The visual panel's caption, optional; a project with no visual keeps none. */
+    readonly caption: string;
     readonly facts: readonly FactFields[];
   };
+  /** What the cards, the /projects panel and the page visual lie on. */
+  readonly background: BackgroundFields;
   /** The page blocks, in page order. */
   readonly blocks: readonly BlockFields[];
   /** The project's card on Home, which the page switch shows in place (board 75d). */
@@ -57,6 +80,21 @@ export type ProjectFields = {
 
 /** How many key facts the top of the page holds (`KeyFacts`). */
 export const FACTS_LIMIT = { min: 1, max: 6 } as const;
+
+function visualFieldsOf(visual: TopVisual): VisualFields {
+  switch (visual.kind) {
+    case "model":
+      return { kind: "model", model: visual.own?.model ?? "placeholder" };
+    case "photo":
+      return { kind: "photo", photo: visual.photo };
+    case "none":
+      return { kind: "none" };
+  }
+}
+
+export function backgroundFieldsOf(background: Background): BackgroundFields {
+  return background.kind === "preset" ? { kind: "preset", preset: background.preset } : { kind: "kept" };
+}
 
 /** The panel's fields for a project record: what the panel opens on. */
 export function fieldsOf(record: ProjectRecord): ProjectFields {
@@ -67,12 +105,40 @@ export function fieldsOf(record: ProjectRecord): ProjectFields {
       intro: copyFields(hero.intro),
       status: hero.status,
       dates: hero.dates,
-      caption: hero.visual.kind === "none" ? null : hero.visual.caption,
+      visual: visualFieldsOf(hero.visual),
+      caption: hero.visual.kind === "none" ? "" : hero.visual.caption,
       facts: hero.facts.map((f) => ({ value: f.value, label: copyFields(f.label) })),
     },
+    background: backgroundFieldsOf(record.background),
     blocks: blocks.map(blockFieldsOf),
     card: cardFieldsOf(record),
   };
+}
+
+/**
+ * The visual the page draws for the panel's choice. A model keeps the alt
+ * text the opened version gave it, or takes the model's own when it is newly
+ * picked; the placeholder carries none. A photo not uploaded yet shows the
+ * opened version's photo, or no panel.
+ */
+function visualOf(fields: VisualFields, caption: string, was: TopVisual): TopVisual {
+  switch (fields.kind) {
+    case "model": {
+      if (fields.model === "placeholder") return { kind: "model", caption };
+      const own = was.kind === "model" && was.own?.model === fields.model ? was.own : { model: fields.model, alt: MODEL_ALTS[fields.model] };
+      return { kind: "model", caption, own };
+    }
+    case "photo":
+      if (fields.photo === null) return was.kind === "photo" ? was : { kind: "none" };
+      return { kind: "photo", caption, photo: { src: fields.photo.src, alt: fields.photo.alt.trim() } };
+    case "none":
+      return { kind: "none" };
+  }
+}
+
+/** The background the panel picked: a preset, or the opened version's own. */
+export function backgroundOf(fields: BackgroundFields, opened: Background): Background {
+  return fields.kind === "preset" ? { kind: "preset", preset: fields.preset } : opened;
 }
 
 function keyFactsOf(facts: readonly FactFields[]): KeyFacts | null {
@@ -102,13 +168,12 @@ function blocksOf(fields: readonly BlockFields[], opened: ProjectRecord): Projec
  */
 export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): ProjectRecord {
   const { hero } = fields;
-  const { visual } = opened.hero;
-  const caption = visual.kind !== "none" && hero.caption !== null ? { visual: { ...visual, caption: hero.caption.trim() } } : {};
   const record = {
     ...opened,
+    background: backgroundOf(fields.background, opened.background),
     hero: {
       ...opened.hero,
-      ...caption,
+      visual: visualOf(hero.visual, hero.caption.trim(), opened.hero.visual),
       intro: copyOf(hero.intro),
       status: hero.status.trim(),
       dates: hero.dates.trim(),
@@ -130,7 +195,9 @@ export function fieldsAfterSave(stored: ProjectRecord, sent: ProjectFields): Pro
  * the panel holds them.
  */
 export function heldPhotos(fields: ProjectFields): string[] {
-  return fields.blocks.flatMap(blockPhotos);
+  const { visual } = fields.hero;
+  const top = visual.kind === "photo" && visual.photo !== null ? [visual.photo.src] : [];
+  return [...top, ...fields.blocks.flatMap(blockPhotos)];
 }
 
 /**
@@ -154,7 +221,7 @@ export function fieldProblems(fields: ProjectFields): FieldProblem[] {
   need("hero.intro", hero.intro.text, "the intro");
   need("hero.status", hero.status, "the status");
   need("hero.dates", hero.dates, "the dates");
-  if (hero.caption !== null) need("hero.caption", hero.caption, "the visual's caption");
+  if (hero.visual.kind === "photo" && hero.visual.photo === null) problems.push({ section: "top", field: "hero.visual", error: "Add the photo." });
   if (hero.facts.length < FACTS_LIMIT.min || hero.facts.length > FACTS_LIMIT.max) {
     problems.push({ section: "top", field: "hero.facts", error: `Keep ${FACTS_LIMIT.min} to ${FACTS_LIMIT.max} key facts.` });
   }
@@ -206,17 +273,54 @@ function readBlocks(v: unknown): BlockFields[] | null {
   return new Set(blocks.map((b) => b!.id)).size === blocks.length ? (blocks as BlockFields[]) : null;
 }
 
+const MODELS: readonly RocketModel[] = [...ownModels, "placeholder"];
+
+/** The visual a request picks: a model the site has, a photo uploaded to a project (or none yet), or no visual. */
+function readVisual(v: unknown): VisualFields | null {
+  if (!isObject(v)) return null;
+  switch (v.kind) {
+    case "model": {
+      const model = MODELS.find((m) => m === v.model);
+      return model === undefined ? null : { kind: "model", model };
+    }
+    case "photo": {
+      if (v.photo === null) return { kind: "photo", photo: null };
+      if (!hasStrings(v.photo, ["src", "alt"]) || !isPhotoSrc(v.photo.src)) return null;
+      return { kind: "photo", photo: { src: v.photo.src, alt: v.photo.alt } };
+    }
+    case "none":
+      return { kind: "none" };
+    default:
+      return null;
+  }
+}
+
+/** The background a request picks: a preset by its name, or the one the panel opened on. */
+function readBackground(v: unknown): BackgroundFields | null {
+  if (!isObject(v)) return null;
+  if (v.kind === "kept") return { kind: "kept" };
+  const preset = BACKGROUND_PRESETS.find((p) => p === v.preset);
+  return v.kind === "preset" && preset !== undefined ? { kind: "preset", preset } : null;
+}
+
 /** The fields a request carries, or null when it does not carry them in this shape. */
 export function readProjectFields(input: unknown): ProjectFields | null {
   if (!isObject(input)) return null;
   const { hero } = input;
-  if (!hasStrings(hero, ["status", "dates"])) return null;
-  const caption = hero.caption === null ? null : isString(hero.caption) ? hero.caption : undefined;
-  if (caption === undefined) return null;
+  if (!hasStrings(hero, ["status", "dates", "caption"])) return null;
   const intro = readCopy(hero.intro);
+  const visual = readVisual(hero.visual);
   const facts = Array.isArray(hero.facts) && hero.facts.length <= 50 ? hero.facts.map(readFact) : null;
+  const background = readBackground(input.background);
   const blocks = readBlocks(input.blocks);
   const card = readCardFields(input.card);
-  if (intro === null || facts === null || !facts.every((f) => f !== null) || blocks === null || card === null) return null;
-  return { hero: { intro, status: hero.status, dates: hero.dates, caption, facts: facts as FactFields[] }, blocks, card };
+  if (intro === null || visual === null || facts === null || !facts.every((f) => f !== null) || background === null || blocks === null || card === null) {
+    return null;
+  }
+  return {
+    hero: { intro, status: hero.status, dates: hero.dates, visual, caption: hero.caption, facts: facts as FactFields[] },
+    background,
+    blocks,
+    card,
+  };
 }

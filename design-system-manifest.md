@@ -449,9 +449,13 @@ page is the layout reference.
 - The hero shows the visual panel on the project's background only when its visual is a model
   or a photo:
   Cavour's still of the parked rocket (Stack above, not 3D), VES's still of Mark I with its
-  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. An engine's
-  still sits centred on the orange streak texture (`/textures/project-ves.webp`) in place of its
-  own texture (`stageTextureOf`, Owner decision, issue #382); its cards keep the grey texture. Up to six key
+  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. An engine
+  that kept its brand texture has its still centred on the orange streak texture
+  (`/textures/project-ves.webp`) in place of that texture (`stageTextureOf`, Owner decision,
+  issue #382); its cards keep the grey texture. An engine whose editor picked a preset lies on the
+  preset. Backgrounds (epic #522): a project keeps its brand texture from `public/textures/` until
+  an editor picks one of the 18 presets in `public/backgrounds/` (board 93d); a preset's tall file
+  is the Home card's, its wide file the page panel's and the Projects list's. Up to six key
   facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
   and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
   `parts.tsx`); a shorter set is one row of six. A Key facts block draws its facts the same way.

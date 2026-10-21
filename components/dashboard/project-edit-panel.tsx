@@ -13,10 +13,12 @@ import type { PhotoUploads } from "./outreach-post-photos";
 import { BlockPanel, BlocksList, errorsIn, kindsFor, type BlockActions } from "./project-blocks";
 import { CardEditor, cardSummary } from "./project-card-section";
 import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts";
+import { BackgroundPicker, TopVisualEditor } from "./project-top-section";
 
-// The Edit <project> panel (boards 75c and 93, issues #298 and #299, epic
+// The Edit <project> panel (boards 75c, 93 and 93d, issues #298 and #299, epic
 // #522): beside the project page under the edit shell, the Top of the page
-// card, the Page blocks card (./project-blocks.tsx) and the Card (issue
+// card (its visual, caption and background first, ./project-top-section.tsx),
+// the Page blocks card (./project-blocks.tsx) and the Card (issue
 // #300), which the Edit card chip on Home and the Projects list opens. A
 // block's row, or its Edit chip on the page, opens the block's own panel in
 // the cards' place. Every change goes straight back to the page, which
@@ -150,14 +152,21 @@ export function ProjectEditPanel({
       ) : (
         <>
           <PanelSection value="top" cardRef={card("top")} title="Top of the page" summary={topSummary(fields)}>
+            <TopVisualEditor
+              kind={kind}
+              visual={hero.visual}
+              caption={hero.caption}
+              errors={errors}
+              uploads={uploads}
+              onVisualChange={(change) => onChange((f) => ({ ...f, hero: { ...f.hero, visual: change(f.hero.visual) } }))}
+              onCaptionChange={(caption) => setHero({ caption })}
+            />
+            <BackgroundPicker background={fields.background} onChange={(background) => onChange((f) => ({ ...f, background }))} />
             <CopyField label="Intro" rows={3} copy={hero.intro} phone={phone} error={errors["hero.intro"]} onChange={(intro) => setHero({ intro })} />
             <div className="grid grid-cols-2 gap-2.5">
               <TextField label="Status" value={hero.status} error={errors["hero.status"]} onChange={(status) => setHero({ status })} />
               <TextField label="Dates" value={hero.dates} error={errors["hero.dates"]} onChange={(dates) => setHero({ dates })} />
             </div>
-            {hero.caption !== null && (
-              <TextField label="Visual caption" value={hero.caption} error={errors["hero.caption"]} onChange={(caption) => setHero({ caption })} />
-            )}
             <EditableList
               label="Key facts"
               hint={`${FACTS_LIMIT.min} to ${FACTS_LIMIT.max}`}
@@ -212,9 +221,11 @@ export function ProjectEditPanel({
   );
 }
 
+const VISUAL_SUMMARY: Readonly<Record<ProjectFields["hero"]["visual"]["kind"], string>> = { model: "3D model", photo: "Photo", none: "No visual" };
+
 function topSummary(fields: ProjectFields): string {
   const n = fields.hero.facts.length;
-  return `Intro, status, dates, ${n} key ${n === 1 ? "fact" : "facts"}`;
+  return `${VISUAL_SUMMARY[fields.hero.visual.kind]}, background, intro, ${n} key ${n === 1 ? "fact" : "facts"}`;
 }
 
 function blocksSummary(blocks: readonly BlockFields[]): string {
