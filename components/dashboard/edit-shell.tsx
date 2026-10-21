@@ -59,6 +59,10 @@ import { EditFrame } from "./edit-frame";
 // page of the switch the editor has to check, and, on a page still to check,
 // a bar over the page's foot asking whether it looks right. A shell given
 // none of these draws as before.
+//
+// Below md the bar keeps its one 60px row, and the page switch, marks and
+// all, moves to a row of its own under it, so a phone reaches every page and
+// every check (Owner decision, 2026-10-22, issue #530).
 
 const ChipContext = createContext<{
   readonly chipOf: (id: string) => EditChip;
@@ -275,6 +279,16 @@ export function EditShell<Id extends string, Section extends string, Page extend
           </div>
         </div>
       </header>
+
+      {/* Below md the bar has no room for the page switch, so it takes a row
+          of its own under the bar: the only way to the other pages, and on a
+          held Publish to their checks (Owner decision, 2026-10-22). Desktop |
+          Phone stays off there: the window is a phone already. */}
+      {switcher !== null && (
+        <div className="flex shrink-0 overflow-x-auto border-b border-hairline bg-panel px-4 py-2 md:hidden">
+          <PageSwitcher {...switcher} />
+        </div>
+      )}
 
       {notice !== undefined && (
         <p role="status" className="flex shrink-0 items-center gap-2.5 border-b border-warning/20 bg-warning-soft px-4 py-3 text-[13px] text-warning md:px-6">
