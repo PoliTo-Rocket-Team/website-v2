@@ -154,6 +154,12 @@ export type DivisionPlan = {
    * hold is removed (`steppingDown`).
    */
   readonly advise: readonly number[];
+  /**
+   * Old leads a new lead replaces, whichever way they step down: a hand-over,
+   * so a full-access seat on their lead row moves to the new lead
+   * (`seatHandOver`, ./hand-over.ts, issue #501).
+   */
+  readonly replaced: readonly number[];
   /** Old leads who leave this division and keep their others. */
   readonly leaveDivision: readonly number[];
   /** Old leads who leave the team: every role and every access ends, and they move to Alumni. */
@@ -309,6 +315,7 @@ export function planDivisionSave(input: {
       joinAsLead: newLeads.filter((p) => !holdsRole(p)),
       demote,
       advise,
+      replaced: save.oldLeads.filter((o) => o.via === "replaced").map((o) => o.personId),
       leaveDivision,
       leaveTeam,
       joinAsMember: members,

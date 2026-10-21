@@ -19,7 +19,9 @@ import {
 import {
   advisorInDestinationDetail,
   BECOME_AN_ADVISOR,
+  fullAccessMovesLine,
   movesWithAdvisorRoleLine,
+  seatOfHandedRole,
   steppingDown,
   steppingDownLine,
   type HandOverOutcome,
@@ -354,6 +356,8 @@ function EditDepartment({
   const [headOutcome, setHeadOutcome] = useState<HandOverOutcome | null>(null);
   const [pending, startTransition] = useTransition();
   const head = department.head;
+  // The full-access seat the head role carries moves with it on Change head (issue #501).
+  const headSeat = head === null ? null : seatOfHandedRole(structure.seats, head.id, { kind: "head", departmentId: department.id });
 
   const code = normalizeDepartmentCode(rawCode);
   const nameError = departmentNameError(name);
@@ -405,7 +409,10 @@ function EditDepartment({
   if (kindChanged) lines.push(`It becomes a ${KIND_LABELS[kind].toLowerCase()} department, on the ${KIND_SLIDES[kind]} slide of the Team page.`);
   if (newHead !== null) lines.push(`${newHead.name} becomes Head of ${stored} and keeps their divisions.`);
   if (newHead !== null && head !== null && headOutcome !== null) {
-    lines.push(`${head.name} ${steppingDownLine(steppingDown({ kind: "head", departmentId: department.id }, headOutcome), stored)}.`);
+    const step = steppingDown({ kind: "head", departmentId: department.id }, headOutcome);
+    lines.push(`${head.name} ${steppingDownLine(step, stored)}.`);
+    const access = fullAccessMovesLine({ seat: headSeat, successor: newHead.name, from: head.name, step });
+    if (access !== null) lines.push(access);
   }
   const leaving = newHead !== null && headOutcome === "leave";
 
@@ -504,6 +511,8 @@ function EditDepartment({
                   unit={stored}
                   value={headOutcome}
                   leave={{ allowed: true }}
+                  seat={headSeat}
+                  successor={newHead.name}
                   onChange={setHeadOutcome}
                 />
               </div>

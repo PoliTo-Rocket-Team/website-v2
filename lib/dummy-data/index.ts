@@ -116,6 +116,7 @@ import {
   positions as basePositions,
   recruitment,
   roster,
+  rosterSeason,
   type DummyPerson,
   type DummyPosition,
 } from "./team";
@@ -356,7 +357,7 @@ function attentionFor(kind: ViewerKind, team: Team, dummyNotices: DummyNotices):
           {
             kind: "unassigned",
             title: `${plural(unplaced.length, "new member has", "new members have")} no division yet`,
-            detail: `Added to the ${roster.season} roster`,
+            detail: `Added to the ${rosterSeason()} roster`,
             action: { label: "Assign", href: "/dashboard/members" },
           },
         ];
@@ -409,7 +410,7 @@ function teamOverview(team: Team, notices: DummyNotices): TeamOverview {
           : "Positions are hidden on the site",
         live: team.recruitmentOpen,
       },
-      { label: "Team members", value: String(roster.members), detail: `${roster.season} roster` },
+      { label: "Team members", value: String(roster.members), detail: `${rosterSeason()} roster` },
     ],
     attention: attentionFor(kind, team, notices),
     activity: activityFor(kind),

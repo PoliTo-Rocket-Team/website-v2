@@ -1,4 +1,5 @@
 import type { positionTypeEnum } from "@/db/schema/public";
+import { academicYearStart, shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import type { DepartmentMembers } from "./department-members";
 import type { DivisionMembers } from "./division-members";
 import type { WholeTeamMembers } from "./team-members";
@@ -755,21 +756,15 @@ export function matchesQuery(fields: readonly string[], query: string): boolean 
   return words.every((word) => haystack.includes(word));
 }
 
-/** The team year a date falls in: a year runs from October, so 9 Oct 2026 gives "2026–27". */
+/** The team year a date falls in, on Turin's clock: a year runs from 1 October, so 9 Oct 2026 gives "2026–27". */
 export function seasonAt(date: Date): string {
-  const year = date.getUTCFullYear();
-  const start = date.getUTCMonth() >= 9 ? year : year - 1;
-  return seasonOf(start + 1);
-}
-
-/** The team year someone left in, by the year they left: 2025 gives "2024–25". */
-export function seasonOf(leftIn: number): string {
-  return `${leftIn - 1}–${String(leftIn % 100).padStart(2, "0")}`;
+  return shortAcademicYearLabel(academicYearStart(date));
 }
 
 // Paging (boards 46 and 46c)
 
-export const PAGE_SIZE = 9;
+/** Every paged dashboard list shows 12 rows a page (Owner decision, 2026-10-21). */
+export const PAGE_SIZE = 12;
 
 export function pageCount(total: number, size = PAGE_SIZE): number {
   return Math.max(1, Math.ceil(total / size));
