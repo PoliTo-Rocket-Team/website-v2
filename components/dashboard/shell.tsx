@@ -12,7 +12,6 @@ import { Avatar } from "./avatar";
 import { Sidebar, SidebarNavigate } from "./sidebar";
 import { TopBarSlot } from "./top-bar-slot";
 import { UserSheet } from "./user-card";
-import { VisitedPages } from "./visited-pages";
 
 /** A round icon button in the phone top bar: the menu, or a full page's back arrow. */
 export const ICON_BUTTON =
@@ -100,11 +99,6 @@ export function DashboardShell({
       </main>
 
       {closed}
-
-      {/* Reads the address, so it waits in its own Suspense as the title does. */}
-      <Suspense fallback={null}>
-        <VisitedPages />
-      </Suspense>
     </div>
   );
 }
