@@ -385,11 +385,12 @@ const BLOCK_OUTLINE = {
  *   with every chip shown at once it would sit on the arc's end labels, its
  *   add buttons and the next person's outline; under a person nothing else
  *   is drawn, on the arc or in the grid below xl.
- * - `bleed`: a block that fills the page's width from the page's top, as a
- *   project's hero does. Outside it, the outline's sides and the chip row
- *   would fall past the frame's edges, so both sit inside it, the row just
- *   under the outline's top. On phones the page leaves only 24px over its
- *   first line, so the block keeps room above its own content for that row.
+ * - `bleed`: a block that fills the page's width, as a project's hero and
+ *   numbered sections do. Outside it, the outline's sides would fall past the
+ *   frame's edges, and the hero's chip row past its top, so both sit inside
+ *   it, the row just under the outline's top. A page whose first line sits
+ *   closer to the block's top than that row gives the block room there
+ *   through `className`.
  */
 export type BlockShape = "around" | "narrow" | "bleed";
 
@@ -401,7 +402,7 @@ const BLOCK_SHAPE: Readonly<
 > = {
   around: { outline: AROUND_OUTLINE, row: ON_TOP_EDGE, rowStart: "left-1 md:left-0", rowEnd: "right-6 md:right-[33px]", editAtFoot: false, room: "" },
   narrow: { outline: AROUND_OUTLINE, row: ON_TOP_EDGE, rowStart: "left-1 md:-left-3", rowEnd: "right-1 md:-right-3", editAtFoot: true, room: "mb-8" },
-  bleed: { outline: "inset-1.5 md:inset-2", row: "top-3 md:top-4", rowStart: "left-3 md:left-4", rowEnd: "right-6 md:right-[33px]", editAtFoot: false, room: "max-md:pt-6" },
+  bleed: { outline: "inset-1.5 md:inset-2", row: "top-3 md:top-4", rowStart: "left-3 md:left-4", rowEnd: "right-6 md:right-[33px]", editAtFoot: false, room: "" },
 };
 
 /**
