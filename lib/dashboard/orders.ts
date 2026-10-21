@@ -585,6 +585,9 @@ export function toggleDepartment(department: OrgDepartmentUnits, ticked: readonl
   return departmentTick(department, ticked) === "all" ? rest : [...rest, ...ids];
 }
 
+/** The largest quantity one order line takes. */
+export const MAX_ORDER_QUANTITY = 1_000_000;
+
 /** 12 orders per page (Owner decision on #233), the same page size as every dashboard list. */
 export const ORDERS_PER_PAGE = PAGE_SIZE;
 
@@ -669,7 +672,10 @@ export function checkNewOrder(fields: {
   if (unitPrice === null || unitPrice === 0) errors.unitPrice = "Write the price in euros, like 59.55.";
 
   const quantity = /^\d+$/.test(fields.quantity.trim()) ? Number(fields.quantity.trim()) : NaN;
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) errors.quantity = "A whole number from 1 to 999.";
+  // Bulk parts (screws, connectors) run into the thousands (Owner decision,
+  // 2026-10-21); the cap only stops a mistyped number, well inside the column.
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_ORDER_QUANTITY)
+    errors.quantity = "A whole number from 1 to 1,000,000.";
 
   const reason = fields.reason.trim();
   if (reason === "") errors.reason = "Say what it is for.";
