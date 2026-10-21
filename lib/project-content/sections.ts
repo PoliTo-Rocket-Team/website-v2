@@ -1,11 +1,11 @@
 import type { ProjectBlock, ProjectRecord } from "./record";
 
-// The page blocks the Edit <project> panel's sections edit (board 75c),
-// until the panel gets its Page blocks card (epic #522): migration 0050 gave
-// each section it made a block the section's name as its id ("name",
-// "versions", ...), and New project does the same (./new-project.ts). Each
-// panel section reads and writes the block with its id and its kind; a block
-// of any other id is the page's, and the panel leaves it where it is.
+// The blocks the fixed sections became: migration 0050 gave each section it
+// made a block the section's name as its id ("name", "versions", ...), and
+// New project does the same (./new-project.ts). The Edit <project> panel
+// edits every block alike through its Page blocks card (./block-fields.ts,
+// epic #522); these reads find a block by the section it was, as the
+// dashboard's "edited by" line names it (./edited.ts).
 
 /** Each section's block id, with the kind of block it is, in page order. */
 export const SECTION_BLOCKS = {
@@ -75,24 +75,4 @@ export function sectionContentOf<S extends SectionBlockId>(record: ProjectRecord
   if (block === undefined) return undefined;
   const { id: _id, kind: _kind, hidden: _hidden, ...content } = block;
   return content as unknown as SectionContent<S>;
-}
-
-/**
- * The record with a section that has a show-on-page switch laid over it.
- * Shown, its block holds `content`, or, while the fields break the block's
- * rule (only a hand-made request can), the block the panel opened on. Off,
- * a block the page had stays in its place, hidden, holding the same; a
- * section the page never had is not added.
- */
-export function withSwitchedSection<S extends SectionBlockId>(
-  record: ProjectRecord,
-  opened: ProjectRecord,
-  id: S,
-  shown: boolean,
-  content: SectionContent<S> | null,
-): ProjectRecord {
-  const was = sectionContentOf(opened, id);
-  const kept = content ?? was;
-  if (kept === undefined || (!shown && was === undefined)) return withSectionBlock(record, id, null);
-  return withSectionBlock(record, id, { id, kind: SECTION_BLOCKS[id], hidden: !shown, ...kept } as SectionBlock<S>);
 }

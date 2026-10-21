@@ -1,46 +1,46 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import type { Fact, KeyFacts, Part, Prose, Reason, Reasons, TextBlock } from "@/lib/project-pages/types";
+import type { Fact, KeyFacts } from "@/lib/project-pages/types";
+import { blockFieldsOf, blockOf, blockPhotos, blockProblems, readBlockFields, type BlockFields, type FactFields } from "./block-fields";
+import { BLOCKS_MAX } from "./block-list";
 import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
 import { isProjectRecord } from "./check";
-import { copyFields, copyOf, titleOf, titleText, type CopyFields } from "./copy-fields";
-import { listFieldsAfterSave, listFieldsOf, listProblems, readListFields, withListFields, type ListFields, type ListSection } from "./list-fields";
-import type { ProjectRecord } from "./record";
-import { sectionBlockOf, sectionContentOf, sectionShown, withSectionBlock, withSwitchedSection } from "./sections";
+import { copyFields, copyOf, type CopyFields } from "./copy-fields";
+import type { ProjectBlock, ProjectRecord } from "./record";
 
-// The Edit <project> panel's fields (board 75c, issues #298 and #299): the
-// page blocks the panel's sections edit (./sections.ts) as the text an
-// editor types. The two stories are text blocks, edited here with the Why
-// section; Versions, Launch history, Plan and Gallery are in
-// ./list-fields.ts. The page under the edit shell is drawn from
-// `projectViewOf`, so it changes as they type; Save draft and Publish send
-// the fields, and `checkProjectFields` turns them back into a record. The
-// Card section (the home card, issue #300) is in ./card-fields.ts. What the
-// panel does not edit (the /projects entry's own copy, a block no section
-// edits) is carried over from the version the panel opened on.
+// The Edit <project> panel's fields (boards 75c and 93, issues #298 and #299,
+// epic #522): the top of the page, the page blocks in order (each typed as
+// ./block-fields.ts says, and added, duplicated, hidden, removed and moved as
+// ./block-list.ts says), and the home card (./card-fields.ts, issue #300).
+// The page under the edit shell is drawn from `projectViewOf`, so it changes
+// as the editor types; Save draft and Publish send the fields, and
+// `checkProjectFields` turns them back into a record. What the panel does not
+// edit (the /projects entry's own copy, the background) is carried over from
+// the version the panel opened on.
 //
 // Desktop and phone copy: a text with a shorter phone version keeps both, and
-// an empty phone field means the phone shows the desktop text (`Copy`). The
-// story bodies always have a phone paragraph of their own (`Prose`).
+// an empty phone field means the phone shows the desktop text (`Copy`).
 //
-// An optional section has a show-on-page switch. Switched off, its block is
-// hidden: the page drops it and the numbers of the blocks after it close up
-// (`pageRowsOf`), and the block keeps its content in the record, so switching
-// it back on brings it back (`withSwitchedSection`). Its fields stay in the
-// panel while the editor is open, through Save draft and Publish too
-// (`fieldsAfterSave`).
+// A hidden block stays in the record with its content: the page leaves it out
+// and the numbers of the blocks after it close up (`pageRowsOf`).
 
-/** The panel's sections; each block's Edit chip opens one. */
-export type PanelSection = "top" | "name" | "design" | ListSection | "reasons" | "card";
+/**
+ * The panel's sections: the top of the page, the Page blocks card, one
+ * block's panel by the block's id, and the home card. Each block's Edit chip
+ * on the page opens its block's panel.
+ */
+export type PanelSection = "top" | "blocks" | BlockSection | "card";
 
-export type { CardFields, CopyFields };
-export type FactFields = { readonly value: string; readonly label: CopyFields };
-export type PartFields = { readonly name: string; readonly desc: string; readonly phone: string };
-export type ReasonFields = { readonly title: string; readonly text: string };
+/** The panel of one block. */
+export type BlockSection = `block:${string}`;
 
-/** A story column: its title (a line per forced break), its paragraphs (a blank line between two) and the phone's one paragraph. */
-export type StoryFields = { readonly title: string; readonly body: string; readonly phone: string };
+export const blockSection = (id: string): BlockSection => `block:${id}`;
 
-export type ProjectFields = ListFields & {
+/** The block id a block's panel names; null for every other section. */
+export const blockIdOf = (section: PanelSection): string | null => (section.startsWith("block:") ? section.slice("block:".length) : null);
+
+export type { BlockFields, CardFields, CopyFields, FactFields };
+
+export type ProjectFields = {
   readonly hero: {
     readonly intro: CopyFields;
     readonly status: string;
@@ -49,36 +49,19 @@ export type ProjectFields = ListFields & {
     readonly caption: string | null;
     readonly facts: readonly FactFields[];
   };
-  readonly nameStory: StoryFields;
-  readonly design: StoryFields & { readonly partsCaption: string; readonly parts: readonly PartFields[] };
-  /** "Why": optional, so it carries its show-on-page switch. */
-  readonly reasons: {
-    readonly shown: boolean;
-    readonly eyebrow: string;
-    readonly title: string;
-    readonly items: readonly ReasonFields[];
-  };
+  /** The page blocks, in page order. */
+  readonly blocks: readonly BlockFields[];
   /** The project's card on Home, which the page switch shows in place (board 75d). */
   readonly card: CardFields;
 };
 
-/** How many key facts the hero holds (`KeyFacts`), and reasons the Why section (`Reasons`). */
+/** How many key facts the top of the page holds (`KeyFacts`). */
 export const FACTS_LIMIT = { min: 1, max: 6 } as const;
-export const REASONS_LIMIT = { min: 1, max: 5 } as const;
-
-const proseText = (prose: Prose): string => prose.text.join("\n\n");
-
-/** A story's fields: its title, paragraphs and phone text; empty for a page with no such block. */
-function storyFields(block: TextBlock | undefined): StoryFields {
-  if (block === undefined) return { title: "", body: "", phone: "" };
-  return { title: block.heading ? titleText(block.heading.title) : "", body: proseText(block.body), phone: block.body.phone };
-}
 
 /** The panel's fields for a project record: what the panel opens on. */
 export function fieldsOf(record: ProjectRecord): ProjectFields {
   const { hero } = record;
-  const design = sectionBlockOf(record, "design");
-  const reasons = sectionContentOf(record, "reasons");
+  const blocks: readonly ProjectBlock[] = record.blocks;
   return {
     hero: {
       intro: copyFields(hero.intro),
@@ -87,40 +70,9 @@ export function fieldsOf(record: ProjectRecord): ProjectFields {
       caption: hero.visual.kind === "none" ? null : hero.visual.caption,
       facts: hero.facts.map((f) => ({ value: f.value, label: copyFields(f.label) })),
     },
-    nameStory: storyFields(sectionBlockOf(record, "name")),
-    design: {
-      ...storyFields(design),
-      partsCaption: design?.parts?.caption ?? "",
-      parts: (design?.parts?.items ?? []).map((p) => ({ name: p.name, desc: p.desc, phone: p.phone })),
-    },
-    // A project with no Why section opens with it switched off and one empty reason to start from.
-    reasons:
-      reasons === undefined
-        ? { shown: false, eyebrow: "", title: "", items: [{ title: "", text: "" }] }
-        : {
-            shown: sectionShown(record, "reasons"),
-            eyebrow: reasons.eyebrow,
-            title: titleText(reasons.title),
-            items: reasons.items.map((r) => ({ ...r })),
-          },
+    blocks: blocks.map(blockFieldsOf),
     card: cardFieldsOf(record),
-    ...listFieldsOf(record),
   };
-}
-
-function proseOf(story: StoryFields): Prose {
-  const paragraphs = story.body
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter((p) => p !== "");
-  const [first = "", ...rest] = paragraphs;
-  return { text: [first, ...rest], phone: story.phone.trim() };
-}
-
-function nonEmpty<T>(items: readonly T[]): readonly [T, ...T[]] | null {
-  if (items.length === 0) return null;
-  const [first, ...rest] = items;
-  return [first, ...rest];
 }
 
 function keyFactsOf(facts: readonly FactFields[]): KeyFacts | null {
@@ -128,44 +80,31 @@ function keyFactsOf(facts: readonly FactFields[]): KeyFacts | null {
   return facts.map((f): Fact => ({ value: f.value.trim(), label: copyOf(f.label) })) as unknown as KeyFacts;
 }
 
-function reasonItemsOf(items: readonly ReasonFields[]): Reasons["items"] | null {
-  if (items.length < REASONS_LIMIT.min || items.length > REASONS_LIMIT.max) return null;
-  return items.map((r): Reason => ({ title: r.title.trim(), text: r.text.trim() })) as unknown as Reasons["items"];
-}
-
-/** A story's text block: the opened one's place on the page, width and heading label, with the fields' title and text. */
-function storyBlock(id: "name" | "design", label: string, story: StoryFields, opened: TextBlock | undefined): TextBlock {
-  return {
-    id,
-    kind: "text",
-    hidden: opened?.hidden ?? false,
-    width: opened?.width ?? "half",
-    heading: { label: opened?.heading?.label ?? label, title: titleOf(story.title) },
-    body: proseOf(story),
-  };
+/**
+ * The blocks the page draws while the editor types, in the panel's order. A
+ * block whose fields break its shape's rule for the moment (a photo block
+ * with no photo yet) shows as the panel opened it, or not at all when it is
+ * new. An engine's page holds no launch history.
+ */
+function blocksOf(fields: readonly BlockFields[], opened: ProjectRecord): ProjectBlock[] {
+  const was: readonly ProjectBlock[] = opened.blocks;
+  return fields.flatMap((f) => {
+    const block = blockOf(f) ?? was.find((b) => b.id === f.id && b.kind === f.kind);
+    if (block === undefined) return [];
+    return opened.kind === "engine" && block.kind === "launches" ? [] : [{ ...block, hidden: f.hidden }];
+  });
 }
 
 /**
  * The record the page draws while the editor types: `opened` with the
- * panel's sections laid over it. A list the panel cannot leave empty (the key
- * facts, the parts, the reasons) keeps the opened version's while it is out
- * of bounds, which only a hand-made request can make it.
+ * panel's fields laid over it. The top's key facts keep the opened version's
+ * while their count is out of bounds, which only a hand-made request can make.
  */
 export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): ProjectRecord {
-  const { hero, nameStory, design, reasons } = fields;
+  const { hero } = fields;
   const { visual } = opened.hero;
   const caption = visual.kind !== "none" && hero.caption !== null ? { visual: { ...visual, caption: hero.caption.trim() } } : {};
-  const parts = nonEmpty(design.parts.map((p): Part => ({ name: p.name.trim(), desc: p.desc.trim(), phone: p.phone.trim() })));
-  const reasonItems = reasonItemsOf(reasons.items);
-  const openedName = sectionBlockOf(opened, "name");
-  const openedDesign = sectionBlockOf(opened, "design");
-  const openedParts = openedDesign?.parts;
-  const partItems = parts ?? openedParts?.items;
-  const designBlock: TextBlock = {
-    ...storyBlock("design", "THE DESIGN", design, openedDesign),
-    ...(partItems && { parts: { label: openedParts?.label ?? "Parts", caption: design.partsCaption.trim(), items: partItems } }),
-  };
-  const top = {
+  const record = {
     ...opened,
     hero: {
       ...opened.hero,
@@ -175,88 +114,70 @@ export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): Pro
       dates: hero.dates.trim(),
       facts: keyFactsOf(hero.facts) ?? opened.hero.facts,
     },
+    blocks: blocksOf(fields.blocks, opened),
   } as ProjectRecord;
-  const reasonsContent: Reasons | null =
-    reasonItems === null ? null : { eyebrow: reasons.eyebrow.trim(), title: titleOf(reasons.title), items: reasonItems };
-  let story = withSectionBlock(top, "name", storyBlock("name", "THE NAME", nameStory, openedName));
-  story = withSectionBlock(story, "design", designBlock);
-  story = withSwitchedSection(story, opened, "reasons", reasons.shown, reasonsContent);
-  return withListFields(withCardFields(story, fields.card), fields, opened);
+  return withCardFields(record, fields.card);
+}
+
+/** The panel's fields after a save: the stored record's, which is what the page now shows. */
+export function fieldsAfterSave(stored: ProjectRecord, sent: ProjectFields): ProjectFields {
+  return { ...fieldsOf(stored), card: cardFieldsAfterSave(stored, sent.card) };
 }
 
 /**
- * The panel's fields after a save: the stored record's, which is what the
- * page now shows, with the text of a section switched off kept from the
- * fields that were sent. The record holds nothing for that section, so
- * without this the save would blank it.
+ * Every uploaded photo the panel holds, a hidden block's included: showing
+ * it again puts them on the page, so no save may delete their files while
+ * the panel holds them.
  */
-export function fieldsAfterSave(stored: ProjectRecord, sent: ProjectFields): ProjectFields {
-  const fields = { ...fieldsOf(stored), ...listFieldsAfterSave(stored, sent), card: cardFieldsAfterSave(stored, sent.card) };
-  return sent.reasons.shown ? fields : { ...fields, reasons: sent.reasons };
+export function heldPhotos(fields: ProjectFields): string[] {
+  return fields.blocks.flatMap(blockPhotos);
 }
 
-/** One field the panel cannot save as it is: where it sits and why. `field` is its path in the fields, such as "hero.facts.2.value". */
+/**
+ * One field the panel cannot save as it is: the section it sits in and its
+ * path in the fields, such as "hero.facts.2.value" or, in a block, the block's
+ * id and its path there ("blocks.gallery-2.gallery.title").
+ */
 export type FieldProblem = { readonly section: PanelSection; readonly field: string; readonly error: string };
+
+/** The path of a field of the block with `id`. */
+export const blockField = (id: string, path: string) => `blocks.${id}.${path}`;
 
 /** What is missing before the fields can be saved, in panel order. Phone versions of a `Copy` may be empty: the phone shows the desktop text. */
 export function fieldProblems(fields: ProjectFields): FieldProblem[] {
   const problems: FieldProblem[] = [];
-  const need = (section: PanelSection, field: string, value: string, what: string) => {
-    if (value.trim() === "") problems.push({ section, field, error: `Fill in ${what}.` });
-  };
-  const count = (section: PanelSection, field: string, n: number, limit: { min: number; max: number }, what: string) => {
-    if (n < limit.min || n > limit.max) problems.push({ section, field, error: `Keep ${limit.min} to ${limit.max} ${what}.` });
+  const need = (field: string, value: string, what: string) => {
+    if (value.trim() === "") problems.push({ section: "top", field, error: `Fill in ${what}.` });
   };
 
-  const { hero, nameStory, design, reasons } = fields;
-  need("top", "hero.intro", hero.intro.text, "the intro");
-  need("top", "hero.status", hero.status, "the status");
-  need("top", "hero.dates", hero.dates, "the dates");
-  if (hero.caption !== null) need("top", "hero.caption", hero.caption, "the visual's caption");
-  count("top", "hero.facts", hero.facts.length, FACTS_LIMIT, "key facts");
+  const { hero } = fields;
+  need("hero.intro", hero.intro.text, "the intro");
+  need("hero.status", hero.status, "the status");
+  need("hero.dates", hero.dates, "the dates");
+  if (hero.caption !== null) need("hero.caption", hero.caption, "the visual's caption");
+  if (hero.facts.length < FACTS_LIMIT.min || hero.facts.length > FACTS_LIMIT.max) {
+    problems.push({ section: "top", field: "hero.facts", error: `Keep ${FACTS_LIMIT.min} to ${FACTS_LIMIT.max} key facts.` });
+  }
   hero.facts.forEach((f, i) => {
-    need("top", `hero.facts.${i}.value`, f.value, `key fact ${i + 1}'s value`);
-    need("top", `hero.facts.${i}.label`, f.label.text, `key fact ${i + 1}'s label`);
+    need(`hero.facts.${i}.value`, f.value, `key fact ${i + 1}'s value`);
+    need(`hero.facts.${i}.label`, f.label.text, `key fact ${i + 1}'s label`);
   });
 
-  need("name", "nameStory.title", nameStory.title, "the name story's title");
-  need("name", "nameStory.body", nameStory.body, "the name story");
-  need("name", "nameStory.phone", nameStory.phone, "the name story's phone text");
-
-  need("design", "design.title", design.title, "the design story's title");
-  need("design", "design.body", design.body, "the design story");
-  need("design", "design.phone", design.phone, "the design story's phone text");
-  need("design", "design.partsCaption", design.partsCaption, "the note under the parts");
-  if (design.parts.length === 0) problems.push({ section: "design", field: "design.parts", error: "Keep at least one part." });
-  design.parts.forEach((p, i) => {
-    need("design", `design.parts.${i}.name`, p.name, `part ${i + 1}'s name`);
-    need("design", `design.parts.${i}.desc`, p.desc, `part ${i + 1}'s description`);
-    need("design", `design.parts.${i}.phone`, p.phone, `part ${i + 1}'s phone description`);
-  });
-
-  // A section switched off is not on the page, so what it holds does not stop a save.
-  if (reasons.shown) {
-    need("reasons", "reasons.eyebrow", reasons.eyebrow, "the Why eyebrow");
-    need("reasons", "reasons.title", reasons.title, "the Why title");
-    count("reasons", "reasons.items", reasons.items.length, REASONS_LIMIT, "reasons");
-    reasons.items.forEach((r, i) => {
-      need("reasons", `reasons.items.${i}.title`, r.title, `reason ${i + 1}'s title`);
-      need("reasons", `reasons.items.${i}.text`, r.text, `reason ${i + 1}'s text`);
-    });
+  for (const block of fields.blocks) {
+    for (const { field, error } of blockProblems(block)) problems.push({ section: blockSection(block.id), field: blockField(block.id, field), error });
   }
 
-  return [...problems, ...listProblems(fields), ...cardProblems(fields.card)].sort((a, b) => PANEL_ORDER.indexOf(a.section) - PANEL_ORDER.indexOf(b.section));
+  return [...problems, ...cardProblems(fields.card)];
 }
-
-/** The panel's sections top to bottom, as board 75c stacks them. */
-export const PANEL_ORDER: readonly PanelSection[] = ["top", "name", "design", "versions", "launches", "plan", "reasons", "gallery", "card"];
 
 /** The record Save draft or Publish stores: `opened` with the fields laid over it, or why it cannot be. */
 export function checkProjectFields(fields: ProjectFields, opened: ProjectRecord): WriteResult<ProjectRecord> {
   const [first] = fieldProblems(fields);
   if (first !== undefined) return refused(first.error);
-  // Only a rocket's pill counts flights; the panel never offers it for an engine.
-  if (opened.kind === "engine" && fields.card.countsFlights) return refused("Reload the page and try again.");
+  // Only a rocket's pill counts flights, and only a rocket's page has a launch history; the panel never offers either for an engine.
+  if (opened.kind === "engine" && (fields.card.countsFlights || fields.blocks.some((b) => b.kind === "launches"))) {
+    return refused("Reload the page and try again.");
+  }
   const record = projectViewOf(fields, opened);
   return isProjectRecord(record) ? written(record) : refused("Reload the page and try again.");
 }
@@ -270,47 +191,32 @@ const isObject = (v: unknown): v is Loose => typeof v === "object" && v !== null
 const isString = (v: unknown): v is string => typeof v === "string";
 const hasStrings = <K extends string>(v: unknown, keys: readonly K[]): v is Record<K, string> & Loose =>
   isObject(v) && keys.every((k) => isString(v[k]));
-/** A list as long as a panel list can grow, at most. */
-const listOf = <T>(v: unknown, read: (x: unknown) => T | null): T[] | null => {
-  if (!Array.isArray(v) || v.length > 50) return null;
-  const items = v.map(read);
-  return items.every((x) => x !== null) ? (items as T[]) : null;
-};
 
 const readCopy = (v: unknown): CopyFields | null => (hasStrings(v, ["text", "phone"]) ? { text: v.text, phone: v.phone } : null);
 const readFact = (v: unknown): FactFields | null => {
   const label = isObject(v) ? readCopy(v.label) : null;
   return hasStrings(v, ["value"]) && label !== null ? { value: v.value, label } : null;
 };
-const readPart = (v: unknown): PartFields | null => (hasStrings(v, ["name", "desc", "phone"]) ? { name: v.name, desc: v.desc, phone: v.phone } : null);
-const readReason = (v: unknown): ReasonFields | null => (hasStrings(v, ["title", "text"]) ? { title: v.title, text: v.text } : null);
-const readStory = (v: unknown): StoryFields | null =>
-  hasStrings(v, ["title", "body", "phone"]) ? { title: v.title, body: v.body, phone: v.phone } : null;
+
+/** The blocks a request carries: each in its shape, no two with one id, no more than a page holds. */
+function readBlocks(v: unknown): BlockFields[] | null {
+  if (!Array.isArray(v) || v.length > BLOCKS_MAX) return null;
+  const blocks = v.map(readBlockFields);
+  if (!blocks.every((b) => b !== null)) return null;
+  return new Set(blocks.map((b) => b!.id)).size === blocks.length ? (blocks as BlockFields[]) : null;
+}
 
 /** The fields a request carries, or null when it does not carry them in this shape. */
 export function readProjectFields(input: unknown): ProjectFields | null {
   if (!isObject(input)) return null;
-  const { hero, nameStory, design, reasons } = input;
+  const { hero } = input;
   if (!hasStrings(hero, ["status", "dates"])) return null;
   const caption = hero.caption === null ? null : isString(hero.caption) ? hero.caption : undefined;
   if (caption === undefined) return null;
   const intro = readCopy(hero.intro);
-  const facts = listOf(hero.facts, readFact);
-  const name = readStory(nameStory);
-  const designStory = readStory(design);
-  const parts = isObject(design) ? listOf(design.parts, readPart) : null;
-  const items = isObject(reasons) ? listOf(reasons.items, readReason) : null;
-  if (intro === null || facts === null || name === null || designStory === null || parts === null || items === null) return null;
-  if (!hasStrings(design, ["partsCaption"]) || !hasStrings(reasons, ["eyebrow", "title"]) || typeof reasons.shown !== "boolean") return null;
-  const lists = readListFields(input);
+  const facts = Array.isArray(hero.facts) && hero.facts.length <= 50 ? hero.facts.map(readFact) : null;
+  const blocks = readBlocks(input.blocks);
   const card = readCardFields(input.card);
-  if (lists === null || card === null) return null;
-  return {
-    ...lists,
-    hero: { intro, status: hero.status, dates: hero.dates, caption, facts },
-    nameStory: name,
-    design: { ...designStory, partsCaption: design.partsCaption, parts },
-    reasons: { shown: reasons.shown, eyebrow: reasons.eyebrow, title: reasons.title, items },
-    card,
-  };
+  if (intro === null || facts === null || !facts.every((f) => f !== null) || blocks === null || card === null) return null;
+  return { hero: { intro, status: hero.status, dates: hero.dates, caption, facts: facts as FactFields[] }, blocks, card };
 }

@@ -4,7 +4,6 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { siteFooterOf, type PageChrome } from "@/lib/page-chrome";
 import { pageRowsOf, type NumberedBlock, type PageBlock, type PageRow, type ProjectPageRecord, type TextBlock } from "@/lib/project-pages";
-import { isSectionBlock, type SectionBlockId } from "@/lib/project-content/sections";
 import type { Project } from "@/lib/projects";
 import { ProjectFacts } from "./facts";
 import { ProjectGallery } from "./gallery";
@@ -24,21 +23,16 @@ import { ProjectVersions } from "./versions";
 // order, leaving out a hidden one; two half-width text blocks in a row sit
 // side by side (epic #522, `pageRowsOf`).
 
-/**
- * The page's parts the editor can outline: the hero, and each block it edits
- * through a section of its panel, by the block's id (lib/project-content/sections.ts).
- */
-export type ProjectPart = "hero" | SectionBlockId;
+/** The page's parts the editor can outline: the hero, and each block by its id (`block:<id>`, epic #522). */
+export type ProjectPart = "hero" | `block:${string}`;
 
 /** Wraps one part of the page; the public page draws each part as it is. */
 export type ProjectFrame = (part: ProjectPart, node: ReactNode) => ReactNode;
 
 const bare: ProjectFrame = (_, node) => node;
 
-/** The block wrapped in its frame when the editor edits it through a panel section, else as it is. */
-function framed(frame: ProjectFrame, block: PageBlock, node: ReactNode): ReactNode {
-  return isSectionBlock(block) ? frame(block.id, node) : node;
-}
+/** The block wrapped in its frame. */
+const framed = (frame: ProjectFrame, block: PageBlock, node: ReactNode): ReactNode => frame(`block:${block.id}`, node);
 
 /** A block that fills the page's width: every kind but text. */
 function WideBlock({ numbered, project }: { numbered: NumberedBlock<Exclude<PageBlock, TextBlock>>; project: Project }) {
