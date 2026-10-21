@@ -57,6 +57,7 @@ import {
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { divisionOverviewOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
+import { accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
 import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
@@ -520,8 +521,8 @@ async function readInterviews(positions: readonly { id: number; title: string }[
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
   // Each area is read only when the viewer reads it (`overviewAreasOf`,
-  // ./division-overview.ts): a member granted some areas reads nothing of
-  // the others (issue #471). A lead reads every area.
+  // ./division-overview.ts). A lead reads every area; a member never gets
+  // this board (issue #480).
   const areas = overviewAreasOf(identity);
   const reads = (area: GrantArea) => areas.includes(area);
   const [positions, applications, orders, members, notices] = await Promise.all([
@@ -718,11 +719,17 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
       identity.memberId,
     );
   };
-  // The notices need nothing of the roster, so they are read beside it.
-  const [roster, notices] = await Promise.all([readRoster(), readNoticeAttention(identity, new Date())]);
+  // The notices and the granted areas' figures need nothing of the roster, so
+  // they are read beside it.
+  const [roster, notices, access] = await Promise.all([
+    readRoster(),
+    readNoticeAttention(identity, new Date()),
+    readAccessSummaries(identity),
+  ]);
 
   return {
     shape: "personal",
+    // Their own notices alone: a grant adds no attention row (issue #480).
     attention: notices,
     person: {
       name: identity.name,
@@ -736,8 +743,43 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
       items,
     },
     roster,
-    hint: "Need to work on recruitment or site content? Ask your division lead or the admin team for access.",
+    access,
   };
+}
+
+/**
+ * "Your access" on a member's Overview (issue #480): each granted area's
+ * counts, read only for an area the member reads (`overviewAreasOf`) and only
+ * in the units their grants on it cover (`readsAreaIn`). Nothing is read for
+ * an area they are not granted, and the summaries keep counts alone.
+ */
+async function readAccessSummaries(identity: Identity): Promise<AccessSummary[]> {
+  const areas = overviewAreasOf(identity);
+  if (areas.length === 0) return [];
+  const reads = (area: GrantArea) => areas.includes(area);
+  const [positions, applications, orders, members] = await Promise.all([
+    reads("positions") ? scopedPositions(identity, "positions") : undefined,
+    reads("applications") ? readApplicationFigures(identity) : undefined,
+    reads("orders") ? readOrderFigures(identity) : undefined,
+    reads("members") ? readMemberAccess(identity) : undefined,
+  ]);
+  return accessSummariesOf(areas, { positions, applications, orders, members });
+}
+
+/**
+ * How many people are in the open divisions the viewer reads Members in
+ * (`readsAreaIn`), each once, and how many divisions that is. A grant on a
+ * department covers each of its divisions, as on the Members page.
+ */
+async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessFigures["members"]>> {
+  const { org, roles: roleRows } = await readTeamSnapshot();
+  const covered = new Set(
+    org.divisions.filter((d) => readsAreaIn(identity, "members", { divisionId: d.id, departmentId: d.departmentId })).map((d) => d.id),
+  );
+  const people = new Set(
+    roleRows.filter((r) => r.leaved_at === null && r.division_id !== null && covered.has(r.division_id)).map((r) => r.member_id),
+  );
+  return { people: people.size, divisions: covered.size };
 }
 
 /**
@@ -759,9 +801,9 @@ function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
     case "division-lead":
       return divisionOverview(identity);
     case "member":
-      // A member granted some areas gets the division board with those areas'
-      // figures alone (issue #471); a member with no grant, their own page.
-      return identity.grantedAreas.length > 0 ? divisionOverview(identity) : memberOverview(identity);
+      // A member keeps their own page whatever they are granted; each grant
+      // adds one "Your access" line to it (issue #480).
+      return memberOverview(identity);
     case "non-member":
     case "alumni":
       return Promise.reject(new DashboardRefused("an Overview off the team is built from My applications"));

@@ -8,8 +8,8 @@ import { createPortal } from "react-dom";
 // stays live React (later slices update it as the editor types) while its
 // own window is the frame. That is what lets Phone mode work: the page's
 // breakpoints and its `svh` and `vw` read the 390px frame, not the
-// dashboard's window. It also keeps the page's fixed navbar under the edit
-// bar instead of over it, in Desktop mode too.
+// dashboard's window. The page is drawn without the site's navbar and footer
+// (issue #495).
 
 const FRAME_DOCUMENT = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"></head><body></body></html>';
 

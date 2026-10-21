@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
-import type { FooterProject } from "@/lib/landing-links";
+import { siteFooterOf, type PageChrome } from "@/lib/page-chrome";
 import { launchCounts, type Project, type Stat } from "@/lib/projects";
 import { ProjectCard } from "./project-card";
 
@@ -27,26 +27,34 @@ export type ProjectCardFrame = (project: Project, node: ReactNode) => ReactNode;
 // The edit shell's page switch (board 75d, issue #300) draws the same page
 // with the project being edited in its place, and a `frame` that outlines its
 // card and dims the others. The footer lists the published projects
-// (`footerProjects`, issue #378), never the edit shell's draft.
-export function ProjectsListPage({
-  projects,
-  footerProjects,
-  frame,
-}: {
-  projects: readonly Project[];
-  footerProjects: readonly FooterProject[];
-  frame?: ProjectCardFrame;
-}) {
+// (`footerProjects`, issue #378), never the edit shell's draft; the edit
+// shell draws the page with no navbar and no footer (`chrome="none"`,
+// issue #495).
+export function ProjectsListPage(
+  props: {
+    projects: readonly Project[];
+    frame?: ProjectCardFrame;
+  } & PageChrome,
+) {
+  const { projects, frame } = props;
+  const footer = siteFooterOf(props);
   const stats = [...launchCounts(projects), ...targets];
   return (
     <div className="relative bg-ground">
-      <LandingNavbar />
+      {footer !== null && <LandingNavbar />}
       <PageSky>
         {/* The top clears the fixed bar (64px, 72px from md, navbar.tsx) and
             then keeps one section pad under it, so the header sits on the
-            same rhythm as every section. The bottom is the section rhythm
-            too, so the gap to the footer matches every other section gap. */}
-        <main className="px-5 pb-section pt-[calc(64px+var(--section-pad))] md:px-16 md:pt-[calc(72px+var(--section-pad))]">
+            same rhythm as every section; with no navbar, the section pad
+            alone. The bottom is the section rhythm too, so the gap to the
+            footer matches every other section gap. */}
+        <main
+          className={
+            footer !== null
+              ? "px-5 pb-section pt-[calc(64px+var(--section-pad))] md:px-16 md:pt-[calc(72px+var(--section-pad))]"
+              : "px-5 pb-section pt-section md:px-16"
+          }
+        >
           <div className="mx-auto max-w-[1312px]">
             <header>
               <p className="font-mono text-xs tracking-[0.3em] text-accent">PROJECTS</p>
@@ -91,7 +99,7 @@ export function ProjectsListPage({
             </div>
           </div>
         </main>
-        <LandingFooter inSky projects={footerProjects} />
+        {footer !== null && <LandingFooter inSky projects={footer} />}
       </PageSky>
     </div>
   );

@@ -176,7 +176,11 @@ describe("figures about applications come only where the viewer reads Applicatio
       if (overview === "refused") return;
       const board = overview as TeamSideOverview;
       if (board.shape === "personal") {
-        assert.equal(reads.length, 0, name);
+        // A member's own page: an Applications grant adds one counts-only line and no attention row (issue #480).
+        const line = board.access.find((s) => s.area === "applications");
+        if (reads.length === 0) assert.equal(line, undefined, `${name}: an Applications line`);
+        else assert.equal(line?.area === "applications" && line.fresh, reads.length, `${name}: new applications on the Applications line`);
+        assert.equal(board.attention.some((a) => a.kind === "applications"), false, `${name}: a new-application row`);
         return;
       }
       const fresh = board.stats.find((s) => s.label === "New applications");

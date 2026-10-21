@@ -8,7 +8,6 @@ import { openDashboard } from "@/lib/dashboard/open";
 import { todayInRome } from "@/lib/outreach";
 import { featureStateOf } from "@/lib/outreach-featured";
 import { publishedOutreach } from "@/lib/outreach-public";
-import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "New post · Outreach · Dashboard · PoliTo Rocket Team",
@@ -38,12 +37,11 @@ async function NewPost() {
   // the featured ones let the list target feature from its cards once the
   // post is saved (issues #431, #496).
   const { outreach } = opening.data;
-  const [items, tags, featured, published, projects] = await Promise.all([
+  const [items, tags, featured, published] = await Promise.all([
     outreach.posts.list(),
     outreach.tags(),
     outreach.featured(),
     publishedOutreach(),
-    footerProjects(),
   ]);
   if (items === null || tags === null) notFound();
   return (
@@ -54,7 +52,6 @@ async function NewPost() {
       tags={tags}
       neighbours={{}}
       published={published}
-      footerProjects={projects}
     />
   );
 }

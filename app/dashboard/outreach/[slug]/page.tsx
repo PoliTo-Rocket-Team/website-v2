@@ -9,7 +9,6 @@ import { openDashboard } from "@/lib/dashboard/open";
 import { neighboursOf, slugOf } from "@/lib/outreach";
 import { featureStateOf } from "@/lib/outreach-featured";
 import { publishedOutreach } from "@/lib/outreach-public";
-import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "Edit post · Outreach · Dashboard · PoliTo Rocket Team",
@@ -41,12 +40,11 @@ async function LivePost({ params }: Params) {
   if (!canReach(opening.data.viewer, "outreach")) notFound();
   const { outreach } = opening.data;
   // Every read here is independent of the others, so they go out together (issue #397).
-  const [items, tags, featured, content, projects] = await Promise.all([
+  const [items, tags, featured, content] = await Promise.all([
     outreach.posts.list(),
     outreach.tags(),
     outreach.featured(),
     publishedOutreach(),
-    footerProjects(),
   ]);
   if (items === null || tags === null) notFound();
   const item =
@@ -68,7 +66,6 @@ async function LivePost({ params }: Params) {
       tags={tags}
       neighbours={neighbours}
       published={content}
-      footerProjects={projects}
     />
   );
 }

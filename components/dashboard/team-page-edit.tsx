@@ -6,9 +6,8 @@ import { Check, Eye, LogOut, Plus, RotateCcw, TriangleAlert, X } from "lucide-re
 import { toast } from "sonner";
 import { endAdvising, resetTeamPageLayer, saveTeamPage } from "@/app/dashboard/actions";
 import { PAGE_INTRO } from "@/components/about/page-header";
-import { TeamPageView, type TeamPageFrames } from "@/components/about/team-page";
+import type { TeamPageFrames } from "@/components/about/team-page";
 import { CURRENT_ACADEMIC_YEAR } from "@/lib/about/academic-year-copy";
-import type { FooterProject } from "@/lib/landing-links";
 import {
   advisorFieldErrors,
   advisorRowsOf,
@@ -94,6 +93,7 @@ import { BarButton, EditableBlock, EditShell } from "./edit-shell";
 import { TeamAdvisorsPanel, type KeyedAdvisorRow } from "./team-advisors-panel";
 import { TeamHeadPanel } from "./team-head-panel";
 import { TeamLeaderPanel } from "./team-leader-panel";
+import { EditedTeamPage } from "./team-page-edit-view";
 import { TeamPersonPanel } from "./team-person-panel";
 
 // The Team page editor (boards 80 to 80h, issues #284 and #285): the real
@@ -174,13 +174,10 @@ export function TeamPageEdit({
   opening,
   advisors,
   academicYear,
-  footerProjects,
 }: {
   opening: TeamPageOpening;
   advisors: readonly AdvisorItem[];
   academicYear: number;
-  /** The published projects the page's footer lists (issue #378). */
-  footerProjects: readonly FooterProject[];
 }) {
   const { build, base } = opening;
   const [layer, setLayer] = useState<TeamPageLayer>(opening.layer);
@@ -510,7 +507,7 @@ export function TeamPageEdit({
           )
         }
       >
-        <TeamPageView page={page} academicYear={academicYear} footerProjects={footerProjects} frames={frames} />
+        <EditedTeamPage page={page} academicYear={academicYear} frames={frames} />
       </EditShell>
 
       <EndAdvisingDialog
