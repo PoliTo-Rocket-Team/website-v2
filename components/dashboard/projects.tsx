@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ExternalLink, Pencil, Plus } from "lucide-react";
 import type { ContentItem } from "@/lib/content/versioned";
 import { projectRows, type ProjectRow } from "@/lib/project-content/dashboard-list";
@@ -11,7 +10,6 @@ import { takenSlugs } from "@/lib/project-content/new-project";
 import type { ProjectRecord } from "@/lib/project-content/record";
 import { withSubscriptDigits } from "@/lib/project-content/subscript";
 import { CONTENT_FOCUS as FOCUS, StatusPill } from "./content-parts";
-import { MenuItem, RowMenu } from "./division-members";
 import { NewProjectDialog } from "./new-project-dialog";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 import { PANEL } from "./panel";
@@ -21,13 +19,13 @@ import { PANEL } from "./panel";
 // (lib/project-content/dashboard-list.ts). Each row shows the project's own
 // texture, its name and card line, its kind, years, card status and whether
 // it is on the site, then Edit page (the project on its page, board 75b),
-// View on site once a version is published, and the row's menu. The list
-// sets no order. On phones each row is a compact card with the same fields
+// View on site once a version is published. The row has no menu (Owner
+// decision, issue #506). The list sets no order. On phones each row is a compact card with the same fields
 // and actions. New project in the header stores a draft and opens it in the
 // editor (issue #301).
 
 /** Project, Kind, Years, Status, On the site and the actions; below lg each row is a card. */
-const COLUMNS = "lg:grid lg:grid-cols-[minmax(0,2.6fr)_72px_minmax(0,1fr)_minmax(0,1.3fr)_128px_176px] lg:items-center lg:gap-4";
+const COLUMNS = "lg:grid lg:grid-cols-[minmax(0,2.6fr)_72px_minmax(0,1fr)_minmax(0,1.3fr)_128px_152px] lg:items-center lg:gap-4";
 
 const EDIT_PAGE = `inline-flex h-[30px] shrink-0 items-center justify-center gap-2 rounded-full bg-prt-text px-3 text-[13px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 ${FOCUS}`;
 const ICON_BUTTON = `inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white-10 text-prt-text transition-colors duration-300 ease-out hover:border-border-strong ${FOCUS}`;
@@ -74,7 +72,6 @@ export function ProjectsView({ items }: { items: readonly ContentItem<ProjectRec
 }
 
 function ProjectRowItem({ row }: { row: ProjectRow }) {
-  const router = useRouter();
   const editHref = `/dashboard/projects/${row.slug}`;
   return (
     <li className={`flex flex-col gap-3 px-4 py-4 transition-colors duration-300 ease-out hover:bg-white-5 ${COLUMNS}`}>
@@ -119,20 +116,6 @@ function ProjectRowItem({ row }: { row: ProjectRow }) {
             <ExternalLink aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
           </a>
         )}
-        <span className="ml-auto lg:ml-0">
-          <RowMenu label={`More for ${row.name}`}>
-            <MenuItem icon={<Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />} onSelect={() => router.push(editHref)}>
-              Edit page
-            </MenuItem>
-            <MenuItem
-              icon={<ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />}
-              locked={row.onSite === null ? "Not on the site until it is published." : null}
-              onSelect={() => row.onSite !== null && window.open(row.onSite, "_blank", "noopener,noreferrer")}
-            >
-              View on site
-            </MenuItem>
-          </RowMenu>
-        </span>
       </div>
     </li>
   );
