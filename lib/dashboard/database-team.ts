@@ -106,7 +106,7 @@ import {
   type TeamSearch,
 } from "./division-edit";
 import { refreshAfter } from "@/lib/cache-tags";
-import { readTeamSnapshot, recordsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
+import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
 // The Members page's reads and writes on the database (Dashboard v2 boards 59
@@ -384,6 +384,7 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
     waiting: Object.fromEntries(perDivision.map((d) => [d.id, d.waiting.map(waitingPerson)])),
     joining: Object.fromEntries(perDivision.map((d) => [d.id, d.joining])),
     openPositions,
+    seats: seatsOf(snapshot),
   });
 }
 

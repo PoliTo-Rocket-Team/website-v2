@@ -123,6 +123,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
       <DivisionDrawer
         target={drawerTarget}
         takenCodes={structure.takenCodes}
+        seats={structure.seats}
         editable
         onClose={() => setDivision(null)}
         onFill={fill}

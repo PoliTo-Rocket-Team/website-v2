@@ -23,6 +23,7 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "@/lib/dashboard/division-access";
+import type { HeldSeat } from "@/lib/dashboard/hand-over";
 import type { FlaggedSeat, FullAccessSeat } from "@/lib/dashboard/viewer";
 import { homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type Placement, type RosterEntry } from "@/lib/dashboard/team";
 import type { ApproveOrdersChange } from "@/lib/dashboard/orders";
@@ -142,6 +143,15 @@ const FLAGGED_HEAD_ROLES: Readonly<Record<number, FlaggedSeat>> = { 6: "operatio
 function seatOfPlacement(placement: Placement): FullAccessSeat | null {
   if (placement.role === "team-leader") return "team-leader";
   return placement.role === "head" ? (FLAGGED_HEAD_ROLES[placement.departmentId] ?? null) : null;
+}
+
+/** The flagged roles on `roster` as the hand-over screens read them (`HeldSeat`, issue #501): whoever heads a flagged department holds its seat. */
+export function dummySeatsOf(roster: readonly RosterEntry[]): HeldSeat[] {
+  return roster.flatMap((e): HeldSeat[] => {
+    if (e.placement.role !== "head") return [];
+    const seat = FLAGGED_HEAD_ROLES[e.placement.departmentId];
+    return seat === undefined ? [] : [{ seat, personId: e.id, role: { kind: "head", departmentId: e.placement.departmentId } }];
+  });
 }
 
 function personOf(id: number): DummyPerson {
