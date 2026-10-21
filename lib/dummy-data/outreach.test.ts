@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { editorVersion, publicItems, statusOf } from "@/lib/content/versioned";
 import { iressStory, outreachRecord } from "@/lib/outreach";
 import { outreachEditor } from "@/lib/outreach-editor";
+import { FEATURED_FULL } from "@/lib/outreach-featured";
 import { outreachPostOf } from "@/lib/outreach-rows";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyDashboardData } from "./index";
@@ -45,9 +46,9 @@ test("the test developer's dashboard reads the imported Outreach content, behind
   const posts = await outreach.posts.list();
   assert.ok(posts !== null);
   assert.deepEqual(publicItems(posts), [...outreachRecord.posts, iressStory]);
-  const pinned = await outreach.pinned();
-  assert.deepEqual(posts.find((i) => i.id === pinned)?.version, { state: "published", published: iressStory, draft: null }, "the summit's story is pinned");
-  assert.deepEqual((await outreach.summit())?.published, outreachRecord.feature);
+  const featured = await outreach.featured();
+  assert.equal(featured.length, 1);
+  assert.deepEqual(posts.find((i) => i.id === featured[0])?.version, { state: "published", published: iressStory, draft: null }, "the summit's story is featured");
   assert.deepEqual(await outreach.tags(), outreachRecord.tags);
 
   for (const kind of ["department-head", "division-lead", "member", "non-member"] as const) {
@@ -70,7 +71,6 @@ test("a test developer's writes stay in their cookie, across requests", async ()
     value: { ...outreachRecord.posts[2], title: "A new post", date: "2026-10-01" },
   }));
   assert.ok(created.ok, created.ok ? "" : created.error);
-  assert.ok((await outreach.saveSummit("save-draft", async (current) => ({ ok: true, value: { ...current, title: "IRESS" } }))).ok);
   assert.ok((await outreach.posts.remove(12)).ok);
 
   // The next request reads the cookie again.
@@ -82,35 +82,37 @@ test("a test developer's writes stay in their cookie, across requests", async ()
   assert.deepEqual(editorVersion(first.version).tags, ["Charity run", "Workshop"]);
   assert.equal(statusOf(items.find((i) => i.id === created.value.id)!.version), "draft");
   assert.ok(!items.some((i) => i.id === 12));
-  assert.equal((await next.summit())?.draft?.title, "IRESS");
-  assert.equal((await next.summit())?.published.title, outreachRecord.feature.title);
   assert.deepEqual((await next.tags())?.at(-1), { name: "Workshop", award: false });
   // What the public pages would show is still the record's and the summit's story, less the removed post.
   assert.deepEqual(publicItems(items), [...outreachRecord.posts.filter((_, i) => i !== 11), iressStory]);
 });
 
-test("a test developer's pin stays in their cookie, one post at a time, and a removed post takes its pin with it", async () => {
+test("a test developer's featured posts stay in their cookie, two at most, and a removed post leaves its place", async () => {
   const jar = cookie();
   const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
-  const story = (await editor.pinned())!;
-  assert.ok((await editor.pin(1)).ok);
-  assert.equal(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).pinned(), 1, "the next request reads the pin");
-  assert.ok((await editor.unpin()).ok);
-  assert.equal(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).pinned(), null);
-  assert.ok((await editor.pin(story)).ok);
-  assert.ok((await editor.posts.remove(story)).ok);
-  assert.equal(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).pinned(), null);
+  const nextRequest = () => outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).featured();
+  const [story] = await editor.featured();
+  assert.ok(story !== undefined);
+  assert.ok((await editor.feature(1)).ok);
+  assert.deepEqual(await nextRequest(), [story, 1], "the next request reads both");
+  assert.deepEqual(await editor.feature(2), { ok: false, error: FEATURED_FULL }, "a third is refused");
+  assert.deepEqual(await nextRequest(), [story, 1], "and nothing changed");
+  assert.ok((await editor.unfeature(story)).ok);
+  assert.deepEqual(await nextRequest(), [1]);
+  assert.ok((await editor.posts.remove(1)).ok);
+  assert.deepEqual(await nextRequest(), [], "a removed post is featured no more");
 });
 
 test("a cookie this code did not write reads as no changes", () => {
   assert.deepEqual(parseOutreachEdits(undefined), NO_OUTREACH_EDITS);
   assert.deepEqual(parseOutreachEdits("not json"), NO_OUTREACH_EDITS);
-  const forgedPost = { posts: { saved: [{ id: 1, siteOrder: 1, version: { state: "draft", draft: { patch: { body: "not blocks" } } } }], removed: [], order: [] }, summit: null, tags: [] };
+  const forgedPost = { posts: { saved: [{ id: 1, siteOrder: 1, version: { state: "draft", draft: { patch: { body: "not blocks" } } } }], removed: [], order: [] }, tags: [] };
   assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedPost))).posts.saved, []);
-  const forgedTag = { posts: { saved: [], removed: [], order: [] }, summit: null, tags: ["Award"] };
+  const forgedTag = { posts: { saved: [], removed: [], order: [] }, tags: ["Award"] };
   assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedTag))), NO_OUTREACH_EDITS);
-  const forgedSummit = { posts: { saved: [], removed: [], order: [] }, summit: { state: "draft", draft: {} }, tags: [] };
-  assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedSummit))), NO_OUTREACH_EDITS);
-  const forgedPin = { posts: { saved: [], removed: [], order: [] }, summit: null, tags: [], pin: { id: "1" } };
-  assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forgedPin))), NO_OUTREACH_EDITS);
+  // A cookie holds two featured posts at most, each once, by id.
+  for (const featured of [[1, 2, 3], [1, 1], ["1"], { id: 1 }]) {
+    const forged = { posts: { saved: [], removed: [], order: [] }, tags: [], featured };
+    assert.deepEqual(parseOutreachEdits(encodeURIComponent(JSON.stringify(forged))), NO_OUTREACH_EDITS, JSON.stringify(featured));
+  }
 });

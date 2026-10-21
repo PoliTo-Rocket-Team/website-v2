@@ -4,8 +4,8 @@ import type { ContentItem, Versioned } from "./content/versioned";
 import type { Copy } from "./projects";
 
 // The Outreach page (/outreach) and its post pages (/outreach/<slug>) as
-// data, drawn by components/outreach/. The dashboard edits the summit, the
-// posts and the tags (issue #287), so every field is a plain value a form can
+// data, drawn by components/outreach/. The dashboard edits the posts, which
+// of them are featured, and the tags (issues #287, #496), so every field is a plain value a form can
 // fill. A fact a post does not have is an absent key, never an empty string.
 
 /** A day, written YYYY-MM-DD. */
@@ -138,46 +138,42 @@ export type PostItem = ContentItem<OutreachPost, OutreachDraft>;
 /** Where the posts are kept: the database, or the dummy data on previews. */
 export type PostStore = ContentStore<OutreachPost, OutreachDraft>;
 
-/** One edition of the featured summit. */
-export type Edition = { year: number; place: string };
+/** No item, one, or two: the featured posts (issue #496), at most two at once. */
+export type UpToTwo<T> = readonly [] | readonly [T] | readonly [T, T];
 
-/** The summit the team started, featured above the posts. */
-export type OutreachFeature = {
-  /** "STARTED BY US · 2023". */
-  eyebrow: string;
-  title: string;
-  story: Copy;
-  photo: OutreachPhoto;
-  /** Oldest first; the first is the one we started. */
-  editions: NonEmpty<Edition>;
-};
+/** Each item through `f`, still none, one or two. */
+export function mapUpToTwo<T, U>(items: UpToTwo<T>, f: (item: T) => U): UpToTwo<U> {
+  // `map` keeps the length, so the answer holds as many items as `items`.
+  return (items as readonly T[]).map(f) as unknown as UpToTwo<U>;
+}
 
 /**
- * The page's own words. They stay in code: the editor changes the summit and
- * the posts, never the header or the intro.
+ * The page's own words. They stay in code: the editor changes the posts,
+ * never the header or the intro.
  */
 export type OutreachCopy = {
   description: string;
   header: { eyebrow: string; title: string; intro: string };
+  /** The student summit the team started, as the header's two IRESS figures count it. */
+  summit: { editions: number; started: number };
   /** Section title over the post cards. */
   postsTitle: string;
 };
 
 /**
- * What the store keeps and the editor changes (issue #287): the summit, the
- * posts and the tag list. The public pages read the published versions.
+ * What the store keeps and the editor changes (issue #287): the posts and
+ * the tag list. The public pages read the published versions.
  */
 export type OutreachContent = {
-  feature: OutreachFeature;
   /**
-   * The published post pinned to the top of /outreach (issue #392), shown in
-   * the Featured card and never in `posts`; null while none is.
+   * The published posts featured at the top of /outreach (issue #496), newest
+   * first, each in its own Featured card and never in `posts`; none, one or two.
    */
-  pinned: OutreachPost | null;
+  featured: UpToTwo<OutreachPost>;
   /** Every other published post, in any order; the page shows them newest first. */
   posts: readonly OutreachPost[];
   tags: readonly OutreachTag[];
 };
 
-/** The Outreach record of lib/outreach.ts, as the 0032 import carried it in: the summit, the posts and the tags, nothing pinned yet. */
-export type OutreachRecord = Omit<OutreachContent, "pinned">;
+/** The Outreach record of lib/outreach.ts, as the 0032 import carried it in: the posts and the tags, nothing featured yet. */
+export type OutreachRecord = Omit<OutreachContent, "featured">;

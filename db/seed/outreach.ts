@@ -1,10 +1,10 @@
 // The Outreach seed (issue #309): the posts on /outreach and their pages, the
 // home page's Track record cards, and the dashboard's Outreach editor (epic
 // #254, boards 74 to 74h). It starts from what the import migration carries
-// in (lib/outreach-import.ts): the tag list with Award as the award tag, the
-// featured summit, every post of the record, published, each with its photo
-// and alt text, and the summit's story, published and pinned to the top of
-// /outreach (issue #392). The record's posts carry every tag but link Instagram
+// in (lib/outreach-import.ts): the tag list with Award as the award tag,
+// every post of the record, published, each with its photo and alt text, and
+// the summit's story, published and featured at the top of /outreach (issues
+// #392, #496). The record's posts carry every tag but link Instagram
 // and LinkedIn only, so one more published post links every channel type,
 // and it has a gallery at the bottom of its page (issue #430). Three record
 // posts, the newest one included, get a gallery of placeholder photos too, so
@@ -13,11 +13,10 @@
 // before it is whole (board 74f), never published, so the public pages do
 // not show it.
 
-import { outreachPosts, outreachPostTags, outreachPostVersions, outreachSummitVersions, outreachTags } from "@/db/schema";
-import { versionRows } from "@/lib/content/versioned";
+import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } from "@/db/schema";
 import { outreachRecord } from "@/lib/outreach";
 import { importedOutreach } from "@/lib/outreach-import";
-import { postColumns, summitColumns } from "@/lib/outreach-rows";
+import { postColumns } from "@/lib/outreach-rows";
 import type { OutreachDraft, OutreachPost, PostGallery, PostGalleryPhoto, PostItem } from "@/lib/outreach-types";
 import { contentVersionRows } from "./content";
 import { rowsOf, tableSeedModule } from "./rows";
@@ -115,8 +114,8 @@ const UNFINISHED_DRAFT: OutreachDraft = {
 
 const IMPORTED = importedOutreach();
 
-/** The summit's story (issue #392), pinned as the import leaves it. */
-export const PINNED_POST = IMPORTED.pinned;
+/** The summit's story (issue #392), the one post the import leaves featured (issue #496). */
+export const FEATURED_POSTS = IMPORTED.featured;
 
 /** A project page's gallery photo (public/project-photos/), with the alt text and caption that page gives it. */
 const projectPhoto = (file: `${"cavour" | "ves"}/${string}`, alt: string, caption: string): PostGalleryPhoto => ({
@@ -132,21 +131,22 @@ const recordPostId = (title: string): number => {
   return item.id;
 };
 
-/** The pinned summit story's id; the import always pins it. */
-const pinnedPostId = (): number => {
-  if (PINNED_POST === null) throw new Error("the outreach import pins no post");
-  return PINNED_POST;
+/** The featured summit story's id; the import always features it. */
+const storyPostId = (): number => {
+  const [story] = FEATURED_POSTS;
+  if (story === undefined) throw new Error("the outreach import features no post");
+  return story;
 };
 
 /**
  * Placeholder galleries for three published record posts (issue #456): the
- * newest one, Wings for Life, and two more; and for the pinned summit story,
- * the post the top of /outreach leads to. Their photos are the record's and
- * the project pages' own, so each alt text says what its photo shows.
+ * newest one, Wings for Life, and two more; and for the featured summit
+ * story, the post the top of /outreach leads to. Their photos are the
+ * record's and the project pages' own, so each alt text says what its photo shows.
  */
 const RECORD_GALLERIES: ReadonlyMap<number, PostGallery> = new Map<number, PostGallery>([
   [
-    pinnedPostId(),
+    storyPostId(),
     {
       items: [
         { ...recordPhoto("IRESS, 1st edition"), caption: "The 1st edition, Torino" },
@@ -218,16 +218,20 @@ export const OUTREACH_ITEMS: readonly PostItem[] = [
   { id: DRAFT_ONLY_POST, siteOrder: DRAFT_ONLY_POST, version: { state: "draft", draft: UNFINISHED_DRAFT } },
 ];
 
-export const OUTREACH_SUMMIT = IMPORTED.summit;
-
 export const OUTREACH_TAG_ROWS = rowsOf(
   outreachTags,
   IMPORTED.tags.map((tag, i) => ({ name: tag.name, award: tag.award, listOrder: i + 1, createdAt: CREATED })),
 );
 
+/** The featured slot a post holds, 1 or 2 in the import's order (migration 0048); null for every other post. */
+const featuredSlotOf = (id: number): 1 | 2 | null => {
+  const at = (FEATURED_POSTS as readonly number[]).indexOf(id);
+  return at === 0 ? 1 : at === 1 ? 2 : null;
+};
+
 export const OUTREACH_POST_ROWS = rowsOf(
   outreachPosts,
-  OUTREACH_ITEMS.map(({ id, siteOrder }) => ({ id, siteOrder, pinned: id === PINNED_POST, createdAt: CREATED })),
+  OUTREACH_ITEMS.map(({ id, siteOrder }) => ({ id, siteOrder, featuredSlot: featuredSlotOf(id), createdAt: CREATED })),
 );
 
 const VERSIONS = contentVersionRows(OUTREACH_ITEMS);
@@ -254,16 +258,8 @@ export const OUTREACH_POST_TAG_ROWS = rowsOf(
   ),
 );
 
-export const OUTREACH_SUMMIT_ROWS = rowsOf(
-  outreachSummitVersions,
-  versionRows(OUTREACH_SUMMIT).map(({ kind, content }) => {
-    const c = summitColumns(content);
-    return { version: kind, ...c, editions: [...c.editions], updatedAt: PUBLISHED };
-  }),
-);
-
 export const outreachSeed = tableSeedModule({
   name: "outreach",
-  owns: [outreachTags, outreachPosts, outreachPostVersions, outreachPostTags, outreachSummitVersions],
-  rows: [OUTREACH_TAG_ROWS, OUTREACH_POST_ROWS, OUTREACH_POST_VERSION_ROWS, OUTREACH_POST_TAG_ROWS, OUTREACH_SUMMIT_ROWS],
+  owns: [outreachTags, outreachPosts, outreachPostVersions, outreachPostTags],
+  rows: [OUTREACH_TAG_ROWS, OUTREACH_POST_ROWS, OUTREACH_POST_VERSION_ROWS, OUTREACH_POST_TAG_ROWS],
 });

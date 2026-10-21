@@ -13,6 +13,7 @@ import {
   pgTable,
   primaryKey,
   serial,
+  smallint,
   text,
   timestamp,
   unique,
@@ -725,22 +726,23 @@ export const outreachTags = pgTable(
 // The posts on /outreach and their pages (issue #287, boards 74 to 74h). A
 // post is its place in the site order; what it shows lives in its versions,
 // as a partner's does: a published one, a draft, or both. Removing a post
-// removes its versions and their tags. `pinned` marks the post pinned to the
-// top of /outreach (issue #392); the partial unique index keeps it to one.
+// removes its versions and their tags. `featured_slot` marks a post featured
+// at the top of /outreach (issue #496, migration 0048): slot 1 or 2, each
+// held by one post at most, so a third featured post cannot be stored; null
+// for every other post.
 export const outreachPosts = pgTable(
   "outreach_posts",
   {
     id: serial("id").primaryKey(),
     siteOrder: integer("site_order").notNull(),
-    pinned: boolean("pinned").default(false).notNull(),
+    featuredSlot: smallint("featured_slot"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),
   },
   (table) => ({
-    onePinned: uniqueIndex("outreach_posts_one_pinned")
-      .on(table.pinned)
-      .where(sql`${table.pinned}`),
+    featuredSlotValid: check("outreach_posts_featured_slot", sql`${table.featuredSlot} in (1, 2)`),
+    oneEachFeaturedSlot: uniqueIndex("outreach_posts_featured_slot_unique").on(table.featuredSlot),
   }),
 );
 
@@ -834,9 +836,10 @@ export const outreachPostTags = pgTable(
   }),
 );
 
-// The summit the team started, featured above the posts (board 74's summit
-// card). There is one, so a version is keyed by its kind alone: a published
-// one, which the import writes, and an optional draft beside it.
+// The summit the team started, once featured above the posts (board 74's
+// summit card). It left the product (issue #496): the featured posts are
+// normal posts, and no code reads or writes this table. It is kept so no
+// stored row is lost.
 export const outreachSummitVersions = pgTable(
   "outreach_summit_versions",
   {

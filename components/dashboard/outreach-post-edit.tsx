@@ -2,10 +2,10 @@
 
 import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Pin, PinOff } from "lucide-react";
+import { Pencil, Star, StarOff } from "lucide-react";
 import { toast } from "sonner";
 import { addOutreachTag, saveOutreachPost } from "@/app/dashboard/actions";
-import { pinOutreachPost, unpinOutreachPost } from "@/app/dashboard/outreach-actions";
+import { featureOutreachPost, unfeatureOutreachPost } from "@/app/dashboard/outreach-actions";
 import { Latest } from "@/components/landing/latest";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
@@ -16,19 +16,22 @@ import { PostPage } from "@/components/outreach/post-page";
 import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
 import type { FooterProject } from "@/lib/landing-links";
-import { featuredCard, newestFirst, outreachStats, slugOf, trackRecordShowing, withEdited, type Neighbouring } from "@/lib/outreach";
+import { featuredCard, newestFirst, outreachStats, slugOf, trackRecordShowing, withEdited, type FeaturedCard, type Neighbouring } from "@/lib/outreach";
 import {
-  featuredCardPin,
+  featuredAfter,
+  featuredCardFeature,
   featuredOpen,
-  listedCardPin,
-  runPinMove,
-  withPinned,
-  type CardPin,
+  isFeatured,
+  listedCardFeature,
+  runFeatureMove,
+  withFeatured,
+  type CardFeature,
   type EditedPost,
+  type FeaturedIds,
   type FeaturedOpen,
-  type PinIds,
-  type PinState,
-} from "@/lib/outreach-pin";
+  type FeatureIds,
+  type FeatureState,
+} from "@/lib/outreach-featured";
 import {
   blankPost,
   blankPostFields,
@@ -41,7 +44,7 @@ import {
   type PostFieldErrors,
   type PostFields,
 } from "@/lib/outreach-post-fields";
-import { titleOf, type IsoDate, type OutreachContent, type OutreachDraft, type OutreachTag, type PostItem } from "@/lib/outreach-types";
+import { mapUpToTwo, titleOf, type IsoDate, type OutreachContent, type OutreachDraft, type OutreachTag, type PostItem } from "@/lib/outreach-types";
 import { CardChip, CardInPlace, EditableBlock, EditShell } from "./edit-shell";
 import { OutreachPostPanel, SECTION_OF, type PostSection } from "./outreach-post-panel";
 
@@ -81,15 +84,15 @@ const PAGE_TARGETS: readonly PageTarget<PostPageId>[] = [
   { id: "home", label: "Home" },
 ];
 
-// The pinned post (issue #392) shows in the Outreach list's Featured card and
-// on no home card, so its switch offers the post page and the list alone.
-const PINNED_PAGE_TARGETS = PAGE_TARGETS.filter((t) => t.id !== "home");
+// A featured post (issue #496) shows in a Featured card on the Outreach list
+// and on no home card, so its switch offers the post page and the list alone.
+const FEATURED_PAGE_TARGETS = PAGE_TARGETS.filter((t) => t.id !== "home");
 
 /** What the editor opens on: a stored post, or a new one not saved yet, dated `today`. */
 type Opening = { readonly item: PostItem } | { readonly item: null; readonly today: IsoDate };
 
 export function OutreachPostEdit({
-  pins,
+  features,
   tags: initialTags,
   neighbours,
   published,
@@ -97,11 +100,11 @@ export function OutreachPostEdit({
   ...opening
 }: Opening & {
   /**
-   * The post pinned to the top of /outreach (issue #392) and every published
-   * post's id, so the Outreach list target pins and unpins from its cards
-   * (issue #431).
+   * The posts featured at the top of /outreach (issue #496) and every
+   * published post's id, so the Outreach list target features and unfeatures
+   * from its cards (issue #431).
    */
-  pins: PinState;
+  features: FeatureState;
   tags: readonly OutreachTag[];
   neighbours: Neighbouring;
   /** What the public pages show, for the list and home targets. */
@@ -124,16 +127,16 @@ export function OutreachPostEdit({
   const [scrollTo, setScrollTo] = useState<{ section: PostSection } | null>(null);
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState<PostPageId>("post");
-  // The page keeps each pin move's answer, as the Outreach list keeps its rows.
-  const [pinnedId, setPinnedId] = useState(pins.pinned);
-  const [pinning, startPinning] = useTransition();
+  // The page keeps each feature move's answer, as the Outreach list keeps its rows.
+  const [featuredIds, setFeaturedIds] = useState<FeaturedIds>(features.featured);
+  const [moving, startMoving] = useTransition();
 
   const opened = item === null ? start : editorVersion(item.version);
   const view = postViewOf(fields, opened);
   const errors = standingErrors(failed, fields);
   const live = item === null ? null : publicVersion(item.version);
-  const pinned = item !== null && item.id === pinnedId;
-  const shown = withPinned(published, pins.ids, pinnedId);
+  const featuredHere = item !== null && isFeatured(featuredIds, item.id);
+  const shown = withFeatured(published, features.ids, featuredIds);
   // A post never published may be saved as a draft as it is; a live post's draft must be whole.
   const unfinishedDraft = live === null;
 
@@ -172,19 +175,19 @@ export function OutreachPostEdit({
     });
   };
 
-  const movePin = (pin: CardPin) => {
-    if (pin.kind === "locked") {
-      toast.error(pin.reason);
+  const moveFeature = (move: CardFeature) => {
+    if (move.kind === "locked") {
+      toast.error(move.reason);
       return;
     }
-    if (pinning) return;
-    startPinning(async () => {
-      const result = await runPinMove(pin, { pin: pinOutreachPost, unpin: unpinOutreachPost });
+    if (moving) return;
+    startMoving(async () => {
+      const result = await runFeatureMove(move, { feature: featureOutreachPost, unfeature: unfeatureOutreachPost });
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      setPinnedId(pin.kind === "pin" ? pin.id : null);
+      setFeaturedIds((ids) => featuredAfter(ids, move));
       toast.success(result.value);
     });
   };
@@ -213,7 +216,7 @@ export function OutreachPostEdit({
       onSaveDraft={pending ? null : () => save("save-draft")}
       onPublish={pending ? null : () => save("publish")}
       publishChecklist={publishChecklist(fields)}
-      pages={item === null ? undefined : { targets: pinned ? PINNED_PAGE_TARGETS : PAGE_TARGETS, current: page, onSelect: setPage }}
+      pages={item === null ? undefined : { targets: featuredHere ? FEATURED_PAGE_TARGETS : PAGE_TARGETS, current: page, onSelect: setPage }}
       blocks={POST_BLOCKS}
       startHere={item === null && !panelOpen ? "details" : undefined}
       onEdit={openSection}
@@ -241,14 +244,15 @@ export function OutreachPostEdit({
           page={page}
           view={view}
           edited={{ id: item.id, live: live !== null }}
-          pinned={pinned}
+          featuredHere={featuredHere}
           shown={shown}
-          ids={pins.ids}
+          ids={features.ids}
+          featured={featuredIds}
           footerProjects={footerProjects}
           publishedSlug={live === null ? null : slugOf(live)}
           onEditCard={() => openSection("details")}
           onOpenFeatured={openFeatured}
-          onPin={movePin}
+          onMove={moveFeature}
         />
       )}
     </EditShell>
@@ -258,105 +262,95 @@ export function OutreachPostEdit({
 /**
  * The Outreach list or the home page, with the post's card in place, outlined
  * with an Edit card chip that opens Title and details, where the card summary
- * lives; the other cards are dimmed. The pinned post's card is the list's
- * Featured card (issue #392), drawn from the fields with the cards below it
- * as they are.
+ * lives; the other cards are dimmed. A featured post's card is one of the
+ * list's Featured cards (issue #496), drawn from the fields with the other
+ * cards as they are.
  *
- * On the list the Featured card is framed as the post cards are (issue #431):
- * it offers Unpin, and, while another post is being edited, opens the pinned
- * post's own editor; every post card offers Pin to top.
+ * On the list each Featured card is framed as the post cards are (issue
+ * #431): it offers Unfeature and, unless its post is the one being edited,
+ * opens that post's own editor; every post card offers Feature, locked while
+ * two posts are featured.
  */
 function CardPage({
   page,
   view,
   edited: editedPost,
-  pinned,
+  featuredHere,
   shown,
   ids,
+  featured,
   footerProjects,
   publishedSlug,
   onEditCard,
   onOpenFeatured,
-  onPin,
+  onMove,
 }: {
   page: Exclude<PostPageId, "post">;
   view: OutreachDraft;
   edited: EditedPost;
-  /** Whether the post being edited is the pinned one. */
-  pinned: boolean;
-  /** What the public pages show, with the pin as the editor last moved it. */
+  /** Whether the post being edited is a featured one. */
+  featuredHere: boolean;
+  /** What the public pages show, with the featured posts as the editor last moved them. */
   shown: OutreachContent;
-  ids: PinIds;
+  ids: FeatureIds;
+  featured: FeaturedIds;
   footerProjects: readonly FooterProject[];
   publishedSlug: string | null;
   onEditCard: () => void;
   onOpenFeatured: (open: FeaturedOpen) => void;
-  onPin: (pin: CardPin) => void;
+  onMove: (move: CardFeature) => void;
 }) {
-  const pinChip = (pin: CardPin | null) => (pin === null ? undefined : <PinChip pin={pin} onMove={onPin} />);
-  if (pinned) {
-    const feature = featuredCard(shown.feature, view);
-    return (
-      <OutreachListPage
-        stats={outreachStats(shown)}
-        feature={feature}
-        cards={newestFirst(shown.posts).map(postCardOf)}
-        footerProjects={footerProjects}
-        featureFrame={(node, layout) => (
-          <CardInPlace edited onEdit={onEditCard} className={layout} actions={pinChip(featuredCardPin(feature))}>
-            {node}
-          </CardInPlace>
-        )}
-        frame={(card, node, layout) => (
-          <CardInPlace edited={false} onEdit={onEditCard} className={layout} actions={pinChip(listedCardPin(card, null, ids))}>
-            {node}
-          </CardInPlace>
-        )}
-      />
-    );
-  }
-  const posts = withEdited(shown.posts, publishedSlug, view);
+  const chip = (move: CardFeature | null) => (move === null ? undefined : <FeatureChip move={move} onMove={onMove} />);
+  // A featured post is not listed, so its card is the Featured card drawn from the fields.
+  const posts = featuredHere ? [...shown.posts] : withEdited(shown.posts, publishedSlug, view);
   if (page === "list") {
+    const features = mapUpToTwo(shown.featured, (post) => {
+      const editing = featuredHere && slugOf(post) === publishedSlug;
+      return { card: featuredCard(editing ? view : post), editing };
+    });
+    const editingFeature = (card: FeaturedCard) => (features as readonly { card: FeaturedCard; editing: boolean }[]).some((f) => f.card === card && f.editing);
     const cards = newestFirst(posts).map((p) => ({ post: p, card: postCardOf(p) }));
     const edited = cards.find((c) => c.post === view)?.card;
-    const feature = featuredCard(shown.feature, shown.pinned);
-    const open = featuredOpen(feature, false);
     return (
       <OutreachListPage
         stats={outreachStats(shown)}
-        feature={feature}
+        features={mapUpToTwo(features, (f) => f.card)}
         cards={cards.map((c) => c.card)}
         footerProjects={footerProjects}
         keepInView={edited}
-        featureFrame={(node, layout) => (
-          <CardInPlace
-            edited={false}
-            onEdit={onEditCard}
-            className={layout}
-            actions={
-              open === null ? undefined : (
+        featureFrame={(card, node, layout) => {
+          const editing = editingFeature(card);
+          const open = featuredOpen(card, editing);
+          return (
+            <CardInPlace
+              edited={editing}
+              onEdit={onEditCard}
+              className={layout}
+              actions={
                 <>
-                  <CardChip
-                    icon={<Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />}
-                    label={`Edit post: ${feature.title}`}
-                    onClick={() => onOpenFeatured(open)}
-                  >
-                    Edit post
-                  </CardChip>
-                  {pinChip(featuredCardPin(feature))}
+                  {!editing && (
+                    <CardChip
+                      icon={<Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />}
+                      label={`Edit post: ${card.title}`}
+                      onClick={() => onOpenFeatured(open)}
+                    >
+                      Edit post
+                    </CardChip>
+                  )}
+                  {chip(featuredCardFeature(card, editing ? editedPost : null, ids))}
                 </>
-              )
-            }
-          >
-            {node}
-          </CardInPlace>
-        )}
+              }
+            >
+              {node}
+            </CardInPlace>
+          );
+        }}
         frame={(card, node, layout) => (
           <CardInPlace
             edited={card === edited}
             onEdit={onEditCard}
             className={layout}
-            actions={pinChip(listedCardPin(card, card === edited ? editedPost : null, ids))}
+            actions={chip(listedCardFeature(card, card === edited ? editedPost : null, ids, featured))}
           >
             {node}
           </CardInPlace>
@@ -383,23 +377,23 @@ function CardPage({
   );
 }
 
-/** A card's pin control: Pin to top, off with the reason while the post is not published, or Unpin. */
-function PinChip({ pin, onMove }: { pin: CardPin; onMove: (pin: CardPin) => void }) {
-  if (pin.kind === "unpin") {
+/** A card's Featured control: Feature, off with the reason while it cannot be, or Unfeature. */
+function FeatureChip({ move, onMove }: { move: CardFeature; onMove: (move: CardFeature) => void }) {
+  if (move.kind === "unfeature") {
     return (
-      <CardChip icon={<PinOff aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />} label={`Unpin ${pin.title}`} onClick={() => onMove(pin)}>
-        Unpin
+      <CardChip icon={<StarOff aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />} label={`Unfeature ${move.title}`} onClick={() => onMove(move)}>
+        Unfeature
       </CardChip>
     );
   }
   return (
     <CardChip
-      icon={<Pin aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
-      label={`Pin to top: ${pin.title}`}
-      locked={pin.kind === "locked" ? pin.reason : null}
-      onClick={() => onMove(pin)}
+      icon={<Star aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
+      label={`Feature ${move.title}`}
+      locked={move.kind === "locked" ? move.reason : null}
+      onClick={() => onMove(move)}
     >
-      Pin to top
+      Feature
     </CardChip>
   );
 }

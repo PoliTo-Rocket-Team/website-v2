@@ -10,7 +10,6 @@ import {
   interviewSlots,
   members,
   orders,
-  outreachSummitVersions,
   recruitmentSetting,
   roles,
   scopes,
@@ -274,10 +273,6 @@ export function seedFixture(): void {
   );
   seedExtras();
   insertRows(recruitmentSetting, [{ id: true, isOpen: true, updatedAt: NOW }]);
-  // The site content the editors open: the summit is always published (lib/dashboard/database-outreach.ts).
-  insertRows(outreachSummitVersions, [
-    { version: "published", eyebrow: "Summit", title: "Summit", story: "Story", photoSrc: "/outreach/summit.jpg", photoAlt: "Summit", editions: [{ year: 2024, place: "Turin" }], updatedAt: NOW },
-  ]);
   seedViewers();
   for (const u of ALL) seedUnit(u);
 }

@@ -236,8 +236,8 @@ export interface DashboardData {
   readonly teamAdvisors: AdvisorEditor;
 
   /**
-   * Boards 74 to 74h (issue #287): the Outreach posts, the featured summit and
-   * the tag list, and their writes, behind the same gate. Each side brings its
+   * Boards 74 to 74h (issue #287): the Outreach posts, which of them are
+   * featured (issue #496), the tag list, and their writes, behind the same gate. Each side brings its
    * own store: the database, or a test developer's cookie over the dummy
    * content.
    */

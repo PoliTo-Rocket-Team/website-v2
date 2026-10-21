@@ -159,7 +159,7 @@ function dummyAdvisorEditsIn(jar: Jar): DummyAdvisorEditsStore {
   };
 }
 
-/** Changes to the Outreach posts, summit and tags (issue #287, lib/dummy-data/outreach.ts); the public pages never read them. */
+/** Changes to the Outreach posts, featured posts and tags (issues #287, #496, lib/dummy-data/outreach.ts); the public pages never read them. */
 function dummyOutreachEditsIn(jar: Jar): DummyOutreachEditsStore {
   return {
     current: parseOutreachEdits(jar.get(TEST_DEVELOPER_OUTREACH_COOKIE)?.value),

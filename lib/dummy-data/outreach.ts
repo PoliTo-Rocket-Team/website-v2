@@ -1,19 +1,11 @@
 import { memoryContentStore } from "@/lib/content/memory";
 import { refused, written } from "@/lib/dashboard/write";
-import { checkNewTag, type OutreachStore, type StoredOutreach, type SummitVersions } from "@/lib/outreach-editor";
+import { checkNewTag, type OutreachStore, type StoredOutreach } from "@/lib/outreach-editor";
+import { featuredIdsOf, featuring, unfeaturing, type FeaturedIds } from "@/lib/outreach-featured";
 import { importedOutreach } from "@/lib/outreach-import";
 import type { PhotoFiles } from "@/lib/outreach-photos";
-import { outreachDraftOf, outreachFeatureOf, outreachPostOf } from "@/lib/outreach-rows";
-import type {
-  OutreachDraft,
-  OutreachFeature,
-  OutreachPhoto,
-  OutreachPost,
-  OutreachTag,
-  PostGallery,
-  PostItem,
-  PostVersions,
-} from "@/lib/outreach-types";
+import { outreachDraftOf, outreachPostOf } from "@/lib/outreach-rows";
+import type { OutreachDraft, OutreachPhoto, OutreachPost, OutreachTag, PostGallery, PostItem, PostVersions } from "@/lib/outreach-types";
 import { contentEditsOf, NO_CONTENT_EDITS, parseContentEdits, PREVIEW_FULL, withContentEdits, type ContentEdits } from "./content-edits";
 import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 
@@ -21,33 +13,27 @@ import { DUMMY_STATE_COOKIE_BYTES } from "./state";
 // #287), which never touch a database. The dashboard starts from what the
 // import carries into the database. A test developer's changes are kept in
 // one cookie in their own browser, cleared on sign out: the edits to the
-// posts (./content-edits.ts), the summit's versions once they change it, the
-// tags they add, and the pinned post once they pin or unpin one. The public
-// pages never read it.
+// posts (./content-edits.ts), the tags they add, and the featured posts once
+// they feature or unfeature one (issue #496). The public pages never read it.
 //
 // A post is long, so a whole one or two fill the cookie. The cookie keeps a
-// version of a seeded post or of the summit as the fields that differ from
-// the seed's published version; a new post is kept whole.
+// version of a seeded post as the fields that differ from the seed's
+// published version; a new post is kept whole.
 //
 // A photo a test developer uploads is stored nowhere (issue #291): the
 // answer carries it as a data URL, so the panel and the page show it until
 // the next load, and the cookie keeps the board's warm stand-in in its place.
 
-/** Which post is pinned, once a test developer pinned or unpinned one: its id, or none. */
-export type DummyPin = { readonly id: number | null };
-
 /** What a test developer changed on the Outreach content. */
 export type DummyOutreachEdits = {
   readonly posts: ContentEdits<OutreachPost, OutreachDraft>;
-  /** The summit's versions, once changed; null while it is the seed's. */
-  readonly summit: SummitVersions | null;
   /** Tags added to the end of the list, in the order they were added. */
   readonly tags: readonly string[];
-  /** The pin, once changed (issue #392); null while it is the seed's. */
-  readonly pin: DummyPin | null;
+  /** The featured posts' ids once changed (issue #496), at most two; null while they are the seed's. */
+  readonly featured: FeaturedIds | null;
 };
 
-export const NO_OUTREACH_EDITS: DummyOutreachEdits = { posts: NO_CONTENT_EDITS, summit: null, tags: [], pin: null };
+export const NO_OUTREACH_EDITS: DummyOutreachEdits = { posts: NO_CONTENT_EDITS, tags: [], featured: null };
 
 export type DummyOutreachEditsStore = {
   readonly current: DummyOutreachEdits;
@@ -109,31 +95,25 @@ export function serializeOutreachEdits(edits: DummyOutreachEdits): string {
         version: eachVersion(item.version, (post) => compact(seedPost(item.id), post as OutreachPost)),
       })),
     },
-    summit: edits.summit === null ? null : eachVersion(edits.summit, (f) => compact(SEED.summit.published, f as OutreachFeature)),
     tags: edits.tags,
-    pin: edits.pin,
+    featured: edits.featured,
   };
   return encodeURIComponent(JSON.stringify(wire));
 }
 
-/** The pin as the cookie keeps it; undefined when it is not one this code wrote. A cookie from before pins were kept has none. */
-function pinOf(value: unknown): DummyPin | null | undefined {
+/**
+ * The featured ids as the cookie keeps them; null while they are the seed's,
+ * undefined when they are not ones this code wrote: not ids, one twice, or
+ * more than two. A cookie from before featured posts were kept has none.
+ */
+function featuredOf(value: unknown): FeaturedIds | null | undefined {
   if (value === undefined || value === null) return null;
-  if (!isShape(value)) return undefined;
-  if (value.id === null) return { id: null };
-  return Number.isSafeInteger(value.id) ? { id: value.id as number } : undefined;
+  if (!Array.isArray(value) || !value.every((id) => Number.isSafeInteger(id))) return undefined;
+  return featuredIdsOf(value as number[]) ?? undefined;
 }
 
 const isPost = (value: unknown): value is OutreachPost => outreachPostOf(value) !== null;
 const isDraft = (value: unknown): value is OutreachDraft => outreachDraftOf(value) !== null;
-
-function summitOf(value: unknown): SummitVersions | null {
-  if (!isShape(value) || value.state !== "published") return null;
-  const published = outreachFeatureOf(value.published);
-  const draft = value.draft === null ? null : outreachFeatureOf(value.draft);
-  if (published === null || (value.draft !== null && draft === null)) return null;
-  return { state: "published", published, draft };
-}
 
 /** The tags added, each one the list could have taken after the ones before it; null otherwise. */
 function addedTags(value: unknown): string[] | null {
@@ -160,11 +140,10 @@ export function parseOutreachEdits(value: string | undefined): DummyOutreachEdit
         )
       : wire.posts.saved;
     const posts = parseContentEdits(encodeURIComponent(JSON.stringify({ ...wire.posts, saved })), isPost, isDraft);
-    const summit = wire.summit === null ? null : summitOf(eachVersion(wire.summit, (f) => expand(SEED.summit.published, f)));
     const tags = addedTags(wire.tags);
-    const pin = pinOf(wire.pin);
-    if ((wire.summit !== null && summit === null) || tags === null || pin === undefined) return NO_OUTREACH_EDITS;
-    return { posts, summit, tags, pin };
+    const featured = featuredOf(wire.featured);
+    if (tags === null || featured === undefined) return NO_OUTREACH_EDITS;
+    return { posts, tags, featured };
   } catch {
     return NO_OUTREACH_EDITS;
   }
@@ -229,15 +208,20 @@ export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStor
     keep({ ...current, posts: contentEditsOf(SEED.posts, items, keptVersion) }),
   );
 
+  // A removed post takes its featured slot with it, as the database's row does.
+  async function featured(): Promise<FeaturedIds> {
+    const ids: readonly number[] = current.featured ?? SEED.featured;
+    const items = await posts.list();
+    return featuredIdsOf(ids.filter((id) => items.some((item) => item.id === id))) ?? [];
+  }
+
+  async function keepFeatured(next: FeaturedIds) {
+    const error = await keep({ ...current, featured: next });
+    return error === null ? written(null) : refused(error);
+  }
+
   return {
     posts,
-
-    summit: async () => current.summit ?? SEED.summit,
-
-    async saveSummit(versions) {
-      const error = await keep({ ...current, summit: versions });
-      return error === null ? written(versions) : refused(error);
-    },
 
     tags: async () => [...SEED.tags, ...current.tags.map((name) => ({ name, award: false }))],
 
@@ -246,15 +230,17 @@ export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStor
       return error === null ? written({ name, award: false }) : refused(error);
     },
 
-    // A removed post takes its pin with it, as the database's row does.
-    async pinned() {
-      const id = current.pin === null ? SEED.pinned : current.pin.id;
-      return (await posts.list()).some((item) => item.id === id) ? id : null;
+    featured,
+
+    // The cookie holds two ids at most: a third is refused here, as the
+    // database's two slots refuse it.
+    async feature(id) {
+      const next = featuring(await featured(), id);
+      return next.ok ? keepFeatured(next.value) : next;
     },
 
-    async pin(id) {
-      const error = await keep({ ...current, pin: { id } });
-      return error === null ? written(null) : refused(error);
+    async unfeature(id) {
+      return keepFeatured(unfeaturing(await featured(), id));
     },
   };
 }
