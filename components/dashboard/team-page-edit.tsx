@@ -305,7 +305,7 @@ export function TeamPageEdit({
       const at = slot === "leader" ? "leader" : shown.leaders[slot]?.at;
       if (at === undefined) return node;
       return (
-        <EditableBlock id={at} narrow>
+        <EditableBlock id={at} shape="narrow">
           {node}
         </EditableBlock>
       );

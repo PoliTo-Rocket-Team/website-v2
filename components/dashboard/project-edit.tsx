@@ -39,7 +39,12 @@ const PROJECT_BLOCKS: EditBlocks<ProjectPart, PanelSection> = {
   gallery: { name: "Gallery", section: "gallery", chip: "Edit gallery" },
 };
 
-const outlined: ProjectFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
+// The hero fills the page's width from its top, so its outline and chips sit inside it.
+const outlined: ProjectFrame = (part, node) => (
+  <EditableBlock id={part} shape={part === "hero" ? "bleed" : "around"}>
+    {node}
+  </EditableBlock>
+);
 
 const PAGE_TARGETS: readonly PageTarget<ProjectPageId>[] = [
   { id: "page", label: "Project page" },

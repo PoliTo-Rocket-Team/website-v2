@@ -370,6 +370,41 @@ const BLOCK_OUTLINE = {
 } as const;
 
 /**
+ * How a block sits on the page, which says where its outline and chips go
+ * so that every chip shows at once inside the frame and none covers
+ * another.
+ *
+ * - `around`: a block with room round it. The outline stands 12px (22px
+ *   from md) outside the block and one row rides its top edge: the name on
+ *   the left, cut short when the row runs out of room, and Edit on the
+ *   right. The name sits at the block's own left edge.
+ * - `narrow`: a block about as wide as its name chip, such as one person on
+ *   the Team page's org chart (board 80). The name chip spans the outline's
+ *   top edge, and the Edit chip sits on the outline's foot, the block keeping
+ *   room under it. Board 80 hangs that chip off the outline's right edge, but
+ *   with every chip shown at once it would sit on the arc's end labels, its
+ *   add buttons and the next person's outline; under a person nothing else
+ *   is drawn, on the arc or in the grid below xl.
+ * - `bleed`: a block that fills the page's width from the page's top, as a
+ *   project's hero does. Outside it, the outline's sides and the chip row
+ *   would fall past the frame's edges, so both sit inside it, the row just
+ *   under the outline's top. On phones the page leaves only 24px over its
+ *   first line, so the block keeps room above its own content for that row.
+ */
+export type BlockShape = "around" | "narrow" | "bleed";
+
+const AROUND_OUTLINE = "-inset-3 md:-inset-[22px]";
+const ON_TOP_EDGE = "-top-3 -translate-y-1/2 md:-top-[22px]";
+
+const BLOCK_SHAPE: Readonly<
+  Record<BlockShape, { outline: string; row: string; rowStart: string; rowEnd: string; editAtFoot: boolean; room: string }>
+> = {
+  around: { outline: AROUND_OUTLINE, row: ON_TOP_EDGE, rowStart: "left-1 md:left-0", rowEnd: "right-6 md:right-[33px]", editAtFoot: false, room: "" },
+  narrow: { outline: AROUND_OUTLINE, row: ON_TOP_EDGE, rowStart: "left-1 md:-left-3", rowEnd: "right-1 md:-right-3", editAtFoot: true, room: "mb-8" },
+  bleed: { outline: "inset-1.5 md:inset-2", row: "top-3 md:top-4", rowStart: "left-3 md:left-4", rowEnd: "right-6 md:right-[33px]", editAtFoot: false, room: "max-md:pt-6" },
+};
+
+/**
  * One named block of the page in the shell. It always shows its outline,
  * with its name and an Edit chip that hands the block's section to the
  * shell's `onEdit` (board 74b), on Desktop, Phone and touch alike; hover or
@@ -379,21 +414,13 @@ const BLOCK_OUTLINE = {
  */
 export function EditableBlock({
   id,
-  narrow = false,
+  shape = "around",
   className = "",
   children,
 }: {
   id: string;
-  /**
-   * A block about as wide as its name chip, such as one person on the Team
-   * page's org chart (board 80). Its name chip is cut to the outline's width.
-   * From xl, where the chart is an arc with room between people, the Edit
-   * chip hangs off the outline's right edge, as board 80 draws it. Below xl
-   * the people sit in a grid with no room beside them, so the Edit chip sits
-   * on the outline's foot and the block keeps room under it: every chip shows
-   * at once and none covers a neighbour's.
-   */
-  narrow?: boolean;
+  /** How the block sits on the page (BlockShape). */
+  shape?: BlockShape;
   className?: string;
   children: ReactNode;
 }) {
@@ -403,34 +430,20 @@ export function EditableBlock({
   const selected = chips.selected === id;
   const chip = start ? { ...chips.chipOf(id), label: "Start here" } : chips.chipOf(id);
   const outline = selected ? BLOCK_OUTLINE.selected : start ? BLOCK_OUTLINE.start : BLOCK_OUTLINE.rest;
+  const place = BLOCK_SHAPE[shape];
   // The publish checklist hangs pinned under Publish while a new item opens
   // (board 74f): 244px wide, 16px in from the window's right edge. "Start
   // here" sits left of it, so it moves in from the block's right edge far
   // enough to clear the checklist; from 1440px the page's centred column
   // leaves room for the board's own spot.
-  //
-  // The chips ride one row on the outline's top edge: the name on the left,
-  // cut short when the row runs out of room, and Edit on the right, so with
-  // every chip shown at once the two never overlap. The name sits at the
-  // block's own left edge, so a block that fills the page's width keeps its
-  // name inside the frame. A narrow block's Edit chip is not in the row:
-  // from xl it hangs off the outline's right edge (board 80), and below xl,
-  // where the chart is a grid with no room beside a person, it sits on the
-  // outline's foot, the block keeping room under it.
-  const rowEnd = narrow
-    ? "right-1 md:-right-1.5 xl:right-3"
-    : start
-      ? "right-6 md:right-[220px] min-[1440px]:right-[145px]"
-      : "right-6 md:right-[33px]";
+  const rowEnd = start && !place.editAtFoot ? "right-6 md:right-[220px] min-[1440px]:right-[145px]" : place.rowEnd;
   const edit = (
     <button
       type="button"
       onClick={chip.edit}
       aria-label={`${chip.label}: ${chip.name}`}
       className={`pointer-events-auto z-10 inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS} ${
-        narrow
-          ? "absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[22px] xl:bottom-auto xl:-top-[22px] xl:left-[calc(100%-8px)] xl:translate-x-0 xl:-translate-y-1/2"
-          : "ml-auto"
+        place.editAtFoot ? "absolute -bottom-3 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[22px]" : "ml-auto"
       }`}
     >
       <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
@@ -438,23 +451,21 @@ export function EditableBlock({
     </button>
   );
   return (
-    <div className={`group/block relative ${narrow ? "max-xl:mb-8" : ""} ${className}`}>
+    <div className={`group/block relative ${place.room} ${className}`}>
       {children}
-      <div aria-hidden className={`pointer-events-none absolute -inset-3 z-10 rounded-xl md:-inset-[22px] ${outline}`} />
+      <div aria-hidden className={`pointer-events-none absolute z-10 rounded-xl ${place.outline} ${outline}`} />
       {!selected && (
         <>
-          <div
-            className={`pointer-events-none absolute -top-3 left-1 z-10 flex -translate-y-1/2 items-center gap-2 md:-top-[22px] md:left-0 ${rowEnd}`}
-          >
+          <div className={`pointer-events-none absolute z-10 flex items-center gap-2 ${place.row} ${place.rowStart} ${rowEnd}`}>
             <span
               aria-hidden
               className="min-w-0 truncate whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent"
             >
               {chip.name}
             </span>
-            {!narrow && edit}
+            {!place.editAtFoot && edit}
           </div>
-          {narrow && edit}
+          {place.editAtFoot && edit}
         </>
       )}
     </div>
