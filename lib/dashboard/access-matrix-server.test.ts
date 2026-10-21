@@ -11,13 +11,15 @@ import * as recruitmentActions from "@/app/dashboard/recruitment-actions";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
+import { scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
+import { placeKey, placesOf, type AccessPage } from "./division-access";
 import { checkPromotion } from "./hand-over";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
 import type { PositionsPage } from "./recruitment";
-import { recordedWrites } from "./access-matrix/fake-db";
+import { insertRows, recordedWrites } from "./access-matrix/fake-db";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
@@ -356,9 +358,13 @@ const PROMOTION = { mode: "together" } as const;
 /** A change in Structures' units: a lead's or a head's of it, or full access. DM is the matrix's unit there. */
 const inStructures = (r: MatrixRow) => (r.expect.reads.members.includes(DM) ? leadsOnly(r) : false);
 const siteContent = (r: MatrixRow) => r.expect.siteContent;
-/** Access on someone in DM: full access; a lead or head whose own scope rows name DM is #478's open case. */
+/**
+ * Access on someone in DM: full access. No matrix lead leads DM, and a lead's
+ * grant there adds no Access there (Owner decision, #478; #488). A head whose
+ * own scope rows name DM is not decided here.
+ */
 const accessInDM = (r: MatrixRow) =>
-  fullAccess(r) ? true : (r.viewer.kind === "division-lead" || r.viewer.kind === "department-head") && r.viewer.rawRows.some((x) => x.divisionId === IDS.division(DM)) ? undefined : false;
+  fullAccess(r) ? true : r.viewer.kind === "department-head" && r.viewer.rawRows.some((x) => x.divisionId === IDS.division(DM)) ? undefined : false;
 const decidesOrders = (r: MatrixRow) => r.name === "team leader" || r.name === "member with Approve orders";
 const HOST = ownPublicStoreHost();
 
@@ -449,7 +455,7 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
 
-  // Access, on someone in DM. A lead's Access page covers every division any of their scope rows names (#478, filed): not decided here.
+  // Access, on someone in DM. A lead's Access page covers only the divisions they lead by role (#488).
   { action: "actions.saveAccess", run: () => actions.saveAccess({ personId: IDS.person(DM), areas: { positions: "edit" } }), may: accessInDM, control: by("team leader") },
   { action: "actions.removeAllAccess", run: () => actions.removeAllAccess(IDS.person(DM)), may: accessInDM, control: by("team leader") },
 
@@ -567,6 +573,49 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
       }
     });
   }
+});
+
+// A lead's Access page ------------------------------------------------------
+
+describe("a lead's Access page covers only the divisions they lead by role (Owner decision, #478; #488)", () => {
+  const LEAD = "division lead with a Positions grant (Can edit) in DM";
+  const MA = IDS.division("MA");
+
+  test("Access lists only the led division, while the grant in DM still opens Positions there", async () => {
+    const data = await open(LEAD);
+    const page = (await data.divisionAccess()) as AccessPage | null;
+    assert.ok(page !== null, "the lead has an Access page");
+    assert.equal(page.unit.kind, "division");
+    assert.deepEqual(placesOf(page.unit).map(placeKey), [MA], "the unit's places");
+    for (const person of page.people) assert.equal(person.division?.id, MA, `${person.name} is listed outside the led division`);
+    for (const grant of page.grants) assert.deepEqual(placeKey(grant.place), MA, "a grant listed outside the led division");
+    // The grant gives what it gives a member there: the role in DM is on the Positions page.
+    const positions = (await data.positions()) as PositionsPage;
+    assert.ok(positions.positions.some((p) => p.id === IDS.position(DM)), "the role in DM on Positions");
+  });
+
+  test("a Save that names DM is refused on the server and writes nothing", async () => {
+    const saves = [
+      { personId: IDS.person("MA"), where: IDS.division(DM), areas: { positions: "view" } },
+      { personId: IDS.person(DM), where: IDS.division(DM), areas: { positions: "view" } },
+      { personId: IDS.person(DM), areas: { positions: "view" } },
+    ];
+    for (const save of saves) {
+      const { answer, writes } = await attempt(accountOf(LEAD).userId, () => actions.saveAccess(save));
+      assert.ok(isRefusal(answer), `${JSON.stringify(save)}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, [], `${JSON.stringify(save)}: wrote`);
+    }
+  });
+
+  test("Remove all access leaves a grant in DM alone", async () => {
+    seedFixture();
+    resetFiles();
+    // Someone in the led division who holds a grant in DM, at a level the lead holds there.
+    insertRows(scopes, [{ id: 9_000, memberId: IDS.person("MA"), scope: "division", target: "positions", accessLevel: "view", divisionId: IDS.division(DM) }]);
+    signInAs(accountOf(LEAD).userId);
+    await answerOf(() => actions.removeAllAccess(IDS.person("MA")));
+    assert.deepEqual(recordedWrites(), [], "a grant outside the led division was touched");
+  });
 });
 
 // The CV and letter links ---------------------------------------------------

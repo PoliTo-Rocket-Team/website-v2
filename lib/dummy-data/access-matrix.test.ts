@@ -4,6 +4,8 @@ import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { canReach } from "@/lib/dashboard/access";
 import { mayOpenApplication } from "@/lib/dashboard/application-documents";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
+import { placeKey, placesOf } from "@/lib/dashboard/division-access";
+import { ledDivisionsOf } from "@/lib/dashboard/team";
 import { showsTreeEdit } from "@/lib/dashboard/team-structure";
 import { isOffTeam, readsArea, TEST_VIEWERS, type DashboardViewer, type TestViewer } from "@/lib/dashboard/viewer";
 import { maySiteContent } from "@/lib/content/gate";
@@ -17,7 +19,7 @@ import { NO_OUTREACH_EDITS_STORE } from "./outreach";
 import { NO_OWN_STORE } from "./own";
 import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
-import { personFor } from "./team";
+import { divisions, personFor } from "./team";
 import { TEST_GRANTS, type TestGrant } from "./test-grant";
 
 // The test-developer path against the access matrix (issue #477,
@@ -273,6 +275,23 @@ describe("the test-developer path follows the access matrix", () => {
       }
     }
     assert.equal(mayOpenApplication({ kind: "member", grantedAreas: ["members"], siteContent: false, approveOrders: false, roles: [], grants: [] }, null), false);
+  });
+
+  test("a lead's Access page covers only the divisions they lead by role, and a Save naming another is refused (Owner decision, #478; #488)", async () => {
+    const lead = personFor["division-lead"];
+    const led = ledDivisionsOf(lead.placement);
+    const { data, saved } = session("division-lead");
+    const page = await data.divisionAccess();
+    assert.ok(page !== null && page.unit.kind === "division", "the lead has a division Access page");
+    assert.deepEqual(placesOf(page.unit).map(placeKey), led, "the unit is the led divisions, home first");
+    const others = divisions.filter((d) => !led.includes(d.id));
+    assert.ok(others.length > 0, "a division the lead does not lead, so the check below is not empty");
+    const someone = page.people[0];
+    assert.ok(someone !== undefined, "someone the lead may give access to");
+    for (const other of others) {
+      assert.equal(await refusedWith(() => data.saveAccess({ personId: someone.id, where: other.id, areas: { positions: "view" } })), "refused", `give access in ${other.name}`);
+    }
+    assert.deepEqual(saved, [], "a refused Save saved something");
   });
 
   test("a Members grant lists no applicant joining: that is Applications data (issue #477)", async () => {

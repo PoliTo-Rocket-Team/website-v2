@@ -216,6 +216,17 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("lead", 1, 1)], [row("division", "positions", "view", { divisionId: 3 })]),
     expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, ...LEADING], reads: { ...everywhere(["MA"]), positions: ["MA", "DM"] }, changes: changing(["MA"]) },
   },
+  // A lead's grant where they do not lead gives what it gives a member there, and no Access there (Owner decision, #478; #488).
+  {
+    name: "division lead with a Positions grant (Can edit) in DM",
+    viewer: viewerOf([role("lead", 1, 1)], [row("division", "positions", "edit", { divisionId: 3 })]),
+    expect: {
+      ...PLAIN_MEMBER,
+      pages: [...TEAM_BASE, ...LEADING],
+      reads: { ...everywhere(["MA"]), positions: ["MA", "DM"] },
+      changes: { ...changing(["MA"]), positions: ["MA", "DM"] },
+    },
+  },
   { name: "member", viewer: viewerOf([MEMBER_ROLE]), expect: PLAIN_MEMBER },
   // Each single grant, at each scope, at Can edit: its own page and units alone.
   ...GRANT_AREAS.flatMap((area) =>
