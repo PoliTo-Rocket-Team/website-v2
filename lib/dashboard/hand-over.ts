@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
-import type { FullAccessSeat } from "./viewer";
+import type { FlaggedSeat, FullAccessSeat } from "./viewer";
 
 // Handing over a role (issue #253, boards 77i, 77e and 68b4; Owner decision,
 // 2026-10-16). Whoever holds a role (the team leader, a department head, a
@@ -69,6 +69,36 @@ export function advising(handed: HandedRole): Advising {
     case "lead":
       return advisingIn({ kind: "division", divisionId: handed.divisionId });
   }
+}
+
+// Full access follows the role (issue #501; Owner decision, 2026-10-21)
+
+/** A role row as the seat rule reads it: the full-access seat it is flagged as (`roles.full_access`), or null. */
+export type SeatRow = { readonly fullAccess: FlaggedSeat | null };
+
+/** Where a hand-over sends a flagged seat: the seat, and the person whose role row carries it from now on. */
+export type SeatMove = { readonly seat: FlaggedSeat; readonly to: number };
+
+export const ONE_SUCCESSOR_FOR_SEAT = "This lead holds a full-access seat. Name one new lead to take it over.";
+
+/**
+ * The one rule for a full-access seat on a hand-over or a replacement: the
+ * seat follows the role. `outgoing` are the role rows the hand-over ends;
+ * when one of them carries a seat, the successor's role row carries the same
+ * seat, written in the same batch that ends the outgoing rows, which end with
+ * it. So the predecessor holds the seat no more and one active row holds it.
+ * `successors` are the people who take the role over: a seat goes to exactly
+ * one, so a hand-over with more than one (a division save naming two new
+ * leads) is refused rather than guessing, and one with none would drop the
+ * seat. With no seat on the outgoing rows the answer is null: the hand-over
+ * writes what it always wrote.
+ */
+export function seatHandOver(outgoing: readonly SeatRow[], successors: readonly number[]): Checked<SeatMove | null> {
+  const seat = outgoing.find((r) => r.fullAccess !== null)?.fullAccess ?? null;
+  if (seat === null) return { ok: true, value: null };
+  const [to, ...others] = successors;
+  if (to === undefined || others.length > 0) return { ok: false, error: ONE_SUCCESSOR_FOR_SEAT };
+  return { ok: true, value: { seat, to } };
 }
 
 /** A department or a division: where a lead or head holds their role, and where Close department sends each person. */

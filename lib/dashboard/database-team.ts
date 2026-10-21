@@ -73,12 +73,15 @@ import {
   checkTeamLeaderHandOver,
   planTeamLeaderHandOver,
   promotingLead,
+  seatHandOver,
   steppingDown,
   type AdvisorPlace,
   type Promotion,
+  type SeatMove,
+  type SeatRow,
   type SteppingDown,
 } from "./hand-over";
-import { coveredDivisionIds, isOffTeam, mayChange, readsArea, readsAreaIn, seatOf } from "./viewer";
+import { coveredDivisionIds, FLAG_OF_SEAT, isOffTeam, mayChange, readsArea, readsAreaIn, SEAT_OF_FLAG, seatOf, type FlaggedSeat, type SeatFlag } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -444,10 +447,17 @@ type ActiveRole = {
   type: RoleType;
   title: string;
   started_at: string;
+  /** The full-access seat the row is flagged as (`seatHandOver`, ./hand-over.ts). */
+  fullAccess: FlaggedSeat | null;
 };
 
+/** The seat a stored `roles.full_access` value flags, or null. */
+function seatOfFlag(flag: SeatFlag | null): FlaggedSeat | null {
+  return flag === null ? null : SEAT_OF_FLAG[flag];
+}
+
 async function activeRoles(memberId: number): Promise<ActiveRole[]> {
-  return getDb()
+  const rows = await getDb()
     .select({
       id: roles.id,
       division_id: roles.divisionId,
@@ -455,9 +465,26 @@ async function activeRoles(memberId: number): Promise<ActiveRole[]> {
       type: roles.type,
       title: roles.title,
       started_at: roles.startedAt,
+      full_access: roles.fullAccess,
     })
     .from(roles)
     .where(and(eq(roles.memberId, memberId), isNull(roles.leavedAt)));
+  return rows.map(({ full_access, ...r }) => ({ ...r, fullAccess: seatOfFlag(full_access) }));
+}
+
+/**
+ * The seat a hand-over moves (`seatHandOver`, ./hand-over.ts), as the
+ * successor's inserted role row carries it: nothing for anyone else, so a
+ * hand-over of a role with no seat inserts what it always did.
+ */
+function seatFor(seat: SeatMove | null, memberId: number): { fullAccess?: SeatFlag } {
+  return seat !== null && seat.to === memberId ? { fullAccess: FLAG_OF_SEAT[seat.seat] } : {};
+}
+
+/** The seat a hand-over moves, written onto the successor's existing role row `rowId`, in the caller's batch. */
+function seatOnto(db: Tx, seat: SeatMove | null, rowId: number | undefined): BatchItem<"pg">[] {
+  if (seat === null || rowId === undefined) return [];
+  return [db.update(roles).set({ fullAccess: FLAG_OF_SEAT[seat.seat] }).where(and(eq(roles.id, rowId), isNull(roles.leavedAt)))];
 }
 
 function roleSeat(r: ActiveRole): RoleSeat {
@@ -544,10 +571,14 @@ async function promote(identity: DashboardIdentity, personId: number, promotion:
   const mine = myRoles.find((r) => r.division_id === division && r.type === "lead");
   const stepping = promotingLead(promotion, division);
   if (stepping !== null && !mine) return false;
+  // A seat on the lead row they hand over moves to the person promoted, on the row this promotes (issue #501).
+  const handed = stepping !== null && mine ? seatHandOver([mine], [personId]) : null;
+  if (handed !== null && !handed.ok) return false;
+  const seat = handed?.value ?? null;
   const notice = await promotionOf(personId, division, promotion.mode, leadId);
   const on = today();
   await runAuditBatch((db) => [
-    db.update(roles).set({ type: "lead" }).where(eq(roles.id, theirs.id)),
+    db.update(roles).set({ type: "lead", ...seatFor(seat, personId) }).where(eq(roles.id, theirs.id)),
     ...(stepping !== null && mine ? steppingDownWrites(db, { memberId: leadId, active: myRoles }, stepping, [mine.id], on) : []),
     // The insert reads the department's heads itself, inside this batch (issue #227).
     ...(notice ? [promotedNoticesInsert(db, notice)] : []),
@@ -891,13 +922,16 @@ function savedSubject(divisionId: number, org: OrgChart): Exclude<DivisionSubjec
   return open ? { kind: "open", division: open } : null;
 }
 
+/** An active row kept on a division, with the full-access seat it is flagged as. */
+type HeldRow = DivisionRow & SeatRow;
+
 /** Every active row kept on the division, seats included: `divisionRowWrites` picks the ones a plan touches. */
-async function heldRows(divisionId: number): Promise<DivisionRow[]> {
+async function heldRows(divisionId: number): Promise<HeldRow[]> {
   const rows = await getDb()
-    .select({ id: roles.id, member_id: roles.memberId, type: roles.type })
+    .select({ id: roles.id, member_id: roles.memberId, type: roles.type, full_access: roles.fullAccess })
     .from(roles)
     .where(and(eq(roles.divisionId, divisionId), isNull(roles.leavedAt)));
-  return rows.flatMap((r) => (r.member_id === null ? [] : [{ id: r.id, memberId: r.member_id, type: r.type }]));
+  return rows.flatMap((r) => (r.member_id === null ? [] : [{ id: r.id, memberId: r.member_id, type: r.type, fullAccess: seatOfFlag(r.full_access) }]));
 }
 
 /**
@@ -971,7 +1005,10 @@ function steppingDownWrites(
  * ended, Advisor role started, all their access removed) or leave the team
  * (every role and access ends, as Leaves the team does), and new members. The rows ended or changed
  * in the division are the lead and member rows `divisionRowWrites` picks by
- * id, so a seat kept on a division row stays the seat. The emails new to the
+ * id, so a seat kept on a division row stays the seat. A full-access seat on
+ * a replaced lead's lead row moves to the one new lead, on the row this save
+ * makes a lead's (`seatHandOver`, issue #501); with more than one new lead
+ * the save is refused before anything is written. The emails new to the
  * team wait for Confirm NDA after it, as Add member records them.
  */
 async function writeDivisionPlan(
@@ -981,11 +1018,20 @@ async function writeDivisionPlan(
   create: { readonly departmentId: number } | null,
 ): Promise<WriteResult<null>> {
   const on = today();
+  const held = create ? [] : await heldRows(divisionId);
+  const handed = seatHandOver(
+    held.filter((r) => r.type === "lead" && plan.replaced.includes(r.memberId)),
+    [...plan.promote, ...plan.joinAsLead],
+  );
+  if (!handed.ok) return refused(handed.error);
+  const seat = handed.value;
   const leavers = await Promise.all(plan.leaveTeam.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
   const newRole = (memberId: number, type: "lead" | "core") => ({ memberId, divisionId, title: "", type, startedAt: on });
-  const rows = divisionRowWrites(plan, divisionId, create ? [] : await heldRows(divisionId));
+  const rows = divisionRowWrites(plan, divisionId, held);
   const open = (ids: readonly number[]) => and(inArray(roles.id, [...ids]), isNull(roles.leavedAt));
-  const joining = [...plan.joinAsLead.map((id) => newRole(id, "lead")), ...plan.joinAsMember.map((id) => newRole(id, "core"))];
+  const joining = [...plan.joinAsLead.map((id) => ({ ...newRole(id, "lead"), ...seatFor(seat, id) })), ...plan.joinAsMember.map((id) => newRole(id, "core"))];
+  // A new lead promoted from a member takes the seat on the row that becomes a lead's.
+  const seatRow = held.find((r) => seat !== null && r.memberId === seat.to && rows.toLead.includes(r.id))?.id;
 
   await runAuditBatch((db) => [
     create
@@ -996,6 +1042,7 @@ async function writeDivisionPlan(
           .where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
     ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
     ...(rows.toLead.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(open(rows.toLead))]),
+    ...seatOnto(db, seat, seatRow),
     ...(joining.length === 0 ? [] : [db.insert(roles).values(joining)]),
     ...(rows.toMember.length === 0 ? [] : [db.update(roles).set({ type: "core" }).where(open(rows.toMember))]),
     ...plan.leaveDivision.map((id) =>
@@ -1145,6 +1192,10 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const on = today();
   const stepping = head?.steppingDown ?? null;
   const replaced = head === null || stepping === null ? [] : await Promise.all(head.from.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
+  // A seat on a head row they hand over moves to the new head's row (issue #501).
+  const handed = head === null ? null : seatHandOver(replaced.flatMap((person) => person.active.filter(isHeadRow)), [head.to]);
+  if (handed !== null && !handed.ok) return refused(handed.error);
+  const seat = handed?.value ?? null;
   await runAuditBatch((db) => [
     db
       .update(departments)
@@ -1160,7 +1211,9 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
       : []),
     // Change head (issue #253): the head they replace steps down as the editor picked, then the new head's role starts.
     ...(stepping === null ? [] : replaced.flatMap((person) => steppingDownWrites(db, person, stepping, person.active.filter(isHeadRow).map((r) => r.id), on))),
-    ...(head === null ? [] : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: on })]),
+    ...(head === null
+      ? []
+      : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
   ]);
   done();
   return written(null);
@@ -1303,7 +1356,8 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
  * successor takes the role, then the sender steps down as they chose
  * (`steppingDownWrites`). A lead's successor leads the division (their rows in
  * it become lead rows, unless they lead it already); a head's successor gets a
- * head role on the department and keeps every role they hold.
+ * head role on the department and keeps every role they hold. A seat on the
+ * role handed over moves to the successor's row (`seatHandOver`, issue #501).
  */
 async function confirmedHandOverWrites(
   plan: Extract<HandOverAnswerPlan, { answer: "confirm" }>,
@@ -1313,20 +1367,28 @@ async function confirmedHandOverWrites(
   const { request, steppingDown: step } = plan;
   const { fromId, toId, role } = request;
   const active = await activeRoles(fromId);
+  const ending = active.filter(
+    role.kind === "lead" ? (r) => r.division_id === role.divisionId && r.type === "lead" : headRowOf(role.departmentId, org),
+  );
+  const handed = seatHandOver(ending, [toId]);
+  // Never refused: a hand-over request names one successor.
+  if (!handed.ok) throw new Error(handed.error);
+  const seat = handed.value;
+  const endingIds = ending.map((r) => r.id);
   if (role.kind === "lead") {
     const theirs = (await heldRows(role.divisionId)).filter((r) => r.memberId === toId);
     const promote = theirs.some((r) => r.type === "lead" || r.type === "head") ? [] : theirs.map((r) => r.id);
-    const ending = active.filter((r) => r.division_id === role.divisionId && r.type === "lead").map((r) => r.id);
+    const seatRow = promote[0] ?? theirs.find((r) => r.type === "lead")?.id ?? theirs[0]?.id;
     return (db) => [
       ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
-      ...steppingDownWrites(db, { memberId: fromId, active }, step, ending, on),
+      ...seatOnto(db, seat, seatRow),
+      ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
     ];
   }
   const department = org.departments.find((d) => d.id === role.departmentId)?.name ?? "";
-  const ending = active.filter(headRowOf(role.departmentId, org)).map((r) => r.id);
   return (db) => [
-    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: headTitle(department), type: "head", startedAt: on }),
-    ...steppingDownWrites(db, { memberId: fromId, active }, step, ending, on),
+    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: headTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
+    ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
   ];
 }
 

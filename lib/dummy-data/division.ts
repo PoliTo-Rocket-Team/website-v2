@@ -23,8 +23,8 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "@/lib/dashboard/division-access";
-import type { FullAccessSeat } from "@/lib/dashboard/viewer";
-import { homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type RosterEntry } from "@/lib/dashboard/team";
+import type { FlaggedSeat, FullAccessSeat } from "@/lib/dashboard/viewer";
+import { homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type Placement, type RosterEntry } from "@/lib/dashboard/team";
 import type { ApproveOrdersChange } from "@/lib/dashboard/orders";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { TeamEdits } from "./edits";
@@ -124,10 +124,24 @@ export function withApproveOrdersChange(edits: TeamEdits, change: ApproveOrdersC
 /** The team leader: they decide orders and give "Approve orders". */
 export const TEAM_LEADER_ID = personFor["team-leader"].id;
 
-/** The full-access seat each dummy person holds (issue #238): the team leader and the operations lead. The sample team has no IT lead. */
-function seatOfPerson(person: DummyPerson): FullAccessSeat | null {
-  if (person.placement.role === "team-leader") return "team-leader";
-  return person.id === personFor["operations-lead"].id ? "operations-lead" : null;
+/**
+ * The head roles flagged with a full-access seat in the dummy data, by
+ * department, as `roles.full_access` flags a role row on the database: the
+ * head of Operations is the operations lead. The sample team has no IT lead,
+ * and its board seats carry no flag.
+ */
+const FLAGGED_HEAD_ROLES: Readonly<Record<number, FlaggedSeat>> = { 6: "operations-lead" };
+
+/**
+ * The full-access seat a role gives (issues #238, #501): the team leader's,
+ * and a flagged head role's. The seat follows the role, never a person:
+ * whoever holds the role on the roster as the test developer left it holds
+ * the seat, so Change head and a confirmed head hand-over on Operations move
+ * it to the successor and away from the person who handed it over.
+ */
+function seatOfPlacement(placement: Placement): FullAccessSeat | null {
+  if (placement.role === "team-leader") return "team-leader";
+  return placement.role === "head" ? (FLAGGED_HEAD_ROLES[placement.departmentId] ?? null) : null;
 }
 
 function personOf(id: number): DummyPerson {
@@ -252,7 +266,7 @@ function approveOrdersOf(
   holders: readonly ApproveOrdersHolding[],
 ): ApproveOrdersAccess {
   if (unit.kind !== "team") return NO_APPROVE_ORDERS;
-  const canGive = canGiveApproveOrders(seatOfPerson(viewer));
+  const canGive = canGiveApproveOrders(seatOfPlacement(viewer.placement));
   return {
     canGive,
     yours: canGive || holders.some((h) => h.personId === viewer.id),
@@ -283,8 +297,8 @@ export function dummyAccessPage(
   const onTeam = new Map(inside.map((e) => [e.id, accessPerson(e, unit)]));
   const roleAccess = inside.flatMap((e): RoleAccess[] => {
     const person = onTeam.get(e.id)!;
-    // A full-access seat covers the whole team on a team page (board 71).
-    const seat = unit.kind === "team" ? seatOfPerson(personOf(e.id)) : null;
+    // A full-access seat covers the whole team on a team page (board 71); it is read off the role they hold now (issue #501).
+    const seat = unit.kind === "team" ? seatOfPlacement(e.placement) : null;
     if (seat !== null) return [{ person, place: WHOLE_TEAM_PLACE, seat }];
     // A head's role covers their department on a team page.
     if (unit.kind === "team" && e.placement.role === "head") {
