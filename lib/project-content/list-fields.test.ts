@@ -4,10 +4,12 @@ import { memoryContentStore } from "@/lib/content/memory";
 import { editorVersion, publicItems } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import type { PhotoFiles } from "@/lib/outreach-photos";
-import { pageRowsOf, type LogEntry, type PageBlock } from "@/lib/project-pages";
+import type { LogEntry, PageBlock } from "@/lib/project-pages";
 import { launchCounts } from "@/lib/projects";
+import type { BlockFields } from "./block-fields";
+import { removeBlock } from "./block-list";
 import { projectEditor } from "./editor";
-import { checkProjectFields, fieldProblems, fieldsAfterSave, fieldsOf, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
+import { checkProjectFields, fieldProblems, fieldsOf, heldPhotos, readProjectFields, type ProjectFields } from "./fields";
 import { importedProjects, importedRecords } from "./import";
 import {
   blankLaunch,
@@ -26,17 +28,11 @@ import {
   type LaunchFields,
 } from "./list-fields";
 import { homeCardOf, listingOf, logEntry, pageRecordOf, type ProjectRecord, type VehicleRecord } from "./record";
-import { sectionContentOf, sectionShown } from "./sections";
 
-// The list sections of the Edit <project> panel (issue #299): Versions,
-// Launch history, Plan and Gallery, their shape rules, and a launch added
-// from the panel reaching the page, the home card and the /projects counts.
-
-/** The numbered headings the page shows after the two stories, by block id. */
-const numbers = (record: ProjectRecord) =>
-  pageRowsOf(pageRecordOf(record))
-    .flatMap((row) => (row.kind === "halves" ? row.blocks : [row.block]))
-    .flatMap(({ num, block }) => (num === null || ["01", "02"].includes(num) ? [] : [`${num} ${block.id}`]));
+// The list blocks of the Edit <project> panel (issue #299, epic #522):
+// Versions, Launch history, Timeline and Gallery, their shape rules, and a
+// launch added from the panel reaching the page, the home card and the
+// /projects counts.
 
 /** The page's launch cards, as it draws them. */
 const launchCards = (record: ProjectRecord): readonly LogEntry[] | undefined =>
@@ -47,6 +43,17 @@ const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", si
 
 const UPLOADED = "https://abc.public.blob.vercel-storage.com/project-photos/new.jpg" as const;
 const files: PhotoFiles = { put: async () => UPLOADED, owns: (src): src is typeof UPLOADED => src === UPLOADED, drop: async () => {} };
+
+type Of<K extends BlockFields["kind"]> = Extract<BlockFields, { kind: K }>;
+
+/** The panel's first block of `kind`. */
+const blockIn = <K extends BlockFields["kind"]>(fields: ProjectFields, kind: K): Of<K> => fields.blocks.find((b) => b.kind === kind) as Of<K>;
+
+/** The fields with their first block of `kind` changed. */
+function withBlock<K extends BlockFields["kind"]>(fields: ProjectFields, kind: K, change: (block: Of<K>) => Of<K>): ProjectFields {
+  const target = blockIn(fields, kind);
+  return { ...fields, blocks: fields.blocks.map((b) => (b === target ? change(target) : b)) };
+}
 
 const newLaunch: LaunchFields = {
   ...blankLaunch(),
@@ -71,7 +78,7 @@ const newLaunch: LaunchFields = {
   photos: [{ src: UPLOADED, alt: "VES on the rail at dawn" }],
 };
 
-test("a launch card holds date, place, version, motor, outcome, what happened, four numbers (three on the phone), award and photos", () => {
+test("a launch card holds date, place, version, motor, outcome, what happened, four numbers (three on the phone), award and a cover photo", () => {
   const entry = logEntry(launchOf(newLaunch));
   assert.equal(entry.date, "10 Oct 2026");
   assert.deepEqual(entry.place, { text: "Ponte de Sor, Portugal", phone: "Ponte de Sor" });
@@ -120,7 +127,8 @@ test("adding a launch and publishing it changes the project page, the home card 
   assert.equal(before.card, "FLOWN ×3", "Cavour's card counts its flights");
 
   const fields = fieldsOf(cavour);
-  const added: ProjectFields = { ...fields, launches: { ...fields.launches, items: [...fields.launches.items, { ...newLaunch, version: fields.versions.items[0].pill }] } };
+  const version = blockIn(fields, "versions").items[0].pill;
+  const added = withBlock(fields, "launches", (l) => ({ ...l, items: [...l.items, { ...newLaunch, version }] }));
 
   assert.ok((await editor.saveFields(1, "save-draft", added)).ok);
   assert.deepEqual(await shown(), before, "a draft launch changes nothing on the public site");
@@ -134,31 +142,26 @@ test("adding a launch and publishing it changes the project page, the home card 
 
 test("an edit that would break a shape rule is refused with a message", () => {
   const vesFields = fieldsOf(ves);
-  const highlighted = vesFields.versions.items.findIndex((v) => v.highlighted);
-  assert.deepEqual(removeVersion(vesFields.versions, highlighted), { ok: false, error: VERSION_KEEPS_HIGHLIGHT }, "no highlighted version");
+  const versions = blockIn(vesFields, "versions");
+  const highlighted = versions.items.findIndex((v) => v.highlighted);
+  assert.deepEqual(removeVersion(versions, highlighted), { ok: false, error: VERSION_KEEPS_HIGHLIGHT }, "no highlighted version");
   const other = highlighted === 0 ? 1 : 0;
-  const moved = highlightVersion(vesFields.versions, other);
-  assert.ok(removeVersion(moved, highlighted).ok, "once another is highlighted, it can go");
+  assert.ok(removeVersion(highlightVersion(versions, other), highlighted).ok, "once another is highlighted, it can go");
 
-  const one = { ...vesFields.launches, items: vesFields.launches.items.slice(0, 1) };
-  assert.deepEqual(removeLaunch(one, 0), { ok: false, error: HISTORY_KEEPS_A_LAUNCH }, "no launch in a shown history");
-  assert.ok(removeLaunch({ ...one, shown: false }, 0).ok, "a history off the page may be emptied");
+  const launches = blockIn(vesFields, "launches");
+  assert.deepEqual(removeLaunch({ ...launches, items: launches.items.slice(0, 1) }, 0), { ok: false, error: HISTORY_KEEPS_A_LAUNCH }, "no launch in a history");
 
-  const plan = fieldsOf(efesto).plan;
+  const plan = blockIn(fieldsOf(efesto), "timeline");
   const now = plan.steps.findIndex((s) => s.status === "now");
-  assert.deepEqual(setStepStatus(plan, now, "done"), { ok: false, error: PLAN_KEEPS_A_STEP_UNDER_WAY }, "no plan step under way");
+  assert.deepEqual(setStepStatus(plan, now, "done"), { ok: false, error: PLAN_KEEPS_A_STEP_UNDER_WAY }, "no step under way");
   assert.deepEqual(removeStep(plan, now), { ok: false, error: PLAN_KEEPS_A_STEP_UNDER_WAY });
   const next = plan.steps.findIndex((s) => s.status === "next");
   const advanced = setStepStatus(plan, next, "now");
   assert.ok(advanced.ok);
-  assert.deepEqual(
-    [advanced.value.steps[now].status, advanced.value.steps[next].status],
-    ["done", "now"],
-    "marking another step under way marks the old one done",
-  );
+  assert.deepEqual([advanced.value.steps[now].status, advanced.value.steps[next].status], ["done", "now"], "marking another step under way marks the old one done");
 
-  const gallery = { ...fieldsOf(ves).gallery, items: fieldsOf(ves).gallery.items.slice(0, 1) };
-  assert.deepEqual(removeGalleryItem(gallery, 0), { ok: false, error: GALLERY_KEEPS_A_PHOTO });
+  const gallery = blockIn(vesFields, "gallery");
+  assert.deepEqual(removeGalleryItem({ ...gallery, items: gallery.items.slice(0, 1) }, 0), { ok: false, error: GALLERY_KEEPS_A_PHOTO });
 });
 
 test("a save whose fields break a shape rule is refused with a message, whatever the browser checked", async () => {
@@ -169,16 +172,23 @@ test("a save whose fields break a shape rule is refused with a message, whatever
       rule: "no highlighted version",
       id: 2,
       opened: ves,
-      sent: { ...fields, versions: { ...fields.versions, items: fields.versions.items.map((v) => ({ ...v, highlighted: false })) } },
+      sent: withBlock(fields, "versions", (v) => ({ ...v, items: v.items.map((x) => ({ ...x, highlighted: false })) })),
       error: "Highlight one version.",
     },
-    { rule: "no launch in a shown history", id: 2, opened: ves, sent: { ...fields, launches: { ...fields.launches, items: [] } }, error: HISTORY_KEEPS_A_LAUNCH },
+    { rule: "no launch in a history", id: 2, opened: ves, sent: withBlock(fields, "launches", (l) => ({ ...l, items: [] })), error: HISTORY_KEEPS_A_LAUNCH },
     {
-      rule: "no plan step under way",
+      rule: "no launch in a hidden history",
+      id: 2,
+      opened: ves,
+      sent: withBlock(fields, "launches", (l) => ({ ...l, hidden: true, items: [] })),
+      error: HISTORY_KEEPS_A_LAUNCH,
+    },
+    {
+      rule: "no step under way",
       id: 3,
       opened: efesto,
-      sent: { ...plan, plan: { ...plan.plan, steps: plan.plan.steps.map((s) => ({ ...s, status: "done" as const })) } },
-      error: "Mark one plan step under way.",
+      sent: withBlock(plan, "timeline", (p) => ({ ...p, steps: p.steps.map((s) => ({ ...s, status: "done" as const })) })),
+      error: "Mark one step under way.",
     },
   ];
   for (const { rule, id, opened, sent, error } of broken) {
@@ -188,45 +198,28 @@ test("a save whose fields break a shape rule is refused with a message, whatever
     assert.deepEqual(result, { ok: false, error }, rule);
     assert.deepEqual(await store.list(), importedProjects(), `${rule}: nothing changes`);
   }
-  assert.deepEqual(fieldProblems({ ...fields, launches: { ...fields.launches, shown: false, items: [] } }), [], "a section off the page never stops a save");
 });
 
 test("a launch photo and a gallery photo with no description pass the checks and publish with an empty alt", async () => {
   const fields = fieldsOf(ves);
-  const launch: LaunchFields = { ...newLaunch, version: fields.versions.items[0].pill, photos: [{ src: UPLOADED, alt: "  " }] };
-  const sent: ProjectFields = {
-    ...fields,
-    launches: { ...fields.launches, items: [...fields.launches.items, launch] },
-    gallery: { ...fields.gallery, items: [...fields.gallery.items, { src: UPLOADED, alt: "", caption: "" }] },
-  };
+  const version = blockIn(fields, "versions").items[0].pill;
+  const sent = withBlock(
+    withBlock(fields, "launches", (l) => ({ ...l, items: [...l.items, { ...newLaunch, version, photos: [{ src: UPLOADED, alt: "  " }] }] })),
+    "gallery",
+    (g) => ({ ...g, items: [...g.items, { src: UPLOADED, alt: "", caption: "" }] }),
+  );
   assert.deepEqual(fieldProblems(sent), []);
   const saved = await projectEditor(admin, memoryContentStore(importedProjects()), undefined, files).saveFields(2, "publish", sent);
   assert.ok(saved.ok);
   const stored = editorVersion(saved.value.version);
   assert.deepEqual(launchCards(stored)?.at(-1)?.cover, { src: UPLOADED, alt: "" });
-  assert.equal(sectionContentOf(stored, "gallery")?.items.at(-1)?.alt, "");
-});
-
-test("switching a list section off hides it and closes up the numbers; its text survives a save", async () => {
-  const fields = fieldsOf(cavour);
-  const off: ProjectFields = { ...fields, launches: { ...fields.launches, shown: false } };
-  assert.deepEqual(numbers(projectViewOf(off, cavour)), ["03 versions", "04 gallery"]);
-  const editor = projectEditor(admin, memoryContentStore(importedProjects()));
-  const saved = await editor.saveFields(1, "save-draft", off);
-  assert.ok(saved.ok);
-  const stored = editorVersion(saved.value.version);
-  assert.equal(sectionShown(stored, "launches"), false);
-  assert.deepEqual(sectionContentOf(stored, "launches"), sectionContentOf(cavour, "launches"), "the hidden block keeps its launches");
-  const after = fieldsAfterSave(stored, off);
-  assert.deepEqual(projectViewOf({ ...after, launches: { ...after.launches, shown: true } }, stored), cavour, "switched back on, the same launches return");
+  const gallery = stored.blocks.find((b) => b.kind === "gallery");
+  assert.equal(gallery?.kind === "gallery" ? gallery.items.at(-1)?.alt : null, "");
 });
 
 test("a save carries only photos the version had or this side uploaded; uploads pass the site-content gate", async () => {
   const fields = fieldsOf(ves);
-  const withPhoto = (src: string): ProjectFields => ({
-    ...fields,
-    gallery: { ...fields.gallery, items: [...fields.gallery.items, { src, alt: "The team at the pad", caption: "" }] },
-  });
+  const withPhoto = (src: string) => withBlock(fields, "gallery", (g) => ({ ...g, items: [...g.items, { src, alt: "The team at the pad", caption: "" }] }));
   const editor = projectEditor(admin, memoryContentStore(importedProjects()), undefined, files);
   assert.deepEqual(await editor.saveFields(2, "save-draft", withPhoto("https://elsewhere.example/a.jpg")), {
     ok: false,
@@ -244,41 +237,49 @@ test("a photo file stays while the panel can still put it on the page, and goes 
   const dropped: string[] = [];
   const recording: PhotoFiles = { ...files, drop: async (srcs) => void dropped.push(...srcs.filter((src) => src === UPLOADED)) };
   const editor = projectEditor(admin, memoryContentStore(importedProjects()), undefined, recording);
-  const fields = fieldsOf(ves);
-  const on: ProjectFields = { ...fields, gallery: { ...fields.gallery, items: [...fields.gallery.items, { src: UPLOADED, alt: "The pad", caption: "" }] } };
+  const on = withBlock(fieldsOf(ves), "gallery", (g) => ({ ...g, items: [...g.items, { src: UPLOADED, alt: "The pad", caption: "" }] }));
   assert.ok((await editor.saveFields(2, "publish", on)).ok);
 
-  const off: ProjectFields = { ...on, gallery: { ...on.gallery, shown: false } };
+  const off = withBlock(on, "gallery", (g) => ({ ...g, hidden: true }));
   assert.ok((await editor.saveFields(2, "publish", off)).ok);
-  assert.deepEqual(dropped, [], "a save with Gallery off keeps the file the panel holds");
-  assert.ok((await editor.saveFields(2, "publish", on)).ok, "switched back on, the photo publishes again");
+  assert.deepEqual(dropped, [], "a save with the gallery hidden keeps the file the panel holds");
+  assert.ok((await editor.saveFields(2, "publish", on)).ok, "shown again, the photo publishes again");
 
-  const removed = removeGalleryItem(on.gallery, on.gallery.items.length - 1);
+  const gallery = blockIn(on, "gallery");
+  const removed = removeGalleryItem(gallery, gallery.items.length - 1);
   assert.ok(removed.ok);
   assert.deepEqual(removed.value.letGo, [UPLOADED]);
   await editor.discardPhoto(UPLOADED);
   assert.deepEqual(dropped, [], "a published version still shows it");
-  assert.ok((await editor.saveFields(2, "publish", { ...on, gallery: removed.value.fields })).ok);
+  assert.ok((await editor.saveFields(2, "publish", withBlock(on, "gallery", (g) => ({ ...g, ...removed.value.fields })))).ok);
   assert.deepEqual(dropped, [UPLOADED], "once nothing shows or holds it, the file goes");
 
   dropped.length = 0;
-  const launches = { ...fields.launches, items: [...fields.launches.items, newLaunch] };
-  const gone = removeLaunch(launches, launches.items.length - 1);
+  const launches = blockIn(fieldsOf(ves), "launches");
+  const gone = removeLaunch({ ...launches, items: [...launches.items, newLaunch] }, launches.items.length);
   assert.ok(gone.ok);
   assert.deepEqual(gone.value.letGo, [UPLOADED], "removing a launch lets its unsaved photos go");
   await editor.discardPhoto(UPLOADED);
   assert.deepEqual(dropped, [UPLOADED]);
 });
 
-test("a request is read as the list fields only in their shape", () => {
+test("removing a block lets go only the photos no other block holds", () => {
+  const fields = withBlock(fieldsOf(ves), "gallery", (g) => ({ ...g, items: [...g.items, { src: UPLOADED, alt: "", caption: "" }] }));
+  const gallery = blockIn(fields, "gallery");
+  const copy = { ...gallery, id: "gallery-2" };
+  assert.deepEqual(removeBlock([...fields.blocks, copy], gallery.id).letGo, [], "a copy still holds the upload");
+  assert.ok(removeBlock(fields.blocks, gallery.id).letGo.includes(UPLOADED));
+  assert.ok(heldPhotos(fields).includes(UPLOADED), "the panel's fields hold it until then");
+});
+
+test("a request is read as the list blocks only in their shape", () => {
   const fields = fieldsOf(ves);
   assert.deepEqual(readProjectFields(JSON.parse(JSON.stringify(fields))), fields);
   const broken = [
-    { ...fields, versions: { ...fields.versions, shown: "yes" } },
-    { ...fields, launches: { ...fields.launches, items: [{ ...fields.launches.items[0], outcome: "exploded" }] } },
-    { ...fields, launches: { ...fields.launches, items: [{ ...fields.launches.items[0], numbers: fields.launches.items[0].numbers.slice(0, 3) }] } },
-    { ...fields, launches: { ...fields.launches, items: [{ ...fields.launches.items[0], photos: [{ src: "javascript:alert(1)", alt: "" }] }] } },
-    { ...fields, plan: { ...fields.plan, steps: [{ status: "soon", date: "", title: "", text: { text: "", phone: "" } }] } },
+    withBlock(fields, "launches", (l) => ({ ...l, items: [{ ...l.items[0], outcome: "exploded" as never }] })),
+    withBlock(fields, "launches", (l) => ({ ...l, items: [{ ...l.items[0], numbers: l.items[0].numbers.slice(0, 3) as never }] })),
+    withBlock(fields, "launches", (l) => ({ ...l, items: [{ ...l.items[0], photos: [{ src: "javascript:alert(1)" as never, alt: "" }] }] })),
+    withBlock(fields, "versions", (v) => ({ ...v, items: [{ ...v.items[0], highlighted: "yes" as never }] })),
   ];
-  for (const sent of broken) assert.equal(readProjectFields(sent), null);
+  for (const sent of broken) assert.equal(readProjectFields(JSON.parse(JSON.stringify(sent))), null);
 });

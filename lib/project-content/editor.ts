@@ -6,8 +6,8 @@ import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard
 import { checkPhotoUpload, filesNoLongerShown, freeingFiles, isPhotoSrc, isSitePhotoSrc, type PhotoFiles } from "@/lib/outreach-photos";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { editedLine, type EditStamp } from "./edited";
-import { checkProjectFields, type ProjectFields } from "./fields";
-import { heldPhotos, listPhotos } from "./list-fields";
+import { checkProjectFields, heldPhotos, type ProjectFields } from "./fields";
+import { listPhotos } from "./list-fields";
 import { checkNewProject, takenSlugs, type NewProject } from "./new-project";
 import type { ProjectRecord } from "./record";
 
@@ -102,8 +102,8 @@ export function projectEditor(
   return {
     ...editor,
     saveFields(id, step, fields) {
-      // A section's fields stay in the panel, photos and all, whatever its switch
-      // says, so this save deletes none of the files the fields still hold.
+      // A block's fields stay in the panel, photos and all, hidden or not,
+      // so this save deletes none of the files the fields still hold.
       const saving = contentEditor(viewer, freeingFiles(store, keeping(files, heldPhotos(fields)), photosIn));
       return saving.save(id, step, async (opened) => {
         if (opened === null) return refused("Unknown project.");
