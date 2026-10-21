@@ -58,6 +58,7 @@ import {
 } from "@/lib/dashboard/recruitment";
 import { kindOfTestViewer, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
+import { openPositionsDetail } from "@/lib/dashboard/open-positions-detail";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { departmentCode, divisionLabel, positionText } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
@@ -512,7 +513,7 @@ function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
       {
         label: "Open positions",
         value: String(open.length),
-        detail: open.length === 0 ? "None open" : open.map((p) => p.title).join(", "),
+        detail: openPositionsDetail(open.map((p) => ({ title: p.title, division: p.divisionId }))),
       },
       {
         label: "Orders",
