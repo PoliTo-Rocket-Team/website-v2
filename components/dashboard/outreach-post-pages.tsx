@@ -5,7 +5,7 @@ import { OutreachListPage } from "@/components/outreach/list-page";
 import type { PostFrame } from "@/components/outreach/post";
 import { postCardOf } from "@/components/outreach/post-card";
 import { PostPage } from "@/components/outreach/post-page";
-import { featuredCard, newestFirst, outreachStats, slugOf, trackRecordShowing, withEdited, type FeaturedCard, type Neighbouring } from "@/lib/outreach";
+import { featuredCard, newestFirst, slugOf, trackRecordShowing, withEdited, type FeaturedCard, type Neighbouring } from "@/lib/outreach";
 import {
   featuredCardFeature,
   featuredOpen,
@@ -87,7 +87,6 @@ export function PostCardPage({
     const edited = cards.find((c) => c.post === view)?.card;
     return (
       <OutreachListPage
-        stats={outreachStats(shown)}
         features={mapUpToTwo(features, (f) => f.card)}
         cards={cards.map((c) => c.card)}
         chrome="none"

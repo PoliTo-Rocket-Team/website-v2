@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { memoryContentStore } from "@/lib/content/memory";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
-import { awardPosts, featuredCard, iressStory, outreachRecord, outreachStats, postBySlug, postsWithPages, slugOf, trackRecord } from "./outreach";
+import { awardPosts, featuredCard, iressStory, outreachRecord, postBySlug, postsWithPages, slugOf, trackRecord } from "./outreach";
 import { outreachEditor, publicOutreach, type StoredOutreach } from "./outreach-editor";
 import { FEATURE_LOCKED, FEATURED_FULL } from "./outreach-featured";
 import { importedOutreach, outreachImportStatements, pinnedStoryImportSql } from "./outreach-import";
@@ -101,16 +101,7 @@ test("the imports carry every post and tag as published, the summit's story feat
 
   const shown = publicOutreach(stored);
   assert.deepEqual(shown, { featured: [iressStory], posts: outreachRecord.posts, tags: outreachRecord.tags });
-  // The /outreach header figures and the home Track record cards are the record's: the featured post counts toward neither.
-  assert.deepEqual(outreachStats(shown), outreachStats(outreachRecord));
-  // Two figures, events and awards: no IRESS editions and no year started (issue #496).
-  assert.deepEqual(
-    outreachStats(shown).map((s) => [s.value, s.label.text]),
-    [
-      ["13", "EVENTS SINCE 2022"],
-      ["2", "AWARDS"],
-    ],
-  );
+  // The home Track record cards are the record's: the featured post does not count toward them.
   assert.deepEqual(trackRecord(shown.posts), trackRecord(outreachRecord.posts));
   // The photos stay at their /outreach/ paths.
   for (const post of postsWithPages(shown)) for (const photo of post.photos) assert.match(photo.src, /^\/outreach\/[a-z0-9-]+\.webp$/);
@@ -279,14 +270,13 @@ test("the home Track record section shows the four newest published posts by dat
 test("tags are data: a post tagged Award counts toward the award figure, and the award tag is the list's to say", () => {
   const awards = awardPosts(outreachRecord).map((p) => p.title);
   assert.deepEqual(awards, ["IAC 2024, Milan", "PLD Space award"]);
-  assert.deepEqual(outreachStats(outreachRecord)[1], { value: "2", label: { text: "AWARDS" } });
 
   // A new post tagged Award adds one; a new tag that is not the award one adds none.
   const tags = [...outreachRecord.tags, { name: "Workshop", award: false }];
   const won: OutreachPost = { ...outreachRecord.posts[0], title: "A new award", tags: ["Workshop", "Award"] };
   const workshop: OutreachPost = { ...outreachRecord.posts[0], title: "A workshop", tags: ["Workshop"] };
   const content = { ...outreachRecord, tags, posts: [...outreachRecord.posts, won, workshop] };
-  assert.deepEqual(outreachStats(content)[1], { value: "3", label: { text: "AWARDS" } });
+  assert.equal(awardPosts(content).length, 3);
 
   // What counts is the tag the list marks, not the word: a renamed award tag still counts.
   const renamed: StoredOutreach["tags"] = outreachRecord.tags.map((t) => (t.award ? { ...t, name: "Prize" } : t));
