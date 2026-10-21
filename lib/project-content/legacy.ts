@@ -7,9 +7,10 @@ import type { EngineBlock, EngineRecord, FlightCount, HomeCard, ProjectBlock, Pr
 // plan, reasons and a gallery, each optional but the stories), a brand
 // texture, and the model on the card and in the page's panel. Frozen: the
 // import and its revisions (./import.ts, ./revision.ts) wrote records of this
-// shape, and migration drizzle/0050_project_page_blocks.sql turns every
-// stored one into the record of ./record.ts. `blocksRecordOf` is that
-// migration in code: the import is read through it, and
+// shape, and migration drizzle/0050_project_page_blocks.sql writes the record
+// of ./record.ts each stored one becomes beside it, leaving the stored one as
+// it is (./row.ts). `blocksRecordOf` is that migration in code: the import
+// and a row with no page blocks record are read through it, and
 // ./blocks-migration.test.ts runs the migration's SQL on the same records and
 // checks both give the same result.
 

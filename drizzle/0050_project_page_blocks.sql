@@ -1,19 +1,28 @@
--- Project page blocks (epic #522, issue #525). Every stored project version,
--- published and draft, trades its fixed sections for one ordered list of page
--- blocks, in today's page order: the name story and the design story become
--- two half-width text blocks, then the versions, the launch history, the plan
--- (a timeline), the reasons (numbered points) and the gallery, each shown and
--- with the section's name as its id. Each launch keeps its first photo as its
--- cover, and every second photo is appended to the gallery at the end of the
--- page, which is created there when the project had none (grill #524, R1.2).
--- The brand texture becomes the background, kept as it is, and the page
--- panel's model becomes the top visual, which the card draws too, so each
--- project keeps its texture and its model (R1.1). The retired `teaser` key
--- goes. A version that already has blocks is left as it is.
+-- Project page blocks (epic #522, issue #525). Additive (Owner decision,
+-- 2026-10-22, on #522): this adds a `page` column to `project_versions` and
+-- fills it, and changes nothing else. Each version's `content` stays exactly
+-- as it is, so code built before page blocks reads every project as before
+-- (lib/project-content/before-blocks/); this code reads `page`
+-- (lib/project-content/row.ts).
+-- Every stored version, published and draft, gets in `page` its record as one
+-- ordered list of page blocks, in today's page order: the name story and the
+-- design story become two half-width text blocks, then the versions, the
+-- launch history, the plan (a timeline), the reasons (numbered points) and
+-- the gallery, each shown and with the section's name as its id. Each launch
+-- keeps its first photo as its cover, and every second photo is appended to
+-- the gallery at the end of the page, which is created there when the project
+-- had none (grill #524, R1.2). The brand texture becomes the background, kept
+-- as it is, and the page panel's model becomes the top visual, which the card
+-- draws too, so each project keeps its texture and its model (R1.1). The
+-- retired `teaser` key is left out of `page`. A version that already has a
+-- `page` is left as it is.
 -- `blocksRecordOf` (lib/project-content/legacy.ts) is this statement in code;
 -- lib/project-content/blocks-migration.test.ts runs this file on the stored
--- projects and checks both give the same records.
-UPDATE "project_versions" SET "content" = (
+-- projects and checks both give the same records, and that the code from
+-- before page blocks reads every migrated row as it read it before.
+ALTER TABLE "project_versions" ADD COLUMN IF NOT EXISTS "page" jsonb;
+--> statement-breakpoint
+UPDATE "project_versions" SET "page" = (
   "content" - 'texture' - 'teaser' - 'nameStory' - 'design' - 'versions' - 'launches' - 'plan' - 'reasons' - 'gallery'
 ) || jsonb_build_object(
   'background', jsonb_build_object('kind', 'texture', 'src', "content"->'texture'),
@@ -69,4 +78,4 @@ UPDATE "project_versions" SET "content" = (
     ) AS "blocks"
   )
 )
-WHERE NOT ("content" ? 'blocks');
+WHERE "page" IS NULL;

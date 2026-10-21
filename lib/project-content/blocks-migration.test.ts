@@ -4,18 +4,25 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { GalleryBlock, TextBlock } from "@/lib/project-pages/types";
+import { storedProjectRecord as storedBeforeBlocks } from "./before-blocks/check";
+import * as beforeBlocks from "./before-blocks/record";
 import { isProjectRecord } from "./check";
 import { firstImport, legacyRecords } from "./import";
 import { blocksRecordOf, LAUNCH_PHOTOS_GALLERY_TITLE, type LegacyProjectRecord, type LegacyVehicleRecord } from "./legacy";
 import type { LaunchesBlock, ProjectBlock, ProjectRecord } from "./record";
+import { rowRecordOf } from "./row";
 
 // Migration 0050 (issue #525): every stored project version, published and
-// draft, becomes a record of page blocks. This runs the migration file itself
-// on an in-memory Postgres (PGlite) holding the stored projects, and checks
-// each record it writes against the record it was made from: the same
-// sections as blocks, in today's page order, with the same content, the
-// texture and the model kept. `blocksRecordOf` must give the same records, so
-// the code that reads the import and the database agree.
+// draft, gets a record of page blocks in the new `page` column. This runs the
+// migration file itself on an in-memory Postgres (PGlite) holding the stored
+// projects, and checks each record it writes against the record it was made
+// from: the same sections as blocks, in today's page order, with the same
+// content, the texture and the model kept. `blocksRecordOf` must give the
+// same records, so the code that reads the import and the database agree.
+// The migration is additive (Owner decision, 2026-10-22, on #522): each
+// row's `content` is left byte for byte, and the code from before page blocks
+// (./before-blocks/, as on huey/landing-page) reads every migrated row and
+// draws the same page, home card and /projects entry as it did before.
 
 const root = join(__dirname, "..", "..");
 const migration = readFileSync(join(root, "drizzle", "0050_project_page_blocks.sql"), "utf8");
@@ -61,20 +68,50 @@ const withoutTeaser = (record: LegacyProjectRecord): LegacyProjectRecord => {
   return rest as LegacyProjectRecord;
 };
 
+/** The table as huey/landing-page's schema has it before the migration (db/schema/public.ts). */
+const TABLE = `CREATE TABLE "project_versions" (
+  "id" serial PRIMARY KEY,
+  "project_id" integer NOT NULL,
+  "version" text NOT NULL,
+  "content" jsonb NOT NULL,
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "project_versions_project_version_unique" UNIQUE ("project_id", "version"),
+  CONSTRAINT "project_versions_content_is_record" CHECK (jsonb_typeof("content") = 'object')
+)`;
+
+type Row = { id: number; project_id: number; version: string; content: unknown; content_text: string; updated_at: string; page: unknown };
+
 let db: PGlite;
+let columnsBefore: string[];
+let rowsBefore: Map<number, Omit<Row, "page">>;
+let rowsAfter: Map<number, Row>;
 let migrated: Map<string, ProjectRecord>;
 
 const key = (id: number, version: string) => `${id}:${version}`;
 
+async function columns(): Promise<string[]> {
+  const { rows } = await db.query<{ column_name: string }>(
+    `SELECT "column_name" FROM information_schema.columns WHERE "table_name" = 'project_versions' ORDER BY "ordinal_position"`,
+  );
+  return rows.map((r) => r.column_name);
+}
+
+async function readRows(select: string): Promise<Map<number, Row>> {
+  const { rows } = await db.query<Row>(`SELECT ${select}, "content"::text AS "content_text", "updated_at"::text AS "updated_at" FROM "project_versions" ORDER BY "id"`);
+  return new Map(rows.map((r) => [r.id, r]));
+}
+
 before(async () => {
   db = new PGlite();
-  await db.exec(`CREATE TABLE "project_versions" ("id" serial PRIMARY KEY, "project_id" integer NOT NULL, "version" text NOT NULL, "content" jsonb NOT NULL)`);
+  await db.exec(TABLE);
   for (const [id, version, content] of STORED) {
     await db.query(`INSERT INTO "project_versions" ("project_id", "version", "content") VALUES ($1, $2, $3::jsonb)`, [id, version, JSON.stringify(content)]);
   }
+  columnsBefore = await columns();
+  rowsBefore = await readRows(`"id", "project_id", "version", "content"`);
   await db.exec(migration);
-  const { rows } = await db.query<{ project_id: number; version: string; content: ProjectRecord }>(`SELECT "project_id", "version", "content" FROM "project_versions"`);
-  migrated = new Map(rows.map((r) => [key(r.project_id, r.version), r.content]));
+  rowsAfter = await readRows(`"id", "project_id", "version", "content", "page"`);
+  migrated = new Map([...rowsAfter.values()].map((r) => [key(r.project_id, r.version), r.page as ProjectRecord]));
 });
 
 after(async () => {
@@ -86,13 +123,24 @@ test("migration 0050 is journaled, so the migrator runs it", () => {
   assert.deepEqual(journal.entries.at(-1), { ...journal.entries.at(-1), idx: 50, tag: "0050_project_page_blocks" });
 });
 
-test("migration 0050 turns every stored version into a whole record of blocks, as blocksRecordOf does", () => {
+test("migration 0050 only adds the page column: every row keeps its content byte for byte", async () => {
+  assert.deepEqual(await columns(), [...columnsBefore, "page"], "one column added, none dropped or renamed");
+  assert.equal(rowsAfter.size, rowsBefore.size, "no row added or removed");
+  for (const [id, was] of rowsBefore) {
+    const now = rowsAfter.get(id)!;
+    assert.equal(now.content_text, was.content_text, `row ${id}: content unchanged`);
+    assert.deepEqual([now.project_id, now.version, now.updated_at], [was.project_id, was.version, was.updated_at], `row ${id}: its other columns unchanged`);
+  }
+});
+
+test("migration 0050 gives every stored version a whole page record, as blocksRecordOf does, and this code reads it", () => {
   assert.equal(migrated.size, STORED.length);
   for (const [id, version, content] of STORED) {
     const record = migrated.get(key(id, version))!;
     assert.ok(isProjectRecord(record), `${content.slug} ${version} is a record`);
     assert.deepEqual(record, plain(blocksRecordOf(withoutTeaser(content))), `${content.slug} ${version}`);
   }
+  for (const row of rowsAfter.values()) assert.deepEqual(rowRecordOf(row), row.page, `row ${row.id} reads its page`);
 });
 
 test("each published project keeps its sections as blocks, in today's page order, with the same content", () => {
@@ -173,12 +221,46 @@ test("each project keeps its texture as its background and its model as its visu
     assert.equal("rocket" in record.card, false);
     assert.equal("texture" in record, false);
   }
-  assert.equal("teaser" in migrated.get(key(3, "draft"))!, false, "the retired key goes");
+  assert.equal("teaser" in migrated.get(key(3, "draft"))!, false, "the page record leaves the retired key out");
 });
 
-test("migration 0050 leaves a version that already has blocks as it is", async () => {
-  const { rows: was } = await db.query<{ content: unknown }>(`SELECT "content" FROM "project_versions" ORDER BY "id"`);
+test("the code from before page blocks reads every migrated row and draws the same page, home card and /projects entry", async () => {
+  // Read as huey/landing-page reads it: its Drizzle table names only these columns.
+  const trunkRows = await readRows(`"id", "project_id", "version", "content"`);
+  const published: { was: beforeBlocks.ProjectRecord; now: beforeBlocks.ProjectRecord }[] = [];
+  for (const [id, version, stored] of STORED) {
+    const row = [...trunkRows.values()].find((r) => r.project_id === id && r.version === version)!;
+    assert.equal("page" in row, false);
+    const was = storedBeforeBlocks(plain(stored));
+    const now = storedBeforeBlocks(row.content);
+    assert.ok(was !== null, `${stored.slug} ${version}: a record before the migration`);
+    assert.ok(now !== null, `${stored.slug} ${version}: still a record after it`);
+    assert.deepEqual(now, was, `${stored.slug} ${version}: the same record`);
+    assert.deepEqual(beforeBlocks.pageRecordOf(now), beforeBlocks.pageRecordOf(was), `${stored.slug} ${version}: its page`);
+    assert.deepEqual(beforeBlocks.homeCardOf(now, id - 1), beforeBlocks.homeCardOf(was, id - 1), `${stored.slug} ${version}: its home card`);
+    assert.deepEqual(beforeBlocks.landingCardOf(now, id - 1), beforeBlocks.landingCardOf(was, id - 1), `${stored.slug} ${version}: its Home card`);
+    assert.deepEqual(beforeBlocks.listingOf(now, id - 1), beforeBlocks.listingOf(was, id - 1), `${stored.slug} ${version}: its /projects entry`);
+    if (version === "published") published.push({ was, now });
+  }
+  assert.equal(published.length, 3);
+  assert.deepEqual(
+    beforeBlocks.listingsNewestFirst(published.map((p) => p.now)),
+    beforeBlocks.listingsNewestFirst(published.map((p) => p.was)),
+    "the /projects list, in its order",
+  );
+});
+
+test("a row the code from before page blocks writes after the migration is read from its content, as the migration reads it", async () => {
+  const written = { ...ves, hero: { ...ves.hero, intro: { text: "Saved by a deployment built before page blocks." } } };
+  await db.query(`INSERT INTO "project_versions" ("project_id", "version", "content") VALUES ($1, $2, $3::jsonb)`, [5, "draft", JSON.stringify(written)]);
+  const { rows } = await db.query<{ content: unknown; page: unknown }>(`SELECT "content", "page" FROM "project_versions" WHERE "project_id" = 5`);
+  assert.equal(rows[0].page, null);
+  assert.deepEqual(rowRecordOf(rows[0]), plain(blocksRecordOf(written)));
+  await db.query(`DELETE FROM "project_versions" WHERE "project_id" = 5`);
+});
+
+test("migration 0050 run again changes nothing", async () => {
+  const was = await readRows(`"id", "content", "page"`);
   await db.exec(migration);
-  const { rows: now } = await db.query<{ content: unknown }>(`SELECT "content" FROM "project_versions" ORDER BY "id"`);
-  assert.deepEqual(now, was);
+  assert.deepEqual(await readRows(`"id", "content", "page"`), was);
 });
