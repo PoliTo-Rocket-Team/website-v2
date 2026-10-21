@@ -386,8 +386,12 @@ export function EditableBlock({
   id: string;
   /**
    * A block about as wide as its name chip, such as one person on the Team
-   * page's org chart (board 80): the Edit chip hangs off the outline's right
-   * edge, so the two chips never overlap.
+   * page's org chart (board 80). Its name chip is cut to the outline's width.
+   * From xl, where the chart is an arc with room between people, the Edit
+   * chip hangs off the outline's right edge, as board 80 draws it. Below xl
+   * the people sit in a grid with no room beside them, so the Edit chip sits
+   * on the outline's foot and the block keeps room under it: every chip shows
+   * at once and none covers a neighbour's.
    */
   narrow?: boolean;
   className?: string;
@@ -404,20 +408,23 @@ export function EditableBlock({
   // here" sits left of it, so it moves in from the block's right edge far
   // enough to clear the checklist; from 1440px the page's centred column
   // leaves room for the board's own spot.
+  const onTop = "-top-3 -translate-y-1/2 md:-top-[22px]";
   const chipPlace = narrow
-    ? "left-[calc(100%-4px)] md:left-[calc(100%-8px)]"
+    ? "-bottom-3 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[22px] xl:bottom-auto xl:-top-[22px] xl:left-[calc(100%-8px)] xl:translate-x-0 xl:-translate-y-1/2"
     : start
-      ? "right-6 md:right-[220px] min-[1440px]:right-[145px]"
-      : "right-6 md:right-[33px]";
+      ? `${onTop} right-6 md:right-[220px] min-[1440px]:right-[145px]`
+      : `${onTop} right-6 md:right-[33px]`;
   return (
-    <div className={`group/block relative ${className}`}>
+    <div className={`group/block relative ${narrow ? "max-xl:mb-8" : ""} ${className}`}>
       {children}
       <div
         aria-hidden
         className={`pointer-events-none absolute -inset-3 z-10 rounded-xl md:-inset-[22px] ${outline}`}
       >
         {!selected && (
-          <span className="absolute left-4 top-0 -translate-y-1/2 whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent">
+          <span
+            className={`absolute left-4 top-0 -translate-y-1/2 whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent ${narrow ? "max-w-[calc(100%-32px)] truncate" : ""}`}
+          >
             {chip.name}
           </span>
         )}
@@ -427,7 +434,7 @@ export function EditableBlock({
           type="button"
           onClick={chip.edit}
           aria-label={`${chip.label}: ${chip.name}`}
-          className={`absolute -top-3 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] ${chipPlace} hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS}`}
+          className={`absolute z-10 inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent ${chipPlace} hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS}`}
         >
           <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
           {chip.label}
