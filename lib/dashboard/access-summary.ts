@@ -1,3 +1,4 @@
+import { DASHBOARD_PAGES } from "./access";
 import { formatEuro, type Cents } from "./orders";
 import { GRANT_AREAS, type GrantArea } from "./viewer";
 
@@ -6,14 +7,25 @@ import { GRANT_AREAS, type GrantArea } from "./viewer";
 // A grant gives a member access, not the area's work, so the line carries
 // counts only: names and details (applicants, interview times, people without
 // a photo, single orders) stay on the area's own page, and no summary can hold
-// one.
+// one. A Content grant (issue #504) adds a last line naming the editors it
+// opens, linked to the first of them.
+
+/** The areas a "Your access" line is about: the grant areas, and Content. */
+export type SummaryArea = GrantArea | "content";
 
 /** One granted area's counts and the page that shows them. */
 export type AccessSummary =
   | { readonly area: "positions"; readonly href: "/dashboard/positions"; readonly open: number; readonly divisions: number }
   | { readonly area: "applications"; readonly href: "/dashboard/applications"; readonly fresh: number; readonly booked: number }
   | { readonly area: "members"; readonly href: "/dashboard/members"; readonly people: number; readonly divisions: number }
-  | { readonly area: "orders"; readonly href: "/dashboard/orders"; readonly waiting: number; readonly total: Cents };
+  | { readonly area: "orders"; readonly href: "/dashboard/orders"; readonly waiting: number; readonly total: Cents }
+  | { readonly area: "content"; readonly href: string; readonly pages: readonly string[] };
+
+/** The Content line: the editors a Content grant opens, in sidebar order (`siteContent` rows, ./access.ts). */
+function contentSummary(): AccessSummary {
+  const pages = DASHBOARD_PAGES.filter((page) => "siteContent" in page && page.siteContent === true);
+  return { area: "content", href: pages[0]?.href ?? "/dashboard", pages: pages.map((page) => page.label) };
+}
 
 /**
  * What the summaries are counted from, one field per area: absent when the
@@ -36,9 +48,14 @@ export type AccessFigures = {
 
 /**
  * The "Your access" lines, in `GRANT_AREAS` order: one per area in `areas`
- * that was read. A figure read for an area outside `areas` adds nothing.
+ * that was read, then Content when the member holds it. A figure read for an
+ * area outside `areas` adds nothing.
  */
-export function accessSummariesOf(areas: readonly GrantArea[], figures: AccessFigures): AccessSummary[] {
+export function accessSummariesOf(areas: readonly GrantArea[], figures: AccessFigures, content = false): AccessSummary[] {
+  return [...grantSummariesOf(areas, figures), ...(content ? [contentSummary()] : [])];
+}
+
+function grantSummariesOf(areas: readonly GrantArea[], figures: AccessFigures): AccessSummary[] {
   return GRANT_AREAS.flatMap((area): AccessSummary[] => {
     if (!areas.includes(area)) return [];
     switch (area) {
@@ -67,12 +84,18 @@ export function accessSummariesOf(areas: readonly GrantArea[], figures: AccessFi
   });
 }
 
-export const ACCESS_AREA_LABELS: Readonly<Record<GrantArea, string>> = {
+export const ACCESS_AREA_LABELS: Readonly<Record<SummaryArea, string>> = {
   positions: "Positions",
   applications: "Applications",
   members: "Members",
   orders: "Orders",
+  content: "Content",
 };
+
+/** "Projects, Outreach, Partners, FAQ and Team page". */
+function listed(names: readonly string[]): string {
+  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -91,6 +114,8 @@ export function accessCounts(summary: AccessSummary): string {
     }
     case "orders":
       return `${summary.waiting} waiting · ${formatEuro(summary.total)} to be placed`;
+    case "content":
+      return `Edit ${listed(summary.pages)}`;
   }
 }
 

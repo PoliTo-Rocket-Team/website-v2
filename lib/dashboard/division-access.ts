@@ -14,18 +14,20 @@ import type { FullAccessSeat } from "./viewer";
 // give anyone edit on Members, and a head gives nothing outside their
 // department. Access that comes with a role is shown locked and never changes
 // here. The team leader's page adds Alumni and "Approve orders" (boards 71
-// and 71b, issue #247).
+// and 71b, issue #247). Content (issue #504) is given across the whole team
+// at Can edit only, by full access or by someone who holds Content.
 
 /** The areas a lead or head shares inside their unit: the `scopes.target` values of a division or department grant. */
 export const UNIT_TARGETS = ["positions", "applications", "members", "orders"] as const;
 export type UnitTarget = (typeof UNIT_TARGETS)[number];
 
 /**
- * Every area the Access page gives, in board 71b's order: the unit areas and
- * Alumni, which is site-content access (#234). Alumni has no unit: it is
- * given across the whole team or not at all.
+ * Every area the Access page gives, in board 71b's order: the unit areas,
+ * Alumni (#234) and, after it, Content (Owner decision, 2026-10-21, issue
+ * #504), which opens the Projects, Outreach, Partners, FAQ and Team page
+ * editors. Neither has a unit: each is given across the whole team or not at all.
  */
-export const ACCESS_TARGETS = ["positions", "applications", "members", "alumni", "orders"] as const;
+export const ACCESS_TARGETS = ["positions", "applications", "members", "alumni", "content", "orders"] as const;
 export type AccessTarget = (typeof ACCESS_TARGETS)[number];
 
 export const ACCESS_TARGET_LABELS: Readonly<Record<AccessTarget, string>> = {
@@ -33,12 +35,25 @@ export const ACCESS_TARGET_LABELS: Readonly<Record<AccessTarget, string>> = {
   applications: "Applications",
   members: "Members",
   alumni: "Alumni",
+  content: "Content",
   orders: "Orders",
 };
 
-/** `scopes.access_level`: the two levels, on every area alike. */
+/** The areas given across the whole team only, never in a department or a division. */
+export const TEAM_ONLY_TARGETS = ["alumni", "content"] as const satisfies readonly AccessTarget[];
+
+/** `scopes.access_level`: the two levels. */
 export const ACCESS_LEVELS = ["view", "edit"] as const;
 export type AccessLevel = (typeof ACCESS_LEVELS)[number];
+
+/**
+ * The levels an area is given at: both on every area but Content, which is
+ * edit-only (issue #504). A drawer shows no level toggle for an area with
+ * one level, and the server refuses any other.
+ */
+export function levelsOf(target: AccessTarget): readonly AccessLevel[] {
+  return target === "content" ? ["edit"] : ACCESS_LEVELS;
+}
 
 export const ACCESS_LEVEL_LABELS: Readonly<Record<AccessLevel, string>> = {
   view: "Can view",
@@ -96,11 +111,13 @@ export type LedDivision = {
  * The unit an Access page is about: every division a lead leads, never none
  * (issue #185: one list, as board 71's team page is), a head's department
  * with its open divisions, or, with full access (issue #238), the whole team:
- * every open department with its open divisions, by name.
+ * every open department with its open divisions, by name. A lead or head who
+ * holds a Content grant (`content`, issue #504) also gives Content across the
+ * whole team; full access always does.
  */
 export type AccessUnit =
-  | { readonly kind: "division"; readonly divisions: readonly [LedDivision, ...LedDivision[]] }
-  | ({ readonly kind: "department" } & AccessDepartmentUnit)
+  | { readonly kind: "division"; readonly divisions: readonly [LedDivision, ...LedDivision[]]; readonly content?: true }
+  | ({ readonly kind: "department"; readonly content?: true } & AccessDepartmentUnit)
   | { readonly kind: "team"; readonly departments: readonly AccessDepartmentUnit[] };
 
 /**
@@ -132,17 +149,22 @@ function departmentPlaces(unit: AccessDepartmentUnit): AccessPlace[] {
  * The places a viewer gives access in: each division they lead; or their whole
  * department, then each of its divisions; or, from full access, the whole
  * team, then each department in turn, whole and then each of its divisions
- * (board 71b).
+ * (board 71b). A lead or head who holds Content has the whole team last,
+ * where they give Content alone (issue #504).
  */
 export function placesOf(unit: AccessUnit): AccessPlace[] {
   switch (unit.kind) {
     case "division":
-      return unit.divisions.map(({ division }): AccessPlace => ({ kind: "division", division }));
+      return [...unit.divisions.map(({ division }): AccessPlace => ({ kind: "division", division })), ...contentPlace(unit)];
     case "department":
-      return departmentPlaces(unit);
+      return [...departmentPlaces(unit), ...contentPlace(unit)];
     case "team":
       return [WHOLE_TEAM_PLACE, ...unit.departments.flatMap(departmentPlaces)];
   }
+}
+
+function contentPlace(unit: { readonly content?: true }): AccessPlace[] {
+  return unit.content === true ? [WHOLE_TEAM_PLACE] : [];
 }
 
 /** The place Give access starts on: the lead's first division, the head's whole department, the whole team from full access. */
@@ -210,23 +232,23 @@ export type HeldAccess = {
 /** A head's role holds every unit area at Can edit across their department (board 65). */
 export const ROLE_HELD_ACCESS: readonly HeldAccess[] = UNIT_TARGETS.map((target) => ({ target, level: "edit" }));
 
-/** Full access holds every area at Can edit across the team (issue #238), Alumni included (#234, board 71). */
+/** Full access holds every area at Can edit across the team (issue #238), Alumni (#234, board 71) and Content (#504) included. */
 export const FULL_HELD_ACCESS: readonly HeldAccess[] = ACCESS_TARGETS.map((target) => ({ target, level: "edit" }));
+
+/** A Content grant: Content at Can edit across the whole team (issue #504). */
+export const CONTENT_HELD_ACCESS: readonly HeldAccess[] = [{ target: "content", level: "edit" }];
 
 /**
  * What the viewer holds in one place of their unit: every area at Can edit
  * from full access, a head's role areas across their department, or what a
- * lead holds in that one division; nothing in a place outside the unit.
+ * lead holds in that one division; across the whole team, a lead's or head's
+ * Content grant; nothing in a place outside the unit.
  */
 export function heldIn(unit: AccessUnit, place: AccessPlace): readonly HeldAccess[] {
-  switch (unit.kind) {
-    case "team":
-      return FULL_HELD_ACCESS;
-    case "department":
-      return ROLE_HELD_ACCESS;
-    case "division":
-      return place.kind === "division" ? (unit.divisions.find((d) => d.division.id === place.division.id)?.held ?? []) : [];
-  }
+  if (unit.kind === "team") return FULL_HELD_ACCESS;
+  if (place.kind === "team") return unit.content === true ? CONTENT_HELD_ACCESS : [];
+  if (unit.kind === "department") return ROLE_HELD_ACCESS;
+  return place.kind === "division" ? (unit.divisions.find((d) => d.division.id === place.division.id)?.held ?? []) : [];
 }
 
 /** One line of "Your access": where it holds, and the areas held there. */
@@ -240,20 +262,24 @@ export type HeldLine = {
  * "Your access", line by line: one for a head's or a team page; on a lead's
  * page one per set of areas, naming every division that holds that set, so a
  * lead who holds the same in each division reads one line (issue #185).
- * Divisions where the lead holds nothing are left out.
+ * Divisions where the lead holds nothing are left out. A lead's or head's
+ * Content grant is a last line of its own, across the whole team.
  */
 export function heldLines(unit: AccessUnit): HeldLine[] {
-  if (unit.kind !== "division") return [{ where: unitLine(unit), held: heldIn(unit, homePlace(unit)) }];
+  if (unit.kind === "team") return [{ where: unitLine(unit), held: heldIn(unit, homePlace(unit)) }];
+  const content = unit.content === true ? [{ where: unitLine({ kind: "team", departments: [] }), held: CONTENT_HELD_ACCESS }] : [];
+  if (unit.kind === "department") return [{ where: unitLine(unit), held: heldIn(unit, homePlace(unit)) }, ...content];
   const keyOf = (held: readonly HeldAccess[]) => ACCESS_TARGETS.map((t) => heldLevel(held, t) ?? "-").join(",");
   const groups = new Map<string, LedDivision[]>();
   for (const led of unit.divisions) {
     if (led.held.length === 0) continue;
     groups.set(keyOf(led.held), [...(groups.get(keyOf(led.held)) ?? []), led]);
   }
-  return [...groups.values()].map(([first, ...rest]) => ({
+  const divisionLines = [...groups.values()].map(([first, ...rest]) => ({
     where: unitLine({ kind: "division", divisions: [first, ...rest] }),
     held: first.held,
   }));
+  return [...divisionLines, ...content];
 }
 
 /** Whether the viewer holds anything to give in some place of their unit: Give access and "Your access" show only then. */
@@ -512,7 +538,7 @@ const placeKeySchema = z.union([z.literal("team"), z.string().regex(/^department
 const saveAccessSchema = z.object({
   personId: z.number().int().positive(),
   where: placeKeySchema.optional(),
-  areas: z.strictObject({ positions: level, applications: level, members: level, alumni: level, orders: level }),
+  areas: z.strictObject({ positions: level, applications: level, members: level, alumni: level, content: level, orders: level }),
   approveOrders: z.boolean().optional(),
 });
 
@@ -534,7 +560,13 @@ function outsideUnit(unit: AccessUnit): string {
 function checkChanges(access: AccessFacts, personId: number, place: AccessPlace, next: AreaLevels): Checked<Omit<AccessWrite, "approveOrders">> {
   const person = access.people.find((p) => p.id === personId);
   if (person === undefined) return { ok: false, error: outsideUnit(access.unit) };
-  if (next.alumni !== undefined && place.kind !== "team") return { ok: false, error: "Alumni access is given to the whole team only." };
+  for (const target of TEAM_ONLY_TARGETS) {
+    if (next[target] !== undefined && place.kind !== "team") return { ok: false, error: `${ACCESS_TARGET_LABELS[target]} access is given to the whole team only.` };
+  }
+  for (const target of ACCESS_TARGETS) {
+    const level = next[target];
+    if (level !== undefined && !levelsOf(target).includes(level)) return { ok: false, error: `${ACCESS_TARGET_LABELS[target]} access is given at Can edit only.` };
+  }
   const changes = accessChanges(areaLevelsOf(access.grants, personId, place), next);
   const held = heldIn(access.unit, place);
   if (!changes.every((c) => allowed(held, person, place, c))) {
@@ -569,8 +601,10 @@ function checkApproveOrders(access: AccessFacts, personId: number, holds: boolea
  * divisions; or, from full access, the whole team, a department or a division
  * (board 71b). The person's areas
  * in that place become exactly `areas`; every add, level change and removal
- * that takes must be within the viewer's own level, Alumni goes only to the
- * whole team, and a lead's access is never touched. "Approve orders" changes
+ * that takes must be within the viewer's own level, Alumni and Content go
+ * only to the whole team, Content only at Can edit and only from someone who
+ * holds it (full access, or a Content grant: `heldIn`), and a lead's access
+ * is never touched. "Approve orders" changes
  * only from the team leader. The Activity log is no area, so it is never
  * given. Every rule runs on the server: the drawer's own limits are a
  * convenience, not the check.
@@ -604,11 +638,12 @@ function placeOfSave(access: AccessFacts, personId: number, where: string | numb
 
 /**
  * On a lead's page, whether the place is the division the person is in there
- * (issue #185); every place passes on a head's or a team page. Someone
+ * (issue #185), or the whole team, where a lead holding Content gives Content
+ * alone (issue #504); every place passes on a head's or a team page. Someone
  * outside the unit passes here and is refused by `checkChanges`.
  */
 function inPersonDivision(access: AccessFacts, personId: number, place: AccessPlace): boolean {
-  if (access.unit.kind !== "division") return true;
+  if (access.unit.kind !== "division" || place.kind === "team") return true;
   const person = access.people.find((p) => p.id === personId);
   return person === undefined || (place.kind === "division" && person.division?.id === place.division.id);
 }
@@ -679,21 +714,23 @@ export function checkRemoveGrant(access: AccessFacts, input: unknown): Checked<A
 /** A grant as the `scopes` table stores it (issue #247). */
 export type GrantRow = {
   readonly scope: "division" | "department" | "team" | "website";
-  /** The area, or `all` on a `website` row: site-content access is the Alumni area. */
-  readonly target: UnitTarget | "all";
+  /** The area; on a `website` row, `all` for Alumni and `content` for Content (issue #504). */
+  readonly target: UnitTarget | "all" | "content";
   readonly deptId: number | null;
   readonly divisionId: number | null;
 };
 
 /**
- * The `scopes` row one area in one place is stored as. Alumni is site-content
- * access, a `website` row in no unit, which the Alumni page already reads
- * (`viewerStandingOf`, ./viewer.ts; `canReach`, ./access.ts). A whole-team
+ * The `scopes` row one area in one place is stored as. Alumni and Content are
+ * each a `website` row in no unit, told apart by the target: `all` for
+ * Alumni, as it always was, and `content` for Content (issue #504), read by
+ * `holdsAlumniGrant` and `holdsContentGrant` (./viewer.ts). A whole-team
  * area is a `team` row in no unit; a department's has only `dept_id`; a
  * division's only `division_id`.
  */
 export function grantRowOf(place: AccessPlace, target: AccessTarget): GrantRow {
   if (target === "alumni") return { scope: "website", target: "all", deptId: null, divisionId: null };
+  if (target === "content") return { scope: "website", target: "content", deptId: null, divisionId: null };
   switch (place.kind) {
     case "team":
       return { scope: "team", target, deptId: null, divisionId: null };

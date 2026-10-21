@@ -344,6 +344,13 @@
       "when": 1793035200000,
       "tag": "0048_outreach_featured_posts",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1793121600000,
+      "tag": "0049_content_grant",
+      "breakpoints": true
     }
   ]
 }
