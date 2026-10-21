@@ -103,7 +103,8 @@ export type CoreMembers = {
   /** The eyebrow before the member count. */
   eyebrow: string;
   title: string;
-  groupPhoto: { src: Photo; alt: string };
+  /** A photo in public/team/, or one uploaded in the Team page editor (issue #510). */
+  groupPhoto: { src: PersonPhoto; alt: string };
   members: readonly [Member, ...Member[]];
 };
 

@@ -20,11 +20,11 @@ import { PageHeader } from "./page-header";
 // the numbers and every core member. The page sky runs behind everything
 // above the apply band; the sections paint no background of their own and
 // each sits one section pad below the last, as on the project pages. The
-// editor draws it with no navbar and no footer (`chrome="none"`, issue #495);
-// the apply band stays.
+// editor draws it with no navbar, no apply band and no footer
+// (`chrome="none"`, issues #495 and #510): it shows only what it edits.
 
 /**
- * What the editor wraps: the intro, each person on the org chart, the head
+ * What the editor wraps: the intro with its figures, each person on the org chart, the head
  * blocks and slide headings of the departments, the advisors, the group photo; and what it
  * adds: the Add leader affordances and a note over the page (board 80e,
  * issue #285). The core members list and "In numbers" have none.
@@ -65,7 +65,7 @@ export function TeamPageView(
           <CoreMembers core={page.coreMembers} photoFrame={frames.groupPhoto} />
         </main>
       </PageSky>
-      <ApplyBand />
+      {footer !== null && <ApplyBand />}
       {footer !== null && <LandingFooter projects={footer} />}
       {frames.note}
     </div>

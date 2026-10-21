@@ -2,7 +2,7 @@ import { textLength } from "@/lib/content/text";
 import { BOARD_SEATS, type BoardSeat, type DepartmentKind } from "@/lib/dashboard/team";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { personOf, type TeamPerson } from "./team-person";
-import type { DepartmentHead, DivisionLead, Leader, Member, Person, PersonPhoto, Photo } from "./types";
+import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person, PersonPhoto } from "./types";
 
 // The Team page's visual layer (issue #283, ADR 0015): what an editor changes
 // on the page, laid over the page the team's roles build (./team-roles.ts).
@@ -91,7 +91,8 @@ export type DepartmentEdit = {
   readonly addedLeads?: readonly AddedLead[];
 };
 
-export type GroupPhoto = { readonly src: Photo; readonly alt: string };
+/** The group photo over the core members: a photo of the site's own in public/team/, or one uploaded in the editor (issue #510). */
+export type GroupPhoto = { readonly src: PersonPhoto; readonly alt: string };
 
 /** The whole visual layer. Every part is optional in effect: an empty part changes nothing. */
 export type TeamPageLayer = {
@@ -102,6 +103,12 @@ export type TeamPageLayer = {
   readonly addedDepartments: readonly AddedDepartment[];
   /** The header's intro; null keeps the hand-typed one. */
   readonly intro: string | null;
+  /**
+   * The header's four figures under the intro (issue #510); absent keeps the
+   * hand-typed ones. Absent rather than null, so a layer saved before the
+   * figures were editable reads as one that left them alone.
+   */
+  readonly figures?: HeaderStats;
   /** The group photo over the core members; null keeps the hand-typed one. */
   readonly groupPhoto: GroupPhoto | null;
 };
@@ -163,6 +170,7 @@ export type ShownTeam = {
   readonly leaders: readonly Shown<ArcRef, Leader>[];
   readonly departments: readonly ShownDepartment[];
   readonly intro: string | null;
+  readonly figures?: HeaderStats;
   readonly groupPhoto: GroupPhoto | null;
 };
 
@@ -302,6 +310,7 @@ export function applyLayer(build: TeamBuild, layer: TeamPageLayer): ShownTeam {
     leaders: arcOf(build, layer).slice(0, ARC_LEADERS),
     departments,
     intro: layer.intro,
+    ...(layer.figures !== undefined && { figures: layer.figures }),
     groupPhoto: layer.groupPhoto,
   };
 }
@@ -311,15 +320,19 @@ export function leadersOnArc(build: TeamBuild, layer: TeamPageLayer): number {
   return arcOf(build, layer).length;
 }
 
-/** Reset to team (board 80h): every edit goes, except the intro text and the group photo. */
+/** Reset to team (board 80h): every edit goes, except the intro text and its figures and the group photo. */
 export function resetLayer(layer: TeamPageLayer): TeamPageLayer {
-  return { ...NO_TEAM_LAYER, intro: layer.intro, groupPhoto: layer.groupPhoto };
+  return {
+    ...NO_TEAM_LAYER,
+    intro: layer.intro,
+    ...(layer.figures !== undefined && { figures: layer.figures }),
+    groupPhoto: layer.groupPhoto,
+  };
 }
 
 /**
- * Every person photo the layer sets: on the team leader, on a spot, and on
- * each person it added. The group photo is not one: it is always a photo of
- * the site's own, never an upload.
+ * Every photo the layer sets: on the team leader, on a spot, on each person
+ * it added, and the group photo, which may be an upload too (issue #510).
  */
 export function layerPhotos(layer: TeamPageLayer): PersonPhoto[] {
   const people: readonly { readonly photo?: PersonPhoto }[] = [
@@ -329,7 +342,7 @@ export function layerPhotos(layer: TeamPageLayer): PersonPhoto[] {
     ...Object.values(layer.departments).flatMap((edit) => edit?.addedLeads ?? []),
     ...layer.addedDepartments.flatMap((d) => [d.head, ...d.leads]),
   ];
-  return people.flatMap((person) => person.photo ?? []);
+  return [...people.flatMap((person) => person.photo ?? []), ...(layer.groupPhoto === null ? [] : [layer.groupPhoto.src])];
 }
 
 /** Every id the things the editor added hold, in one list: one id names one thing. */
@@ -366,6 +379,21 @@ export function addLeader(build: TeamBuild, layer: TeamPageLayer, leader: Omit<A
 export const TEAM_PAGE_TEXT_MAX = 120;
 /** The longest intro the page takes. */
 export const TEAM_PAGE_INTRO_MAX = 1000;
+/** The longest figure value the header's row of four takes ("150+"). */
+export const TEAM_PAGE_FIGURE_VALUE_MAX = 12;
+/** The longest figure label, desktop or phone ("INTERNATIONAL"). */
+export const TEAM_PAGE_FIGURE_LABEL_MAX = 24;
+
+/**
+ * Whether a remote photo URL is a photo the Team page editor uploaded to this
+ * site's own public store, on that store's host (./team-page-photos.ts). Each
+ * side that reads or writes a layer passes its own: a side with no store owns
+ * none.
+ */
+export type OwnsUpload = (src: string) => boolean;
+
+/** A side with no public store of its own (the seed, a preview's stand-in): it owns no upload. */
+export const NO_UPLOADS: OwnsUpload = () => false;
 
 type Check = (value: unknown) => boolean;
 
@@ -434,16 +462,33 @@ const isAddedDepartment: Check = (value) =>
     ["id", "name", "head", "leads"],
   );
 
-const isGroupPhoto: Check = (value) =>
-  // The description is optional (Owner decision, issue #430): an empty one draws the photo with alt="".
-  hasShape(
-    value,
-    { src: (src) => typeof src === "string" && src.startsWith("/team/") && isPhoto(src), alt: (alt) => typeof alt === "string" && textLength(alt) <= 300 },
-    ["src", "alt"],
-  );
+/** A group photo: a photo of the site's own, or a Team page upload `ownsUpload` names; never any other remote URL. */
+const isGroupPhoto =
+  (ownsUpload: OwnsUpload): Check =>
+  (value) =>
+    // The description is optional (Owner decision, issue #430): an empty one draws the photo with alt="".
+    hasShape(
+      value,
+      {
+        src: (src) => typeof src === "string" && isPhoto(src) && (src.startsWith("/team/") || ownsUpload(src)),
+        alt: (alt) => typeof alt === "string" && textLength(alt) <= 300,
+      },
+      ["src", "alt"],
+    );
 
-/** A layer this code could have written: every part present, each edit well formed, every added id used once. */
-export function isTeamPageLayer(value: unknown): value is TeamPageLayer {
+const isFigureLabel: Check = (value) =>
+  hasShape(value, { text: isText(TEAM_PAGE_FIGURE_LABEL_MAX), phone: isText(TEAM_PAGE_FIGURE_LABEL_MAX) }, ["text"]);
+const isFigure: Check = (value) => hasShape(value, { value: isText(TEAM_PAGE_FIGURE_VALUE_MAX), label: isFigureLabel }, ["value", "label"]);
+/** Always four figures: the header's row has no room to add one and none to leave empty. */
+const isFigures: Check = (value) => Array.isArray(value) && value.length === 4 && value.every(isFigure);
+
+/**
+ * A layer this code could have written: every part present, each edit well
+ * formed, every added id used once. `figures` alone may be absent, as layers
+ * saved before it existed leave it. A group photo off the site's own photos
+ * must be an upload `ownsUpload` names.
+ */
+export function isTeamPageLayer(value: unknown, ownsUpload: OwnsUpload): value is TeamPageLayer {
   if (
     !hasShape(
       value,
@@ -454,7 +499,8 @@ export function isTeamPageLayer(value: unknown): value is TeamPageLayer {
         departments: (v) => isRecord(v) && Object.entries(v).every(([key, edit]) => isIdText(key) && isDepartmentEdit(edit)),
         addedDepartments: isListOf(isAddedDepartment, 50),
         intro: (v) => v === null || isText(TEAM_PAGE_INTRO_MAX)(v),
-        groupPhoto: (v) => v === null || isGroupPhoto(v),
+        figures: isFigures,
+        groupPhoto: (v) => v === null || isGroupPhoto(ownsUpload)(v),
       },
       ["leader", "spots", "addedLeaders", "departments", "addedDepartments", "intro", "groupPhoto"],
     )

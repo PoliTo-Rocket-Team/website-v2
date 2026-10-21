@@ -49,7 +49,7 @@ import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, TEST_VIEWER_PEOPLE } from "../../
 import { teamPageSeed } from "../../db/seed/team-page";
 import { getTableName } from "drizzle-orm";
 import { advisorOfFields, fieldsOf as advisorFields } from "../about/advisors";
-import { ARC_LEADERS, isTeamPageLayer, leadersOnArc } from "../about/team-layer";
+import { ARC_LEADERS, isTeamPageLayer, leadersOnArc, NO_UPLOADS } from "../about/team-layer";
 
 const data = SEED_DATA;
 
@@ -459,7 +459,7 @@ test("the team-page module writes only the Team page's own tables, so no seeded 
 test("the seeded layer is published, is one the editor could have saved, and every edit lands on the page", () => {
   const layer = publishedTeamPageLayerOf(data);
   assert.ok(layer, "the published layer reads back");
-  assert.ok(isTeamPageLayer(layer));
+  assert.ok(isTeamPageLayer(layer, NO_UPLOADS));
   assert.deepEqual(
     data.teamPageLayerVersions.map((r) => r.version),
     ["published"],

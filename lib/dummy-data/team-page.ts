@@ -1,6 +1,6 @@
 import { advisorsAfter, isAdvisorVersion, type AdvisorItem, type AdvisorStore, type AdvisorVersion } from "@/lib/about/advisors";
 import { importedAdvisors } from "@/lib/about/advisors-import";
-import { isTeamPageLayer, type TeamPageLayer } from "@/lib/about/team-layer";
+import { isTeamPageLayer, NO_UPLOADS, type TeamPageLayer } from "@/lib/about/team-layer";
 import type { TeamPagePhotos, TeamPageStore } from "@/lib/about/team-page-editor";
 import { memoryTeamPageStore } from "@/lib/about/team-page-memory";
 import { teamPeopleOf, type TeamRoles } from "@/lib/about/team-roles";
@@ -33,7 +33,7 @@ export type DummyTeamPageLayerEditsStore = ContentEditsStore<TeamPageLayer>;
 
 /** The edits in the cookie; none when it is absent or holds a layer this code could not have written. */
 export function parseTeamPageLayerEdits(value: string | undefined): DummyTeamPageLayerEdits {
-  return parseContentEdits(value, isTeamPageLayer);
+  return parseContentEdits(value, (layer) => isTeamPageLayer(layer, NO_UPLOADS));
 }
 
 export const serializeTeamPageLayerEdits = serializeContentEdits<TeamPageLayer>;
@@ -100,5 +100,7 @@ export const PREVIEW_TEAM_PHOTO = "/team/preview-upload.webp";
  */
 export const dummyTeamPagePhotos: TeamPagePhotos = {
   put: async () => PREVIEW_TEAM_PHOTO,
+  // Every upload here is the stand-in, a photo of the site's own: no remote URL is this side's.
+  owns: NO_UPLOADS,
   drop: async () => {},
 };
