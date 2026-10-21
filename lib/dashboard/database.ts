@@ -57,6 +57,7 @@ import {
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
+import { openPositionsDetail } from "./open-positions-detail";
 import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
@@ -535,7 +536,7 @@ async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
       {
         label: "Open positions",
         value: String(open.length),
-        detail: open.length === 0 ? "None open" : open.map((p) => p.title).join(", "),
+        detail: openPositionsDetail(open.map((p) => ({ title: p.title, division: p.divisionName }))),
       },
       {
         label: "Orders",
