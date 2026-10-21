@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { importedAdvisors } from "../about/advisors-import";
 import type { AdvisorItem } from "../about/advisors";
@@ -6,6 +8,7 @@ import { importedEntries, importedFounders } from "../about/alumni-import";
 import { team } from "../about/team";
 import { versionRows, type ContentItem } from "../content/versioned";
 import { importedFaqs } from "../faq/import";
+import { newestFirst } from "../outreach";
 import { importedOutreach } from "../outreach-import";
 import { importedPartners } from "../partners-import";
 import { importedProjects } from "../project-content/import";
@@ -21,7 +24,7 @@ import {
   SEED_DATA,
   teamAdvisorItemsOf,
 } from "../../db/seed/cases";
-import { DRAFT_ONLY_POST, EVERY_CHANNEL_POST } from "../../db/seed/outreach";
+import { DRAFT_CHANGES_POST, DRAFT_ONLY_POST, EVERY_CHANNEL_POST, RECORD_GALLERY_POSTS } from "../../db/seed/outreach";
 import { DRAFT_ONLY_PARTNER } from "../../db/seed/partners";
 import { DIVISION_ADVISOR, FORMER_TEAM_LEADER, TESTER_MEMBER } from "../../db/seed/people";
 import { PLACEHOLDER_ROCKET_PROJECT } from "../../db/seed/projects";
@@ -191,9 +194,39 @@ test("the seeded projects are the ones the projects import carries in, plus the 
 
 test("the seeded outreach posts, tags and summit are the ones the outreach import carries in, plus the two invented posts", () => {
   const imported = importedOutreach();
-  assertFromImport("post", outreachItemsOf(data), imported.posts, [EVERY_CHANNEL_POST, DRAFT_ONLY_POST]);
+  // The placeholder galleries (issue #456) are the seed's own; the rest of each post is the import's.
+  assertFromImport("post", outreachItemsOf(data), imported.posts, [EVERY_CHANNEL_POST, DRAFT_ONLY_POST], ({ gallery: _, ...seeded }, importedPost) =>
+    assert.deepEqual(seeded, importedPost),
+  );
   assert.deepEqual(outreachTagsOf(data), imported.tags.map((t) => ({ name: t.name, award: t.award })));
   assert.deepEqual(outreachSummitOf(data)?.published, imported.summit.state === "published" ? imported.summit.published : undefined);
+});
+
+test("the newest listed post and two more record posts carry a placeholder gallery of the site's own photos (issue #456)", () => {
+  const items = outreachItemsOf(data);
+  const published = publishedById(items);
+  const pinned = data.outreachPosts.find((p) => p.pinned)?.id;
+  const [newest] = newestFirst([...published].filter(([id]) => id !== pinned).map(([id, post]) => ({ id, date: post.date })));
+  assert.ok(RECORD_GALLERY_POSTS.includes(newest.id), "the newest listed post has a gallery");
+  assert.ok(RECORD_GALLERY_POSTS.length >= 2 && RECORD_GALLERY_POSTS.length <= 3);
+  assert.deepEqual(
+    [...published].filter(([, post]) => post.gallery !== undefined).map(([id]) => id).sort((a, b) => a - b),
+    [...RECORD_GALLERY_POSTS, EVERY_CHANNEL_POST].sort((a, b) => a - b),
+    "only these posts and the every-channel post have a gallery",
+  );
+  for (const id of RECORD_GALLERY_POSTS) {
+    const photos = published.get(id)?.gallery?.items ?? [];
+    assert.ok(photos.length >= 4 && photos.length <= 6, `post ${id} has ${photos.length} gallery photos`);
+    for (const photo of photos) {
+      assert.match(photo.src, /^\/(outreach|project-photos)\//);
+      assert.ok(existsSync(join(process.cwd(), "public", photo.src)), `${photo.src} is not in public/`);
+      assert.notEqual(photo.alt.trim(), "", `${photo.src} has no alt text`);
+    }
+  }
+  const draftChanges = items.find((i) => i.id === DRAFT_CHANGES_POST)?.version;
+  assert.ok(draftChanges?.state === "published");
+  assert.equal(draftChanges.published.gallery, undefined);
+  assert.equal(draftChanges.draft?.gallery, undefined);
 });
 
 // What stays private.

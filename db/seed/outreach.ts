@@ -6,8 +6,10 @@
 // and alt text, and the summit's story, published and pinned to the top of
 // /outreach (issue #392). The record's posts carry every tag but link Instagram
 // and LinkedIn only, so one more published post links every channel type,
-// and it has a gallery at the bottom of its page (issue #430).
-// The IAC 2024 post holds draft changes, and one new post is a draft saved
+// and it has a gallery at the bottom of its page (issue #430). Three record
+// posts, the newest one included, get a gallery of placeholder photos too, so
+// the gallery shows on real-looking posts (issue #456); the import itself
+// carries none. The IAC 2024 post holds draft changes, and one new post is a draft saved
 // before it is whole (board 74f), never published, so the public pages do
 // not show it.
 
@@ -16,7 +18,7 @@ import { versionRows } from "@/lib/content/versioned";
 import { outreachRecord } from "@/lib/outreach";
 import { importedOutreach } from "@/lib/outreach-import";
 import { postColumns, summitColumns } from "@/lib/outreach-rows";
-import type { OutreachDraft, OutreachPost, PostGallery, PostItem } from "@/lib/outreach-types";
+import type { OutreachDraft, OutreachPost, PostGallery, PostGalleryPhoto, PostItem } from "@/lib/outreach-types";
 import { contentVersionRows } from "./content";
 import { rowsOf, tableSeedModule } from "./rows";
 
@@ -116,9 +118,75 @@ const IMPORTED = importedOutreach();
 /** The summit's story (issue #392), pinned as the import leaves it. */
 export const PINNED_POST = IMPORTED.pinned;
 
+/** A project page's gallery photo (public/project-photos/), with the alt text and caption that page gives it. */
+const projectPhoto = (file: `${"cavour" | "ves"}/${string}`, alt: string, caption: string): PostGalleryPhoto => ({
+  src: `/project-photos/${file}.webp`,
+  alt,
+  caption,
+});
+
+/** The id the import gives the record post with this title. */
+const recordPostId = (title: string): number => {
+  const item = IMPORTED.posts.find((i) => i.version.state === "published" && i.version.published.title === title);
+  if (item === undefined) throw new Error(`the outreach import has no published post titled ${title}`);
+  return item.id;
+};
+
+/**
+ * Placeholder galleries for three published record posts (issue #456): the
+ * newest one, Wings for Life, and two more. Their photos are the record's and
+ * the project pages' own, so each alt text says what its photo shows.
+ */
+const RECORD_GALLERIES: ReadonlyMap<number, PostGallery> = new Map<number, PostGallery>([
+  [
+    recordPostId("Wings for Life, Aosta"),
+    {
+      items: [
+        projectPhoto("cavour/sa-cup-team", "The Team holding Cavour up on a pickup truck in the desert", "Spaceport America Cup 2023, New Mexico"),
+        recordPhoto("Steam4Future"),
+        projectPhoto("ves/euroc-2024-booth", "Team members showing VES Mark I at the Team's stand", "EuRoC 2024, Portugal"),
+        recordPhoto("FormNext, Frankfurt"),
+        projectPhoto("ves/irec-2025-dusk", "Team members riding out at dusk with VES Mark II in a pickup truck", "IREC 2025, Texas"),
+      ],
+    },
+  ],
+  [
+    recordPostId("IRESS, 3rd edition"),
+    {
+      items: [
+        { ...recordPhoto("IRESS, 2nd edition"), caption: "The 2nd edition, Padova" },
+        { ...recordPhoto("IRESS, 1st edition"), caption: "The 1st edition, Torino" },
+        projectPhoto("cavour/euroc-2023-team", "The Team seated together in the competition hall", "EuRoC 2023, Portugal"),
+        projectPhoto("ves/euroc-2024-stand", "The Team at its stand beside VES Mark I", "EuRoC 2024, Portugal"),
+      ],
+    },
+  ],
+  [
+    recordPostId("PLD Space award"),
+    {
+      items: [
+        projectPhoto("ves/irec-2025-award", "The Team on stage with VES Mark II and the Italian flag at IREC 2025", "IREC 2025, Texas"),
+        projectPhoto("cavour/sa-cup-flag", "The Team with the Italian flag at the Spaceport America Cup", "Spaceport America Cup 2023, New Mexico"),
+        recordPhoto("IAC 2024, Milan"),
+        projectPhoto("ves/euroc-2024-team", "The Team on the competition stage with VES Mark I and the Italian flag", "EuRoC 2024, Portugal"),
+        recordPhoto("Cassini Hackathon"),
+        projectPhoto("cavour/test-launch-rail", "Cavour leaving the rail at sunset on its first flight", "Test launch 2023, Bavaria"),
+      ],
+    },
+  ],
+]);
+
+if (RECORD_GALLERIES.has(DRAFT_CHANGES_POST)) throw new Error("the post with draft changes takes no gallery");
+
+/** The record posts the seed gives a placeholder gallery (issue #456). */
+export const RECORD_GALLERY_POSTS: readonly number[] = [...RECORD_GALLERIES.keys()];
+
 export const OUTREACH_ITEMS: readonly PostItem[] = [
   ...IMPORTED.posts.map((item): PostItem => {
-    if (item.id !== DRAFT_CHANGES_POST || item.version.state !== "published") return item;
+    if (item.version.state !== "published") return item;
+    const gallery = RECORD_GALLERIES.get(item.id);
+    if (gallery !== undefined) return { ...item, version: { ...item.version, published: { ...item.version.published, gallery } } };
+    if (item.id !== DRAFT_CHANGES_POST) return item;
     const published = item.version.published;
     const draft: OutreachPost = {
       ...published,
