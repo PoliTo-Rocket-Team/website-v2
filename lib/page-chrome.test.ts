@@ -13,7 +13,7 @@ import { ProjectPageView } from "@/components/project-page/view";
 import { ProjectsListPage } from "@/components/projects/list-page";
 import { team } from "@/lib/about/team";
 import { publicItems } from "@/lib/content/versioned";
-import { featuredCard, iressStory, newestFirst, outreachRecord, outreachStats } from "@/lib/outreach";
+import { featuredCard, iressStory, newestFirst, outreachRecord } from "@/lib/outreach";
 import { mapUpToTwo, type OutreachContent } from "@/lib/outreach-types";
 import { firstImport, importedProjects } from "@/lib/project-content/import";
 import { listingOf, listingsNewestFirst, pageRecordOf } from "@/lib/project-content/record";
@@ -51,7 +51,6 @@ test("the Outreach post page draws the navbar and footer publicly, and neither a
 
 test("the Outreach list draws the navbar and footer publicly, and neither as the editor draws it", () => {
   const page = {
-    stats: outreachStats(outreach),
     features: mapUpToTwo(outreach.featured, featuredCard),
     cards: newestFirst(outreach.posts).map(postCardOf),
   };
