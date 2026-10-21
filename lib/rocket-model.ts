@@ -55,8 +55,8 @@ export function cardPosterOf(model: RocketModel): string {
   return posters[model].card;
 }
 
-/** A project's own model on its page, with the alt text its still carries. */
-export type OwnRocket = { model: OwnModel; alt: string };
+/** A project's own model on its page, with the alt text its still carries. `M` narrows the models it may name. */
+export type OwnRocket<M extends OwnModel = OwnModel> = { model: M; alt: string };
 
 /**
  * The still a project page's panel draws for its model slot. The project's

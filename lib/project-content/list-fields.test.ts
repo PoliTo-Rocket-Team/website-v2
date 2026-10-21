@@ -4,7 +4,7 @@ import { memoryContentStore } from "@/lib/content/memory";
 import { editorVersion, publicItems } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import type { PhotoFiles } from "@/lib/outreach-photos";
-import { sectionsOf } from "@/lib/project-pages";
+import { pageRowsOf, type LogEntry, type PageBlock } from "@/lib/project-pages";
 import { launchCounts } from "@/lib/projects";
 import { projectEditor } from "./editor";
 import { checkProjectFields, fieldProblems, fieldsAfterSave, fieldsOf, projectViewOf, readProjectFields, type ProjectFields } from "./fields";
@@ -25,11 +25,22 @@ import {
   VERSION_KEEPS_HIGHLIGHT,
   type LaunchFields,
 } from "./list-fields";
-import { homeCardOf, listingOf, logEntry, pageRecordOf, type VehicleRecord } from "./record";
+import { homeCardOf, listingOf, logEntry, pageRecordOf, type ProjectRecord, type VehicleRecord } from "./record";
+import { sectionContentOf, sectionShown } from "./sections";
 
 // The list sections of the Edit <project> panel (issue #299): Versions,
 // Launch history, Plan and Gallery, their shape rules, and a launch added
 // from the panel reaching the page, the home card and the /projects counts.
+
+/** The numbered headings the page shows after the two stories, by block id. */
+const numbers = (record: ProjectRecord) =>
+  pageRowsOf(pageRecordOf(record))
+    .flatMap((row) => (row.kind === "halves" ? row.blocks : [row.block]))
+    .flatMap(({ num, block }) => (num === null || ["01", "02"].includes(num) ? [] : [`${num} ${block.id}`]));
+
+/** The page's launch cards, as it draws them. */
+const launchCards = (record: ProjectRecord): readonly LogEntry[] | undefined =>
+  pageRecordOf(record).blocks.find((b): b is Extract<PageBlock, { kind: "launches" }> => b.kind === "launches")?.entries;
 
 const [cavour, ves, efesto] = importedRecords as [VehicleRecord, VehicleRecord, (typeof importedRecords)[2]];
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
@@ -78,12 +89,12 @@ test("a launch card holds date, place, version, motor, outcome, what happened, f
     "the phone leaves out the third number and uses the shorter label",
   );
   assert.deepEqual(entry.award, { name: "BEST FLIGHT" });
-  assert.deepEqual(entry.photos, [{ src: UPLOADED, alt: "VES on the rail at dawn" }]);
+  assert.deepEqual(entry.cover, { src: UPLOADED, alt: "VES on the rail at dawn" });
 
   const grounded = logEntry(launchOf({ ...newLaunch, outcome: "did-not-fly", phoneDrops: 0, award: { name: "", short: "", citation: "" }, photos: [] }));
   assert.deepEqual(grounded.phoneStats.map((s) => s.value), ["520 m/s", "12 G", "1 / 30"], "a launch that did not fly gives its own four");
   assert.equal(grounded.award, undefined);
-  assert.equal(grounded.photos, undefined, "no photos is no key, and the page shows the texture slots");
+  assert.equal(grounded.cover, undefined, "no cover is no key, and the page shows the background in its slot");
 });
 
 test("turning a launch into a flight keeps apogee and max speed on the phone", () => {
@@ -101,7 +112,7 @@ test("adding a launch and publishing it changes the project page, the home card 
     return {
       counts: launchCounts(records.map(listingOf)).map((s) => `${s.value} ${s.label}`),
       card: homeCardOf(records[0], 0).status,
-      page: pageRecordOf(records[0]).launches?.entries.map((e) => e.title),
+      page: launchCards(records[0])?.map((e) => e.title),
     };
   };
   const before = await shown();
@@ -191,23 +202,21 @@ test("a launch photo and a gallery photo with no description pass the checks and
   assert.deepEqual(fieldProblems(sent), []);
   const saved = await projectEditor(admin, memoryContentStore(importedProjects()), undefined, files).saveFields(2, "publish", sent);
   assert.ok(saved.ok);
-  const page = pageRecordOf(editorVersion(saved.value.version) as VehicleRecord);
-  assert.deepEqual(page.launches?.entries.at(-1)?.photos, [{ src: UPLOADED, alt: "" }]);
-  assert.equal(page.gallery?.items.at(-1)?.alt, "");
+  const stored = editorVersion(saved.value.version);
+  assert.deepEqual(launchCards(stored)?.at(-1)?.cover, { src: UPLOADED, alt: "" });
+  assert.equal(sectionContentOf(stored, "gallery")?.items.at(-1)?.alt, "");
 });
 
-test("switching a list section off drops it and closes up the numbers; its text survives a save", async () => {
+test("switching a list section off hides it and closes up the numbers; its text survives a save", async () => {
   const fields = fieldsOf(cavour);
   const off: ProjectFields = { ...fields, launches: { ...fields.launches, shown: false } };
-  assert.deepEqual(
-    sectionsOf(pageRecordOf(projectViewOf(off, cavour))).map((s) => `${s.num} ${s.kind}`),
-    ["03 versions", "04 gallery"],
-  );
+  assert.deepEqual(numbers(projectViewOf(off, cavour)), ["03 versions", "04 gallery"]);
   const editor = projectEditor(admin, memoryContentStore(importedProjects()));
   const saved = await editor.saveFields(1, "save-draft", off);
   assert.ok(saved.ok);
-  const stored = editorVersion(saved.value.version) as VehicleRecord;
-  assert.equal(stored.launches, undefined);
+  const stored = editorVersion(saved.value.version);
+  assert.equal(sectionShown(stored, "launches"), false);
+  assert.deepEqual(sectionContentOf(stored, "launches"), sectionContentOf(cavour, "launches"), "the hidden block keeps its launches");
   const after = fieldsAfterSave(stored, off);
   assert.deepEqual(projectViewOf({ ...after, launches: { ...after.launches, shown: true } }, stored), cavour, "switched back on, the same launches return");
 });

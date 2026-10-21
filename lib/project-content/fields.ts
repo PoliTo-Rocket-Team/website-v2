@@ -1,32 +1,33 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
-import type { Fact, KeyFacts, Part, Prose, Reason, Reasons } from "@/lib/project-pages/types";
+import type { Fact, KeyFacts, Part, Prose, Reason, Reasons, TextBlock } from "@/lib/project-pages/types";
 import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
 import { isProjectRecord } from "./check";
 import { copyFields, copyOf, titleOf, titleText, type CopyFields } from "./copy-fields";
 import { listFieldsAfterSave, listFieldsOf, listProblems, readListFields, withListFields, type ListFields, type ListSection } from "./list-fields";
 import type { ProjectRecord } from "./record";
+import { sectionBlockOf, sectionContentOf, sectionShown, withSectionBlock, withSwitchedSection } from "./sections";
 
 // The Edit <project> panel's fields (board 75c, issues #298 and #299): the
-// sections of one project record as the text an editor types. The story
-// sections are here; Versions, Launch history, Plan and Gallery are in
+// page blocks the panel's sections edit (./sections.ts) as the text an
+// editor types. The two stories are text blocks, edited here with the Why
+// section; Versions, Launch history, Plan and Gallery are in
 // ./list-fields.ts. The page under the edit shell is drawn from
 // `projectViewOf`, so it changes as they type; Save draft and Publish send
 // the fields, and `checkProjectFields` turns them back into a record. The
 // Card section (the home card, issue #300) is in ./card-fields.ts. What the
-// panel does not edit (the /projects entry's own copy) is carried over from
-// the version the panel opened on.
+// panel does not edit (the /projects entry's own copy, a block no section
+// edits) is carried over from the version the panel opened on.
 //
 // Desktop and phone copy: a text with a shorter phone version keeps both, and
 // an empty phone field means the phone shows the desktop text (`Copy`). The
 // story bodies always have a phone paragraph of their own (`Prose`).
 //
-// An optional section has a show-on-page switch. Switched off, the section
-// leaves the record, so the page drops it and the numbers of the sections
-// after it close up (`sectionsOf`). Its fields stay in the panel while the
-// editor is open, through Save draft and Publish too (`fieldsAfterSave`), so
-// switching it back on brings the same text back. The stored record keeps no
-// text for a section that is off, so once the editor is closed or reloaded
-// that text is gone.
+// An optional section has a show-on-page switch. Switched off, its block is
+// hidden: the page drops it and the numbers of the blocks after it close up
+// (`pageRowsOf`), and the block keeps its content in the record, so switching
+// it back on brings it back (`withSwitchedSection`). Its fields stay in the
+// panel while the editor is open, through Save draft and Publish too
+// (`fieldsAfterSave`).
 
 /** The panel's sections; each block's Edit chip opens one. */
 export type PanelSection = "top" | "name" | "design" | ListSection | "reasons" | "card";
@@ -44,7 +45,7 @@ export type ProjectFields = ListFields & {
     readonly intro: CopyFields;
     readonly status: string;
     readonly dates: string;
-    /** The visual panel's caption; null for a project whose page has no visual panel. */
+    /** The visual panel's caption; null for a project whose top visual is none. */
     readonly caption: string | null;
     readonly facts: readonly FactFields[];
   };
@@ -67,30 +68,41 @@ export const REASONS_LIMIT = { min: 1, max: 5 } as const;
 
 const proseText = (prose: Prose): string => prose.text.join("\n\n");
 
+/** A story's fields: its title, paragraphs and phone text; empty for a page with no such block. */
+function storyFields(block: TextBlock | undefined): StoryFields {
+  if (block === undefined) return { title: "", body: "", phone: "" };
+  return { title: block.heading ? titleText(block.heading.title) : "", body: proseText(block.body), phone: block.body.phone };
+}
+
 /** The panel's fields for a project record: what the panel opens on. */
 export function fieldsOf(record: ProjectRecord): ProjectFields {
-  const { hero, nameStory, design, reasons } = record;
+  const { hero } = record;
+  const design = sectionBlockOf(record, "design");
+  const reasons = sectionContentOf(record, "reasons");
   return {
     hero: {
       intro: copyFields(hero.intro),
       status: hero.status,
       dates: hero.dates,
-      caption: hero.visual?.caption ?? null,
+      caption: hero.visual.kind === "none" ? null : hero.visual.caption,
       facts: hero.facts.map((f) => ({ value: f.value, label: copyFields(f.label) })),
     },
-    nameStory: { title: titleText(nameStory.title), body: proseText(nameStory.body), phone: nameStory.body.phone },
+    nameStory: storyFields(sectionBlockOf(record, "name")),
     design: {
-      title: titleText(design.title),
-      body: proseText(design.body),
-      phone: design.body.phone,
-      partsCaption: design.parts.caption,
-      parts: design.parts.items.map((p) => ({ name: p.name, desc: p.desc, phone: p.phone })),
+      ...storyFields(design),
+      partsCaption: design?.parts?.caption ?? "",
+      parts: (design?.parts?.items ?? []).map((p) => ({ name: p.name, desc: p.desc, phone: p.phone })),
     },
     // A project with no Why section opens with it switched off and one empty reason to start from.
     reasons:
       reasons === undefined
         ? { shown: false, eyebrow: "", title: "", items: [{ title: "", text: "" }] }
-        : { shown: true, eyebrow: reasons.eyebrow, title: titleText(reasons.title), items: reasons.items.map((r) => ({ ...r })) },
+        : {
+            shown: sectionShown(record, "reasons"),
+            eyebrow: reasons.eyebrow,
+            title: titleText(reasons.title),
+            items: reasons.items.map((r) => ({ ...r })),
+          },
     card: cardFieldsOf(record),
     ...listFieldsOf(record),
   };
@@ -121,6 +133,18 @@ function reasonItemsOf(items: readonly ReasonFields[]): Reasons["items"] | null 
   return items.map((r): Reason => ({ title: r.title.trim(), text: r.text.trim() })) as unknown as Reasons["items"];
 }
 
+/** A story's text block: the opened one's place on the page, width and heading label, with the fields' title and text. */
+function storyBlock(id: "name" | "design", label: string, story: StoryFields, opened: TextBlock | undefined): TextBlock {
+  return {
+    id,
+    kind: "text",
+    hidden: opened?.hidden ?? false,
+    width: opened?.width ?? "half",
+    heading: { label: opened?.heading?.label ?? label, title: titleOf(story.title) },
+    body: proseOf(story),
+  };
+}
+
 /**
  * The record the page draws while the editor types: `opened` with the
  * panel's sections laid over it. A list the panel cannot leave empty (the key
@@ -129,33 +153,34 @@ function reasonItemsOf(items: readonly ReasonFields[]): Reasons["items"] | null 
  */
 export function projectViewOf(fields: ProjectFields, opened: ProjectRecord): ProjectRecord {
   const { hero, nameStory, design, reasons } = fields;
-  const visual = opened.hero.visual && hero.caption !== null ? { visual: { ...opened.hero.visual, caption: hero.caption.trim() } } : {};
+  const { visual } = opened.hero;
+  const caption = visual.kind !== "none" && hero.caption !== null ? { visual: { ...visual, caption: hero.caption.trim() } } : {};
   const parts = nonEmpty(design.parts.map((p): Part => ({ name: p.name.trim(), desc: p.desc.trim(), phone: p.phone.trim() })));
   const reasonItems = reasonItemsOf(reasons.items);
-  const { reasons: _left, ...rest } = opened;
-  const shownReasons: Reasons | undefined = !reasons.shown
-    ? undefined
-    : reasonItems === null
-      ? opened.reasons
-      : { eyebrow: reasons.eyebrow.trim(), title: titleOf(reasons.title), items: reasonItems };
-  const story: ProjectRecord = {
-    ...rest,
+  const openedName = sectionBlockOf(opened, "name");
+  const openedDesign = sectionBlockOf(opened, "design");
+  const openedParts = openedDesign?.parts;
+  const partItems = parts ?? openedParts?.items;
+  const designBlock: TextBlock = {
+    ...storyBlock("design", "THE DESIGN", design, openedDesign),
+    ...(partItems && { parts: { label: openedParts?.label ?? "Parts", caption: design.partsCaption.trim(), items: partItems } }),
+  };
+  const top = {
+    ...opened,
     hero: {
       ...opened.hero,
-      ...visual,
+      ...caption,
       intro: copyOf(hero.intro),
       status: hero.status.trim(),
       dates: hero.dates.trim(),
       facts: keyFactsOf(hero.facts) ?? opened.hero.facts,
     },
-    nameStory: { title: titleOf(nameStory.title), body: proseOf(nameStory) },
-    design: {
-      title: titleOf(design.title),
-      body: proseOf(design),
-      parts: { ...opened.design.parts, caption: design.partsCaption.trim(), items: parts ?? opened.design.parts.items },
-    },
-    ...(shownReasons && { reasons: shownReasons }),
-  };
+  } as ProjectRecord;
+  const reasonsContent: Reasons | null =
+    reasonItems === null ? null : { eyebrow: reasons.eyebrow.trim(), title: titleOf(reasons.title), items: reasonItems };
+  let story = withSectionBlock(top, "name", storyBlock("name", "THE NAME", nameStory, openedName));
+  story = withSectionBlock(story, "design", designBlock);
+  story = withSwitchedSection(story, opened, "reasons", reasons.shown, reasonsContent);
   return withListFields(withCardFields(story, fields.card), fields, opened);
 }
 

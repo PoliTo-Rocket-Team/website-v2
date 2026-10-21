@@ -1,28 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { Hero } from "@/lib/project-pages";
+import type { Hero, Photo, TopVisual } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
 import { stageStillOf, stageTextureOf, type OwnRocket } from "@/lib/rocket-model";
-import { CopyText, Pill } from "./parts";
+import { CopyText, FactList, Pill } from "./parts";
 
 // Boards 23, 24 and 25 hero (1440): breadcrumb, the 128px name, intro left
 // with the status pill and dates right, then the visual panel on the
-// project's texture (when the project has one) and up to six key facts.
-// Boards 23m, 24m and 25m (390): the same stack at 20px sides, pill and dates
-// in one row under the intro, facts 3 x 2.
-
-/**
- * A set holding a value as long as board 25's "Regenerative" needs room a
- * short set does not. A phone column is about 106px at 360 wide, so it is set
- * at board 25m's 17px, not board 23m's 20px. A six-column desktop row is
- * about 149px at 1024 wide, under the 172px such a value takes at 28px, so it
- * stays 3 x 2 until xl, where a column is 192px.
- */
-const LONG_FACT = 10;
-const factLayout = (facts: Hero["facts"]) =>
-  facts.some((f) => f.value.length > LONG_FACT)
-    ? { grid: "md:grid-cols-3 md:gap-y-6 xl:grid-cols-6 xl:gap-y-0", size: "text-[17px]" }
-    : { grid: "md:grid-cols-6", size: "text-[20px]" };
+// project's background (when its visual is a model or a photo) and up to six
+// key facts. Boards 23m, 24m and 25m (390): the same stack at 20px sides,
+// pill and dates in one row under the intro, facts 3 x 2.
 
 /**
  * The panel's rocket slot: a still of the project's own model, or of the
@@ -44,23 +31,44 @@ function RocketStill({ own }: { own: OwnRocket | undefined }) {
   );
 }
 
+/** An uploaded photo filling the panel; one from the public store, or a preview's data URL, is served as it is. */
+function PhotoFill({ photo }: { photo: Photo }) {
+  return (
+    <Image
+      src={photo.src}
+      alt={photo.alt}
+      fill
+      priority
+      sizes="(min-width: 768px) 1312px, 100vw"
+      unoptimized={!photo.src.startsWith("/")}
+      className="object-cover"
+    />
+  );
+}
+
 /**
- * The visual panel. A rocket's still lies on the project's texture; an
+ * The visual panel. A model's still lies on the project's background; an
  * engine's still is centred on the orange streak texture in its place
- * (stageTextureOf, issue #382).
+ * (stageTextureOf, issue #382). A photo fills the panel.
  */
-function VisualPanel({ texture, visual }: { texture: string; visual: NonNullable<Hero["visual"]> }) {
+function VisualPanel({ texture, visual }: { texture: string; visual: Exclude<TopVisual, { kind: "none" }> }) {
   return (
     <div className="glass-project relative mt-6 h-[220px] overflow-hidden rounded-2xl md:mt-10 md:h-[620px]">
-      <Image
-        src={stageTextureOf(visual.rocket?.own, texture)}
-        alt=""
-        fill
-        priority
-        sizes="(min-width: 768px) 1312px, 100vw"
-        className="object-cover"
-      />
-      {visual.rocket && <RocketStill own={visual.rocket.own} />}
+      {visual.kind === "model" ? (
+        <>
+          <Image
+            src={stageTextureOf(visual.own, texture)}
+            alt=""
+            fill
+            priority
+            sizes="(min-width: 768px) 1312px, 100vw"
+            className="object-cover"
+          />
+          <RocketStill own={visual.own} />
+        </>
+      ) : (
+        <PhotoFill photo={visual.photo} />
+      )}
       <p className="pointer-events-none absolute bottom-4 left-5 z-[2] font-mono text-[10px] tracking-[0.2em] text-prt-text/80 md:bottom-12 md:left-8 md:text-[11px]">
         {visual.caption}
       </p>
@@ -82,7 +90,7 @@ export function ProjectHero({
    */
   underNavbar?: boolean;
 }) {
-  const facts = factLayout(hero.facts);
+  const { visual } = hero;
   return (
     <section className={underNavbar ? "px-5 pt-[88px] md:px-16 md:pt-[164px]" : "px-5 pt-6 md:px-16 md:pt-[92px]"}>
       <div className="mx-auto max-w-[1312px]">
@@ -112,19 +120,9 @@ export function ProjectHero({
           </div>
         </div>
 
-        {hero.visual && <VisualPanel texture={project.texture} visual={hero.visual} />}
+        {visual.kind !== "none" && <VisualPanel texture={project.texture} visual={visual} />}
 
-        <dl className={`mt-6 grid grid-cols-3 md:mt-10 ${facts.grid} md:border-t md:border-hairline md:pt-6`}>
-          {hero.facts.map((f) => (
-            // Label under the value, as drawn; the markup keeps term before value.
-            <div key={f.label.text} className="flex flex-col-reverse border-t border-hairline py-3 md:border-0 md:py-0">
-              <dt className="mt-1 font-mono text-[9px] tracking-[0.2em] text-dim md:mt-2 md:text-[10px]">
-                <CopyText copy={f.label} />
-              </dt>
-              <dd className={`whitespace-nowrap ${facts.size} font-bold tracking-[-0.02em] md:text-[28px]`}>{f.value}</dd>
-            </div>
-          ))}
-        </dl>
+        <FactList facts={hero.facts} className="mt-6 md:mt-10" />
       </div>
     </section>
   );

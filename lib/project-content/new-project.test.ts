@@ -109,9 +109,9 @@ test("a new project's card and page draw the placeholder rocket, and its draft i
     const record = newProjectRecord({ ...mark3, kind }, 2026);
     assert.ok(isProjectRecord(plain(record)), kind);
     assert.equal(rocketModelOf(homeCardOf(record, 0).rocket), "placeholder");
-    const rocket = pageRecordOf(record).hero.visual?.rocket;
-    assert.ok(rocket !== undefined, "the page's panel has a rocket slot");
-    assert.deepEqual(stageStillOf(rocket.own), { src: stageStillOf(undefined).src, alt: "" });
+    const { visual } = pageRecordOf(record).hero;
+    assert.ok(visual.kind === "model", "the page's panel has a model slot");
+    assert.deepEqual(stageStillOf(visual.own), { src: stageStillOf(undefined).src, alt: "" });
     assert.notEqual(cardPosterOf("placeholder"), cardPosterOf("cavour"));
     assert.deepEqual(fieldProblems(fieldsOf(record)), [], `${kind}: Save draft works on the draft as it opens`);
   }

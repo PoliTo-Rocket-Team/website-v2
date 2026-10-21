@@ -6,7 +6,7 @@ import { RETIRED_KEYS, storedProjectRecord } from "@/lib/project-content/check";
 import type { EditStamp } from "@/lib/project-content/edited";
 import type { EditHistory } from "@/lib/project-content/editor";
 import { importedProjects } from "@/lib/project-content/import";
-import { PROJECT_SECTIONS, type ProjectRecord, type ProjectSection } from "@/lib/project-content/record";
+import { PROJECT_KEYS, withIntro, type ProjectBlock, type ProjectKey, type ProjectRecord } from "@/lib/project-content/record";
 import {
   contentEditsFrom,
   contentEditsOf,
@@ -26,11 +26,12 @@ import { DUMMY_NOW } from "./team";
 //
 // A whole project record (about 7 KB) is bigger than the cookie that keeps a
 // test developer's changes (DUMMY_STATE_COOKIE_BYTES), so the cookie keeps,
-// per project and version, only the sections that differ from the seed's
-// published record (grill #279, R1.3), deflated. An edit that still does not
-// fit is refused with a message, never lost. The cookie itself is the open
-// editor's to name and set, as the other content types' are
-// (lib/dashboard/open.ts).
+// per project and version, only the top-level keys that differ from the
+// seed's published record (grill #279, R1.3), deflated; a changed block list
+// keeps each block the seed holds unchanged as a reference to its id. An edit
+// that still does not fit is refused with a message, never lost. The cookie
+// itself is the open editor's to name and set, as the other content types'
+// are (lib/dashboard/open.ts).
 
 /** The project the dummy dashboard shows with draft changes (VES, board 75b). */
 const DRAFTED_ID = 2;
@@ -41,23 +42,29 @@ export function dummyProjectSeed(): ContentItem<ProjectRecord>[] {
     if (item.id !== DRAFTED_ID || item.version.state !== "published") return item;
     const published = item.version.published;
     const intro = "The second Founding Fathers rocket, named after Vittorio Emanuele II. Mark II won Design & Build at IREC 2025.";
-    const draft: ProjectRecord = { ...published, hero: { ...published.hero, intro: { text: intro } } };
+    const draft = withIntro(published, intro);
     return { ...item, version: { state: "published", published, draft } };
   });
 }
 
 /**
- * One version as the cookie keeps it: each section that differs from the
- * seed's published record of the same project, and null for an optional
- * section the version leaves out. A project the seed does not hold keeps
- * every section.
+ * One version as the cookie keeps it: each top-level key that differs from
+ * the seed's published record of the same project. A changed block list
+ * keeps a block the seed holds unchanged as `{ same: <its id> }`. A project
+ * the seed does not hold keeps every key.
  */
-export type ProjectPatch = { readonly [K in ProjectSection]?: unknown };
+export type ProjectPatch = { readonly [K in ProjectKey]?: unknown };
 
 export type DummyProjectEdits = ContentEdits<ProjectPatch>;
 export type DummyProjectEditsStore = ContentEditsStore<ProjectPatch>;
 
-const SECTIONS: ReadonlySet<string> = new Set(PROJECT_SECTIONS);
+const KEYS: ReadonlySet<string> = new Set(PROJECT_KEYS);
+
+/** A block of the seed's record kept as it is, by its id. */
+type SameBlock = { readonly same: string };
+
+const isSame = (value: unknown): value is SameBlock =>
+  typeof value === "object" && value !== null && typeof (value as Record<string, unknown>).same === "string";
 
 /** A cookie written before a key was retired may still carry it (`RETIRED_KEYS`); `withPatch` drops it. */
 function isPatch(value: unknown): value is ProjectPatch {
@@ -65,18 +72,26 @@ function isPatch(value: unknown): value is ProjectPatch {
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
-    Object.keys(value).every((key) => SECTIONS.has(key) || RETIRED_KEYS.has(key))
+    Object.keys(value).every((key) => KEYS.has(key) || RETIRED_KEYS.has(key))
   );
 }
 
-/** The sections of `record` that differ from `base`'s. */
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** The top-level keys of `record` that differ from `base`'s, its unchanged blocks kept by id. */
 export function patchOf(base: ProjectRecord | null, record: ProjectRecord): ProjectPatch {
   const from = (base ?? {}) as Record<string, unknown>;
   const to = record as Record<string, unknown>;
   const patch: Record<string, unknown> = {};
-  for (const section of PROJECT_SECTIONS) {
-    if (JSON.stringify(from[section]) === JSON.stringify(to[section])) continue;
-    patch[section] = to[section] === undefined ? null : to[section];
+  for (const key of PROJECT_KEYS) {
+    if (same(from[key], to[key])) continue;
+    patch[key] = to[key];
+  }
+  if (patch.blocks !== undefined && base !== null) {
+    const kept: readonly ProjectBlock[] = base.blocks;
+    patch.blocks = (record.blocks as readonly ProjectBlock[]).map((block) =>
+      same(kept.find((b) => b.id === block.id), block) ? ({ same: block.id } satisfies SameBlock) : block,
+    );
   }
   return patch;
 }
@@ -84,9 +99,12 @@ export function patchOf(base: ProjectRecord | null, record: ProjectRecord): Proj
 /** `base` with `patch` laid over it; null when the result is not a whole record. */
 export function withPatch(base: ProjectRecord | null, patch: ProjectPatch): ProjectRecord | null {
   const record: Record<string, unknown> = { ...base };
-  for (const [section, value] of Object.entries(patch)) {
-    if (value === null) delete record[section];
-    else record[section] = value;
+  for (const [key, value] of Object.entries(patch)) record[key] = value;
+  if (Array.isArray(patch.blocks)) {
+    const kept: readonly ProjectBlock[] = base?.blocks ?? [];
+    const blocks = patch.blocks.map((entry: unknown) => (isSame(entry) ? kept.find((b) => b.id === entry.same) : entry));
+    if (blocks.some((b) => b === undefined)) return null;
+    record.blocks = blocks;
   }
   return storedProjectRecord(record);
 }

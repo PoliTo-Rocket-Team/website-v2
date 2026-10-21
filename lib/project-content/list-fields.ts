@@ -14,7 +14,6 @@ import {
   specRows,
   type GallerySection,
   type LaunchPhoto,
-  type LaunchPhotos,
   type Outcome,
   type Plan,
   type PlanStep,
@@ -24,16 +23,21 @@ import {
 } from "@/lib/project-pages/types";
 import type { Award } from "@/lib/projects";
 import { copyFields, copyOf, filled, titleOf, titleText, type CopyFields } from "./copy-fields";
-import type { LaunchHistory, PageStat, ProjectRecord, StoredLaunch } from "./record";
+import type { PageStat, ProjectRecord, StoredLaunch } from "./record";
+import { sectionContentOf, sectionShown, withSwitchedSection, type SectionContent, type SectionBlockId } from "./sections";
 
 // The list sections of the Edit <project> panel (board 75c, issue #299):
-// Versions, Launch history, Plan and Gallery, as the text an editor types.
-// Each is optional, so each has a show-on-page switch, and each keeps a rule
-// its stored shape holds: one version highlighted, a launch at least in a
-// shown launch history, one plan step under way, a photo at least in a shown
+// Versions, Launch history, Plan and Gallery, as the text an editor types,
+// each editing the page block with its name (./sections.ts). Each is
+// optional, so each has a show-on-page switch, and each keeps a rule its
+// stored shape holds: one version highlighted, a launch at least in a shown
+// launch history, one plan step under way, a photo at least in a shown
 // gallery. An edit that would break one is refused with a message (the
 // `remove…` and `set…` edits below), and a save checks them again
 // (`listProblems`), since a request can carry any fields.
+
+/** The launch history a launches section holds: a title and its launches, in date order. */
+type LaunchHistory = SectionContent<"launches">;
 
 export type ListSection = "versions" | "launches" | "plan" | "gallery";
 
@@ -63,10 +67,10 @@ function versionFields(version: Version, highlighted: boolean): VersionFields {
   return { pill: version.pill, tab: version.tab, role: copyFields(version.role), specs, highlighted };
 }
 
-function versionsFields(versions: Versions | undefined): VersionsFields {
+function versionsFields(versions: Versions | undefined, shown: boolean): VersionsFields {
   if (versions === undefined) return { shown: false, title: "", note: { text: "", phone: "" }, items: [{ ...blankVersion(), highlighted: true }] };
   return {
-    shown: true,
+    shown,
     title: versions.title,
     note: copyFields(versions.note),
     items: versionList(versions).map((v) => versionFields(v, v === versions.highlighted)),
@@ -131,13 +135,14 @@ export type LaunchFields = {
   readonly country: string;
   /** No award while its name is empty. */
   readonly award: { readonly name: string; readonly short: string; readonly citation: string };
+  /** Its cover photo, when it has one. */
   readonly photos: readonly LaunchPhoto[];
 };
 
 export type LaunchesFields = Switched<{ readonly title: string; readonly items: readonly LaunchFields[] }>;
 
-/** A launch card holds two photos at most: the page draws two slots beside it. */
-export const LAUNCH_PHOTOS_MAX = 2;
+/** A launch card holds one cover photo (Owner decision on #522). */
+export const LAUNCH_PHOTOS_MAX = 1;
 
 /** A flight's first two numbers, as the page labels them. */
 export const FLIGHT_LABELS = ["APOGEE", "MAX SPEED"] as const;
@@ -177,7 +182,7 @@ function launchFields(launch: StoredLaunch): LaunchFields {
     where: launch.where,
     result: launch.result,
     award: { name: launch.award?.name ?? "", short: launch.award?.short ?? "", citation: launch.award?.citation ?? "" },
-    photos: launch.photos ?? [],
+    photos: launch.cover ? [launch.cover] : [],
   };
   if (launch.outcome === "did-not-fly") {
     const [a, b, c, d] = launch.stats;
@@ -198,9 +203,9 @@ function launchFields(launch: StoredLaunch): LaunchFields {
   };
 }
 
-function launchesFields(history: LaunchHistory | undefined): LaunchesFields {
+function launchesFields(history: LaunchHistory | undefined, shown: boolean): LaunchesFields {
   if (history === undefined) return { shown: false, title: "", items: [blankLaunch()] };
-  return { shown: true, title: history.title, items: history.entries.map(launchFields) };
+  return { shown, title: history.title, items: history.entries.map(launchFields) };
 }
 
 const statOf = (n: NumberFields): PageStat => {
@@ -216,17 +221,11 @@ function awardOf(fields: LaunchFields["award"]): Award | null {
   return { name, ...(short !== null && { short }), ...(citation !== null && { citation }) };
 }
 
-function photosOf(photos: readonly LaunchPhoto[]): LaunchPhotos | null {
-  const trimmed = photos.map((p) => ({ src: p.src, alt: p.alt.trim() }));
-  if (trimmed.length === 1) return [trimmed[0]];
-  if (trimmed.length === 2) return [trimmed[0], trimmed[1]];
-  return null;
-}
-
 /** The launch as stored. A flight's phone may leave out only its third or fourth number. */
 export function launchOf(fields: LaunchFields): StoredLaunch {
   const award = awardOf(fields.award);
-  const photos = photosOf(fields.photos);
+  const [first] = fields.photos;
+  const cover = first === undefined ? null : { src: first.src, alt: first.alt.trim() };
   const base = {
     date: fields.date.trim(),
     where: fields.where.trim(),
@@ -237,7 +236,7 @@ export function launchOf(fields: LaunchFields): StoredLaunch {
     version: fields.version.trim(),
     motor: fields.motor.trim(),
     summary: { text: fields.summary.text.trim(), phone: fields.summary.phone.trim() },
-    ...(photos !== null && { photos }),
+    ...(cover !== null && { cover }),
   };
   const [a, b, c, d] = fields.numbers;
   if (fields.outcome === "did-not-fly") {
@@ -304,10 +303,10 @@ export const PLAN_STATUSES: readonly PlanStatus[] = ["done", "now", "next", "lat
 
 export const blankStep = (status: PlanStatus = "next"): StepFields => ({ status, date: "", title: "", text: { text: "", phone: "" } });
 
-function planFields(plan: Plan | undefined): PlanFields {
+function planFields(plan: Plan | undefined, shown: boolean): PlanFields {
   if (plan === undefined) return { shown: false, title: "", intro: { text: "", phone: "" }, steps: [blankStep("now")] };
   return {
-    shown: true,
+    shown,
     title: titleText(plan.title),
     intro: copyFields(plan.intro),
     steps: planSteps(plan).map((s) => ({ status: s.status, date: s.date ?? "", title: s.title, text: copyFields(s.text) })),
@@ -354,10 +353,10 @@ export function removeStep(fields: PlanFields, index: number): WriteResult<PlanF
 
 export { GALLERY_KEEPS_A_PHOTO, removeGalleryItem, type GalleryFields, type GalleryItemFields };
 
-function galleryFields(gallery: GallerySection | undefined): GalleryFields {
+function galleryFields(gallery: GallerySection | undefined, shown: boolean): GalleryFields {
   if (gallery === undefined) return { shown: false, title: "", items: [] };
   return {
-    shown: true,
+    shown,
     title: gallery.title,
     items: gallery.items.map((item) => ({ src: "src" in item ? item.src : null, alt: item.alt, caption: item.caption ?? "" })),
   };
@@ -386,31 +385,30 @@ export type ListFields = {
   readonly gallery: GalleryFields;
 };
 
+/** The section's content and whether its block is on the page. */
+const read = <S extends SectionBlockId>(record: ProjectRecord, id: S) => [sectionContentOf(record, id), sectionShown(record, id)] as const;
+
 export function listFieldsOf(record: ProjectRecord): ListFields {
   return {
-    versions: versionsFields(record.versions),
-    launches: launchesFields(record.kind === "vehicle" ? record.launches : undefined),
-    plan: planFields(record.plan),
-    gallery: galleryFields(record.gallery),
+    versions: versionsFields(...read(record, "versions")),
+    launches: record.kind === "vehicle" ? launchesFields(...read(record, "launches")) : launchesFields(undefined, false),
+    plan: planFields(...read(record, "plan")),
+    gallery: galleryFields(...read(record, "gallery")),
   };
 }
 
 /**
  * The record with the list sections laid over it, as the page draws it while
- * the editor types. A section switched off leaves the record. One switched on
- * whose shape rule is broken for the moment (only a hand-made request can
- * break it) keeps the version the panel opened on.
+ * the editor types (`withSwitchedSection`). A section switched off is hidden
+ * on the page. One switched on whose shape rule is broken for the moment
+ * (only a hand-made request can break it) keeps the version the panel opened
+ * on. An engine has no launch history.
  */
 export function withListFields(record: ProjectRecord, fields: ListFields, opened: ProjectRecord): ProjectRecord {
-  const { versions: _v, plan: _p, gallery: _g, ...rest } = record;
-  const versions = fields.versions.shown ? (versionsOf(fields.versions) ?? opened.versions) : undefined;
-  const plan = fields.plan.shown ? (planOf(fields.plan) ?? opened.plan) : undefined;
-  const gallery = fields.gallery.shown ? (galleryOf(fields.gallery) ?? opened.gallery) : undefined;
-  const sections = { ...(versions && { versions }), ...(plan && { plan }), ...(gallery && { gallery }) };
-  if (rest.kind === "engine") return { ...rest, ...sections };
-  const { launches: _l, ...vehicle } = rest;
-  const launches = fields.launches.shown ? (launchHistoryOf(fields.launches) ?? (opened.kind === "vehicle" ? opened.launches : undefined)) : undefined;
-  return { ...vehicle, ...sections, ...(launches && { launches }) };
+  let next = withSwitchedSection(record, opened, "versions", fields.versions.shown, versionsOf(fields.versions));
+  if (next.kind === "vehicle") next = withSwitchedSection(next, opened, "launches", fields.launches.shown, launchHistoryOf(fields.launches));
+  next = withSwitchedSection(next, opened, "plan", fields.plan.shown, planOf(fields.plan));
+  return withSwitchedSection(next, opened, "gallery", fields.gallery.shown, galleryOf(fields.gallery));
 }
 
 /** The list fields after a save: `stored`'s, with the text of each section switched off kept from what was sent. */
@@ -497,11 +495,26 @@ export function listProblems(fields: ListFields): ListProblem[] {
   return problems;
 }
 
-/** Every uploaded photo the list sections show, as their `src`: what a save must have uploaded or already had. */
+/**
+ * Every uploaded photo the record holds, as their `src`: what a save must
+ * have uploaded or already had. A hidden block's photos count: showing it
+ * again puts them back on the page.
+ */
 export function listPhotos(record: ProjectRecord): string[] {
-  const launches = record.kind === "vehicle" ? (record.launches?.entries ?? []) : [];
-  const gallery = record.gallery?.items ?? [];
-  return [...launches.flatMap((l) => (l.photos ?? []).map((p) => p.src)), ...gallery.flatMap((item) => ("src" in item ? [item.src] : []))];
+  const visual = record.hero.visual.kind === "photo" ? [record.hero.visual.photo.src] : [];
+  const blocks = record.blocks.flatMap((block): string[] => {
+    switch (block.kind) {
+      case "launches":
+        return block.entries.flatMap((l) => (l.cover ? [l.cover.src] : []));
+      case "gallery":
+        return block.items.flatMap((item) => ("src" in item ? [item.src] : []));
+      case "photo":
+        return [block.photo.src];
+      default:
+        return [];
+    }
+  });
+  return [...visual, ...blocks];
 }
 
 /**
