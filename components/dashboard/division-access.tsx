@@ -84,6 +84,7 @@ import { FilterMenu, SearchField, Segmented } from "./controls";
 import { Drawer, DrawerPage, PANEL_DANGER_BUTTON } from "./drawer";
 import { Field, GroupLabel, LOCKED_INPUT } from "./field";
 import { PANEL } from "./panel";
+import { PersonCombobox } from "./person-combobox";
 import { EYEBROW, PageHeader, PRIMARY_PILL } from "./page-header";
 
 const TARGET_ICONS: Readonly<Record<AccessTarget, LucideIcon>> = {
@@ -179,7 +180,7 @@ export function DivisionAccessView({ access: initial, ...actions }: { access: Ac
   const [grants, setGrants] = useState(initial.grants);
   const [holders, setHolders] = useState(initial.approveOrders.holders);
   const [open, setOpen] = useState<Open>(CLOSED);
-  // Every role's page starts on all departments, all divisions and everyone, leads first.
+  // Every role's page starts on all departments, all divisions and everyone, the most recently given access first (issue #481).
   const [filter, setFilter] = useState<AccessFilter>(NO_ACCESS_FILTER);
   // The page as this session left it: the holders of "Approve orders" change with each save.
   const access: AccessPage = { ...initial, approveOrders: { ...initial.approveOrders, holders } };
@@ -600,9 +601,14 @@ function PersonCard({
 // row evenly, as Orders hides its Department column (board 61b, issue #244):
 // names stay readable and the chips keep their full "Can edit" level. Below
 // md the page shows cards instead.
+//
+// A row's px-6 reaches the subgrid's edge items as a margin, and a fixed track
+// does not grow to hold it, so the trailing column is the 16px lock or chevron
+// plus that 24px pad: the icon sits inside the card, as far from its right
+// edge as the avatar is from its left (issue #481).
 function tableColumns(drawerOpen: boolean): string {
-  const open = drawerOpen ? "xl:grid-cols-[minmax(0,1fr)_minmax(min-content,1fr)_16px]" : "";
-  return `grid grid-cols-[minmax(0,1fr)_minmax(min-content,2.4fr)_minmax(max-content,0.75fr)_16px] ${open} gap-x-4`;
+  const open = drawerOpen ? "xl:grid-cols-[minmax(0,1fr)_minmax(min-content,1fr)_40px]" : "";
+  return `grid grid-cols-[minmax(0,1fr)_minmax(min-content,2.4fr)_minmax(max-content,0.75fr)_40px] ${open} gap-x-4`;
 }
 const ROW = "col-span-full grid grid-cols-subgrid items-center px-6";
 
@@ -842,32 +848,9 @@ function AccessDrawer({
             )}
           </Field>
         ) : (
+          // Type to search the people in reach (issue #481): the list is `grantable`, filtered on the page, with no server call.
           <Field label="Person" hint={`from ${unitWords(unit)}`}>
-            {(id) => (
-              <div className="relative">
-                {person && (
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-                    <Avatar size="sm" />
-                  </span>
-                )}
-                <select
-                  id={id}
-                  value={personId ?? ""}
-                  onChange={(e) => choosePerson(Number(e.target.value))}
-                  className={`${SELECT} ${person ? "pl-12" : "text-prt-muted"}`}
-                >
-                  <option value="" disabled>
-                    Choose a person
-                  </option>
-                  {grantable.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-2" />
-              </div>
-            )}
+            {(id) => <PersonCombobox id={id} people={grantable} value={personId} onChoose={choosePerson} placeholder="Choose a person" />}
           </Field>
         )}
 

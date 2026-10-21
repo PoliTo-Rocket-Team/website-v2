@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ACCESS_TOOLS, accessModelOf, NO_ACCESS_FILTER, shownAccess, type AccessFilter, type AccessRow } from "./access-view";
+import { ACCESS_SORTS, ACCESS_TOOLS, accessModelOf, NO_ACCESS_FILTER, shownAccess, type AccessFilter, type AccessRow } from "./access-view";
 import type { AccessPerson, AccessUnit, HeldAccess } from "./division-access";
 
 // Issue #415: the team leader, the operations lead, the IT lead, a department
@@ -98,7 +98,14 @@ test("the switch's counts follow the selects and search; the sort orders what is
     "full-access": 0,
     "approve-orders": 1,
   });
-  assert.deepEqual(names(team), ["Giulia Ferri", "Sofia Neri", "Carlo Rossi", "Anna Galli"]);
+  assert.deepEqual(names(team, { sort: "leads-first" }), ["Giulia Ferri", "Sofia Neri", "Carlo Rossi", "Anna Galli"]);
   assert.deepEqual(names(team, { sort: "name" }), ["Anna Galli", "Carlo Rossi", "Giulia Ferri", "Sofia Neri"]);
   assert.deepEqual(names(team, { sort: "recent" }), ["Carlo Rossi", "Sofia Neri", "Anna Galli", "Giulia Ferri"]);
+});
+
+// Issue #481: the page opens on the most recently given access, and the sort
+// menu shows that default as its first choice.
+test("the default filter orders rows by most recently given first", () => {
+  assert.deepEqual(names(team), ["Carlo Rossi", "Sofia Neri", "Anna Galli", "Giulia Ferri"]);
+  assert.equal(ACCESS_SORTS[0].sort, NO_ACCESS_FILTER.sort);
 });
