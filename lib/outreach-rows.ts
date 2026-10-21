@@ -5,10 +5,8 @@ import {
   type Channel,
   type ChannelName,
   type Channels,
-  type Edition,
   type IsoDate,
   type OutreachDraft,
-  type OutreachFeature,
   type OutreachPhoto,
   type OutreachPost,
   type PhotoSrc,
@@ -18,10 +16,10 @@ import {
 import { isPhotoSrc } from "./outreach-photos";
 import type { Copy } from "./projects";
 
-// An Outreach post version and the summit as their rows hold them (db/schema,
-// issue #287), and back. The database side, the import migration and the
-// dummy data's cookie all go through this one mapping, so a post reads back
-// the same. The body, the photos, the channels and the editions are stored as
+// An Outreach post version as its rows hold it (db/schema, issue #287), and
+// back. The database side, the import migration and the dummy data's cookie
+// all go through this one mapping, so a post reads back the same. The body,
+// the photos, the channels and the gallery are stored as
 // JSON; reading one back checks its shape and keeps only the known keys, so a
 // row no write of this code made cannot reach a page.
 
@@ -38,17 +36,6 @@ export type OutreachPostColumns = {
   channels: Channels;
   /** `{ items }`; null for a post with no gallery photo (issues #430, #451). */
   gallery: PostGallery | null;
-};
-
-/** The summit version's columns in `outreach_summit_versions`. */
-export type OutreachSummitColumns = {
-  eyebrow: string;
-  title: string;
-  story: string;
-  storyPhone: string | null;
-  photoSrc: string;
-  photoAlt: string;
-  editions: readonly Edition[];
 };
 
 export function postColumns(post: OutreachDraft): OutreachPostColumns {
@@ -93,31 +80,6 @@ export function draftFromColumns(row: Record<keyof OutreachPostColumns, unknown>
   const draft = outreachDraftOf(fromColumns(row, tags));
   if (draft === null) throw new Error(`an outreach draft titled ${JSON.stringify(row.title)} is not a draft`);
   return draft;
-}
-
-export function summitColumns(feature: OutreachFeature): OutreachSummitColumns {
-  return {
-    eyebrow: feature.eyebrow,
-    title: feature.title,
-    story: feature.story.text,
-    storyPhone: feature.story.phone ?? null,
-    photoSrc: feature.photo.src,
-    photoAlt: feature.photo.alt,
-    editions: feature.editions,
-  };
-}
-
-/** A stored summit version as the summit; throws on a row whose JSON is not the summit's. */
-export function summitFromColumns(row: Record<keyof OutreachSummitColumns, unknown>): OutreachFeature {
-  const feature = outreachFeatureOf({
-    eyebrow: row.eyebrow,
-    title: row.title,
-    story: copyFromColumns(row.story, row.storyPhone),
-    photo: { src: row.photoSrc, alt: row.photoAlt },
-    editions: row.editions,
-  });
-  if (feature === null) throw new Error("the stored outreach summit is not a summit");
-  return feature;
 }
 
 function copyFromColumns(text: unknown, phone: unknown): unknown {
@@ -213,11 +175,6 @@ function channelsOf(value: unknown): Channels | null {
   return read;
 }
 
-function editionOf(value: unknown): Edition | null {
-  if (!isShape(value) || !Number.isSafeInteger(value.year) || !isText(value.place)) return null;
-  return { year: value.year as number, place: value.place };
-}
-
 /** `value` as a post: every field a post needs, in its shape; null otherwise. */
 export function outreachPostOf(value: unknown): OutreachPost | null {
   if (!isShape(value) || !isText(value.title) || !isIsoDate(value.date) || !optionalText(value.place) || !isText(value.lead)) return null;
@@ -294,14 +251,4 @@ export function outreachDraftOf(value: unknown): OutreachDraft | null {
     channels,
     ...(gallery !== undefined && { gallery }),
   };
-}
-
-/** `value` as the summit: every field it needs, in its shape; null otherwise. */
-export function outreachFeatureOf(value: unknown): OutreachFeature | null {
-  if (!isShape(value) || !isText(value.eyebrow) || !isText(value.title)) return null;
-  const story = copyOf(value.story);
-  const photo = photoOf(value.photo);
-  const editions = nonEmpty(value.editions, editionOf);
-  if (story === null || photo === null || editions === null) return null;
-  return { eyebrow: value.eyebrow, title: value.title, story, photo, editions };
 }

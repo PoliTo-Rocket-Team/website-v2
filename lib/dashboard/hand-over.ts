@@ -1,7 +1,8 @@
 import { z } from "zod";
 import type { Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
-import type { FullAccessSeat } from "./viewer";
+import { SEAT_LABELS } from "./division-access";
+import type { FlaggedSeat, FullAccessSeat } from "./viewer";
 
 // Handing over a role (issue #253, boards 77i, 77e and 68b4; Owner decision,
 // 2026-10-16). Whoever holds a role (the team leader, a department head, a
@@ -69,6 +70,90 @@ export function advising(handed: HandedRole): Advising {
     case "lead":
       return advisingIn({ kind: "division", divisionId: handed.divisionId });
   }
+}
+
+// Full access follows the role (issue #501; Owner decision, 2026-10-21)
+
+/** A role row as the seat rule reads it: the full-access seat it is flagged as (`roles.full_access`), or null. */
+export type SeatRow = { readonly fullAccess: FlaggedSeat | null };
+
+/** Where a hand-over sends a flagged seat: the seat, and the person whose role row carries it from now on. */
+export type SeatMove = { readonly seat: FlaggedSeat; readonly to: number };
+
+export const ONE_SUCCESSOR_FOR_SEAT = "This lead holds a full-access seat. Name one new lead to take it over.";
+
+/**
+ * The one rule for a full-access seat on a hand-over or a replacement: the
+ * seat follows the role. `outgoing` are the role rows the hand-over ends;
+ * when one of them carries a seat, the successor's role row carries the same
+ * seat, written in the same batch that ends the outgoing rows, which end with
+ * it. So the predecessor holds the seat no more and one active row holds it.
+ * `successors` are the people who take the role over: a seat goes to exactly
+ * one, so a hand-over with more than one (a division save naming two new
+ * leads) is refused rather than guessing, and one with none would drop the
+ * seat. With no seat on the outgoing rows the answer is null: the hand-over
+ * writes what it always wrote.
+ */
+export function seatHandOver(outgoing: readonly SeatRow[], successors: readonly number[]): Checked<SeatMove | null> {
+  const seat = outgoing.find((r) => r.fullAccess !== null)?.fullAccess ?? null;
+  if (seat === null) return { ok: true, value: null };
+  const [to, ...others] = successors;
+  if (to === undefined || others.length > 0) return { ok: false, error: ONE_SUCCESSOR_FOR_SEAT };
+  return { ok: true, value: { seat, to } };
+}
+
+/** A role handed over from a unit: a division's lead or a department's head. The team leader's role is the team-leader seat itself. */
+export type UnitRole = Exclude<HandedRole, { readonly kind: "team-leader" }>;
+
+/** A full-access seat as it sits on the team: the person whose role row carries it, and the role it is handed over with. */
+export type HeldSeat = { readonly seat: FlaggedSeat; readonly personId: number; readonly role: UnitRole };
+
+function sameUnitRole(a: UnitRole, b: UnitRole): boolean {
+  return a.kind === "lead" ? b.kind === "lead" && a.divisionId === b.divisionId : b.kind === "head" && a.departmentId === b.departmentId;
+}
+
+/**
+ * The full-access seat `personId` hands over with `handed`: the team
+ * leader's role is the team-leader seat, and a lead or head role carries the
+ * seat its row is flagged as (`seats`, read off the roles), or none.
+ */
+export function seatOfHandedRole(seats: readonly HeldSeat[], personId: number, handed: HandedRole): FullAccessSeat | null {
+  if (handed.kind === "team-leader") return "team-leader";
+  return seats.find((s) => s.personId === personId && sameUnitRole(s.role, handed))?.seat ?? null;
+}
+
+// One wording for "full access moves" (issue #501; Owner decision,
+// 2026-10-21). Every hand-over and replacement screen that can reach a
+// full-access role reads it here, before the confirm.
+
+/** The role a seat names in the wording: "Team Leader", "Operations lead". */
+function seatRoleName(seat: FullAccessSeat): string {
+  return seat === "team-leader" ? "Team Leader" : SEAT_LABELS[seat];
+}
+
+/**
+ * "Pietro Ricci becomes Operations lead and gets full access. You lose full
+ * access.": what a hand-over of a full-access role does to full access, or
+ * null for a role with no seat. `successor` is who takes over, null until
+ * they are picked; `from` is who hands it over, null for the viewer ("you");
+ * `step` is what they do next, null until it is picked. A former team leader
+ * who becomes an advisor keeps their access (`advising`), so only they keep
+ * it, and until that choice is made the line says nothing of them.
+ */
+export function fullAccessMovesLine(input: {
+  readonly seat: FullAccessSeat | null;
+  readonly successor: string | null;
+  readonly from: string | null;
+  readonly step: SteppingDown | null;
+}): string | null {
+  const { seat, successor, from, step } = input;
+  if (seat === null) return null;
+  const gains = `${successor ?? "Whoever takes over"} becomes ${seatRoleName(seat)} and gets full access.`;
+  if (step?.kind === "advisor" && step.access === "keeps-full-access") {
+    return `${gains} ${from === null ? "You keep" : `${from} keeps`} full access until the new Team Leader changes it in Access.`;
+  }
+  if (seat === "team-leader" && step === null) return gains;
+  return `${gains} ${from === null ? "You lose" : `${from} loses`} full access.`;
 }
 
 /** A department or a division: where a lead or head holds their role, and where Close department sends each person. */

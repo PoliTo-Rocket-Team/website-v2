@@ -9,7 +9,9 @@ import { TEAM_ROSTER_CACHE_TAG } from "@/lib/cache-tags";
 import type { MemberDetails } from "./details";
 import type { TeamPerson } from "./division-edit";
 import type { PersonRecord } from "./division-members";
+import type { HeldSeat } from "./hand-over";
 import { normalizeLinkedin } from "./self";
+import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
 import {
   boardSeatOf,
   headDepartmentOf,
@@ -42,6 +44,8 @@ type RoleRow = {
   leaved_at: string | null;
   dept_id: number | null;
   division_id: number | null;
+  /** The full-access seat the row is flagged as (`roles.full_access`). */
+  full_access: SeatFlag | null;
 };
 
 type PersonRow = {
@@ -101,6 +105,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
         leaved_at: roles.leavedAt,
         dept_id: roles.deptId,
         division_id: roles.divisionId,
+        full_access: roles.fullAccess,
       })
       .from(roles),
     db
@@ -271,6 +276,26 @@ function detailsOf(person: PersonRow): MemberDetails {
     birthDate: person.date_of_birth ?? "",
     gender: oneOf(GENDERS, person.gender),
   };
+}
+
+/**
+ * The full-access seats on the team's active lead and head roles, as the
+ * hand-over screens read them (`HeldSeat`, issue #501): a flagged lead row of
+ * an open division, or a flagged head row of an open department. A seat on a
+ * row no hand-over reaches (a board seat, a lead row with no division) is not
+ * one of them.
+ */
+export function seatsOf(snapshot: TeamSnapshot): HeldSeat[] {
+  return snapshot.roles.flatMap((row): HeldSeat[] => {
+    if (row.leaved_at !== null || row.full_access === null) return [];
+    const seat = SEAT_OF_FLAG[row.full_access];
+    if (row.type === "lead" && row.division_id !== null && snapshot.org.divisions.some((d) => d.id === row.division_id)) {
+      return [{ seat, personId: row.member_id, role: { kind: "lead", divisionId: row.division_id } }];
+    }
+    const departmentId = row.type === "head" ? headDepartmentOf(roleSeat(row), snapshot.org) : null;
+    if (departmentId === null || !snapshot.org.departments.some((d) => d.id === departmentId)) return [];
+    return [{ seat, personId: row.member_id, role: { kind: "head", departmentId } }];
+  });
 }
 
 /** Everyone on the team as the division and hand-over rules read them (./division-edit.ts, ./hand-over-request.ts). */

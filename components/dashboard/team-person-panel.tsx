@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Lock, TriangleAlert, Upload, X } from "lucide-react";
+import { Lock, TriangleAlert, Upload, X } from "lucide-react";
 import { Avatar } from "@/components/about/person";
 import type { PersonFieldErrors, PersonFields, PhotoChoice, SpotRecord } from "@/lib/about/team-page-edit";
 import { personOf, type TeamPerson } from "@/lib/about/team-person";
@@ -9,7 +9,7 @@ import { CONTENT_FOCUS } from "./content-parts";
 import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { Toggle } from "./controls";
-import { PhotoChoices } from "./team-panel-parts";
+import { PersonSelect, PhotoChoices } from "./team-panel-parts";
 
 // The Edit person panel (board 80b, issue #284): 480px beside the Team page
 // under the edit shell, for the team leader or a leader on the arc. It
@@ -99,24 +99,7 @@ export function TeamPersonPanel({
         <Field label="Person in this spot" hint={`${record.role}, ${place.toLowerCase()}`}>
           {(id) => (
             <>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-                  <Avatar photo={own.photo} sizeClass="h-6 w-6" sizes="24px" />
-                </span>
-                <select
-                  id={id}
-                  value={fields.person}
-                  onChange={(e) => onPerson(Number(e.target.value))}
-                  className={`${inputClass()} cursor-pointer appearance-none pl-12 pr-10`}
-                >
-                  {sorted.map((p) => (
-                    <option key={p.id} value={p.id} className="bg-panel">
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-              </div>
+              <PersonSelect id={id} people={sorted} value={fields.person} onChange={onPerson} />
               <p className={HINT}>Team record: {record.person.name}. Pick anyone on the team to show here instead.</p>
             </>
           )}

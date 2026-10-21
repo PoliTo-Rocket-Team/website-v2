@@ -88,6 +88,7 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni, dummyAlumniRecord, type DummyFormer } from "./alumni";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type TeamEdits } from "./edits";
+import { dummySeatsOf } from "./division";
 import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver, withLapsedHandOvers } from "./hand-overs";
 import { withDummyNotices } from "./notices";
 import {
@@ -103,7 +104,7 @@ import {
 } from "@/lib/dashboard/hand-over-request";
 import type { AttentionItem } from "@/lib/dashboard/overview";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
-import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, formerMember, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
+import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, formerMember, people, positions, rosterSeason, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
 
 // The test developer's Team pages (issues #143, #172 and #231): the roster
 // and alumni in ./team.ts with the test developer's own edits (./edits.ts)
@@ -1096,7 +1097,7 @@ export function dummyTeamPages(
         DUMMY_ALUMNI_YEAR,
       ),
     teamTree: async () =>
-      buildTeamTree(canReach(testDeveloperStanding(kind), "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
+      buildTeamTree(canReach(testDeveloperStanding(kind), "team-tree") ? editedRoster(edits, joiners) : [], org, rosterSeason(), self),
     teamStructure: async () => {
       if (!canReach(testDeveloperStanding(kind), "team-tree")) return null;
       const team = editedRoster(edits, joiners);
@@ -1110,6 +1111,7 @@ export function dummyTeamPages(
         waiting: Object.fromEntries(ids.map((id) => [id, waitingIn(edits, id)])),
         joining: Object.fromEntries(ids.map((id) => [id, joiningIn(team, id)])),
         openPositions: Object.fromEntries(ids.map((id) => [id, openPositionsIn(id)])),
+        seats: dummySeatsOf(team),
       });
     },
     teamWrites: writesFor(kind, edits, save, joiners, move, grant),
@@ -1177,12 +1179,13 @@ export function dummyHandOverPages(
   const all = dummyHandOversOf(edits);
   const waiting = waitingHandOvers(all);
   const mine = waiting.find((h) => h.fromId === self && !hasLapsed(h, team)) ?? null;
+  const seats = dummySeatsOf(roster);
   return {
     offer: () => {
       const person = team.find((p) => p.id === self);
-      return person ? handOverOfferOf(person, team, org, mine) : null;
+      return person ? handOverOfferOf(person, team, org, mine, seats) : null;
     },
-    attention: (now) => handOverAttentionFor(self, waiting, team, org, now),
+    attention: (now) => handOverAttentionFor(self, waiting, team, org, now, seats),
     async sendHandOver(input) {
       if (self === null) return refused("This page is for team members.");
       const checked = checkHandOverSend(input);

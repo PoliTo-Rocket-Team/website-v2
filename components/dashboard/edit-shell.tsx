@@ -22,8 +22,8 @@ import { EditFrame } from "./edit-frame";
 // real page under an edit bar, on top of the dashboard. Any content type
 // mounts it: it is handed the page, the page's blocks and their panel
 // sections, the publish state, the callbacks and its own edit panel, and
-// knows nothing of what the page shows. The page marks each block with EditableBlock; hovering one
-// outlines it with its name and an Edit chip that hands its section back.
+// knows nothing of what the page shows. The page marks each block with EditableBlock, always
+// outlined with its name and an Edit chip that hands its section back.
 //
 // The bar: "<Section> / Editing <item>" and the state on the left; Save draft
 // and Publish on the right. Desktop | Phone sits in the middle (74b), unless
@@ -49,6 +49,8 @@ const ChipContext = createContext<{
   readonly chipOf: (id: string) => EditChip;
   readonly startHere: string | null;
   readonly selected: string | null;
+  /** The publish checklist hangs pinned over the page's top right, so every chip row keeps clear of it. */
+  readonly checklistPinned: boolean;
 } | null>(null);
 
 const STATE_TONE: Readonly<Record<ContentStatus, { pill: string; dot: string }>> = {
@@ -147,10 +149,6 @@ export function EditShell<Id extends string, Section extends string, Page extend
   panel?: ReactNode;
 }) {
   const [device, setDevice] = useState<EditDevice>("desktop");
-  const chips = useMemo(
-    () => ({ chipOf: editChips(blocks, onEdit) as (id: string) => EditChip, startHere: startHere ?? null, selected: selected ?? null }),
-    [blocks, onEdit, startHere, selected],
-  );
   const switcher = pages !== undefined && showsPageSwitch(pages.targets) ? pages : null;
   const changeDevice = (next: EditDevice) => {
     setDevice(next);
@@ -160,6 +158,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   const phone = device === "phone";
   const ready = checklistDone(publishChecklist);
   const checklistId = useId();
+  const checklistPinned = !ready && !panel;
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-ground text-prt-text">
       {/* Three columns: the middle one is centred while the right group fits
@@ -210,7 +209,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
             >
               Publish
             </button>
-            {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={!panel} />}
+            {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={checklistPinned} />}
           </div>
         </div>
       </header>
@@ -226,7 +225,9 @@ export function EditShell<Id extends string, Section extends string, Page extend
             className={`block bg-ground ${phone ? "h-full w-full md:h-[844px] md:w-[var(--phone-frame)] md:shrink-0 md:rounded-[40px] md:border md:border-hairline" : "h-full w-full"}`}
             style={{ "--phone-frame": `${PHONE_FRAME_WIDTH}px` } as CSSProperties}
           >
-            <ChipContext.Provider value={chips}>{children}</ChipContext.Provider>
+            <BlockChips blocks={blocks} onEdit={onEdit} startHere={startHere} selected={selected} checklistPinned={checklistPinned}>
+              {children}
+            </BlockChips>
           </EditFrame>
         </div>
         {panel}
@@ -238,13 +239,18 @@ export function EditShell<Id extends string, Section extends string, Page extend
 /**
  * The checklist under Publish (board 74f): "To publish, add:" and a line per
  * need, an open ring while it is missing and a check once it is there.
+ * Below md the window is a phone, where a pinned checklist would sit over
+ * most of the page's top, chips and all, so there it shows only while
+ * Publish is tapped, hovered or focused.
  */
 function PublishChecklist({ id, checks, pinned }: { id: string; checks: readonly PublishCheck[]; pinned: boolean }) {
   return (
     <div
       id={id}
       className={`absolute right-4 top-full z-50 mt-2 w-[244px] rounded-xl border border-hairline bg-panel p-3.5 shadow-lg ${
-        pinned ? "block" : "hidden group-focus-within/publish:block group-hover/publish:block"
+        pinned
+          ? "block max-md:hidden max-md:group-focus-within/publish:block max-md:group-hover/publish:block"
+          : "hidden group-focus-within/publish:block group-hover/publish:block"
       }`}
     >
       <p className="text-[12px] font-semibold text-prt-text">To publish, add:</p>
@@ -335,25 +341,143 @@ function PageSwitcher<Page extends string>({ targets, current, onSelect }: PageS
 }
 
 /**
- * One named block of the page in the shell. Hovered, or with focus inside,
- * it shows an accent outline with its name and an Edit chip that hands the
- * block's section to the shell's `onEdit` (board 74b). The shell's
- * `startHere` block shows its outline from the start, with a "Start here"
- * chip in place of Edit (board 74f).
+ * Hands each EditableBlock under it its chip, and which block starts the
+ * page or is being edited. EditShell draws it round the page in its frame.
+ */
+export function BlockChips<Id extends string, Section extends string>({
+  blocks,
+  onEdit,
+  startHere,
+  selected,
+  checklistPinned = false,
+  children,
+}: {
+  blocks: EditBlocks<Id, Section>;
+  onEdit: (section: Section) => void;
+  startHere?: Id;
+  selected?: Id;
+  checklistPinned?: boolean;
+  children: ReactNode;
+}) {
+  const chips = useMemo(
+    () => ({
+      chipOf: editChips(blocks, onEdit) as (id: string) => EditChip,
+      startHere: startHere ?? null,
+      selected: selected ?? null,
+      checklistPinned,
+    }),
+    [blocks, onEdit, startHere, selected, checklistPinned],
+  );
+  return <ChipContext.Provider value={chips}>{children}</ChipContext.Provider>;
+}
+
+/**
+ * How a block's outline is drawn (Owner decision, 2026-10-21: what is
+ * editable shows at all times, on every device). At rest a dashed accent
+ * hairline with no fill, which hover or focus inside only brightens to the
+ * full accent; the `startHere` block keeps board 74f's outline; the
+ * `selected` block, the one its panel edits, is drawn strongest (board 80b).
+ */
+const BLOCK_OUTLINE = {
+  rest: "border border-dashed border-accent/50 group-hover/block:border-accent group-focus-within/block:border-accent motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out",
+  start: "border-[1.5px] border-accent bg-accent/5",
+  selected: "border-2 border-accent bg-accent/5",
+} as const;
+
+/**
+ * How a block sits on the page, which says where its outline and chips go
+ * so that every chip shows at once inside the frame and none covers
+ * another.
+ *
+ * - `around`: a block with room round it. The outline stands 12px (22px
+ *   from md) outside the block and one row rides its top edge: the name on
+ *   the left, cut short when the row runs out of room, and Edit on the
+ *   right. The name sits at the block's own left edge. Below md a page has
+ *   too little room between its parts for a row on the edge, which would sit
+ *   on the heading or text above, so the block keeps 32px at its top and the
+ *   row sits there, inside the outline.
+ * - `narrow`: a block about as wide as its name chip, such as one person on
+ *   the Team page's org chart (board 80). The name chip spans the outline's
+ *   top edge, and the Edit chip sits on the outline's foot, the block keeping
+ *   room under it. Board 80 hangs that chip off the outline's right edge, but
+ *   with every chip shown at once it would sit on the arc's end labels, its
+ *   add buttons and the next person's outline; under a person nothing else
+ *   is drawn, on the arc or in the grid below xl. The outline's foot stands
+ *   further out than its other sides, so the chip on it stays clear of the
+ *   person's contact icons.
+ * - `bleed`: a block that fills the page's width, as a project's hero and
+ *   numbered sections do. Outside it, the outline's sides would fall past the
+ *   frame's edges, and the hero's chip row past its top, so both sit inside
+ *   it, the row just under the outline's top. A page whose first line sits
+ *   closer to the block's top than that row gives the block room there
+ *   through `className`.
+ */
+export type BlockShape = "around" | "narrow" | "bleed";
+
+const AROUND_OUTLINE = "-inset-3 md:-inset-[22px]";
+const ON_TOP_EDGE = "-top-3 -translate-y-1/2 md:-top-[22px]";
+
+/**
+ * Each shape's placement. `rowEnd` is where the chip row ends; `clearEnd`
+ * where it ends while the publish checklist hangs pinned under Publish
+ * (board 74f): 244px wide, 16px in from the window's right edge, so the row
+ * moves in from the block's right edge far enough to clear it. An `around`
+ * block sits in the page's column, 64px in from md; from 1440px the column
+ * is centred and leaves room for the board's own spot. A `bleed` block's
+ * edge is the frame's.
+ */
+const BLOCK_SHAPE: Readonly<
+  Record<
+    BlockShape,
+    { outline: string; row: string; rowStart: string; rowEnd: string; clearEnd: string; editAtFoot: boolean; room: string }
+  >
+> = {
+  around: {
+    outline: AROUND_OUTLINE,
+    row: "top-0 md:-top-[22px] md:-translate-y-1/2",
+    rowStart: "left-1 md:left-0",
+    rowEnd: "right-6 md:right-[33px]",
+    clearEnd: "right-6 md:right-[220px] min-[1440px]:right-[145px]",
+    editAtFoot: false,
+    room: "max-md:pt-8",
+  },
+  narrow: {
+    outline: "-inset-x-3 -top-3 -bottom-6 md:-inset-x-[22px] md:-top-[22px] md:-bottom-[30px]",
+    row: ON_TOP_EDGE,
+    rowStart: "left-1 md:-left-3",
+    rowEnd: "right-1 md:-right-3",
+    clearEnd: "right-1 md:-right-3",
+    editAtFoot: true,
+    room: "mb-10",
+  },
+  bleed: {
+    outline: "inset-1.5 md:inset-2",
+    row: "top-3 md:top-4",
+    rowStart: "left-3 md:left-4",
+    rowEnd: "right-6 md:right-[33px]",
+    clearEnd: "right-6 md:right-[284px]",
+    editAtFoot: false,
+    room: "",
+  },
+};
+
+/**
+ * One named block of the page in the shell. It always shows its outline,
+ * with its name and an Edit chip that hands the block's section to the
+ * shell's `onEdit` (board 74b), on Desktop, Phone and touch alike; hover or
+ * focus inside only brightens the outline. The shell's `startHere` block
+ * shows a "Start here" chip in place of Edit (board 74f), and the
+ * `selected` block a stronger outline with no chips (board 80b).
  */
 export function EditableBlock({
   id,
-  narrow = false,
+  shape = "around",
   className = "",
   children,
 }: {
   id: string;
-  /**
-   * A block about as wide as its name chip, such as one person on the Team
-   * page's org chart (board 80): the Edit chip hangs off the outline's right
-   * edge, so the two chips never overlap.
-   */
-  narrow?: boolean;
+  /** How the block sits on the page (BlockShape). */
+  shape?: BlockShape;
   className?: string;
   children: ReactNode;
 }) {
@@ -362,42 +486,41 @@ export function EditableBlock({
   const start = chips.startHere === id;
   const selected = chips.selected === id;
   const chip = start ? { ...chips.chipOf(id), label: "Start here" } : chips.chipOf(id);
-  const shown = start
-    ? "opacity-100"
-    : "opacity-0 group-hover/block:opacity-100 group-focus-within/block:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
-  // The publish checklist hangs pinned under Publish while a new item opens
-  // (board 74f): 244px wide, 16px in from the window's right edge. "Start
-  // here" sits left of it, so it moves in from the block's right edge far
-  // enough to clear the checklist; from 1440px the page's centred column
-  // leaves room for the board's own spot.
-  const chipPlace = narrow
-    ? "left-[calc(100%-4px)] md:left-[calc(100%-8px)]"
-    : start
-      ? "right-6 md:right-[220px] min-[1440px]:right-[145px]"
-      : "right-6 md:right-[33px]";
+  const outline = selected ? BLOCK_OUTLINE.selected : start ? BLOCK_OUTLINE.start : BLOCK_OUTLINE.rest;
+  const place = BLOCK_SHAPE[shape];
+  // "Start here" keeps board 74f's spot, left of the checklist; while the
+  // checklist hangs pinned, every chip row keeps clear of it the same way.
+  const rowEnd = start || chips.checklistPinned ? place.clearEnd : place.rowEnd;
+  const edit = (
+    <button
+      type="button"
+      onClick={chip.edit}
+      aria-label={`${chip.label}: ${chip.name}`}
+      className={`pointer-events-auto z-10 inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent hover:bg-accent-hover motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${CONTENT_FOCUS} ${
+        place.editAtFoot ? "absolute -bottom-6 left-1/2 -translate-x-1/2 translate-y-1/2 md:-bottom-[30px]" : "ml-auto"
+      }`}
+    >
+      <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
+      {chip.label}
+    </button>
+  );
   return (
-    <div className={`group/block relative ${className}`}>
+    <div className={`group/block relative ${place.room} ${className}`}>
       {children}
-      <div
-        aria-hidden
-        className={`pointer-events-none absolute -inset-3 z-10 rounded-xl border-[1.5px] border-accent bg-accent/5 md:-inset-[22px] ${selected ? "opacity-100" : shown}`}
-      >
-        {!selected && (
-          <span className="absolute left-4 top-0 -translate-y-1/2 whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent">
-            {chip.name}
-          </span>
-        )}
-      </div>
+      <div aria-hidden className={`pointer-events-none absolute z-10 rounded-xl ${place.outline} ${outline}`} />
       {!selected && (
-        <button
-          type="button"
-          onClick={chip.edit}
-          aria-label={`${chip.label}: ${chip.name}`}
-          className={`absolute -top-3 z-10 inline-flex h-7 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3 text-[13px] font-semibold text-accent-on-accent md:-top-[22px] ${chipPlace} ${shown} focus-visible:opacity-100 ${CONTENT_FOCUS}`}
-        >
-          <Pencil aria-hidden className="h-3.5 w-3.5" strokeWidth={2} />
-          {chip.label}
-        </button>
+        <>
+          <div className={`pointer-events-none absolute z-10 flex items-center gap-2 ${place.row} ${place.rowStart} ${rowEnd}`}>
+            <span
+              aria-hidden
+              className="min-w-0 truncate whitespace-nowrap rounded-[4px] bg-accent px-2 py-[3px] font-mono text-[10px] uppercase leading-none tracking-[0.2em] text-accent-on-accent"
+            >
+              {chip.name}
+            </span>
+            {!place.editAtFoot && edit}
+          </div>
+          {place.editAtFoot && edit}
+        </>
       )}
     </div>
   );
@@ -465,11 +588,11 @@ function keepInViewOnResize(card: HTMLElement): () => void {
  * the card fills it. `outline` rounds the outline, 6px outside the card's own
  * corners.
  *
- * A content type may give a card its own `actions` (issue #431: Outreach's
- * Pin to top and Unpin), each a CardChip. On the edited card they sit left of
- * Edit card; on a dimmed card they show, undimmed, with a hairline outline,
- * while the card is hovered or holds focus. Without them the card is drawn as
- * it always was.
+ * A content type may give a card its own `actions` (issues #431 and #496:
+ * Outreach's Feature and Unfeature), each a CardChip. On the edited card they
+ * sit left of Edit card; on a dimmed card they always show, undimmed, with a
+ * hairline outline that hover or focus inside only brightens (Owner decision,
+ * 2026-10-21). Without them the card is drawn as it always was.
  */
 export function CardInPlace({
   edited,
@@ -505,13 +628,14 @@ export function CardInPlace({
   );
   if (!edited) {
     if (actions === undefined) return <div className={`opacity-40 ${className}`}>{children}</div>;
-    const shown =
-      "opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out";
     return (
       <div className={`group/card relative ${className}`}>
         <div className={`opacity-40 ${className}`}>{children}</div>
-        <div aria-hidden className={`pointer-events-none absolute -inset-1.5 z-10 border border-border-strong ${outline} ${shown}`} />
-        <div className={`absolute -top-1.5 right-6 z-10 flex -translate-y-1/2 items-center gap-2 ${shown}`}>{actions}</div>
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute -inset-1.5 z-10 border border-border-strong group-hover/card:border-dim group-focus-within/card:border-dim motion-safe:transition-colors motion-safe:duration-300 motion-safe:ease-out ${outline}`}
+        />
+        <div className="absolute -top-1.5 right-6 z-10 flex -translate-y-1/2 items-center gap-2">{actions}</div>
       </div>
     );
   }

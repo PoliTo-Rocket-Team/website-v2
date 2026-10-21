@@ -7,12 +7,10 @@ import { outreachRecord, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachStore } from "./outreach-editor";
 import { filterRows, newestRowsFirst, outreachRow } from "./outreach-list";
 import { outreachPostOf } from "./outreach-rows";
-import { checkSummitFields, summitFieldsOf } from "./outreach-summit-fields";
 
 // The dashboard's Outreach list (board 74, issue #289): Unpublish and Delete
-// from a row's menu, the featured summit's Save draft and Publish, and what
-// /outreach shows after each. The editor runs over the dummy-data store, the
-// one previews and test developers write to.
+// from a row's menu, and what /outreach shows after each. The editor runs
+// over the dummy-data store, the one previews and test developers write to.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const member: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
@@ -32,7 +30,7 @@ function freshStore(): OutreachStore {
 
 /** What /outreach shows from the store as it is now. */
 async function site(store: OutreachStore) {
-  return publicOutreach({ posts: await store.posts.list(), summit: await store.summit(), tags: await store.tags(), pinned: await store.pinned() });
+  return publicOutreach({ posts: await store.posts.list(), tags: await store.tags(), featured: await store.featured() });
 }
 
 test("Unpublish keeps the post in the list as a draft and takes it off /outreach and its page; Delete removes it from both", async () => {
@@ -74,52 +72,6 @@ test("only the site-content gate's viewers unpublish or delete", async () => {
   assert.equal((await refused.posts.unpublish(id)).ok, false);
   assert.equal((await refused.posts.remove(id)).ok, false);
   assert.equal((await site(store)).posts.length, outreachRecord.posts.length);
-});
-
-test("the summit's Save draft leaves /outreach as it was, and Publish puts the edited summit on it", async () => {
-  const store = freshStore();
-  const editor = outreachEditor(admin, store, dummyPhotoFiles);
-  const fields = summitFieldsOf(outreachRecord.feature);
-  const edited = {
-    ...fields,
-    title: "IRESS, the student summit",
-    // Typed newest first; the summit keeps them oldest first.
-    editions: [{ year: "2026", place: "Milan" }, ...fields.editions],
-  };
-
-  const drafted = await editor.saveSummit("save-draft", async (current) => checkSummitFields(edited, current));
-  assert.ok(drafted.ok);
-  assert.deepEqual((await site(store)).feature, outreachRecord.feature, "a draft stays off the site");
-
-  const published = await editor.saveSummit("publish", async (current) => checkSummitFields(edited, current));
-  assert.ok(published.ok);
-  const feature = (await site(store)).feature;
-  assert.equal(feature.title, "IRESS, the student summit");
-  assert.deepEqual(
-    feature.editions.map((e) => e.year),
-    [2023, 2024, 2025, 2026],
-  );
-  assert.equal(feature.photo.src, outreachRecord.feature.photo.src, "the photo file is kept");
-  assert.equal(published.value.draft, null);
-});
-
-test("the summit is refused without a title, an edition, or with one year twice", () => {
-  const fields = summitFieldsOf(outreachRecord.feature);
-  const feature = outreachRecord.feature;
-  assert.equal(checkSummitFields({ ...fields, title: "  " }, feature).ok, false);
-  assert.equal(checkSummitFields({ ...fields, editions: [] }, feature).ok, false);
-  assert.equal(checkSummitFields({ ...fields, editions: [...fields.editions, { year: "2024", place: "Bari" }] }, feature).ok, false);
-  assert.equal(checkSummitFields({ ...fields, editions: [{ year: "24", place: "Bari" }] }, feature).ok, false);
-});
-
-test("the summit saves and publishes with no photo description", async () => {
-  const store = freshStore();
-  const editor = outreachEditor(admin, store, dummyPhotoFiles);
-  const edited = { ...summitFieldsOf(outreachRecord.feature), photoAlt: "  " };
-  const published = await editor.saveSummit("publish", async (current) => checkSummitFields(edited, current));
-  assert.ok(published.ok);
-  const { photo } = (await site(store)).feature;
-  assert.deepEqual(photo, { src: outreachRecord.feature.photo.src, alt: "" });
 });
 
 test("the list is newest first, and the Status filter reads a post with draft changes as Draft, as its pill does", async () => {

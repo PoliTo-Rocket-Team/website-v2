@@ -21,11 +21,28 @@ export type RecordedWrite = { readonly kind: string; readonly table: string };
 
 const store = new Map<string, DbRow[]>();
 const writes: RecordedWrite[] = [];
+let keeping = false;
 
-/** Empties every table and the write record. */
+/** Empties every table and the write record, and stores writes no more. */
 export function resetFakeDb(): void {
   store.clear();
   writes.length = 0;
+  keeping = false;
+}
+
+/**
+ * From now until the next reset, every write is also stored, as the
+ * database would store it: an insert adds its rows, an update changes the
+ * rows it matches, a delete removes them. A test then reads what a write left
+ * behind (`rowsIn`), not only that it wrote (issue #501).
+ */
+export function keepWrites(): void {
+  keeping = true;
+}
+
+/** The rows a table holds now, each with the schema's field names. */
+export function rowsIn(table: Table): Record<string, unknown>[] {
+  return rowsOf(table).map((row) => tsFields(table, row)!);
 }
 
 /** The writes started since the last reset. */
@@ -346,24 +363,28 @@ class SelectQuery implements PromiseLike<unknown[]> {
 const WRITTEN_ID = 9_000;
 
 /**
- * A write, never stored. An update or a delete changes the rows its
- * condition matches, as on the database, and is recorded only when it
- * matches one, so a write guarded in its condition (the notice must be the
- * viewer's own) is no write when the guard holds it back. An insert always
- * writes. `returning` answers the rows written: the matched rows, or for an
- * insert one row holding the written id.
+ * A write, stored only after `keepWrites`. An update or a delete changes the
+ * rows its condition matches, as on the database, and is recorded only when
+ * it matches one, so a write guarded in its condition (the notice must be
+ * the viewer's own) is no write when the guard holds it back. An insert
+ * always writes. `returning` answers the rows written: the matched rows, or
+ * for an insert one row holding the written id.
  */
 class WriteQuery implements PromiseLike<unknown[]> {
   private condition: unknown;
   private returned: Record<string, unknown> | null = null;
+  private inserted: readonly Record<string, unknown>[] = [];
+  private changes: Record<string, unknown> = {};
   constructor(
     private readonly kind: "insert" | "update" | "delete",
     private readonly table: Table,
   ) {}
-  values() {
+  values(rows: Record<string, unknown> | readonly Record<string, unknown>[]) {
+    this.inserted = Array.isArray(rows) ? rows : [rows as Record<string, unknown>];
     return this;
   }
-  set() {
+  set(changes: Record<string, unknown>) {
+    this.changes = changes;
     return this;
   }
   where(condition: unknown) {
@@ -395,9 +416,36 @@ class WriteQuery implements PromiseLike<unknown[]> {
     });
   }
 
+  /** Stores the write (`keepWrites`): new rows get the next free id when they name none. */
+  private keep(changed: readonly Joined[]): void {
+    const key = tableKey(this.table);
+    const columns = getTableColumns(this.table) as Record<string, Column>;
+    if (this.kind === "delete") {
+      const gone = new Set(changed.map((row) => row[key]));
+      store.set(baseName(this.table), rowsOf(this.table).filter((r) => !gone.has(r)));
+      return;
+    }
+    if (this.kind === "update") {
+      for (const row of changed) {
+        for (const [field, value] of Object.entries(this.changes)) row[key]![columns[field].name] = evaluate(value, { row });
+      }
+      return;
+    }
+    const ids = rowsOf(this.table).map((r) => Number(r.id) || 0);
+    let next = Math.max(0, ...ids) + 1;
+    insertRows(
+      this.table,
+      this.inserted.map((row) => {
+        const values = Object.fromEntries(Object.entries(row).map(([field, value]) => [field, evaluate(value, {})]));
+        return "id" in columns && values.id === undefined ? { ...values, id: next++ } : values;
+      }),
+    );
+  }
+
   private run(): unknown[] {
     const changed = this.changed();
     if (changed.length > 0) recordWrite(this.kind, baseName(this.table));
+    if (keeping) this.keep(changed);
     const fields = this.returned;
     if (fields === null) return [];
     if (this.kind === "insert") return [Object.fromEntries(Object.keys(fields).map((f) => [f, WRITTEN_ID]))];

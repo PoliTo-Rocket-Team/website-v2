@@ -33,6 +33,7 @@ import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/compone
 import { Chips } from "./division-chips";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { PersonCombobox } from "./person-combobox";
 import { Toggle } from "./controls";
 import { EYEBROW, GHOST_PILL } from "./page-header";
 import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
@@ -635,6 +636,7 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
   }, [query, picked, division.id]);
 
   const isNew = picked === null && lookup.kind === "new-email";
+  const found = lookup.kind === "people" ? lookup.people : [];
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -717,46 +719,26 @@ function AddForm({ open, onOpenChange, target }: { open: boolean; onOpenChange: 
               </IconButton>
             </span>
           ) : (
-            <div className="relative">
-              <Mail aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-              <input
-                id={id}
-                value={query}
-                autoComplete="off"
-                aria-describedby={describedBy}
-                aria-invalid={errors.email !== undefined}
-                onChange={(e) => {
-                  setQuery(e.target.value);
+            <PersonCombobox
+              id={id}
+              people={found.map((m) => ({ id: m.id, name: m.name, line: m.email, taken: m.here ? `Already in ${short}` : null, trail: <Chips chips={m.chips} /> }))}
+              value={null}
+              onChoose={(personId) => setPicked(found.find((m) => m.id === personId) ?? null)}
+              placeholder="Email or name"
+              search={{
+                text: query,
+                onText: (text) => {
+                  setQuery(text);
                   setErrors((x) => ({ ...x, email: undefined }));
-                }}
-                className={`${inputClass(errors.email)} pl-10`}
-              />
-            </div>
+                },
+              }}
+              heading="On the team"
+              describedBy={describedBy}
+              invalid={errors.email !== undefined}
+            />
           )
         }
       </Field>
-
-      {picked === null && lookup.kind === "people" && (
-        <ul aria-label="On the team" className="mt-2 flex flex-col gap-1 rounded-[10px] border border-hairline bg-panel p-1.5">
-          {lookup.people.map((m) => (
-            <li key={m.id}>
-              <button
-                type="button"
-                disabled={m.here}
-                onClick={() => setPicked(m)}
-                className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-300 ease-out enabled:hover:bg-white-5 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS}`}
-              >
-                <Avatar size="sm" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] text-prt-text">{m.name}</span>
-                  <span className="block truncate text-[12px] text-prt-muted">{m.here ? `Already in ${short}` : m.email}</span>
-                </span>
-                <Chips chips={m.chips} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
       {picked !== null && target.kind === "division" && <p className="mt-2 text-[12px] text-prt-muted">Already in other divisions? They keep them.</p>}
       {picked === null && lookup.kind === "waiting" && (
         <p className="mt-2 flex items-start gap-2 text-[13px] text-warning">

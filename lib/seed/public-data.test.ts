@@ -16,8 +16,8 @@ import {
   alumniOfSeed,
   faqItemsOf,
   isActive,
+  outreachFeaturedOf,
   outreachItemsOf,
-  outreachSummitOf,
   outreachTagsOf,
   partnerItemsOf,
   projectItemsOf,
@@ -192,23 +192,23 @@ test("the seeded projects are the ones the projects import carries in, plus the 
   assertFromImport("project", projectItemsOf(data), importedProjects(), [PLACEHOLDER_ROCKET_PROJECT]);
 });
 
-test("the seeded outreach posts, tags and summit are the ones the outreach import carries in, plus the two invented posts", () => {
+test("the seeded outreach posts, tags and featured post are the ones the outreach import carries in, plus the two invented posts", () => {
   const imported = importedOutreach();
   // The placeholder galleries (issue #456) are the seed's own; the rest of each post is the import's.
   assertFromImport("post", outreachItemsOf(data), imported.posts, [EVERY_CHANNEL_POST, DRAFT_ONLY_POST], ({ gallery: _, ...seeded }, importedPost) =>
     assert.deepEqual(seeded, importedPost),
   );
   assert.deepEqual(outreachTagsOf(data), imported.tags.map((t) => ({ name: t.name, award: t.award })));
-  assert.deepEqual(outreachSummitOf(data)?.published, imported.summit.state === "published" ? imported.summit.published : undefined);
+  assert.deepEqual(outreachFeaturedOf(data), imported.featured);
 });
 
-test("the pinned post, the newest listed post and two more record posts carry a placeholder gallery of the site's own photos (issue #456)", () => {
+test("the featured post, the newest listed post and two more record posts carry a placeholder gallery of the site's own photos (issue #456)", () => {
   const items = outreachItemsOf(data);
   const published = publishedById(items);
-  const pinned = data.outreachPosts.find((p) => p.pinned)?.id;
-  const [newest] = newestFirst([...published].filter(([id]) => id !== pinned).map(([id, post]) => ({ id, date: post.date })));
+  const [story] = outreachFeaturedOf(data);
+  const [newest] = newestFirst([...published].filter(([id]) => id !== story).map(([id, post]) => ({ id, date: post.date })));
   assert.ok(RECORD_GALLERY_POSTS.includes(newest.id), "the newest listed post has a gallery");
-  assert.ok(pinned !== undefined && RECORD_GALLERY_POSTS.includes(pinned), "the pinned post has a gallery");
+  assert.ok(story !== undefined && RECORD_GALLERY_POSTS.includes(story), "the featured post has a gallery");
   assert.equal(RECORD_GALLERY_POSTS.length, 4);
   assert.deepEqual(
     [...published].filter(([, post]) => post.gallery !== undefined).map(([id]) => id).sort((a, b) => a - b),

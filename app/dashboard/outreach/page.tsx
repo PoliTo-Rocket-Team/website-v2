@@ -13,9 +13,9 @@ export const metadata: Metadata = {
   title: "Outreach · Dashboard · PoliTo Rocket Team",
 };
 
-// Board 74 (issue #289): the featured summit with Edit, and every post, newest
-// first, with tag and status filters and each row's menu, where a post is
-// pinned to the top of /outreach or unpinned (issue #392). Full access and
+// Board 74 (issue #289): every post, newest first, with tag and status
+// filters and each row's menu, where a post is featured at the top of
+// /outreach or unfeatured (issue #496). Full access and
 // anyone with site-content access reach it (lib/content/gate.ts); everyone
 // else gets the dashboard's not found.
 export default function OutreachPage() {
@@ -32,14 +32,9 @@ async function LiveOutreach() {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "outreach")) notFound();
-  const [items, summit, tags, pinned] = await Promise.all([
-    data.outreach.posts.list(),
-    data.outreach.summit(),
-    data.outreach.tags(),
-    data.outreach.pinned(),
-  ]);
-  if (items === null || summit === null || tags === null) notFound();
+  const [items, tags, featured] = await Promise.all([data.outreach.posts.list(), data.outreach.tags(), data.outreach.featured()]);
+  if (items === null || tags === null) notFound();
   // A live post keeps the address the site shows it at, whatever its draft retitles it to.
   const rows = newestRowsFirst(items.map((item) => outreachRow(item, slugOf(publicVersion(item.version) ?? editorVersion(item.version)))));
-  return <OutreachView rows={rows} summit={summit} tags={tags} pinned={pinned} />;
+  return <OutreachView rows={rows} tags={tags} featured={featured} />;
 }

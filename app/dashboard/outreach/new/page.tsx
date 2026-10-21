@@ -6,7 +6,7 @@ import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { todayInRome } from "@/lib/outreach";
-import { pinStateOf } from "@/lib/outreach-pin";
+import { featureStateOf } from "@/lib/outreach-featured";
 import { publishedOutreach } from "@/lib/outreach-public";
 
 export const metadata: Metadata = {
@@ -34,20 +34,20 @@ async function NewPost() {
   if (opening.kind === "account-unresolved") return null;
   if (!canReach(opening.data.viewer, "outreach")) notFound();
   // Independent reads, so they go out together (issue #397). The posts and
-  // the pin let the list target pin from its cards once the post is saved
-  // (issue #431).
+  // the featured ones let the list target feature from its cards once the
+  // post is saved (issues #431, #496).
   const { outreach } = opening.data;
-  const [items, tags, pinned, published] = await Promise.all([
+  const [items, tags, featured, published] = await Promise.all([
     outreach.posts.list(),
     outreach.tags(),
-    outreach.pinned(),
+    outreach.featured(),
     publishedOutreach(),
   ]);
   if (items === null || tags === null) notFound();
   return (
     <OutreachPostEdit
       item={null}
-      pins={pinStateOf(items, pinned)}
+      features={featureStateOf(items, featured)}
       today={todayInRome()}
       tags={tags}
       neighbours={{}}

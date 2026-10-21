@@ -7,7 +7,7 @@ import { editorVersion, publicVersion } from "@/lib/content/versioned";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
 import { neighboursOf, slugOf } from "@/lib/outreach";
-import { pinStateOf } from "@/lib/outreach-pin";
+import { featureStateOf } from "@/lib/outreach-featured";
 import { publishedOutreach } from "@/lib/outreach-public";
 
 export const metadata: Metadata = {
@@ -40,10 +40,10 @@ async function LivePost({ params }: Params) {
   if (!canReach(opening.data.viewer, "outreach")) notFound();
   const { outreach } = opening.data;
   // Every read here is independent of the others, so they go out together (issue #397).
-  const [items, tags, pinned, content] = await Promise.all([
+  const [items, tags, featured, content] = await Promise.all([
     outreach.posts.list(),
     outreach.tags(),
-    outreach.pinned(),
+    outreach.featured(),
     publishedOutreach(),
   ]);
   if (items === null || tags === null) notFound();
@@ -55,14 +55,14 @@ async function LivePost({ params }: Params) {
     });
   if (item === undefined) notFound();
   // The posts either side are the public page's: the published listed ones,
-  // so the pinned post (issue #392) has none. The published content also
+  // so a featured post (issue #496) has none. The published content also
   // fills the page switch's list and home pages.
   const published = publicVersion(item.version);
   const neighbours = published === null ? {} : neighboursOf(content.posts, published);
   return (
     <OutreachPostEdit
       item={item}
-      pins={pinStateOf(items, pinned)}
+      features={featureStateOf(items, featured)}
       tags={tags}
       neighbours={neighbours}
       published={content}

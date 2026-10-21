@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ChevronDown, Lock, TriangleAlert, Upload, X } from "lucide-react";
+import { Lock, TriangleAlert, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { uploadTeamPagePhoto } from "@/app/dashboard/actions";
 import { Avatar } from "@/components/about/person";
@@ -10,6 +10,7 @@ import { personOf, type TeamPerson } from "@/lib/about/team-person";
 import type { PersonPhoto } from "@/lib/about/types";
 import { CONTENT_FOCUS } from "./content-parts";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { PersonCombobox } from "./person-combobox";
 import { PhotoPicker } from "./photo-picker";
 
 // The pieces the Team page editor's Add leader and Edit a head block panels
@@ -73,14 +74,13 @@ export function VisualOnlyNote({ children }: { children: ReactNode }) {
   );
 }
 
-/** A team member picker with their photo in the box, by name. */
+/** A team member picker, the shared person field (issue #511), with their own photo in the box. */
 export function PersonSelect({
   id,
   label,
   people,
   value,
   onChange,
-  className = "",
 }: {
   id?: string;
   label?: string;
@@ -88,30 +88,19 @@ export function PersonSelect({
   people: readonly TeamPerson[];
   value: number;
   onChange: (id: number) => void;
-  className?: string;
 }) {
   const chosen = people.find((p) => p.id === value);
   const own = chosen === undefined ? undefined : personOf(chosen);
   return (
-    <div className={`relative ${className}`}>
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-        <Avatar photo={own?.photo} sizeClass="h-6 w-6" sizes="24px" />
-      </span>
-      <select
-        id={id}
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className={`${inputClass()} cursor-pointer appearance-none pl-12 pr-10`}
-      >
-        {people.map((p) => (
-          <option key={p.id} value={p.id} className="bg-panel">
-            {p.name}
-          </option>
-        ))}
-      </select>
-      <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-    </div>
+    <PersonCombobox
+      id={id}
+      label={label}
+      people={people}
+      value={value}
+      onChoose={onChange}
+      placeholder="Search the team"
+      photo={<Avatar photo={own?.photo} sizeClass="h-6 w-6" sizes="24px" />}
+    />
   );
 }
 

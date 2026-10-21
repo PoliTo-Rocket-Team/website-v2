@@ -4,12 +4,21 @@ import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { addOutreachTag, saveOutreachPost } from "@/app/dashboard/actions";
-import { pinOutreachPost, unpinOutreachPost } from "@/app/dashboard/outreach-actions";
+import { featureOutreachPost, unfeatureOutreachPost } from "@/app/dashboard/outreach-actions";
 import type { PostFrame, PostPart } from "@/components/outreach/post";
 import type { EditBlocks, PageTarget } from "@/lib/content/edit-shell";
 import { editorVersion, publicVersion, statusOf, type PublishStep } from "@/lib/content/versioned";
 import { slugOf, type Neighbouring } from "@/lib/outreach";
-import { runPinMove, withPinned, type CardPin, type FeaturedOpen, type PinState } from "@/lib/outreach-pin";
+import {
+  featuredAfter,
+  isFeatured,
+  runFeatureMove,
+  withFeatured,
+  type CardFeature,
+  type FeaturedIds,
+  type FeaturedOpen,
+  type FeatureState,
+} from "@/lib/outreach-featured";
 import {
   blankPost,
   blankPostFields,
@@ -60,26 +69,26 @@ const PAGE_TARGETS: readonly PageTarget<PostPageId>[] = [
   { id: "home", label: "Home" },
 ];
 
-// The pinned post (issue #392) shows in the Outreach list's Featured card and
-// on no home card, so its switch offers the post page and the list alone.
-const PINNED_PAGE_TARGETS = PAGE_TARGETS.filter((t) => t.id !== "home");
+// A featured post (issue #496) shows in a Featured card on the Outreach list
+// and on no home card, so its switch offers the post page and the list alone.
+const FEATURED_PAGE_TARGETS = PAGE_TARGETS.filter((t) => t.id !== "home");
 
 /** What the editor opens on: a stored post, or a new one not saved yet, dated `today`. */
 type Opening = { readonly item: PostItem } | { readonly item: null; readonly today: IsoDate };
 
 export function OutreachPostEdit({
-  pins,
+  features,
   tags: initialTags,
   neighbours,
   published,
   ...opening
 }: Opening & {
   /**
-   * The post pinned to the top of /outreach (issue #392) and every published
-   * post's id, so the Outreach list target pins and unpins from its cards
-   * (issue #431).
+   * The posts featured at the top of /outreach (issue #496) and every
+   * published post's id, so the Outreach list target features and unfeatures
+   * from its cards (issue #431).
    */
-  pins: PinState;
+  features: FeatureState;
   tags: readonly OutreachTag[];
   neighbours: Neighbouring;
   /** What the public pages show, for the list and home targets. */
@@ -100,16 +109,16 @@ export function OutreachPostEdit({
   const [scrollTo, setScrollTo] = useState<{ section: PostSection } | null>(null);
   const [pending, startTransition] = useTransition();
   const [page, setPage] = useState<PostPageId>("post");
-  // The page keeps each pin move's answer, as the Outreach list keeps its rows.
-  const [pinnedId, setPinnedId] = useState(pins.pinned);
-  const [pinning, startPinning] = useTransition();
+  // The page keeps each feature move's answer, as the Outreach list keeps its rows.
+  const [featuredIds, setFeaturedIds] = useState<FeaturedIds>(features.featured);
+  const [moving, startMoving] = useTransition();
 
   const opened = item === null ? start : editorVersion(item.version);
   const view = postViewOf(fields, opened);
   const errors = standingErrors(failed, fields);
   const live = item === null ? null : publicVersion(item.version);
-  const pinned = item !== null && item.id === pinnedId;
-  const shown = withPinned(published, pins.ids, pinnedId);
+  const featuredHere = item !== null && isFeatured(featuredIds, item.id);
+  const shown = withFeatured(published, features.ids, featuredIds);
   // A post never published may be saved as a draft as it is; a live post's draft must be whole.
   const unfinishedDraft = live === null;
 
@@ -148,19 +157,19 @@ export function OutreachPostEdit({
     });
   };
 
-  const movePin = (pin: CardPin) => {
-    if (pin.kind === "locked") {
-      toast.error(pin.reason);
+  const moveFeature = (move: CardFeature) => {
+    if (move.kind === "locked") {
+      toast.error(move.reason);
       return;
     }
-    if (pinning) return;
-    startPinning(async () => {
-      const result = await runPinMove(pin, { pin: pinOutreachPost, unpin: unpinOutreachPost });
+    if (moving) return;
+    startMoving(async () => {
+      const result = await runFeatureMove(move, { feature: featureOutreachPost, unfeature: unfeatureOutreachPost });
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      setPinnedId(pin.kind === "pin" ? pin.id : null);
+      setFeaturedIds((ids) => featuredAfter(ids, move));
       toast.success(result.value);
     });
   };
@@ -189,7 +198,7 @@ export function OutreachPostEdit({
       onSaveDraft={pending ? null : () => save("save-draft")}
       onPublish={pending ? null : () => save("publish")}
       publishChecklist={publishChecklist(fields)}
-      pages={item === null ? undefined : { targets: pinned ? PINNED_PAGE_TARGETS : PAGE_TARGETS, current: page, onSelect: setPage }}
+      pages={item === null ? undefined : { targets: featuredHere ? FEATURED_PAGE_TARGETS : PAGE_TARGETS, current: page, onSelect: setPage }}
       blocks={POST_BLOCKS}
       startHere={item === null && !panelOpen ? "details" : undefined}
       onEdit={openSection}
@@ -217,13 +226,14 @@ export function OutreachPostEdit({
           page={page}
           view={view}
           edited={{ id: item.id, live: live !== null }}
-          pinned={pinned}
+          featuredHere={featuredHere}
           shown={shown}
-          ids={pins.ids}
+          ids={features.ids}
+          featured={featuredIds}
           publishedSlug={live === null ? null : slugOf(live)}
           onEditCard={() => openSection("details")}
           onOpenFeatured={openFeatured}
-          onPin={movePin}
+          onMove={moveFeature}
         />
       )}
     </EditShell>

@@ -1,16 +1,17 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
-import { outreachPosts, outreachPostTags, outreachPostVersions, outreachSummitVersions, outreachTags } from "@/db/schema";
-import { versionedFromRows, versionRows, type VersionKind } from "@/lib/content/versioned";
+import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } from "@/db/schema";
+import { versionRows, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
-import { publicOutreach, type OutreachStore, type StoredOutreach, type SummitVersions } from "@/lib/outreach-editor";
+import { publicOutreach, type OutreachStore, type StoredOutreach } from "@/lib/outreach-editor";
+import { featuredIdsOf, featuring, freeFeaturedSlot, isFeatured, type FeaturedIds, type FeaturedSlot } from "@/lib/outreach-featured";
 import { publicStorePhotoFiles, type PhotoFiles } from "@/lib/outreach-photos";
-import { draftFromColumns, postColumns, postFromColumns, summitColumns, summitFromColumns } from "@/lib/outreach-rows";
-import type { OutreachContent, OutreachDraft, OutreachFeature, OutreachTag, PostItem, PostStore, PostVersions } from "@/lib/outreach-types";
+import { draftFromColumns, postColumns, postFromColumns } from "@/lib/outreach-rows";
+import type { OutreachContent, OutreachDraft, OutreachTag, PostItem, PostStore, PostVersions } from "@/lib/outreach-types";
 import { deletePublicFile, ownPublicStoreHost, uploadPublicFile } from "@/lib/storage/public-store";
 import { written } from "./write";
 
@@ -26,7 +27,7 @@ export const OUTREACH_CACHE_TAG = "outreach";
 /** Postgres' "undefined_table": the outreach migration has not run on this database yet. */
 const UNDEFINED_TABLE = "42P01";
 
-/** Postgres' "undefined_column": migration 0044, which adds `outreach_posts.pinned`, has not run on this database yet. */
+/** Postgres' "undefined_column": migration 0048, which adds `outreach_posts.featured_slot`, has not run on this database yet. */
 const UNDEFINED_COLUMN = "42703";
 
 function hasCode(error: unknown, code: string): boolean {
@@ -38,34 +39,49 @@ function hasCode(error: unknown, code: string): boolean {
 
 const isUndefinedTable = (error: unknown) => hasCode(error, UNDEFINED_TABLE);
 
+/** A featured post and the slot it holds (issue #496). */
+type FeaturedRow = { readonly id: number; readonly slot: FeaturedSlot };
+
 /**
- * The pinned post's id (issue #392), or null. Before migration 0044 has run
- * there is no `pinned` column and so no pinned post: the pages show what they
- * showed before it.
+ * The featured posts and their slots, slot 1 first (issue #496). Before
+ * migration 0048 has run there is no `featured_slot` column: the post pinned
+ * then (migration 0044) reads as the one featured post, so the pages show
+ * what they showed before, whichever of the code and the migration lands
+ * first.
  */
-async function readPinned(): Promise<number | null> {
+async function readFeaturedRows(): Promise<readonly FeaturedRow[]> {
+  const db = getDb();
   try {
-    const rows = await getDb().select({ id: outreachPosts.id }).from(outreachPosts).where(eq(outreachPosts.pinned, true));
-    // The outreach_posts_one_pinned index keeps it to one row.
-    if (rows.length > 1) throw new Error("more than one outreach post is pinned");
-    return rows[0]?.id ?? null;
+    const rows = await db
+      .select({ id: outreachPosts.id, slot: outreachPosts.featuredSlot })
+      .from(outreachPosts)
+      .where(isNotNull(outreachPosts.featuredSlot))
+      .orderBy(asc(outreachPosts.featuredSlot));
+    return rows.map((row) => ({ id: row.id, slot: row.slot as FeaturedSlot }));
   } catch (error) {
-    if (hasCode(error, UNDEFINED_COLUMN)) return null;
-    throw error;
+    if (!hasCode(error, UNDEFINED_COLUMN)) throw error;
+    const pinned = await db.execute<{ id: number }>(sql`SELECT "id" FROM "outreach_posts" WHERE "pinned"`);
+    return pinned.rows.map((row) => ({ id: Number(row.id), slot: 1 }));
   }
 }
 
-/** Everything stored: the posts with their versions in site order, the summit and the tag list in one batch, then the pinned post in a second read. */
+/** The featured posts' ids; the two slots keep them to two, and a store that holds more is refused, never shown. */
+function featuredOf(rows: readonly FeaturedRow[]): FeaturedIds {
+  const ids = featuredIdsOf(rows.map((row) => row.id));
+  if (ids === null) throw new Error("more than two outreach posts are featured");
+  return ids;
+}
+
+/** Everything stored: the posts with their versions in site order and the tag list in one batch, then the featured posts in a second read. */
 export async function readStoredOutreach(): Promise<StoredOutreach> {
   const db = getDb();
-  const [versionRowsRead, tagRows, summitRows, tagList] = await db.batch([
+  const [versionRowsRead, tagRows, tagList] = await db.batch([
     db
       .select({ id: outreachPosts.id, siteOrder: outreachPosts.siteOrder, version: outreachPostVersions })
       .from(outreachPosts)
       .innerJoin(outreachPostVersions, eq(outreachPostVersions.postId, outreachPosts.id))
       .orderBy(asc(outreachPosts.siteOrder), asc(outreachPosts.id)),
     db.select().from(outreachPostTags).orderBy(asc(outreachPostTags.position)),
-    db.select().from(outreachSummitVersions),
     db.select().from(outreachTags).orderBy(asc(outreachTags.listOrder), asc(outreachTags.id)),
   ]);
 
@@ -99,15 +115,10 @@ export async function readStoredOutreach(): Promise<StoredOutreach> {
     return version === null ? [] : [{ id, siteOrder: entry.siteOrder, version }];
   });
 
-  const summit = versionedFromRows(summitRows.map((row) => ({ kind: row.version, content: summitFromColumns(row) })));
-  // The import publishes the summit, and no write unpublishes it.
-  if (summit === null || summit.state !== "published") throw new Error("the outreach summit has no published version");
-
   return {
     posts,
-    summit,
     tags: tagList.map((row): OutreachTag => ({ name: row.name, award: row.award })),
-    pinned: await readPinned(),
+    featured: featuredOf(await readFeaturedRows()),
   };
 }
 
@@ -211,25 +222,8 @@ const databasePostStore: PostStore = {
   },
 };
 
-function summitValues(kind: VersionKind, feature: OutreachFeature) {
-  const c = summitColumns(feature);
-  return { version: kind, ...c, editions: [...c.editions] };
-}
-
 export const databaseOutreachStore: OutreachStore = {
   posts: databasePostStore,
-
-  summit: async () => (await readStoredOutreach()).summit,
-
-  async saveSummit(versions: SummitVersions) {
-    const [first, ...rest] = versionRows(versions).map((row) => summitValues(row.kind, row.content));
-    await runAuditBatch((db) => [
-      db.delete(outreachSummitVersions),
-      db.insert(outreachSummitVersions).values([first, ...rest]),
-    ]);
-    updateTag(OUTREACH_CACHE_TAG);
-    return written(versions);
-  },
 
   tags: async () => (await readStoredOutreach()).tags,
 
@@ -245,19 +239,30 @@ export const databaseOutreachStore: OutreachStore = {
     return written({ name, award: false });
   },
 
-  pinned: async () => (await readStoredOutreach()).pinned,
+  featured: async () => featuredOf(await readFeaturedRows()),
 
-  async pin(id) {
-    // The pinned post before it is unpinned first, in the same transaction:
-    // the one-pinned index checks each row as it changes.
-    const unpinOthers = (db: ReturnType<typeof getDb>) =>
+  // The post takes the free slot. A third is refused here before any write,
+  // and the slots' unique index refuses one that races past this read.
+  async feature(id) {
+    const rows = await readFeaturedRows();
+    const current = featuredOf(rows);
+    if (isFeatured(current, id)) return written(null);
+    const next = featuring(current, id);
+    if (!next.ok) return next;
+    const slot = freeFeaturedSlot(rows.map((row) => row.slot));
+    if (slot === null) throw new Error("no featured slot is free under two featured posts");
+    await runAuditQuery((db) =>
       db
         .update(outreachPosts)
-        .set({ pinned: false })
-        .where(id === null ? eq(outreachPosts.pinned, true) : and(eq(outreachPosts.pinned, true), ne(outreachPosts.id, id)));
-    await runAuditBatch((db) =>
-      id === null ? [unpinOthers(db)] : [unpinOthers(db), db.update(outreachPosts).set({ pinned: true }).where(eq(outreachPosts.id, id))],
+        .set({ featuredSlot: slot })
+        .where(and(eq(outreachPosts.id, id), isNull(outreachPosts.featuredSlot))),
     );
+    updateTag(OUTREACH_CACHE_TAG);
+    return written(null);
+  },
+
+  async unfeature(id) {
+    await runAuditQuery((db) => db.update(outreachPosts).set({ featuredSlot: null }).where(eq(outreachPosts.id, id)));
     updateTag(OUTREACH_CACHE_TAG);
     return written(null);
   },

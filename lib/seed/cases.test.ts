@@ -14,7 +14,6 @@ import { iressStory } from "../outreach";
 import { publicOutreach } from "../outreach-editor";
 import { importedOutreach } from "../outreach-import";
 import { checkPostFields, draftOfFields, postFieldsOf } from "../outreach-post-fields";
-import { checkSummitFields, summitFieldsOf } from "../outreach-summit-fields";
 import { CHANNEL_NAMES } from "../outreach-types";
 import { orderStatusEnum } from "../../db/schema";
 import { ANONYMIZED_KEPT_NAME } from "../../db/seed/alumni";
@@ -26,9 +25,8 @@ import {
   isActive,
   memberOfUser,
   orgOf,
+  outreachFeaturedOf,
   outreachItemsOf,
-  outreachPinnedOf,
-  outreachSummitOf,
   outreachTagsOf,
   partnerItemsOf,
   projectItemsOf,
@@ -391,7 +389,6 @@ test("every tag and every channel type is on a seeded post, among both draft and
 test("the outreach rows read back to the import's content, plus the seed's own posts and draft", () => {
   const imported = importedOutreach();
   assert.deepEqual(outreachTagsOf(data), imported.tags);
-  assert.deepEqual(outreachSummitOf(data), imported.summit);
   const items = outreachItemsOf(data);
   assert.equal(items.length, data.outreachPosts.length, "a post has no version");
   for (const item of imported.posts) {
@@ -401,13 +398,16 @@ test("the outreach rows read back to the import's content, plus the seed's own p
     const { gallery: _, ...withoutGallery } = seeded.version.published;
     assert.deepEqual(withoutGallery, item.version.state === "published" && item.version.published, `post ${item.id}`);
   }
-  assert.equal(outreachPinnedOf(data), imported.pinned, "the summit's story is pinned (issue #392)");
-  const shown = publicOutreach({ posts: items, summit: outreachSummitOf(data)!, tags: outreachTagsOf(data), pinned: outreachPinnedOf(data) });
-  assert.equal(shown.pinned?.title, iressStory.title);
-  assert.equal(shown.posts.length, items.filter((i) => i.version.state === "published").length - 1, "the pinned post is not listed");
+  assert.deepEqual(outreachFeaturedOf(data), imported.featured, "the summit's story is featured (issues #392, #496)");
+  const shown = publicOutreach({ posts: items, tags: outreachTagsOf(data), featured: outreachFeaturedOf(data) });
+  assert.deepEqual(
+    shown.featured.map((p) => p.title),
+    [iressStory.title],
+  );
+  assert.equal(shown.posts.length, items.filter((i) => i.version.state === "published").length - 1, "the featured post is not listed");
 });
 
-test("every seeded post and summit version passes the editor's own checks", () => {
+test("every seeded post version passes the editor's own checks", () => {
   const tags = outreachTagsOf(data);
   for (const item of outreachItemsOf(data)) {
     if (item.version.state === "draft") {
@@ -423,10 +423,6 @@ test("every seeded post and summit version passes the editor's own checks", () =
       assert.deepEqual(checked.value, post, `post ${item.id} is not what Publish keeps`);
     }
   }
-  const summit = outreachSummitOf(data);
-  assert.ok(summit);
-  const checked = checkSummitFields(summitFieldsOf(summit.published), summit.published);
-  assert.ok(checked.ok, JSON.stringify(checked));
 });
 
 test("every outreach key is unique, and every post tag names a seeded version and a tag in the list", () => {

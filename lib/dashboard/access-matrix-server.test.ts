@@ -103,9 +103,8 @@ const READS: readonly Read[] = [
   { path: "teamPage.open" },
   { path: "teamAdvisors.list" },
   { path: "outreach.posts.list" },
-  { path: "outreach.summit" },
   { path: "outreach.tags" },
-  { path: "outreach.pinned" },
+  { path: "outreach.featured" },
   { path: "projects.list" },
   { path: "projects.board" },
   { path: "myProfile" },
@@ -270,6 +269,8 @@ const DIRECT_WRITES = new Map<string, { readonly args: readonly unknown[]; reado
   ["projects.remove", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.unpublish", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
   ["projects.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
+  // The dashboard no longer sets the project order (issue #506); the stored write stays behind the gate.
+  ["projects.setSiteOrder", { args: [[]], may: (r) => r.expect.siteContent, proves: "gate" }],
 ]);
 
 describe("the data interface opens only for a resolved account, and every method on it is called here", () => {
@@ -531,12 +532,10 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "actions.discardOutreachPhoto", run: () => actions.discardOutreachPhoto(`https://${HOST}/post-photos/x.jpg`), may: siteContent, control: by("team leader") },
   { action: "outreach-actions.unpublishOutreachPost", run: () => outreachActions.unpublishOutreachPost(1), may: siteContent, control: by("team leader", "gate") },
   { action: "outreach-actions.deleteOutreachPost", run: () => outreachActions.deleteOutreachPost(1), may: siteContent, control: by("team leader", "gate") },
-  { action: "outreach-actions.pinOutreachPost", run: () => outreachActions.pinOutreachPost(1), may: siteContent, control: by("team leader", "gate") },
-  { action: "outreach-actions.unpinOutreachPost", run: () => outreachActions.unpinOutreachPost(), may: siteContent, control: by("team leader", "gate") },
-  { action: "outreach-actions.saveOutreachSummit", run: () => outreachActions.saveOutreachSummit("save-draft", {}), may: siteContent, control: by("team leader", "gate") },
+  { action: "outreach-actions.featureOutreachPost", run: () => outreachActions.featureOutreachPost(1), may: siteContent, control: by("team leader", "gate") },
+  { action: "outreach-actions.unfeatureOutreachPost", run: () => outreachActions.unfeatureOutreachPost(1), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.saveProject", run: () => projectActions.saveProject(1, "save-draft", {}), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.createProject", run: () => projectActions.createProject({ name: "Rocket" }), may: siteContent, control: by("team leader", "gate") },
-  { action: "project-actions.reorderProjects", run: () => projectActions.reorderProjects([]), may: siteContent, control: by("team leader", "gate") },
   { action: "project-actions.uploadProjectPhoto", run: () => projectActions.uploadProjectPhoto(form({ photo: PHOTO() })), may: siteContent, control: by("team leader") },
   { action: "project-actions.discardProjectPhoto", run: () => projectActions.discardProjectPhoto(`https://${HOST}/project-photos/x.jpg`), may: siteContent, control: by("team leader") },
 
