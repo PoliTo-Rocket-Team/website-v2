@@ -14,8 +14,9 @@ export const metadata: Metadata = {
 // from the environment's side (lib/apply/open.ts), which on the database is
 // the cached public read the dashboard refreshes when a position or the
 // recruitment switch changes. The questions are read the same way, and a
-// question write refreshes their cached read (issue #258). In dummy mode, a request carrying `?open=` or
-// the dummy recruitment cookie is sent to ./dummy-state by proxy.ts instead.
+// question write refreshes their cached read (issue #258). In dummy mode, a request carrying `?open=`,
+// the dummy recruitment cookie or the test developer's dashboard state is sent to ./dummy-state by
+// proxy.ts instead.
 export default async function ApplyPage() {
   const data = plainApplyData();
   const [positions, faqs] = await Promise.all([data.publicPositions(), data.faqs()]);

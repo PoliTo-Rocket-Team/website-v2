@@ -1,6 +1,7 @@
 import { dummyDataOn, type DummyModeEnv } from "@/lib/dummy-data/mode";
 import { NO_OWN_CHANGES, ownApplicationsStartOf, parseOwnChanges, type OwnApplicationsStart, type OwnChanges } from "@/lib/dummy-data/own";
 import { dummyRecruitmentOf } from "@/lib/dummy-data/recruitment";
+import { parseDummyState, type DummyState } from "@/lib/dummy-data/state";
 import type { TestViewer } from "@/lib/dashboard/viewer";
 import { testDeveloperViewer } from "@/lib/test-developer";
 import type { ApplyData } from "./data";
@@ -19,6 +20,8 @@ export type ApplyRequest = {
   readonly ownCookie?: string | null | undefined;
   /** Which own applications the test developer starts with (lib/dummy-data/own.ts): "none" or the sample set. */
   readonly ownStartCookie?: string | null | undefined;
+  /** The test developer's dashboard state (lib/dummy-data/state.ts): the positions they posted, edited, opened and closed. */
+  readonly stateCookie?: string | null | undefined;
 };
 
 export type ApplySides = {
@@ -29,6 +32,7 @@ export type ApplySides = {
     recruitment: Recruitment,
     own: OwnChanges,
     ownStart: OwnApplicationsStart,
+    dashboard: DummyState,
   ): ApplyData;
 };
 
@@ -45,25 +49,42 @@ export function pickApplyData(request: ApplyRequest, sides: ApplySides): ApplyDa
     dummyRecruitmentOf(request.recruitmentCookie),
     request.ownCookie == null ? NO_OWN_CHANGES : parseOwnChanges(request.ownCookie),
     ownApplicationsStartOf(request.ownStartCookie),
+    parseDummyState(request.stateCookie),
   );
 }
 
-/** What a request to /apply carries that can change its list: the `open` query value and the dummy recruitment cookie. */
-export type ApplyListRequest = Pick<ApplyRequest, "env" | "openSelector" | "recruitmentCookie">;
+/**
+ * What a request to /apply carries that can change its list: the `open`
+ * query value, the dummy recruitment cookie and the test developer's
+ * dashboard state.
+ */
+export type ApplyListRequest = Pick<ApplyRequest, "env" | "openSelector" | "recruitmentCookie" | "stateCookie">;
 
 /**
  * Whether /apply has to be rendered for this request (issue #163). Only in
- * dummy mode, and only when the request carries the `open` selector or the
- * dummy recruitment cookie: those are the only request data that change the
- * list. Every other visit gets the prerendered page, which reads the
- * environment alone (plainApplyRequest).
+ * dummy mode, and only when the request carries the `open` selector, the
+ * dummy recruitment cookie or the dashboard state cookie (issue #463): those
+ * are the only request data that change the list. Every other visit gets the
+ * prerendered page, which reads the environment alone (plainApplyRequest).
  */
 export function applyListIsPerRequest(request: ApplyListRequest): boolean {
   if (!dummyDataOn(request.env)) return false;
-  return (request.openSelector ?? null) !== null || (request.recruitmentCookie ?? null) !== null;
+  return (
+    (request.openSelector ?? null) !== null ||
+    (request.recruitmentCookie ?? null) !== null ||
+    (request.stateCookie ?? null) !== null
+  );
 }
 
 /** The request the prerendered /apply stands for: this environment, and no viewer, selector or cookie. */
 export function plainApplyRequest(env: DummyModeEnv): ApplyRequest {
-  return { env, viewerCookie: null, openSelector: null, recruitmentCookie: null, ownCookie: null, ownStartCookie: null };
+  return {
+    env,
+    viewerCookie: null,
+    openSelector: null,
+    recruitmentCookie: null,
+    ownCookie: null,
+    ownStartCookie: null,
+    stateCookie: null,
+  };
 }

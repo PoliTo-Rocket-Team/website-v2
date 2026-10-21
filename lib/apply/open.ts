@@ -4,15 +4,20 @@ import { cookies } from "next/headers";
 import { dummyApplyData } from "@/lib/dummy-data/apply";
 import { processDummyModeEnv } from "@/lib/dummy-data/mode";
 import { DUMMY_RECRUITMENT_COOKIE } from "@/lib/dummy-data/recruitment";
-import { TEST_DEVELOPER_APPLICATIONS_COOKIE, TEST_DEVELOPER_COOKIE, TEST_DEVELOPER_OWN_COOKIE } from "@/lib/test-developer";
+import {
+  TEST_DEVELOPER_APPLICATIONS_COOKIE,
+  TEST_DEVELOPER_COOKIE,
+  TEST_DEVELOPER_OWN_COOKIE,
+  TEST_DEVELOPER_STATE_COOKIE,
+} from "@/lib/test-developer";
 import type { ApplyData } from "./data";
 import { databaseApplyData } from "./database";
 import { pickApplyData, plainApplyRequest, type ApplySides } from "./pick";
 
 const sides: ApplySides = {
   database: () => databaseApplyData,
-  dummy: (viewer, openSelector, recruitment, own, ownStart) =>
-    dummyApplyData(viewer, openSelector, recruitment, undefined, own, ownStart),
+  dummy: (viewer, openSelector, recruitment, own, ownStart, dashboard) =>
+    dummyApplyData(viewer, openSelector, recruitment, undefined, own, ownStart, dashboard),
 };
 
 /**
@@ -29,6 +34,7 @@ export async function openApplyData(openSelector: string | null = null): Promise
       recruitmentCookie: jar.get(DUMMY_RECRUITMENT_COOKIE)?.value,
       ownCookie: jar.get(TEST_DEVELOPER_OWN_COOKIE)?.value,
       ownStartCookie: jar.get(TEST_DEVELOPER_APPLICATIONS_COOKIE)?.value,
+      stateCookie: jar.get(TEST_DEVELOPER_STATE_COOKIE)?.value,
     },
     sides,
   );

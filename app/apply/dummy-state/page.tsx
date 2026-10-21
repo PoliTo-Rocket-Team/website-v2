@@ -14,8 +14,9 @@ export const metadata: Metadata = {
 };
 
 // /apply as one dummy-mode request picks it (issue #163): proxy.ts sends
-// here only the requests that carry `?open=<n>` or the dummy recruitment
-// cookie, and the address bar keeps /apply. Those requests alone pay for a
+// here only the requests that carry `?open=<n>`, the dummy recruitment
+// cookie or the test developer's dashboard state (issue #463), and the
+// address bar keeps /apply. Those requests alone pay for a
 // request-time render; a plain visit gets the prerendered /apply. Off dummy
 // mode the route does not exist.
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
