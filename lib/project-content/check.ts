@@ -1,7 +1,7 @@
 import { isPhotoSrc } from "@/lib/outreach-photos";
 import { specRows } from "@/lib/project-pages/types";
 import { ownModels, ownRocketModels } from "@/lib/rocket-model";
-import { BACKGROUND_PRESETS, type ProjectRecord } from "./record";
+import { BACKGROUND_PRESETS, isUploadedSrc, type ProjectRecord } from "./record";
 
 // Whether a value read back is a project record (./record.ts): a stored JSON
 // document from the database, or a test developer's changes from their
@@ -65,7 +65,7 @@ const sitePath: Check = (v) => isString(v) && /^\/[\w\-./]+$/.test(v as string) 
 
 const background: Check = (v) =>
   shape({ kind: oneOf("preset"), preset: oneOf(...BACKGROUND_PRESETS) })(v) ||
-  shape({ kind: oneOf("upload"), tall: isPhotoSrc, wide: isPhotoSrc })(v) ||
+  shape({ kind: oneOf("upload"), tall: isUploadedSrc, wide: isUploadedSrc })(v) ||
   shape({ kind: oneOf("texture"), src: sitePath })(v);
 
 const version = shape({

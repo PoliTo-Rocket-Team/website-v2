@@ -5,8 +5,12 @@
 /** Files served only after an access check: the private store. */
 export type PrivateFileKind = "application" | "order";
 
-/** Files shown on public pages: the public store. Partner logos joined photos with issue #256, Outreach post photos with #291, project photos with #299. */
-export type PublicFileKind = "photo" | "logo" | "post-photo" | "project-photo";
+/**
+ * Files shown on public pages: the public store. Partner logos joined photos
+ * with issue #256, Outreach post photos with #291, project photos with #299,
+ * and the Tall and Wide crops of an uploaded project background with #529.
+ */
+export type PublicFileKind = "photo" | "logo" | "post-photo" | "project-photo" | "project-background";
 
 const PRIVATE_FOLDER: Record<PrivateFileKind, string> = {
   application: "applications/",
@@ -18,6 +22,7 @@ const PUBLIC_FOLDER: Record<PublicFileKind, string> = {
   logo: "logos/",
   "post-photo": "post-photos/",
   "project-photo": "project-photos/",
+  "project-background": "project-backgrounds/",
 };
 
 /** The public-store folder files of this kind live in. */

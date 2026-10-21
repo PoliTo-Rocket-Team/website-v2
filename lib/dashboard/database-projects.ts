@@ -167,3 +167,8 @@ export const databaseProjectStore: ContentStore<ProjectRecord> = {
 export function blobProjectPhotoFiles(): PhotoFiles {
   return publicStorePanelPhotos("project-photo", ownPublicStoreHost(), { upload: uploadPublicFile, remove: deletePublicFile }, randomUUID);
 }
+
+/** The Tall and Wide crops of uploaded project backgrounds in this deployment's public Blob store, under `project-backgrounds/`, each under a new name (issue #529). */
+export function blobProjectBackgroundFiles(): PhotoFiles {
+  return publicStorePanelPhotos("project-background", ownPublicStoreHost(), { upload: uploadPublicFile, remove: deletePublicFile }, randomUUID);
+}

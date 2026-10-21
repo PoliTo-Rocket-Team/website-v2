@@ -52,6 +52,8 @@ function TexturePanel({ project }: { project: Project }) {
           alt=""
           fill
           sizes="(min-width: 1024px) 560px, (min-width: 768px) 100vw, 330px"
+          // An uploaded background (issue #529) is served as it is, as uploaded photos are.
+          unoptimized={!project.texture.startsWith("/")}
           className="object-cover"
         />
         {rocket && (

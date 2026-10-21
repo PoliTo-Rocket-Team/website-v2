@@ -62,6 +62,8 @@ function VisualPanel({ texture, visual }: { texture: string; visual: Exclude<Top
             fill
             priority
             sizes="(min-width: 768px) 1312px, 100vw"
+            // An uploaded background (issue #529) is served as it is, as uploaded photos are.
+            unoptimized={!stageTextureOf(visual.own, texture).startsWith("/")}
             className="object-cover"
           />
           <RocketStill own={visual.own} />

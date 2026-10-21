@@ -1,11 +1,14 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronDown, ImagePlus } from "lucide-react";
+import { ChevronDown, Upload } from "lucide-react";
+import { toast } from "sonner";
+import { uploadProjectBackground } from "@/app/dashboard/project-actions";
 import { FACTS_LIMIT, type BackgroundFields, type FactFields, type ProjectFields, type VisualFields } from "@/lib/project-content/fields";
-import { BACKGROUND_PRESETS, backgroundSrc, type BackgroundPreset } from "@/lib/project-content/record";
+import { BACKGROUND_MAX_BYTES, BACKGROUND_PRESETS, backgroundSrc, type BackgroundPreset } from "@/lib/project-content/record";
 import { MODEL_NAMES, type RocketModel } from "@/lib/rocket-model";
+import { BackgroundCropDialog, type BackgroundCrops } from "./background-crop-dialog";
 import { CONTENT_FOCUS, TextField } from "./content-parts";
 import { SECTION_CARD } from "./edit-panel";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
@@ -20,8 +23,9 @@ import { CopyField, EditableList, type FieldErrors } from "./project-panel-parts
 // of the 18 presets; the home card draws its tall file and the page and the
 // Projects list its wide one (`backgroundSrc`). A project that kept its brand
 // texture from before presets shows no preset picked until an editor picks
-// one. The Upload tile closes the grid and stays inactive until uploads land
-// (#529). Intro, status, dates and key facts follow the background.
+// one. The Upload tile closes the grid: it uploads the editor's own picture,
+// cropped Tall and Wide in the crop dialog of board 93f (issue #529). Intro,
+// status, dates and key facts follow the background.
 
 /** What each preset is called under its swatch (board 93d). */
 const PRESET_NAMES: Readonly<Record<BackgroundPreset, string>> = {
@@ -135,7 +139,7 @@ export function TopPanel({
           onVisualChange={(change) => onChange((f) => ({ ...f, hero: { ...f.hero, visual: change(f.hero.visual) } }))}
           onCaptionChange={(caption) => setHero({ caption })}
         />
-        <BackgroundPicker background={fields.background} onChange={(background) => onChange((f) => ({ ...f, background }))} />
+        <BackgroundPicker background={fields.background} discard={uploads.discard} onChange={(background) => onChange((f) => ({ ...f, background }))} />
         <CopyField label="Intro" rows={3} copy={hero.intro} phone={phone} error={errors["hero.intro"]} onChange={(intro) => setHero({ intro })} />
         <div className="grid grid-cols-2 gap-2.5">
           <TextField label="Status" value={hero.status} error={errors["hero.status"]} onChange={(status) => setHero({ status })} />
@@ -238,9 +242,71 @@ function TopVisualEditor({
   );
 }
 
-function BackgroundPicker({ background, onChange }: { background: BackgroundFields; onChange: (background: BackgroundFields) => void }) {
+/** The picture types the Upload tile takes, as board 93f says them. */
+const PICTURE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * The Background picker (board 93d): the 18 presets, then the Upload tile.
+ * The tile picks a picture and opens the crop dialog (board 93f); "Use this
+ * background" uploads its Tall and Wide crops, one at a time, and picks them.
+ * Picked, the tile shows the Tall crop; clicking it uploads another picture.
+ * A crop this panel uploaded and then replaced goes back to `discard`, which
+ * deletes its file unless a stored version of a project shows it.
+ */
+function BackgroundPicker({
+  background,
+  discard,
+  onChange,
+}: {
+  background: BackgroundFields;
+  discard: (src: string) => Promise<unknown>;
+  onChange: (background: BackgroundFields) => void;
+}) {
   const id = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const [cropping, setCropping] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const picked = background.kind === "preset" ? background.preset : null;
+  const uploaded = background.kind === "upload" ? background : null;
+
+  const pick = (next: BackgroundFields) => {
+    if (uploaded !== null && (next.kind !== "upload" || next.tall !== uploaded.tall)) {
+      void discard(uploaded.tall);
+      void discard(uploaded.wide);
+    }
+    onChange(next);
+  };
+
+  const choose = (file: File) => {
+    if (!PICTURE_TYPES.includes(file.type)) return void toast.error("Choose a JPG, PNG or WebP picture.");
+    if (file.size > BACKGROUND_MAX_BYTES) return void toast.error("The picture must be at most 10 MB.");
+    setCropping(file);
+  };
+
+  const sent = (crop: File) => {
+    const form = new FormData();
+    form.set("background", crop);
+    return uploadProjectBackground(form);
+  };
+  const use = async (crops: BackgroundCrops) => {
+    setUploading(true);
+    try {
+      const tall = await sent(crops.tall);
+      if (!tall.ok) return void toast.error(tall.error);
+      const wide = await sent(crops.wide);
+      if (!wide.ok) {
+        void discard(tall.value);
+        return void toast.error(wide.error);
+      }
+      pick({ kind: "upload", tall: tall.value, wide: wide.value });
+      setCropping(null);
+    } catch {
+      toast.error("The background could not be uploaded. Try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div>
       <p id={id} className="mb-2 text-[13px] leading-snug text-prt-text">
@@ -254,7 +320,7 @@ function BackgroundPicker({ background, onChange }: { background: BackgroundFiel
               key={preset}
               type="button"
               aria-pressed={on}
-              onClick={() => onChange({ kind: "preset", preset })}
+              onClick={() => pick({ kind: "preset", preset })}
               className={`group min-w-0 rounded-md text-left ${CONTENT_FOCUS}`}
             >
               <span
@@ -270,21 +336,40 @@ function BackgroundPicker({ background, onChange }: { background: BackgroundFiel
             </button>
           );
         })}
-        <div className="min-w-0">
-          <button
-            type="button"
-            disabled
-            aria-label="Upload your own background"
-            className="flex aspect-[16/15] w-full flex-col items-center justify-center gap-1 rounded-md border border-dashed border-white-10 text-[12px] text-prt-muted disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <ImagePlus aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-            Upload
-          </button>
-          <span aria-hidden className="mt-1 block truncate text-[12px] leading-snug text-prt-muted">
-            Your own
-          </span>
-        </div>
+        <button
+          type="button"
+          aria-pressed={uploaded !== null}
+          aria-label={uploaded === null ? "Upload your own background" : "Your own background. Upload another"}
+          onClick={() => input.current?.click()}
+          className={`group min-w-0 rounded-md text-left ${CONTENT_FOCUS}`}
+        >
+          {uploaded === null ? (
+            <span className="flex aspect-[16/15] w-full flex-col items-center justify-center gap-1 rounded-md border border-dashed border-white-10 text-[12px] text-text-2 transition-colors duration-300 ease-out group-hover:border-border-strong group-hover:text-prt-text">
+              <Upload aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              Upload
+            </span>
+          ) : (
+            <span className="relative block aspect-[16/15] overflow-hidden rounded-md border-2 border-accent">
+              {/* An uploaded crop is served as it is, as uploaded photos are. */}
+              <Image src={uploaded.tall} alt="" fill sizes="100px" unoptimized className="object-cover" />
+            </span>
+          )}
+          <span className={`mt-1 block truncate text-[12px] leading-snug ${uploaded !== null ? "font-semibold text-prt-text" : "text-text-2"}`}>Your own</span>
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept={PICTURE_TYPES.join(",")}
+          hidden
+          aria-label="Upload your own background"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) choose(file);
+          }}
+        />
       </div>
+      <BackgroundCropDialog file={cropping} pending={uploading} onCancel={() => setCropping(null)} onUse={use} />
     </div>
   );
 }

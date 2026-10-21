@@ -3,13 +3,13 @@ import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import type { ContentItem, PublishStep } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
-import { checkPhotoUpload, filesNoLongerShown, freeingFiles, isPhotoSrc, isSitePhotoSrc, type PhotoFiles } from "@/lib/outreach-photos";
+import { checkImageUpload, checkPhotoUpload, filesNoLongerShown, freeingFiles, isPhotoSrc, isSitePhotoSrc, type PhotoFiles } from "@/lib/outreach-photos";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { editedLine, type EditStamp } from "./edited";
 import { checkProjectFields, heldPhotos, type ProjectFields } from "./fields";
 import { listPhotos } from "./list-fields";
 import { checkNewProject, takenSlugs, type NewProject } from "./new-project";
-import type { ProjectRecord } from "./record";
+import { BACKGROUND_MAX_BYTES, backgroundUploads, isUploadedSrc, type ProjectRecord, type UploadedSrc } from "./record";
 
 // The projects' editor (issues #255, #297 and #298): the shared content
 // editor (lib/content/editor.ts), so the site-content gate, the draft and
@@ -21,7 +21,9 @@ import type { ProjectRecord } from "./record";
 // gallery (issue #299) are uploaded the way Outreach's are
 // (lib/outreach-photos.ts): stored at once behind the gate, put on the
 // project by a save, and deleted once no version of any project shows them
-// and the panel holds them no more.
+// and the panel holds them no more. An uploaded background's two crops
+// (issue #529) take the same path through their own files, kept apart from
+// the photos': a save takes a background crop only from them.
 
 /** When each project was last edited and by whom, and the moment the list counts "today" from. */
 export interface EditHistory {
@@ -41,13 +43,35 @@ export const NO_PHOTO_FILES: PhotoFiles = {
   drop: async () => {},
 };
 
-/** The uploaded photos a project's version holds: its visual's and its blocks', a hidden block's included. */
-const photosIn = (record: ProjectRecord): PhotoSrc[] => listPhotos(record).filter(isPhotoSrc);
+/** The uploaded files a project's version holds: its visual's and its blocks' photos, a hidden block's included, and its uploaded background's crops. */
+const photosIn = (record: ProjectRecord): PhotoSrc[] => [...listPhotos(record).filter(isPhotoSrc), ...backgroundUploads(record.background)];
 
 /** `files`, never deleting the photos in `held`. */
 function keeping(files: Pick<PhotoFiles, "drop">, held: readonly string[]): Pick<PhotoFiles, "drop"> {
   const kept = new Set(held);
   return { drop: (srcs) => files.drop(srcs.filter((src) => !kept.has(src))) };
+}
+
+/** Photo files and background files as one: a file is this side's when either stored it, and each deletes only its own. */
+function eitherFiles(photos: PhotoFiles, backgrounds: PhotoFiles): Pick<PhotoFiles, "owns" | "drop"> {
+  return {
+    owns: (src): src is PhotoSrc => photos.owns(src) || backgrounds.owns(src),
+    drop: async (srcs) => {
+      await Promise.all([photos.drop(srcs), backgrounds.drop(srcs)]);
+    },
+  };
+}
+
+/**
+ * The record, or why not: an uploaded background's crops are the ones the
+ * version the panel opened on had, or files this side stored as backgrounds
+ * (issue #529). A save cannot point a background at a photo, a file the site
+ * ships or a file somewhere else.
+ */
+export function checkBackgroundFiles(record: ProjectRecord, opened: ProjectRecord, backgrounds: Pick<PhotoFiles, "owns">): WriteResult<ProjectRecord> {
+  const known = new Set<string>(backgroundUploads(opened.background));
+  const stray = backgroundUploads(record.background).find((src) => !known.has(src) && !backgrounds.owns(src));
+  return stray === undefined ? written(record) : refused("The background was not uploaded. Upload it again.");
 }
 
 /**
@@ -87,8 +111,18 @@ export interface ProjectEditor extends ContentEditor<ProjectRecord> {
   setSiteOrder(ids: readonly number[]): Promise<WriteResult<null>>;
   /** A photo picked in the panel, stored once the gate admits the viewer; answers its src. */
   uploadPhoto(photo: Upload): Promise<WriteResult<PhotoSrc>>;
-  /** A photo removed in the panel before any save used it: its file is deleted, unless a version of a project shows it. */
+  /**
+   * A photo or a background crop removed in the panel before any save used
+   * it: its file is deleted, unless a version of a project shows it.
+   */
   discardPhoto(src: string): Promise<WriteResult<null>>;
+  /**
+   * One crop of a background picked in the panel (board 93f, issue #529):
+   * a JPEG, PNG or WebP file of at most 10 MB, read from its own bytes,
+   * stored under the backgrounds' own folder once the gate admits the
+   * viewer; answers its src.
+   */
+  uploadBackground(crop: Upload): Promise<WriteResult<UploadedSrc>>;
 }
 
 export function projectEditor(
@@ -96,19 +130,23 @@ export function projectEditor(
   store: ContentStore<ProjectRecord>,
   history: EditHistory = NO_EDIT_HISTORY,
   files: PhotoFiles = NO_PHOTO_FILES,
+  backgrounds: PhotoFiles = NO_PHOTO_FILES,
 ): ProjectEditor {
   const allowed = maySiteContent(viewer);
-  const editor = contentEditor(viewer, freeingFiles(store, files, photosIn));
+  const stored = eitherFiles(files, backgrounds);
+  const editor = contentEditor(viewer, freeingFiles(store, stored, photosIn));
   return {
     ...editor,
     saveFields(id, step, fields) {
       // A block's fields stay in the panel, photos and all, hidden or not,
       // so this save deletes none of the files the fields still hold.
-      const saving = contentEditor(viewer, freeingFiles(store, keeping(files, heldPhotos(fields)), photosIn));
+      const saving = contentEditor(viewer, freeingFiles(store, keeping(stored, heldPhotos(fields)), photosIn));
       return saving.save(id, step, async (opened) => {
         if (opened === null) return refused("Unknown project.");
         const record = checkProjectFields(fields, opened);
-        return record.ok ? checkProjectPhotos(record.value, opened, files) : record;
+        if (!record.ok) return record;
+        const photos = checkProjectPhotos(record.value, opened, files);
+        return photos.ok ? checkBackgroundFiles(photos.value, opened, backgrounds) : photos;
       });
     },
     create: (project) =>
@@ -137,9 +175,17 @@ export function projectEditor(
 
     async discardPhoto(src) {
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
-      if (!files.owns(src)) return written(null);
-      await files.drop(filesNoLongerShown([src], await store.list(), photosIn));
+      if (!stored.owns(src)) return written(null);
+      await stored.drop(filesNoLongerShown([src], await store.list(), photosIn));
       return written(null);
+    },
+
+    async uploadBackground(upload) {
+      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
+      const crop = checkImageUpload(upload, BACKGROUND_MAX_BYTES, "background");
+      if (!crop.ok) return crop;
+      const src = await backgrounds.put(crop.value);
+      return isUploadedSrc(src) ? written(src) : refused("The background could not be stored. Try again.");
     },
   };
 }
