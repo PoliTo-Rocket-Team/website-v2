@@ -441,7 +441,7 @@ export function TeamPageEdit({
   return (
     <>
       <EditShell
-        section={{ label: "About", href: "/about/the-team" }}
+        section={{ label: "Dashboard", href: "/dashboard" }}
         heading="Editing the Team page"
         status={status}
         saved={panel !== null ? "Changes show on the page as you type" : undefined}
