@@ -9,13 +9,16 @@ import { GRANT_AREAS, readsArea, type GrantArea, type ViewerStanding } from "./v
 // figures and rows: each figure, attention row and panel belongs to one area,
 // and an area the viewer does not read adds nothing, whatever was read for it.
 
-/** A live position as the division Overview counts it. */
+/** A live position as the division Overview's Positions figure counts it: no figure about its applications. */
 export type OverviewPosition = {
   readonly id: number;
   readonly title: string;
   readonly open: boolean;
   readonly divisionName: string;
-  /** Unread applications to it, and when the oldest came in. */
+};
+
+/** A live position where the viewer reads Applications, with its unread applications and when the oldest came in. */
+export type UnreadOverviewPosition = OverviewPosition & {
   readonly newApplications: number;
   readonly oldestNew: Date | null;
 };
@@ -28,10 +31,10 @@ export type DivisionFigures = {
   readonly now: Date;
   /** The viewer's own notices: theirs whatever areas they read. */
   readonly notices: readonly AttentionItem[];
-  /** Positions: the live positions in the units they read Positions in. */
+  /** Positions: the live positions in the units they read Positions in, with nothing of their applications (issue #477). */
   readonly positions?: readonly OverviewPosition[];
-  /** Applications: the live positions in the units they read Applications in, and the upcoming interviews on them. */
-  readonly applications?: { readonly positions: readonly OverviewPosition[]; readonly interviews: readonly UpcomingInterview[] };
+  /** Applications: the live positions in the units they read Applications in, their unread applications, and the upcoming interviews on them. */
+  readonly applications?: { readonly positions: readonly UnreadOverviewPosition[]; readonly interviews: readonly UpcomingInterview[] };
   /** Orders: the orders waiting in the units they read Orders in. */
   readonly orders?: { readonly count: number; readonly total: Cents };
   /** Members: how many people are in their division, its name, and who has no photo. */

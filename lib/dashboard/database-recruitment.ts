@@ -103,12 +103,15 @@ async function mayChangePosition(identity: Identity, area: "positions" | "applic
 /**
  * The positions the viewer reads in `area`, with what the table shows for
  * each: the Positions page reads them in the Positions area, the
- * Applications page in the Applications area (issue #471).
+ * Applications page in the Applications area (issue #471). A row's
+ * application counts are Applications data: they come only where the viewer
+ * reads Applications, so a Positions grant alone gets none (issue #477).
  */
 async function readPositionRows(identity: Identity, area: RecruitmentArea, now: Date): Promise<PositionRow[]> {
   const db = getDb();
   // The tallies are read for every position, beside the positions rather than
   // after them, and picked per row below: one round trip, not two (issue #397).
+  // Someone who reads Applications nowhere gets no tally read at all.
   const [rows, tallies] = await Promise.all([
     db
       .select({
@@ -133,20 +136,23 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
       .innerJoin(departments, eq(divisions.deptId, departments.id))
       .where(and(eq(applyPositions.isDeleted, false), isNull(divisions.closedAt), isNull(departments.closedAt)))
       .orderBy(desc(applyPositions.createdAt)),
-    db
-      .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
-      .from(applications)
-      .where(isNull(applications.withdrawnAt))
-      .groupBy(applications.applyPositionId, applications.status),
+    readsRecruitment(identity, "applications")
+      ? db
+          .select({ position_id: applications.applyPositionId, status: applications.status, n: count(), last: max(applications.appliedAt) })
+          .from(applications)
+          .where(isNull(applications.withdrawnAt))
+          .groupBy(applications.applyPositionId, applications.status)
+      : [],
   ]);
   // The same rule the document route checks (`readsRecruitmentIn`, ./application-documents.ts).
   const scoped = rows.filter((r) => readsRecruitmentIn(identity, area, { divisionId: r.division_id, departmentId: r.dept_id }));
   if (scoped.length === 0) return [];
 
   return scoped.map((r) => {
+    const created = new Date(r.created_at);
+    const tallied = readsRecruitmentIn(identity, "applications", { divisionId: r.division_id, departmentId: r.dept_id });
     const own = tallies.filter((t) => t.position_id === r.id);
     const latest = own.reduce<string | null>((at, t) => (t.last !== null && (at === null || t.last > at) ? t.last : at), null);
-    const created = new Date(r.created_at);
     return {
       id: r.id,
       ref: String(r.id),
@@ -154,9 +160,13 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
       division: r.division_name,
       department: r.dept_name,
       open: r.status,
-      applications: own.reduce((sum, t) => sum + t.n, 0),
-      newApplications: own.filter((t) => t.status === "received").reduce((sum, t) => sum + t.n, 0),
-      quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
+      applications: tallied
+        ? {
+            total: own.reduce((sum, t) => sum + t.n, 0),
+            fresh: own.filter((t) => t.status === "received").reduce((sum, t) => sum + t.n, 0),
+            quiet: quietNote(quietDays(r.status, latest === null ? created : new Date(latest), now)),
+          }
+        : null,
       // The table has no edit time; a role's creation is the last change it records.
       updated: ago(created, now),
       code: positionCode({ id: r.id, dept_code: r.dept_code ?? "", div_code: r.div_code ?? "" }),

@@ -338,11 +338,6 @@ export function waitingOrders(orders: readonly Order[]): { count: number; total:
   return { count: waiting.length, total: waiting.reduce((sum, o) => sum + orderTotal(o), 0) };
 }
 
-/** The orders of the given divisions: an Overview counts its own unit's (boards 56 and 62). */
-export function ordersOfDivisions(orders: readonly Order[], divisionIds: readonly number[]): Order[] {
-  return orders.filter((o) => o.unit !== null && divisionIds.includes(o.unit.division.id));
-}
-
 const euro = new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" });
 
 /** "€2,140.85" */

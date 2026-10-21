@@ -66,7 +66,7 @@ const head = seat([{ type: "head", divisionId: null, departmentId: 1 }], [], [1]
 const lead = seat([{ type: "lead", divisionId: 1, departmentId: 1 }], [1], []);
 const member = seat([{ type: "core", divisionId: 1, departmentId: 1 }], [], []);
 
-const reader = (s: Seat): RecruitmentReader => ({ ...s.standing, divisionIds: s.divisionIds, departmentIds: s.departmentIds, grants: [] });
+const reader = (s: Seat): RecruitmentReader => ({ ...s.standing, roles: s.roles, grants: [] });
 const changes = (s: Seat, area: ChangeArea, unit: DivisionUnit) => mayChange({ kind: s.standing.kind, roles: s.roles, grants: [] }, area, unit);
 
 const noScope: ScopeInfo = {

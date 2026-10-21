@@ -1,5 +1,5 @@
 import type { ScopeInfo } from "@/app/actions/get-member-scopes";
-import { isTeamLeader, type ViewerStanding } from "@/lib/dashboard/viewer";
+import { isOffTeam, isTeamLeader, type ViewerStanding } from "@/lib/dashboard/viewer";
 import type { Recruitment } from "./positions";
 
 // The site-wide recruitment switch on the dashboard (issue #121). The team
@@ -12,8 +12,13 @@ import type { Recruitment } from "./positions";
 // the database side from the caller's standing and scope rows, the dummy side
 // from the test developer's standing.
 
-/** Whether a member with this standing and positions scope may flip the switch. */
+/**
+ * Whether a member with this standing and positions scope may flip the
+ * switch. Someone off the team never may, whatever scope rows outlived their
+ * roles (issues #201, #477): those rows reach nothing.
+ */
 export function canSwitchRecruitment(viewer: ViewerStanding, scope: ScopeInfo): boolean {
+  if (isOffTeam(viewer.kind)) return false;
   return isTeamLeader(viewer) || scope.hasOrgEdit || scope.hasAdminEdit;
 }
 

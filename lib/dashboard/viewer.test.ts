@@ -269,10 +269,11 @@ test("an area grant opens its own area's page as a division lead reaches it, and
 
 test("each grant area is read on its own, over the units its own grants name (issue #471)", () => {
   const OTHER = MSA + 1;
-  const reader = (rows: readonly ScopeUnitRow[], activeRoles: readonly ActiveRoleRef[] = [role("core", MSA)]): AreaReader => {
-    const units = viewerUnitsOf(rows, activeRoles.map((r) => ({ ...r, departmentId: MSA_DEPARTMENT })));
-    return { ...viewerStandingOf({ scopes: rows, activeRoles }), ...units, grants: areaGrantsOf(rows) };
-  };
+  const reader = (rows: readonly ScopeUnitRow[], activeRoles: readonly ActiveRoleRef[] = [role("core", MSA)]): AreaReader => ({
+    ...viewerStandingOf({ scopes: rows, activeRoles }),
+    roles: activeRoles.map((r) => ({ ...r, departmentId: MSA_DEPARTMENT })),
+    grants: areaGrantsOf(rows),
+  });
   const on = (target: ScopeTarget, divisionId: number): ScopeUnitRow => ({ scope: "division", target, level: "view", divisionId, deptId: null });
   const at = (divisionId: number) => ({ divisionId, departmentId: MSA_DEPARTMENT });
 

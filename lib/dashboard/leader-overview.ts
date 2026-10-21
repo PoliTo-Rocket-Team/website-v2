@@ -82,22 +82,29 @@ export function leaderStats(figures: {
   ];
 }
 
-/** One position as the Departments panel counts it. */
+/** One position as the Departments panel counts it, where the viewer reads Positions. */
 export type DivisionPositions = {
   readonly divisionId: number;
   readonly open: boolean;
+};
+
+/** One position's unread applications, where the viewer reads Applications. */
+export type DivisionUnread = {
+  readonly divisionId: number;
   readonly newApplications: number;
 };
 
 /**
  * The Departments panel (board 72): each open department in chart order, its
  * heads, its open divisions, and the people in them or heading it, each
- * counted once, with the new applications and open positions there.
+ * counted once, with the new applications (from `unread`, the positions where
+ * the viewer reads Applications, issue #477) and the open positions there.
  */
 export function departmentSummaries(
   records: readonly Pick<PersonRecord, "name" | "memberships" | "beyondDivisions">[],
   org: OrgChart,
   positions: readonly DivisionPositions[],
+  unread: readonly DivisionUnread[],
 ): DepartmentSummary[] {
   return org.departments.map((department) => {
     const divisionIds = org.divisions.filter((d) => d.departmentId === department.id).map((d) => d.id);
@@ -110,7 +117,7 @@ export function departmentSummaries(
       heads: heads.map((h) => h.name),
       divisions: divisionIds.length,
       people: inside.length,
-      newApplications: own.reduce((sum, p) => sum + p.newApplications, 0),
+      newApplications: unread.filter((p) => divisionIds.includes(p.divisionId)).reduce((sum, p) => sum + p.newApplications, 0),
       openPositions: own.filter((p) => p.open).length,
     };
   });

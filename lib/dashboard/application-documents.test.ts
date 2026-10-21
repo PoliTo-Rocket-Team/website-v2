@@ -20,21 +20,22 @@ const OTHER_DEPARTMENT = { divisionId: 5, departmentId: 1 };
 const open = (unit = TEST_BENCH): ApplicationPlace => ({ unit, withdrawn: false });
 
 const flags = { siteContent: false, approveOrders: false } as const;
-const covering = { divisionIds: [TEST_BENCH.divisionId], departmentIds: [], grants: [] };
+/** A member role in the test bench division: it leads nothing, so it reads no application. */
+const inTestBench = { roles: [{ type: "core" as const, ...TEST_BENCH }], grants: [] };
 
 /** A member holding a Can edit grant on each of `areas` over the test bench division, as `readIdentity` reads them. */
 function granted(...areas: readonly GrantArea[]): RecruitmentReader {
   const grants: AreaGrant[] = areas.map((target) => ({ target, level: "edit", unit: { kind: "division", divisionId: TEST_BENCH.divisionId } }));
-  return { kind: "member", grantedAreas: areas, ...flags, divisionIds: [TEST_BENCH.divisionId], departmentIds: [], grants };
+  return { kind: "member", grantedAreas: areas, ...flags, roles: inTestBench.roles, grants };
 }
 
-const teamLeader: RecruitmentReader = { kind: "operations-lead", seat: "team-leader", ...flags, divisionIds: [], departmentIds: [], grants: [] };
-const divisionLead: RecruitmentReader = { kind: "division-lead", ...flags, ...covering };
-const departmentHead: RecruitmentReader = { kind: "department-head", ...flags, divisionIds: [], departmentIds: [TEST_BENCH.departmentId], grants: [] };
+const teamLeader: RecruitmentReader = { kind: "operations-lead", seat: "team-leader", ...flags, roles: [{ type: "president", divisionId: null, departmentId: null }], grants: [] };
+const divisionLead: RecruitmentReader = { kind: "division-lead", ...flags, roles: [{ type: "lead", ...TEST_BENCH }], grants: [] };
+const departmentHead: RecruitmentReader = { kind: "department-head", ...flags, roles: [{ type: "head", divisionId: null, departmentId: TEST_BENCH.departmentId }], grants: [] };
 const grantHolder = granted("applications");
-const plainMember: RecruitmentReader = { kind: "member", grantedAreas: [], ...flags, ...covering };
-const applicant: RecruitmentReader = { kind: "non-member", siteContent: false, approveOrders: false, ...covering };
-const alumnus: RecruitmentReader = { kind: "alumni", siteContent: false, approveOrders: false, ...covering };
+const plainMember: RecruitmentReader = { kind: "member", grantedAreas: [], ...flags, ...inTestBench };
+const applicant: RecruitmentReader = { kind: "non-member", siteContent: false, approveOrders: false, roles: [], grants: [] };
+const alumnus: RecruitmentReader = { kind: "alumni", siteContent: false, approveOrders: false, roles: [], grants: [] };
 
 describe("who may open an application's documents", () => {
   test("full access opens every application, in any division", () => {
@@ -49,7 +50,7 @@ describe("who may open an application's documents", () => {
     }
   });
 
-  test("a member with no grant, an applicant and an alumnus are refused, even in a unit their ids name", () => {
+  test("a member with no grant, an applicant and an alumnus are refused, even in a division they hold a role in", () => {
     for (const viewer of [plainMember, applicant, alumnus]) assert.equal(mayOpenApplication(viewer, open()), false, viewer.kind);
   });
 
@@ -68,8 +69,7 @@ describe("who may open an application's documents", () => {
       kind: "member",
       grantedAreas: ["positions", "applications"],
       ...flags,
-      divisionIds: [TEST_BENCH.divisionId, OTHER_DEPARTMENT.divisionId],
-      departmentIds: [],
+      roles: inTestBench.roles,
       grants: [
         { target: "applications", level: "view", unit: { kind: "division", divisionId: TEST_BENCH.divisionId } },
         { target: "positions", level: "edit", unit: { kind: "division", divisionId: OTHER_DEPARTMENT.divisionId } },

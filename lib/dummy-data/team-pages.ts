@@ -80,8 +80,8 @@ import {
   type TeamActor,
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
-import { kindOfTestViewer, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
-import { grantActors, type TestGrant } from "./test-grant";
+import { kindOfTestViewer, readsArea, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { grantActors, testGrantAreas, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { opensWholeTeam } from "@/lib/dashboard/members-view";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
@@ -1029,6 +1029,11 @@ export function dummyTeamPages(
   // Who the page reads as: the actor, or for a test grant every division it covers, whatever its level.
   const viewing = kind === "member" && grant !== null ? grantActors(grant, org).viewing : actor;
   const reach = viewing?.kind === "lead" ? viewing.divisionIds : [];
+  // The accepted applicants joining are applications data: a division's page
+  // lists them only for a viewer who reads Applications, as the database side
+  // does (`readDivisionMembers`), so a Members grant alone lists none (issue #477).
+  const standing = testDeveloperStanding(kind);
+  const readsJoining = readsArea(standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant) } : standing, "applications");
   // As the database lists them (`readJoining`): people not on the team yet. A
   // member joins from the Applications page (board 58h2) or from Add member.
   const joiningIn = (team: readonly RosterEntry[], division: number): Joining[] =>
@@ -1071,7 +1076,7 @@ export function dummyTeamPages(
         selfId: self,
         reach,
         waiting: waitingIn(edits, division),
-        joining: joiningIn(team, division),
+        joining: readsJoining ? joiningIn(team, division) : [],
       });
       return page === null ? NO_MEMBERS : { scope: "division", ...page };
     },

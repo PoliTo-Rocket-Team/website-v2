@@ -20,7 +20,7 @@ const notice: AttentionItem = { kind: "notice", title: "Your notice", detail: "F
 const everything: DivisionFigures = {
   now,
   notices: [notice],
-  positions: [{ id: 7, title: "Test Engineer", open: true, divisionName: "Mission Analysis", newApplications: 0, oldestNew: null }],
+  positions: [{ id: 7, title: "Test Engineer", open: true, divisionName: "Mission Analysis" }],
   applications: {
     positions: [{ id: 7, title: "Test Engineer", open: true, divisionName: "Mission Analysis", newApplications: 2, oldestNew: new Date("2026-10-15T10:00:00Z") }],
     interviews: [{ applicant: "Ada Applicant", position: "Test Engineer", state: "waiting" }],

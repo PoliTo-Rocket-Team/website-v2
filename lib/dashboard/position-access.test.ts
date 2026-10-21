@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mayChangePositionIn, type PositionWriter } from "./position-access";
 import type { RoleType } from "./team";
-import { areaGrantsOf, viewerStandingOf, viewerUnitsOf, type FlaggedSeat, type ScopeUnitRow } from "./viewer";
+import { areaGrantsOf, viewerStandingOf, type FlaggedSeat, type ScopeUnitRow } from "./viewer";
 
 // The one rule the database side asks before editing a position, switching
 // it open or closed, or moving an application to it (issue #461), for each
@@ -31,12 +31,9 @@ const role = (type: RoleType, unit: { divisionId: number | null; departmentId: n
 
 /** The viewer `readIdentity` reads from these active roles and scope rows. */
 function writerOf(roles: readonly Role[], scopes: readonly ScopeUnitRow[] = []): PositionWriter {
-  const units = viewerUnitsOf(scopes, roles);
   return {
     ...viewerStandingOf({ scopes, activeRoles: roles }),
     roles,
-    divisionIds: [...units.divisionIds],
-    departmentIds: [...units.departmentIds],
     grants: areaGrantsOf(scopes),
   };
 }

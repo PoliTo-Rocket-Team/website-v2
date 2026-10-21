@@ -69,9 +69,14 @@ test("the Departments panel counts each department's heads, divisions and people
     [person("Chiara", [], 1), person("Anna", [10, 11]), person("Matteo", [20, 11]), person("Luca", [10])],
     org,
     [
-      { divisionId: 10, open: true, newApplications: 4 },
-      { divisionId: 11, open: false, newApplications: 1 },
-      { divisionId: 20, open: true, newApplications: 0 },
+      { divisionId: 10, open: true },
+      { divisionId: 11, open: false },
+      { divisionId: 20, open: true },
+    ],
+    [
+      { divisionId: 10, newApplications: 4 },
+      { divisionId: 11, newApplications: 1 },
+      { divisionId: 20, newApplications: 0 },
     ],
   );
   assert.deepEqual(summaries, [
