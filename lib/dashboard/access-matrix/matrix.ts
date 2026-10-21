@@ -163,7 +163,7 @@ export const SCOPES = {
 export type MatrixRow = { readonly name: string; readonly viewer: Viewer; readonly expect: Expect };
 
 export const VIEWERS: readonly MatrixRow[] = [
-  // Full access: the three seats by role alone (issue #238), or an org scope row.
+  // Full access: the seats by role alone (issues #238, #485), or an org scope row.
   { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: { ...FULL_ACCESS, switchesRecruitment: true } },
   // Open owner question (see the PR): the database switch needs an org or admin row beside the seat.
   { name: "operations lead", viewer: viewerOf([role("core", null, null, "operations-lead")]), expect: { ...FULL_ACCESS, switchesRecruitment: false } },
@@ -172,6 +172,9 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("core", null, null, "it-lead")]),
     expect: { ...FULL_ACCESS, pages: [...FULL, "activity-log"], switchesRecruitment: false },
   },
+  // The board seats (issue #485): a flagged role in no unit, the operations lead's expectations.
+  { name: "Project Manager", viewer: viewerOf([role(null, null, null, "project-manager")]), expect: { ...FULL_ACCESS, switchesRecruitment: false } },
+  { name: "Chief Engineer", viewer: viewerOf([role(null, null, null, "chief-engineer")]), expect: { ...FULL_ACCESS, switchesRecruitment: false } },
   { name: "org-wide editor", viewer: viewerOf([MEMBER_ROLE], [row("org", "all", "edit")]), expect: { ...FULL_ACCESS, switchesRecruitment: true } },
   // A department head: every area in their department, by the role.
   {

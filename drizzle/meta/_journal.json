@@ -330,6 +330,13 @@
       "when": 1792862400000,
       "tag": "0046_efesto_site_content",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792948800000,
+      "tag": "0047_board_full_access_seats",
+      "breakpoints": true
     }
   ]
 }

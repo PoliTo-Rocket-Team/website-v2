@@ -320,6 +320,8 @@ export const SEAT_LABELS: Readonly<Record<FullAccessSeat, string>> = {
   "team-leader": "Team leader",
   "operations-lead": "Operations lead",
   "it-lead": "IT lead",
+  "project-manager": "Project Manager",
+  "chief-engineer": "Chief Engineer",
 };
 
 /**

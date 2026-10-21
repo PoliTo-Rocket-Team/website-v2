@@ -18,8 +18,8 @@ The six people:
 - **Member**: on the team.
 - **Division lead**: leads one or more divisions.
 - **Department head**: heads a department and all its divisions.
-- **Full access**: the team leader, the operations lead and the IT lead. They see and act on the
-  whole team (see "Full access" below).
+- **Full access**: the team leader, the operations lead, the IT lead, the Project Manager and the
+  Chief Engineer. They see and act on the whole team (see "Full access" below).
 
 An **advisor** (#253) is someone who handed over a role and stayed in the team (see "Handing
 over a role" below). The Advisor role leads nothing and heads nothing: it is never counted as a
@@ -59,16 +59,23 @@ An admin column comes later. **Planned**, no issue yet.
   their sign-in address and "No applications right now" (board 50f). Before #317 they landed on
   the My applications empty state (#179).
 - **Full access** comes from the role alone, with no scope row (Owner decisions, 2026-10-11,
-  #238). Three seats hold it:
+  #238; Owner decision, 2026-10-21, #485). Five seats hold it:
   - the **team leader**: the role of type `president`;
   - the **operations lead** and the **IT lead**: each seat's role carries a full-access flag
     (`roles.full_access`, migration 0018), set once in the data. The seat is never read from a
     department or division code, or from a title, because codes change.
+  - the **Project Manager** and the **Chief Engineer** (#485): each board seat's role carries the
+    same flag (migration 0047, which marked the active board roles titled exactly "Project
+    Manager" and "Chief Engineer" once). The code reads only the flag. Access follows the role:
+    ending the role ends it. No dashboard flow sets the flag on a new holder's role yet, as for
+    the operations lead and the IT lead.
+  - Someone in two seats shows as the higher one: the team leader, the IT lead, the operations
+    lead, the Project Manager, then the Chief Engineer.
   - Full access reaches every page in the table, in every department and every division. On
     Access and Orders it sees and acts on the whole team, and it can give any access to anyone.
   - An `admin` or `org` scope row still gives full access, as before.
   - **Exception 1, deciding orders:** by default only the team leader approves, rejects or asks
-    for changes. The operations lead and the IT lead decide only with "Approve orders" (see
+    for changes. The other full-access seats decide only with "Approve orders" (see
     "4. Orders").
   - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
     the page itself is **Planned**, so no sidebar lists it yet.
@@ -599,6 +606,9 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
 
 These rules come from #238 and #247 (boards 71 and 71b).
 
+- The full-access seats are the team leader, the operations lead, the IT lead, the Project
+  Manager and the Chief Engineer (#485). On the Full access tab each shows under its label:
+  "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief Engineer".
 - Full access holds every area at Can edit across the whole team, Alumni included: "YOUR ACCESS ·
   Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
   team leader.
@@ -610,7 +620,7 @@ These rules come from #238 and #247 (boards 71 and 71b).
   The areas are Positions, Applications, Members, Alumni and Orders, each at Can view or Can edit.
   Alumni is given to the whole team only.
 - **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
-  it from anyone else. The operations lead and the IT lead give every other access. The Activity
+  it from anyone else. The other full-access seats give every other access. The Activity
   log is never given: it stays the IT lead's.
 - The delegation limit still holds: no area above the viewer's own level, and no lead's role
   access changes here.

@@ -79,11 +79,14 @@ export const targetTypeEnum = pgEnum("target_type", [
   "approve_orders",
 ]);
 
-// The two seats besides the team leader that hold every access in the
-// dashboard (issue #238, drizzle/0018): set once on the seat's role row.
+// The seats besides the team leader that hold every access in the dashboard
+// (issue #238, drizzle/0018; the Project Manager and the Chief Engineer since
+// issue #485, drizzle/0047): set once on the seat's role row.
 export const fullAccessSeatEnum = pgEnum("full_access_seat", [
   "operations_lead",
   "it_lead",
+  "project_manager",
+  "chief_engineer",
 ]);
 
 export const accessLevelTypeEnum = pgEnum("access_level_type", [
@@ -207,8 +210,9 @@ export const roles = pgTable("roles", {
     .notNull(),
   leavedAt: date("leaved_at", { mode: "string" }),
   type: positionTypeEnum("type"),
-  // Marks the operations lead's and the IT lead's seats (issue #238); null on
-  // every other role. The team leader is the `president` type and needs none.
+  // Marks the operations lead's, the IT lead's (issue #238), the Project
+  // Manager's and the Chief Engineer's (issue #485) seats; null on every
+  // other role. The team leader is the `president` type and needs none.
   fullAccess: fullAccessSeatEnum("full_access"),
 });
 
