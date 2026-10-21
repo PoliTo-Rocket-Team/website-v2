@@ -5,7 +5,8 @@ import { GripVertical, Plus, X } from "lucide-react";
 import { discardOutreachPhoto, uploadOutreachPhoto } from "@/app/dashboard/actions";
 import { CHANNEL_ICONS } from "@/components/outreach/channel-icons";
 import { shortDayMonthYear } from "@/lib/outreach";
-import type { ChannelFields, PostFieldErrors, PostFields } from "@/lib/outreach-post-fields";
+import { written } from "@/lib/dashboard/write";
+import { removePostGalleryPhoto, type ChannelFields, type PostFieldErrors, type PostFields } from "@/lib/outreach-post-fields";
 import { isIsoDate } from "@/lib/outreach-rows";
 import {
   CHANNEL_LABELS,
@@ -14,15 +15,13 @@ import {
   type ChannelName,
   type OutreachTag,
 } from "@/lib/outreach-types";
-import { galleryProblems } from "@/lib/gallery-fields";
 import { CONTENT_FOCUS, RowMenu, TextField, useDragOrder, type DragRow } from "./content-parts";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Toggle } from "./controls";
 import { EditPanel, ErrorLine, PanelSection, usePanelScroll } from "./edit-panel";
 import { Field, GroupLabel, inputClass } from "./field";
 import { PhotosSection, type PhotoUploads } from "./outreach-post-photos";
-import { GalleryEditor, gallerySummary } from "./project-list-sections";
+import { GalleryPhotosEditor } from "./project-list-sections";
 
 const OUTREACH_UPLOADS: PhotoUploads = { upload: uploadOutreachPhoto, discard: discardOutreachPhoto };
 
@@ -31,8 +30,9 @@ const OUTREACH_UPLOADS: PhotoUploads = { upload: uploadOutreachPhoto, discard: d
 // once. Every change goes straight back to the page, which redraws as the
 // editor types; Save draft and Publish sit on the edit bar. Photos upload,
 // move and take their alt text in ./outreach-post-photos.tsx (issue #291).
-// Original posts are optional, and Gallery is the project panel's own
-// section, with its show-on-page switch (issue #430).
+// Original posts are optional (issue #430). Gallery is the project panel's
+// photo list alone, with no switch and no title (issue #451): the post shows
+// it whenever it has a photo.
 
 /** The panel's sections, in order; each block's Edit chip opens one. */
 export type PostSection = "details" | "text" | "photos" | "channels" | "gallery";
@@ -47,7 +47,6 @@ export const SECTION_OF: Readonly<Record<keyof PostFieldErrors, PostSection>> = 
   body: "text",
   photos: "photos",
   channels: "channels",
-  gallery: "gallery",
 };
 
 export function OutreachPostPanel({
@@ -107,24 +106,11 @@ export function OutreachPostPanel({
         <ChannelsSection channels={fields.channels} onChange={(channels) => set("channels", channels)} error={errors.channels} />
       </PanelSection>
 
-      <PanelSection
-        value="gallery"
-        cardRef={card("gallery")}
-        title="Gallery"
-        summary={gallerySummary(fields.gallery)}
-        control={
-          <Toggle
-            label="Show Gallery on the page"
-            checked={fields.gallery.shown}
-            onCheckedChange={(shown) => onChange((f) => ({ ...f, gallery: { ...f.gallery, shown } }))}
-          />
-        }
-      >
-        <GalleryEditor
-          gallery={fields.gallery}
-          // A refused save names the gallery; its fields say which part.
-          errors={errors.gallery === undefined ? {} : Object.fromEntries(galleryProblems(fields.gallery).map((p) => [p.field, p.error]))}
+      <PanelSection value="gallery" cardRef={card("gallery")} title="Gallery" summary={gallerySummary(fields.gallery.length)}>
+        <GalleryPhotosEditor
+          items={fields.gallery}
           onChange={(change) => onChange((f) => ({ ...f, gallery: change(f.gallery) }))}
+          remove={(index) => written(removePostGalleryPhoto(fields.gallery, index))}
           uploads={OUTREACH_UPLOADS}
         />
       </PanelSection>
@@ -133,6 +119,9 @@ export function OutreachPostPanel({
 }
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
+/** The Gallery section's summary: how many photos it has (issue #451). */
+const gallerySummary = (n: number) => (n === 0 ? "No photos" : count(n, "photo"));
 
 function joinedNames(names: readonly string[]): string {
   return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;

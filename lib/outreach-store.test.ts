@@ -8,7 +8,7 @@ import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutre
 import { awardPosts, featuredCard, iressStory, outreachRecord, outreachStats, postBySlug, postsWithPages, slugOf, trackRecord } from "./outreach";
 import { outreachEditor, publicOutreach, type StoredOutreach } from "./outreach-editor";
 import { importedOutreach, outreachImportSql, pinnedStoryImportSql } from "./outreach-import";
-import { outreachPostOf, postColumns, postFromColumns, summitColumns, summitFromColumns } from "./outreach-rows";
+import { draftFromColumns, outreachPostOf, postColumns, postFromColumns, summitColumns, summitFromColumns } from "./outreach-rows";
 import type { IsoDate, OutreachPost } from "./outreach-types";
 
 // The Outreach store (issue #287): the import that carries lib/outreach.ts
@@ -153,14 +153,26 @@ test("a row whose JSON is not a post's is refused, never shown", () => {
   assert.throws(() => postFromColumns({ ...row(), body: [] }, ["Award"]));
   assert.throws(() => postFromColumns({ ...row(), channels: { instagram: { url: "", caption: "" } } }, ["Award"]));
   assert.throws(() => postFromColumns(row(), []));
-  // A gallery on the page has a title and a photo; one switched off may hold neither.
-  assert.throws(() => postFromColumns({ ...row(), gallery: { shown: true, title: "More", items: [] } }, ["Award"]));
-  assert.throws(() => postFromColumns({ ...row(), gallery: { shown: true, title: " ", items: [row().photos[0]] } }, ["Award"]));
-  assert.throws(() => postFromColumns({ ...row(), gallery: { shown: true, title: "More", items: [{ src: "javascript:x", alt: "" }] } }, ["Award"]));
-  assert.ok(postFromColumns({ ...row(), gallery: { shown: false, title: "", items: [] } }, ["Award"]).gallery?.shown === false);
+  // A gallery's photos are checked as the post's are.
+  assert.throws(() => postFromColumns({ ...row(), gallery: { items: [{ src: "javascript:x", alt: "" }] } }, ["Award"]));
+  assert.throws(() => postFromColumns({ ...row(), gallery: { items: "none" } }, ["Award"]));
   // Original posts and photo descriptions are optional (issue #430).
   assert.deepEqual(postFromColumns({ ...row(), channels: {} }, ["Award"]).channels, {});
   assert.equal(postFromColumns({ ...row(), photos: [{ ...row().photos[0], alt: "" }] }, ["Award"]).photos[0].alt, "");
+});
+
+test("a stored post gallery reads back as its photos only, whatever switch or title a row saved before kept (issue #451)", () => {
+  const row = () => JSON.parse(JSON.stringify(postColumns(outreachRecord.posts[0])));
+  const photo = { ...row().photos[0], caption: "At the stand" };
+  for (const read of [postFromColumns, draftFromColumns]) {
+    for (const gallery of [{ shown: false, title: "", items: [photo] }, { shown: true, title: "X", items: [photo] }, { items: [photo] }]) {
+      assert.deepEqual(read({ ...row(), gallery }, ["Award"]).gallery, { items: [photo] }, JSON.stringify(gallery));
+    }
+    // A stored gallery with no photo is no gallery.
+    for (const gallery of [{ shown: true, title: "More", items: [] }, { shown: false, title: "", items: [] }, { items: [] }]) {
+      assert.equal(read({ ...row(), gallery }, ["Award"]).gallery, undefined, JSON.stringify(gallery));
+    }
+  }
 });
 
 test("/outreach and the post pages show only published posts: a draft-only post is not listed and its page is not found", async () => {

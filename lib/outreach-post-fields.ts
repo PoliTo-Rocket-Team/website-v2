@@ -1,6 +1,6 @@
 import type { PublishCheck } from "@/lib/content/edit-shell";
 import { refused, type WriteResult } from "@/lib/dashboard/write";
-import { galleryProblems, NO_GALLERY, readGalleryFields, type GalleryFields } from "@/lib/gallery-fields";
+import { GALLERY_MAX, type GalleryItemFields } from "@/lib/gallery-fields";
 import type { NonEmpty } from "./about/alumni-types";
 import { isPhotoSrc } from "./outreach-photos";
 import { isIsoDate } from "./outreach-rows";
@@ -11,7 +11,6 @@ import {
   type Channel,
   type ChannelName,
   type Channels,
-  type DraftGallery,
   type IsoDate,
   type OutreachPost,
   type OutreachTag,
@@ -31,8 +30,9 @@ import type { Copy } from "./projects";
 // its Publish waits on the checklist. Photos (issue #291) are uploaded as they are picked, so the
 // fields hold each one's src and its alt text, in the order the panel shows.
 // Original posts and photo descriptions are optional (Owner decision, issue
-// #430), and a post may have a gallery, edited as a project's is
-// (lib/gallery-fields.ts).
+// #430). A post's gallery is its photos only, with no switch and no title
+// (Owner decision, issue #451): it never stops a save, and a post shows it
+// whenever it has a photo.
 
 /** One original post as the panel edits it: the link and the first line. `account` is kept as it was. */
 export type ChannelFields = {
@@ -60,12 +60,12 @@ export type PostFields = {
   readonly photos: readonly PhotoFields[];
   /** In the order the panel lists them; one entry per channel, none at all included. */
   readonly channels: readonly ChannelFields[];
-  /** The gallery at the bottom of the page, switched off while the post has none. */
-  readonly gallery: GalleryFields;
+  /** The gallery at the bottom of the page: its photos in carousel order, none at all included. */
+  readonly gallery: readonly GalleryItemFields[];
 };
 
-/** The panel's sections that a rule can refuse. */
-export type PostField = "title" | "date" | "tags" | "lead" | "summary" | "body" | "photos" | "channels" | "gallery";
+/** The panel's sections that a rule can refuse. The gallery never is (issue #451). */
+export type PostField = "title" | "date" | "tags" | "lead" | "summary" | "body" | "photos" | "channels";
 
 export type PostFieldErrors = Partial<Record<PostField, string>>;
 
@@ -89,38 +89,32 @@ export function postFieldsOf(post: OutreachDraft): PostFields {
       const channel = post.channels[name];
       return channel === undefined ? [] : [{ name, ...channel }];
     }),
-    gallery:
-      post.gallery === undefined
-        ? NO_GALLERY
-        : {
-            shown: post.gallery.shown,
-            title: post.gallery.title,
-            items: post.gallery.items.map((item) => ({ src: item.src, alt: item.alt, caption: item.caption ?? "" })),
-          },
+    gallery: (post.gallery?.items ?? []).map((item) => ({ src: item.src, alt: item.alt, caption: item.caption ?? "" })),
   };
 }
 
 /**
- * The gallery as a draft keeps it: each text trimmed, and only photos that
- * were uploaded (the panel never makes a placeholder). A gallery switched
- * off with nothing in it is no gallery.
+ * The gallery as a post keeps it: each text trimmed, and only photos that
+ * were uploaded (the panel never makes a placeholder). With no photo it is
+ * no gallery.
  */
-function draftGalleryOf(fields: GalleryFields): DraftGallery | undefined {
-  const items = fields.items.flatMap((item): PostGalleryPhoto[] => {
+function galleryOfFields(items: readonly GalleryItemFields[]): PostGallery | undefined {
+  const photos = items.flatMap((item): PostGalleryPhoto[] => {
     if (item.src === null || !isPhotoSrc(item.src)) return [];
     const caption = item.caption.trim();
     return [{ src: item.src, alt: item.alt.trim(), ...(caption !== "" && { caption }) }];
   });
-  const title = fields.title.trim();
-  if (!fields.shown && title === "" && items.length === 0) return undefined;
-  return { shown: fields.shown, title, items };
+  const [first, ...rest] = photos;
+  return first === undefined ? undefined : { items: [first, ...rest] };
 }
 
-/** The draft's gallery as a whole post's: switched on, it has its title and a photo; null when it does not. */
-function postGalleryOf(gallery: DraftGallery): PostGallery | null {
-  if (!gallery.shown) return { ...gallery, shown: false };
-  const [first, ...rest] = gallery.items;
-  return gallery.title === "" || first === undefined ? null : { shown: true, title: gallery.title, items: [first, ...rest] };
+/** A removed gallery photo: the photos without it, and its uploaded file, which the panel lets go. */
+export type PostGalleryRemoval = { readonly items: readonly GalleryItemFields[]; readonly letGo: readonly string[] };
+
+/** Removes a gallery photo. It never refuses: a post's gallery may lose its last photo, and then the post has none (issue #451). */
+export function removePostGalleryPhoto(items: readonly GalleryItemFields[], index: number): PostGalleryRemoval {
+  const src = items[index]?.src ?? null;
+  return { items: items.filter((_, i) => i !== index), letGo: src === null ? [] : [src] };
 }
 
 /** The card summary: a phone text is kept only while the text it shortens is unchanged. */
@@ -145,7 +139,7 @@ export type OpenedPost = Pick<OutreachDraft, "date" | "summary">;
 
 /** A new post's fields (board 74f): everything blank but the date, which is `today`. */
 export function blankPostFields(today: IsoDate): PostFields {
-  return { title: "", date: today, place: "", tags: [], lead: "", summary: "", body: [], photos: [], channels: [], gallery: NO_GALLERY };
+  return { title: "", date: today, place: "", tags: [], lead: "", summary: "", body: [], photos: [], channels: [], gallery: [] };
 }
 
 /** What a new post opened on: nothing yet but its date. */
@@ -156,7 +150,7 @@ export function blankPost(today: IsoDate): OutreachDraft {
 /** The page as the editor sees it while typing: every field as typed, and the opened post's date while the date is cleared. */
 export function postViewOf(fields: PostFields, opened: OpenedPost): OutreachDraft {
   const place = fields.place.trim();
-  const gallery = draftGalleryOf(fields.gallery);
+  const gallery = galleryOfFields(fields.gallery);
   return {
     title: fields.title,
     date: isIsoDate(fields.date) ? fields.date : opened.date,
@@ -182,7 +176,7 @@ export function draftOfFields(fields: PostFields, opened: OpenedPost, tags: read
   const unknown = fields.tags.find((name) => !known.has(name));
   if (unknown !== undefined) return refused(`${unknown} is not a tag. Add it to the tag list first.`);
   const place = fields.place.trim();
-  const gallery = draftGalleryOf(fields.gallery);
+  const gallery = galleryOfFields(fields.gallery);
   return {
     ok: true,
     value: {
@@ -253,9 +247,9 @@ function tagsError(picked: readonly string[], tags: readonly OutreachTag[]): str
  * The fields as a post, or what each section still needs: a title, a date,
  * at least one tag from the tag list, a lead, a card summary, at least one
  * text block with its text, at least one photo, a link and a first line on
- * each channel added, and a gallery on the page with its title and a photo.
- * The first photo is the post's cover and its card photo. Photo descriptions
- * and original posts are optional (Owner decision, issue #430).
+ * each channel added. The first photo is the post's cover and its card photo.
+ * Photo descriptions and original posts are optional (Owner decision, issue
+ * #430), and the gallery never stops a publish (issue #451).
  */
 export function checkPostFields(fields: PostFields, opened: OpenedPost, tags: readonly OutreachTag[]): PostCheck {
   const errors: PostFieldErrors = {
@@ -268,20 +262,17 @@ export function checkPostFields(fields: PostFields, opened: OpenedPost, tags: re
   const textError = bodyError(fields.body);
   const channelError = channelsError(fields.channels);
   const photoError = photosError(fields.photos);
-  const galleryError = galleryProblems(fields.gallery)[0]?.error;
   if (tagError !== undefined) errors.tags = tagError;
   if (textError !== undefined) errors.body = textError;
   if (photoError !== undefined) errors.photos = photoError;
   if (channelError !== undefined) errors.channels = channelError;
-  if (galleryError !== undefined) errors.gallery = galleryError;
 
   const picked = nonEmpty(fields.tags);
   const body = nonEmpty(fields.body.map(trimmedBlock));
   const photos = nonEmpty(fields.photos.map((p) => ({ src: p.src, alt: p.alt.trim() })));
-  const drafted = draftGalleryOf(fields.gallery);
-  const gallery = drafted === undefined ? undefined : postGalleryOf(drafted);
+  const gallery = galleryOfFields(fields.gallery);
   const { date } = fields;
-  if (Object.keys(errors).length > 0 || picked === null || body === null || photos === null || gallery === null || !isIsoDate(date)) {
+  if (Object.keys(errors).length > 0 || picked === null || body === null || photos === null || !isIsoDate(date)) {
     return { ok: false, errors };
   }
   const place = fields.place.trim();
@@ -314,7 +305,7 @@ function trimmedBlock(block: BodyBlock): BodyBlock {
 }
 
 /** The fields in the order the panel shows them. */
-const FIELD_ORDER: readonly PostField[] = ["title", "date", "tags", "lead", "summary", "body", "photos", "channels", "gallery"];
+const FIELD_ORDER: readonly PostField[] = ["title", "date", "tags", "lead", "summary", "body", "photos", "channels"];
 
 /** The first field, in panel order, that still needs work, and what it needs. */
 export function firstPostError(errors: PostFieldErrors): { field: PostField; error: string } | undefined {
@@ -382,10 +373,15 @@ function listOf<T>(value: unknown, read: (item: unknown) => T | null): T[] | nul
   return items.some((item) => item === null) ? null : (items as T[]);
 }
 
-/** The gallery the panel sent: every photo an uploaded one, since the post panel never makes a placeholder; null otherwise. */
-function galleryFieldsOf(value: unknown): GalleryFields | null {
-  const gallery = readGalleryFields(value);
-  return gallery !== null && gallery.items.every((item) => isPhotoSrc(item.src)) ? gallery : null;
+/** A gallery photo the panel sent: an uploaded one, since the post panel never makes a placeholder; null otherwise. */
+function galleryItemFieldsOf(value: unknown): GalleryItemFields | null {
+  if (!isShape(value) || !isPhotoSrc(value.src) || !isString(value.alt) || !isString(value.caption)) return null;
+  return { src: value.src, alt: value.alt, caption: value.caption };
+}
+
+/** The gallery's photos the panel sent, up to the most a gallery holds; null otherwise. */
+function galleryFieldsOf(value: unknown): GalleryItemFields[] | null {
+  return Array.isArray(value) && value.length <= GALLERY_MAX ? listOf(value, galleryItemFieldsOf) : null;
 }
 
 /** `value` as the panel's fields: every key in its shape, no channel or photo twice; null otherwise. */

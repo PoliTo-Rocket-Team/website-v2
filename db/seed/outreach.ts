@@ -57,8 +57,6 @@ const caption = "We opened the lab to students from three Torino high schools…
  * which its page draws with `alt=""`.
  */
 const OPEN_LAB_GALLERY: PostGallery = {
-  shown: true,
-  title: "More from the lab",
   items: [
     { ...recordPhoto("Luna e Italia"), caption: "Talks in the main hall" },
     recordPhoto("Hosting Space Eagle"),

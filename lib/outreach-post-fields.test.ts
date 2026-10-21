@@ -3,10 +3,10 @@ import { test } from "node:test";
 import { editorVersion } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
-import { awardPosts, postBySlug, slugOf } from "./outreach";
+import { awardPosts, outreachRecord, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachEditor } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
-import { postFieldsOf, type PostFields } from "./outreach-post-fields";
+import { checkPostFields, draftOfFields, postFieldsOf, removePostGalleryPhoto, type PostFields } from "./outreach-post-fields";
 import { postColumns, postFromColumns } from "./outreach-rows";
 import type { OutreachPost, PostItem } from "./outreach-types";
 
@@ -118,4 +118,32 @@ test("Save draft keeps the published post live; Publish replaces it", async () =
   const after = await shown();
   assert.equal(postBySlug(after.posts, "renamed-in-a-draft")?.lead, "A new lead.");
   assert.equal(postBySlug(after.posts, slugOf(published)), undefined);
+});
+
+// A post's gallery has no switch and no title (Owner decision, issue #451):
+// Save draft and Publish never refuse because of it, a post with no gallery
+// photo has no gallery, and the last photo can be taken out.
+
+test("checkPostFields and draftOfFields never refuse because of the gallery, with no photo or with photos and no title", () => {
+  const post: OutreachPost = outreachRecord.posts[0];
+  const fields = postFieldsOf(post);
+  const photo = { src: "/outreach/gallery-one.webp", alt: "", caption: "" };
+  const captioned = { src: "/outreach/gallery-two.webp", alt: " Two ", caption: " At the stand " };
+  const cases = [
+    { gallery: [], saved: undefined },
+    { gallery: [photo, captioned], saved: { items: [{ src: photo.src, alt: "" }, { src: captioned.src, alt: "Two", caption: "At the stand" }] } },
+  ];
+  for (const { gallery, saved } of cases) {
+    const checked = checkPostFields({ ...fields, gallery }, post, outreachRecord.tags);
+    assert.ok(checked.ok, JSON.stringify(checked));
+    assert.deepEqual(checked.value.gallery, saved);
+    const drafted = draftOfFields({ ...fields, gallery }, post, outreachRecord.tags);
+    assert.ok(drafted.ok, JSON.stringify(drafted));
+    assert.deepEqual(drafted.value.gallery, saved);
+  }
+});
+
+test("the last gallery photo can be removed, and its uploaded file is let go", () => {
+  const photo = { src: "/outreach/gallery-one.webp", alt: "", caption: "" };
+  assert.deepEqual(removePostGalleryPhoto([photo], 0), { items: [], letGo: [photo.src] });
 });
