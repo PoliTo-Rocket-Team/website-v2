@@ -35,13 +35,18 @@ export const ACCESS_SHOW_LABELS: Readonly<Record<AccessShow, string>> = {
   "approve-orders": "Approve orders",
 };
 
-/** How the list is ordered. The page lists the leads with the role first, then each person in the order their access was given. */
+/** How the list is ordered. Leads first lists the leads with the role first, then each person in the order their access was given. */
 export type AccessSort = "leads-first" | "name" | "recent";
 
+/**
+ * The sort menu's choices. The first is the page's default, the sort
+ * NO_ACCESS_FILTER starts on: the most recently given access first (Owner
+ * decision, 2026-10-21, issue #481).
+ */
 export const ACCESS_SORTS: readonly { readonly sort: AccessSort; readonly label: string }[] = [
+  { sort: "recent", label: "Recently given" },
   { sort: "leads-first", label: "Leads first" },
   { sort: "name", label: "Name A to Z" },
-  { sort: "recent", label: "Recently given" },
 ];
 
 /** A division as the division select offers it: its full name, the shorter label, and the department it is in when the page knows it. */
@@ -140,7 +145,7 @@ export type AccessFilter = {
   readonly sort: AccessSort;
 };
 
-export const NO_ACCESS_FILTER: AccessFilter = { department: null, division: null, show: "everyone", query: "", sort: "leads-first" };
+export const NO_ACCESS_FILTER: AccessFilter = { department: null, division: null, show: "everyone", query: "", sort: "recent" };
 
 /** The division select's options: every division of the chosen department, or every division when none is chosen. */
 export function divisionOptions(model: AccessModel, department: string | null): AccessViewDivision[] {
