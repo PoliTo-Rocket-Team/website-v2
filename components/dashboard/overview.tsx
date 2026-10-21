@@ -152,7 +152,9 @@ function LeadView({
         ))}
       </div>
       {(left || activity.length > 0) && (
-        <div className={GRID}>
+        // With no recent activity the panels take the whole width, so no
+        // empty column is left on the right (Owner decision, 2026-10-21).
+        <div className={left && activity.length === 0 ? STACK : GRID}>
           {left && (
             <div className="flex min-w-0 flex-col gap-4">
               {attention.length > 0 && <AttentionPanel attention={attention} compact={compact} />}
