@@ -7,6 +7,7 @@ import { applyFormDefaults } from "@/lib/dashboard/details";
 import type { PositionContent } from "@/lib/dashboard/new-position";
 import type { TestViewer } from "@/lib/dashboard/viewer";
 import { publicFaqs } from "@/lib/faq/faq";
+import { NO_EDITS, type TeamEdits } from "./edits";
 import { dummyFaqSeed } from "./faqs";
 import { NO_OWN_CHANGES, type OwnApplicationsStart, type OwnChanges } from "./own";
 import { dummyDetails, isWithdrawn, ownApplicationsOf } from "./own-applications";
@@ -22,6 +23,7 @@ import {
   type DummyPosition,
 } from "./team";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
+import { dummyOrg } from "./team-pages";
 
 // The dummy side of the apply data interface (issue #150): the positions of
 // ./team.ts with the text the public pages show, as the test developer left
@@ -278,7 +280,9 @@ const sentInThisServer = new SentApplications();
  * own changes (./own.ts): saved details and withdrawn applications, over
  * the own applications `ownStart` names. The positions are the ones the
  * dashboard shows, with the roles posted, edited, opened and closed in
- * `dashboard` (./state.ts, issue #463).
+ * `dashboard` (./state.ts, issue #463). A role in a division closed on the
+ * Team pages (`team`, ./edits.ts), or in a closed department, is closed, as
+ * the dashboard closes it (issue #474).
  */
 export function dummyApplyData(
   viewer: TestViewer | null,
@@ -288,12 +292,15 @@ export function dummyApplyData(
   own: OwnChanges = NO_OWN_CHANGES,
   ownStart: OwnApplicationsStart = "sample",
   dashboard: DummyState = EMPTY_DUMMY_STATE,
+  team: TeamEdits = NO_EDITS,
 ): ApplyData {
   const stated = statedPositions(dashboard);
+  // Closing a department closes each of its divisions (./team-pages.ts), so the closed divisions cover both.
+  const shut = new Set(dummyOrg(team).closed.map((d) => d.id));
   // A cookie is browser data: a posted role naming no division of the arrays is left out.
   const all = stated.positions
     .filter((p) => divisions.some((d) => d.id === p.divisionId))
-    .map((p) => dummyApplyPosition(p, stated.content.get(p.id) ?? null));
+    .map((p) => dummyApplyPosition(shut.has(p.divisionId) ? { ...p, open: false } : p, stated.content.get(p.id) ?? null));
   const limit = dummyOpenLimit(openSelector);
   // A withdrawn application does not count: the person can apply again.
   const liveOwn = (userId: string, positionId: number) =>
