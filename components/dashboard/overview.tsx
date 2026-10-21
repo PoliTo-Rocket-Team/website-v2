@@ -297,7 +297,7 @@ function DivisionsPanel({ divisions }: { divisions: readonly DivisionSummary[] }
       {divisions.map((division) => {
         const lead = leadsLabel(division.leads);
         const leads = lead === null ? "No lead yet" : `${lead} ${division.leads.join(", ")}`;
-        const counts = `${division.newApplications} new · ${division.openPositions} open`;
+        const counts = waitingCounts(division);
         return (
           <li key={division.id}>
             <Link
@@ -325,8 +325,7 @@ function DivisionsPanel({ divisions }: { divisions: readonly DivisionSummary[] }
                   </span>
                 </span>
                 <span className="mt-0.5 block truncate text-[13px] text-text-2 md:hidden">
-                  {rosterSize(division.people)} · {plural(division.newApplications, "new application", "new applications")} ·{" "}
-                  {division.openPositions} open
+                  {rosterSize(division.people)} · {counts}
                 </span>
               </span>
               <span className="hidden shrink-0 text-[13px] font-semibold tabular-nums md:block">{counts}</span>
@@ -355,13 +354,9 @@ function DepartmentsPanel({ departments, people }: { departments: readonly Depar
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[15px] font-semibold md:text-[14px] md:font-medium">{departmentLabel(department.name)}</span>
             <span className="block truncate text-[13px] text-prt-muted">{departmentLine(department)}</span>
-            <span className="mt-0.5 block text-[13px] text-text-2 md:hidden">
-              {department.newApplications} new · {department.openPositions} open
-            </span>
+            <span className="mt-0.5 block text-[13px] text-text-2 md:hidden">{waitingCounts(department)}</span>
           </span>
-          <span className="hidden shrink-0 text-[13px] font-semibold tabular-nums md:block">
-            {department.newApplications} new · {department.openPositions} open
-          </span>
+          <span className="hidden shrink-0 text-[13px] font-semibold tabular-nums md:block">{waitingCounts(department)}</span>
         </li>
       ))}
     </Panel>
@@ -370,6 +365,11 @@ function DepartmentsPanel({ departments, people }: { departments: readonly Depar
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+/** What waits in a unit, in words: "2 new applications · 1 open position" (Owner decision, 2026-10-21). */
+function waitingCounts({ newApplications, openPositions }: { newApplications: number; openPositions: number }): string {
+  return `${plural(newApplications, "new application", "new applications")} · ${plural(openPositions, "open position", "open positions")}`;
 }
 
 /** A link to the page that handles the row, or Dismiss on a stored notice. */
