@@ -1,6 +1,7 @@
 import "./access-matrix/install";
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { NextRequest } from "next/server";
 import * as actions from "@/app/dashboard/actions";
@@ -10,7 +11,9 @@ import * as recruitmentActions from "@/app/dashboard/recruitment-actions";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
+import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
+import { checkPromotion } from "./hand-over";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
 import type { PositionsPage } from "./recruitment";
@@ -18,17 +21,19 @@ import { recordedWrites } from "./access-matrix/fake-db";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
-import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
-import { checkPromotion } from "./hand-over";
 import { ALL, ORG, VIEWERS, type Expect, type MatrixRow, type Unit } from "./access-matrix/matrix";
 import { signInAs } from "./access-matrix/session";
 
 // The server side of the dashboard access matrix (issue #477): every loader
-// the data interface hands the pages, called for real as every matrix
-// viewer, against an in-memory database (./access-matrix/fake-db.ts) seeded
-// with the matrix's org and a unit's worth of private data in each division
-// (./access-matrix/fixture.ts). Each unit's data carries markers, so an
-// answer is checked for what it holds, not for the rule its code asks.
+// the data interface hands the pages, every server action under
+// app/dashboard and both CV and letter routes, called for real as every
+// matrix viewer and signed out. They run against an in-memory database
+// (./access-matrix/fake-db.ts) seeded with the matrix's org and a unit's
+// worth of private data in each division (./access-matrix/fixture.ts); only
+// the database client, the session, Next's cache and headers and the file
+// stores are swapped (./access-matrix/install.ts). Each unit's data carries
+// markers, so an answer is checked for what it holds, not for the rule its
+// code asks; a write is checked by the rows it would change.
 
 /** Signs in as the matrix viewer and opens their dashboard on a freshly seeded database. */
 async function open(name: string): Promise<DashboardData> {
@@ -70,43 +75,60 @@ function leaked(answer: unknown, expect: Expect): string[] {
   return ALL.flatMap((u: Unit) => Object.values(MARKERS).flatMap((of) => of(u))).filter((m) => !allowed.has(m) && text.includes(m));
 }
 
-/** Every read the data interface hands a page, by name. */
-const READS: Readonly<Record<string, (data: DashboardData) => Promise<unknown>>> = {
-  navCounts: (d) => d.navCounts(),
-  hasShownApplications: (d) => d.hasShownApplications(),
-  overview: (d) => d.overview(),
-  myAlumni: (d) => d.myAlumni(),
-  members: (d) => d.members(null),
-  ...Object.fromEntries(ALL.map((u) => [`members of ${u}`, (d: DashboardData) => d.members(IDS.division(u))])),
-  ...Object.fromEntries(ALL.map((u) => [`findForAdd in ${u}`, (d: DashboardData) => d.findForAdd(IDS.division(u), "person")])),
-  findPeople: (d) => d.findPeople("person"),
-  alumni: (d) => d.alumni(),
-  teamTree: (d) => d.teamTree(),
-  teamStructure: (d) => d.teamStructure(),
-  recruitment: (d) => d.recruitment(),
-  positions: (d) => d.positions(),
-  applications: (d) => d.applications(),
-  ...Object.fromEntries(
-    ALL.flatMap((u) => [
-      [`CV in ${u}`, (d: DashboardData) => d.applicationDocument(IDS.application(u), "cv")],
-      [`letter in ${u}`, (d: DashboardData) => d.applicationDocument(IDS.application(u), "motivation-letter")],
-    ]),
-  ),
-  divisionAccess: (d) => d.divisionAccess(),
-  orders: (d) => d.orders(),
-  partners: (d) => d.partners.list(),
-  faqs: (d) => d.faqs.list(),
-  teamPage: (d) => d.teamPage.open(),
-  teamAdvisors: (d) => d.teamAdvisors.list(),
-  outreachPosts: (d) => d.outreach.posts.list(),
-  outreachSummit: (d) => d.outreach.summit(),
-  outreachTags: (d) => d.outreach.tags(),
-  projects: (d) => d.projects.list(),
-  projectBoard: (d) => d.projects.board(),
-  myProfile: (d) => d.myProfile(),
-  myAccount: (d) => d.myAccount(),
-  myApplications: (d) => d.myApplications(),
-};
+/** A read the data interface hands a page: its path on the interface, and the arguments it is called with (each unit's, where it takes one). */
+type Read = { readonly path: string; readonly args?: readonly (readonly unknown[])[] };
+
+const READS: readonly Read[] = [
+  { path: "navCounts" },
+  { path: "hasShownApplications" },
+  { path: "overview" },
+  { path: "myAlumni" },
+  { path: "members", args: [[null], ...ALL.map((u) => [IDS.division(u)])] },
+  { path: "findForAdd", args: ALL.map((u) => [IDS.division(u), "person"]) },
+  { path: "findPeople", args: [["person"]] },
+  { path: "alumni" },
+  { path: "teamTree" },
+  { path: "teamStructure" },
+  { path: "recruitment" },
+  { path: "positions" },
+  { path: "applications" },
+  { path: "applicationDocument", args: ALL.flatMap((u) => [[IDS.application(u), "cv"], [IDS.application(u), "motivation-letter"]]) },
+  { path: "divisionAccess" },
+  { path: "orders" },
+  { path: "partners.list" },
+  { path: "faqs.list" },
+  { path: "teamPage.open" },
+  { path: "teamAdvisors.list" },
+  { path: "outreach.posts.list" },
+  { path: "outreach.summit" },
+  { path: "outreach.tags" },
+  { path: "outreach.pinned" },
+  { path: "projects.list" },
+  { path: "projects.board" },
+  { path: "myProfile" },
+  { path: "myAccount" },
+  { path: "myApplications" },
+];
+
+/** Calls the method at `path` on the data interface. */
+function callPath(data: DashboardData, path: string, args: readonly unknown[]): Promise<unknown> {
+  const parts = path.split(".");
+  const owner = parts.slice(0, -1).reduce<Record<string, unknown>>((o, p) => o[p] as Record<string, unknown>, data as unknown as Record<string, unknown>);
+  return (owner[parts[parts.length - 1]] as (...a: readonly unknown[]) => Promise<unknown>)(...args);
+}
+
+/** Every read, once per argument list, by a name that says which. */
+const readCalls = (): [string, (data: DashboardData) => Promise<unknown>][] =>
+  READS.flatMap(({ path, args = [[]] }) => args.map((a): [string, (data: DashboardData) => Promise<unknown>] => [`${path}(${a.join(", ")})`, (d) => callPath(d, path, a)]));
+
+/** Every method's path on the data interface, editors and the team's writes included. */
+function methodPaths(value: Record<string, unknown>, prefix = ""): string[] {
+  return Object.entries(value).flatMap(([key, v]) => {
+    if (key === "viewer") return [];
+    if (typeof v === "function") return [`${prefix}${key}`];
+    return v !== null && typeof v === "object" ? methodPaths(v as Record<string, unknown>, `${prefix}${key}.`) : [];
+  });
+}
 
 /**
  * The markers the viewer's pages must show, so a clean answer is never one
@@ -178,12 +200,61 @@ describe("figures about applications come only where the viewer reads Applicatio
   }
 });
 
+const ACTION_FILES = ["actions", "team-actions", "outreach-actions", "project-actions", "recruitment-actions"].map((f) =>
+  readFileSync(new URL(`../../app/dashboard/${f}.ts`, import.meta.url), "utf8"),
+);
+
+/** How an action calls a method: `data.positions(`, `writes.saveMember(` for the team's writes, `partners.save(` on an editor. */
+function callText(path: string): string {
+  const parts = path.split(".");
+  if (parts.length === 1 || parts[0] === "teamWrites") return `.${parts[parts.length - 1]}(`;
+  return `${parts[parts.length - 2]}.${parts[parts.length - 1]}(`;
+}
+
+/**
+ * The writes on the data interface no server action makes, called directly
+ * as every viewer the matrix keeps out: Approve orders, which the Access page
+ * gives through its own write, and the content editors' plain item writes,
+ * which their own save methods run behind the site-content gate.
+ */
+const neverAsked = async () => ({ ok: false as const, error: "never asked" });
+const DIRECT_WRITES = new Map<string, { readonly args: readonly unknown[]; readonly may: (r: MatrixRow) => boolean; readonly proves: Proof }>([
+  ["setApproveOrders", { args: [{ personId: IDS.person("DM"), holds: true }], may: (r) => r.name === "team leader", proves: "write" }],
+  ["teamAdvisors.save", { args: ["save-draft", []], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["outreach.posts.save", { args: [null, "save-draft", neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["outreach.posts.saveUnfinished", { args: [null, neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["outreach.posts.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["projects.save", { args: [null, "save-draft", neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["projects.saveUnfinished", { args: [null, neverAsked], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["projects.remove", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["projects.unpublish", { args: [1], may: (r) => r.expect.siteContent, proves: "gate" }],
+  ["projects.reorder", { args: [() => true, []], may: (r) => r.expect.siteContent, proves: "gate" }],
+]);
+
+describe("the data interface opens only for a resolved account, and every method on it is called here", () => {
+  test("signed out, or holding a session that resolves to no account, nothing opens", async () => {
+    seedFixture();
+    signInAs(null);
+    assert.equal((await openDashboard()).kind, "signed-out");
+    signInAs("no-such-account");
+    assert.equal((await openDashboard()).kind, "account-unresolved");
+  });
+
+  test("each method is a read the sweep below calls, or the write of an action called further down", async () => {
+    const paths = methodPaths((await open("team leader")) as unknown as Record<string, unknown>);
+    const reads = READS.map((r) => r.path);
+    for (const path of reads) assert.ok(paths.includes(path), `${path} is not on the data interface`);
+    const unreached = paths.filter((p) => !reads.includes(p) && !ACTION_FILES.some((text) => text.includes(callText(p))));
+    assert.deepEqual(unreached.sort(), [...DIRECT_WRITES.keys()].sort(), "every write no action makes is called directly below");
+  });
+});
+
 describe("every loader, as every matrix viewer, answers only what the viewer reads", () => {
   for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
     test(name, async () => {
       const data = await open(name);
       let seen = "";
-      for (const [read, call] of Object.entries(READS)) {
+      for (const [read, call] of readCalls()) {
         const answer = await answerOf(() => call(data));
         assert.deepEqual(leaked(answer, expect), [], `${name}: ${read} holds data the viewer does not read`);
         seen += JSON.stringify(answer ?? null).toLowerCase();
@@ -481,19 +552,21 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
     });
   }
 
-  test("Approve orders, which no action but Access gives: only the team leader", async () => {
-    const run = async () => {
-      const opening = await openDashboard();
-      return opening.kind === "open" ? opening.data.setApproveOrders({ personId: IDS.person(DM), holds: true }) : "refused";
-    };
-    const control = await attempt(accountOf("team leader").userId, run);
-    assert.ok(!isRefusal(control.answer) && control.writes.length > 0, JSON.stringify(control.answer));
-    for (const row of VIEWERS.filter((r) => r.name !== "team leader")) {
-      const { answer, writes } = await attempt(accountOf(row.name).userId, run);
-      assert.ok(isRefusal(answer), row.name);
-      assert.deepEqual(writes, [], row.name);
-    }
-  });
+  for (const [path, { args, may, proves }] of DIRECT_WRITES) {
+    test(`${path}, which no action makes, called directly`, async () => {
+      const run = async () => {
+        const opening = await openDashboard();
+        return opening.kind === "open" ? callPath(opening.data, path, args) : "refused";
+      };
+      const control = await attempt(accountOf("team leader").userId, run);
+      assert.ok(proven(proves, control.answer, control.writes), `the team leader (${proves}): ${JSON.stringify(control.answer)}`);
+      for (const row of VIEWERS.filter((r) => !may(r))) {
+        const { answer, writes } = await attempt(accountOf(row.name).userId, run);
+        assert.ok(isRefusal(answer), `${row.name}: not refused: ${JSON.stringify(answer)}`);
+        assert.deepEqual(writes, [], `${row.name}: wrote`);
+      }
+    });
+  }
 });
 
 // The CV and letter links ---------------------------------------------------
