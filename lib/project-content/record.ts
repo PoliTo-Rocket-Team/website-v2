@@ -1,36 +1,25 @@
-import type {
-  DesignStory,
-  GallerySection,
-  Hero,
-  LaunchLog,
-  LaunchPhotos,
-  LogEntry,
-  NameStory,
-  Plan,
-  ProjectPageRecord,
-  Reasons,
-  Stat,
-  Versions,
-} from "@/lib/project-pages/types";
+import type { Hero, LaunchesBlockOf, LogEntry, PageBlock, PageBlockOf, Photo, ProjectPageRecord, Stat } from "@/lib/project-pages/types";
 import { type Award, type Copy, type Launch, type Project, type ProjectPage, type Spec, type WorkLine } from "@/lib/projects";
 import { publicVersion, type ContentItem } from "@/lib/content/versioned";
+import type { PhotoSrc } from "@/lib/outreach-types";
 import { isEngineModel, type OwnModel, type OwnRocketModel } from "@/lib/rocket-model";
 
 // One project as the content store keeps it (issue #295): everything the
 // project page, its /projects entry and its home card show, in one record
 // with a published version and a working draft (lib/content/versioned.ts).
 // Before the store each was typed by hand in its own file; now all three are
-// read off this record, so a fact lives in one place. Each top-level key is
-// one section an editor changes on its own. A section the page leaves out is
-// an absent key, as in lib/project-pages/types.ts. A 3D rocket is code, not
-// content: the record only names the model its card and its page draw
-// (lib/rocket-model.ts), and a project with none draws the placeholder.
+// read off this record, so a fact lives in one place. The page is a fixed top
+// (`hero`) and an ordered list of page blocks (`blocks`, epic #522), which
+// migration 0050 made of the fixed sections each record had before
+// (./legacy.ts). A 3D rocket is code, not content: the record only names the
+// model its top visual draws, which its card and its /projects panel draw too
+// (lib/rocket-model.ts), and a model slot with none draws the placeholder.
 
 /**
- * The home card (board 21): its own short copy, beside the project's name and
- * texture. `M` narrows the models it may name: a rocket's card names a rocket.
+ * The home card (board 21): its own short copy, beside the project's name,
+ * its background and the model of its top visual.
  */
-export type HomeCard<M extends OwnModel = OwnModel> = {
+export type HomeCard = {
   year: Copy;
   /** The pill's text. */
   status: string;
@@ -41,13 +30,6 @@ export type HomeCard<M extends OwnModel = OwnModel> = {
   specs: readonly [Spec, Spec, Spec];
   /** A bright texture tints its info box darker (Efesto's). */
   infoTint?: number;
-  /**
-   * The model the card draws; with none it draws the shared placeholder
-   * (lib/rocket-model.ts). Board 21 draws Cavour on all three cards; VES
-   * draws its own since it was built (issue #361), and Efesto its engine
-   * (issue #382).
-   */
-  rocket?: M;
 };
 
 /**
@@ -58,7 +40,58 @@ export type HomeCard<M extends OwnModel = OwnModel> = {
 export type FlightCount = { readonly count: "flights" };
 
 /** A rocket's home card: its pill is text or its flight count. */
-export type VehicleCard = Omit<HomeCard<OwnRocketModel>, "status"> & { status: string | FlightCount };
+export type VehicleCard = Omit<HomeCard, "status"> & { status: string | FlightCount };
+
+/** The 18 background presets (board 93d, Owner decisions on #522). Each has a tall and a wide file. */
+export const BACKGROUND_PRESETS = [
+  "gradient",
+  "orange",
+  "black",
+  "white",
+  "nozzle-orange",
+  "nozzle-grey",
+  "fan-orange",
+  "fan-grey",
+  "horizon-orange",
+  "horizon-grey",
+  "cloud-orange",
+  "cloud-grey",
+  "orange-streaks",
+  "grey-streaks",
+  "ember",
+  "flare",
+  "projects-page",
+  "cavour-page",
+] as const;
+
+export type BackgroundPreset = (typeof BACKGROUND_PRESETS)[number];
+
+/**
+ * What a project's card, its /projects panel and its page visual lie on: a
+ * preset, a picture an editor uploaded and cropped twice, or the brand
+ * texture the project had before presets (grill #524, R1.1). A kept texture
+ * is one file for both shapes, as before; it stays until an editor picks
+ * another background.
+ */
+export type Background =
+  | { readonly kind: "preset"; readonly preset: BackgroundPreset }
+  | { readonly kind: "upload"; readonly tall: PhotoSrc; readonly wide: PhotoSrc }
+  | { readonly kind: "texture"; readonly src: string };
+
+/** Tall (9:16) for the home card and phones; wide (2:1) for the page visual, the /projects panel and laptops. */
+export type BackgroundShape = "tall" | "wide";
+
+/** The file a background shows in one shape. */
+export function backgroundSrc(background: Background, shape: BackgroundShape): string {
+  switch (background.kind) {
+    case "preset":
+      return `/backgrounds/${background.preset}-${shape}.webp`;
+    case "upload":
+      return background[shape];
+    case "texture":
+      return background.src;
+  }
+}
 
 /** What every /projects entry shows (board 22). */
 type ListingBase = {
@@ -93,8 +126,8 @@ type LaunchBase = {
   version: string;
   motor: string;
   summary: Copy & { phone: string };
-  /** Photos beside the page's launch card; absent until one is uploaded. */
-  photos?: LaunchPhotos;
+  /** The page's launch card's one photo (Owner decision on #522); absent until one is uploaded. */
+  cover?: Photo;
 };
 
 /**
@@ -120,71 +153,86 @@ export type GroundedLaunch = LaunchBase & {
 
 export type StoredLaunch = FlownLaunch | GroundedLaunch;
 
-/** The launch history: the page's section and the /projects log, one list in date order. */
-export type LaunchHistory = { title: string; entries: readonly [StoredLaunch, ...StoredLaunch[]] };
+/** A launch history block as stored: the page's section and the /projects log, one list in date order. */
+export type LaunchesBlock = LaunchesBlockOf<StoredLaunch>;
 
-type RecordBase = {
+/** A page block as stored. */
+export type ProjectBlock = PageBlockOf<StoredLaunch>;
+
+/** An engine has flown nothing, so its page holds no launch history. */
+export type EngineBlock = Exclude<ProjectBlock, LaunchesBlock>;
+
+type RecordBase<M extends OwnModel> = {
   /** Its address, /projects/<slug>. */
   slug: string;
   name: string;
-  /** The brand texture behind its card and its page. */
-  texture: string;
+  background: Background;
   /** The page's meta description. */
   description: string;
-  hero: Hero;
-  nameStory: NameStory;
-  design: DesignStory;
-  versions?: Versions;
-  plan?: Plan;
-  reasons?: Reasons;
-  gallery?: GallerySection;
+  /** The top of the page; its visual is the model the card and the /projects panel draw too. */
+  hero: Hero<M>;
 };
 
 /**
- * A rocket: versions and a launch history, and its status counts its flights.
- * Its card draws a rocket only, never an engine; the stored record check
- * holds its page panel to the same (check.ts).
+ * A rocket: its status counts its flights. Its visual names a rocket only,
+ * never an engine, so its card and its panel draw a rocket.
  */
-export type VehicleRecord = RecordBase & { kind: "vehicle"; card: VehicleCard; listing: VehicleListing; launches?: LaunchHistory };
+export type VehicleRecord = RecordBase<OwnRocketModel> & {
+  kind: "vehicle";
+  card: VehicleCard;
+  listing: VehicleListing;
+  blocks: readonly ProjectBlock[];
+};
 
 /**
  * An engine in development: work lines and a milestone in place of a launch
- * history. It may name a rocket model as well as an engine: the import drew
- * Cavour on Efesto's card, as board 21 did (migration 0037).
+ * history. Its visual may name a rocket model as well as an engine.
  */
-export type EngineRecord = RecordBase & { kind: "engine"; card: HomeCard; listing: EngineListing };
+export type EngineRecord = RecordBase<OwnModel> & { kind: "engine"; card: HomeCard; listing: EngineListing; blocks: readonly EngineBlock[] };
 
 export type ProjectRecord = VehicleRecord | EngineRecord;
 
-/** The record's sections: what an editor changes one at a time, and what a preview keeps per change. */
-export type ProjectSection = keyof VehicleRecord;
+/** The record's top-level keys: what a preview keeps per change. */
+export type ProjectKey = keyof VehicleRecord;
 
-export const PROJECT_SECTIONS = [
+export const PROJECT_KEYS = [
   "kind",
   "slug",
   "name",
-  "texture",
+  "background",
   "listing",
   "card",
   "description",
   "hero",
-  "nameStory",
-  "design",
-  "versions",
-  "launches",
-  "plan",
-  "reasons",
-  "gallery",
-] as const satisfies readonly ProjectSection[];
-
-/** Sections the page may leave out: absent from the record, never empty. */
-export const OPTIONAL_SECTIONS = ["versions", "launches", "plan", "reasons", "gallery"] as const satisfies readonly ProjectSection[];
+  "blocks",
+] as const satisfies readonly ProjectKey[];
 
 const pad = (i: number) => String(i).padStart(2, "0");
 
+/**
+ * The launch history /projects lists and the card's flight count reads: the
+ * first launch history block the page shows. An engine has none.
+ */
+export function launchHistoryOf(record: ProjectRecord): LaunchesBlock | undefined {
+  if (record.kind === "engine") return undefined;
+  return record.blocks.find((block): block is LaunchesBlock => block.kind === "launches" && !block.hidden);
+}
+
 /** The launches of a record, as /projects lists them; an engine has none. */
 export function launchesOf(record: ProjectRecord): StoredLaunch[] {
-  return record.kind === "vehicle" && record.launches ? [...record.launches.entries] : [];
+  return [...(launchHistoryOf(record)?.entries ?? [])];
+}
+
+/** The record with another intro at the top of its page. */
+export function withIntro(record: ProjectRecord, text: string): ProjectRecord {
+  return record.kind === "vehicle"
+    ? { ...record, hero: { ...record.hero, intro: { text } } }
+    : { ...record, hero: { ...record.hero, intro: { text } } };
+}
+
+/** The model a project's top visual names: what its card and its /projects panel draw. None for a photo, no visual, or the placeholder. */
+export function visualModelOf<M extends OwnModel>(hero: Hero<M>): M | undefined {
+  return hero.visual.kind === "model" ? hero.visual.own?.model : undefined;
 }
 
 /** One launch as the /projects log reads it. */
@@ -210,7 +258,7 @@ export function logEntry(launch: StoredLaunch): LogEntry {
     outcome: launch.outcome,
     summary: launch.summary,
     ...(launch.award && { award: launch.award }),
-    ...(launch.photos && { photos: launch.photos }),
+    ...(launch.cover && { cover: launch.cover }),
   };
   if (launch.outcome === "did-not-fly") {
     const [a, b, c, d] = launch.stats;
@@ -227,25 +275,15 @@ export function logEntry(launch: StoredLaunch): LogEntry {
   };
 }
 
-function launchLogOf(history: LaunchHistory): LaunchLog {
-  const [first, ...rest] = history.entries;
-  return { title: history.title, entries: [logEntry(first), ...rest.map(logEntry)] };
+function pageBlockOf(block: ProjectBlock): PageBlock {
+  if (block.kind !== "launches") return block;
+  const [first, ...rest] = block.entries;
+  return { ...block, entries: [logEntry(first), ...rest.map(logEntry)] satisfies readonly [LogEntry, ...LogEntry[]] };
 }
 
-/** The project page's record: every section the project has, in the shape components/project-page/ draws. */
+/** The project page's record: its top and its blocks, in the shape components/project-page/ draws. */
 export function pageRecordOf(record: ProjectRecord): ProjectPageRecord {
-  const launches = record.kind === "vehicle" ? record.launches : undefined;
-  return {
-    description: record.description,
-    hero: record.hero,
-    name: record.nameStory,
-    design: record.design,
-    ...(record.versions && { versions: record.versions }),
-    ...(launches && { launches: launchLogOf(launches) }),
-    ...(record.plan && { plan: record.plan }),
-    ...(record.reasons && { reasons: record.reasons }),
-    ...(record.gallery && { gallery: record.gallery }),
-  };
+  return { description: record.description, hero: record.hero, blocks: record.blocks.map(pageBlockOf) };
 }
 
 /** The project's page: every published project has one at its slug (issue #301). The card links there. */
@@ -275,30 +313,35 @@ export function listingOf(record: ProjectRecord, position: number): Project {
     name: record.name,
     description: record.listing.description,
     specs: record.listing.specs,
-    texture: record.texture,
+    texture: backgroundSrc(record.background, "wide"),
   };
   if (record.kind === "engine") {
-    const { rocket } = record.card;
+    const model = visualModelOf(record.hero);
     return {
       ...base,
       kind: "engine",
-      ...(isEngineModel(rocket) && { engine: rocket }),
+      ...(isEngineModel(model) && { engine: model }),
       workLines: record.listing.workLines,
       milestone: record.listing.milestone,
     };
   }
+  const rocket = visualModelOf(record.hero);
   return {
     ...base,
     kind: "vehicle",
-    ...(record.card.rocket && { rocket: record.card.rocket }),
+    ...(rocket && { rocket }),
     versions: record.listing.versions,
     launches: launchesOf(record).map(listedLaunch),
     logSummary: record.listing.logSummary,
   };
 }
 
-/** The home card as the Projects section draws it: the card's copy with the project's number, name and texture. */
-export type HomeCardView = HomeCard & { num: string; name: string; texture: string };
+/**
+ * The home card as the Projects section draws it: the card's copy with the
+ * project's number, name, background (its tall file) and the model its top
+ * visual names; with none the card draws the shared placeholder.
+ */
+export type HomeCardView = HomeCard & { num: string; name: string; texture: string; rocket?: OwnModel };
 
 /** How many of the record's launches left the pad: the count /projects shows as "FLOWN ×<n>". */
 export function flightCountOf(record: ProjectRecord): number {
@@ -307,12 +350,14 @@ export function flightCountOf(record: ProjectRecord): number {
 
 export function homeCardOf(record: ProjectRecord, position: number): HomeCardView {
   const { status } = record.card;
+  const rocket = visualModelOf<OwnModel>(record.hero);
   return {
     ...record.card,
     status: typeof status === "string" ? status : `FLOWN ×${flightCountOf(record)}`,
+    ...(rocket && { rocket }),
     num: pad(position + 1),
     name: record.name,
-    texture: record.texture,
+    texture: backgroundSrc(record.background, "tall"),
   };
 }
 

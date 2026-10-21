@@ -41,7 +41,7 @@ export const NO_PHOTO_FILES: PhotoFiles = {
   drop: async () => {},
 };
 
-/** The uploaded photos a project's version shows: its launches' and its gallery's. */
+/** The uploaded photos a project's version holds: its visual's and its blocks', a hidden block's included. */
 const photosIn = (record: ProjectRecord): PhotoSrc[] => listPhotos(record).filter(isPhotoSrc);
 
 /** `files`, never deleting the photos in `held`. */
@@ -102,8 +102,8 @@ export function projectEditor(
   return {
     ...editor,
     saveFields(id, step, fields) {
-      // A section switched off leaves the record but stays in the panel, photos
-      // and all, so this save deletes none of the files the fields still hold.
+      // A section's fields stay in the panel, photos and all, whatever its switch
+      // says, so this save deletes none of the files the fields still hold.
       const saving = contentEditor(viewer, freeingFiles(store, keeping(files, heldPhotos(fields)), photosIn));
       return saving.save(id, step, async (opened) => {
         if (opened === null) return refused("Unknown project.");

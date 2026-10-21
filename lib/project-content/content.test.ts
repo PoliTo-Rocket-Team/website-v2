@@ -11,17 +11,75 @@ import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { launchCounts } from "@/lib/projects";
 import before from "./before.json";
 import { isProjectRecord, storedProjectRecord } from "./check";
-import { cavourSitePhotos, efestoEngineModel, efestoSiteContent, firstImport, importedProjects, importedRecords, projectImportSql, vesGreyTexture, vesMarkOneRocket, vesSitePhotos } from "./import";
+import {
+  cavourSitePhotos,
+  efestoEngineModel,
+  efestoSiteContent,
+  firstImport,
+  importedProjects,
+  importedRecords,
+  legacyRecords,
+  projectImportSql,
+  vesGreyTexture,
+  vesMarkOneRocket,
+  vesSitePhotos,
+} from "./import";
+import { blocksRecordOf, type LegacyProjectRecord } from "./legacy";
 import { listPhotos } from "./list-fields";
-import { homeCardOf, listingOf, listingsNewestFirst, newestFirst, pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "./record";
+import {
+  homeCardOf,
+  listingOf,
+  listingsNewestFirst,
+  newestFirst,
+  pageRecordOf,
+  type LaunchesBlock,
+  type ProjectRecord,
+  type StoredLaunch,
+  type VehicleRecord,
+} from "./record";
 import { revise, revisionSql } from "./revision";
+import { sectionBlockOf, sectionContentOf, withSectionBlock } from "./sections";
 import { withSubscriptDigits } from "./subscript";
+import type { PageBlock, ProjectPageRecord, TextBlock } from "@/lib/project-pages/types";
 
 // The projects content store (issue #295). ./before.json is what the code
 // drew before the switch: each page record of lib/project-pages/<slug>.ts,
 // the /projects entries of lib/projects.ts with its header figures, and the
 // home cards of components/landing/projects.tsx (each card's text as the
-// HTML it rendered). The imported records must draw exactly that.
+// HTML it rendered). The imported records must draw exactly that, read
+// through migration 0050's page blocks (./legacy.ts).
+
+/** A page's block with this id, without its id, kind and hidden flag: what its section held before blocks. */
+function sectionOf(blocks: readonly PageBlock[], id: string): Record<string, unknown> | undefined {
+  const block = blocks.find((b) => b.id === id);
+  if (block === undefined) return undefined;
+  const { id: _id, kind: _kind, hidden: _hidden, ...section } = block;
+  return section;
+}
+
+/** A story's text block as the story section it was before blocks. */
+function storyOf(blocks: readonly PageBlock[], id: "name" | "design") {
+  const block = blocks.find((b): b is TextBlock => b.id === id && b.kind === "text")!;
+  return { title: block.heading?.title, body: block.body, ...(block.parts && { parts: block.parts }) };
+}
+
+/** The page record in the shape the code drew before blocks, its top's visual left out (it is checked on its own). */
+function sectionsPage(page: ProjectPageRecord) {
+  const { visual: _visual, ...hero } = page.hero;
+  return plain({
+    description: page.description,
+    hero,
+    name: storyOf(page.blocks, "name"),
+    design: storyOf(page.blocks, "design"),
+    versions: sectionOf(page.blocks, "versions"),
+    launches: sectionOf(page.blocks, "launches"),
+    plan: sectionOf(page.blocks, "plan"),
+    reasons: sectionOf(page.blocks, "reasons"),
+    gallery: sectionOf(page.blocks, "gallery"),
+  });
+}
+
+const launchHistory = (record: ProjectRecord) => sectionBlockOf(record, "launches");
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 
@@ -36,8 +94,9 @@ const PILL_TONE: Record<string, ProjectRecord["card"]["statusTone"]> = {
   "bg-prt-text text-ground": "light",
 };
 
-/** The import as the switch carried it, before any later revision. */
-const published = () => publicItems(importedProjects(firstImport));
+/** The import as the switch carried it, before any later revision, read as migration 0050 turns it. */
+const firstImportRecords = firstImport.map(({ teaser: _retired, ...record }) => blocksRecordOf(record as LegacyProjectRecord));
+const published = () => publicItems(importedProjects(firstImportRecords));
 
 const migrationFile = (name: string) => readFileSync(join(__dirname, "..", "..", "drizzle", name), "utf8");
 
@@ -55,9 +114,10 @@ test("migration 0040 holds exactly the VES Mark I revision, and the revised reco
     "regenerate the migration from revisionSql(vesMarkOneRocket)",
   );
   const ves = importedRecords[1];
-  assert.equal(ves.card.rocket, "ves");
-  assert.deepEqual(pageRecordOf(ves).hero.visual?.rocket?.own?.model, "ves");
-  const markI = ves.kind === "vehicle" ? ves.versions?.after.find((v) => v.pill === "VES MARK I") : undefined;
+  assert.equal(homeCardOf(ves, 1).rocket, "ves");
+  const { visual } = pageRecordOf(ves).hero;
+  assert.equal(visual.kind === "model" ? visual.own?.model : undefined, "ves");
+  const markI = sectionContentOf(ves, "versions")?.after.find((v) => v.pill === "VES MARK I");
   assert.ok(markI, "VES has its Mark I version");
   const { diameter, length, wetMass, motor, maxSpeed, targetApogee } = markI.specs;
   assert.deepEqual(
@@ -75,9 +135,8 @@ test("migration 0041 holds exactly the current-site photo revisions, and every p
     assert.ok(migration.includes(revisionSql(revision)), `regenerate the migration from revisionSql(${revision.slug} photos)`);
   for (const record of importedRecords.slice(0, 2)) {
     assert.ok(isProjectRecord(plain(record)), record.slug);
-    const page = pageRecordOf(record);
-    assert.ok(page.launches?.entries.every((launch) => launch.photos?.length === 2), `${record.slug}: every launch card has its two photos`);
-    assert.ok(page.gallery?.items.every((item) => "src" in item), `${record.slug}: the gallery holds no placeholder`);
+    assert.ok(launchHistory(record)?.entries.every((launch) => launch.cover !== undefined), `${record.slug}: every launch card has its cover`);
+    assert.ok(sectionContentOf(record, "gallery")?.items.every((item) => "src" in item), `${record.slug}: the gallery holds no placeholder`);
     for (const src of listPhotos(record))
       assert.ok(existsSync(join(__dirname, "..", "..", "public", src)), `${src} is in public/`);
   }
@@ -89,10 +148,14 @@ test("migration 0042 holds exactly the VES grey texture revision, and the textur
     "regenerate the migration from revisionSql(vesGreyTexture)",
   );
   const [cavour, ves, efesto] = importedRecords;
-  assert.equal(ves.texture, "/textures/project-ves-grey.webp");
-  assert.ok(existsSync(join(__dirname, "..", "..", "public", ves.texture)), `${ves.texture} is in public/`);
+  assert.deepEqual(ves.background, { kind: "texture", src: "/textures/project-ves-grey.webp" });
+  assert.ok(existsSync(join(__dirname, "..", "..", "public", "textures", "project-ves-grey.webp")), "the grey texture is in public/");
   assert.equal(firstImport[1].texture, "/textures/project-ves.webp", "the import itself stays as 0037 carried it");
-  assert.deepEqual([cavour.texture, efesto.texture], [firstImport[0].texture, firstImport[2].texture], "no other project's texture changes");
+  assert.deepEqual(
+    [cavour.background, efesto.background],
+    [firstImport[0], firstImport[2]].map((r) => ({ kind: "texture", src: r.texture })),
+    "no other project's texture changes",
+  );
 });
 
 test("migration 0043 holds exactly the Efesto engine revision, and only an engine record may name the engine", () => {
@@ -102,14 +165,15 @@ test("migration 0043 holds exactly the Efesto engine revision, and only an engin
   );
   const efesto = importedRecords[2];
   assert.ok(isProjectRecord(plain(efesto)));
-  assert.equal(efesto.card.rocket, "efesto");
-  assert.equal(pageRecordOf(efesto).hero.visual?.rocket?.own?.model, "efesto");
+  assert.equal(homeCardOf(efesto, 2).rocket, "efesto");
+  const { visual } = pageRecordOf(efesto).hero;
+  assert.equal(visual.kind === "model" ? visual.own?.model : undefined, "efesto");
   assert.equal(firstImport[2].card.rocket, "cavour", "the import itself stays as 0037 carried it");
 
   const cavour = plain(importedRecords[0]) as VehicleRecord;
-  assert.equal(isProjectRecord({ ...cavour, card: { ...cavour.card, rocket: "efesto" } }), false, "a rocket's card draws a rocket");
-  const visual = { caption: "CAVOUR", rocket: { own: { model: "efesto", alt: "" } } };
-  assert.equal(isProjectRecord({ ...cavour, hero: { ...cavour.hero, visual } }), false, "a rocket's page draws a rocket");
+  const engine = { kind: "model", caption: "CAVOUR", own: { model: "efesto", alt: "" } };
+  assert.equal(isProjectRecord({ ...cavour, hero: { ...cavour.hero, visual: engine } }), false, "a rocket's page, card and panel draw a rocket");
+  assert.ok(isProjectRecord({ ...(plain(efesto) as ProjectRecord), hero: { ...efesto.hero, visual: { ...engine, own: { model: "cavour", alt: "" } } } }), "an engine's may draw a rocket");
 });
 
 test("migration 0046 holds exactly the Efesto site content revision, and the revised Efesto is a whole record", () => {
@@ -119,12 +183,11 @@ test("migration 0046 holds exactly the Efesto site content revision, and the rev
   );
   const efesto = importedRecords[2];
   assert.ok(isProjectRecord(plain(efesto)));
-  const page = pageRecordOf(efesto);
-  assert.equal(page.gallery?.items.length, 2, "the gallery holds the public site's two images");
+  assert.equal(sectionContentOf(efesto, "gallery")?.items.length, 2, "the gallery holds the public site's two images");
   for (const src of listPhotos(efesto))
     assert.ok(existsSync(join(__dirname, "..", "..", "public", src)), `${src} is in public/`);
   assert.deepEqual(
-    page.reasons?.items.map((r) => r.title),
+    sectionContentOf(efesto, "reasons")?.items.map((r) => r.title),
     ["Reusability", "New materials", "New technologies", "Static fire qualification", "Simplicity"],
   );
   assert.equal(firstImport[2].gallery, undefined, "the import itself stays as 0037 carried it");
@@ -137,16 +200,24 @@ test("the imported records draw the same page records, /projects entries and hom
   records.forEach((record, i) => {
     // The page no longer carries the next-project card's line (issue #377).
     const { teaser: _, ...page } = before.pages[record.slug as keyof typeof before.pages];
-    assert.deepEqual(plain(pageRecordOf(record)), page, `${record.slug} page`);
+    // The sections are page blocks now, in the same order (migration 0050); the top's visual is checked below.
+    const { visual: _visual, ...hero } = page.hero as typeof page.hero & { visual?: unknown };
+    assert.deepEqual(sectionsPage(pageRecordOf(record)), plain({ ...page, hero }), `${record.slug} page`);
+    assert.deepEqual(
+      pageRecordOf(record).blocks.map((b) => b.id),
+      Object.keys(page).filter((key) => !["description", "hero"].includes(key)),
+      `${record.slug}: the blocks are in the page's order`,
+    );
     // A rocket's panel model came after the switch (issue #381): it is the home card's.
     const listing = listingOf(record, i);
     assert.deepEqual(plain({ ...listing, rocket: undefined }), before.projects[i], `${record.slug} /projects entry`);
-    if (listing.kind === "vehicle") assert.equal(listing.rocket, record.card.rocket, `${record.slug} /projects rocket`);
+    if (listing.kind === "vehicle") assert.equal(listing.rocket, homeCardOf(record, i).rocket, `${record.slug} /projects rocket`);
 
+    // The card's model is its top visual's now (migration 0050): checked on the revised records below.
     const card = homeCardOf(record, i);
     const was = before.homeCards[i];
-    const { desc, statusStyle, ...rest } = was;
-    assert.deepEqual(plain({ ...card, desc: undefined, statusTone: undefined }), rest, `${record.slug} home card`);
+    const { desc, statusStyle, rocket: _rocket, ...rest } = was;
+    assert.deepEqual(plain({ ...card, desc: undefined, statusTone: undefined, rocket: undefined }), rest, `${record.slug} home card`);
     assert.equal(card.statusTone, PILL_TONE[statusStyle], `${record.slug} pill`);
     assert.equal(html(withSubscriptDigits(card.desc.text)), desc.text, `${record.slug} card text`);
     assert.equal(card.desc.phone && html(withSubscriptDigits(card.desc.phone)), "phone" in desc ? desc.phone : undefined, `${record.slug} card phone text`);
@@ -154,23 +225,40 @@ test("the imported records draw the same page records, /projects entries and hom
   assert.deepEqual(plain(launchCounts(records.map(listingOf))), before.headerStats.slice(0, 3));
 });
 
+test("once migrated, each project's home card, /projects entry and page keep the texture and the model they had", () => {
+  legacyRecords.forEach((legacy, i) => {
+    const record = importedRecords[i];
+    const card = homeCardOf(record, i);
+    const listing = listingOf(record, i);
+    assert.equal(card.texture, legacy.texture, `${legacy.slug} card texture`);
+    assert.equal(listing.texture, legacy.texture, `${legacy.slug} /projects texture`);
+    assert.equal(card.rocket, legacy.card.rocket, `${legacy.slug} card model`);
+    assert.equal(listing.kind === "vehicle" ? listing.rocket : listing.engine, legacy.card.rocket, `${legacy.slug} /projects model`);
+    const { visual } = pageRecordOf(record).hero;
+    assert.deepEqual(visual, { kind: "model", caption: legacy.hero.visual?.caption, own: legacy.hero.visual?.rocket?.own }, `${legacy.slug} page visual`);
+  });
+});
+
 test("a stored record that breaks a shape rule is not a record", () => {
   const cavour = plain(importedRecords[0]) as VehicleRecord;
+  const history = launchHistory(cavour)!;
   assert.equal(isProjectRecord({ ...cavour, hero: { ...cavour.hero, facts: [] } }), false, "one key fact at least");
-  assert.equal(isProjectRecord({ ...cavour, launches: { ...cavour.launches, entries: [] } }), false, "a launch history has a launch");
+  assert.equal(isProjectRecord(withSectionBlock(cavour, "launches", { ...history, entries: [] as never })), false, "a launch history has a launch");
   assert.equal(isProjectRecord({ ...cavour, kind: "engine" }), false, "an engine's listing has work lines");
   assert.equal(isProjectRecord({ ...cavour, slug: "Not a slug" }), false);
   assert.equal(isProjectRecord({ ...cavour, extra: 1 }), false);
   const { description: _, ...noDescription } = cavour;
   assert.equal(isProjectRecord(noDescription), false);
+  assert.equal(isProjectRecord({ ...cavour, blocks: [...cavour.blocks, cavour.blocks[0]] }), false, "no two blocks share an id");
+  assert.equal(isProjectRecord({ ...cavour, background: { kind: "texture", src: "/../secret" } }), false, "a kept texture is a site file");
+  assert.equal(isProjectRecord({ ...cavour, background: { kind: "preset", preset: "blue" } }), false, "a preset is one of the 18");
+  const efesto = plain(importedRecords[2]) as ProjectRecord;
+  assert.equal(isProjectRecord({ ...efesto, blocks: [...efesto.blocks, { ...history, id: "flights" }] }), false, "an engine has no launch history");
 });
 
 test("a record stored before issue #377 still reads, without the retired next-project line", () => {
   const cavour = plain(importedRecords[0]) as VehicleRecord;
-  const stored = plain(firstImport[0]) as VehicleRecord & { teaser: string };
-  const { teaser: _, ...unrevised } = stored;
-  assert.equal(isProjectRecord(stored), false, "the import carries the retired key");
-  assert.deepEqual(storedProjectRecord(stored), unrevised);
+  assert.equal(isProjectRecord({ ...cavour, teaser: "A line." }), false, "the retired key is not the record's");
   assert.deepEqual(storedProjectRecord({ ...cavour, teaser: "A line." }), cavour);
   assert.equal(storedProjectRecord({ ...cavour, extra: 1 }), null, "only a retired key is let through");
 });
@@ -220,7 +308,8 @@ test("the /projects header counts follow the stored launches: a launch added and
     ],
     phoneStat: 0,
   };
-  const withLaunch: VehicleRecord = { ...ves, launches: { ...ves.launches!, entries: [...ves.launches!.entries, launch] } };
+  const history = launchHistory(ves)!;
+  const withLaunch = withSectionBlock(ves, "launches", { ...history, entries: [...history.entries, launch] });
   const editor = contentEditor(admin, store);
   assert.ok((await editor.save(2, "save-draft", async () => ({ ok: true, value: withLaunch }))).ok);
   assert.deepEqual(await counts(store), ["4 FLIGHTS", "3 COUNTRIES", "3 AWARDS"], "a draft launch counts for nothing");
@@ -228,7 +317,8 @@ test("the /projects header counts follow the stored launches: a launch added and
   assert.ok((await editor.save(2, "publish", async () => ({ ok: true, value: withLaunch }))).ok);
   assert.deepEqual(await counts(store), ["5 FLIGHTS", "4 COUNTRIES", "4 AWARDS"]);
   const page = pageRecordOf(publicItems(await store.list())[1]);
-  assert.equal(page.launches?.entries.at(-1)?.title, "A new campaign", "the page's launch history shows it too");
+  const shown = page.blocks.find((b): b is LaunchesBlock & PageBlock => b.kind === "launches");
+  assert.equal(shown?.entries.at(-1)?.title, "A new campaign", "the page's launch history shows it too");
 });
 
 test("a home card draws a formula's subscript digits lowered, and leaves other text alone", () => {

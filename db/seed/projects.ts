@@ -11,7 +11,7 @@ import { projects, projectVersions } from "@/db/schema";
 import type { ContentItem } from "@/lib/content/versioned";
 import { importedProjects } from "@/lib/project-content/import";
 import { newProjectRecord } from "@/lib/project-content/new-project";
-import type { ProjectRecord } from "@/lib/project-content/record";
+import { withIntro, type ProjectRecord } from "@/lib/project-content/record";
 import { contentVersionRows } from "./content";
 import { rowsOf, tableSeedModule } from "./rows";
 
@@ -32,7 +32,7 @@ export const PROJECT_ITEMS: readonly ContentItem<ProjectRecord>[] = [
     if (item.id !== DRAFT_CHANGES_PROJECT || item.version.state !== "published") return item;
     const published = item.version.published;
     const intro = "The second Founding Fathers rocket, named after Vittorio Emanuele II. Mark II won Design & Build at IREC 2025.";
-    const draft: ProjectRecord = { ...published, hero: { ...published.hero, intro: { text: intro } } };
+    const draft = withIntro(published, intro);
     return { ...item, version: { state: "published", published, draft } };
   }),
   {

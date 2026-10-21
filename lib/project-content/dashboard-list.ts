@@ -20,7 +20,7 @@ export type ProjectRow = {
   /** Where Edit page opens it: /dashboard/projects/<slug>. */
   readonly slug: string;
   readonly name: string;
-  /** The project's own brand texture, as its card and page draw it. */
+  /** The project's background, as its home card draws it. */
   readonly texture: string;
   /** The card line under the name. */
   readonly desc: Copy;
@@ -45,13 +45,13 @@ export function projectRows(items: readonly ContentItem<ProjectRecord>[]): Proje
     const record = editorVersion(item.version);
     return { ...homeCardOf(record, position), item, record };
   });
-  return newestFirst(cards).map(({ item, record, status }) => {
+  return newestFirst(cards).map(({ item, record, status, texture }) => {
     const published = publicVersion(item.version);
     return {
       id: item.id,
       slug: record.slug,
       name: record.name,
-      texture: record.texture,
+      texture,
       desc: record.card.desc,
       kind: PROJECT_KIND_LABELS[record.kind],
       years: record.listing.years,
