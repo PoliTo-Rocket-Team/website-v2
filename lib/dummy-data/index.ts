@@ -68,6 +68,7 @@ import {
   approveOrdersHoldersOf,
   dummyAccessPage,
   dummyRemoveAllAccess,
+  dummyRemoveGrant,
   dummySaveAccess,
   withApproveOrdersChange,
   type ApproveOrdersHolding,
@@ -1118,6 +1119,8 @@ export function dummyDashboardData(
       await keepApproveOrders(result.value);
       return written(null);
     },
+    removeGrant: async (input) =>
+      accessKind === null || person === null ? refused(notOnTeam) : dummyRemoveGrant(accessKind, person, teamRoster, input, closedIds, holders),
 
     orders: async () => (ordersKind === null || person === null ? null : dummyOrdersPage(ordersKind, person, holders)),
     placeOrder: async (fields, quote) =>

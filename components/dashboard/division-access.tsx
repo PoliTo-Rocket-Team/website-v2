@@ -33,6 +33,7 @@ import {
   areaLevelsOf,
   areaRule,
   canChangePerson,
+  checkRemoveGrant,
   heldIn,
   heldLevel,
   heldLines,
@@ -45,6 +46,7 @@ import {
   placeLine,
   placesHeldBy,
   placesOf,
+  removalOf,
   samePlace,
   SEAT_LABELS,
   shortUnitName,
@@ -62,6 +64,7 @@ import {
   type AreaLevels,
   type ApproveOrdersHolder,
   type PersonAccess,
+  type RemoveGrant,
   type SaveAccess,
 } from "@/lib/dashboard/division-access";
 import {
@@ -100,6 +103,7 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 type Actions = {
   saveAccess: (input: SaveAccess) => Promise<WriteResult<readonly AccessGrant[]>>;
   removeAllAccess: (personId: number) => Promise<WriteResult<null>>;
+  removeGrant: (input: RemoveGrant) => Promise<WriteResult<readonly AccessGrant[]>>;
 };
 
 type Open = { readonly kind: "none" } | { readonly kind: "give" } | { readonly kind: "edit"; readonly personId: number };
@@ -707,8 +711,9 @@ function wholeDepartmentLine(unit: AccessDepartmentUnit): string {
  * person, on a head's or a team page the place (Where), a tick per area the
  * place offers, and a level per ticked area, up to the viewer's own; for the
  * team leader, "Approve orders" too. Save makes the person's areas in that
- * place exactly what is ticked. On Edit the person is locked, and Remove all
- * access, after a confirm, takes every area away in every place.
+ * place exactly what is ticked. On Edit the person is locked; under the form,
+ * "Current access" lists each grant with its own Remove (issue #483), and
+ * Remove all access, last and after a confirm, takes every area away in every place.
  */
 function AccessDrawer({
   open,
@@ -812,6 +817,40 @@ function AccessDrawer({
       toast.success(`Removed ${editing.name}'s access`);
     });
 
+  // Remove on one "Current access" row (issue #483): that one grant goes, and the person's row in the table reads the rest.
+  const [removingGrant, setRemovingGrant] = useState<number | null>(null);
+  const removeOne = async (grant: AccessGrant) => {
+    if (editing === null) return;
+    setRemovingGrant(grant.id);
+    try {
+      const result = await actions.removeGrant(removalOf(grant));
+      if (!result.ok) {
+        toast.error("Could not remove access", { description: result.error });
+        return;
+      }
+      onSaved(editing.id, result.value, null);
+      toast.success(`Removed ${editing.name}'s ${ACCESS_TARGET_LABELS[grant.target]} access`);
+    } catch (err) {
+      toast.error("Could not remove access", { description: err instanceof Error ? err.message : "Please try again." });
+    } finally {
+      setRemovingGrant(null);
+    }
+  };
+  // The person's grants, place by place in the order Where lists them, then area by area.
+  const placeOrder = placesOf(unit).map(placeKey);
+  const heldGrants =
+    editing === null
+      ? []
+      : grants
+          .filter((g) => g.person.id === editing.id)
+          .sort(
+            (a, b) =>
+              placeOrder.indexOf(placeKey(a.place)) - placeOrder.indexOf(placeKey(b.place)) ||
+              ACCESS_TARGETS.indexOf(a.target) - ACCESS_TARGETS.indexOf(b.target),
+          );
+  // Remove shows only where the server's own check passes.
+  const mayRemove = (grant: AccessGrant) => checkRemoveGrant({ ...access, grants }, removalOf(grant)).ok;
+
   const removable =
     editing !== null &&
     (canGiveApprove || !holdsApproveOrders(access, editing.id)) &&
@@ -829,13 +868,6 @@ function AccessDrawer({
         submitLabel={editing ? "Save" : "Give access"}
         submitting={submitting}
         onSubmit={submit}
-        secondary={
-          editing && removable ? (
-            <button type="button" onClick={() => setConfirming(true)} className={PANEL_DANGER_BUTTON}>
-              Remove all access
-            </button>
-          ) : undefined
-        }
       >
         {editing ? (
           <Field label="Person" hint="can't be changed">
@@ -908,6 +940,19 @@ function AccessDrawer({
             {error}
           </p>
         )}
+
+        {/* Under the form, every grant the person holds, each with its own Remove; Remove all access last (Owner decision, issue #483). */}
+        {editing && heldGrants.length > 0 && (
+          <CurrentAccess grants={heldGrants} mayRemove={mayRemove} removing={removingGrant} onRemove={removeOne} />
+        )}
+
+        {editing && removable && (
+          <div className="mt-4">
+            <button type="button" onClick={() => setConfirming(true)} disabled={removingGrant !== null} className={PANEL_DANGER_BUTTON}>
+              Remove all access
+            </button>
+          </div>
+        )}
       </Drawer>
 
       <ConfirmDialog
@@ -928,6 +973,64 @@ function AccessDrawer({
 
 const SELECT =
   "h-11 w-full cursor-pointer appearance-none rounded-[10px] border border-white-10 bg-white-5 pr-10 text-[15px] text-prt-text transition-colors duration-300 ease-out focus:border-accent focus:outline-none";
+
+/**
+ * "Current access" in Edit access (Owner decision, issue #483): one row per
+ * grant the person holds, with its area, level and place, and Remove on the
+ * rows the viewer may take away. A row they may not shows locked.
+ */
+function CurrentAccess({
+  grants,
+  mayRemove,
+  removing,
+  onRemove,
+}: {
+  grants: readonly AccessGrant[];
+  mayRemove: (grant: AccessGrant) => boolean;
+  /** The grant whose Remove is on its way, if any: every Remove waits for it. */
+  removing: number | null;
+  onRemove: (grant: AccessGrant) => void;
+}) {
+  const label = useId();
+  return (
+    <section className="mt-6" aria-labelledby={label}>
+      <GroupLabel id={label} label="Current access" hint="each grant on its own" />
+      <ul className="flex flex-col divide-y divide-hairline rounded-[10px] border border-white-10">
+        {grants.map((g) => {
+          const Icon = TARGET_ICONS[g.target];
+          const where = placeLine(g.place);
+          return (
+            <li key={g.id} className="flex items-center gap-3 px-3 py-2.5">
+              <Icon aria-hidden className="h-[18px] w-[18px] shrink-0 text-text-2" strokeWidth={1.75} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-1.5 text-[14px]">
+                  <span className="font-medium text-prt-text">{ACCESS_TARGET_LABELS[g.target]}</span>
+                  <span className="text-[13px]">
+                    <LevelLabel level={g.level} short={false} />
+                  </span>
+                </span>
+                <span className="block truncate text-[12px] text-prt-muted">{where}</span>
+              </span>
+              {mayRemove(g) ? (
+                <button
+                  type="button"
+                  onClick={() => onRemove(g)}
+                  disabled={removing !== null}
+                  aria-label={`Remove ${ACCESS_TARGET_LABELS[g.target]}, ${where}`}
+                  className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-danger/50 px-3 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 disabled:cursor-wait disabled:opacity-60 ${FOCUS} focus-visible:outline-offset-2`}
+                >
+                  {removing === g.id ? "Removing" : "Remove"}
+                </button>
+              ) : (
+                <Lock aria-label="You cannot remove this" className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
 
 /** One choice of Where: a round tick, its name and the line under it (boards 65b and 71b). */
 function WhereOption({

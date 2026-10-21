@@ -158,6 +158,12 @@ export interface DashboardData {
   saveAccess(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
   /** Remove all access (board 60c): every area the person holds in the viewer's division or department. */
   removeAllAccess(personId: number): Promise<WriteResult<null>>;
+  /**
+   * Remove on one "Current access" row in Edit access (issue #483): one area
+   * of one person in one place goes, checked by `checkRemoveGrant`, and
+   * nothing else changes. Answers all the person's grants as the table shows them.
+   */
+  removeGrant(input: unknown): Promise<WriteResult<readonly AccessGrant[]>>;
 
   /**
    * Boards 61 to 61d, 61m, 67 and 67b (issue #233): every order in the team,

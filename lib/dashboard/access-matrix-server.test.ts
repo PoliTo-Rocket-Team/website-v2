@@ -493,6 +493,13 @@ const ACTION_CASES: readonly ActionCase[] = [
   // Access, on someone in DM. A lead's Access page covers only the divisions they lead by role (#488).
   { action: "actions.saveAccess", run: () => actions.saveAccess({ personId: IDS.person(DM), areas: { positions: "edit" } }), may: accessInDM, control: by("team leader") },
   { action: "actions.removeAllAccess", run: () => actions.removeAllAccess(IDS.person(DM)), may: accessInDM, control: by("team leader") },
+  // The one grant DM's member holds: Members, in DM (./access-matrix/fixture.ts).
+  {
+    action: "actions.removeGrant",
+    run: () => actions.removeGrant({ personId: IDS.person(DM), where: IDS.division(DM), target: "members" }),
+    may: accessInDM,
+    control: by("team leader"),
+  },
 
   // Orders. Which units' orders an Orders page edits is #233's; the matrix pins the refusal without Orders.
   { action: "actions.placeOrder", run: () => actions.placeOrder(form(ORDER)), may: (r) => (r.expect.ordersPage ? undefined : false), control: by("team leader") },
