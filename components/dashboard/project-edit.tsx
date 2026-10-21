@@ -8,7 +8,7 @@ import type { EditBlocks, EditDevice, PageTarget } from "@/lib/content/edit-shel
 import { editorVersion, statusOf, type ContentItem, type PublishStep } from "@/lib/content/versioned";
 import { fieldProblems, fieldsAfterSave, fieldsOf, projectViewOf, type PanelSection, type ProjectFields } from "@/lib/project-content/fields";
 import { homeCardOf, lineupWith, type ProjectPlace, type ProjectRecord } from "@/lib/project-content/record";
-import { EditableBlock, EditShell } from "./edit-shell";
+import { EditableBlock, EditShell, type BlockShape } from "./edit-shell";
 import { EditedProjectPage, ProjectCardPage, type ProjectPageId } from "./project-edit-pages";
 import { ProjectEditPanel, type FieldErrors } from "./project-edit-panel";
 
@@ -39,7 +39,26 @@ const PROJECT_BLOCKS: EditBlocks<ProjectPart, PanelSection> = {
   gallery: { name: "Gallery", section: "gallery", chip: "Edit gallery" },
 };
 
-const outlined: ProjectFrame = (part, node) => <EditableBlock id={part}>{node}</EditableBlock>;
+// The hero and the numbered sections fill the page's width, so their outlines
+// and chips sit inside them; the two stories sit inside the page's column.
+const PART_SHAPE: Readonly<Record<ProjectPart, BlockShape>> = {
+  hero: "bleed",
+  name: "around",
+  design: "around",
+  versions: "bleed",
+  launches: "bleed",
+  plan: "bleed",
+  reasons: "bleed",
+  gallery: "bleed",
+};
+
+// On phones the hero leaves only 24px over its first line, so it keeps room
+// there for its chip row.
+const outlined: ProjectFrame = (part, node) => (
+  <EditableBlock id={part} shape={PART_SHAPE[part]} className={part === "hero" ? "max-md:pt-6" : ""}>
+    {node}
+  </EditableBlock>
+);
 
 const PAGE_TARGETS: readonly PageTarget<ProjectPageId>[] = [
   { id: "page", label: "Project page" },
