@@ -95,7 +95,8 @@ It does not apply to the legacy route group, whose pages still call `app/actions
 - A test developer's write reaches no database but a preview's `preview` branch. On the dummy side
   their changes go to cookies, which keeps each reviewer's changes in their own browser. On the
   database side `lib/db-audit.ts` saves the write as the viewer's seeded person only on a preview,
-  whose shared branch the next preview build wipes and re-seeds, and refuses it anywhere else.
+  whose shared branch keeps it across preview builds (a build seeds that branch only while it is
+  empty), and refuses it anywhere else.
 
 ## Known inconsistencies (not the pattern)
 

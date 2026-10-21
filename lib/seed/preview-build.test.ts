@@ -8,9 +8,13 @@ const DIRECT = `postgresql://app@${PREVIEW_ENDPOINT}.eu-central-1.aws.neon.tech/
 const OTHER = "postgresql://app@ep-other-branch-999999.eu-central-1.aws.neon.tech/neondb";
 const OTHER_POOLED = "postgresql://app@ep-other-branch-999999-pooler.eu-central-1.aws.neon.tech/neondb";
 
-/** Steps that record what ran, with a real one-at-a-time lock and the real guard. */
-function recorded(env: PreviewBuildEnv) {
+/**
+ * Steps that record what ran, with a real one-at-a-time lock and the real
+ * guard. The database starts empty unless `holdsData` is set, and a seed fills it.
+ */
+function recorded(env: PreviewBuildEnv, { holdsData = false } = {}) {
   const events: string[] = [];
+  let filled = holdsData;
   let held: Promise<void> = Promise.resolve();
   const pause = () => new Promise<void>((resolve) => setImmediate(resolve));
   const steps: PreviewBuildSteps = {
@@ -35,9 +39,16 @@ function recorded(env: PreviewBuildEnv) {
       events.push(`migrate ${target.label}`);
       await pause();
     },
+    contents: async (target) => {
+      const contents = filled ? "has-data" : "empty";
+      events.push(`read ${target.label}: ${contents}`);
+      await pause();
+      return contents;
+    },
     seed: async (target) => {
       events.push(`seed ${target.label}`);
       await pause();
+      filled = true;
       return { target, modules: ["structure", "people"] };
     },
   };
@@ -61,12 +72,29 @@ test("a preview with no database is skipped, so its pages fall back to the dummy
   assert.deepEqual(events, []);
 });
 
-test("a preview build migrates, then resets and re-seeds, the database it is given, under one lock", async () => {
+test("an approved preview build always migrates first under the lock, whether the database is empty or not", async () => {
+  const env = { VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT };
+  for (const holdsData of [false, true]) {
+    const { events, steps } = recorded(env, { holdsData });
+    await preparePreviewDatabase(env, steps);
+    assert.deepEqual(events.slice(0, 3), [`guard ${DIRECT}`, "lock", "migrate preview"], String(holdsData));
+  }
+});
+
+test("an empty database is migrated, then seeded, under one lock", async () => {
   const env = { VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT };
   const { events, steps } = recorded(env);
   const outcome = await preparePreviewDatabase(env, steps);
-  assert.equal(outcome.kind, "seeded");
-  assert.deepEqual(events, [`guard ${DIRECT}`, "lock", "migrate preview", "seed preview", "unlock"]);
+  assert.equal(outcome.kind, "migrated-and-seeded");
+  assert.deepEqual(events, [`guard ${DIRECT}`, "lock", "migrate preview", "read preview: empty", "seed preview", "unlock"]);
+});
+
+test("a database that holds data is migrated and never seeded, so nothing resets what testers made", async () => {
+  const env = { VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT };
+  const { events, steps } = recorded(env, { holdsData: true });
+  const outcome = await preparePreviewDatabase(env, steps);
+  assert.equal(outcome.kind, "migrated");
+  assert.deepEqual(events, [`guard ${DIRECT}`, "lock", "migrate preview", "read preview: has-data", "unlock"]);
 });
 
 test("a preview with no direct connection string is refused, so no lock is ever held through the pooler", async () => {
@@ -108,14 +136,14 @@ test("the lock is released when the migration fails, and the seed does not run",
   assert.deepEqual(events, [`guard ${DIRECT}`, "lock", "migrate failed", "unlock"]);
 });
 
-test("two concurrent preview builds migrate and seed one after the other, never interleaved", async () => {
+test("two concurrent preview builds take turns, never interleaved, and only the first seeds the empty database", async () => {
   const env = { VERCEL_ENV: "preview", DATABASE_URL: POOLED, DATABASE_URL_UNPOOLED: DIRECT };
   const { events, steps } = recorded(env);
   const outcomes = await Promise.all([preparePreviewDatabase(env, steps), preparePreviewDatabase(env, steps)]);
-  assert.deepEqual(outcomes.map((outcome) => outcome.kind), ["seeded", "seeded"]);
+  assert.deepEqual(outcomes.map((outcome) => outcome.kind), ["migrated-and-seeded", "migrated"]);
   const locked = events.filter((event) => !event.startsWith("guard"));
   assert.deepEqual(locked, [
-    "lock", "migrate preview", "seed preview", "unlock",
-    "lock", "migrate preview", "seed preview", "unlock",
+    "lock", "migrate preview", "read preview: empty", "seed preview", "unlock",
+    "lock", "migrate preview", "read preview: has-data", "unlock",
   ]);
 });

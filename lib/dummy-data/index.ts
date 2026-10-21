@@ -58,6 +58,7 @@ import {
 } from "@/lib/dashboard/recruitment";
 import { kindOfTestViewer, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
+import { openPositionsDetail } from "@/lib/dashboard/open-positions-detail";
 import { applications as baseApplications, type DummyApplication } from "./applications";
 import { baseContent, departmentCode, divisionLabel, statedPositions } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
@@ -169,6 +170,14 @@ function contentOf(p: DummyPosition, team: Team): PositionContent {
       motivationLetter: p.requiresMotivationLetter,
     }
   );
+}
+
+/**
+ * Whether a role was open before any switch: as the arrays hold it, or as the
+ * test developer posted it. Null for a role that is in neither.
+ */
+function openAsPosted(id: number, state: DummyState): boolean | null {
+  return basePositions.find((p) => p.id === id)?.open ?? state.newPositions.find((p) => p.id === id)?.open ?? null;
 }
 
 /** The positions as ./apply.ts lays the test developer's changes over them, so /apply reads the same. */
@@ -469,7 +478,7 @@ function divisionOverview(team: Team, notices: DummyNotices): DivisionOverview {
       {
         label: "Open positions",
         value: String(open.length),
-        detail: open.length === 0 ? "None open" : open.map((p) => p.title).join(", "),
+        detail: openPositionsDetail(open.map((p) => ({ title: p.title, division: p.divisionId }))),
       },
       {
         label: "Orders",
@@ -929,16 +938,23 @@ export function dummyDashboardData(
       ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
       : overviewFor(kind, team, dummyNoticesOf(teamEdits.current));
 
+  /**
+   * Whether the viewer may change the role and its applications: it is one
+   * they reach (`positionsFor`), whether the arrays hold it or it was posted
+   * in this session (issue #461). Full access, the team leader's standing
+   * (issue #444), reaches every role.
+   */
+  const changeable = (positionId: number): DummyPosition | null =>
+    positionsFor(kind, team).find((p) => p.id === positionId) ?? null;
+
   // One move for both pages: the Applications panel and the Members page's
   // Confirm join (board 59) run it, so the application is the one record of
   // who joined, and the roster reads it (./team-pages.ts).
   async function moveApplication(id: number, move: LeadMove) {
     const base = baseApplications.find((a) => a.id === id);
     const current = team.applications.find((a) => a.id === id);
-    if (!base || !current || !positionsFor(kind, team).some((p) => p.id === base.positionId)) {
-      throw new DashboardRefused(`application ${id}`);
-    }
-    const position = team.positions.find((p) => p.id === base.positionId)!;
+    const position = base ? changeable(base.positionId) : null;
+    if (!base || !current || position === null) throw new DashboardRefused(`application ${id}`);
     // The dummy team is seen from DUMMY_NOW, so its moves happen then too.
     const result = applyMove(current.state, move, NOW, dummyStanding(current.applicant.email, position.divisionId, teamRoster));
     if (!result.ok) return refused(result.reason);
@@ -991,9 +1007,10 @@ export function dummyDashboardData(
     },
 
     async setPositionOpen(id, open) {
-      const base = basePositions.find((p) => p.id === id);
-      if (!base || !positionsFor(kind, team).some((p) => p.id === id)) throw new DashboardRefused(`position ${id}`);
-      await change({ kind: "position", id, open, initial: base.open });
+      // A role posted in this session switches too, not only one the arrays hold (issue #461).
+      const initial = openAsPosted(id, changes.current);
+      if (initial === null || changeable(id) === null) throw new DashboardRefused(`position ${id}`);
+      await change({ kind: "position", id, open, initial });
     },
 
     async createPosition(input) {
@@ -1020,8 +1037,7 @@ export function dummyDashboardData(
     },
 
     async editPosition(id, input) {
-      const position = positionsFor(kind, team).find((p) => p.id === id);
-      if (!position) throw new DashboardRefused(`position ${id}`);
+      if (changeable(id) === null) throw new DashboardRefused(`position ${id}`);
       const checked = checkPositionContent(input);
       if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
       const base = basePositions.find((p) => p.id === id);
