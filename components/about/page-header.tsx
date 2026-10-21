@@ -4,7 +4,8 @@ import type { HeaderFigures } from "@/lib/about/types";
 
 // An About page's header (boards 26, 26m, 28, 29, 29m, 30 and 30m): the
 // eyebrow, the title, the intro and, on a page that has them, four figures
-// (two on the Outreach page, in the first two columns) over a hairline. The About pages are in the navbar's About menu (board 27),
+// over a hairline (two on the Outreach page, in the first two columns,
+// issue #496). The About pages are in the navbar's About menu (board 27),
 // so a page starts with this header: 40px under the bar on phones, 96px from
 // md. From md the figures are one row of four. On phones they stay one row
 // (boards 26m, 28) unless the page asks for 2 x 2 (board 30m), where each
