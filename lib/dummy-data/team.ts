@@ -4,7 +4,7 @@
 // the Overview read the same people. Later dashboard pages add their arrays
 // beside these.
 
-import { inDivisions, NO_MEMBERSHIPS, type BoardSeat, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
+import { inDivisions, NO_MEMBERSHIPS, seasonAt, type BoardSeat, type DivisionRole, type OrgDepartment, type OrgDivision, type Placement } from "@/lib/dashboard/team";
 
 export type DummyDepartment = OrgDepartment;
 
@@ -338,7 +338,15 @@ export const positions = [
 ] as const satisfies readonly DummyPosition[];
 
 /** The roster count for the year; `people` holds only the ones the pages name. */
-export const roster = { season: "2026–27", members: 152 } as const;
+export const roster = { members: 152 } as const;
+
+/**
+ * The roster's team year: today's, through the shared rule, as the database
+ * path reads it, so it turns over on 1 October in Turin (issue #515).
+ */
+export function rosterSeason(at: Date = new Date()): string {
+  return seasonAt(at);
+}
 
 /** The switch's state before a test developer flips it (#121's cookie in ./recruitment.ts holds the flip). */
 export const recruitment = { open: true, since: "1 Oct" } as const;

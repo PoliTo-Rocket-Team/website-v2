@@ -1,3 +1,4 @@
+import { shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import { ADVISORS, type Alumnus, type AlumnusKey, type RoleFix } from "@/lib/about/alumni-record";
 import type { FounderMark } from "@/lib/about/alumni-types";
 import { refused, written, type WriteResult } from "./write";
@@ -105,9 +106,9 @@ export function alumniDirectory(alumni: readonly Alumnus[], thisYear: number): A
   };
 }
 
-/** "2024–25", as the year tabs print a year. */
+/** "2024–25", as the year tabs print a year: the shared short label (issue #515). */
 export function yearTab(start: number): string {
-  return `${start}–${String((start + 1) % 100).padStart(2, "0")}`;
+  return shortAcademicYearLabel(start);
 }
 
 /** How many years get their own tab beside "All years"; the older ones sit under "Earlier". */
