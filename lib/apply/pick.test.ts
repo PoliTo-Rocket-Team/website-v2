@@ -5,6 +5,7 @@ import type { ApplyData } from "./data";
 import { submitDepsOf } from "./data";
 import type { DummyModeEnv } from "@/lib/dummy-data/mode";
 import { DUMMY_RECRUITMENT_COOKIE } from "@/lib/dummy-data/recruitment";
+import { TEST_DEVELOPER_STATE_COOKIE } from "@/lib/test-developer";
 import { config as proxyConfig } from "@/proxy";
 import { applyListIsPerRequest, pickApplyData, plainApplyRequest, type ApplySides } from "./pick";
 import { submitApplication } from "./submit";
@@ -83,9 +84,14 @@ describe("/apply is rendered per request only for a dummy-mode request carrying 
     assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: null, recruitmentCookie: "closed" }), true);
   });
 
-  test("in production, neither does: the database side ignores both", () => {
+  test("on a preview, the test developer's dashboard state makes it per request too (issue #463)", () => {
+    assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: null, recruitmentCookie: null, stateCookie: "{}" }), true);
+    assert.equal(applyListIsPerRequest({ env: PREVIEW, openSelector: null, recruitmentCookie: null, stateCookie: null }), false);
+  });
+
+  test("in production, none does: the database side ignores them all", () => {
     for (const env of [PRODUCTION, PRODUCTION_NO_DB]) {
-      assert.equal(applyListIsPerRequest({ env, openSelector: "0", recruitmentCookie: "closed" }), false);
+      assert.equal(applyListIsPerRequest({ env, openSelector: "0", recruitmentCookie: "closed", stateCookie: "{}" }), false);
     }
   });
 
@@ -97,11 +103,12 @@ describe("/apply is rendered per request only for a dummy-mode request carrying 
     assert.deepEqual(dummyCalls, [[null, null]]);
   });
 
-  test("the proxy runs on /apply only for the open query and the dummy recruitment cookie", () => {
+  test("the proxy runs on /apply only for the open query, the dummy recruitment cookie and the dashboard state cookie", () => {
     const apply = proxyConfig.matcher.filter((m) => typeof m !== "string");
     assert.deepEqual(apply, [
       { source: "/apply", has: [{ type: "query", key: "open" }] },
       { source: "/apply", has: [{ type: "cookie", key: DUMMY_RECRUITMENT_COOKIE }] },
+      { source: "/apply", has: [{ type: "cookie", key: TEST_DEVELOPER_STATE_COOKIE }] },
     ]);
     assert.ok(!proxyConfig.matcher.includes("/apply"), "a plain visit never reaches the proxy");
   });

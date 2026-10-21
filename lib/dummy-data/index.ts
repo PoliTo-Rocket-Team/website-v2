@@ -59,7 +59,7 @@ import {
 import { kindOfTestViewer, testDeveloperStanding, VIEWER_KIND_LABELS, type DashboardViewer, type OffTeamKind, type TestViewer, type ViewerKind } from "@/lib/dashboard/viewer";
 import { departmentSummaries, leaderAttention, leaderStats } from "@/lib/dashboard/leader-overview";
 import { applications as baseApplications, type DummyApplication } from "./applications";
-import { departmentCode, divisionLabel, positionText } from "./apply";
+import { baseContent, departmentCode, divisionLabel, statedPositions } from "./apply";
 import { applyDummyChange, fitsDummyCookie, type DummyChange, type DummyState, type DummyStateStore } from "./state";
 import { refused, written } from "@/lib/dashboard/write";
 import {
@@ -157,24 +157,6 @@ function withDivisionEdits(team: Team, edits: TeamEdits): Team {
   };
 }
 
-/**
- * What a role in the arrays says before any edit: the public pages' text
- * (./apply.ts) and the role's own question and letter setting. A role the
- * test developer posted says what they wrote, kept in the state cookie.
- */
-function baseContent(p: DummyPosition): PositionContent | null {
-  const text = positionText[p.id as keyof typeof positionText];
-  if (!text) return null;
-  return {
-    title: p.title,
-    description: text.description,
-    required: [...text.required],
-    desirable: [...text.desirable],
-    questions: p.question ? [p.question] : [],
-    motivationLetter: p.requiresMotivationLetter,
-  };
-}
-
 /** A posted role whose text the cookie no longer holds still has its title and letter setting. */
 function contentOf(p: DummyPosition, team: Team): PositionContent {
   return (
@@ -189,37 +171,12 @@ function contentOf(p: DummyPosition, team: Team): PositionContent {
   );
 }
 
-/** A role the test developer posted, as the arrays hold a position. */
-function postedPosition(p: DummyState["newPositions"][number]): DummyPosition {
-  return {
-    id: p.id,
-    title: p.title,
-    slug: String(p.id),
-    divisionId: p.divisionId,
-    open: p.open,
-    updatedAt: p.createdAt,
-    question: "",
-    requiresMotivationLetter: p.motivationLetter,
-  };
-}
-
+/** The positions as ./apply.ts lays the test developer's changes over them, so /apply reads the same. */
 function teamOf({ isOpen }: Recruitment, state: DummyState): Team {
-  const positions: DummyPosition[] = [...basePositions, ...state.newPositions.map(postedPosition)];
-  const edits = new Map(state.positionEdits.map((e) => [e.id, e.content]));
-  const content = new Map<number, PositionContent>();
-  for (const p of positions) {
-    const said = edits.get(p.id) ?? baseContent(p);
-    if (said) content.set(p.id, said);
-  }
+  const { positions, content } = statedPositions(state);
   return {
     recruitmentOpen: isOpen,
-    positions: positions.map((p) => {
-      const edit = edits.get(p.id);
-      const edited = edit
-        ? { title: edit.title, requiresMotivationLetter: edit.motivationLetter, question: edit.questions[0] ?? "", updatedAt: DUMMY_NOW }
-        : {};
-      return { ...p, ...edited, open: state.positionOpen[p.id] ?? p.open };
-    }),
+    positions,
     applications: baseApplications.map((a) => ({ ...a, state: state.applications[a.id] ?? a.state })),
     content,
     divisionCodes: new Map(),

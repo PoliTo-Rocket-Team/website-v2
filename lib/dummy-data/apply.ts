@@ -4,16 +4,28 @@ import type { ApplyPosition } from "@/db/types";
 import type { ApplyData } from "@/lib/apply/data";
 import { isPublic, type Recruitment } from "@/lib/apply/positions";
 import { applyFormDefaults } from "@/lib/dashboard/details";
+import type { PositionContent } from "@/lib/dashboard/new-position";
 import type { TestViewer } from "@/lib/dashboard/viewer";
 import { publicFaqs } from "@/lib/faq/faq";
 import { dummyFaqSeed } from "./faqs";
 import { NO_OWN_CHANGES, type OwnApplicationsStart, type OwnChanges } from "./own";
 import { dummyDetails, isWithdrawn, ownApplicationsOf } from "./own-applications";
-import { applicant as nonMember, departments, divisions, formerMember, personFor, positions, type DummyPosition } from "./team";
+import { EMPTY_DUMMY_STATE, type DummyNewPosition, type DummyState } from "./state";
+import {
+  applicant as nonMember,
+  departments,
+  divisions,
+  DUMMY_NOW,
+  formerMember,
+  personFor,
+  positions,
+  type DummyPosition,
+} from "./team";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
 
 // The dummy side of the apply data interface (issue #150): the positions of
-// ./team.ts with the text the public pages show, the test developer as the
+// ./team.ts with the text the public pages show, as the test developer left
+// them on the dashboard (./state.ts, issue #463), the test developer as the
 // applicant, and sent applications kept in memory. It reads no database and
 // writes no file, so it works on a preview with neither.
 
@@ -124,21 +136,89 @@ export const divisionLabel = {
   14: { code: "SPN", name: "Sponsorship" },
 } as const satisfies Readonly<Record<(typeof divisions)[number]["id"], { code: string; name: string }>>;
 
-/** A dummy position as the apply pages read one. */
-export function dummyApplyPosition(p: DummyPosition): ApplyPosition {
+/**
+ * What a role in the arrays says before any edit: the public pages' text
+ * and the role's own question and letter setting. Null for a role the test
+ * developer posted: what they wrote is in the state cookie (./state.ts).
+ */
+export function baseContent(p: DummyPosition): PositionContent | null {
+  const text: PositionText | undefined = positionText[p.id as keyof typeof positionText];
+  if (!text) return null;
+  return {
+    title: p.title,
+    description: text.description,
+    required: [...text.required],
+    desirable: [...text.desirable],
+    questions: p.question ? [p.question] : [],
+    motivationLetter: p.requiresMotivationLetter,
+  };
+}
+
+/** A role the test developer posted, as the arrays hold a position. */
+function postedPosition(p: DummyNewPosition): DummyPosition {
+  return {
+    id: p.id,
+    title: p.title,
+    slug: String(p.id),
+    divisionId: p.divisionId,
+    open: p.open,
+    updatedAt: p.createdAt,
+    question: "",
+    requiresMotivationLetter: p.motivationLetter,
+  };
+}
+
+/** The positions as the test developer left them, and what each role says. */
+export type StatedPositions = {
+  readonly positions: readonly DummyPosition[];
+  readonly content: ReadonlyMap<number, PositionContent>;
+};
+
+/**
+ * The positions of ./team.ts with the test developer's changes laid over
+ * them (./state.ts): the roles they posted, what they wrote in a role, and
+ * which roles they opened or closed. The dashboard and the apply pages both
+ * read the positions from here, so /apply lists what the dashboard shows.
+ */
+export function statedPositions(state: DummyState): StatedPositions {
+  const all: DummyPosition[] = [...positions, ...state.newPositions.map(postedPosition)];
+  const edits = new Map(state.positionEdits.map((e) => [e.id, e.content]));
+  const content = new Map<number, PositionContent>();
+  for (const p of all) {
+    const said = edits.get(p.id) ?? baseContent(p);
+    if (said) content.set(p.id, said);
+  }
+  return {
+    positions: all.map((p) => {
+      const edit = edits.get(p.id);
+      const edited = edit
+        ? { title: edit.title, requiresMotivationLetter: edit.motivationLetter, question: edit.questions[0] ?? "", updatedAt: DUMMY_NOW }
+        : {};
+      return { ...p, ...edited, open: state.positionOpen[p.id] ?? p.open };
+    }),
+    content,
+  };
+}
+
+/**
+ * A dummy position as the apply pages read one, saying `content`. A posted
+ * role whose text the cookie no longer holds keeps its title and letter
+ * setting, and says nothing more.
+ */
+export function dummyApplyPosition(p: DummyPosition, content: PositionContent | null = baseContent(p)): ApplyPosition {
   const division = divisions.find((d) => d.id === p.divisionId)!;
   const department = departments.find((d) => d.id === division.departmentId)!;
-  const text: PositionText = positionText[p.id as keyof typeof positionText];
+  const text: PositionText | undefined = positionText[p.id as keyof typeof positionText];
   return {
     id: p.id,
     status: p.open,
     division_id: division.id,
     title: p.title,
-    description: text.description,
-    required_skills: [...text.required],
-    desirable_skills: [...text.desirable],
-    custom_questions: [p.question],
-    created_at: text.createdAt,
+    description: content?.description ?? "",
+    required_skills: [...(content?.required ?? [])],
+    desirable_skills: [...(content?.desirable ?? [])],
+    custom_questions: [...(content?.questions ?? [])],
+    created_at: text?.createdAt ?? p.updatedAt,
     requires_motivation_letter: p.requiresMotivationLetter,
     is_deleted: false,
     div_name: divisionLabel[division.id].name,
@@ -196,7 +276,9 @@ const sentInThisServer = new SentApplications();
  * is signed out), with `/apply` limited by its `open` selector, the
  * recruitment switch as this browser left it (./recruitment.ts), and their
  * own changes (./own.ts): saved details and withdrawn applications, over
- * the own applications `ownStart` names.
+ * the own applications `ownStart` names. The positions are the ones the
+ * dashboard shows, with the roles posted, edited, opened and closed in
+ * `dashboard` (./state.ts, issue #463).
  */
 export function dummyApplyData(
   viewer: TestViewer | null,
@@ -205,8 +287,13 @@ export function dummyApplyData(
   sent: SentApplications = sentInThisServer,
   own: OwnChanges = NO_OWN_CHANGES,
   ownStart: OwnApplicationsStart = "sample",
+  dashboard: DummyState = EMPTY_DUMMY_STATE,
 ): ApplyData {
-  const all = positions.map(dummyApplyPosition);
+  const stated = statedPositions(dashboard);
+  // A cookie is browser data: a posted role naming no division of the arrays is left out.
+  const all = stated.positions
+    .filter((p) => divisions.some((d) => d.id === p.divisionId))
+    .map((p) => dummyApplyPosition(p, stated.content.get(p.id) ?? null));
   const limit = dummyOpenLimit(openSelector);
   // A withdrawn application does not count: the person can apply again.
   const liveOwn = (userId: string, positionId: number) =>
