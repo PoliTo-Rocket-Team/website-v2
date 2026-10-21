@@ -77,6 +77,9 @@ export const targetTypeEnum = pgEnum("target_type", [
   "logs",
   // "Approve orders", given by the team leader on scope `team` (issue #233).
   "approve_orders",
+  // The Content grant, on scope `website` (issue #504, drizzle/0049): told
+  // apart from the Alumni grant, the `website` row on `all`.
+  "content",
 ]);
 
 // The seats besides the team leader that hold every access in the dashboard

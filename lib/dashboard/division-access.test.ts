@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { maySiteContent } from "@/lib/content/gate";
 import { canReach } from "./access";
 import {
   accessByPerson,
@@ -349,12 +350,69 @@ test("the Activity log is never offered: it is no area of Give access", () => {
   assert.equal(checkSaveAccess(team([], teamLeaderGives), { personId: 31, where: "team", areas: { "activity-log": "edit" } }).ok, false);
 });
 
-test("an Alumni grant gives the person Alumni page reach, through the site-content rule", () => {
+test("an Alumni grant gives the person Alumni page reach, and no content editor (issue #504)", () => {
   const row = grantRowOf(WHOLE_TEAM_PLACE, "alumni");
   assert.deepEqual(row, { scope: "website", target: "all", deptId: null, divisionId: null });
   const member = { type: null, divisionId: 1, fullAccess: null } as const;
   assert.equal(canReach(viewerStandingOf({ scopes: [], activeRoles: [member] }), "alumni"), false);
-  assert.equal(canReach(viewerStandingOf({ scopes: [{ scope: row.scope, target: "all", level: "view" }], activeRoles: [member] }), "alumni"), true);
+  const holder = viewerStandingOf({ scopes: [{ scope: row.scope, target: "all", level: "view" }], activeRoles: [member] });
+  assert.equal(canReach(holder, "alumni"), true);
+  assert.equal(maySiteContent(holder), false);
+});
+
+// Content (Owner decision, 2026-10-21, issue #504) ------------------------------
+
+test("full access gives Content across the whole team at Can edit only, never in a department or a division", () => {
+  const given = checkSaveAccess(team(), { personId: 31, where: "team", areas: { content: "edit" } });
+  assert.deepEqual(given, { ok: true, value: { personId: 31, place: WHOLE_TEAM_PLACE, changes: [{ kind: "add", target: "content", to: "edit" }], approveOrders: null } });
+  assert.deepEqual(checkSaveAccess(team(), { personId: 31, where: "team", areas: { content: "view" } }), { ok: false, error: "Content access is given at Can edit only." });
+  for (const where of ["department-1", "department-2", 3] as const) {
+    assert.deepEqual(checkSaveAccess(team(), { personId: 31, where, areas: { content: "edit" } }), { ok: false, error: "Content access is given to the whole team only." }, String(where));
+  }
+  // It follows Alumni in the drawer's order.
+  const both = checkSaveAccess(team(), { personId: 31, where: "team", areas: { orders: "view", content: "edit", alumni: "view" } });
+  assert.deepEqual(both.ok && both.value.changes.map((c) => c.target), ["alumni", "content", "orders"]);
+});
+
+test("a lead or head who holds neither full access nor Content cannot give, change or remove Content", () => {
+  const held = grant(80, sofia, "content", "edit", WHOLE_TEAM_PLACE);
+  for (const [who, facts] of [["lead", lead([held])], ["head", head([held])]] as const) {
+    assert.equal(placesOf(facts.unit).some((p) => p.kind === "team"), false, who);
+    assert.equal(checkSaveAccess(facts, { personId: 3, where: "team", areas: { content: "edit" } }).ok, false, `${who}: give`);
+    assert.equal(checkRemoveGrant(facts, { personId: 3, where: "team", target: "content" }).ok, false, `${who}: remove`);
+  }
+  assert.equal(checkSaveAccess(lead(), { personId: 3, areas: { content: "edit" } }).ok, false, "lead: in the division");
+  assert.equal(checkSaveAccess(head(), { personId: 3, where: "department-1", areas: { content: "edit" } }).ok, false, "head: in the department");
+});
+
+test("a lead or head who holds Content gives, keeps and removes it across the whole team, and nothing else there", () => {
+  const leadWithContent = (grants: AccessGrant[] = []) => ({ ...lead(grants), unit: { ...divisionUnit, content: true } as AccessUnit });
+  const headWithContent = (grants: AccessGrant[] = []) => ({ ...head(grants), unit: { ...departmentUnit, content: true } as AccessUnit });
+  assert.deepEqual(placesOf(leadWithContent().unit).map(placeKey), [1, "team"]);
+  assert.deepEqual(placesOf(headWithContent().unit).map(placeKey), ["department-1", 1, 2, "team"]);
+  assert.deepEqual(heldLines(leadWithContent().unit).at(-1), { where: "the whole team", held: [{ target: "content", level: "edit" }] });
+  for (const [who, facts] of [["lead", leadWithContent], ["head", headWithContent]] as const) {
+    const given = checkSaveAccess(facts(), { personId: 3, where: "team", areas: { content: "edit" } });
+    assert.deepEqual(given.ok && given.value.changes, [{ kind: "add", target: "content", to: "edit" }], `${who}: give`);
+    // The whole team holds Content alone for them: no unit area, no Alumni.
+    assert.equal(checkSaveAccess(facts(), { personId: 3, where: "team", areas: { positions: "view" } }).ok, false, `${who}: positions`);
+    assert.equal(checkSaveAccess(facts(), { personId: 3, where: "team", areas: { alumni: "edit" } }).ok, false, `${who}: alumni`);
+    const holding = [grant(81, sofia, "content", "edit", WHOLE_TEAM_PLACE)];
+    assert.equal(checkRemoveGrant(facts(holding), { personId: 3, where: "team", target: "content" }).ok, true, `${who}: remove`);
+    const all = checkRemoveAllAccess(facts(holding), 3);
+    assert.ok(all.ok && all.value.some((w) => w.place.kind === "team" && w.changes.some((c) => c.kind === "remove" && c.target === "content")), `${who}: remove all`);
+  }
+  assert.equal(checkRemoveGrant(team([grant(82, giulio, "content", "edit", WHOLE_TEAM_PLACE)]), { personId: 31, where: "team", target: "content" }).ok, true, "full access removes it");
+});
+
+test("a Content grant is the website row on content: it opens the content editors, and never the Alumni page", () => {
+  const row = grantRowOf(WHOLE_TEAM_PLACE, "content");
+  assert.deepEqual(row, { scope: "website", target: "content", deptId: null, divisionId: null });
+  const member = { type: null, divisionId: 1, fullAccess: null } as const;
+  const holder = viewerStandingOf({ scopes: [{ scope: row.scope, target: row.target, level: "edit" }], activeRoles: [member] });
+  assert.equal(maySiteContent(holder), true);
+  for (const page of ["projects", "outreach", "partners", "faq", "team-page"] as const) assert.equal(canReach(holder, page), true, page);
+  assert.equal(canReach(holder, "alumni"), false);
 });
 
 test("an area given across the whole team opens its pages in every open department", () => {

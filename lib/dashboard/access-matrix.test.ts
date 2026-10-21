@@ -11,7 +11,7 @@ import { opensWholeTeam } from "./members-view";
 import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
 import { GRANT_AREAS, isOffTeam, mayChange, readsArea, readsAreaIn } from "./viewer";
-import { ALL, CHANGE_AREAS, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, UNITS, unitsWhere, VIEWERS, type Viewer } from "./access-matrix/matrix";
+import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Viewer } from "./access-matrix/matrix";
 
 // The dashboard access matrix (issue #477), cell by cell against the domain
 // rules. The matrix itself is data in ./access-matrix/matrix.ts; the server
@@ -139,6 +139,25 @@ describe("grants are independent (issue #477)", () => {
       // The counts, new markers and quiet lines on a role follow this rule (`readPositionRows`, ./database-recruitment.ts).
       assert.equal(readsRecruitmentIn(viewer, "applications", UNITS.DM), false, `${name}: application figures`);
       assert.equal(mayOpenApplication(viewer, { unit: UNITS.DM, withdrawn: false }), false, `${name}: a CV in DM`);
+    }
+  });
+
+  test("a Content grant reaches the five content editors and the site-content gate, and nothing else (issue #504)", () => {
+    const { viewer } = VIEWERS.find((v) => v.name === "member with a Content grant")!;
+    assert.equal(maySiteContent(viewer), true);
+    assert.deepEqual(PAGE_KEYS.filter((page) => canReach(viewer, page)), [...TEAM_BASE, ...CONTENT].sort((a, b) => PAGE_KEYS.indexOf(a) - PAGE_KEYS.indexOf(b)));
+    assert.equal(canReach(viewer, "alumni"), false);
+    for (const area of GRANT_AREAS) assert.equal(readsArea(viewer, area), false, area);
+  });
+
+  test("no other grant reaches the content editors or the site-content gate: Positions, Applications, Members, Alumni, Orders, Approve orders (issue #504)", () => {
+    const others = VIEWERS.filter((v) => v.viewer.kind === "member" && v.name !== "member with a Content grant" && v.viewer.rawRows.length > 0);
+    const names = others.map((v) => v.name);
+    for (const area of GRANT_AREAS) assert.ok(names.some((n) => n.startsWith(`member with a ${area} grant`)), area);
+    for (const name of ["member with an Alumni grant", "member with Approve orders"]) assert.ok(names.includes(name), name);
+    for (const { name, viewer } of others) {
+      assert.equal(maySiteContent(viewer), false, `${name}: site content`);
+      for (const page of CONTENT) assert.equal(canReach(viewer, page), false, `${name}: ${page}`);
     }
   });
 

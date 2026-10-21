@@ -19,7 +19,8 @@ import type { RoleType } from "../team";
 
 // The dashboard access matrix (issue #477): every viewer kind against every
 // page, every area's reads and changes in every unit, the CV and letter
-// links, site content, the recruitment switch and Orders. The matrix is data
+// links, site content (a Content grant, apart from Alumni since issue #504),
+// the recruitment switch and Orders. The matrix is data
 // (VIEWERS below). Two suites assert it: ../access-matrix.test.ts against
 // each domain rule, cell by cell, and ../access-matrix-server.test.ts by
 // calling every loader, server action and file route as each viewer. Each
@@ -96,9 +97,10 @@ export function viewerOf(roles: readonly Role[], rows: readonly ScopeUnitRow[] =
 // The matrix ------------------------------------------------------------------
 
 export const TEAM_BASE: readonly DashboardPageKey[] = ["overview", "my-applications", "team-tree", "my-profile"];
-export const CONTENT: readonly DashboardPageKey[] = ["projects", "outreach", "partners", "alumni", "faq", "team-page"];
+/** The editors a Content grant opens (issue #504): the Alumni page is not one of them. */
+export const CONTENT: readonly DashboardPageKey[] = ["projects", "outreach", "partners", "faq", "team-page"];
 export const LEADING: readonly DashboardPageKey[] = ["positions", "applications", "members", "division-access", "orders"];
-export const FULL: readonly DashboardPageKey[] = [...TEAM_BASE, ...LEADING, ...CONTENT];
+export const FULL: readonly DashboardPageKey[] = [...TEAM_BASE, ...LEADING, ...CONTENT, "alumni"];
 export const PAGE_OF_AREA: Readonly<Record<GrantArea, DashboardPageKey>> = { positions: "positions", applications: "applications", members: "members", orders: "orders" };
 export const CHANGE_AREAS: readonly ChangeArea[] = ["positions", "applications", "members"];
 
@@ -251,10 +253,23 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([MEMBER_ROLE], [row("division", "positions", "edit", { divisionId: 1 }), row("division", "positions", "view", { divisionId: 3 })]),
     expect: { ...singleGrant("positions", ["MA", "DM"]), changes: { positions: ["MA"], applications: NONE, members: NONE } },
   },
+  // Content and Alumni are separate grants (Owner decision, 2026-10-21, issue
+  // #504): Content opens the five editors and their actions, Alumni the
+  // Alumni page alone, and neither opens the other.
   {
-    name: "member with site-content access",
-    viewer: viewerOf([MEMBER_ROLE], [row("website", "all", "edit")]),
+    name: "member with a Content grant",
+    viewer: viewerOf([MEMBER_ROLE], [row("website", "content", "edit")]),
     expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, ...CONTENT], siteContent: true },
+  },
+  {
+    name: "member with an Alumni grant",
+    viewer: viewerOf([MEMBER_ROLE], [row("website", "all", "edit")]),
+    expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, "alumni"] },
+  },
+  {
+    name: "division lead with a Content grant",
+    viewer: viewerOf([role("lead", 1, 1)], [row("website", "content", "edit")]),
+    expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, ...LEADING, ...CONTENT], reads: everywhere(["MA"]), changes: changing(["MA"]), siteContent: true },
   },
   {
     name: "member with Approve orders",
@@ -264,7 +279,18 @@ export const VIEWERS: readonly MatrixRow[] = [
   // Off the team, every scope row that outlived the roles reaches nothing (issues #201, #477).
   {
     name: "alumnus with scope rows left over",
-    viewer: viewerOf([], [row("org", "all", "edit"), row("admin", "all", "edit"), row("division", "all", "edit", { divisionId: 1 }), row("website", "all", "edit"), row("team", "approve_orders", "edit")], true),
+    viewer: viewerOf(
+      [],
+      [
+        row("org", "all", "edit"),
+        row("admin", "all", "edit"),
+        row("division", "all", "edit", { divisionId: 1 }),
+        row("website", "all", "edit"),
+        row("website", "content", "edit"),
+        row("team", "approve_orders", "edit"),
+      ],
+      true,
+    ),
     expect: { ...PLAIN_MEMBER, pages: ["overview", "my-alumni", "my-applications", "my-account"] },
   },
   { name: "non-member", viewer: viewerOf([]), expect: { ...PLAIN_MEMBER, pages: ["overview", "my-applications", "my-account"] } },

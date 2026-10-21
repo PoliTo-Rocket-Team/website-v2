@@ -295,11 +295,35 @@ describe("the test-developer path follows the access matrix", () => {
     assert.deepEqual(saved, [], "a refused Save saved something");
   });
 
+  test("the Content test grant opens the five editors and nothing else; no other test grant or lead opens them (issue #504)", async () => {
+    const { data, viewer } = session("member", "content");
+    assert.equal(maySiteContent(viewer), true);
+    for (const page of ["projects", "outreach", "partners", "faq", "team-page"] as const) assert.equal(canReach(viewer, page), true, page);
+    for (const page of ["alumni", "positions", "applications", "members", "division-access", "orders"] as const) assert.equal(canReach(viewer, page), false, page);
+    assert.notEqual(await data.partners.list(), null);
+    assert.deepEqual((await data.alumni()).rows, [], "no Alumni page from Content");
+    for (const grant of TEST_GRANTS.filter((g) => g !== "content")) assert.equal(maySiteContent(session("member", grant).viewer), false, grant);
+    for (const lead of ["division-lead", "department-head"] as const) assert.equal(maySiteContent(session(lead).viewer), false, lead);
+  });
+
+  test("the team leader's dummy Access page lists the Content grant and gives Content across the whole team at Can edit only (issue #504)", async () => {
+    const { data } = session("team-leader");
+    const page = await data.divisionAccess();
+    assert.ok(page !== null && page.unit.kind === "team");
+    const holder = page.grants.find((g) => g.target === "content");
+    assert.ok(holder !== undefined && holder.place.kind === "team" && holder.level === "edit", "a Content grant across the whole team");
+    const someone = page.people.find((p) => p.standing === "member" && p.id !== holder.person.id)!;
+    assert.equal((await data.saveAccess({ personId: someone.id, where: "team", areas: { content: "edit" } })).ok, true);
+    assert.equal((await data.saveAccess({ personId: someone.id, where: "team", areas: { content: "view" } })).ok, false);
+    const division = placesOf(page.unit).find((p) => p.kind === "division")!;
+    assert.equal((await data.saveAccess({ personId: someone.id, where: placeKey(division), areas: { content: "edit" } })).ok, false);
+  });
+
   test("a Members grant lists no applicant joining: that is Applications data (issue #477)", async () => {
     const lead = await session("division-lead").data.members();
     assert.equal(lead.scope, "division");
     if (lead.scope === "division") assert.ok(lead.joining.length > 0, "the lead's page lists someone joining, so the check below is not empty");
-    for (const grant of TEST_GRANTS) {
+    for (const grant of TEST_GRANTS.filter((g) => g !== "content")) {
       const page = await session("member", grant).data.members();
       assert.notEqual(page.scope, "none", grant);
       if (page.scope === "division") assert.deepEqual(page.joining, [], grant);

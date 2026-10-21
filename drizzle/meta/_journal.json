@@ -337,6 +337,13 @@
       "when": 1792948800000,
       "tag": "0047_board_full_access_seats",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1793121600000,
+      "tag": "0049_content_grant",
+      "breakpoints": true
     }
   ]
 }

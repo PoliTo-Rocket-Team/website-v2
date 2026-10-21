@@ -71,7 +71,8 @@ export type DummyGrant = {
 /**
  * Board 60's table: Sara Conti, Luca Marino and Sofia Neri, each area in the
  * order given. Board 65 adds Optimization and Analysis's grants and one the
- * head gave across the whole department.
+ * head gave across the whole department. The whole-team grants, Alumni and
+ * Content, show on a team page only: no lead or head in the sample holds Content.
  */
 export const accessGrants = [
   { id: 1, personId: 7, place: { divisionId: 1 }, target: "applications", level: "view", givenById: 2, givenOn: "2026-10-02" },
@@ -84,6 +85,8 @@ export const accessGrants = [
   { id: 8, personId: 13, place: { departmentId: 1 }, target: "members", level: "view", givenById: 15, givenOn: "2026-10-02" },
   // Board 71: Alumni across the whole team, which only full access gives.
   { id: 9, personId: 3, place: { wholeTeam: true }, target: "alumni", level: "edit", givenById: 1, givenOn: "2026-10-03" },
+  // Content across the whole team, at Can edit, which only full access or a Content holder gives (issue #504).
+  { id: 10, personId: 4, place: { wholeTeam: true }, target: "content", level: "edit", givenById: 1, givenOn: "2026-10-21" },
 ] as const satisfies readonly DummyGrant[];
 
 /** Someone holding "Approve orders", and the day the team leader gave it. */

@@ -751,11 +751,12 @@ async function memberOverview(identity: Identity): Promise<PersonalOverview> {
  * "Your access" on a member's Overview (issue #480): each granted area's
  * counts, read only for an area the member reads (`overviewAreasOf`) and only
  * in the units their grants on it cover (`readsAreaIn`). Nothing is read for
- * an area they are not granted, and the summaries keep counts alone.
+ * an area they are not granted, and the summaries keep counts alone. A
+ * Content grant adds its own line, which reads nothing (issue #504).
  */
 async function readAccessSummaries(identity: Identity): Promise<AccessSummary[]> {
   const areas = overviewAreasOf(identity);
-  if (areas.length === 0) return [];
+  if (areas.length === 0) return accessSummariesOf([], {}, identity.siteContent);
   const reads = (area: GrantArea) => areas.includes(area);
   const [positions, applications, orders, members] = await Promise.all([
     reads("positions") ? scopedPositions(identity, "positions") : undefined,
@@ -763,7 +764,7 @@ async function readAccessSummaries(identity: Identity): Promise<AccessSummary[]>
     reads("orders") ? readOrderFigures(identity) : undefined,
     reads("members") ? readMemberAccess(identity) : undefined,
   ]);
-  return accessSummariesOf(areas, { positions, applications, orders, members });
+  return accessSummariesOf(areas, { positions, applications, orders, members }, identity.siteContent);
 }
 
 /**

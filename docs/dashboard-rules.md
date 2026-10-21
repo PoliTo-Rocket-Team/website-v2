@@ -37,10 +37,10 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
-| Projects | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it first under Content |
-| Partners | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| Alumni | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| FAQ | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| Projects | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it first under Content |
+| Partners | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
+| Alumni | No | No | Only with Alumni | Only with Alumni | Only with Alumni | Yes; the team leader's sidebar shows it under Content |
+| FAQ | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | No | The IT lead only |
@@ -154,17 +154,24 @@ An admin column comes later. **Planned**, no issue yet.
   - A department head's Members page holds every division of their department (#235).
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
-  with site-content access, which the full admins can give to anyone. A division lead or
+  with an **Alumni** grant, which the full admins can give to anyone. A division lead or
   department head gets nothing from their role here (Owner decision, #234). The sidebar item and
   the page read one rule, and the page answers "not found" to everyone else.
-  - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
-    `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni, Projects, Outreach, Partners, FAQ and Team page pages.
+  - The Alumni grant is the **Alumni** area of the full admins' Access page (#247). It is a
+    `website` scope row on `all`, given to the whole team only, at Can view or Can edit. Either
+    level opens the Alumni page and its actions, and nothing else (Owner decision, 2026-10-21,
+    #504). It opens no content editor.
 - **Content** is the team leader's sidebar group of the pages that change the public site:
-  Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80). Everyone else who
-  reaches them sees them under Team. Projects, Outreach, Partners, FAQ and Team page follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
-  may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
-  `lib/content/gate.ts`). See "6. Site content".
+  Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80).
+  Projects, Outreach, Partners, FAQ and Team page follow the site-content rule: the full admins,
+  and anyone with a **Content** grant. Whoever may edit may also publish. The server checks the
+  same rule on every write (`maySiteContent`, `lib/content/gate.ts`). See "6. Site content".
+  - The Content grant is its own Access area (Owner decision, 2026-10-21, #504). It is a
+    `website` scope row on `content`, given to the whole team only and at Can edit only. It opens
+    those five editors and their actions and nothing else, and no other grant opens them. Only a
+    viewer with full access or a Content grant gives, changes or removes it. A member holding it
+    sees the Content group with those five pages, and a "Content" line under "Your access" on
+    their Overview.
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -613,7 +620,7 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - The full-access seats are the team leader, the operations lead, the IT lead, the Project
   Manager and the Chief Engineer (#485). On the Full access tab each shows under its label:
   "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief Engineer".
-- Full access holds every area at Can edit across the whole team, Alumni included: "YOUR ACCESS ·
+- Full access holds every area at Can edit across the whole team, Alumni and Content included: "YOUR ACCESS ·
   Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
   team leader.
 - Above the table: Everyone, Full access and Approve orders tabs, each with its count, and an "All
@@ -621,8 +628,13 @@ These rules come from #238 and #247 (boards 71 and 71b).
   the role", locked), then the heads and division leads with their role's access, locked.
 - Give access picks a person from the whole team and a Where: the whole team (a `team` scope row
   in no unit, which covers every department and any added later), one department, or one division.
-  The areas are Positions, Applications, Members, Alumni and Orders, each at Can view or Can edit.
-  Alumni is given to the whole team only.
+  The areas are Positions, Applications, Members, Alumni, Content and Orders, each at Can view or
+  Can edit but Content. Alumni is the Alumni page only. Content (#504) has no level toggle: it is
+  given at Can edit only. Alumni and Content are given to the whole team only, and the server
+  refuses either in a department or a division, and Content at Can view.
+- A division lead or department head who holds a Content grant also gives Content: their Where
+  adds the whole team, last, where they give Content alone. Nobody else is offered Content, and
+  the server refuses it from them.
 - **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
   it from anyone else. The other full-access seats give every other access. The Activity
   log is never given: it stays the IT lead's.
@@ -781,7 +793,7 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   editor (board 75b). The draft has a line of starting copy in every section, a brand texture
   picked by its address, and the placeholder rocket on its card and page. No public page shows
   it, and its address has no page, until it is published.
-- Only the full admins and holders of site-content access reach the page or use New project;
+- Only the full admins and holders of a Content grant reach the page or use New project;
   everyone else gets the dashboard's not found.
 - On a preview with the seeded `preview` branch, a test developer's new order and new projects
   are saved there as the viewer's seeded person and kept across preview builds (ADR
@@ -841,7 +853,7 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   editor loses it. A section that is off does not stop a save.
 - Save draft and Publish refuse an empty field and open its section. Save draft leaves the
   published page as it is; Publish puts the changes on the public page.
-- Only the full admins and holders of site-content access open the editor or save; everyone else
+- Only the full admins and holders of a Content grant open the editor or save; everyone else
   gets the dashboard's not found.
 - On a preview with the seeded `preview` branch, a test developer's project changes are saved
   there as the viewer's seeded person and kept across preview builds (ADR 0016). Only
