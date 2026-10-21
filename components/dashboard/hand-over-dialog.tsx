@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ChevronDown, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { advisorOptionDetail, BECOME_AN_ADVISOR, type HandOverOutcome } from "@/lib/dashboard/hand-over";
 import { approverName, type HandOverOffer, type HandOverSend } from "@/lib/dashboard/hand-over-request";
 import type { WriteResult } from "@/lib/dashboard/write";
-import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
-import { Field, inputClass } from "./field";
+import { Field } from "./field";
 import { RadioChoice } from "./hand-over-choice";
+import { PersonCombobox } from "./person-combobox";
 
 // "Hand over your role" on My profile (board 55d, issue #262): a division lead
 // or a department head picks who takes over, from their unit, and what they do
@@ -84,30 +84,14 @@ export function HandOverDialog({
         <Field label="1. Who takes over">
           {(id) => (
             <>
-              <div className="relative">
-                {picked && (
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-                    <Avatar size="sm" />
-                  </span>
-                )}
-                <select
-                  id={id}
-                  value={to ?? ""}
-                  onChange={(e) => setTo(e.target.value === "" ? null : Number(e.target.value))}
-                  aria-describedby={`${id}-hint`}
-                  className={`${inputClass()} appearance-none pr-10 [&>option]:bg-panel ${picked ? "pl-12" : ""} ${picked ? "" : "text-prt-muted"}`}
-                >
-                  <option value="" disabled>
-                    Pick who takes over
-                  </option>
-                  {offer.successors.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} · {s.unit}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-              </div>
+              <PersonCombobox
+                id={id}
+                people={offer.successors.map((s) => ({ id: s.id, name: s.name, aside: s.unit }))}
+                value={to}
+                onChoose={setTo}
+                placeholder="Pick who takes over"
+                describedBy={`${id}-hint`}
+              />
               <p id={`${id}-hint`} className="mt-1.5 text-[12px] text-prt-muted">
                 {fromWhere}. {who.charAt(0).toUpperCase() + who.slice(1)} confirms it before it changes.
               </p>

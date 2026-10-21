@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { ChevronDown, CornerDownLeft, Lock, MailPlus, Pencil, RefreshCw, Search, Undo2, UserMinus, UserX, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { Lock, Pencil, RefreshCw, Search, Undo2, UserMinus, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { addMember, createDivision, findPeople, saveDivision } from "@/app/dashboard/team-actions";
 import {
@@ -22,8 +22,9 @@ import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ConfirmNdaButton, MailAvatar, MemberDialogs, MenuItem, NoEmailNote, RowMenu, WaitingLine, matchesWaiting, type Asking } from "./division-members";
 import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
-import { inputClass } from "./field";
+import { Field, inputClass } from "./field";
 import { HandOverChoice } from "./hand-over-choice";
+import { PersonCombobox } from "./person-combobox";
 
 // New division (boards 77c, 69d) and Edit division (77g, 68b to 68b8): name
 // and code, the leads, and the members, in one drawer, opened from the Team
@@ -183,8 +184,10 @@ function DrawerForm({
 
   const set = (next: Partial<Draft>) => setDraft((d) => ({ ...d, ...next }));
   const pickLead = (pick: TeamPick) => {
-    setDraft((d) => ({ ...d, added: [...d.added, { pick, replaces: picking?.replaces ?? null }] }));
-    setPicking(null);
+    const replaces = picking?.replaces ?? null;
+    setDraft((d) => ({ ...d, added: [...d.added, { pick, replaces }] }));
+    // Replace picks one; Add lead keeps the field for the next lead.
+    if (replaces !== null) setPicking(null);
   };
   const undoLead = (personId: number) => set({ added: draft.added.filter((a) => a.pick.id !== personId) });
   const setReplaces = (personId: number, replaces: number | null) =>
@@ -326,6 +329,7 @@ function DrawerForm({
                 }
                 onPick={pickLead}
                 onClose={() => setPicking(null)}
+                multi={picking.replaces === null}
               />
             ) : (
               <button type="button" onClick={() => setPicking({ replaces: null })} className={`${ADD_LINK} mt-3`}>
@@ -504,29 +508,19 @@ function NewLeadRow({ added, divisionId, short, onUndo }: { added: NewLead; divi
 /** "<new> replaces · optional" (board 68b3): nobody by default, so they lead beside the others. */
 function ReplacesSelect({ added, leads, onChange }: { added: NewLead; leads: readonly DivisionPerson[]; onChange: (replaces: number | null) => void }) {
   return (
-    <label className="mt-5 block">
-      <span className={`mb-2 block ${SECTION_LABEL}`}>
-        {added.pick.name} replaces
-        <span className="ml-1.5 text-prt-muted">optional</span>
-      </span>
-      <span className="relative block">
-        <select
-          value={added.replaces ?? ""}
-          onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-          className={`${inputClass()} cursor-pointer appearance-none pr-10`}
-        >
-          <option value="" className="bg-panel text-prt-text">
-            Nobody, add as an extra lead
-          </option>
-          {leads.map((l) => (
-            <option key={l.id} value={l.id} className="bg-panel text-prt-text">
-              {l.name}
-            </option>
-          ))}
-        </select>
-        <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
-      </span>
-    </label>
+    <Field label={`${added.pick.name} replaces`} hint="optional" className="mt-5">
+      {(id) => (
+        <PersonCombobox
+          id={id}
+          people={leads.map((l) => ({ id: l.id, name: l.name }))}
+          value={added.replaces}
+          onChoose={onChange}
+          placeholder="Search the leads"
+          nobody={{ label: "Nobody, add as an extra lead", onChoose: () => onChange(null) }}
+          photo={<Avatar size="sm" photoUrl={leads.find((l) => l.id === added.replaces)?.photoUrl ?? null} />}
+        />
+      )}
+    </Field>
   );
 }
 
@@ -610,9 +604,10 @@ function OutcomeChoice({
 
 /**
  * The picker under "+ Add lead", "+ Add member" (boards 68b2, 68b6, 68b7) or
- * "+ Pick head" (77d, 77e), or who takes over as team leader (77i): it
- * searches the whole team by name, and in member mode
- * takes an email new to the team. Escape closes it.
+ * "+ Pick head" (77d, 77e), or who takes over as team leader (77i): the
+ * shared person field (issue #511) over a search of the whole team by name,
+ * which in member mode also takes an email new to the team. Escape closes it.
+ * With `multi`, each pick adds one and the field stays for the next.
  */
 export function PeoplePicker({
   mode,
@@ -621,6 +616,7 @@ export function PeoplePicker({
   onPick,
   onEmail,
   onClose,
+  multi = false,
 }: {
   mode: "lead" | "member" | "head" | "leader";
   /** The division or department the pick joins: "Mission Analysis", "the new department". */
@@ -630,7 +626,9 @@ export function PeoplePicker({
   onPick: (pick: TeamPick) => void;
   onEmail?: (email: string) => void;
   onClose: () => void;
+  multi?: boolean;
 }) {
+  const id = useId();
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<TeamSearch>({ kind: "none" });
   const asked = useRef(0);
@@ -656,79 +654,42 @@ export function PeoplePicker({
             ? "They join once you confirm their signed NDA. You or they can fill in their details."
             : "Not in the team yet? Type their email to add them as a new member.";
 
+  const people = found.kind === "people" ? found.people : [];
+  const choose = (personId: number) => {
+    const pick = people.find((p) => p.id === personId);
+    if (pick) onPick(pick);
+  };
+
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-hairline bg-panel" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), onClose())}>
-      <label className="flex items-center gap-2.5 border-b border-hairline px-3.5">
-        <Search aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
-        <span className="sr-only">{mode === "member" ? "Search the team, or type an email" : mode === "leader" ? "Search the team for who takes over" : `Search the team for a ${mode}`}</span>
-        <input
-          autoFocus
-          value={query}
-          autoComplete="off"
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={mode === "member" ? "Name or email" : "Search the team"}
-          className="h-11 min-w-0 flex-1 bg-transparent text-[14px] text-prt-text placeholder:text-dim focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close the search"
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
-        >
-          <X aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-        </button>
+    <div className="mt-3 flex items-start gap-2">
+      <label htmlFor={id} className="sr-only">
+        {mode === "member" ? "Search the team, or type an email" : mode === "leader" ? "Search the team for who takes over" : `Search the team for a ${mode}`}
       </label>
-      {found.kind === "people" && (
-        <div className="p-1.5">
-          {mode === "member" && <p className="px-2.5 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-[0.3em] text-dim">In the team</p>}
-          <ul>
-            {found.people.map((p) => {
-              const reason = taken(p);
-              return (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    disabled={reason !== null}
-                    onClick={() => onPick(p)}
-                    className={`group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors duration-300 ease-out enabled:hover:bg-white-5 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
-                  >
-                    <Avatar size="md" />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex min-w-0 items-baseline gap-2">
-                        <span className="shrink-0 text-[14px] text-prt-text">{p.name}</span>
-                        {p.place !== null && <span className="truncate text-[12px] text-prt-muted">{p.place}</span>}
-                      </span>
-                      <span className="block truncate text-[12px] text-prt-muted">{reason ?? p.role}</span>
-                    </span>
-                    <CornerDownLeft aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={1.75} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-      {newEmail !== null && onEmail && (
-        <div className="p-1.5">
-          <p className="px-2.5 pb-1.5 pt-1 text-[12px] text-prt-muted">No one in the team uses this email.</p>
-          <button
-            type="button"
-            onClick={() => onEmail(newEmail)}
-            className={`group flex w-full items-center gap-3 rounded-lg bg-white-5 px-2.5 py-2 text-left transition-colors duration-300 ease-out hover:bg-white-10 ${FOCUS}`}
-          >
-            <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <MailPlus className="h-3.5 w-3.5" strokeWidth={1.75} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] text-prt-text">Add {newEmail}</span>
-              <span className="block truncate text-[12px] text-prt-muted">New member of {short}, after the NDA</span>
-            </span>
-            <CornerDownLeft aria-hidden className="h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
-          </button>
-        </div>
-      )}
-      {mode !== "member" && found.kind === "new-email" && <p className="px-4 py-3 text-[13px] text-prt-muted">No one in the team uses this email.</p>}
-      <p className="border-t border-hairline px-3.5 py-2.5 text-[12px] leading-relaxed text-prt-muted">{footer}</p>
+      <div className="min-w-0 flex-1">
+        <PersonCombobox
+          id={id}
+          people={people.map((p) => ({ id: p.id, name: p.name, aside: p.place, line: p.role, taken: taken(p) }))}
+          value={null}
+          onChoose={choose}
+          placeholder={mode === "member" ? "Name or email" : "Search the team"}
+          search={{ text: query, onText: setQuery }}
+          heading={mode === "member" ? "In the team" : undefined}
+          note={found.kind === "new-email" ? "No one in the team uses this email." : null}
+          extra={newEmail !== null && onEmail ? { label: `Add ${newEmail}`, detail: `New member of ${short}, after the NDA`, onChoose: () => onEmail(newEmail) } : null}
+          hint={footer}
+          multi={multi}
+          autoFocus
+          onEscape={onClose}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close the search"
+        className={`flex h-11 w-9 shrink-0 items-center justify-center rounded-full text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
+      >
+        <X aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+      </button>
     </div>
   );
 }
@@ -766,7 +727,6 @@ function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable
         toast.error("Could not add them", { description: result.error });
         return;
       }
-      setAdding(false);
       toast.success(result.value === "joined" ? `${who} joined ${short}` : `${who} is waiting for their NDA. Let them know: the site sends no emails.`);
     });
 
@@ -819,6 +779,7 @@ function LiveMembers({ tab, editable, onFill }: { tab: DivisionMembers; editable
             onPick={(p) => add({ kind: "member", personId: p.id }, p.name)}
             onEmail={(email) => add({ kind: "email", email, firstName: "", lastName: "", details: null }, email)}
             onClose={() => setAdding(false)}
+            multi
           />
         ) : (
           <button type="button" onClick={() => setAdding(true)} className={`${ADD_LINK} mt-3`}>
@@ -982,15 +943,12 @@ function DraftMembers({
           mode="member"
           short={short}
           taken={(p) => (leadIds.includes(p.id) ? "Picked as a lead" : members.some((m) => m.id === p.id) ? "Already added" : null)}
-          onPick={(p) => {
-            onAdd(p);
-            setAdding(false);
-          }}
+          onPick={onAdd}
           onEmail={(email) => {
             if (!emails.includes(email)) onAddEmail(email);
-            setAdding(false);
           }}
           onClose={() => setAdding(false)}
+          multi
         />
       ) : (
         <button type="button" onClick={() => setAdding(true)} className={`${ADD_LINK} mt-2.5`}>
