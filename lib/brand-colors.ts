@@ -7,6 +7,8 @@ export const brand = {
   ground: "#0A0A0A",
   /** Paper: primary text. */
   text: "#FAF9F7",
+  /** Secondary text and links (`text-2`). */
+  text2: "#C9C9CE",
   /** Signal orange. */
   accent: "#FF5E00",
   accentHover: "#FF7526",
