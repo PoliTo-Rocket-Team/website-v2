@@ -65,8 +65,6 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 
 const DASH = <span className="text-dim">–</span>;
 
-/** The list's page size: board 73 shows eight rows a page. */
-const LIST_PAGE = 8;
 
 type View = "list" | "table";
 
@@ -91,9 +89,9 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
   const divisions = divisionOptions(page.units, department);
   const shownDivision = divisions.some((d) => d.id === divisionId) ? divisionId : null;
   const shown = useMemo(() => shownMembers(page, { department, divisionId, query }), [page, department, divisionId, query]);
-  const last = pageCount(shown.people.length, LIST_PAGE);
+  const last = pageCount(shown.people.length);
   const current = Math.min(listPage, last);
-  const paged = pageOf(shown.people, current, LIST_PAGE);
+  const paged = pageOf(shown.people, current);
   const open = [...shown.people, ...page.everyone].find((p) => p.id === openId) ?? null;
   const narrow = (apply: () => void) => {
     apply();

@@ -49,16 +49,6 @@ export async function createProject(input: unknown): Promise<WriteResult<{ slug:
   return result.ok ? written({ slug: editorVersion(result.value.version).slug }) : result;
 }
 
-/** The cards dragged into a new order on the Projects page (board 75, issue #297): the site order Home and /projects follow. */
-export async function reorderProjects(projectIds: readonly number[]): Promise<WriteResult<null>> {
-  if (!Array.isArray(projectIds) || !projectIds.every(Number.isSafeInteger)) return refused("Unknown projects.");
-  const opening = await openDashboard();
-  if (opening.kind !== "open") return refused("Sign in again to make changes.");
-  const result = await opening.data.projects.setSiteOrder(projectIds);
-  if (result.ok) refreshPublicProjects();
-  return result;
-}
-
 /**
  * A launch or gallery photo picked in the Edit <project> panel (issue #299),
  * stored at once, through the same path as Outreach's, so the page can show
