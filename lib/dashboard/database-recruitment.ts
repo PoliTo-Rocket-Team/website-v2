@@ -59,6 +59,7 @@ import {
   readsRecruitment,
   readsRecruitmentIn,
   type DocumentKind,
+  type RecruitmentArea,
   type StoredDocument,
 } from "./application-documents";
 import { parsePrivatePathname } from "@/lib/storage/pathname";
@@ -73,9 +74,6 @@ import { refused, written, type WriteResult } from "./write";
 
 type Identity = DashboardIdentity;
 type DbStatus = (typeof applications.$inferSelect)["status"];
-
-/** Whether the viewer reads the recruitment pages (`readsRecruitment`, ./application-documents.ts). */
-const isLead: (identity: Identity) => boolean = readsRecruitment;
 
 /** The division a position is in, with its department; null for a deleted position or a closed unit. */
 async function positionUnit(positionId: number): Promise<DivisionUnit | null> {
@@ -102,8 +100,12 @@ async function mayChangePosition(identity: Identity, area: "positions" | "applic
 
 // Positions -------------------------------------------------------------------
 
-/** The positions a lead reaches, with what the table shows for each. */
-async function readPositionRows(identity: Identity, now: Date): Promise<PositionRow[]> {
+/**
+ * The positions the viewer reads in `area`, with what the table shows for
+ * each: the Positions page reads them in the Positions area, the
+ * Applications page in the Applications area (issue #471).
+ */
+async function readPositionRows(identity: Identity, area: RecruitmentArea, now: Date): Promise<PositionRow[]> {
   const db = getDb();
   // The tallies are read for every position, beside the positions rather than
   // after them, and picked per row below: one round trip, not two (issue #397).
@@ -138,7 +140,7 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
       .groupBy(applications.applyPositionId, applications.status),
   ]);
   // The same rule the document route checks (`readsRecruitmentIn`, ./application-documents.ts).
-  const scoped = rows.filter((r) => readsRecruitmentIn(identity, { divisionId: r.division_id, departmentId: r.dept_id }));
+  const scoped = rows.filter((r) => readsRecruitmentIn(identity, area, { divisionId: r.division_id, departmentId: r.dept_id }));
   if (scoped.length === 0) return [];
 
   return scoped.map((r) => {
@@ -176,7 +178,7 @@ async function readPositionRows(identity: Identity, now: Date): Promise<Position
  * change (`mayChange`, issue #160).
  */
 async function readPostableDivisions(identity: Identity): Promise<DivisionChoice[]> {
-  if (!isLead(identity)) return [];
+  if (!readsRecruitment(identity, "positions")) return [];
   const rows = await getDb()
     .select({
       id: divisions.id,
@@ -201,10 +203,10 @@ async function readNextPositionId(): Promise<number> {
 }
 
 async function positionsPage(identity: Identity): Promise<PositionsPage> {
-  if (!isLead(identity)) throw new DashboardRefused("positions");
+  if (!readsRecruitment(identity, "positions")) throw new DashboardRefused("positions");
   // The head's department needs nothing of the positions, so it is read beside them (issue #397).
   const [positions, divisionChoices, nextId, department] = await Promise.all([
-    readPositionRows(identity, new Date()),
+    readPositionRows(identity, "positions", new Date()),
     readPostableDivisions(identity),
     readNextPositionId(),
     identity.kind === "operations-lead" ? null : readDepartmentUnit(identity),
@@ -379,9 +381,9 @@ function answersOf(raw: unknown[] | null): ApplicationEntry["answers"] {
 }
 
 async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
-  if (!isLead(identity)) throw new DashboardRefused("applications");
+  if (!readsRecruitment(identity, "applications")) throw new DashboardRefused("applications");
   const now = new Date();
-  const [positions, scope] = await Promise.all([readPositionRows(identity, now), applicationsScope(identity)]);
+  const [positions, scope] = await Promise.all([readPositionRows(identity, "applications", now), applicationsScope(identity)]);
   if (positions.length === 0) return { scope, now: now.toISOString(), positions: [], applications: [] };
 
   const db = getDb();
@@ -487,7 +489,7 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
  * private store.
  */
 async function applicationDocument(identity: Identity, applicationId: number, kind: DocumentKind): Promise<StoredDocument | null> {
-  if (!isLead(identity)) throw new DashboardRefused(`application ${applicationId}`);
+  if (!readsRecruitment(identity, "applications")) throw new DashboardRefused(`application ${applicationId}`);
   const [row] = await getDb()
     .select({
       division_id: divisions.id,

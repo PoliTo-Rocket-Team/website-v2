@@ -1,4 +1,13 @@
-import { areaGrantsOf, coveredDivisionIds, mayChange, viewerUnitsOf, type ScopeUnitRow, type ScopedRole } from "@/lib/dashboard/viewer";
+import {
+  areaGrantsOf,
+  coveredDivisionIds,
+  grantedAreasOf,
+  mayChange,
+  viewerUnitsOf,
+  type GrantArea,
+  type ScopeUnitRow,
+  type ScopedRole,
+} from "@/lib/dashboard/viewer";
 import type { OrgChart, TeamActor } from "@/lib/dashboard/team";
 
 // A Members grant the member test viewer can hold (issue #351), so a preview
@@ -26,6 +35,11 @@ const SCOPE_ROW: Readonly<Record<TestGrant, ScopeUnitRow>> = {
   "members-view": { scope: "division", target: "members", level: "view", divisionId: MISSION_ANALYSIS, deptId: null },
   "members-edit-department": { scope: "department", target: "members", level: "edit", divisionId: null, deptId: AERODYNAMICS },
 };
+
+/** The areas the member holding `grant` is granted (issue #471): Members alone, by its scope row. */
+export function testGrantAreas(grant: TestGrant): readonly GrantArea[] {
+  return grantedAreasOf([SCOPE_ROW[grant]]);
+}
 
 /** The member's own role: a member of Mission Analysis, which changes nobody. */
 const MEMBER_ROLE: ScopedRole = { type: null, divisionId: MISSION_ANALYSIS, departmentId: AERODYNAMICS };

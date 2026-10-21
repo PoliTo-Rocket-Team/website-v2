@@ -26,7 +26,7 @@ import { team } from "./team";
 // group. Every write passes the site-content gate.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
-const lead: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false };
+const lead: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
 const THIS_YEAR = 2026;
 
 /** An advisor store in memory, which `keep` may refuse a list to, and the Alumni entries End advising added. */

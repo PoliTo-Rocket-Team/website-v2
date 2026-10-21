@@ -28,7 +28,7 @@ import type { PersonPhoto } from "./types";
 const roles = dummyTeamRoles();
 const build = teamBuildOf(roles);
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
-const siteContent: ViewerStanding = { kind: "member", areaGrant: false, siteContent: true, approveOrders: false };
+const siteContent: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false };
 
 const renamed: TeamPageLayer = { ...NO_TEAM_LAYER, leader: { role: "President" }, intro: "Edited intro." };
 
@@ -270,7 +270,7 @@ function recordingPhotos() {
 
 test("an uploaded photo is refused without the site-content permission, and stores no file", async () => {
   const files = recordingPhotos();
-  const viewer: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false };
+  const viewer: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
   const editor = teamPageEditor(viewer, editorOver(viewer).store, async () => roles, team, files.photos);
   assert.deepEqual(await editor.uploadPhoto({ name: "photo.jpg", contentType: "image/jpeg", bytes: JPEG }), refused(SITE_CONTENT_REFUSAL));
   assert.deepEqual(files.put, []);

@@ -10,13 +10,13 @@ import { mayChange, type ChangeArea, type ChangeAuthority, type DivisionUnit } f
 export type PositionWriter = RecruitmentReader & ChangeAuthority;
 
 /**
- * Whether the viewer may change `area` on a position in `unit`: its
- * recruitment is on their pages (`readsRecruitmentIn`), and their role or an
- * area grant at Can edit lets them change it (`mayChange`). Full access, the
+ * Whether the viewer may change `area` on a position in `unit`: they read
+ * that area there (`readsRecruitmentIn`), and their role or an area grant at
+ * Can edit lets them change it (`mayChange`). Full access, the
  * standing the team leader's seat gives (`fullAccessSeatOf`, issue #444),
  * passes both everywhere; a department head passes in their department, a
  * division lead in the divisions they lead.
  */
 export function mayChangePositionIn(viewer: PositionWriter, area: Exclude<ChangeArea, "members">, unit: DivisionUnit): boolean {
-  return readsRecruitmentIn(viewer, unit) && mayChange(viewer, area, unit);
+  return readsRecruitmentIn(viewer, area, unit) && mayChange(viewer, area, unit);
 }

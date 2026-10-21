@@ -41,7 +41,6 @@ import { formatEuro, ordersOfDivisions, waitingOrders } from "./orders";
 import {
   checklistProgress,
   divisionRoster,
-  divisionShortName,
   noPhotoItem,
   oldestLine,
   type AttentionItem,
@@ -57,7 +56,7 @@ import {
 } from "./overview";
 import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./database-division";
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
-import { openPositionsDetail } from "./open-positions-detail";
+import { divisionOverviewOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
@@ -79,7 +78,7 @@ import { blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { upcomingInterviews } from "./interview-slots";
-import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, isOffTeam, isTeamLeader, readsAsDivisionLead, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type ViewerStanding } from "./viewer";
+import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areaUnitsOf, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
 import { written } from "./write";
 
 // The signed-in account's side of the dashboard data interface: the same
@@ -283,12 +282,14 @@ async function readLivePositions(): Promise<LivePosition[]> {
   }));
 }
 
-/** The live positions the viewer's figures cover. */
-async function scopedPositions(identity: Identity): Promise<LivePosition[]> {
+/**
+ * The live positions the viewer's figures cover in `area` (`readsAreaIn`):
+ * a head's or a lead's units in every area, a member's granted ones in that
+ * area alone (issue #471).
+ */
+async function scopedPositions(identity: Identity, area: "positions" | "applications"): Promise<LivePosition[]> {
   const rows = await readLivePositions();
-  return identity.kind === "operations-lead"
-    ? rows
-    : rows.filter((r) => identity.divisionIds.includes(r.divisionId) || identity.departmentIds.includes(r.departmentId));
+  return rows.filter((r) => readsAreaIn(identity, area, { divisionId: r.divisionId, departmentId: r.departmentId }));
 }
 
 /**
@@ -305,8 +306,13 @@ async function readUnread(): Promise<Map<number | null, { n: number; oldest: str
   return new Map(unread.map((u) => [u.position_id, u]));
 }
 
-/** Open org units' live positions the viewer's figures cover, with their unread application counts. */
-async function readPositions(identity: Identity, scoped: Promise<LivePosition[]> = scopedPositions(identity)): Promise<ScopedPosition[]> {
+/** Open org units' live positions the viewer's figures cover in `area`, with their unread application counts. */
+async function readPositions(identity: Identity, area: "positions" | "applications"): Promise<ScopedPosition[]> {
+  return withUnread(scopedPositions(identity, area));
+}
+
+/** The given live positions, with their unread application counts. */
+async function withUnread(scoped: Promise<LivePosition[]>): Promise<ScopedPosition[]> {
   const [rows, unreadBy] = await Promise.all([scoped, readUnread()]);
   return rows.map((r) => {
     const fresh = unreadBy.get(r.id);
@@ -349,7 +355,7 @@ function plural(n: number, one: string, many: string): string {
 /** Board 40: the operations lead's figures and attention across the team. */
 async function teamOverview(identity: Identity): Promise<TeamOverview> {
   const [positions, recruitmentOpen, memberCount, notices] = await Promise.all([
-    readPositions(identity),
+    readPositions(identity, "positions"),
     readRecruitmentOpen(),
     readActiveMemberCount(null),
     readNoticeAttention(identity, new Date()),
@@ -400,7 +406,7 @@ async function teamOverview(identity: Identity): Promise<TeamOverview> {
 async function leaderOverview(identity: Identity): Promise<TeamLeaderOverview> {
   const snapshotRead = readTeamSnapshot();
   const [positions, snapshot, orders, notices] = await Promise.all([
-    readPositions(identity),
+    readPositions(identity, "positions"),
     snapshotRead,
     snapshotRead.then((s) => readOrdersIn(s.org.divisions.map((d) => d.id))),
     readNoticeAttention(identity, new Date()),
@@ -495,65 +501,49 @@ async function readInterviews(positions: readonly { id: number; title: string }[
  */
 async function divisionOverview(identity: Identity): Promise<DivisionOverview> {
   const now = new Date();
-  // The interviews need only which positions the lead reaches, so they start beside the counts.
-  const scoped = scopedPositions(identity);
-  const [positions, interviews, memberCount, ordersPage, withoutPhoto, notices] = await Promise.all([
-    readPositions(identity, scoped),
-    scoped.then(readInterviews),
-    readActiveMemberCount(identity.divisionIds),
-    databaseDivisionPages(identity).orders(),
-    readMembersWithoutPhoto(identity.divisionIds),
+  // Each area is read only when the viewer reads it (`overviewAreasOf`,
+  // ./division-overview.ts): a member granted some areas reads nothing of
+  // the others (issue #471). A lead reads every area.
+  const areas = overviewAreasOf(identity);
+  const reads = (area: GrantArea) => areas.includes(area);
+  const [positions, applications, orders, members, notices] = await Promise.all([
+    reads("positions") ? readPositions(identity, "positions") : undefined,
+    reads("applications") ? readApplicationFigures(identity) : undefined,
+    reads("orders") ? readOrderFigures(identity) : undefined,
+    reads("members") ? readMemberFigures(identity) : undefined,
     readNoticeAttention(identity, now),
   ]);
-  const open = positions.filter((p) => p.open);
-  const fresh = positions.reduce((sum, p) => sum + p.newApplications, 0);
-  // The figure counts the lead's own divisions' orders, though Orders shows the whole team (issue #233).
-  const waiting = ordersPage ? waitingOrders(ordersOfDivisions(ordersPage.orders, identity.divisionIds)) : { count: 0, total: 0 };
-  const divisionName = identity.role?.divisionName ?? "";
-  const noPhoto = noPhotoItem(withoutPhoto);
+  return divisionOverviewOf(areas, { now, notices, positions, applications, orders, members });
+}
 
-  const attention: AttentionItem[] = [
-    ...positions.flatMap((p): AttentionItem[] =>
-      p.newApplications > 0 && p.oldestNew !== null
-        ? [
-            {
-              kind: "applications",
-              title: `${plural(p.newApplications, "new application", "new applications")} for ${p.title}`,
-              detail: oldestLine(p.oldestNew, now),
-              action: { label: "Review", href: `/dashboard/applications?position=${p.id}` },
-            },
-          ]
-        : [],
-    ),
-    ...(noPhoto ? [noPhoto] : []),
-    ...notices,
-  ];
+/** The live positions the viewer reads Applications on, with their unread counts, and the upcoming interviews on them. */
+async function readApplicationFigures(identity: Identity): Promise<NonNullable<DivisionFigures["applications"]>> {
+  // The interviews need only which positions the viewer reads, so they start beside the counts.
+  const scoped = scopedPositions(identity, "applications");
+  const [positions, interviews] = await Promise.all([withUnread(scoped), scoped.then(readInterviews)]);
+  return { positions, interviews };
+}
 
-  return {
-    shape: "division",
-    stats: [
-      { label: "New applications", value: String(fresh), detail: "Waiting for a first look" },
-      {
-        label: "Open positions",
-        value: String(open.length),
-        detail: openPositionsDetail(open.map((p) => ({ title: p.title, division: p.divisionName }))),
-      },
-      {
-        label: "Orders",
-        value: `${waiting.count} waiting`,
-        detail: `${formatEuro(waiting.total)} to be placed`,
-        live: waiting.count > 0,
-      },
-      {
-        label: "My division",
-        value: String(memberCount),
-        detail: `${memberCount === 1 ? "person" : "people"} in ${divisionShortName(divisionName)}`,
-      },
-    ],
-    attention,
-    interviews,
-    activity: [],
-  };
+/**
+ * The orders waiting in the units the viewer reads Orders in. A lead's figure
+ * counts their own divisions' orders, though Orders shows the whole team
+ * (issue #233); a member's, the divisions their Orders grants cover.
+ */
+async function readOrderFigures(identity: Identity): Promise<NonNullable<DivisionFigures["orders"]>> {
+  const ordersPage = await databaseDivisionPages(identity).orders();
+  if (!ordersPage) return { count: 0, total: 0 };
+  if (identity.kind !== "member") return waitingOrders(ordersOfDivisions(ordersPage.orders, identity.divisionIds));
+  const granted = ordersPage.orders.filter(
+    (o) => o.unit !== null && readsAreaIn(identity, "orders", { divisionId: o.unit.division.id, departmentId: o.unit.department?.id ?? -1 }),
+  );
+  return waitingOrders(granted);
+}
+
+/** How many people are in the divisions the viewer reads Members in, their division's name, and who there has no photo. */
+async function readMemberFigures(identity: Identity): Promise<NonNullable<DivisionFigures["members"]>> {
+  const divisionIds = [...areaUnitsOf(identity, "members").divisionIds];
+  const [count, withoutPhoto] = await Promise.all([readActiveMemberCount(divisionIds), readMembersWithoutPhoto(divisionIds)]);
+  return { count, divisionName: identity.role?.divisionName ?? "", withoutPhoto };
 }
 
 /**
@@ -566,7 +556,7 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
   const db = getDb();
   // The positions, their interviews and the notices need nothing of the
   // department, so they start beside its read; the rest wait for its divisions.
-  const scoped = scopedPositions(identity);
+  const scoped = scopedPositions(identity, "positions");
   const departmentRead = readHeadDepartment(identity).then(async (department) => {
     const divisionIds = department?.divisions.map((d) => d.id) ?? [];
     const [team, orders, withoutPhoto] = await Promise.all([
@@ -590,7 +580,7 @@ async function departmentOverview(identity: Identity): Promise<DepartmentOvervie
     return { department, team, orders, withoutPhoto };
   });
   const [positions, interviews, notices, { department, team, orders, withoutPhoto }] = await Promise.all([
-    readPositions(identity, scoped),
+    withUnread(scoped),
     scoped.then(readInterviews),
     readNoticeAttention(identity, now),
     departmentRead,
@@ -746,8 +736,9 @@ function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
     case "division-lead":
       return divisionOverview(identity);
     case "member":
-      // An area grant opens a lead's division pages, so its Overview too (issue #160).
-      return identity.areaGrant ? divisionOverview(identity) : memberOverview(identity);
+      // A member granted some areas gets the division board with those areas'
+      // figures alone (issue #471); a member with no grant, their own page.
+      return identity.grantedAreas.length > 0 ? divisionOverview(identity) : memberOverview(identity);
     case "non-member":
     case "alumni":
       return Promise.reject(new DashboardRefused("an Overview off the team is built from My applications"));
@@ -771,9 +762,10 @@ async function hasShownApplications(identity: Identity): Promise<boolean> {
   return rows.some((row) => isShownAt(row, now));
 }
 
+/** The Applications badge: unread applications where the viewer reads the Applications area; none for anyone else (issue #471). */
 async function navCountsOf(identity: Identity): Promise<NavCounts> {
-  if (identity.kind !== "operations-lead" && identity.kind !== "department-head" && !readsAsDivisionLead(identity)) return {};
-  const fresh = (await readPositions(identity)).reduce((sum, p) => sum + p.newApplications, 0);
+  if (!readsArea(identity, "applications")) return {};
+  const fresh = (await readPositions(identity, "applications")).reduce((sum, p) => sum + p.newApplications, 0);
   return fresh > 0 ? { applications: fresh } : {};
 }
 

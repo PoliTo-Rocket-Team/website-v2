@@ -86,7 +86,7 @@ import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { checkPhoto, HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
-import type { TestGrant } from "./test-grant";
+import { testGrantAreas, type TestGrant } from "./test-grant";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
@@ -229,8 +229,8 @@ function headDepartment() {
  * and the navbar show this name. Their standing carries "Approve orders" when
  * the person they look as is one of `holders` (issue #270), so a grant the
  * team leader gave opens Orders once the test developer switches to them.
- * The member holding a test grant (./test-grant.ts) holds an area grant, as
- * a member with a scope row does (issue #351).
+ * The member holding a test grant (./test-grant.ts) is granted its area,
+ * Members, as a member with that scope row is (issues #351, #471).
  */
 export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersHolding[], grant: TestGrant | null = null): DashboardViewer {
   if (viewer === "non-member") {
@@ -242,7 +242,7 @@ export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersH
   const person = personFor[viewer];
   const approveOrders = holders.some((h) => h.personId === person.id);
   const standing = testDeveloperStanding(viewer, approveOrders);
-  const withGrant = standing.kind === "member" && grant !== null ? { ...standing, areaGrant: true } : standing;
+  const withGrant = standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant) } : standing;
   return { ...withGrant, name: person.name, role: person.title, session: "test-developer" };
 }
 

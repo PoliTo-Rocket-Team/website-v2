@@ -1,10 +1,10 @@
-import { seatOf, type FullAccessSeat, type ViewerKind, type ViewerStanding } from "./viewer";
+import { seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type ViewerStanding } from "./viewer";
 
 // Which viewer reaches which dashboard page, and where the page sits (Dashboard
 // v2 boards 51b, 52, 56 and 72). One row per page: a new page adds one row. A
 // viewer whose kind is missing from a row's `reach` does not reach the page,
-// unless the row admits `areaGrant` and they are a member holding an area grant
-// (issue #160), `siteContent` and they hold site-content access, or
+// unless the row names a `grantArea` and they are a member granted that area
+// (issues #160, #471), `siteContent` and they hold site-content access, or
 // `approveOrders` and they hold "Approve orders". A row that names a `seat` is
 // reached by that full-access seat alone (issue #238). The `operations-lead`
 // kind is full access: the team leader, the operations lead and the IT lead,
@@ -49,8 +49,8 @@ type PageRow = {
   readonly place: NavPlace;
   /** The viewer kinds whose role reaches the page. */
   readonly reach: readonly ViewerKind[];
-  /** A member who holds an area grant (issue #160) reaches the page as a division lead does. */
-  readonly areaGrant?: true;
+  /** The area whose grant lets a member reach the page, that area's alone (issues #160, #471). */
+  readonly grantArea?: GrantArea;
   /** A viewer whose kind does not reach the page reaches it with site-content access. */
   readonly siteContent?: true;
   /** A viewer whose kind does not reach the page reaches it with "Approve orders". */
@@ -110,7 +110,7 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/positions",
     place: "recruitment",
     reach: ["operations-lead", "department-head", "division-lead"],
-    areaGrant: true,
+    grantArea: "positions",
   },
   {
     key: "applications",
@@ -118,7 +118,7 @@ export const DASHBOARD_PAGES = [
     href: "/dashboard/applications",
     place: "recruitment",
     reach: ["operations-lead", "department-head", "division-lead"],
-    areaGrant: true,
+    grantArea: "applications",
   },
   {
     key: "members",
@@ -127,7 +127,7 @@ export const DASHBOARD_PAGES = [
     // A department head's Members page holds every division of the department (issue #235).
     place: "team",
     reach: ["operations-lead", "department-head", "division-lead"],
-    areaGrant: true,
+    grantArea: "members",
   },
   {
     key: "projects",
@@ -201,10 +201,10 @@ export const DASHBOARD_PAGES = [
     label: "Access",
     href: "/dashboard/access",
     // A department head's Access page is here (issue #230); full access gives
-    // access across the whole team (issue #238).
+    // access across the whole team (issue #238). It is no grant area
+    // (docs/dashboard-rules.md, "Access"), so no grant opens it (issue #471).
     place: "team",
     reach: ["operations-lead", "department-head", "division-lead"],
-    areaGrant: true,
   },
   {
     key: "orders",
@@ -213,7 +213,7 @@ export const DASHBOARD_PAGES = [
     // Every order in the team, for anyone with Orders access (issue #233).
     place: "team",
     reach: ["operations-lead", "department-head", "division-lead"],
-    areaGrant: true,
+    grantArea: "orders",
     // "Approve orders" is a grant across the whole team (issue #270).
     approveOrders: true,
   },
@@ -281,7 +281,7 @@ function reaches(page: PageRow, viewer: ViewerStanding): boolean {
   if (page.seat !== undefined && seatOf(viewer) !== page.seat) return false;
   return (
     page.reach.includes(viewer.kind) ||
-    (viewer.kind === "member" && viewer.areaGrant && page.areaGrant === true) ||
+    (viewer.kind === "member" && page.grantArea !== undefined && viewer.grantedAreas.includes(page.grantArea)) ||
     (viewer.siteContent && page.siteContent === true) ||
     (viewer.approveOrders && page.approveOrders === true)
   );

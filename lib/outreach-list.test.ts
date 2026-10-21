@@ -15,7 +15,7 @@ import { checkSummitFields, summitFieldsOf } from "./outreach-summit-fields";
 // one previews and test developers write to.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
-const member: ViewerStanding = { kind: "member", areaGrant: false, siteContent: false, approveOrders: false };
+const member: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
 
 function freshStore(): OutreachStore {
   const jar = {
