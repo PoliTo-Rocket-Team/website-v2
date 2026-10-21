@@ -1,6 +1,6 @@
 import type { PrivatePathname } from "@/lib/storage/pathname";
 import type { ApplicationDocument } from "./recruitment";
-import { readsAsDivisionLead, type DivisionUnit, type ViewerStanding } from "./viewer";
+import { readsArea, readsAreaIn, type AreaReader, type DivisionUnit, type GrantArea, type ViewerStanding } from "./viewer";
 
 // Who reads an application on the dashboard, and where its documents open
 // (issue #406). The Applications page lists an application only for a viewer
@@ -33,21 +33,24 @@ export function applicationIdOf(segment: string): number | null {
   return Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : null;
 }
 
-/** A viewer as the recruitment pages read them: their kind, and the units their roles and grants cover. */
-export type RecruitmentReader = ViewerStanding & {
-  readonly divisionIds: readonly number[];
-  readonly departmentIds: readonly number[];
-};
+/** A viewer as the recruitment pages read them: their kind, the units their roles and scope rows cover, and their area grants. */
+export type RecruitmentReader = AreaReader;
 
-/** Whether the viewer reads the recruitment pages at all: a lead, a head, full access, or a member holding an area grant. */
-export function readsRecruitment(viewer: ViewerStanding): boolean {
-  return viewer.kind === "operations-lead" || viewer.kind === "department-head" || readsAsDivisionLead(viewer);
+/** The two recruitment areas: the Positions page's and the Applications page's, each its own grant (issue #471). */
+export type RecruitmentArea = Extract<GrantArea, "positions" | "applications">;
+
+/**
+ * Whether the viewer reads one recruitment page at all (`readsArea`): a lead,
+ * a head, full access, or a member granted that area. A Positions grant reads
+ * no application, and an Applications grant no Positions page (issue #471).
+ */
+export function readsRecruitment(viewer: ViewerStanding, area: RecruitmentArea): boolean {
+  return readsArea(viewer, area);
 }
 
-/** Whether the viewer reads the recruitment of one division: every division with full access, else the units they cover. */
-export function readsRecruitmentIn(viewer: RecruitmentReader, unit: DivisionUnit): boolean {
-  if (!readsRecruitment(viewer)) return false;
-  return viewer.kind === "operations-lead" || viewer.divisionIds.includes(unit.divisionId) || viewer.departmentIds.includes(unit.departmentId);
+/** Whether the viewer reads one recruitment area in one division: every division with full access, else where `readsAreaIn` covers it. */
+export function readsRecruitmentIn(viewer: RecruitmentReader, area: RecruitmentArea, unit: DivisionUnit): boolean {
+  return readsAreaIn(viewer, area, unit);
 }
 
 /**
@@ -59,9 +62,10 @@ export type ApplicationPlace = { readonly unit: DivisionUnit; readonly withdrawn
 
 /**
  * Whether the viewer may open the application and its documents: it is on
- * their Applications page. A withdrawn application has left every lead's
- * page (issue #169), so it opens for nobody.
+ * their Applications page, so they read the Applications area in its
+ * division. A withdrawn application has left every lead's page (issue #169),
+ * so it opens for nobody.
  */
 export function mayOpenApplication(viewer: RecruitmentReader, place: ApplicationPlace | null): boolean {
-  return place !== null && !place.withdrawn && readsRecruitmentIn(viewer, place.unit);
+  return place !== null && !place.withdrawn && readsRecruitmentIn(viewer, "applications", place.unit);
 }

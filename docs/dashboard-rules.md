@@ -552,6 +552,11 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
   - Orders at either level shows every order in the team (#233). Orders at Can edit also lets
     them request, edit and cancel the orders of that division. Orders at Can view edits nothing.
     A person with no Orders access does not see the Orders page.
+  - Each area stands alone (#471). A grant shows its own area, in the units it names, and
+    nothing of the other areas. A member granted some areas sees only those pages in the
+    sidebar and only those areas' figures and rows on the Overview. The server refuses every
+    read and action outside them, application files included. Access is no area, so no grant
+    opens it.
 - A person holds each area at one level or not at all. In both drawers each area has a tick; a
   ticked area takes its own level, and an unticked area means no access.
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.

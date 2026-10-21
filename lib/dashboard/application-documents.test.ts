@@ -5,9 +5,12 @@ import {
   documentHref,
   documentKindOf,
   mayOpenApplication,
+  readsRecruitment,
+  readsRecruitmentIn,
   type ApplicationPlace,
   type RecruitmentReader,
 } from "./application-documents";
+import type { AreaGrant, GrantArea } from "./viewer";
 
 // The document route's access check (issue #406): it opens an application's
 // files for exactly the viewers whose Applications page lists it.
@@ -17,12 +20,18 @@ const OTHER_DEPARTMENT = { divisionId: 5, departmentId: 1 };
 const open = (unit = TEST_BENCH): ApplicationPlace => ({ unit, withdrawn: false });
 
 const flags = { siteContent: false, approveOrders: false } as const;
-const covering = { divisionIds: [TEST_BENCH.divisionId], departmentIds: [] };
+const covering = { divisionIds: [TEST_BENCH.divisionId], departmentIds: [], grants: [] };
 
-const teamLeader: RecruitmentReader = { kind: "operations-lead", seat: "team-leader", ...flags, divisionIds: [], departmentIds: [] };
+/** A member holding a Can edit grant on each of `areas` over the test bench division, as `readIdentity` reads them. */
+function granted(...areas: readonly GrantArea[]): RecruitmentReader {
+  const grants: AreaGrant[] = areas.map((target) => ({ target, level: "edit", unit: { kind: "division", divisionId: TEST_BENCH.divisionId } }));
+  return { kind: "member", grantedAreas: areas, ...flags, divisionIds: [TEST_BENCH.divisionId], departmentIds: [], grants };
+}
+
+const teamLeader: RecruitmentReader = { kind: "operations-lead", seat: "team-leader", ...flags, divisionIds: [], departmentIds: [], grants: [] };
 const divisionLead: RecruitmentReader = { kind: "division-lead", ...flags, ...covering };
-const departmentHead: RecruitmentReader = { kind: "department-head", ...flags, divisionIds: [], departmentIds: [TEST_BENCH.departmentId] };
-const grantHolder: RecruitmentReader = { kind: "member", grantedAreas: ["applications"], ...flags, ...covering };
+const departmentHead: RecruitmentReader = { kind: "department-head", ...flags, divisionIds: [], departmentIds: [TEST_BENCH.departmentId], grants: [] };
+const grantHolder = granted("applications");
 const plainMember: RecruitmentReader = { kind: "member", grantedAreas: [], ...flags, ...covering };
 const applicant: RecruitmentReader = { kind: "non-member", siteContent: false, approveOrders: false, ...covering };
 const alumnus: RecruitmentReader = { kind: "alumni", siteContent: false, approveOrders: false, ...covering };
@@ -42,6 +51,41 @@ describe("who may open an application's documents", () => {
 
   test("a member with no grant, an applicant and an alumnus are refused, even in a unit their ids name", () => {
     for (const viewer of [plainMember, applicant, alumnus]) assert.equal(mayOpenApplication(viewer, open()), false, viewer.kind);
+  });
+
+  test("a member granted any area but Applications is refused every application and its documents (issue #471)", () => {
+    for (const area of ["positions", "members", "orders"] as const) {
+      const member = granted(area);
+      assert.equal(mayOpenApplication(member, open()), false, area);
+      assert.equal(readsRecruitment(member, "applications"), false, area);
+      assert.equal(readsRecruitmentIn(member, "applications", TEST_BENCH), false, area);
+    }
+    assert.equal(mayOpenApplication(granted("positions", "members", "orders"), open()), false, "three other areas together");
+  });
+
+  test("an Applications grant opens applications only in the units it names, not the units another grant names (issue #471)", () => {
+    const split: RecruitmentReader = {
+      kind: "member",
+      grantedAreas: ["positions", "applications"],
+      ...flags,
+      divisionIds: [TEST_BENCH.divisionId, OTHER_DEPARTMENT.divisionId],
+      departmentIds: [],
+      grants: [
+        { target: "applications", level: "view", unit: { kind: "division", divisionId: TEST_BENCH.divisionId } },
+        { target: "positions", level: "edit", unit: { kind: "division", divisionId: OTHER_DEPARTMENT.divisionId } },
+      ],
+    };
+    assert.equal(mayOpenApplication(split, open()), true);
+    assert.equal(mayOpenApplication(split, open(OTHER_DEPARTMENT)), false, "the Positions grant's division opens no application");
+    assert.equal(readsRecruitmentIn(split, "positions", OTHER_DEPARTMENT), true);
+    assert.equal(readsRecruitmentIn(split, "positions", TEST_BENCH), false, "the Applications grant's division lists no positions");
+  });
+
+  test("a Positions grant reads the Positions page and no Applications page; an Applications grant the reverse (issue #471)", () => {
+    assert.deepEqual([readsRecruitment(granted("positions"), "positions"), readsRecruitment(granted("positions"), "applications")], [true, false]);
+    assert.deepEqual([readsRecruitment(grantHolder, "positions"), readsRecruitment(grantHolder, "applications")], [false, true]);
+    const both = granted("positions", "applications");
+    assert.deepEqual([readsRecruitment(both, "positions"), readsRecruitment(both, "applications"), mayOpenApplication(both, open())], [true, true, true]);
   });
 
   test("a withdrawn application, or one off every page, opens for nobody", () => {

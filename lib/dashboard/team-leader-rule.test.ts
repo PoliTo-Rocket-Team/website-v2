@@ -66,7 +66,7 @@ const head = seat([{ type: "head", divisionId: null, departmentId: 1 }], [], [1]
 const lead = seat([{ type: "lead", divisionId: 1, departmentId: 1 }], [1], []);
 const member = seat([{ type: "core", divisionId: 1, departmentId: 1 }], [], []);
 
-const reader = (s: Seat): RecruitmentReader => ({ ...s.standing, divisionIds: s.divisionIds, departmentIds: s.departmentIds });
+const reader = (s: Seat): RecruitmentReader => ({ ...s.standing, divisionIds: s.divisionIds, departmentIds: s.departmentIds, grants: [] });
 const changes = (s: Seat, area: ChangeArea, unit: DivisionUnit) => mayChange({ kind: s.standing.kind, roles: s.roles, grants: [] }, area, unit);
 
 const noScope: ScopeInfo = {
@@ -117,17 +117,17 @@ test("applications: the team leader reads and moves every application; a head th
     assert.equal(changes(teamLeader, "applications", unit), true);
     assert.equal(mayOpenApplication(reader(teamLeader), place(unit)), true);
   }
-  assert.deepEqual([MA, OA, DM].map((u) => [changes(head, "applications", u), readsRecruitmentIn(reader(head), u)]), [
+  assert.deepEqual([MA, OA, DM].map((u) => [changes(head, "applications", u), readsRecruitmentIn(reader(head), "applications", u)]), [
     [true, true],
     [true, true],
     [false, false],
   ]);
-  assert.deepEqual([MA, OA, DM].map((u) => [changes(lead, "applications", u), readsRecruitmentIn(reader(lead), u)]), [
+  assert.deepEqual([MA, OA, DM].map((u) => [changes(lead, "applications", u), readsRecruitmentIn(reader(lead), "applications", u)]), [
     [true, true],
     [false, false],
     [false, false],
   ]);
-  assert.deepEqual([MA, OA, DM].map((u) => [changes(member, "applications", u), readsRecruitmentIn(reader(member), u)]), [
+  assert.deepEqual([MA, OA, DM].map((u) => [changes(member, "applications", u), readsRecruitmentIn(reader(member), "applications", u)]), [
     [false, false],
     [false, false],
     [false, false],

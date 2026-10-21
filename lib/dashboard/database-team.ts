@@ -78,7 +78,7 @@ import {
   type Promotion,
   type SteppingDown,
 } from "./hand-over";
-import { coveredDivisionIds, isOffTeam, mayChange, readsAsDivisionLead, seatOf } from "./viewer";
+import { coveredDivisionIds, isOffTeam, mayChange, readsArea, readsAreaIn, seatOf } from "./viewer";
 import {
   checkDepartmentClose,
   checkDepartmentCreate,
@@ -114,11 +114,12 @@ import { refused, written, type Upload, type WriteResult } from "./write";
 // roster so the Team pages read the change.
 
 /**
- * The division a lead's Members page opens on; null for anyone else. A lead of
- * several divisions starts on the one their primary role is in.
+ * The division a lead's Members page opens on, or a Members-granted member's;
+ * null for anyone else. A lead of several divisions starts on the one their
+ * primary role is in.
  */
 export function leadDivisionId(identity: DashboardIdentity): number | null {
-  if (!readsAsDivisionLead(identity)) return null;
+  if (identity.kind !== "division-lead" && !(identity.kind === "member" && readsArea(identity, "members"))) return null;
   return identity.role?.divisionId ?? identity.divisionIds[0] ?? null;
 }
 
@@ -141,14 +142,18 @@ async function readActor(identity: DashboardIdentity, org: OrgChart | Promise<Or
 }
 
 /**
- * Who the viewer reads the Members page as: `readActor`, except that a member
- * holding an area grant reads as a division lead over the units it covers,
- * whatever its area and level (`readsAsDivisionLead`). Reading is all it
- * decides; no write takes this actor, and the page's actions follow
- * `readActor` (issue #351).
+ * Who the viewer reads the Members page as: `readActor`, except that it reads
+ * every division where they read the Members area (`readsAreaIn`): a lead's
+ * own, or one a member's Members grant (or every-area grant) covers, at any
+ * level. A grant on another area reads no division here (issue #471).
+ * Reading is all it decides; no write takes this actor, and the page's
+ * actions follow `readActor` (issue #351).
  */
 async function readViewingActor(identity: DashboardIdentity, org: OrgChart | Promise<OrgChart>): Promise<TeamActor | null> {
-  return actorOf(identity, org, () => readsAsDivisionLead(identity));
+  return actorOf(identity, org, (divisionId, chart) => {
+    const division = chart.divisions.find((d) => d.id === divisionId);
+    return division !== undefined && readsAreaIn(identity, "members", { divisionId, departmentId: division.departmentId });
+  });
 }
 
 /**
@@ -395,7 +400,15 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
   const reach = reachOf(identity, viewing, snapshot.org);
   const division = reach.find((id) => id === divisionId) ?? reach[0];
   if (division === undefined) return NO_MEMBERS;
-  const [joining, waiting, actor] = await Promise.all([readJoining(division), readWaiting(division), readActor(identity, snapshot.org)]);
+  // The accepted applicants joining are applications data: listed only for a
+  // viewer who reads the Applications area here (issue #471).
+  const departmentId = snapshot.org.divisions.find((d) => d.id === division)?.departmentId;
+  const readsJoining = departmentId !== undefined && readsAreaIn(identity, "applications", { divisionId: division, departmentId });
+  const [joining, waiting, actor] = await Promise.all([
+    readsJoining ? readJoining(division) : [],
+    readWaiting(division),
+    readActor(identity, snapshot.org),
+  ]);
   const page = divisionMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,

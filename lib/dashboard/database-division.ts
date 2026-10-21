@@ -33,7 +33,7 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "./division-access";
-import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, readsAsDivisionLead, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
+import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
   checkApproveOrdersChange,
@@ -81,11 +81,12 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 /**
  * Every open division a lead's Access page covers (issue #185), the one their
  * primary role sits in first, then the rest by name, each with what the lead
- * holds there; null for anyone else, or a lead with no open division.
+ * holds there; null for anyone else, or a lead with no open division. Access
+ * is no grant area, so no grant opens it to a member (issue #471).
  */
 async function leadDivisions(identity: DashboardIdentity): Promise<Extract<AccessUnit, { kind: "division" }> | null> {
   const memberId = identity.memberId;
-  if (!readsAsDivisionLead(identity) || memberId === null || identity.divisionIds.length === 0) return null;
+  if (identity.kind !== "division-lead" || memberId === null || identity.divisionIds.length === 0) return null;
   const rows = await getDb()
     .select({ id: divisions.id, name: divisions.name })
     .from(divisions)
@@ -150,7 +151,7 @@ async function readTeamUnit(): Promise<AccessUnit> {
 async function accessUnitOf(identity: DashboardIdentity): Promise<AccessUnit | null> {
   if (identity.memberId === null) return null;
   if (identity.kind === "operations-lead") return readTeamUnit();
-  if (readsAsDivisionLead(identity)) return leadDivisions(identity);
+  if (identity.kind === "division-lead") return leadDivisions(identity);
   const department = await readHeadDepartment(identity);
   if (department === null) return null;
   return { kind: "department", department: { id: department.id, name: department.name }, divisions: department.divisions };

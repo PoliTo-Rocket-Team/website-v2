@@ -49,7 +49,7 @@ type PageRow = {
   readonly place: NavPlace;
   /** The viewer kinds whose role reaches the page. */
   readonly reach: readonly ViewerKind[];
-  /** The area whose grant lets a member reach the page as a division lead does (issues #160, #471). */
+  /** The area whose grant lets a member reach the page, that area's alone (issues #160, #471). */
   readonly grantArea?: GrantArea;
   /** A viewer whose kind does not reach the page reaches it with site-content access. */
   readonly siteContent?: true;
