@@ -202,13 +202,14 @@ test("the seeded outreach posts, tags and summit are the ones the outreach impor
   assert.deepEqual(outreachSummitOf(data)?.published, imported.summit.state === "published" ? imported.summit.published : undefined);
 });
 
-test("the newest listed post and two more record posts carry a placeholder gallery of the site's own photos (issue #456)", () => {
+test("the pinned post, the newest listed post and two more record posts carry a placeholder gallery of the site's own photos (issue #456)", () => {
   const items = outreachItemsOf(data);
   const published = publishedById(items);
   const pinned = data.outreachPosts.find((p) => p.pinned)?.id;
   const [newest] = newestFirst([...published].filter(([id]) => id !== pinned).map(([id, post]) => ({ id, date: post.date })));
   assert.ok(RECORD_GALLERY_POSTS.includes(newest.id), "the newest listed post has a gallery");
-  assert.ok(RECORD_GALLERY_POSTS.length >= 2 && RECORD_GALLERY_POSTS.length <= 3);
+  assert.ok(pinned !== undefined && RECORD_GALLERY_POSTS.includes(pinned), "the pinned post has a gallery");
+  assert.equal(RECORD_GALLERY_POSTS.length, 4);
   assert.deepEqual(
     [...published].filter(([, post]) => post.gallery !== undefined).map(([id]) => id).sort((a, b) => a - b),
     [...RECORD_GALLERY_POSTS, EVERY_CHANNEL_POST].sort((a, b) => a - b),
