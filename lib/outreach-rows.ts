@@ -5,7 +5,6 @@ import {
   type Channel,
   type ChannelName,
   type Channels,
-  type DraftGallery,
   type Edition,
   type IsoDate,
   type OutreachDraft,
@@ -37,8 +36,8 @@ export type OutreachPostColumns = {
   body: readonly BodyBlock[];
   photos: readonly OutreachPhoto[];
   channels: Channels;
-  /** Null for a post that never had a gallery (issue #430). */
-  gallery: DraftGallery | null;
+  /** `{ items }`; null for a post with no gallery photo (issues #430, #451). */
+  gallery: PostGallery | null;
 };
 
 /** The summit version's columns in `outreach_summit_versions`. */
@@ -182,19 +181,18 @@ function galleryPhotoOf(value: unknown): PostGalleryPhoto | null {
   return { ...photo, ...(value.caption !== undefined && { caption: value.caption }) };
 }
 
-/** A post's gallery: switched on, a title and a photo at least; switched off, anything it kept. Null otherwise. */
-function galleryOf(value: unknown): PostGallery | null {
-  const gallery = draftGalleryOf(value);
-  if (gallery === null) return null;
-  if (!gallery.shown) return { ...gallery, shown: false };
-  const [first, ...rest] = gallery.items;
-  return isText(gallery.title) && first !== undefined ? { shown: true, title: gallery.title, items: [first, ...rest] } : null;
-}
-
-function draftGalleryOf(value: unknown): DraftGallery | null {
-  if (!isShape(value) || typeof value.shown !== "boolean" || !isString(value.title)) return null;
+/**
+ * A stored post gallery as its photos only (issue #451): any `shown` or
+ * `title` a row saved before kept is ignored, so those rows read back with no
+ * migration. With no photo it is no gallery (undefined); null when it is not
+ * a gallery's shape.
+ */
+function galleryOf(value: unknown): PostGallery | undefined | null {
+  if (!isShape(value)) return null;
   const items = listOf(value.items, galleryPhotoOf);
-  return items === null ? null : { shown: value.shown, title: value.title, items };
+  if (items === null) return null;
+  const [first, ...rest] = items;
+  return first === undefined ? undefined : { items: [first, ...rest] };
 }
 
 function channelOf(value: unknown): Channel | null {
@@ -282,7 +280,7 @@ export function outreachDraftOf(value: unknown): OutreachDraft | null {
   const body = listOf(value.body, draftBlockOf);
   const photos = listOf(value.photos, photoOf);
   const channels = draftChannelsOf(value.channels);
-  const gallery = value.gallery === undefined ? undefined : draftGalleryOf(value.gallery);
+  const gallery = value.gallery === undefined ? undefined : galleryOf(value.gallery);
   if (tags === null || body === null || photos === null || channels === null || gallery === null) return null;
   return {
     title: value.title,

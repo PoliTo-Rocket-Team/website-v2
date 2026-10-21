@@ -297,28 +297,23 @@ export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) 
 /**
  * The gallery at the bottom of the post (issue #430): the project pages'
  * carousel and lightbox (components/gallery/gallery.tsx), across the page so
- * its neighbours bleed off the edges, under a title on the post's width. A
- * post shows it only while it is switched on and has a photo; the editor's
- * page says what is missing while it has none.
+ * its neighbours bleed off the edges, under the small GALLERY label on the
+ * post's width. It has no switch and no title (Owner decision, issue #451):
+ * a post shows it whenever it has a photo and nothing when it has none; the
+ * editor's page says what is missing while it has none.
  */
 export function PostGallerySection({ post, frame = bare, hints = false }: PostPartsProps) {
-  const gallery = post.gallery;
-  if (gallery === undefined || !gallery.shown) return null;
-  const items = gallery.items;
-  const title = gallery.title.trim();
+  const items = post.gallery?.items ?? [];
   if (!isFilled(items) && !hints) return null;
   return frame(
     "gallery",
     <section aria-label="Gallery" className="mt-14 md:mt-20">
       <div className={width}>
         <p className="font-mono text-[10px] tracking-[0.2em] text-dim">GALLERY</p>
-        <h2 className={`mt-2 text-[22px] font-bold leading-[1.25] tracking-[-0.02em] md:text-[26px] ${title === "" ? "text-dim" : "text-prt-text"}`}>
-          {title === "" ? "Add the gallery title" : title}
-        </h2>
       </div>
       {isFilled(items) ? (
         <div className="-mx-5 mt-5 md:-mx-16 md:mt-8">
-          <Gallery items={items} label={`${title || titleOf(post)} gallery`} />
+          <Gallery items={items} label={`${titleOf(post)} gallery`} />
         </div>
       ) : (
         <p className={`${width} mt-3 text-[13px] leading-[1.5] text-dim`}>Add photos to the gallery.</p>
