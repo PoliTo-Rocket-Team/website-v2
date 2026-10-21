@@ -306,6 +306,20 @@ function changeOf<K extends BlockKind>(kind: K, onChange: BlockChange) {
     onChange((b) => (b.kind === kind ? (change(b as unknown as BlockFieldsOf<K>) as unknown as BlockFields) : b));
 }
 
+/** "Page blocks" over a panel opened in the cards' place (boards 93c and 93d): back to the cards. */
+export function BackToBlocks({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className={`inline-flex items-center gap-2 rounded-md text-[14px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
+    >
+      <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+      Page blocks
+    </button>
+  );
+}
+
 /**
  * One block's panel (board 93c): "Page blocks" to go back, then the block's
  * card, its kind in accent with its ⋯ menu, and its fields. A hidden block
@@ -337,14 +351,7 @@ export function BlockPanel({
   const name = BLOCK_LABELS[block.kind];
   return (
     <div className="space-y-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className={`inline-flex items-center gap-2 rounded-md text-[14px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
-      >
-        <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-        Page blocks
-      </button>
+      <BackToBlocks onBack={onBack} />
       <section aria-label={`${name} block`} className="rounded-xl border border-accent px-4 pb-4 pt-3">
         <div className="mb-3 flex items-center justify-between gap-3">
           <span className="flex items-center gap-2">

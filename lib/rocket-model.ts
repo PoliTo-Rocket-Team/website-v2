@@ -34,6 +34,22 @@ export function isEngineModel(model: RocketModel | undefined): model is OwnEngin
   return (ownEngineModels as readonly string[]).includes(model ?? "");
 }
 
+/** What the project editor's Visual help text calls each model (board 93d). */
+export const MODEL_NAMES: Readonly<Record<RocketModel, string>> = {
+  cavour: "Cavour",
+  ves: "VES Mark I",
+  efesto: "Efesto engine",
+  placeholder: "Outline rocket",
+};
+
+/** The alt text a project's own model carries when an editor first picks it; the editor keeps a project's own alt for its own model. */
+export const MODEL_ALTS: Readonly<Record<OwnModel, string>> = {
+  cavour: "Cavour in its flight configuration, side-on, nose right",
+  ves: "VES Mark I in its EuRoC 2024 livery, side-on, nose right",
+  efesto:
+    "Efesto drawn in outline, side-on: injector head on the right, then the combustion chamber and the nozzle, with a feed line along the chamber",
+};
+
 /** The model to draw for a project: its own when it has one, else the placeholder. */
 export function rocketModelOf(own: OwnModel | undefined): RocketModel {
   return own ?? "placeholder";
@@ -71,11 +87,17 @@ export function stageStillOf(own: OwnRocket | undefined): { src: string; alt: st
 /** The orange streak texture an engine's page panel lies on (issue #382, Owner decision). */
 export const ENGINE_STAGE_TEXTURE = "/textures/project-ves.webp";
 
+/** Where the brand textures a project kept from before presets live (grill #524, R1.1). */
+const KEPT_TEXTURES = "/textures/";
+
 /**
  * The texture a project page's panel lays its still on. A rocket parks on the
- * project's own texture; an engine sits centred on the orange streak, in place
- * of its texture (issue #382, Owner decision). Cards keep their texture either way.
+ * project's own background; an engine on a brand texture it kept from before
+ * presets sits centred on the orange streak, in place of its texture (issue
+ * #382, Owner decision). An engine whose editor picked a preset or uploaded a
+ * background lies on that background (epic #522). Cards keep their
+ * background either way.
  */
 export function stageTextureOf(own: OwnRocket | undefined, texture: string): string {
-  return isEngineModel(own?.model) ? ENGINE_STAGE_TEXTURE : texture;
+  return isEngineModel(own?.model) && texture.startsWith(KEPT_TEXTURES) ? ENGINE_STAGE_TEXTURE : texture;
 }

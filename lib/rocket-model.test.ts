@@ -42,11 +42,14 @@ test("Cavour and VES draw their own rockets on their cards and pages; Efesto dra
   const engineStill = stageStillOf(own("efesto"));
   assert.equal(engineStill.src, EFESTO_STAGE_POSTER);
   assert.notEqual(engineStill.alt, "");
-  // Its page panel lays the engine on the orange streak; the rockets keep their own texture.
-  assert.equal(stageTextureOf(own("efesto"), "/own.webp"), ENGINE_STAGE_TEXTURE);
-  assert.equal(stageTextureOf(own("cavour"), "/own.webp"), "/own.webp");
-  assert.equal(stageTextureOf(own("ves"), "/own.webp"), "/own.webp");
-  assert.equal(stageTextureOf(undefined, "/own.webp"), "/own.webp");
+  // Its page panel lays the engine on the orange streak in place of the brand texture it kept;
+  // the rockets keep their own texture, and an engine whose editor picked a preset lies on it (epic #522).
+  const kept = "/textures/project-efesto.webp";
+  assert.equal(stageTextureOf(own("efesto"), kept), ENGINE_STAGE_TEXTURE);
+  assert.equal(stageTextureOf(own("efesto"), "/backgrounds/ember-wide.webp"), "/backgrounds/ember-wide.webp");
+  assert.equal(stageTextureOf(own("cavour"), kept), kept);
+  assert.equal(stageTextureOf(own("ves"), kept), kept);
+  assert.equal(stageTextureOf(undefined, kept), kept);
 
   // VES Mark I (issue #361): its home card and its page slot draw the VES model and its stills.
   const card = rocketModelOf(homeCardOf(record("ves"), 1).rocket);
