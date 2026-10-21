@@ -17,9 +17,10 @@ import {
   teamJoins,
   users,
 } from "@/db/schema";
-import type { GrantArea } from "../viewer";
+import { BOARD_SEAT_TITLES } from "../team";
+import type { FlaggedSeat, GrantArea } from "../viewer";
 import { insertRows, resetFakeDb } from "./fake-db";
-import { ALL, UNITS, VIEWERS, type Unit } from "./matrix";
+import { ALL, UNITS, VIEWERS, type Role, type Unit } from "./matrix";
 
 // The database the server-side access tests read (issue #477): the matrix's
 // org, one account per matrix viewer, and in every division a person, a role
@@ -81,7 +82,18 @@ export function accountOf(name: string): { readonly userId: string; readonly mem
   return { userId: `viewer-${index}`, memberId: VIEWERS[index].viewer.kind === "non-member" ? null : 100 + index };
 }
 
-const DB_SEAT = { "operations-lead": "operations_lead", "it-lead": "it_lead" } as const;
+const DB_SEAT = {
+  "operations-lead": "operations_lead",
+  "it-lead": "it_lead",
+  "project-manager": "project_manager",
+  "chief-engineer": "chief_engineer",
+} as const satisfies Record<FlaggedSeat, string>;
+
+/** A role's title as stored: a board seat's role is titled by the seat (Project Manager, Chief Engineer), as on the real data. */
+function titleOf(r: Role): string {
+  if (r.fullAccess === "project-manager" || r.fullAccess === "chief-engineer") return BOARD_SEAT_TITLES[r.fullAccess];
+  return r.type === "president" ? "Team Leader" : r.type === "head" ? "Head" : r.type === "lead" ? "Division Lead" : "Member";
+}
 
 function seedViewers(): void {
   VIEWERS.forEach(({ name, viewer }) => {
@@ -96,7 +108,7 @@ function seedViewers(): void {
         memberId,
         deptId: r.type === "head" ? r.departmentId : null,
         divisionId: r.type === "head" ? null : r.divisionId,
-        title: r.type === "president" ? "Team Leader" : r.type === "head" ? "Head" : r.type === "lead" ? "Division Lead" : "Member",
+        title: titleOf(r),
         startedAt: SINCE,
         type: r.type,
         fullAccess: r.fullAccess === null ? null : DB_SEAT[r.fullAccess],

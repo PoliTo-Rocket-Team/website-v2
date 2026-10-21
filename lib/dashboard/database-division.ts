@@ -33,7 +33,7 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "./division-access";
-import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
+import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, ledDivisionIds, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
   checkApproveOrdersChange,
@@ -67,7 +67,8 @@ import { refused, written, type Upload, type WriteResult } from "./write";
 // page, read from and written to the database (boards 43 and 44, issue #145;
 // Dashboard v2 boards 60 to 61d, issue #172; boards 65 and 65b, issue #230;
 // boards 61 to 67b, issue #233). A lead's Access page covers every division
-// their roles and scopes cover, in one list (issue #185); a head's
+// they lead by role, in one list (issues #185, #488): a grant they hold in a
+// division they do not lead adds no Access page there; a head's
 // department is their role's; full access covers the whole team (issue
 // #238). Orders shows every order in the team and checks
 // each write against the viewer's scope on the server. Reads follow
@@ -79,18 +80,23 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 }
 
 /**
- * Every open division a lead's Access page covers (issue #185), the one their
+ * Every open division a lead's Access page covers (issue #185): only the
+ * divisions they lead by role (`ledDivisionIds`, issue #488), the one their
  * primary role sits in first, then the rest by name, each with what the lead
- * holds there; null for anyone else, or a lead with no open division. Access
- * is no grant area, so no grant opens it to a member (issue #471).
+ * holds there; null for anyone else, or a lead with no open division. A grant
+ * the lead holds in a division they do not lead gives what it gives a member
+ * there and adds no Access page there. Access is no grant area, so no grant
+ * opens it to a member (issue #471).
  */
 async function leadDivisions(identity: DashboardIdentity): Promise<Extract<AccessUnit, { kind: "division" }> | null> {
   const memberId = identity.memberId;
-  if (identity.kind !== "division-lead" || memberId === null || identity.divisionIds.length === 0) return null;
+  if (identity.kind !== "division-lead" || memberId === null) return null;
+  const ledIds = ledDivisionIds({ scopes: [], activeRoles: identity.roles });
+  if (ledIds.length === 0) return null;
   const rows = await getDb()
     .select({ id: divisions.id, name: divisions.name })
     .from(divisions)
-    .where(and(inArray(divisions.id, identity.divisionIds), isNull(divisions.closedAt)))
+    .where(and(inArray(divisions.id, ledIds), isNull(divisions.closedAt)))
     .orderBy(asc(divisions.name));
   const first = identity.role?.divisionId ?? null;
   const ordered = [...rows.filter((r) => r.id === first), ...rows.filter((r) => r.id !== first)];

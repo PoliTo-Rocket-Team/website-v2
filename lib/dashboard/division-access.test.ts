@@ -13,6 +13,7 @@ import {
   placeKey,
   placesOf,
   roleDivision,
+  SEAT_LABELS,
   WHOLE_TEAM_PLACE,
   type AccessGrant,
   type AccessPerson,
@@ -247,9 +248,20 @@ const teamLeaderGives: ApproveOrdersAccess = { canGive: true, yours: true, holde
 const fullAccessOnly: ApproveOrdersAccess = { canGive: false, yours: false, holders: [] };
 
 test("only the team leader sees and gives the Approve orders checkbox (board 71b)", () => {
-  const seats: Readonly<Record<FullAccessSeat, boolean>> = { "team-leader": true, "operations-lead": false, "it-lead": false };
+  const seats: Readonly<Record<FullAccessSeat, boolean>> = {
+    "team-leader": true,
+    "operations-lead": false,
+    "it-lead": false,
+    "project-manager": false,
+    "chief-engineer": false,
+  };
   for (const [seat, gives] of Object.entries(seats) as [FullAccessSeat, boolean][]) assert.equal(canGiveApproveOrders(seat), gives, seat);
   assert.equal(canGiveApproveOrders(null), false);
+});
+
+test("the Full access tab labels the Project Manager's and the Chief Engineer's seats by their titles (issue #485)", () => {
+  assert.equal(SEAT_LABELS["project-manager"], "Project Manager");
+  assert.equal(SEAT_LABELS["chief-engineer"], "Chief Engineer");
 });
 
 test("the server refuses Approve orders from the operations lead and the IT lead, and takes it from the team leader", () => {

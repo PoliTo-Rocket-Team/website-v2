@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, Fragment, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Circle, CircleCheck, Lock, Monitor, Pencil, Smartphone } from "lucide-react";
 import {
@@ -17,9 +17,6 @@ import {
 import { CONTENT_STATUS_LABELS, type ContentStatus } from "@/lib/content/versioned";
 import { CONTENT_FOCUS } from "./content-parts";
 import { EditFrame } from "./edit-frame";
-
-/** The breadcrumb's first step in every editor. */
-const DASHBOARD_CRUMB = { label: "Dashboard", href: "/dashboard" } as const;
 
 // The edit shell (boards 74b, 74e, 75b and 75d, issue #288): a content type's
 // real page under an edit bar, on top of the dashboard. Any content type
@@ -109,7 +106,7 @@ export function EditShell<Id extends string, Section extends string, Page extend
   children,
   panel,
 }: {
-  /** The dashboard page this item belongs to, the breadcrumb's step after "Dashboard" (none when it is the dashboard home). */
+  /** The dashboard page this item belongs to, as the breadcrumb's first step and where the arrow goes back to. */
   section: { readonly label: string; readonly href: string };
   /** The breadcrumb's second step: "Editing <item>" (74b), or "New post" for an item not saved yet (74f). */
   heading: string;
@@ -171,31 +168,19 @@ export function EditShell<Id extends string, Section extends string, Page extend
           the controls never overlap. */}
       <header className="relative grid h-[60px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-hairline bg-panel px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] md:px-6">
         <div className="flex min-w-0 items-center gap-2.5 text-[13px]">
-          {/* The trail always starts at the dashboard (Owner decision,
-              2026-10-21), so an editor never reads as the public page it
-              draws; the arrow goes back one step, to the item's section. */}
+          {/* One step back, to the dashboard page that lists the item (Owner
+              decision, 2026-10-21): "← Outreach / Editing …". */}
           <Link
             href={section.href}
             aria-label={`Back to ${section.label}`}
-            className={`inline-flex shrink-0 items-center rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
+            className={`group inline-flex shrink-0 items-center gap-2.5 rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
           >
             <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+            <span className="hidden sm:inline">{section.label}</span>
           </Link>
-          {[DASHBOARD_CRUMB, section]
-            .filter((step, i) => i === 0 || step.href !== DASHBOARD_CRUMB.href)
-            .map((step) => (
-              <Fragment key={step.href}>
-                <Link
-                  href={step.href}
-                  className={`hidden shrink-0 rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text sm:inline ${CONTENT_FOCUS}`}
-                >
-                  {step.label}
-                </Link>
-                <span aria-hidden className="hidden text-dim sm:inline">
-                  /
-                </span>
-              </Fragment>
-            ))}
+          <span aria-hidden className="hidden text-dim sm:inline">
+            /
+          </span>
           <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
           <StatePill status={status} folds={actions !== undefined} />
           {tag !== undefined && <span className="hidden shrink-0 sm:contents">{tag}</span>}

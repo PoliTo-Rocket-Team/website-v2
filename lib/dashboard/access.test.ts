@@ -76,7 +76,7 @@ test("the operations lead sees My applications only once they have applied, and 
 /** Full access from each seat, with no scope row and no site-content access (issue #238). */
 const fullAccess = (seat: FullAccessSeat | null): ViewerStanding => ({ kind: "operations-lead", seat, siteContent: false, approveOrders: false });
 
-test("the team leader, the operations lead and the IT lead reach every page of the team (issue #238)", () => {
+test("every full-access seat reaches every page of the team (issues #238, #485)", () => {
   // My account and My alumni are pages off the team, and the Activity log is the IT lead's alone (below).
   const teamPages = DASHBOARD_PAGES.map((p) => p.key).filter((key) => key !== "my-account" && key !== "my-alumni" && key !== "activity-log");
   for (const seat of FULL_ACCESS_SEATS) {
@@ -93,8 +93,8 @@ test("the team leader's sidebar is board 72's: Team holds Members, Access and Or
   ]);
 });
 
-test("the operations lead's and the IT lead's sidebars are the team leader's, Content group included (issue #408)", () => {
-  for (const seat of ["operations-lead", "it-lead", null] as const) {
+test("the operations lead's, the IT lead's, the Project Manager's and the Chief Engineer's sidebars are the team leader's, Content group included (issues #408, #485)", () => {
+  for (const seat of ["operations-lead", "it-lead", "project-manager", "chief-engineer", null] as const) {
     assert.deepEqual(shape(fullAccess(seat), withoutApplications), shape(fullAccess("team-leader"), withoutApplications), String(seat));
   }
 });
@@ -104,6 +104,8 @@ const EVERY_STANDING: readonly [string, ViewerStanding][] = [
   ["team leader", fullAccess("team-leader")],
   ["operations lead", fullAccess("operations-lead")],
   ["IT lead", fullAccess("it-lead")],
+  ["Project Manager", fullAccess("project-manager")],
+  ["Chief Engineer", fullAccess("chief-engineer")],
   ["full access by scope row", fullAccess(null)],
   ["department head", { kind: "department-head", siteContent: false, approveOrders: false }],
   ["department head with site content", { kind: "department-head", siteContent: true, approveOrders: true }],
@@ -157,6 +159,8 @@ test("the one sidebar structure leaves which pages each viewer reaches as it was
     "team leader": full,
     "operations lead": full,
     "IT lead": inOrder([...full, "activity-log"]),
+    "Project Manager": full,
+    "Chief Engineer": full,
     "full access by scope row": full,
     "department head": head,
     "department head with site content": inOrder([...head, ...content]),
@@ -182,7 +186,7 @@ test("full access from an admin or org scope row reaches every page of the team 
 
 test("only the IT lead reaches the Activity log, and no sidebar lists it until the page is built (issue #238)", () => {
   assert.equal(canReach(fullAccess("it-lead"), "activity-log"), true);
-  for (const seat of ["team-leader", "operations-lead", null] as const) assert.equal(canReach(fullAccess(seat), "activity-log"), false, String(seat));
+  for (const seat of ["team-leader", "operations-lead", "project-manager", "chief-engineer", null] as const) assert.equal(canReach(fullAccess(seat), "activity-log"), false, String(seat));
   for (const kind of ["department-head", "division-lead", "member", "non-member"] as const) {
     assert.equal(canReach(kindOnly(kind), "activity-log"), false, kind);
   }
@@ -215,6 +219,8 @@ test("the Outreach and Team page pages are for whoever the site-content gate adm
     [fullAccess("team-leader"), true],
     [fullAccess("operations-lead"), true],
     [fullAccess("it-lead"), true],
+    [fullAccess("project-manager"), true],
+    [fullAccess("chief-engineer"), true],
     [{ kind: "department-head", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: false, approveOrders: false }, false],
     [{ kind: "division-lead", siteContent: true, approveOrders: false }, true],
@@ -328,6 +334,8 @@ test("heads, leads and every full-access seat reach and list the pages they did 
     ["team leader", fullAccess("team-leader"), full],
     ["operations lead", fullAccess("operations-lead"), full],
     ["IT lead", fullAccess("it-lead"), full],
+    ["Project Manager", fullAccess("project-manager"), full],
+    ["Chief Engineer", fullAccess("chief-engineer"), full],
   ];
   for (const [who, viewer, keys] of listed) {
     assert.deepEqual(listedKeys(viewer), keys, who);
