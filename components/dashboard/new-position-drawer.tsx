@@ -23,7 +23,8 @@ import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 
 // New position (boards 57a and 57b): the division first, locked when the lead
 // has one and a choice when they have several; the code it makes; the role's
-// text and lists; the documents to ask for; and "Open now", off by default.
+// text and lists; the documents to ask for; and "Open now", on by default, so
+// a new role is open as it is created (Owner decision, 2026-10-21).
 // It saves through the dashboard data interface (createPosition).
 // Edit position (issue #207) is the same drawer opened on a saved role: its
 // division locked, its fields as saved, no "Open now" (the row's switch opens
@@ -81,7 +82,7 @@ function emptyForm(startDivisionId: number | null): Form {
     desirable: [""],
     questions: [""],
     motivationLetter: true,
-    open: false,
+    open: true,
   };
 }
 
