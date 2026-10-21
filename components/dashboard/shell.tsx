@@ -12,6 +12,7 @@ import { Avatar } from "./avatar";
 import { Sidebar, SidebarNavigate } from "./sidebar";
 import { TopBarSlot } from "./top-bar-slot";
 import { UserSheet } from "./user-card";
+import { VisitedPages } from "./visited-pages";
 
 /** A round icon button in the phone top bar: the menu, or a full page's back arrow. */
 export const ICON_BUTTON =
@@ -31,7 +32,8 @@ export const ICON_BUTTON =
 // slots the layout wraps in their own Suspense, each with a quiet placeholder:
 // the sidebar's pages and user card (`sidebarPages`, `sheetPages`), the top
 // bar's avatar (`account`) and the screen for a request that did not open
-// the dashboard (`closed`).
+// the dashboard (`closed`). The frame also records each page the tab visits,
+// so an editor's back arrow can return to where it was opened (issue #510).
 export function DashboardShell({
   sidebarPages,
   sheetPages,
@@ -98,6 +100,11 @@ export function DashboardShell({
       </main>
 
       {closed}
+
+      {/* Reads the address, so it waits in its own Suspense as the title does. */}
+      <Suspense fallback={null}>
+        <VisitedPages />
+      </Suspense>
     </div>
   );
 }

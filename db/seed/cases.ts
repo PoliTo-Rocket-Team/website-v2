@@ -38,7 +38,7 @@ import {
 import { isAdvisorVersion, publicAdvisors, type AdvisorItem } from "@/lib/about/advisors";
 import { academicYearOfDay, alumniOf, listed, type AlumniRecord, type Alumnus } from "@/lib/about/alumni-record";
 import { team as teamRecord } from "@/lib/about/team";
-import { applyLayer, isTeamPageLayer, NO_TEAM_LAYER, resetLayer, type ShownTeam, type TeamBuild, type TeamPageLayer } from "@/lib/about/team-layer";
+import { applyLayer, isTeamPageLayer, NO_TEAM_LAYER, NO_UPLOADS, resetLayer, type ShownTeam, type TeamBuild, type TeamPageLayer } from "@/lib/about/team-layer";
 import type { TeamPerson as PagePerson } from "@/lib/about/team-person";
 import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "@/lib/about/team-roles";
 import { publicItems, statusOf, versionedFromRows, type ContentItem, type VersionKind } from "@/lib/content/versioned";
@@ -601,7 +601,7 @@ export function teamRolesOf(data: SeedData): TeamRoles {
 /** The published visual layer, or null when no row holds a layer this code could have written. */
 export function publishedTeamPageLayerOf(data: SeedData): TeamPageLayer | null {
   const row = data.teamPageLayerVersions.find((r) => r.version === "published");
-  return row !== undefined && isTeamPageLayer(row.layer) ? row.layer : null;
+  return row !== undefined && isTeamPageLayer(row.layer, NO_UPLOADS) ? row.layer : null;
 }
 
 /** The roles build, and what /about/the-team shows with the published layer laid on. */

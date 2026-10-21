@@ -89,10 +89,19 @@ test("the project editor's list and home pages draw no navbar and no footer", ()
   }
 });
 
-test("the Team page draws the navbar and footer publicly, and neither as the editor draws it, keeping the apply band", () => {
-  assert.deepEqual(chromeOf(createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, footerProjects })), SITE);
-  assert.deepEqual(chromeOf(createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, chrome: "none" })), NONE);
+/** Whether the markup carries the apply band (apply-band.tsx's textured section). */
+function drawsApplyBand(page: ReactElement): boolean {
+  return renderToStaticMarkup(page).includes("apply-band.webp");
+}
+
+test("the Team page draws the navbar, footer and apply band publicly, and none of them as the editor draws it", () => {
+  const publicPage = createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, footerProjects });
+  assert.deepEqual(chromeOf(publicPage), SITE);
+  assert.equal(drawsApplyBand(publicPage), true);
+  const bare = createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, chrome: "none" });
+  assert.deepEqual(chromeOf(bare), NONE);
+  assert.equal(drawsApplyBand(bare), false);
   const edited = createElement(EditedTeamPage, { page: team, academicYear: ACADEMIC_YEAR, frames: {} });
   assert.deepEqual(chromeOf(edited), NONE);
-  assert.match(renderToStaticMarkup(edited), /Apply/);
+  assert.equal(drawsApplyBand(edited), false);
 });
