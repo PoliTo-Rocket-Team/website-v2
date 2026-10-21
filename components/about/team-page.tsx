@@ -5,7 +5,7 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { withAcademicYear } from "@/lib/about/academic-year-copy";
 import type { TeamPage } from "@/lib/about/types";
-import type { FooterProject } from "@/lib/landing-links";
+import { siteFooterOf, type PageChrome } from "@/lib/page-chrome";
 import { Advisors } from "./advisors";
 import { CoreMembers } from "./core-members";
 import { Departments, type DepartmentFrames } from "./departments";
@@ -19,7 +19,9 @@ import { PageHeader } from "./page-header";
 // issue #284): the header, then who leads, the departments, the advisors,
 // the numbers and every core member. The page sky runs behind everything
 // above the apply band; the sections paint no background of their own and
-// each sits one section pad below the last, as on the project pages.
+// each sits one section pad below the last, as on the project pages. The
+// editor draws it with no navbar and no footer (`chrome="none"`, issue #495);
+// the apply band stays.
 
 /**
  * What the editor wraps: the intro, each person on the org chart, the head
@@ -38,25 +40,22 @@ export type TeamPageFrames = {
   readonly note?: ReactNode;
 };
 
-export function TeamPageView({
-  page,
-  academicYear,
-  footerProjects,
-  frames = {},
-}: {
-  page: TeamPage;
-  /** The academic year the intro names, as its first calendar year. */
-  academicYear: number;
-  /** The published projects the footer lists (issue #378). */
-  footerProjects: readonly FooterProject[];
-  frames?: TeamPageFrames;
-}) {
+export function TeamPageView(
+  props: {
+    page: TeamPage;
+    /** The academic year the intro names, as its first calendar year. */
+    academicYear: number;
+    frames?: TeamPageFrames;
+  } & PageChrome,
+) {
+  const { page, academicYear, frames = {} } = props;
+  const footer = siteFooterOf(props);
   const { header } = page;
   return (
     <div className="relative bg-ground">
-      <LandingNavbar />
+      {footer !== null && <LandingNavbar />}
       <PageSky>
-        <main className="pb-section pt-16 md:pt-[72px]">
+        <main className={footer !== null ? "pb-section pt-16 md:pt-[72px]" : "pb-section"}>
           <PageHeader {...header} intro={withAcademicYear(header.intro, academicYear)} introFrame={frames.intro} />
 
           <OrgChart chart={page.orgChart} frame={frames.leader} onAdd={frames.addLeader} />
@@ -67,7 +66,7 @@ export function TeamPageView({
         </main>
       </PageSky>
       <ApplyBand />
-      <LandingFooter projects={footerProjects} />
+      {footer !== null && <LandingFooter projects={footer} />}
       {frames.note}
     </div>
   );

@@ -8,7 +8,6 @@ import { openDashboard } from "@/lib/dashboard/open";
 import { todayInRome } from "@/lib/outreach";
 import { pinStateOf } from "@/lib/outreach-pin";
 import { publishedOutreach } from "@/lib/outreach-public";
-import { footerProjects } from "@/lib/project-content/public";
 
 export const metadata: Metadata = {
   title: "New post · Outreach · Dashboard · PoliTo Rocket Team",
@@ -38,12 +37,11 @@ async function NewPost() {
   // the pin let the list target pin from its cards once the post is saved
   // (issue #431).
   const { outreach } = opening.data;
-  const [items, tags, pinned, published, projects] = await Promise.all([
+  const [items, tags, pinned, published] = await Promise.all([
     outreach.posts.list(),
     outreach.tags(),
     outreach.pinned(),
     publishedOutreach(),
-    footerProjects(),
   ]);
   if (items === null || tags === null) notFound();
   return (
@@ -54,7 +52,6 @@ async function NewPost() {
       tags={tags}
       neighbours={{}}
       published={published}
-      footerProjects={projects}
     />
   );
 }
