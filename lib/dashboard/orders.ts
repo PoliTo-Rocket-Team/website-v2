@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PAGE_SIZE } from "./team";
 import type { ScopeKind } from "./viewer";
 
 // The Orders page (Dashboard v2 boards 61 to 61d, issue #172; boards 61m, 67,
@@ -584,8 +585,8 @@ export function toggleDepartment(department: OrgDepartmentUnits, ticked: readonl
   return departmentTick(department, ticked) === "all" ? rest : [...rest, ...ids];
 }
 
-/** 12 orders per page (Owner decision on #233). */
-export const ORDERS_PER_PAGE = 12;
+/** 12 orders per page (Owner decision on #233), the same page size as every dashboard list. */
+export const ORDERS_PER_PAGE = PAGE_SIZE;
 
 /** One page of the orders, newest first, and how many pages there are; a page past the end shows the last. */
 export function orderPage(orders: readonly Order[], page: number): { orders: Order[]; page: number; pages: number } {
