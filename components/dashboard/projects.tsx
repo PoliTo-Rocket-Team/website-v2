@@ -77,7 +77,8 @@ function ProjectRowItem({ row }: { row: ProjectRow }) {
     <li className={`flex flex-col gap-3 px-4 py-4 transition-colors duration-300 ease-out hover:bg-white-5 ${COLUMNS}`}>
       <div className="flex min-w-0 items-center gap-4">
         <span className="relative h-[72px] w-14 shrink-0 overflow-hidden rounded-md bg-white-5">
-          <Image src={row.texture} alt="" fill sizes="56px" className="object-cover" />
+          {/* An uploaded background (issue #529) is served as it is, as uploaded photos are. */}
+          <Image src={row.texture} alt="" fill sizes="56px" unoptimized={!row.texture.startsWith("/")} className="object-cover" />
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[15px] font-semibold text-prt-text">{row.name}</span>

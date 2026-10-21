@@ -8,7 +8,16 @@ import { BLOCKS_MAX } from "./block-list";
 import { cardFieldsAfterSave, cardFieldsOf, cardProblems, readCardFields, withCardFields, type CardFields } from "./card-fields";
 import { isProjectRecord } from "./check";
 import { copyFields, copyOf, type CopyFields } from "./copy-fields";
-import { BACKGROUND_PRESETS, visualModelOf, type Background, type BackgroundPreset, type ProjectBlock, type ProjectRecord } from "./record";
+import {
+  BACKGROUND_PRESETS,
+  isUploadedSrc,
+  visualModelOf,
+  type Background,
+  type BackgroundPreset,
+  type ProjectBlock,
+  type ProjectRecord,
+  type UploadedBackground,
+} from "./record";
 
 // The Edit <project> panel's fields (boards 75c, 93 and 93d, issues #298 and
 // #299, epic #522): the top of the page with its visual, caption and
@@ -59,12 +68,17 @@ export type VisualFields =
   | { readonly kind: "none" };
 
 /**
- * The background as the panel picks it (board 93d): one of the 18 presets, or
- * the one the panel opened on when that is not a preset (a brand texture kept
- * from before presets, or an upload). A request can name a preset, never a
- * file: a kept background is the opened version's, whatever the request says.
+ * The background as the panel picks it (boards 93d and 93f): one of the 18
+ * presets, a picture the editor uploaded with its Tall and Wide crops
+ * (issue #529), or the brand texture the panel opened on, kept from before
+ * presets. A request can name a preset or uploaded files, never a file the
+ * site ships: a kept background is the opened version's, whatever the request
+ * says, and a save takes an upload only when this side stored its files.
  */
-export type BackgroundFields = { readonly kind: "preset"; readonly preset: BackgroundPreset } | { readonly kind: "kept" };
+export type BackgroundFields =
+  | { readonly kind: "preset"; readonly preset: BackgroundPreset }
+  | ({ readonly kind: "upload" } & UploadedBackground)
+  | { readonly kind: "kept" };
 
 export type ProjectFields = {
   readonly hero: {
@@ -110,7 +124,14 @@ export function projectModelOf(version: Versioned<ProjectRecord>): RocketModel {
 }
 
 export function backgroundFieldsOf(background: Background): BackgroundFields {
-  return background.kind === "preset" ? { kind: "preset", preset: background.preset } : { kind: "kept" };
+  switch (background.kind) {
+    case "preset":
+      return { kind: "preset", preset: background.preset };
+    case "upload":
+      return { kind: "upload", tall: background.tall, wide: background.wide };
+    case "texture":
+      return { kind: "kept" };
+  }
 }
 
 /** The panel's fields for a project record: what the panel opens on. */
@@ -153,9 +174,16 @@ function visualOf(fields: VisualFields, caption: string, was: TopVisual): TopVis
   }
 }
 
-/** The background the panel picked: a preset, or the opened version's own. */
+/** The background the panel picked: a preset, an upload, or the opened version's own. */
 export function backgroundOf(fields: BackgroundFields, opened: Background): Background {
-  return fields.kind === "preset" ? { kind: "preset", preset: fields.preset } : opened;
+  switch (fields.kind) {
+    case "preset":
+      return { kind: "preset", preset: fields.preset };
+    case "upload":
+      return { kind: "upload", tall: fields.tall, wide: fields.wide };
+    case "kept":
+      return opened;
+  }
 }
 
 function keyFactsOf(facts: readonly FactFields[]): KeyFacts | null {
@@ -214,7 +242,8 @@ export function fieldsAfterSave(stored: ProjectRecord, sent: ProjectFields): Pro
 export function heldPhotos(fields: ProjectFields): string[] {
   const { visual } = fields.hero;
   const top = visual.kind === "photo" && visual.photo !== null ? [visual.photo.src] : [];
-  return [...top, ...fields.blocks.flatMap(blockPhotos)];
+  const background = fields.background.kind === "upload" ? [fields.background.tall, fields.background.wide] : [];
+  return [...top, ...background, ...fields.blocks.flatMap(blockPhotos)];
 }
 
 /**
@@ -312,10 +341,11 @@ function readVisual(v: unknown): VisualFields | null {
   }
 }
 
-/** The background a request picks: a preset by its name, or the one the panel opened on. */
+/** The background a request picks: a preset by its name, two uploaded files, or the one the panel opened on. */
 function readBackground(v: unknown): BackgroundFields | null {
   if (!isObject(v)) return null;
   if (v.kind === "kept") return { kind: "kept" };
+  if (v.kind === "upload") return isUploadedSrc(v.tall) && isUploadedSrc(v.wide) ? { kind: "upload", tall: v.tall, wide: v.wide } : null;
   const preset = BACKGROUND_PRESETS.find((p) => p === v.preset);
   return v.kind === "preset" && preset !== undefined ? { kind: "preset", preset } : null;
 }

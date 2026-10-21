@@ -101,6 +101,8 @@ export function HomeProjectCard({
           // content is 100vw − 128px up to its 1312px cap at 1440; two from
           // md: (content − 16px) / 2.
           sizes="(min-width: 1440px) 427px, (min-width: 1024px) calc((100vw - 160px) / 3), (min-width: 768px) calc((100vw - 144px) / 2), 210px"
+          // An uploaded background (issue #529) is served as it is, as uploaded photos are.
+          unoptimized={!project.texture.startsWith("/")}
           className="object-cover"
         />
       </div>

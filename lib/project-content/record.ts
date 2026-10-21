@@ -75,11 +75,35 @@ export type BackgroundPreset = (typeof BACKGROUND_PRESETS)[number];
  */
 export type Background =
   | { readonly kind: "preset"; readonly preset: BackgroundPreset }
-  | { readonly kind: "upload"; readonly tall: PhotoSrc; readonly wide: PhotoSrc }
+  | ({ readonly kind: "upload" } & UploadedBackground)
   | { readonly kind: "texture"; readonly src: string };
 
 /** Tall (9:16) for the home card and phones; wide (2:1) for the page visual, the /projects panel and laptops. */
 export type BackgroundShape = "tall" | "wide";
+
+/**
+ * A file an editor uploaded (issue #529): in this deployment's public store,
+ * or a preview's data URL. Never a file the site ships, so a request cannot
+ * name one of those as an upload.
+ */
+export type UploadedSrc = Extract<PhotoSrc, `https://${string}` | `data:image/${string}`>;
+
+export const isUploadedSrc = (value: unknown): value is UploadedSrc => typeof value === "string" && /^(https:\/\/|data:image\/)\S+$/.test(value);
+
+/** One uploaded picture, cropped once per shape (board 93f): a file for each. */
+export type UploadedBackground = { readonly [shape in BackgroundShape]: UploadedSrc };
+
+/** The size each shape's file is cut at, as the presets' files are (board 93f): Tall 9:16, Wide 2:1. */
+export const BACKGROUND_FRAMES: Readonly<Record<BackgroundShape, { readonly width: number; readonly height: number }>> = {
+  tall: { width: 1080, height: 1920 },
+  wide: { width: 2400, height: 1200 },
+};
+
+/** The largest picture an editor may upload as a background (board 93f): 10 MB. */
+export const BACKGROUND_MAX_BYTES = 10 * 1024 * 1024;
+
+/** The uploaded files a background holds: an upload's two crops, else none. */
+export const backgroundUploads = (background: Background): UploadedSrc[] => (background.kind === "upload" ? [background.tall, background.wide] : []);
 
 /** The file a background shows in one shape. */
 export function backgroundSrc(background: Background, shape: BackgroundShape): string {

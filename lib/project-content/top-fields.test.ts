@@ -108,7 +108,7 @@ test("a rocket's visual names a rocket only; an engine's may name any model", as
   assert.ok((await projectEditor(admin, memoryContentStore(importedProjects())).saveFields(3, "publish", engine)).ok);
 });
 
-test("a request names a preset or keeps the opened background, never a file; it names a model the site has and an uploaded photo", () => {
+test("a request names a preset or keeps the opened background, never a file the site ships; it names a model the site has and an uploaded photo", () => {
   const fields = fieldsOf(cavour);
   const sent = (v: unknown) => readProjectFields(JSON.parse(JSON.stringify(v)));
   assert.deepEqual(sent({ ...fields, background: { kind: "preset", preset: "flare" } })?.background, { kind: "preset", preset: "flare" });
