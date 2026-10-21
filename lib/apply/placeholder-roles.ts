@@ -1,5 +1,5 @@
 // The roles the team usually recruits for (board 34b). The /apply page shows
-// them, marked "Closed", when few or no positions are open, so it never looks
+// them, marked "Closed", when no position is open, so it never looks
 // empty. They are written here and never read from the database. Titles,
 // divisions and codes are board 34b's; the text follows the matching
 // position on board 34 and on the old site, rewritten in plain words.

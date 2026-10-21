@@ -70,7 +70,7 @@ test("a position the team leader posts open is listed on /apply, with its code, 
   assert.deepEqual(row.custom_questions, NEW_ROLE.questions);
 
   const listing = applyListing(listed);
-  const roles = listing.kind === "none" ? [] : listing.open.flatMap((g) => g.roles);
+  const roles = listing.kind === "closed" ? [] : listing.open.flatMap((g) => g.roles);
   const role = roles.find((r) => r.code === created.value.code);
   assert.equal(role?.title, NEW_ROLE.title);
   assert.equal(role?.division, "Mission Analysis");

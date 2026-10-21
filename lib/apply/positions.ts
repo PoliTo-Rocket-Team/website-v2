@@ -2,7 +2,7 @@ import type { ApplyPosition } from "@/db/types";
 import { placeholderRoles, type PlaceholderRole } from "./placeholder-roles";
 
 // The domain rules of the /apply page (issue #119): which positions are
-// public, how a position is named in a URL, and which of the three board
+// public, how a position is named in a URL, and which of the two board
 // states the page shows. The page, the position page (#120) and the
 // dashboard switch (#121) all read these; none restates them.
 
@@ -71,18 +71,14 @@ export type Role = {
 export type DepartmentGroup = { department: string; roles: readonly [Role, ...Role[]] };
 
 /**
- * The three board states, by the number of public positions (Huey's ruling):
- * none open shows every placeholder (board 34b), one to four show the open
- * ones and then the placeholders of departments with nothing open (34c),
- * five or more show only the open ones (34).
+ * The two board states, by whether any position is public (Owner decision,
+ * issue #470): with none public, recruitment off included, the page shows
+ * every placeholder role (board 34b); with one or more, it shows only the
+ * open positions (board 34). No state mixes open and closed roles.
  */
 export type ApplyListing =
-  | { kind: "none"; placeholders: readonly DepartmentGroup[] }
-  | { kind: "few"; open: readonly [DepartmentGroup, ...DepartmentGroup[]]; others: readonly DepartmentGroup[] }
-  | { kind: "many"; open: readonly [DepartmentGroup, ...DepartmentGroup[]] };
-
-/** The most public positions that still show the other roles (board 34c). */
-export const FEW_OPEN_MAX = 4;
+  | { kind: "closed"; placeholders: readonly DepartmentGroup[] }
+  | { kind: "open"; open: readonly [DepartmentGroup, ...DepartmentGroup[]] };
 
 /** Builds the page's listing from the public positions, already filtered by `isPublic`. */
 export function applyListing(
@@ -94,22 +90,19 @@ export function applyListing(
     publicPositions.map((p) => ({ department: p.dept_name, role: openRole(p) })),
     order,
   );
-  const closed = (skip: ReadonlySet<string>) =>
-    groupByDepartment(
-      placeholders.filter((p) => !skip.has(p.department)).map((p) => ({ department: p.department, role: closedRole(p) })),
+  if (isNonEmpty(open)) return { kind: "open", open };
+  return {
+    kind: "closed",
+    placeholders: groupByDepartment(
+      placeholders.map((p) => ({ department: p.department, role: closedRole(p) })),
       order,
-    );
-
-  if (!isNonEmpty(open)) return { kind: "none", placeholders: closed(new Set()) };
-  if (publicPositions.length <= FEW_OPEN_MAX) {
-    return { kind: "few", open, others: closed(new Set(open.map((g) => g.department))) };
-  }
-  return { kind: "many", open };
+    ),
+  };
 }
 
 /** Positions shown as open in a listing. */
 export function openCount(listing: ApplyListing): number {
-  return listing.kind === "none" ? 0 : listing.open.reduce((n, g) => n + g.roles.length, 0);
+  return listing.kind === "closed" ? 0 : listing.open.reduce((n, g) => n + g.roles.length, 0);
 }
 
 function openRole(p: ApplyPosition): Role {

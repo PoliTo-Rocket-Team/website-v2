@@ -1,7 +1,7 @@
 import type { HeaderStats } from "@/lib/about/types";
 import { openCount, type ApplyListing } from "./positions";
 
-// The /apply page's copy (boards 34, 34b, 34c, 34m and 34bm). The positions
+// The /apply page's copy (boards 34, 34b, 34m and 34bm). The positions
 // come from the database and the placeholder roles from placeholder-roles.ts;
 // everything else the page says is here.
 
@@ -19,8 +19,6 @@ export const applyPage = {
   },
   openTitle: "Open positions",
   noneTitle: "Roles we recruit for",
-  othersTitle: "Other roles we recruit for",
-  othersIntro: "These roles are closed for now. Most of them open at the start of a semester.",
   notice: {
     title: "No positions are open right now",
     body: "Most roles open at the start of a semester. Below are the roles we usually recruit for, so you can see where you would fit.",
@@ -35,7 +33,7 @@ export const applyPage = {
 /** The header's four figures: the open count, departments hiring (or all departments when none is), and two fixed facts. */
 export function applyStats(listing: ApplyListing): HeaderStats {
   const departments =
-    listing.kind === "none"
+    listing.kind === "closed"
       ? { value: listing.placeholders.length, label: "DEPARTMENTS" }
       : { value: listing.open.length, label: "DEPARTMENTS HIRING" };
   return [

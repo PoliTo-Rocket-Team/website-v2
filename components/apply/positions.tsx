@@ -7,8 +7,8 @@ import { useState, type ReactNode } from "react";
 import { applyPage, INSTAGRAM_URL } from "@/lib/apply/page";
 import type { ApplyListing, DepartmentGroup, Role } from "@/lib/apply/positions";
 
-// The positions part of /apply, in the state the listing names (boards 34,
-// 34b and 34c; 34m and 34bm on phones): a section title, department filter
+// The positions part of /apply, in one of the listing's two states (boards 34
+// and 34b; 34m and 34bm on phones): a section title, department filter
 // pills when more than one department shows, then one glass list per
 // department. Every row is an item of one Radix accordion, so one row is open
 // at a time. Every row starts closed: the boards draw one open only to show
@@ -18,12 +18,11 @@ import type { ApplyListing, DepartmentGroup, Role } from "@/lib/apply/positions"
 export function Positions({ listing }: { listing: ApplyListing }) {
   return (
     <AccordionPrimitive.Root type="single" collapsible>
-      {listing.kind === "none" ? (
+      {listing.kind === "closed" ? (
         <Section title={applyPage.noneTitle} groups={listing.placeholders} notice={<Notice />} />
       ) : (
         <Section title={applyPage.openTitle} groups={listing.open} />
       )}
-      {listing.kind === "few" && listing.others.length > 0 && <OtherRoles groups={listing.others} />}
     </AccordionPrimitive.Root>
   );
 }
@@ -46,24 +45,6 @@ function Section({
         {groups.length > 1 && <Filter groups={groups} shown={shown} onShow={setShown} />}
         {notice}
         <Groups groups={visible} />
-      </div>
-    </section>
-  );
-}
-
-/** Board 34c: the closed roles of departments with nothing open, under their own title, intro and follow link. */
-function OtherRoles({ groups }: { groups: readonly DepartmentGroup[] }) {
-  return (
-    <section className="px-5 pt-section md:px-16">
-      <div className="mx-auto max-w-[1312px]">
-        <h2 className="text-[26px] font-bold leading-[1.25] tracking-[-0.025em] md:text-[48px]">
-          {applyPage.othersTitle}
-        </h2>
-        <div className="mt-4 flex flex-col gap-5 md:mt-8 md:flex-row md:items-center md:justify-between">
-          <p className="text-[15px] leading-relaxed text-text-2 md:text-[17px]">{applyPage.othersIntro}</p>
-          <FollowLink />
-        </div>
-        <Groups groups={groups} />
       </div>
     </section>
   );

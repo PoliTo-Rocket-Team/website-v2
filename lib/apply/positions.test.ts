@@ -61,33 +61,26 @@ describe("applyListing", () => {
       dept_code: "DEP",
     };
   };
-  const shownPlaceholders = (groups: readonly { roles: readonly { status: string }[] }[]) =>
-    groups.flatMap((g) => g.roles).filter((r) => r.status === "closed").length;
-
-  test("none open shows every placeholder role", () => {
+  test("none open shows every placeholder role, each closed", () => {
     const listing = applyListing([]);
-    assert.equal(listing.kind, "none");
-    assert.equal(listing.kind === "none" && shownPlaceholders(listing.placeholders), placeholderRoles.length);
+    assert.equal(listing.kind, "closed");
+    const roles = listing.kind === "closed" ? listing.placeholders.flatMap((g) => g.roles) : [];
+    assert.deepEqual(
+      roles.map((r) => [r.code, r.status]),
+      placeholderRoles.map((p) => [p.code, "closed"]),
+    );
   });
 
-  test("one to four open show the placeholders of departments with nothing open, and only those", () => {
-    for (const count of [1, 4]) {
-      const open = Array.from({ length: count }, () => position("Recovery"));
-      const listing = applyListing(open);
-      assert.equal(listing.kind, "few", `${count} open`);
-      if (listing.kind !== "few") continue;
-      const others = listing.others.map((g) => g.department);
-      assert.ok(!others.includes("Recovery"));
-      assert.equal(
-        shownPlaceholders(listing.others),
-        placeholderRoles.filter((p) => p.department !== "Recovery").length,
-      );
-    }
-  });
-
-  test("five or more open show no placeholder", () => {
-    const listing = applyListing(["Aerodynamics", "Structures", "Recovery", "Electronics", "Operations"].map(position));
-    assert.equal(listing.kind, "many");
-    assert.ok(!("others" in listing));
-  });
+  for (const count of [1, 4, 5]) {
+    test(`${count} open show only the open positions`, () => {
+      const departments = ["Aerodynamics", "Structures", "Recovery", "Electronics", "Operations"];
+      const listing = applyListing(Array.from({ length: count }, (_, i) => position(departments[i])));
+      assert.equal(listing.kind, "open");
+      const roles = listing.kind === "open" ? listing.open.flatMap((g) => g.roles) : [];
+      assert.equal(roles.length, count);
+      assert.ok(roles.every((r) => r.status === "open"));
+      const placeholderCodes = new Set<string>(placeholderRoles.map((p) => p.code));
+      assert.ok(roles.every((r) => !placeholderCodes.has(r.code)));
+    });
+  }
 });
