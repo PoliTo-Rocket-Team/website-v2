@@ -11,7 +11,9 @@ import {
 } from "@/lib/dashboard/applicant-overview";
 import type { AlumniCard, AlumniOverview } from "@/lib/dashboard/my-alumni";
 import { sentLabel, SHOWN_FOR_A_MONTH } from "@/lib/dashboard/my-applications";
+import { ACCESS_AREA_LABELS, accessCounts, type AccessSummary } from "@/lib/dashboard/access-summary";
 import {
+  ACCESS_HINT,
   checklistCount,
   departmentLine,
   departmentsMeta,
@@ -413,7 +415,8 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
 }
 
 // Boards 40m and 52: who the viewer is, then their own panels (their page on
-// the site and their division), then the access hint.
+// the site and their division), then the access hint, or "Your access" when
+// they hold a grant (issue #480).
 // Board 52m: the person sits on the page with no frame and no edit button
 // (My profile is in the user menu), each panel's count moves beside its title,
 // and the hint is left out.
@@ -421,7 +424,7 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
 // hand-over they sent, issue #262), sit above it as the leads' "Needs your
 // attention" panel, so board 52 itself is unchanged when there are none.
 function PersonalView({ overview }: { overview: PersonalOverview }) {
-  const { attention, person, checklist, roster, hint } = overview;
+  const { attention, person, checklist, roster, access } = overview;
   const main = checklist ? <ChecklistPanel checklist={checklist} /> : null;
   return (
     <>
@@ -450,13 +453,35 @@ function PersonalView({ overview }: { overview: PersonalOverview }) {
         </div>
       )}
 
-      {hint && (
+      {access.length > 0 ? (
+        <AccessPanel access={access} />
+      ) : (
         <p className={`${PANEL} mt-6 items-start gap-2.5 px-4 py-2.5 text-[13px] text-text-2 max-md:hidden md:flex`}>
           <Info aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
-          {hint}
+          {ACCESS_HINT}
         </p>
       )}
     </>
+  );
+}
+
+// Issue #480: a granted member's areas, one linked row each, in place of the
+// access hint. Counts only; the names stay on each area's own page.
+function AccessPanel({ access }: { access: readonly AccessSummary[] }) {
+  return (
+    <Panel title="Your access" className="mt-5 md:mt-6">
+      {access.map((summary) => (
+        <li key={summary.area}>
+          <Link href={summary.href} className={ROW_LINK}>
+            <span className="min-w-0 flex-1 text-[14px]">
+              <span className="font-medium">{ACCESS_AREA_LABELS[summary.area]}</span>
+              <span className="text-prt-muted"> · {accessCounts(summary)}</span>
+            </span>
+            <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-prt-muted" strokeWidth={1.75} />
+          </Link>
+        </li>
+      ))}
+    </Panel>
   );
 }
 
