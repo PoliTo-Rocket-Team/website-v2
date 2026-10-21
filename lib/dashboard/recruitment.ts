@@ -1,6 +1,7 @@
 import type { ApplicantDetails } from "./applicant-details";
 import type { ApplicantStanding, ApplicationStage, ApplicationState } from "./application-flow";
 import type { DivisionChoice, PositionContent } from "./new-position";
+import { areaUnitsOf, type AreaReader } from "./viewer";
 
 // What the Positions and Applications pages show (Dashboard v2 boards 57 and
 // 58, issue #171, after boards 41 to 41c of issue #142). The dashboard data
@@ -52,6 +53,12 @@ export type PositionRow = {
    * grant shows the role, never a figure about who applied (issue #477).
    */
   readonly applications: PositionApplications | null;
+  /**
+   * Whether the viewer may open or close this role (issue #487), by the rule
+   * every position write asks (`mayChangePositionIn`, ./position-access.ts).
+   * Where false its switch shows the role's state and cannot be flipped.
+   */
+  readonly canChange: boolean;
   /** "2 days ago" */
   readonly updated: string;
   /** "AER-MSA-001": the code the role was saved under, made from its division. */
@@ -59,6 +66,34 @@ export type PositionRow = {
   /** What the role says as saved: Edit position (issue #207) opens on it. */
   readonly content: PositionContent;
 };
+
+/** A place a member's Positions grant covers, as the page's intro names it (issue #487). */
+export type GrantPlace = { readonly kind: "department"; readonly name: string } | { readonly kind: "division"; readonly name: string };
+
+/** An open department or division by id, as `grantPlacesOf` names it. */
+export type NamedUnit = { readonly id: number; readonly name: string };
+
+/**
+ * The places a member's Positions grants cover (issue #487): the units
+ * `areaUnitsOf` gives for Positions, departments first, each by name, among
+ * the open ones. A member's own role adds no unit there, so the page never
+ * names their own division for a grant elsewhere.
+ */
+export function grantPlacesOf(
+  viewer: AreaReader,
+  open: { readonly departments: readonly NamedUnit[]; readonly divisions: readonly NamedUnit[] },
+): GrantPlace[] {
+  const units = areaUnitsOf(viewer, "positions");
+  const named = (list: readonly NamedUnit[], ids: readonly number[]) =>
+    list
+      .filter((u) => ids.includes(u.id))
+      .map((u) => u.name)
+      .sort((a, b) => a.localeCompare(b));
+  return [
+    ...named(open.departments, units.departmentIds).map((name): GrantPlace => ({ kind: "department", name })),
+    ...named(open.divisions, units.divisionIds).map((name): GrantPlace => ({ kind: "division", name })),
+  ];
+}
 
 /**
  * Who the page is for decides its shape. The operations lead sees the whole
@@ -83,7 +118,21 @@ export type PositionsPage = (
       readonly department: DepartmentUnit;
       readonly positions: readonly PositionRow[];
     }
+  | {
+      /**
+       * A member who reads Positions by a grant (issue #487): the places their
+       * Positions grants cover (`areaUnitsOf`), never their own role's division.
+       */
+      readonly scope: "granted";
+      readonly places: readonly [GrantPlace, ...GrantPlace[]];
+      readonly positions: readonly PositionRow[];
+    }
 ) & {
+  /**
+   * Whether the viewer reads Applications at all (`readsRecruitment`): the
+   * table's Applications column shows only then (issue #487).
+   */
+  readonly readsApplications: boolean;
   /** What the New position drawer offers (boards 57a, 57b). */
   readonly newPosition: {
     /** The divisions the viewer may post a role in. */

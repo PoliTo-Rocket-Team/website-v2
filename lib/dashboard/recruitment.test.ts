@@ -1,6 +1,43 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ago, appliedLabels, documentsLine, filterPositions, quietDays, type PositionRow } from "./recruitment";
+import { ago, appliedLabels, documentsLine, filterPositions, grantPlacesOf, quietDays, type PositionRow } from "./recruitment";
+import { grantedAreasOf, type AreaGrant, type AreaReader } from "./viewer";
+
+// Issue #487: a member's Positions page names the places their Positions
+// grants cover, never their own division. The member is in Mission Analysis (1),
+// in Aerodynamics (1); Propulsion (2) holds Test Bench (3).
+const OPEN = {
+  departments: [
+    { id: 1, name: "Aerodynamics" },
+    { id: 2, name: "Propulsion" },
+  ],
+  divisions: [
+    { id: 1, name: "Mission Analysis" },
+    { id: 3, name: "Test Bench" },
+  ],
+};
+const grantHolder = (...grants: AreaGrant[]): AreaReader => ({
+  kind: "member",
+  grantedAreas: grantedAreasOf(grants.map((g) => ({ scope: g.unit.kind, target: g.target, level: g.level }))),
+  siteContent: false,
+  approveOrders: false,
+  roles: [{ type: "core", divisionId: 1, departmentId: 1 }],
+  grants,
+});
+
+test("a member's Positions page names the places their Positions grants cover, not their own division (issue #487)", () => {
+  const onPropulsion: AreaGrant = { target: "positions", level: "view", unit: { kind: "department", departmentId: 2 } };
+  const onTestBench: AreaGrant = { target: "positions", level: "edit", unit: { kind: "division", divisionId: 3 } };
+  assert.deepEqual(grantPlacesOf(grantHolder(onPropulsion), OPEN), [{ kind: "department", name: "Propulsion" }]);
+  assert.deepEqual(grantPlacesOf(grantHolder(onTestBench), OPEN), [{ kind: "division", name: "Test Bench" }]);
+  assert.deepEqual(grantPlacesOf(grantHolder(onTestBench, onPropulsion), OPEN), [
+    { kind: "department", name: "Propulsion" },
+    { kind: "division", name: "Test Bench" },
+  ]);
+  // A grant on another area names no place here.
+  const onApplications: AreaGrant = { target: "applications", level: "edit", unit: { kind: "department", departmentId: 1 } };
+  assert.deepEqual(grantPlacesOf(grantHolder(onPropulsion, onApplications), OPEN), [{ kind: "department", name: "Propulsion" }]);
+});
 
 const row = (title: string, department: string, open: boolean): PositionRow => ({
   id: title.length,
@@ -10,6 +47,7 @@ const row = (title: string, department: string, open: boolean): PositionRow => (
   department,
   open,
   applications: { total: 0, fresh: 0, quiet: null },
+  canChange: true,
   updated: "",
   code: "",
   content: { title, description: "", required: [], desirable: [], questions: [], motivationLetter: false },

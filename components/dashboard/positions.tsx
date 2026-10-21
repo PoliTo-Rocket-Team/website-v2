@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition, type CSSProperties } from "react";
 import { ArrowUpDown, Plus, RadioTower } from "lucide-react";
 import { toast } from "sonner";
 import { setPositionOpen, setRecruitment } from "@/app/dashboard/recruitment-actions";
@@ -166,7 +166,8 @@ export function PositionsView({
         <div className={`${PANEL} mt-4 hidden overflow-hidden lg:block ${drawerOpen ? "xl:hidden 2xl:block" : ""}`}>
           <div
             aria-hidden="true"
-            className={`grid h-10 items-center gap-4 border-b border-hairline bg-white-5 px-5 font-mono text-[10px] uppercase tracking-[0.2em] text-dim ${COLUMNS}`}
+            style={tracksOf(model.columns)}
+            className="grid h-10 items-center gap-4 border-b border-hairline bg-white-5 px-5 font-mono text-[10px] uppercase tracking-[0.2em] text-dim"
           >
             {model.columns.map((column) => (
               <span key={column}>{COLUMN_LABELS[column]}</span>
@@ -174,7 +175,7 @@ export function PositionsView({
           </div>
           <ul className="divide-y divide-hairline">
             {rows.map((row) => (
-              <PositionItem key={row.id} row={row} chosen={editing?.id === row.id} onEdit={edit} />
+              <PositionItem key={row.id} row={row} columns={model.columns} chosen={editing?.id === row.id} onEdit={edit} />
             ))}
           </ul>
           {rows.length === 0 && <p className="px-5 py-6 text-[13px] text-prt-muted">No positions match.</p>}
@@ -207,8 +208,19 @@ export function PositionsView({
 
 // Each column is at least as wide as its header label (10px mono, 0.2em
 // tracking: 8px a letter), so the labels never run together (issue #222).
-// Every role's table has the same columns (issue #417).
-const COLUMNS = "grid-cols-[minmax(0,1.7fr)_minmax(80px,0.8fr)_minmax(96px,0.75fr)_minmax(56px,0.6fr)_112px]";
+// Every role's table has the same columns (issue #417), save Applications,
+// which a viewer who does not read Applications has no track for (issue #487).
+const TRACKS: Record<PositionsColumn, string> = {
+  position: "minmax(0,1.7fr)",
+  department: "minmax(80px,0.8fr)",
+  applications: "minmax(96px,0.75fr)",
+  updated: "minmax(56px,0.6fr)",
+  status: "112px",
+};
+
+function tracksOf(columns: readonly PositionsColumn[]): CSSProperties {
+  return { gridTemplateColumns: columns.map((c) => TRACKS[c]).join(" ") };
+}
 
 const COLUMN_LABELS: Record<PositionsColumn, string> = {
   position: "Position",
@@ -260,43 +272,74 @@ function PositionCard({ row, chosen, onEdit }: RowProps) {
           </p>
         )}
       </div>
-      <span className="relative z-10 flex">
-        <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} />
+      <span className="relative z-10 flex items-center gap-2.5">
+        <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} disabled={!row.canChange} />
+        {/* A switch the viewer cannot flip says the role's state in words too (issue #487). */}
+        {!row.canChange && <OpenStatus open={open} />}
       </span>
     </li>
   );
 }
 
-function PositionItem({ row, chosen, onEdit }: RowProps) {
+function PositionItem({ row, columns, chosen, onEdit }: RowProps & { columns: readonly PositionsColumn[] }) {
   const [open, flip] = useOptimisticSwitch(row.open, (next) => setPositionOpen(row.id, next));
+  const cell = (column: PositionsColumn) => {
+    switch (column) {
+      case "position":
+        return (
+          <div key={column} className="min-w-0">
+            <EditTarget row={row} onEdit={onEdit} className="block w-full truncate text-[14px] font-medium leading-snug" />
+            <p className="truncate text-[13px] leading-snug text-prt-muted">{row.division}</p>
+          </div>
+        );
+      case "department":
+        return (
+          <p key={column} className="truncate text-[13px] text-text-2">
+            {row.department}
+          </p>
+        );
+      case "applications":
+        // A role outside the viewer's Applications reach keeps its cell, empty (issue #477).
+        return (
+          <div key={column}>
+            {row.applications !== null && (
+              <>
+                <p className="text-[14px] leading-snug">{row.applications.total}</p>
+                {row.applications.fresh > 0 && <p className="text-[12px] leading-snug text-accent">{row.applications.fresh} new</p>}
+                {row.applications.quiet && <p className="text-[12px] leading-snug text-prt-muted">{row.applications.quiet}</p>}
+              </>
+            )}
+          </div>
+        );
+      case "updated":
+        return (
+          <p key={column} className="text-[13px] text-prt-muted">
+            {row.updated}
+          </p>
+        );
+      case "status":
+        return (
+          <div key={column} className="relative z-10 flex items-center gap-2.5">
+            <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} disabled={!row.canChange} />
+            <OpenStatus open={open} />
+          </div>
+        );
+    }
+  };
   return (
     <li
-      className={`relative grid items-center gap-4 px-5 py-2.5 transition-colors duration-300 ease-out ${COLUMNS} ${
+      style={tracksOf(columns)}
+      className={`relative grid items-center gap-4 px-5 py-2.5 transition-colors duration-300 ease-out ${
         chosen ? "bg-accent/[0.06]" : "hover:bg-white-5"
       }`}
     >
-      <div className="min-w-0">
-        <EditTarget row={row} onEdit={onEdit} className="block w-full truncate text-[14px] font-medium leading-snug" />
-        <p className="truncate text-[13px] leading-snug text-prt-muted">{row.division}</p>
-      </div>
-      <p className="truncate text-[13px] text-text-2">{row.department}</p>
-      {/* The cell stays, empty, where the viewer does not read Applications (issue #477). */}
-      <div>
-        {row.applications !== null && (
-          <>
-            <p className="text-[14px] leading-snug">{row.applications.total}</p>
-            {row.applications.fresh > 0 && <p className="text-[12px] leading-snug text-accent">{row.applications.fresh} new</p>}
-            {row.applications.quiet && <p className="text-[12px] leading-snug text-prt-muted">{row.applications.quiet}</p>}
-          </>
-        )}
-      </div>
-      <p className="text-[13px] text-prt-muted">{row.updated}</p>
-      <div className="relative z-10 flex items-center gap-2.5">
-        <Toggle checked={open} onCheckedChange={flip} label={`${row.title} is open`} />
-        <span className={`w-12 text-[13px] ${open ? "text-prt-text" : "text-prt-muted"}`}>{open ? "Open" : "Closed"}</span>
-      </div>
+      {columns.map(cell)}
     </li>
   );
+}
+
+function OpenStatus({ open }: { open: boolean }) {
+  return <span className={`w-12 text-[13px] ${open ? "text-prt-text" : "text-prt-muted"}`}>{open ? "Open" : "Closed"}</span>;
 }
 
 // Board 41: the site-wide switch, for the team leader and the operations lead.

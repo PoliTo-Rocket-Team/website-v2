@@ -18,6 +18,7 @@ import { placeKey, placesOf, type AccessPage } from "./division-access";
 import { checkPromotion } from "./hand-over";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
+import { positionsModelOf } from "./positions-view";
 import type { PositionsPage } from "./recruitment";
 import { insertRows, recordedWrites } from "./access-matrix/fake-db";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
@@ -197,6 +198,40 @@ describe("figures about applications come only where the viewer reads Applicatio
           const inside = ALL.filter((u) => IDS.department(u) === d.id && reads.includes(u)).length;
           assert.equal(d.newApplications, inside, `${name}: ${d.name}`);
         }
+      }
+    });
+  }
+});
+
+// The intro each Positions grant holder's page reads: the places the grant names, never their own division (Mission Analysis).
+const GRANT_INTROS: Readonly<Record<string, string>> = {
+  "member with a positions grant across the division": "Roles in the Mission Analysis.",
+  "member with a positions grant across the department": "Roles in the Aerodynamics Department.",
+  // A `team` row is a grant in every open department, the fixture's spare one included.
+  "member with a positions grant across the team": "Roles in the Aerodynamics Department and the Spare Department and the Structures Department.",
+  "member with a Positions grant (Can view) in MA": "Roles in the Mission Analysis.",
+  "member with a Positions grant (Can edit) in MA and (Can view) in DM": "Roles in the Design & Manufacturing and the Mission Analysis.",
+};
+
+describe("the Positions page offers only what the viewer may do (issue #487)", () => {
+  for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
+    test(name, async () => {
+      const data = await open(name);
+      const page = await answerOf(() => data.positions());
+      if (page === "refused") return;
+      const positions = page as PositionsPage;
+      // Each role's switch is live exactly where the viewer changes Positions.
+      for (const row of positions.positions) {
+        const unit = unitOfPosition(row.id);
+        assert.equal(row.canChange, expect.changes.positions.includes(unit), `${name}: the switch on the role in ${unit}`);
+      }
+      // The Applications column only for someone who reads Applications somewhere.
+      assert.equal(positionsModelOf(positions).columns.includes("applications"), expect.reads.applications.length > 0, `${name}: the Applications column`);
+      if (name in GRANT_INTROS) {
+        assert.equal(positions.scope, "granted", name);
+        assert.ok(positionsModelOf(positions).intro.startsWith(`${GRANT_INTROS[name]} `), `${name}: ${positionsModelOf(positions).intro}`);
+      } else {
+        assert.notEqual(positions.scope, "granted", name);
       }
     });
   }

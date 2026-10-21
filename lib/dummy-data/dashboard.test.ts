@@ -36,6 +36,15 @@ test("the sidebar's new count is the Applications page's New tab", async () => {
   }
 });
 
+test("full access, a head and a lead may switch every role their Positions page lists, and read Applications (issue #487)", async () => {
+  for (const kind of ["operations-lead", "department-head", "division-lead"] as const) {
+    const page = await session(kind).data.positions();
+    assert.ok(page.positions.length > 0, kind);
+    assert.ok(page.positions.every((p) => p.canChange), kind);
+    assert.equal(page.readsApplications, true, kind);
+  }
+});
+
 test("a division lead sees only their division's positions and applications (board 41c)", async () => {
   const { data } = session("division-lead");
   const positions = await data.positions();
