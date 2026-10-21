@@ -397,7 +397,9 @@ test("the outreach rows read back to the import's content, plus the seed's own p
   for (const item of imported.posts) {
     const seeded = items.find((i) => i.id === item.id);
     assert.ok(seeded?.version.state === "published", `post ${item.id}`);
-    assert.deepEqual(seeded.version.published, item.version.state === "published" && item.version.published, `post ${item.id}`);
+    // The placeholder galleries (issue #456) are the seed's own; the rest of each post is the import's.
+    const { gallery: _, ...withoutGallery } = seeded.version.published;
+    assert.deepEqual(withoutGallery, item.version.state === "published" && item.version.published, `post ${item.id}`);
   }
   assert.equal(outreachPinnedOf(data), imported.pinned, "the summit's story is pinned (issue #392)");
   const shown = publicOutreach({ posts: items, summit: outreachSummitOf(data)!, tags: outreachTagsOf(data), pinned: outreachPinnedOf(data) });
