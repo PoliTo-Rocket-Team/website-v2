@@ -104,7 +104,7 @@ import {
 } from "@/lib/dashboard/hand-over-request";
 import type { AttentionItem } from "@/lib/dashboard/overview";
 import { dummyMemberDetails, dummyNda, dummySignInEmail } from "./members";
-import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, formerMember, people, positions, roster, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
+import { alumni, closedDivisions, departments, divisions, DUMMY_NOW, formerMember, people, positions, rosterSeason, waitingPeople, type DummyPerson, type DummyWaiting } from "./team";
 
 // The test developer's Team pages (issues #143, #172 and #231): the roster
 // and alumni in ./team.ts with the test developer's own edits (./edits.ts)
@@ -1097,7 +1097,7 @@ export function dummyTeamPages(
         DUMMY_ALUMNI_YEAR,
       ),
     teamTree: async () =>
-      buildTeamTree(canReach(testDeveloperStanding(kind), "team-tree") ? editedRoster(edits, joiners) : [], org, roster.season, self),
+      buildTeamTree(canReach(testDeveloperStanding(kind), "team-tree") ? editedRoster(edits, joiners) : [], org, rosterSeason(), self),
     teamStructure: async () => {
       if (!canReach(testDeveloperStanding(kind), "team-tree")) return null;
       const team = editedRoster(edits, joiners);
