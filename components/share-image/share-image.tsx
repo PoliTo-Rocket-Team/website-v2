@@ -4,13 +4,16 @@ import { ImageResponse } from "next/og";
 import type { ReactNode } from "react";
 import sharp from "sharp";
 import { brand } from "@/lib/brand-colors";
+import { drawnBackdrop } from "@/lib/share-image-backdrop";
 import type { Backdrop, RepoFile, ShareCard } from "@/lib/share-image";
 
 // Draws one share image (board 90, issue #454) from its card
 // (lib/share-image.ts). Everything is read from disk: the fonts bundled
 // beside this file (Archivo and Geist Mono, SIL Open Font License, the two
-// families the site sets) and the images under public/ and design/. Nothing
-// is fetched. The image renderer reads PNG and JPEG only, so each image is
+// families the site sets) and the images under public/ and design/. The one
+// exception is a post's photo uploaded in the dashboard: it is fetched from
+// this deployment's own public Blob store (issue #469, see
+// lib/share-image-backdrop.ts). The image renderer reads PNG and JPEG only, so each image is
 // decoded and sized here first: most of the site's textures, stills and
 // photos are WebP.
 
@@ -41,7 +44,12 @@ type Box = { width: number; height: number };
  * stays PNG.
  */
 async function picture(file: RepoFile, box: Box, fit: "cover" | "fill", alpha = false): Promise<string> {
-  const image = sharp(await readFile(fromRoot(file))).resize(box.width, box.height, { fit });
+  return sized(await readFile(fromRoot(file)), box, fit, alpha);
+}
+
+/** `picture` for bytes already in hand: a repo file's, or a post's stored photo's. Rejects bytes `sharp` cannot decode. */
+async function sized(source: Uint8Array, box: Box, fit: "cover" | "fill", alpha = false): Promise<string> {
+  const image = sharp(source).resize(box.width, box.height, { fit });
   const bytes = alpha ? await image.png().toBuffer() : await image.jpeg({ quality: 88 }).toBuffer();
   return `data:image/${alpha ? "png" : "jpeg"};base64,${bytes.toString("base64")}`;
 }
@@ -153,10 +161,15 @@ function TopWords({ card, children }: { card: ShareCard; children?: ReactNode })
 
 const sideShade = `linear-gradient(90deg, ${ground(0.06)} 0%, ${ground(0.38)} 25%, ${ground(0.7)} 50%, ${ground(0.84)} 75%, ${ground(0.95)} 100%)`;
 
+/** A post's backdrop: its photo from disk, or from this deployment's public store, else the streak texture. */
 async function backdropOf(backdrop: Backdrop): Promise<ReactNode> {
-  const src = await picture(backdrop.file, SHARE_IMAGE_SIZE, "cover");
+  const { shade: kind, src } = await drawnBackdrop(backdrop, {
+    file: (file) => readFile(fromRoot(file)),
+    fetch: (url, init) => fetch(url, init),
+    picture: (bytes) => sized(bytes, SHARE_IMAGE_SIZE, "cover"),
+  });
   const shade =
-    backdrop.kind === "photo"
+    kind === "photo"
       ? `linear-gradient(180deg, ${ground(0.15)} 0%, ${ground(0.45)} 40%, ${ground(0.8)} 70%, ${ground(0.95)} 100%)`
       : sideShade;
   return (
