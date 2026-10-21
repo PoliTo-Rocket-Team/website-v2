@@ -1,8 +1,9 @@
 import { contentEditor, type ContentEditor } from "@/lib/content/editor";
 import { maySiteContent, SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { textLength } from "@/lib/content/text";
-import { editorVersion, publicItems, publicVersion, type PublishStep, type Versioned } from "@/lib/content/versioned";
-import { slugOf, todayInRome } from "./outreach";
+import { editorVersion, publicItems, publicVersion, type PublishStep } from "@/lib/content/versioned";
+import { newestFirst, slugOf, todayInRome } from "./outreach";
+import { checkFeature, isFeatured, upToTwo, type FeaturedIds } from "./outreach-featured";
 import { blankPost, checkPostFields, draftOfFields, postCheckResult, type PostFields } from "./outreach-post-fields";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
@@ -11,7 +12,6 @@ import {
   titleOf,
   type OutreachContent,
   type OutreachDraft,
-  type OutreachFeature,
   type OutreachPost,
   type OutreachTag,
   type PhotoSrc,
@@ -21,71 +21,48 @@ import {
 
 // The Outreach content as the dashboard keeps it (issue #287): the posts, each
 // a content item with a published version and an optional draft
-// (lib/content/), the featured summit with the same two versions, the tag
-// list, and which post is pinned to the top of /outreach (issue #392). Each side of the dashboard data interface brings an
+// (lib/content/), the tag list, and which posts are featured at the top of
+// /outreach (issue #496, lib/outreach-featured.ts). Each side of the dashboard data interface brings an
 // `OutreachStore`: the database (lib/dashboard/database-outreach.ts), or the
 // dummy data on previews and in test-developer sessions
 // (lib/dummy-data/outreach.ts), and its place for photo files
 // (lib/outreach-photos.ts). The editor puts every write and every upload
 // behind the site-content gate and keeps a post's tags to the tag list.
 
-/**
- * The summit's versions. It is always published (the import publishes it
- * and no step unpublishes it), with an optional draft beside it.
- */
-export type SummitVersions = Extract<Versioned<OutreachFeature>, { state: "published" }>;
-
-/** The summit's versions after Save draft or Publish: as `afterStep` (lib/content/versioned.ts), and never unpublished. */
-export function summitAfterStep(current: SummitVersions, content: OutreachFeature, step: PublishStep): SummitVersions {
-  return step === "publish"
-    ? { state: "published", published: content, draft: null }
-    : { state: "published", published: current.published, draft: content };
-}
-
 export interface OutreachStore {
   readonly posts: PostStore;
-  summit(): Promise<SummitVersions>;
-  saveSummit(versions: SummitVersions): Promise<WriteResult<SummitVersions>>;
   /** The tag list, in its order. */
   tags(): Promise<readonly OutreachTag[]>;
   /** A new tag at the end of the list; never the award one. */
   addTag(name: string): Promise<WriteResult<OutreachTag>>;
-  /** The id of the pinned post (issue #392); null while none is. */
-  pinned(): Promise<number | null>;
-  /** The post `id` becomes the one pinned post, every other one unpinned in the same write; null unpins every post. */
-  pin(id: number | null): Promise<WriteResult<null>>;
+  /** The ids of the featured posts (issue #496): none, one or two. */
+  featured(): Promise<FeaturedIds>;
+  /** The post `id` is featured too; refused with `FEATURED_FULL` while two are, so a third is never written. */
+  feature(id: number): Promise<WriteResult<null>>;
+  /** The post `id` is no longer featured; nothing changes for a post that is not. */
+  unfeature(id: number): Promise<WriteResult<null>>;
 }
 
 /** Everything a store holds, as the public read and the import see it. */
 export type StoredOutreach = {
   readonly posts: readonly PostItem[];
-  readonly summit: SummitVersions;
   readonly tags: readonly OutreachTag[];
-  /** The id of the one pinned post (issue #392), or null: one id, so two pinned posts cannot be written down. */
-  readonly pinned: number | null;
+  /** The ids of the featured posts (issue #496): at most two, so a third cannot be written down. */
+  readonly featured: FeaturedIds;
 };
 
 /**
- * What the public pages show: the published summit, the pinned post while it
- * is published, every other published post in site order, and the tags. A
- * post with only a draft is not there, and a pinned one is not listed.
+ * What the public pages show: the featured posts while they are published,
+ * newest first, every other published post in site order, and the tags. A
+ * post with only a draft is not there, and a featured one is not listed.
  */
 export function publicOutreach(stored: StoredOutreach): OutreachContent {
-  const pinnedItem = stored.posts.find((item) => item.id === stored.pinned);
+  const featuredItems = stored.posts.filter((item) => isFeatured(stored.featured, item.id));
   return {
-    feature: stored.summit.published,
-    pinned: pinnedItem === undefined ? null : publicVersion(pinnedItem.version),
-    posts: publicItems(stored.posts.filter((item) => item !== pinnedItem)),
+    featured: upToTwo(newestFirst(publicItems(featuredItems))) ?? [],
+    posts: publicItems(stored.posts.filter((item) => !featuredItems.includes(item))),
     tags: stored.tags,
   };
-}
-
-/** The post `id` may be pinned, or why not: it must be in the list and on the site (issue #392). */
-export function checkPin(id: number, items: readonly PostItem[]): WriteResult<number> {
-  const item = items.find((i) => i.id === id);
-  if (item === undefined) return refused("This post was removed. Reload the page.");
-  if (publicVersion(item.version) === null) return refused("Publish the post before you pin it.");
-  return written(id);
 }
 
 /** The longest tag name the list takes; the `outreach_tags` table checks the same. */
@@ -153,26 +130,19 @@ export interface OutreachEditor {
    * store did not upload.
    */
   discardPhoto(src: string): Promise<WriteResult<null>>;
-  /** The summit's versions; null for a viewer the gate refuses. */
-  summit(): Promise<SummitVersions | null>;
-  /** Save draft or Publish on the summit. `prepare` gets the version the panel opened on, once the gate let the viewer through. */
-  saveSummit(
-    step: PublishStep,
-    prepare: (current: OutreachFeature) => Promise<WriteResult<OutreachFeature>>,
-  ): Promise<WriteResult<SummitVersions>>;
   /** The tag list; null for a viewer the gate refuses. */
   tags(): Promise<readonly OutreachTag[] | null>;
   addTag(name: string): Promise<WriteResult<OutreachTag>>;
-  /** The id of the pinned post; null while none is, and for a viewer the gate refuses. */
-  pinned(): Promise<number | null>;
+  /** The ids of the featured posts; none for a viewer the gate refuses. */
+  featured(): Promise<FeaturedIds>;
   /**
-   * Pin a published post to the top of /outreach (issue #392): it takes the
-   * Featured card and leaves the post list, and the post pinned before it,
-   * if any, goes back to the list. At most one post is pinned at any time.
+   * Feature a published post at the top of /outreach (issue #496): it takes
+   * a Featured card of its own and leaves the post list. At most two posts
+   * are featured at once; a third is refused, and nothing changes.
    */
-  pin(id: number): Promise<WriteResult<null>>;
-  /** Unpin the pinned post: it goes back to the list, and the Featured card shows the summit alone. */
-  unpin(): Promise<WriteResult<null>>;
+  feature(id: number): Promise<WriteResult<null>>;
+  /** Unfeature a post: it goes back to the list. */
+  unfeature(id: number): Promise<WriteResult<null>>;
 }
 
 export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, files: PhotoFiles): OutreachEditor {
@@ -222,15 +192,6 @@ export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, fil
       return written(null);
     },
 
-    summit: async () => (allowed ? store.summit() : null),
-
-    async saveSummit(step, prepare) {
-      if (!allowed) return refused(SITE_CONTENT_REFUSAL);
-      const current = await store.summit();
-      const content = await prepare(current.draft ?? current.published);
-      return content.ok ? store.saveSummit(summitAfterStep(current, content.value, step)) : content;
-    },
-
     tags: async () => (allowed ? store.tags() : null),
 
     async addTag(name) {
@@ -239,17 +200,17 @@ export function outreachEditor(viewer: ViewerStanding, store: OutreachStore, fil
       return checked.ok ? store.addTag(checked.value) : checked;
     },
 
-    pinned: async () => (allowed ? store.pinned() : null),
+    featured: async () => (allowed ? store.featured() : []),
 
-    async pin(id) {
+    async feature(id) {
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
-      const checked = checkPin(id, await store.posts.list());
-      return checked.ok ? store.pin(checked.value) : checked;
+      const checked = checkFeature(id, await store.posts.list());
+      return checked.ok ? store.feature(checked.value) : checked;
     },
 
-    async unpin() {
+    async unfeature(id) {
       if (!allowed) return refused(SITE_CONTENT_REFUSAL);
-      return store.pin(null);
+      return store.unfeature(id);
     },
   };
 }

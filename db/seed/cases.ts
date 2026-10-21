@@ -22,7 +22,6 @@ import {
   type outreachPosts,
   type outreachPostTags,
   type outreachPostVersions,
-  type outreachSummitVersions,
   type outreachTags,
   type partners,
   type partnerVersions,
@@ -47,8 +46,8 @@ import { APPLICATION_STAGES, type ApplicationStage } from "@/lib/dashboard/appli
 import { storedApplicationState } from "@/lib/dashboard/stored-application";
 import type { FaqVersion } from "@/lib/faq/faq";
 import { trackRecord } from "@/lib/outreach";
-import type { SummitVersions } from "@/lib/outreach-editor";
-import { draftFromColumns, outreachPostOf, postFromColumns, summitFromColumns } from "@/lib/outreach-rows";
+import { featuredIdsOf, type FeaturedIds } from "@/lib/outreach-featured";
+import { draftFromColumns, outreachPostOf, postFromColumns } from "@/lib/outreach-rows";
 import { CHANNEL_NAMES, type OutreachDraft, type OutreachTag, type PostItem, type PostVersions } from "@/lib/outreach-types";
 import type { Partner } from "@/lib/partners";
 import { storedProjectRecord } from "@/lib/project-content/check";
@@ -81,7 +80,6 @@ import {
   OUTREACH_POST_ROWS,
   OUTREACH_POST_TAG_ROWS,
   OUTREACH_POST_VERSION_ROWS,
-  OUTREACH_SUMMIT_ROWS,
   OUTREACH_TAG_ROWS,
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
@@ -126,7 +124,6 @@ export type SeedData = {
   readonly outreachPosts: readonly InferInsertModel<typeof outreachPosts>[];
   readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
   readonly outreachPostTags: readonly InferInsertModel<typeof outreachPostTags>[];
-  readonly outreachSummitVersions: readonly InferInsertModel<typeof outreachSummitVersions>[];
   readonly projects: readonly InferInsertModel<typeof projects>[];
   readonly projectVersions: readonly InferInsertModel<typeof projectVersions>[];
   readonly teamPageLayerVersions: readonly InferInsertModel<typeof teamPageLayerVersions>[];
@@ -158,7 +155,6 @@ export const SEED_DATA: SeedData = {
   outreachPosts: OUTREACH_POST_ROWS.rows,
   outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
   outreachPostTags: OUTREACH_POST_TAG_ROWS.rows,
-  outreachSummitVersions: OUTREACH_SUMMIT_ROWS.rows,
   projects: PROJECT_ROWS.rows,
   projectVersions: PROJECT_VERSION_ROWS.rows,
   teamPageLayerVersions: TEAM_PAGE_LAYER_ROWS.rows,
@@ -533,17 +529,12 @@ export function outreachItemsOf(data: SeedData): PostItem[] {
     });
 }
 
-/** The summit's versions, or null when it has no published one, which the public read refuses. */
-export function outreachSummitOf(data: SeedData): SummitVersions | null {
-  const summit = versionedFromRows(data.outreachSummitVersions.map((row) => ({ kind: row.version, content: summitFromColumns({ ...row, storyPhone: row.storyPhone ?? null }) })));
-  return summit?.state === "published" ? summit : null;
-}
-
-/** The pinned post's id (issue #392), or null; the one-pinned index refuses two. */
-export function outreachPinnedOf(data: SeedData): number | null {
-  const pinned = data.outreachPosts.filter((p) => p.pinned === true);
-  if (pinned.length > 1) throw new Error("more than one outreach post is pinned");
-  return pinned[0]?.id ?? null;
+/** The featured posts' ids (issue #496), slot 1 first; the two slots refuse a third. */
+export function outreachFeaturedOf(data: SeedData): FeaturedIds {
+  const rows = data.outreachPosts.filter((p) => p.featuredSlot !== null && p.featuredSlot !== undefined);
+  const ids = featuredIdsOf([...rows].sort((a, b) => (a.featuredSlot ?? 0) - (b.featuredSlot ?? 0)).map((p) => p.id ?? 0));
+  if (ids === null) throw new Error("more than two outreach posts are featured");
+  return ids;
 }
 
 /** Every version of every post, published or draft. */
@@ -1189,11 +1180,15 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "outreach",
-    case: "The featured summit, published, with its editions",
+    case: "The summit's story, a published post featured at the top of /outreach",
     data: "public",
-    rows: "`outreach_summit_versions` version `published`",
-    exercisedBy: `${issue(287)}, ${issue(289)}`,
-    holds: (data) => (outreachSummitOf(data)?.published.editions.length ?? 0) >= 1,
+    rows: "`outreach_posts.featured_slot` 1, post 14",
+    exercisedBy: `${issue(392)}, ${issue(496)}`,
+    holds: (data) => {
+      const featured = outreachFeaturedOf(data);
+      const items = outreachItemsOf(data);
+      return featured.length === 1 && featured.every((id) => items.some((item) => item.id === id && item.version.state === "published"));
+    },
   },
   {
     area: "projects",

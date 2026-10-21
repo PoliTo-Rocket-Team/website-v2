@@ -13,8 +13,8 @@ import { ProjectPageView } from "@/components/project-page/view";
 import { ProjectsListPage } from "@/components/projects/list-page";
 import { team } from "@/lib/about/team";
 import { publicItems } from "@/lib/content/versioned";
-import { featuredCard, newestFirst, outreachRecord, outreachStats } from "@/lib/outreach";
-import type { OutreachContent } from "@/lib/outreach-types";
+import { featuredCard, iressStory, newestFirst, outreachRecord, outreachStats } from "@/lib/outreach";
+import { mapUpToTwo, type OutreachContent } from "@/lib/outreach-types";
 import { firstImport, importedProjects } from "@/lib/project-content/import";
 import { listingOf, listingsNewestFirst, pageRecordOf } from "@/lib/project-content/record";
 import { siteFooterOf } from "./page-chrome";
@@ -24,7 +24,7 @@ import { siteFooterOf } from "./page-chrome";
 
 const projects = publicItems(importedProjects(firstImport));
 const footerProjects = projects.map(({ name, slug }) => ({ name, slug }));
-const outreach: OutreachContent = { ...outreachRecord, pinned: null };
+const outreach: OutreachContent = { ...outreachRecord, featured: [iressStory] };
 const [post] = outreachRecord.posts;
 const ACADEMIC_YEAR = 2026;
 const asIs = <Part>(_: Part, node: unknown) => node as ReactElement;
@@ -52,19 +52,20 @@ test("the Outreach post page draws the navbar and footer publicly, and neither a
 test("the Outreach list draws the navbar and footer publicly, and neither as the editor draws it", () => {
   const page = {
     stats: outreachStats(outreach),
-    feature: featuredCard(outreach.feature, null),
+    features: mapUpToTwo(outreach.featured, featuredCard),
     cards: newestFirst(outreach.posts).map(postCardOf),
   };
   assert.deepEqual(chromeOf(createElement(OutreachListPage, { ...page, footerProjects })), SITE);
   assert.deepEqual(chromeOf(createElement(OutreachListPage, { ...page, chrome: "none" })), NONE);
 });
 
-test("the Outreach editor's list and home pages, the pinned post's list included, draw no navbar and no footer", () => {
+test("the Outreach editor's list and home pages, a featured post's list included, draw no navbar and no footer", () => {
   const card = { view: post, edited: { id: 1, live: true }, shown: outreach, ids: {}, publishedSlug: null };
-  const on = { onEditCard: () => {}, onOpenFeatured: () => {}, onPin: () => {} };
+  const on = { onEditCard: () => {}, onOpenFeatured: () => {}, onMove: () => {} };
   for (const page of ["list", "home"] as const) {
-    for (const pinned of [false, true]) {
-      assert.deepEqual(chromeOf(createElement(PostCardPage, { ...card, ...on, page, pinned })), NONE, `${page}, pinned ${pinned}`);
+    for (const featuredHere of [false, true]) {
+      const featured = featuredHere ? ([1] as const) : ([] as const);
+      assert.deepEqual(chromeOf(createElement(PostCardPage, { ...card, ...on, page, featuredHere, featured })), NONE, `${page}, featured ${featuredHere}`);
     }
   }
 });

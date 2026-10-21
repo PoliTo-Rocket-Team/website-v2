@@ -67,7 +67,7 @@ export const TEST_DEVELOPER_TEAM_PAGE_COOKIE = "prt_test_developer_team_page";
 
 /** What a test developer added, edited, reordered or published on the Team page's advisors (lib/dummy-data/team-page.ts); cleared on sign out. Its own cookie, as the layer's. */
 export const TEST_DEVELOPER_ADVISORS_COOKIE = "prt_test_developer_advisors";
-/** What a test developer changed on the Outreach posts, summit and tags (lib/dummy-data/outreach.ts); cleared on sign out. Its own cookie, as the questions have. */
+/** What a test developer changed on the Outreach posts, featured posts and tags (lib/dummy-data/outreach.ts); cleared on sign out. Its own cookie, as the questions have. */
 export const TEST_DEVELOPER_OUTREACH_COOKIE = "prt_test_developer_outreach";
 
 /** What a test developer changed on the projects (lib/dummy-data/projects.ts); cleared on sign out. Its own cookie, as the questions have. */

@@ -7,8 +7,8 @@ import { footerProjects } from "@/lib/project-content/public";
 
 type Params = { params: Promise<{ slug: string }> };
 
-// Every published post's page is built ahead, the pinned one's included
-// (issue #392); a post published later is built on its first visit. Any
+// Every published post's page is built ahead, the featured ones' included
+// (issue #496); a post published later is built on its first visit. Any
 // other address, a post with only a draft included, finds no post and is a
 // 404.
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 // Boards 33 (desktop) and 33m (phone): one published outreach post, read
 // from the store (issue #287, lib/outreach-public.ts) and drawn by the
 // shared post page (components/outreach/post-page.tsx). The older and newer
-// posts are the listed ones, so the pinned post's page has none.
+// posts are the listed ones, so a featured post's page has none.
 export default async function OutreachPostPage({ params }: Params) {
   const content = await publishedOutreach();
   const post = postBySlug(postsWithPages(content), (await params).slug);

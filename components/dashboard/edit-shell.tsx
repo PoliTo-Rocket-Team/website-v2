@@ -588,10 +588,10 @@ function keepInViewOnResize(card: HTMLElement): () => void {
  * the card fills it. `outline` rounds the outline, 6px outside the card's own
  * corners.
  *
- * A content type may give a card its own `actions` (issue #431: Outreach's
- * Pin to top and Unpin), each a CardChip. On the edited card they sit left of
- * Edit card; on a dimmed card they always show, undimmed, with a hairline
- * outline that hover or focus inside only brightens (Owner decision,
+ * A content type may give a card its own `actions` (issues #431 and #496:
+ * Outreach's Feature and Unfeature), each a CardChip. On the edited card they
+ * sit left of Edit card; on a dimmed card they always show, undimmed, with a
+ * hairline outline that hover or focus inside only brightens (Owner decision,
  * 2026-10-21). Without them the card is drawn as it always was.
  */
 export function CardInPlace({

@@ -1,4 +1,4 @@
-import type { HeaderStats } from "./about/types";
+import type { HeaderStat } from "./about/types";
 import type { NonEmpty } from "./about/alumni-types";
 import type { Copy } from "./projects";
 import {
@@ -8,11 +8,9 @@ import {
   type BodyBlock,
   type ChannelName,
   type Channel,
-  type Edition,
   type IsoDate,
   type OutreachContent,
   type OutreachCopy,
-  type OutreachFeature,
   type OutreachPhoto,
   type OutreachPost,
   type OutreachRecord,
@@ -24,21 +22,21 @@ import {
 // the team's live Outreach page: each body is the live post's own text, and
 // the title, summary and lead say the same in fewer words, as the boards do.
 // Each post has one photo and one channel today, the "See more" link on the
-// live page. The summit, the posts and the tags below are the record the
-// import carries into the database (lib/outreach-import.ts, issue #287), and
-// the summit's story is the post pinned above them (issue #392). The pages
+// live page. The posts and the tags below are the record the import carries
+// into the database (lib/outreach-import.ts, issue #287), and the summit's
+// story is the post featured above them (issues #392, #496). The pages
 // read the published ones from there (lib/outreach-public.ts), and this
 // record only where there is no database or no outreach tables yet.
 
 export const outreachCopy: OutreachCopy = {
   description:
-    "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
+    "We share rocketry beyond our workshop: student summits, talks at congresses, school fairs and workshops, and runs for a good cause.",
 
   header: {
     eyebrow: "OUTREACH",
     title: "Outreach",
     intro:
-      "We share rocketry beyond our workshop: a student summit we started, talks at congresses, school fairs and workshops, and runs for a good cause.",
+      "We share rocketry beyond our workshop: student summits, talks at congresses, school fairs and workshops, and runs for a good cause.",
   },
 
   postsTitle: "Where we’ve been",
@@ -60,25 +58,6 @@ const recordTags: NonEmpty<OutreachTag> = [
 
 export const outreachRecord: OutreachRecord & { readonly posts: NonEmpty<OutreachPost> } = {
   tags: recordTags,
-
-  feature: {
-    eyebrow: "STARTED BY US · 2023",
-    title: "IRESS, the Italian Rocket Engineering Student Summit",
-    story: {
-      text: "In May 2023 we brought rocket teams from Italy's main universities together for the first time, in the Aula Magna of Politecnico di Torino, with speakers from ArianeSpace and Avio. The summit now moves city every year: Padova in 2024, Rome in 2025.",
-      phone:
-        "In May 2023 we brought rocket teams from Italy's main universities together for the first time, in the Aula Magna of Politecnico di Torino. The summit now moves city every year.",
-    },
-    photo: {
-      src: "/outreach/iress-2023-torino.webp",
-      alt: "Students from Italy's rocket teams in the Aula Magna of Politecnico di Torino, under the IRESS screen.",
-    },
-    editions: [
-      { year: 2023, place: "Torino" },
-      { year: 2024, place: "Padova" },
-      { year: 2025, place: "Rome" },
-    ],
-  },
 
   posts: [
     {
@@ -446,19 +425,22 @@ const editionPhoto = (title: string): OutreachPhoto => {
 };
 
 /**
- * The summit's own story (issue #392): the post pinned to the top of
- * /outreach, so the Featured card opens its page. Its title, card summary
- * and cover are the ones the card showed for the summit, so the card reads
- * as before; the edition posts above stay as they are. Migration
- * drizzle/0044_outreach_pinned_post.sql carries it into the database
- * (`pinnedStoryImportSql`, lib/outreach-import.ts).
+ * The summit's own story (issue #392): the post featured at the top of
+ * /outreach (issue #496), whose Featured card opens its page; the edition
+ * posts above stay as they are. Migration drizzle/0044_outreach_pinned_post.sql
+ * carries it into the database (`pinnedStoryImportSql`, lib/outreach-import.ts),
+ * and migration 0048 keeps it featured.
  */
 export const iressStory: OutreachPost = {
-  title: outreachRecord.feature.title,
+  title: "IRESS, the Italian Rocket Engineering Student Summit",
   date: "2023-05-02",
   place: "Torino, Italy",
   tags: ["Summit"],
-  summary: outreachRecord.feature.story,
+  summary: {
+    text: "In May 2023 we brought rocket teams from Italy's main universities together for the first time, in the Aula Magna of Politecnico di Torino, with speakers from ArianeSpace and Avio. The summit now moves city every year: Padova in 2024, Rome in 2025.",
+    phone:
+      "In May 2023 we brought rocket teams from Italy's main universities together for the first time, in the Aula Magna of Politecnico di Torino. The summit now moves city every year.",
+  },
   lead: "The student summit we started in 2023 brings Italy’s university rocket teams together every year, in a new city each time.",
   body: [
     {
@@ -471,7 +453,14 @@ export const iressStory: OutreachPost = {
     },
     { kind: "highlight", label: "EDITIONS", text: "Torino 2023 · Padova 2024 · Rome 2025" },
   ],
-  photos: [outreachRecord.feature.photo, editionPhoto("IRESS, 2nd edition"), editionPhoto("IRESS, 3rd edition")],
+  photos: [
+    {
+      src: "/outreach/iress-2023-torino.webp",
+      alt: "Students from Italy's rocket teams in the Aula Magna of Politecnico di Torino, under the IRESS screen.",
+    },
+    editionPhoto("IRESS, 2nd edition"),
+    editionPhoto("IRESS, 3rd edition"),
+  ],
   channels: {
     instagram: {
       url: "https://www.instagram.com/p/CrwPytBs6Kr/",
@@ -579,33 +568,37 @@ export function postBySlug(posts: readonly OutreachPost[], slug: string): Outrea
   return newestFirst(posts).find((p) => slugOf(p) === slug);
 }
 
-/** Every published post that has a page: the listed ones and the pinned one (issue #392). */
-export function postsWithPages(content: Pick<OutreachContent, "pinned" | "posts">): OutreachPost[] {
-  return content.pinned === null ? [...content.posts] : [...content.posts, content.pinned];
+/** Every published post that has a page: the listed ones and the featured ones (issue #496). */
+export function postsWithPages(content: Pick<OutreachContent, "featured" | "posts">): OutreachPost[] {
+  return [...content.posts, ...content.featured];
 }
 
 /**
- * The Featured card on /outreach (boards 32 and 32m). With a post pinned
- * (issue #392) it tells that post's story, its title, card summary and cover,
- * under the summit's line and editions, and opens the post's page; with
- * none pinned it is the summit alone, as before, with no page to open.
+ * A Featured card at the top of /outreach (boards 32 and 32m, issue #496):
+ * one featured post, drawn from the post alone. Its date and place over its
+ * title, its card summary and its cover, and the whole card opens its page.
  */
 export type FeaturedCard = {
+  /** "MAY 2023 · TORINO, ITALY": the month and year, then the place when the post names one. */
   eyebrow: string;
   title: string;
-  story: Copy;
+  summary: Copy;
   /** None while the editor's view of a post has no photo yet. */
   photo: OutreachPhoto | undefined;
-  editions: NonEmpty<Edition>;
-  /** The pinned post's address, /outreach/<slug>; null for the summit alone. */
-  slug: string | null;
+  /** The post's address, /outreach/<slug>. */
+  slug: string;
 };
 
-/** The Featured card from the summit and the pinned post, or the editor's view of it (issue #294). */
-export function featuredCard(feature: OutreachFeature, pinned: Pick<OutreachDraft, "title" | "summary" | "photos"> | null): FeaturedCard {
-  const { eyebrow, editions } = feature;
-  if (pinned === null) return { eyebrow, title: feature.title, story: feature.story, photo: feature.photo, editions, slug: null };
-  return { eyebrow, title: titleOf(pinned), story: pinned.summary, photo: pinned.photos[0], editions, slug: slugOf(pinned) };
+/** A featured post's card, or the editor's view of it (issue #294). */
+export function featuredCard(post: Pick<OutreachDraft, "title" | "date" | "place" | "summary" | "photos">): FeaturedCard {
+  const place = post.place?.trim();
+  return {
+    eyebrow: place ? `${monthYear(post.date)} · ${place.toUpperCase()}` : monthYear(post.date),
+    title: titleOf(post),
+    summary: post.summary,
+    photo: post.photos[0],
+    slug: slugOf(post),
+  };
 }
 
 /** The next older and the next newer post, where there is one. */
@@ -649,8 +642,11 @@ export function awardPosts(content: Pick<OutreachContent, "posts" | "tags">): Ou
   return content.posts.filter((p) => p.tags.some((name) => award.has(name)));
 }
 
-/** The header's four figures, counted from the listed posts, the tags and the feature. */
-export function outreachStats(content: Pick<OutreachContent, "feature" | "posts" | "tags">): HeaderStats {
+/** The Outreach header's figures: the events and the awards. */
+export type OutreachStats = readonly [events: HeaderStat, awards: HeaderStat];
+
+/** The header's two figures, both counted from the listed posts and the tags (issue #496). */
+export function outreachStats(content: Pick<OutreachContent, "posts" | "tags">): OutreachStats {
   const years = content.posts.map((p) => yearOf(p.date));
   const awards = awardPosts(content).length;
   return [
@@ -658,8 +654,6 @@ export function outreachStats(content: Pick<OutreachContent, "feature" | "posts"
       value: String(content.posts.length),
       label: { text: years.length === 0 ? "EVENTS" : `EVENTS SINCE ${Math.min(...years)}` },
     },
-    { value: String(content.feature.editions.length), label: { text: "IRESS EDITIONS" } },
-    { value: String(content.feature.editions[0].year), label: { text: "WE STARTED IRESS" } },
     { value: String(awards), label: { text: awards === 1 ? "AWARD" : "AWARDS" } },
   ];
 }

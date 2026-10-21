@@ -112,6 +112,13 @@ export type HeaderStat = { value: string; label: Copy };
 /** An About page header's figures: always four. */
 export type HeaderStats = readonly [HeaderStat, HeaderStat, HeaderStat, HeaderStat];
 
+/**
+ * What a page header can show: four figures, or two where the page has only
+ * two to count (the Outreach page, issue #496). Two sit in the first two of
+ * the same four columns, so each figure keeps the width it has on every page.
+ */
+export type HeaderFigures = HeaderStats | readonly [HeaderStat, HeaderStat];
+
 export type TeamPage = {
   description: string;
   header: {
