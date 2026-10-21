@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { editChips, type EditBlocks } from "./edit-shell";
+import { editChips, scaledFrameOf, type EditBlocks } from "./edit-shell";
 
 // A page of its own, so nothing here leans on outreach: two blocks open one
 // section, and one names its chip.
@@ -29,6 +29,14 @@ test("a chip shows its block's name and says Edit unless the block names its wor
   const chipOf = editChips(blocks, () => {});
   assert.deepEqual([chipOf("title").name, chipOf("title").label], ["Title and details", "Edit"]);
   assert.equal(chipOf("grid").label, "Edit photos");
+});
+
+test("a scaled Desktop preview keeps the 1440 layout, scales it down to the room and never up", () => {
+  // Board 93: a 1440 window less the 480px panel leaves 960px, two thirds.
+  assert.deepEqual(scaledFrameOf({ width: 960, height: 840 }), { width: 1440, height: 1260, scale: 2 / 3 });
+  // A room wider than the board lays the page out at the room's own width.
+  assert.deepEqual(scaledFrameOf({ width: 1600, height: 900 }), { width: 1600, height: 900, scale: 1 });
+  assert.equal(scaledFrameOf({ width: 0, height: 900 }), null);
 });
 
 test("the shell's files import nothing of a content type: pages, blocks and switch targets arrive as props", () => {

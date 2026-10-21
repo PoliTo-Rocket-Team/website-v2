@@ -133,6 +133,8 @@ export function ProjectEdit({
       blocks={PROJECT_BLOCKS}
       onEdit={openSection}
       onDeviceChange={setDevice}
+      // Beside the open panel the page keeps its desktop layout, scaled (board 93, issue #526).
+      scalesDesktop
       panel={
         panelOpen && (
           <ProjectEditPanel
