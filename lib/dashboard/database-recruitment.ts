@@ -51,7 +51,8 @@ import {
   type PositionRow,
   type PositionsPage,
 } from "./recruitment";
-import { mayChange, type ChangeArea, type DivisionUnit } from "./viewer";
+import { mayChange, type DivisionUnit } from "./viewer";
+import { mayChangePositionIn } from "./position-access";
 import {
   documentHref,
   mayOpenApplication,
@@ -89,14 +90,14 @@ async function positionUnit(positionId: number): Promise<DivisionUnit | null> {
 }
 
 /**
- * Whether the viewer may change `area` on the position (issue #160): they
- * reach it, and their role or an area grant at Can edit lets them change that
- * area in its division (`mayChange`, ./viewer.ts).
+ * Whether the viewer may change `area` on the position (issues #160, #461):
+ * it is live, in an open division, and the one rule every position and
+ * application write asks (`mayChangePositionIn`, ./position-access.ts) lets
+ * them change it there. False for a position that no longer exists.
  */
-async function mayChangePosition(identity: Identity, area: ChangeArea, positionId: number): Promise<boolean> {
-  if (!(await reachablePositionIds(identity)).has(positionId)) return false;
+async function mayChangePosition(identity: Identity, area: "positions" | "applications", positionId: number): Promise<boolean> {
   const unit = await positionUnit(positionId);
-  return unit !== null && mayChange(identity, area, unit);
+  return unit !== null && mayChangePositionIn(identity, area, unit);
 }
 
 // Positions -------------------------------------------------------------------
@@ -225,11 +226,6 @@ async function applicationsScope(identity: Identity): Promise<ApplicationsScope>
   const department = await readDepartmentUnit(identity);
   if (department !== null) return { kind: "department", department };
   return { kind: "division", division: identity.role?.divisionName ?? null };
-}
-
-async function reachablePositionIds(identity: Identity): Promise<Set<number>> {
-  if (!isLead(identity)) return new Set();
-  return new Set((await readPositionRows(identity, new Date())).map((p) => p.id));
 }
 
 async function setPositionOpen(identity: Identity, positionId: number, open: boolean): Promise<void> {
