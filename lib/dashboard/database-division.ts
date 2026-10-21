@@ -12,6 +12,7 @@ import { deletePrivateFile, uploadPrivateFile } from "@/lib/storage/private-stor
 import {
   canGiveApproveOrders,
   checkRemoveAllAccess,
+  checkRemoveGrant,
   checkSaveAccess,
   grantRowOf,
   NO_APPROVE_ORDERS,
@@ -427,6 +428,13 @@ async function removeAllAccess(identity: DashboardIdentity, personId: number): P
   if (!checked.ok) return refused(checked.error);
   const result = await writeAccess(identity, personId, checked.value);
   return result.ok ? written(null) : result;
+}
+
+async function removeGrant(identity: DashboardIdentity, input: unknown): Promise<WriteResult<readonly AccessGrant[]>> {
+  const access = await readAccessPage(identity);
+  if (access === null) return refused("Only a division lead or a department head removes access here.");
+  const checked = checkRemoveGrant(access, input);
+  return checked.ok ? writeAccess(identity, checked.value.personId, [checked.value]) : refused(checked.error);
 }
 
 /** Every open department in the team's order and its open divisions (`orgUnitsOf`): the Department filter (board 67b) and New order read it. */
@@ -853,6 +861,7 @@ export function databaseDivisionPages(identity: DashboardIdentity) {
     divisionAccess: () => readAccessPage(identity),
     saveAccess: (input: unknown) => saveAccess(identity, input),
     removeAllAccess: (personId: number) => removeAllAccess(identity, personId),
+    removeGrant: (input: unknown) => removeGrant(identity, input),
     orders: () => readOrdersPage(identity),
     placeOrder: (fields: Record<string, string>, quote: Upload | null) => placeOrder(identity, fields, quote),
     editOrder: (orderId: number, fields: Record<string, string>, quote: Upload | null) =>

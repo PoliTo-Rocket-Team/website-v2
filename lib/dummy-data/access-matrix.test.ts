@@ -167,6 +167,7 @@ describe("the test-developer path follows the access matrix", () => {
       if (!canReach(viewer, "division-access")) {
         writes.push(["give access", () => data.saveAccess({ personId: 1, areas: { positions: "edit" } })]);
         writes.push(["remove access", () => data.removeAllAccess(1)]);
+        writes.push(["remove one grant", () => data.removeGrant({ personId: 1, where: 1, target: "positions" })]);
       }
       if ((await data.orders()) === null) {
         writes.push(["new order", () => data.placeOrder({ item: "x", link: "https://example.com", price: "1", quantity: "1", reason: "x", division: "1" }, null)]);

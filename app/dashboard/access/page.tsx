@@ -5,7 +5,7 @@ import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { DivisionAccessView } from "@/components/dashboard/division-access";
 import { canReach } from "@/lib/dashboard/access";
 import { openDashboard } from "@/lib/dashboard/open";
-import { removeAllAccess, saveAccess } from "../actions";
+import { removeAllAccess, removeGrant, saveAccess } from "../actions";
 
 export const metadata: Metadata = {
   title: "Access · Dashboard · PoliTo Rocket Team",
@@ -30,5 +30,5 @@ async function LiveAccess() {
   if (!canReach(data.viewer, "division-access")) notFound();
   const access = await data.divisionAccess();
   if (access === null) notFound();
-  return <DivisionAccessView access={access} saveAccess={saveAccess} removeAllAccess={removeAllAccess} />;
+  return <DivisionAccessView access={access} saveAccess={saveAccess} removeAllAccess={removeAllAccess} removeGrant={removeGrant} />;
 }

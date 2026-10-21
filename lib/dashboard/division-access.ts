@@ -506,9 +506,10 @@ export type AccessWrite = {
 };
 
 const level = z.enum(ACCESS_LEVELS).optional();
+const placeKeySchema = z.union([z.literal("team"), z.string().regex(/^department-[1-9]\d*$/), z.number().int().positive()]);
 const saveAccessSchema = z.object({
   personId: z.number().int().positive(),
-  where: z.union([z.literal("team"), z.string().regex(/^department-[1-9]\d*$/), z.number().int().positive()]).optional(),
+  where: placeKeySchema.optional(),
   areas: z.strictObject({ positions: level, applications: level, members: level, alumni: level, orders: level }),
   approveOrders: z.boolean().optional(),
 });
@@ -628,6 +629,49 @@ export function checkRemoveAllAccess(access: AccessFacts, personId: unknown): Ch
   }
   if (approve.value !== null) writes.push({ personId, place: homePlace(access.unit), changes: [], approveOrders: approve.value });
   return { ok: true, value: writes };
+}
+
+/** What Remove on one "Current access" row in Edit access sends (issue #483): one area of one person, in one place. */
+export type RemoveGrant = {
+  readonly personId: number;
+  readonly where: PlaceKey;
+  readonly target: AccessTarget;
+};
+
+const removeGrantSchema = z.object({
+  personId: z.number().int().positive(),
+  where: placeKeySchema,
+  target: z.enum(ACCESS_TARGETS),
+});
+
+/** The removal of one grant, as its row's Remove sends it. */
+export function removalOf(grant: AccessGrant): RemoveGrant {
+  return { personId: grant.person.id, where: placeKey(grant.place), target: grant.target };
+}
+
+/**
+ * Checks Remove on one grant (issue #483): the person is in the viewer's unit
+ * and no lead, the place is in the unit (on a lead's page, the person's own
+ * division), the person holds the area there, and the viewer reaches it at
+ * the level the person holds it. The person's other areas there, and every
+ * other place, stay as they are: the write is that one removal. The drawer
+ * shows Remove only where this passes, and the server runs it again.
+ */
+export function checkRemoveGrant(access: AccessFacts, input: unknown): Checked<AccessWrite> {
+  const parsed = removeGrantSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Unknown access." };
+  const { personId, where, target } = parsed.data;
+  if (!access.people.some((p) => p.id === personId)) return { ok: false, error: outsideUnit(access.unit) };
+  const place = placesOf(access.unit).find((p) => placeKey(p) === where);
+  if (place === undefined) return { ok: false, error: `You can remove access only inside your ${access.unit.kind}.` };
+  if (!inPersonDivision(access, personId, place)) return { ok: false, error: "You can remove access only in the division of the person you edit." };
+  const current = areaLevelsOf(access.grants, personId, place);
+  if (current[target] === undefined) return { ok: false, error: "They do not hold this access there." };
+  const next: Partial<Record<AccessTarget, AccessLevel>> = { ...current };
+  delete next[target];
+  const checked = checkChanges(access, personId, place, next);
+  if (!checked.ok) return { ok: false, error: "You can only remove access you have, up to your own level." };
+  return { ok: true, value: { ...checked.value, approveOrders: null } };
 }
 
 /** A grant as the `scopes` table stores it (issue #247). */

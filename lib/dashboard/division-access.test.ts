@@ -5,6 +5,7 @@ import {
   accessByPerson,
   canGiveApproveOrders,
   checkRemoveAllAccess,
+  checkRemoveGrant,
   checkSaveAccess,
   departmentOfPlace,
   grantRowOf,
@@ -204,6 +205,46 @@ test("a grant in one place leaves the same area in another place alone; Remove a
       ],
     );
   }
+});
+
+// Remove on one grant (issue #483) -----------------------------------------------
+
+test("removing one of two grants in two places takes only that grant; the other place keeps its own", () => {
+  const grants = [grant(1, sofia, "members", "view", wholeDepartment), grant(2, sofia, "positions", "edit", inMsa)];
+  const removed = checkRemoveGrant(head(grants), { personId: 3, where: 1, target: "positions" });
+  assert.deepEqual(removed, {
+    ok: true,
+    value: { personId: 3, place: inMsa, changes: [{ kind: "remove", target: "positions", from: "edit" }], approveOrders: null },
+  });
+  // The whole department's Members is no part of the write.
+  const other = checkRemoveGrant(head(grants), { personId: 3, where: "department-1", target: "members" });
+  assert.deepEqual(other, {
+    ok: true,
+    value: { personId: 3, place: wholeDepartment, changes: [{ kind: "remove", target: "members", from: "view" }], approveOrders: null },
+  });
+  // Two areas in one place: the other area there stays.
+  const twoAreas = [grant(1, sofia, "applications", "edit"), grant(2, sofia, "orders", "view")];
+  const one = checkRemoveGrant(lead(twoAreas), { personId: 3, where: 1, target: "orders" });
+  assert.deepEqual(one.ok && one.value.changes, [{ kind: "remove", target: "orders", from: "view" }]);
+});
+
+test("Remove on one grant is refused outside the viewer's reach", () => {
+  const grants = [grant(1, pietro, "positions", "view"), grant(2, pietro, "members", "edit"), grant(3, pietro, "orders", "view"), grant(4, coLead, "applications", "view")];
+  const access = lead(grants);
+  // An area the lead does not hold, and one held above the lead's own level.
+  assert.equal(checkRemoveGrant(access, { personId: 6, where: 1, target: "positions" }).ok, false, "Positions is not the lead's");
+  assert.equal(checkRemoveGrant(access, { personId: 6, where: 1, target: "members" }).ok, false, "Members is held at edit, the lead only views");
+  // A place outside the lead's unit, and someone outside it.
+  assert.equal(checkRemoveGrant(access, { personId: 6, where: 2, target: "orders" }).ok, false, "a division the lead does not lead");
+  assert.equal(checkRemoveGrant(access, { personId: 6, where: "department-1", target: "orders" }).ok, false, "no department-wide place on a lead's page");
+  assert.equal(checkRemoveGrant(access, { personId: 99, where: 1, target: "orders" }).ok, false, "someone outside the division");
+  // A lead's access, and an area the person does not hold there.
+  assert.equal(checkRemoveGrant(access, { personId: 9, where: 1, target: "applications" }).ok, false, "another lead's access");
+  assert.equal(checkRemoveGrant(access, { personId: 6, where: 1, target: "applications" }).ok, false, "Pietro holds no Applications");
+  // A malformed removal, and the one within reach.
+  assert.equal(checkRemoveGrant(access, { personId: 6, where: 1, target: "logs" }).ok, false);
+  assert.equal(checkRemoveGrant(access, { personId: "6", where: 1, target: "orders" }).ok, false);
+  assert.equal(checkRemoveGrant(access, { personId: 6, where: 1, target: "orders" }).ok, true);
 });
 
 // Full access across the whole team (issue #238) ---------------------------------
