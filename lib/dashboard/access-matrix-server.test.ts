@@ -17,7 +17,7 @@ import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
 import { checkPromotion } from "./hand-over";
-import { MEMBERS_EXPORT_COLUMNS, membersExportFileName, XLSX_TYPE } from "./members-export";
+import { membersExportFileName, XLSX_TYPE } from "./members-export";
 import { filterTeam, NO_TEAM_FILTER } from "./team-members";
 import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
@@ -669,6 +669,29 @@ describe("a lead's Access page covers only the divisions they lead by role (Owne
 
 // The Members export --------------------------------------------------------
 
+// Every field the member drawer shows, written out by hand so a column
+// dropped from the export fails here instead of agreeing with itself.
+const EXPECTED_EXPORT_HEADER = [
+  "Name",
+  "Role",
+  "Divisions",
+  "Member since",
+  "PRT email",
+  "Personal email",
+  "Phone",
+  "Discord",
+  "LinkedIn",
+  "PoliTo ID",
+  "Program",
+  "Level",
+  "From",
+  "Date of birth",
+  "Gender",
+  "NDA",
+  "NDA signed on",
+  "NDA confirmed by",
+];
+
 describe("the Members export gives a file to full access alone (issue #539)", () => {
   async function exported(userId: string | null) {
     seedFixture();
@@ -705,7 +728,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
       assert.equal(response.headers.get("Content-Type"), XLSX_TYPE, name);
       assert.equal(response.headers.get("Content-Disposition"), `attachment; filename="${membersExportFileName(new Date())}"`, name);
       const [header, ...rows] = readSheet(body);
-      assert.deepEqual(header, MEMBERS_EXPORT_COLUMNS.map((c) => c.header), `${name}: the header row`);
+      assert.deepEqual(header, EXPECTED_EXPORT_HEADER, `${name}: the header row`);
       assert.deepEqual(rows.map((r) => r[0]).sort(), directory.people.map((p) => p.name).sort(), `${name}: one row per member`);
       // Each unit's private details, phone and Discord, are in the file.
       const text = rows.flat().join("\n");
