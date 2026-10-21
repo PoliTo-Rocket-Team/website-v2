@@ -147,6 +147,10 @@ An admin column comes later. **Planned**, no issue yet.
   - Access a lead gives goes in the division of the person they edit, only in a division they
     lead, and only up to what they hold there. Members edits reach people in any division the
     lead leads, never one outside them (#185).
+  - A lead's Access page covers only the divisions they lead by role. A grant the lead holds in a
+    division they do not lead gives them only what it gives a member there, such as that area's
+    page. It adds no Access page there, and the lead cannot give or remove access there (Owner
+    decision, #478; #488).
   - A department head's Members page holds every division of their department (#235).
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
