@@ -148,6 +148,34 @@ export function planAliasRequest(input: {
   return { ok: true, value: { memberId, requesterId } };
 }
 
+// Automatic requests (issue #543) -------------------------------------------------
+
+/** A request the site makes by itself: it has no requester, so it reads "Automatic" (board 94c). */
+export type AutomaticAliasRequest = { readonly memberId: number; readonly requesterId: null };
+
+/**
+ * The requests the site owes after a role change (Owner decision,
+ * 2026-10-22), as if each person's new head had pressed Request alias:
+ * `becoming` is everyone the change makes a division lead, a department head
+ * or the team leader, and each of them is owed one request unless they
+ * already have an alias on their record or an open request. Each person is
+ * asked for once, so an automatic write never reaches the one-open-request
+ * index (`alias_requests_one_open`). The role change and these requests are
+ * written together, so a change refused or failed asks for nothing.
+ */
+export function owedAliasRequests(input: {
+  readonly becoming: readonly number[];
+  /** Each member's alias on their record, by member id; a member missing has none. */
+  readonly addresses: ReadonlyMap<number, string>;
+  /** The open requests; only those of `becoming` are read. */
+  readonly open: readonly AliasRequest[];
+}): AutomaticAliasRequest[] {
+  const { addresses, open } = input;
+  return [...new Set(input.becoming)]
+    .filter((memberId) => !addresses.has(memberId) && !open.some((r) => r.memberId === memberId))
+    .map((memberId) => ({ memberId, requesterId: null }));
+}
+
 /** Cancel request (board 94b): whoever sent it, or anyone who may ask for the member. */
 export function planAliasCancel(input: {
   readonly viewerId: number | null;

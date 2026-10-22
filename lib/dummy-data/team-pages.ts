@@ -91,7 +91,7 @@ import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type Team
 import { dummySeatsOf } from "./division";
 import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver, withLapsedHandOvers } from "./hand-overs";
 import { withDummyNotices } from "./notices";
-import { dummyAliasesOf, dummyAliasRequestsOf, nextAliasRequestId, openAliasRequests, withDummyAliasRequest } from "./aliases";
+import { dummyAliasesOf, dummyAliasRequestsOf, nextAliasRequestId, openAliasRequests, withAutomaticAliasRequests, withDummyAliasRequest } from "./aliases";
 import {
   aliasAnswerNotices,
   aliasAttentionFor,
@@ -670,6 +670,8 @@ function writesFor(
     const firstJoinId = Math.max(99, ...addedPeople(edits).map((a) => a.joinId), ...edits.cancelled) + 1;
     const added = plan.emails.map((email, i): DummyWaiting => ({ joinId: firstJoinId + i, email, firstName: "", lastName: "", divisionId, title: null }));
     if (added.length > 0) next = { ...next, added: [...next.added, ...added] };
+    // Each new lead is owed an alias request when they have none (issue #543).
+    next = withAutomaticAliasRequests(next, [...plan.promote, ...plan.joinAsLead], DUMMY_NOW);
     await save(next);
     return written(null);
   };
@@ -746,7 +748,9 @@ function writesFor(
       if (!planned.ok) return refused(planned.error);
       const id = Math.max(99, ...departmentStates(edits).map((d) => d.id)) + 1;
       const { name, code, kind, headId } = planned.value;
-      await save({ ...edits, departments: { ...edits.departments, [id]: { name, code, kind, closedOn: null, headId } } });
+      const next: TeamEdits = { ...edits, departments: { ...edits.departments, [id]: { name, code, kind, closedOn: null, headId } } };
+      // The new head is owed an alias request when they have none (issue #543).
+      await save(withAutomaticAliasRequests(next, [headId], DUMMY_NOW));
       return written(id);
     },
     async saveDepartment(departmentId, input) {
@@ -764,7 +768,8 @@ function writesFor(
         if (typeof after === "string") return refused(after);
         next = after;
       }
-      await save(next);
+      // A new head is owed an alias request when they have none (issue #543).
+      await save(withAutomaticAliasRequests(next, head === null ? [] : [head.to], DUMMY_NOW));
       return written(null);
     },
     async closeDepartment(departmentId, input) {
@@ -840,7 +845,8 @@ function writesFor(
       const next: TeamEdits = { ...edits, teamLeader: to };
       const after = step.kind === "advisor" ? withAdvisor(next, from, step) : leftTeam(next, from);
       if (typeof after === "string") return refused(after);
-      await save(after);
+      // The new team leader is owed an alias request when they have none (issue #543).
+      await save(withAutomaticAliasRequests(after, [to], DUMMY_NOW));
       return written(null);
     },
     async setAlumnusShown(key, shown) {
@@ -1219,7 +1225,10 @@ export function dummyHandOverPages(
       if (plan.answer === "confirm") {
         const after = confirmedHandOverEdits(next, plan, roster, org);
         if (typeof after === "string") return refused(after);
-        next = after;
+        // A successor who becomes the lead or the head is owed an alias request when they have none (issue #543); a co-lead taking over leads already.
+        const { toId, role } = plan.request;
+        const ledAlready = role.kind === "lead" && team.some((p) => p.id === toId && p.memberships.some((m) => m.divisionId === role.divisionId && m.role === "lead"));
+        next = withAutomaticAliasRequests(after, ledAlready ? [] : [toId], DUMMY_NOW);
       }
       const approver = team.find((p) => p.id === self)?.name ?? "";
       next = { ...next, notices: withDummyNotices(next.notices, [answerNoticeOf(plan, team, org)], approver, DUMMY_NOW) };

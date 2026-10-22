@@ -1,4 +1,4 @@
-import type { AliasOutcome, AliasRequest } from "@/lib/dashboard/alias-request";
+import { owedAliasRequests, type AliasOutcome, type AliasRequest } from "@/lib/dashboard/alias-request";
 import type { TeamEdits } from "./edits";
 
 // The dummy team's email alias requests (epic #538), as `alias_requests` rows
@@ -44,4 +44,20 @@ export function withDummyAliasRequest(edits: TeamEdits, request: DummyAliasReque
 /** The id the next request takes. */
 export function nextAliasRequestId(all: readonly DummyAliasRequest[]): number {
   return Math.max(0, ...all.map((r) => r.id)) + 1;
+}
+
+/**
+ * The edits with the automatic requests a role change owes (issue #543,
+ * `owedAliasRequests`) for the people it makes a division lead, a department
+ * head or the team leader, sent at `sentAt`: the role change saves them in
+ * the same save, as the database side writes them in the same batch.
+ */
+export function withAutomaticAliasRequests(edits: TeamEdits, becoming: readonly number[], sentAt: string): TeamEdits {
+  const all = dummyAliasRequestsOf(edits);
+  const owed = owedAliasRequests({ becoming, addresses: dummyAliasesOf(edits), open: openAliasRequests(all) });
+  const first = nextAliasRequestId(all);
+  return owed.reduce(
+    (next, { memberId, requesterId }, i) => withDummyAliasRequest(next, { id: first + i, memberId, requesterId, sentAt, outcome: null }),
+    edits,
+  );
 }

@@ -568,6 +568,13 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 
   it and when, and Cancel request (board 94b).
 - A member has at most one open request, kept by the server and by the database
   (`alias_requests_one_open`).
+- The site asks by itself (issue #543, `owedAliasRequests`) whenever someone becomes a division
+  lead, a department head or the team leader: Edit division and New division naming a new lead,
+  New department and Change head, the team leader hand-over, and a confirmed hand-over request.
+  The request is written with the role change, so a change refused or failed asks for nothing,
+  and only when the person has no alias on their record and no open request. Promote would ask
+  too, but no lead may change a division's leads. Close division and Close department make
+  nobody a lead or a head, so they never ask. Request alias stays for everyone else.
 - Only the team leader, the operations lead and the IT lead answer. Each open request is one row
   on their Overview (board 94c), with Decline and Mark created. The Project Manager and the Chief
   Engineer get none, and neither does full access from an access row alone. A request the site

@@ -1,6 +1,7 @@
 import "server-only";
 
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "@/db/client";
 import { aliasRequests, dashboardNotices, members } from "@/db/schema";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
@@ -9,6 +10,7 @@ import {
   aliasAttentionFor,
   checkAliasAnswer,
   memberAliasesFor,
+  owedAliasRequests,
   planAliasAnswer,
   planAliasCancel,
   planAliasRequest,
@@ -89,6 +91,38 @@ export async function requestAlias(identity: DashboardIdentity, memberId: number
     throw error;
   }
   return written(null);
+}
+
+/**
+ * The automatic requests a role change owes (issue #543, `owedAliasRequests`)
+ * for the people it makes a division lead, a department head or the team
+ * leader, as inserts for the role change's own batch: the request lands with
+ * the role or not at all. The aliases and open requests are read first; an
+ * open request sent between that read and the batch is kept and the insert
+ * skips that member (`on conflict do nothing`), so an automatic write never
+ * fails on `alias_requests_one_open`.
+ */
+export async function automaticAliasRequests(becoming: readonly number[]): Promise<(db: ReturnType<typeof getDb>) => BatchItem<"pg">[]> {
+  const ids = [...new Set(becoming)];
+  if (ids.length === 0) return () => [];
+  const db = getDb();
+  const [aliases, open] = await Promise.all([
+    db
+      .select({ member_id: members.memberId, alias: members.emailAlias })
+      .from(members)
+      .where(and(inArray(members.memberId, ids), isNotNull(members.emailAlias))),
+    db
+      .select({ id: aliasRequests.id, member_id: aliasRequests.memberId, requested_by: aliasRequests.requestedBy, created_at: aliasRequests.createdAt })
+      .from(aliasRequests)
+      .where(and(inArray(aliasRequests.memberId, ids), isNull(aliasRequests.outcome))),
+  ]);
+  const owed = owedAliasRequests({
+    becoming: ids,
+    addresses: new Map(aliases.flatMap((r) => (r.alias === null ? [] : [[r.member_id, r.alias] as const]))),
+    open: open.map((r) => ({ id: r.id, memberId: r.member_id, requesterId: r.requested_by, sentAt: r.created_at })),
+  });
+  if (owed.length === 0) return () => [];
+  return (tx) => [tx.insert(aliasRequests).values(owed.map((r) => ({ memberId: r.memberId, requestedBy: r.requesterId }))).onConflictDoNothing()];
 }
 
 /** Cancel request (board 94b): the request closes as cancelled; nobody is told. */
