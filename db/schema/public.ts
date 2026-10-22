@@ -137,7 +137,7 @@ export const members = pgTable("members", {
   teamTo: integer("team_to"),
   // Deprecated (issue #563): the member's team email alias lives in
   // `prt_email`, where Mark created writes it, and nothing reads or writes
-  // this column any more. drizzle/0052 copied each value into an empty
+  // this column any more. drizzle/0053 copied each value into an empty
   // `prt_email`; #569 drops the column. Do not use it.
   emailAlias: text("email_alias"),
   // When the member said they set up their alias, the address in

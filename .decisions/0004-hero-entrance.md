@@ -12,8 +12,8 @@ date: 2026-09-18
 
 Two things it supersedes:
 
-- The pinned-hero scroll states (Pencil boards 04b/04c dim-out). The founder rejected
-  pinning outright ("wtf pinned hero?").
+- The pinned-hero scroll states (Pencil boards 04b/04c dim-out). Owner decision
+  (2026-08-24): the hero is not pinned; the pinned-hero scroll states are rejected.
 - Its own first version, which had the rocket lift off on scroll and replay the whole
   entrance when the hero came back into view. Both were dropped on 2026-09-17
   (commit af9e7a4). See "Amendment" below.
@@ -72,9 +72,9 @@ https://github.com/PoliTo-Rocket-Team/website-v2/issues/385#issuecomment-6255998
 
 Founder spec (2026-08-24): delayed title+slogan reveal as on the current site;
 gathered-then-separated block; slow heavy rocket entrance with smoke; PNG backup
-removed. Recommendations for the one-shot trigger and timing were accepted at the time
-("2 one-shot…, 3 when hero is fully visible, 4 yes, 5 yes"); the parts of that answer
-covering lift-off and replay were later reversed by the amendment above.
+removed. Owner decision (2026-08-24): the recommendations for the one-shot entrance
+trigger and its timing were accepted; the parts of that decision covering lift-off and
+replay were later reversed by the 2026-09-17 amendment above.
 
 Built in `components/landing/hero.tsx`, `hero-rocket-3d.tsx`, `rocket-cavour.tsx`,
 `hero-plume.tsx`. The timing constants named here live in `hero.tsx` — trust the code

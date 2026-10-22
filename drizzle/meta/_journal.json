@@ -370,7 +370,14 @@
       "idx": 52,
       "version": "7",
       "when": 1793380800000,
-      "tag": "0052_prt_email_from_email_alias",
+      "tag": "0052_revert_preview_reviewer_writes",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793467200000,
+      "tag": "0053_prt_email_from_email_alias",
       "breakpoints": true
     }
   ]
