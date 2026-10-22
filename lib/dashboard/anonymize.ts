@@ -57,7 +57,7 @@ type AlumniEntryRow = InferSelectModel<typeof alumniEntries>;
 // program, referral source, created_at and member link; members' team years
 // and NDA date; every applications position, status and date column.
 const CLEARED_USER_KEYS = ["email", "firstName", "lastName", "phone", "linkedin", "politoId"] as const;
-const CLEARED_MEMBER_KEYS = ["prtEmail", "mobileNumber", "discord", "ndaName", "picture"] as const;
+const CLEARED_MEMBER_KEYS = ["prtEmail", "emailAlias", "mobileNumber", "discord", "ndaName", "picture"] as const;
 const CLEARED_APPLICATION_KEYS = ["mlName", "cvName"] as const;
 
 export type UserClear = Pick<UserRow, (typeof CLEARED_USER_KEYS)[number] | "anonymizedAt">;
@@ -79,6 +79,8 @@ export function clearedUser(now: Date): UserClear {
 
 export const CLEARED_MEMBER: MemberClear = {
   prtEmail: null,
+  // The team email alias is firstname.lastname (epic #538): it names them.
+  emailAlias: null,
   mobileNumber: null,
   discord: null,
   ndaName: null,

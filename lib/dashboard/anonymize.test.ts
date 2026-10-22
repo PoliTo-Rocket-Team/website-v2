@@ -141,6 +141,8 @@ const member: InferSelectModel<typeof members> = {
   picture: "https://store.example/photo/7-a.jpg",
   teamFrom: 2024,
   teamTo: 2025,
+  emailAlias: "giulia.rossi.alias@politorocketteam.it",
+  emailAliasSetUpAt: null,
 };
 
 const application: InferSelectModel<typeof applications> = {
@@ -172,7 +174,7 @@ const applicationAfter = { ...application, ...CLEARED_APPLICATION };
 test("anonymization clears the identifying fields", () => {
   assert.equal(userAfter.email, ANONYMIZED_EMAIL);
   for (const key of ["firstName", "lastName", "phone", "linkedin", "politoId"] as const) assert.equal(userAfter[key], null, key);
-  for (const key of ["prtEmail", "mobileNumber", "discord", "ndaName", "picture"] as const) assert.equal(memberAfter[key], null, key);
+  for (const key of ["prtEmail", "emailAlias", "mobileNumber", "discord", "ndaName", "picture"] as const) assert.equal(memberAfter[key], null, key);
   assert.equal(applicationAfter.mlName, null);
   assert.equal(applicationAfter.cvName, null);
   assert.equal(userAfter.anonymizedAt, NOW.toISOString());
@@ -189,7 +191,7 @@ test("anonymization keeps every statistics field and deletes no statistics row",
   // Each update names only the columns it clears: no other column is written.
   for (const step of plan) {
     if (step.kind === "clear-user") assert.deepEqual(Object.keys(step.set).sort(), ["anonymizedAt", "email", "firstName", "lastName", "linkedin", "phone", "politoId"]);
-    if (step.kind === "clear-member") assert.deepEqual(Object.keys(step.set).sort(), ["discord", "mobileNumber", "ndaName", "picture", "prtEmail"]);
+    if (step.kind === "clear-member") assert.deepEqual(Object.keys(step.set).sort(), ["discord", "emailAlias", "mobileNumber", "ndaName", "picture", "prtEmail"]);
     if (step.kind === "clear-applications") assert.deepEqual(Object.keys(step.set).sort(), ["cvName", "mlName"]);
   }
   assert.ok(
@@ -313,7 +315,7 @@ test("no log row about the person keeps a cleared value, the anonymizing updates
 
   const cleared = [
     user.email, user.firstName, user.lastName, user.phone, user.linkedin, user.politoId,
-    member.prtEmail, member.mobileNumber, member.discord, member.ndaName, member.picture,
+    member.prtEmail, member.emailAlias, member.mobileNumber, member.discord, member.ndaName, member.picture,
     application.mlName, application.cvName,
     "applications/giulia-rossi-cv.pdf", "Giulia Rossi", "https://lh3.example/giulia", "tok", "93.0.0.1", "google-sub-1", "at", "it",
   ];

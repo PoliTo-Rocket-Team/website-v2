@@ -122,7 +122,7 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, dummyTeamPeople, editedAlumniRecord, editedRoster } from "./team-pages";
+import { dummyAliasPages, dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, dummyTeamPeople, editedAlumniRecord, editedRoster } from "./team-pages";
 import { closingLapsedHandOvers } from "./hand-overs";
 
 // The test developer's side of the dashboard data interface: every answer is
@@ -984,6 +984,7 @@ export function dummyDashboardData(
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [viewer]: details } });
   // Hand over your role from My profile, and its answer on the next level up's Overview (issue #262).
   const handOvers = dummyHandOverPages(viewer, teamEdits.current, teamEdits.save, team.applications);
+  const aliases = dummyAliasPages(viewer, teamEdits.current, teamEdits.save, team.applications);
   const shapeOfOverview = (): TeamSideOverview =>
     viewer === "team-leader"
       ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
@@ -1022,14 +1023,21 @@ export function dummyDashboardData(
       return mine !== null && !hasNoneShown(mine);
     },
     ...(viewer === "alumni" ? dummyOwnAlumni(formerMember.id, teamEdits) : NO_OWN_ALUMNI),
-    // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c).
+    // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c),
+    // then the open alias requests for the three approver seats (board 94c).
     overview: async () => {
       const overview = shapeOfOverview();
-      const answering = handOvers.attention(NOW);
+      const answering = [...handOvers.attention(NOW), ...aliases.attention(NOW)];
       return answering.length === 0 ? overview : { ...overview, attention: [...answering, ...overview.attention] };
     },
     sendHandOver: handOvers.sendHandOver,
     answerHandOver: handOvers.answerHandOver,
+    memberAliases: aliases.memberAliases,
+    requestAlias: aliases.requestAlias,
+    cancelAliasRequest: aliases.cancelAliasRequest,
+    answerAlias: aliases.answerAlias,
+    myAlias: aliases.myAlias,
+    confirmAliasSetUp: aliases.confirmAliasSetUp,
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {

@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { scopes } from "@/db/schema";
+import { members, scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
@@ -24,7 +24,9 @@ import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
 import { positionsModelOf } from "./positions-view";
 import type { PositionsPage } from "./recruitment";
-import { insertRows, recordedWrites } from "./access-matrix/fake-db";
+import { insertRows, keepWrites, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
+import type { OwnAlias } from "./alias-setup";
+import { isOffTeam } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
@@ -114,6 +116,8 @@ const READS: readonly Read[] = [
   { path: "myProfile" },
   { path: "myAccount" },
   { path: "myApplications" },
+  { path: "memberAliases", args: [[ALL.map((u) => IDS.person(u))]] },
+  { path: "myAlias" },
 ];
 
 /** Calls the method at `path` on the data interface. */
@@ -385,6 +389,9 @@ function proven(proves: Proof, answer: unknown, writes: readonly unknown[]): boo
 }
 
 const DM: Unit = "DM";
+/** An email alias on a member's record, as Mark created leaves it (epic #538), laid over the seeded row. */
+const aliasOf = (memberId: number) => `alias-${memberId}@politorocketteam.it`;
+const giveAlias = (memberId: number) => updateRows(members, { memberId }, { emailAlias: aliasOf(memberId) });
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -561,6 +568,19 @@ const ACTION_CASES: readonly ActionCase[] = [
   },
   // DM's lead asks; the head of Structures answers (board 62c), and nobody in the matrix is.
   { action: "actions.answerHandOver", run: () => actions.answerHandOver(IDS.handOver(DM), "decline"), may: nobody, control: by("head-str") },
+  // Email aliases (epic #538), for someone in DM: a lead, a head or the team leader who may manage them asks or cancels;
+  // only the team leader, the operations lead and the IT lead answer.
+  { action: "actions.requestAlias", run: () => actions.requestAlias(IDS.person(DM)), may: (r) => r.expect.aliases.requests.includes(DM), control: by("team leader") },
+  {
+    action: "actions.cancelAliasRequest",
+    run: () => actions.cancelAliasRequest(IDS.aliasRequest(DM)),
+    may: (r) => r.expect.aliases.requests.includes(DM),
+    control: by("team leader"),
+  },
+  { action: "actions.answerAlias", run: () => actions.answerAlias(IDS.aliasRequest(DM), { kind: "decline" }), may: (r) => r.expect.aliases.answers, control: by("IT lead") },
+  // "I've set it up" (issue #542): DM's lead has an alias and stores it; no matrix viewer has one of their own,
+  // so each is refused, and nobody's press reaches the lead's record.
+  { action: "actions.confirmAliasSetUp", run: () => (giveAlias(IDS.lead(DM)), actions.confirmAliasSetUp()), may: nobody, control: by("lead-dm") },
   // A notice, an application and an interview of someone else's.
   { action: "actions.dismissNotice", run: () => actions.dismissNotice(IDS.notice(DM)), may: nobody, control: by("lead-dm") },
   { action: "actions.withdrawApplication", run: () => actions.withdrawApplication(IDS.application(DM)), may: nobody, control: by("applicant-dm") },
@@ -625,6 +645,86 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
   }
 });
 
+// Email alias requests (epic #538) ------------------------------------------
+
+describe("email alias requests: the approver rows, Request alias in the drawer, and one open request per member", () => {
+  for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
+    test(name, async () => {
+      const data = await open(name);
+      const overview = await answerOf(() => data.overview());
+      const rows = overview === "refused" ? [] : (overview as TeamSideOverview).attention.filter((a) => a.kind === "alias-request");
+      assert.equal(rows.length, expect.aliases.answers ? ALL.length : 0, `${name}: one Overview row per open request`);
+      const aliases = (await data.memberAliases(ALL.map((u) => IDS.person(u)))) as Record<number, { kind: string; requestable?: boolean }>;
+      const requestable = ALL.filter((u) => aliases[IDS.person(u)]?.requestable === true);
+      assert.deepEqual(requestable, expect.pages.includes("members") ? expect.aliases.requests : [], `${name}: Request alias`);
+      assert.deepEqual(recordedWrites(), [], `${name}: a read wrote`);
+    });
+  }
+
+  test("a second request for a member with one open is refused by the server, and writes nothing", async () => {
+    const { answer, writes } = await attempt(accountOf("team leader").userId, () => actions.requestAlias(IDS.lead(DM)));
+    assert.ok(isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(writes, []);
+  });
+
+  test("Mark created saves the address on the member's record and tells the member", async () => {
+    const { answer, writes } = await attempt(accountOf("operations lead").userId, () =>
+      actions.answerAlias(IDS.aliasRequest(DM), { kind: "created", address: "lead.dm@politorocketteam.it" }),
+    );
+    assert.ok(!isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(
+      writes.map((w) => w.table).sort(),
+      ["alias_requests", "dashboard_notices", "members"],
+    );
+  });
+});
+
+// A member's own alias card and "I've set it up" (issue #542) -----------------
+//
+// Each viewer, and DM's lead beside them, has an alias on their record. The
+// card reads the viewer's own alias alone; "I've set it up" names no member,
+// so it stores the time on the viewer's own row and leaves DM's lead's alone.
+// Off the team there is no card and nothing to set up.
+
+describe("a member reads only their own alias card and sets up only their own alias", () => {
+  for (const { name, viewer } of VIEWERS as readonly MatrixRow[]) {
+    test(name, async () => {
+      const { userId, memberId } = accountOf(name);
+      const onTeam = memberId !== null && !isOffTeam(viewer.kind);
+      seedFixture();
+      resetFiles();
+      keepWrites();
+      if (memberId !== null) giveAlias(memberId);
+      giveAlias(IDS.lead(DM));
+      signInAs(userId);
+      const opening = await openDashboard();
+      assert.equal(opening.kind, "open");
+      const data = (opening as { data: DashboardData }).data;
+      const own = await data.myAlias();
+      assert.deepEqual(own, onTeam ? ({ address: aliasOf(memberId!), setUp: false } satisfies OwnAlias) : null, `${name}: the card`);
+      assert.ok(!JSON.stringify(own).includes(aliasOf(IDS.lead(DM))), `${name}: read someone else's alias`);
+
+      const answer = await answerOf(() => actions.confirmAliasSetUp());
+      const setUp = rowsIn(members).filter((r) => r.emailAliasSetUpAt !== null).map((r) => r.memberId);
+      if (onTeam) {
+        assert.ok(!isRefusal(answer), `${name}: ${JSON.stringify(answer)}`);
+        assert.deepEqual(setUp, [memberId], `${name}: only their own record is set up`);
+        assert.deepEqual(await data.myAlias(), { address: aliasOf(memberId!), setUp: true }, `${name}: the card is gone`);
+        assert.ok(isRefusal(await answerOf(() => actions.confirmAliasSetUp())), `${name}: a second press`);
+      } else {
+        assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+        assert.deepEqual(setUp, [], `${name}: wrote`);
+      }
+    });
+  }
+
+  test("a member with no alias is refused, and writes nothing", async () => {
+    const { answer, writes } = await attempt(accountOf("member").userId, () => actions.confirmAliasSetUp());
+    assert.ok(isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(writes, []);
+  });
+});
+
 // A lead's Access page ------------------------------------------------------
 
 describe("a lead's Access page covers only the divisions they lead by role (Owner decision, #478; #488)", () => {
@@ -678,6 +778,7 @@ const EXPECTED_EXPORT_HEADER = [
   "Divisions",
   "Member since",
   "PRT email",
+  "Email alias",
   "Personal email",
   "Phone",
   "Discord",
@@ -758,6 +859,30 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.equal(membersExportFileName(new Date("2026-10-22T09:00:00Z")), "prt-members-2026-10-22.xlsx");
     // 23:30 UTC on the 21st is already the 22nd in Turin.
     assert.equal(membersExportFileName(new Date("2026-10-21T23:30:00Z")), "prt-members-2026-10-22.xlsx");
+  });
+
+  test("the Email alias column holds the address on a member's record, and is empty for everyone without one (epic #538)", async () => {
+    const address = "lead.dm@politorocketteam.it";
+    seedFixture();
+    resetFiles();
+    keepWrites();
+    signInAs(accountOf("operations lead").userId);
+    const marked = await answerOf(() => actions.answerAlias(IDS.aliasRequest(DM), { kind: "created", address }));
+    assert.ok(!isRefusal(marked), JSON.stringify(marked));
+    // Same database, no re-seed: the team leader exports after the alias is saved.
+    signInAs(accountOf("team leader").userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    const directory = await (opening as { data: DashboardData }).data.members(null);
+    assert.ok(directory.scope === "whole-team", "the team leader reads the whole team");
+    const lead = directory.people.find((p) => p.id === IDS.lead(DM));
+    assert.ok(lead !== undefined, "the DM lead is on the team");
+    const [header, ...rows] = readSheet(Buffer.from(await (await membersExportGET()).arrayBuffer()));
+    const column = header.indexOf("Email alias");
+    const cells = new Map(rows.map((r) => [r[0], r[column]]));
+    assert.equal(cells.get(lead.name), address, "the DM lead's row carries the alias");
+    cells.delete(lead.name);
+    assert.deepEqual([...cells.values()].filter((v) => v !== ""), [], "every other member's alias cell is empty");
   });
 });
 

@@ -91,6 +91,17 @@ import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type Team
 import { dummySeatsOf } from "./division";
 import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver, withLapsedHandOvers } from "./hand-overs";
 import { withDummyNotices } from "./notices";
+import { dummyAliasesOf, dummyAliasRequestsOf, nextAliasRequestId, openAliasRequests, withAutomaticAliasRequests, withDummyAliasRequest } from "./aliases";
+import {
+  aliasAnswerNotices,
+  aliasAttentionFor,
+  checkAliasAnswer,
+  memberAliasesFor,
+  planAliasAnswer,
+  planAliasCancel,
+  planAliasRequest,
+} from "@/lib/dashboard/alias-request";
+import { ownAliasOf, planAliasSetUp } from "@/lib/dashboard/alias-setup";
 import {
   answerNoticeOf,
   checkHandOverSend,
@@ -659,6 +670,8 @@ function writesFor(
     const firstJoinId = Math.max(99, ...addedPeople(edits).map((a) => a.joinId), ...edits.cancelled) + 1;
     const added = plan.emails.map((email, i): DummyWaiting => ({ joinId: firstJoinId + i, email, firstName: "", lastName: "", divisionId, title: null }));
     if (added.length > 0) next = { ...next, added: [...next.added, ...added] };
+    // Each new lead is owed an alias request when they have none (issue #543).
+    next = withAutomaticAliasRequests(next, [...plan.promote, ...plan.joinAsLead], DUMMY_NOW);
     await save(next);
     return written(null);
   };
@@ -735,7 +748,9 @@ function writesFor(
       if (!planned.ok) return refused(planned.error);
       const id = Math.max(99, ...departmentStates(edits).map((d) => d.id)) + 1;
       const { name, code, kind, headId } = planned.value;
-      await save({ ...edits, departments: { ...edits.departments, [id]: { name, code, kind, closedOn: null, headId } } });
+      const next: TeamEdits = { ...edits, departments: { ...edits.departments, [id]: { name, code, kind, closedOn: null, headId } } };
+      // The new head is owed an alias request when they have none (issue #543).
+      await save(withAutomaticAliasRequests(next, [headId], DUMMY_NOW));
       return written(id);
     },
     async saveDepartment(departmentId, input) {
@@ -753,7 +768,8 @@ function writesFor(
         if (typeof after === "string") return refused(after);
         next = after;
       }
-      await save(next);
+      // A new head is owed an alias request when they have none (issue #543).
+      await save(withAutomaticAliasRequests(next, head === null ? [] : [head.to], DUMMY_NOW));
       return written(null);
     },
     async closeDepartment(departmentId, input) {
@@ -829,7 +845,8 @@ function writesFor(
       const next: TeamEdits = { ...edits, teamLeader: to };
       const after = step.kind === "advisor" ? withAdvisor(next, from, step) : leftTeam(next, from);
       if (typeof after === "string") return refused(after);
-      await save(after);
+      // The new team leader is owed an alias request when they have none (issue #543).
+      await save(withAutomaticAliasRequests(after, [to], DUMMY_NOW));
       return written(null);
     },
     async setAlumnusShown(key, shown) {
@@ -1208,10 +1225,91 @@ export function dummyHandOverPages(
       if (plan.answer === "confirm") {
         const after = confirmedHandOverEdits(next, plan, roster, org);
         if (typeof after === "string") return refused(after);
-        next = after;
+        // A successor who becomes the lead or the head is owed an alias request when they have none (issue #543); a co-lead taking over leads already.
+        const { toId, role } = plan.request;
+        const ledAlready = role.kind === "lead" && team.some((p) => p.id === toId && p.memberships.some((m) => m.divisionId === role.divisionId && m.role === "lead"));
+        next = withAutomaticAliasRequests(after, ledAlready ? [] : [toId], DUMMY_NOW);
       }
       const approver = team.find((p) => p.id === self)?.name ?? "";
       next = { ...next, notices: withDummyNotices(next.notices, [answerNoticeOf(plan, team, org)], approver, DUMMY_NOW) };
+      await save(next);
+      return written(null);
+    },
+  };
+}
+
+/**
+ * Email alias requests (epic #538, boards 94 to 94e) as the test developer
+ * runs them, with `edits` laid over the arrays: the member drawer's alias,
+ * the approvers' rows, Request alias, Cancel request, Decline and Mark
+ * created. ./alias-request.ts decides each as the database side does; the
+ * requests and the saved aliases live in the edits cookie (./aliases.ts).
+ */
+export function dummyAliasPages(
+  kind: TestViewer,
+  edits: TeamEdits,
+  save: (next: TeamEdits) => Promise<void>,
+  current: readonly DummyApplication[] = baseApplications,
+): {
+  /** The open requests the viewer answers, as attention rows: none for anyone but the three approver seats. */
+  readonly attention: (now: Date) => AttentionItem[];
+} & Pick<DashboardData, "memberAliases" | "requestAlias" | "cancelAliasRequest" | "answerAlias" | "myAlias" | "confirmAliasSetUp"> {
+  const self = SELF_ID[kind];
+  const standing = testDeveloperStanding(kind);
+  const roster = editedRoster(edits, dummyJoiners(current));
+  const team = teamPeople(roster, edits);
+  const { org } = dummyOrg(edits);
+  const all = dummyAliasRequestsOf(edits);
+  const open = openAliasRequests(all);
+  const addresses = dummyAliasesOf(edits);
+  // The viewer's own alias (issue #542): their own record and nobody else's.
+  const own = () =>
+    self === null
+      ? null
+      : ownAliasOf({ kind: kindOfTestViewer(kind), alias: addresses.get(self) ?? null, setUpAt: edits.aliasesSetUp[self] ?? null });
+  const close = (id: number, outcome: "created" | "declined" | "cancelled") => {
+    const request = all.find((r) => r.id === id);
+    return request === undefined ? edits : withDummyAliasRequest(edits, { ...request, outcome });
+  };
+  return {
+    attention: (now) => aliasAttentionFor(standing, open, team, org, now),
+    memberAliases: async (memberIds) =>
+      canReach(standing, "members") ? memberAliasesFor({ viewerId: self, memberIds, team, org, addresses, open, now: new Date(DUMMY_NOW) }) : {},
+    async requestAlias(memberId) {
+      const planned = planAliasRequest({ requesterId: self, memberId, team, org, alias: addresses.get(memberId) ?? null, open });
+      if (!planned.ok) return refused(planned.error);
+      // The dummy team is seen from DUMMY_NOW, so a request is sent then too.
+      await save(withDummyAliasRequest(edits, { id: nextAliasRequestId(all), memberId, requesterId: planned.value.requesterId, sentAt: DUMMY_NOW, outcome: null }));
+      return written(null);
+    },
+    myAlias: async () => own(),
+    async confirmAliasSetUp() {
+      const planned = planAliasSetUp(own());
+      if (!planned.ok || self === null) return refused(planned.ok ? "You have no email alias to set up." : planned.error);
+      await save({ ...edits, aliasesSetUp: { ...edits.aliasesSetUp, [self]: DUMMY_NOW } });
+      return written(null);
+    },
+    async cancelAliasRequest(requestId) {
+      const request = open.find((r) => r.id === requestId);
+      if (!request) return refused("This alias request was already answered.");
+      const planned = planAliasCancel({ viewerId: self, request, team, org });
+      if (!planned.ok) return refused(planned.error);
+      await save(close(requestId, "cancelled"));
+      return written(null);
+    },
+    async answerAlias(requestId, input) {
+      const checked = checkAliasAnswer(input);
+      if (!checked.ok) return refused(checked.error);
+      const request = open.find((r) => r.id === requestId);
+      if (!request || self === null) return refused("This alias request was already answered.");
+      const planned = planAliasAnswer({ viewer: standing, request, answer: checked.value });
+      if (!planned.ok) return refused(planned.error);
+      const plan = planned.value;
+      const approver = team.find((p) => p.id === self)?.name ?? "";
+      const member = team.find((p) => p.id === request.memberId)?.name ?? "";
+      let next = close(requestId, plan.kind === "created" ? "created" : "declined");
+      if (plan.kind === "created") next = { ...next, aliases: { ...next.aliases, [request.memberId]: plan.address } };
+      next = { ...next, notices: withDummyNotices(next.notices, aliasAnswerNotices(plan, approver), member, DUMMY_NOW) };
       await save(next);
       return written(null);
     },

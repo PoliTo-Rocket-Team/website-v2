@@ -135,6 +135,11 @@ export const members = pgTable("members", {
   // on the team as their lead gave them. Why they left goes to team_leaves.
   teamFrom: integer("team_from"),
   teamTo: integer("team_to"),
+  // The member's team email alias (epic #538, drizzle/0051), saved when an
+  // alias request is marked created; shown beside `prt_email`, never in its
+  // place. `emailAliasSetUpAt` is when they said they set it up (issue #542).
+  emailAlias: text("email_alias"),
+  emailAliasSetUpAt: timestamp("email_alias_set_up_at", { withTimezone: true, mode: "string" }),
 });
 
 export const users = pgTable("users", {
@@ -505,6 +510,33 @@ export const handOverRequests = pgTable("hand_over_requests", {
   ),
   someoneElse: check("hand_over_requests_someone_else", sql`${table.fromId} <> ${table.toId}`),
   decided: check("hand_over_requests_decided", sql`(${table.decision} is null) = (${table.decidedAt} is null)`),
+}));
+
+/** How an alias request closed (lib/dashboard/alias-request.ts); null while it is open. */
+export const aliasRequestOutcomeEnum = pgEnum("alias_request_outcome", ["created", "declined", "cancelled"]);
+
+/**
+ * A request for a team email alias for one member (epic #538, issue #541,
+ * drizzle/0051): asked by a division lead, a department head or the team
+ * leader, or by the site itself (`requestedBy` null), and answered by the team
+ * leader, the operations lead or the IT lead. One member has at most one
+ * open request; lib/dashboard/alias-request.ts owns the rules.
+ */
+export const aliasRequests = pgTable("alias_requests", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id")
+    .references(() => members.memberId, { onDelete: "cascade" })
+    .notNull(),
+  requestedBy: integer("requested_by").references(() => members.memberId, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .defaultNow()
+    .notNull(),
+  outcome: aliasRequestOutcomeEnum("outcome"),
+  answeredBy: integer("answered_by").references(() => members.memberId, { onDelete: "set null" }),
+  answeredAt: timestamp("answered_at", { withTimezone: true, mode: "string" }),
+}, (table) => ({
+  oneOpen: uniqueIndex("alias_requests_one_open").on(table.memberId).where(sql`${table.outcome} is null`),
+  answered: check("alias_requests_answered", sql`(${table.outcome} is null) = (${table.answeredAt} is null)`),
 }));
 
 // The Alumni page (issue #257). The page is built from the roles; an entry

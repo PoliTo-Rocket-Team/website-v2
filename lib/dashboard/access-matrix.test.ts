@@ -11,7 +11,11 @@ import { opensWholeTeam } from "./members-view";
 import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
 import { GRANT_AREAS, isOffTeam, mayChange, readsArea, readsAreaIn } from "./viewer";
-import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Viewer } from "./access-matrix/matrix";
+import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
+import { aliasAttentionFor, answersAliasRequests, managesMember, type AliasRequest } from "./alias-request";
+import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
+import type { TeamPerson } from "./division-edit";
+import { membershipsOf, type OrgChart } from "./team";
 
 // The dashboard access matrix (issue #477), cell by cell against the domain
 // rules. The matrix itself is data in ./access-matrix/matrix.ts; the server
@@ -169,6 +173,83 @@ describe("grants are independent (issue #477)", () => {
       }
     }
   });
+});
+
+// Email alias requests (epic #538) ------------------------------------------
+//
+// Who may ask is read from the viewer's roles on the team (`managesMember`):
+// a lead for their division, a head for their department, the team leader for
+// anyone; a grant makes nobody a requester. Who answers is the viewer's seat
+// (`answersAliasRequests`): the team leader, the operations lead and the IT
+// lead, never the board seats or full access from a scope row.
+
+const ALIAS_ORG: OrgChart = {
+  departments: ORG.map((d) => ({ id: d.id, name: d.name, code: null, kind: "technical" as const })),
+  divisions: ORG.flatMap((d) => d.divisions.map((v) => ({ id: v.id, name: v.name, departmentId: d.id, code: null }))),
+};
+const VIEWER_ID = 100;
+const personIn = (u: Unit) => 200 + ALL.indexOf(u);
+
+/** The viewer as the alias rules read them: their active roles on the team, none once off it. */
+function aliasPersonOf(viewer: Viewer): TeamPerson {
+  const memberships = membershipsOf(
+    viewer.roles.flatMap((r) =>
+      r.divisionId !== null && r.type !== "head" && r.type !== "president" ? [{ divisionId: r.divisionId, role: r.type === "lead" ? "lead" : "member", since: "2025-10-01" } as const] : [],
+    ),
+  );
+  const beyond = viewer.roles.flatMap((r): TeamPerson["beyond"] =>
+    r.type === "president" ? [{ kind: "team-leader" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId }] : [],
+  );
+  return { id: VIEWER_ID, name: "Viewer", emails: [], memberships, beyond };
+}
+
+const ALIAS_TEAM: readonly TeamPerson[] = ALL.map((u) => ({
+  id: personIn(u),
+  name: `Person ${u}`,
+  emails: [],
+  memberships: membershipsOf([{ divisionId: UNITS[u].divisionId, role: "member", since: "2025-10-01" }]),
+  beyond: [],
+}));
+
+describe("email alias requests: who asks, who answers, and the approver rows (managesMember, answersAliasRequests, aliasAttentionFor)", () => {
+  const open: AliasRequest[] = ALL.map((u, i) => ({ id: i + 1, memberId: personIn(u), requesterId: null, sentAt: "2026-10-22T09:00:00Z" }));
+  for (const { name, viewer, expect } of VIEWERS) {
+    test(name, () => {
+      const me = aliasPersonOf(viewer);
+      const team = [...ALIAS_TEAM, me];
+      assert.deepEqual(
+        ALL.filter((u) => managesMember(me, team.find((p) => p.id === personIn(u))!, ALIAS_ORG)),
+        expect.aliases.requests,
+        `${name}: Request alias`,
+      );
+      assert.equal(answersAliasRequests(viewer), expect.aliases.answers, `${name}: answers`);
+      const rows = aliasAttentionFor(viewer, open, team, ALIAS_ORG, new Date("2026-10-22T12:00:00Z"));
+      assert.equal(rows.length, expect.aliases.answers ? open.length : 0, `${name}: one Overview row per open request`);
+    });
+  }
+});
+
+// A member's own alias card (issue #542): every viewer on the team sees their
+// own alias until they set it up, whatever their role; off the team, none.
+// "I've set it up" is allowed once, and never without an alias.
+
+describe("the member's own alias card and I've set it up (ownAliasOf, showsAliasCard, planAliasSetUp)", () => {
+  const ADDRESS = "viewer.alias@politorocketteam.it";
+  for (const { name, viewer } of VIEWERS) {
+    test(name, () => {
+      const onTeam = !isOffTeam(viewer.kind);
+      const fresh = ownAliasOf({ kind: viewer.kind, alias: ADDRESS, setUpAt: null });
+      assert.deepEqual(fresh, onTeam ? { address: ADDRESS, setUp: false } : null, `${name}: their alias`);
+      assert.equal(showsAliasCard(fresh), onTeam, `${name}: the card`);
+      assert.equal(planAliasSetUp(fresh).ok, onTeam, `${name}: I've set it up`);
+      const done = ownAliasOf({ kind: viewer.kind, alias: ADDRESS, setUpAt: "2026-10-22T10:00:00Z" });
+      assert.equal(showsAliasCard(done), false, `${name}: the card once set up`);
+      assert.equal(planAliasSetUp(done).ok, false, `${name}: a second press`);
+      const none = ownAliasOf({ kind: viewer.kind, alias: null, setUpAt: null });
+      assert.equal(showsAliasCard(none), false, `${name}: no alias, no card`);
+      assert.equal(planAliasSetUp(none).ok, false, `${name}: no alias to set up`);
+    });
+  }
 });
 
 // Pages ---------------------------------------------------------------------

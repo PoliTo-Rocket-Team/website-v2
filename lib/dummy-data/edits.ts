@@ -11,6 +11,8 @@ import type { AdvisorPlace, SteppingDown } from "@/lib/dashboard/hand-over";
 import { DEPARTMENT_KINDS, LEAVE_REASONS, type DepartmentKind, type Departure, type DivisionRole } from "@/lib/dashboard/team";
 import { isHandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { RequestedRole } from "@/lib/dashboard/hand-over-request";
+import { ALIAS_OUTCOMES, type AliasOutcome } from "@/lib/dashboard/alias-request";
+import type { DummyAliasRequest } from "./aliases";
 import type { DummyHandOver } from "./hand-overs";
 import type { DummyNotice } from "./notices";
 import type { DummyWaiting } from "./team";
@@ -139,6 +141,12 @@ export type TeamEdits = {
   readonly teamLeader: number | null;
   /** Hand-overs sent from My profile, and the seeded ones once answered (issue #262, ./hand-overs.ts). */
   readonly handOvers: readonly DummyHandOver[];
+  /** Alias requests sent, and the seeded ones once answered or cancelled (epic #538, ./aliases.ts). */
+  readonly aliasRequests: readonly DummyAliasRequest[];
+  /** Aliases Mark created saved, by person id. */
+  readonly aliases: Readonly<Record<number, string>>;
+  /** Who pressed "I've set it up" on their own alias (issue #542), by person id, with when. */
+  readonly aliasesSetUp: Readonly<Record<number, string>>;
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -157,6 +165,9 @@ export const NO_EDITS: TeamEdits = {
   advisors: {},
   teamLeader: null,
   handOvers: [],
+  aliasRequests: [],
+  aliases: {},
+  aliasesSetUp: {},
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -305,6 +316,36 @@ function readAdvisorRole(value: unknown): DummyAdvisor | null {
 
 /** A request is small, and a test developer sends a few at most. */
 const MAX_HAND_OVERS = 6;
+const MAX_ALIAS_REQUESTS = 8;
+const MAX_ALIASES = 8;
+
+function readAliasRequest(value: unknown): DummyAliasRequest | null {
+  if (!isRecord(value)) return null;
+  const { id, memberId, requesterId, sentAt, outcome } = value;
+  if (!Number.isInteger(id) || !Number.isInteger(memberId)) return null;
+  if (requesterId !== null && !Number.isInteger(requesterId)) return null;
+  if (typeof sentAt !== "string" || Number.isNaN(Date.parse(sentAt))) return null;
+  if (outcome !== null && !(ALIAS_OUTCOMES as readonly unknown[]).includes(outcome)) return null;
+  return { id: id as number, memberId: memberId as number, requesterId: requesterId as number | null, sentAt, outcome: outcome as AliasOutcome | null };
+}
+
+function readAliases(value: unknown): Record<number, string> {
+  if (!isRecord(value)) return {};
+  const out: Record<number, string> = {};
+  for (const [key, address] of Object.entries(value).slice(-MAX_ALIASES)) {
+    if (/^[1-9]\d*$/.test(key) && typeof address === "string" && address.length <= 200) out[Number(key)] = address;
+  }
+  return out;
+}
+
+function readAliasesSetUp(value: unknown): Record<number, string> {
+  if (!isRecord(value)) return {};
+  const out: Record<number, string> = {};
+  for (const [key, at] of Object.entries(value).slice(-MAX_ALIASES)) {
+    if (/^[1-9]\d*$/.test(key) && typeof at === "string" && !Number.isNaN(Date.parse(at))) out[Number(key)] = at;
+  }
+  return out;
+}
 
 function readRequestedRole(value: unknown): RequestedRole | null {
   if (!isRecord(value)) return null;
@@ -420,6 +461,11 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     advisors: entriesOf(raw.advisors, readAdvisorRole),
     teamLeader: Number.isInteger(raw.teamLeader) && (raw.teamLeader as number) > 0 ? (raw.teamLeader as number) : null,
     handOvers: Array.isArray(raw.handOvers) ? raw.handOvers.flatMap((h) => readHandOver(h) ?? []).slice(-MAX_HAND_OVERS) : [],
+    aliasRequests: Array.isArray(raw.aliasRequests)
+      ? raw.aliasRequests.flatMap((r) => readAliasRequest(r) ?? []).slice(-MAX_ALIAS_REQUESTS)
+      : [],
+    aliases: readAliases(raw.aliases),
+    aliasesSetUp: readAliasesSetUp(raw.aliasesSetUp),
   };
 }
 

@@ -105,6 +105,11 @@ export function opensWholeTeam(viewer: ViewerStanding): boolean {
   return viewer.kind === "operations-lead";
 }
 
+/** Everyone the page may open the member drawer for, each once: whose email alias it reads (epic #538). */
+export function memberIdsOf(page: MembersModel): number[] {
+  return [...new Set([...page.everyone, ...page.divisions.flatMap((d) => d.people)].map((p) => p.id))];
+}
+
 /** The one place a model is made, so every role's model carries the same tools. */
 function model(parts: Omit<MembersModel, "tools">): MembersModel {
   return { tools: MEMBERS_TOOLS, ...parts };
