@@ -141,10 +141,12 @@ export type TeamEdits = {
   readonly teamLeader: number | null;
   /** Hand-overs sent from My profile, and the seeded ones once answered (issue #262, ./hand-overs.ts). */
   readonly handOvers: readonly DummyHandOver[];
-  /** Alias requests sent, and the seeded ones once answered or cancelled (epic #538, ./aliases.ts). */
+  /**
+   * Alias requests sent, and the seeded ones once answered or cancelled (epic
+   * #538, ./aliases.ts). Mark created saves the address in `details`, as the
+   * member's PRT email (issue #563).
+   */
   readonly aliasRequests: readonly DummyAliasRequest[];
-  /** Aliases Mark created saved, by person id. */
-  readonly aliases: Readonly<Record<number, string>>;
   /** Who pressed "I've set it up" on their own alias (issue #542), by person id, with when. */
   readonly aliasesSetUp: Readonly<Record<number, string>>;
 };
@@ -166,7 +168,6 @@ export const NO_EDITS: TeamEdits = {
   teamLeader: null,
   handOvers: [],
   aliasRequests: [],
-  aliases: {},
   aliasesSetUp: {},
 };
 
@@ -329,15 +330,6 @@ function readAliasRequest(value: unknown): DummyAliasRequest | null {
   return { id: id as number, memberId: memberId as number, requesterId: requesterId as number | null, sentAt, outcome: outcome as AliasOutcome | null };
 }
 
-function readAliases(value: unknown): Record<number, string> {
-  if (!isRecord(value)) return {};
-  const out: Record<number, string> = {};
-  for (const [key, address] of Object.entries(value).slice(-MAX_ALIASES)) {
-    if (/^[1-9]\d*$/.test(key) && typeof address === "string" && address.length <= 200) out[Number(key)] = address;
-  }
-  return out;
-}
-
 function readAliasesSetUp(value: unknown): Record<number, string> {
   if (!isRecord(value)) return {};
   const out: Record<number, string> = {};
@@ -464,7 +456,6 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
     aliasRequests: Array.isArray(raw.aliasRequests)
       ? raw.aliasRequests.flatMap((r) => readAliasRequest(r) ?? []).slice(-MAX_ALIAS_REQUESTS)
       : [],
-    aliases: readAliases(raw.aliases),
     aliasesSetUp: readAliasesSetUp(raw.aliasesSetUp),
   };
 }

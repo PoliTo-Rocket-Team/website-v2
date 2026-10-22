@@ -14,6 +14,16 @@ test("0051_alias_requests.sql drops, renames and rewrites nothing", () => {
   assert.deepEqual(nonAdditiveStatements(sql), []);
 });
 
+// The one-address migration (issue #563) is data only: it copies each alias
+// into an empty PRT email and is not allowed any other statement. The column
+// it reads stays; #569 drops it later.
+test("0053_prt_email_from_email_alias.sql only copies the alias into an empty PRT email", () => {
+  const sql = readFileSync(resolve(process.cwd(), "drizzle/0053_prt_email_from_email_alias.sql"), "utf8");
+  assert.deepEqual(nonAdditiveStatements(sql), [
+    `UPDATE "members" SET "prt_email" = "email_alias" WHERE "email_alias" IS NOT NULL AND ("prt_email" IS NULL OR "prt_email" = '')`,
+  ]);
+});
+
 test("the check catches each statement that is not additive, and no foreign key action", () => {
   const forbidden = [
     "DROP TRIGGER IF EXISTS audit_row_changes ON public.alias_requests",

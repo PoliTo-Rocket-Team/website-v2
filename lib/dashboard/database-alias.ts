@@ -1,9 +1,11 @@
 import "server-only";
 
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
+import { updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { aliasRequests, dashboardNotices, members } from "@/db/schema";
+import { refreshAfter } from "@/lib/cache-tags";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
 import {
   aliasAnswerNotices,
@@ -14,6 +16,7 @@ import {
   planAliasAnswer,
   planAliasCancel,
   planAliasRequest,
+  teamAddressOf,
   type AliasRequest,
   type MemberAliases,
 } from "./alias-request";
@@ -25,10 +28,12 @@ import { readTeamSnapshot, teamPeopleOf } from "./team-database";
 import { refused, written, type WriteResult } from "./write";
 
 // Alias requests on the database (epic #538, issue #541): the open requests,
-// the aliases on members' records, the approvers' rows, and Request alias,
-// Cancel request, Decline and Mark created. Who may do what is
-// ./alias-request.ts's; this module reads and writes the rows. Both reads go
-// to the tables, not the cached team snapshot, so an answer shows at once.
+// the members' PRT emails, the approvers' rows, and Request alias, Cancel
+// request, Decline and Mark created. Who may do what is ./alias-request.ts's;
+// this module reads and writes the rows. Both reads go to the tables, not the
+// cached team snapshot, so an answer shows at once. A member's alias is their
+// `prt_email` (issue #563): `members.email_alias` is deprecated, and nothing
+// here reads or writes it.
 
 /** Postgres' unique_violation: the second open request `alias_requests_one_open` refuses. */
 const UNIQUE_VIOLATION = "23505";
@@ -49,13 +54,23 @@ export async function readOpenAliasRequests(filter: { readonly id?: number } = {
   return rows.map((r) => ({ id: r.id, memberId: r.member_id, requesterId: r.requested_by, sentAt: r.created_at }));
 }
 
-/** Every alias on a member's record, by member id. */
+/** A PRT email that is set: not null and not empty. */
+const hasPrtEmail = () => and(isNotNull(members.prtEmail), ne(members.prtEmail, ""));
+
+/** Each `members` row's PRT email, by member id, leaving out the empty ones. */
+function addressesOf(rows: readonly { readonly member_id: number; readonly prt_email: string | null }[]): Map<number, string> {
+  return new Map(
+    rows.flatMap((r) => {
+      const address = teamAddressOf(r.prt_email);
+      return address === null ? [] : [[r.member_id, address] as const];
+    }),
+  );
+}
+
+/** Every member's PRT email that is set, by member id. */
 async function readAliasAddresses(): Promise<Map<number, string>> {
-  const rows = await getDb()
-    .select({ member_id: members.memberId, alias: members.emailAlias })
-    .from(members)
-    .where(isNotNull(members.emailAlias));
-  return new Map(rows.flatMap((r) => (r.alias === null ? [] : [[r.member_id, r.alias] as const])));
+  const rows = await getDb().select({ member_id: members.memberId, prt_email: members.prtEmail }).from(members).where(hasPrtEmail());
+  return addressesOf(rows);
 }
 
 /** The member drawer's alias of each of `memberIds` (boards 94, 94b, 94e), as the viewer sees it. */
@@ -80,7 +95,7 @@ export async function requestAlias(identity: DashboardIdentity, memberId: number
     memberId,
     team: teamPeopleOf(snapshot),
     org: snapshot.org,
-    alias: addresses.get(memberId) ?? null,
+    prtEmail: addresses.get(memberId) ?? null,
     open,
   });
   if (!planned.ok) return refused(planned.error);
@@ -97,7 +112,7 @@ export async function requestAlias(identity: DashboardIdentity, memberId: number
  * The automatic requests a role change owes (issue #543, `owedAliasRequests`)
  * for the people it makes a division lead, a department head or the team
  * leader, as inserts for the role change's own batch: the request lands with
- * the role or not at all. The aliases and open requests are read first; an
+ * the role or not at all. The PRT emails and open requests are read first; an
  * open request sent between that read and the batch is kept and the insert
  * skips that member (`on conflict do nothing`), so an automatic write never
  * fails on `alias_requests_one_open`.
@@ -106,11 +121,11 @@ export async function automaticAliasRequests(becoming: readonly number[]): Promi
   const ids = [...new Set(becoming)];
   if (ids.length === 0) return () => [];
   const db = getDb();
-  const [aliases, open] = await Promise.all([
+  const [addressed, open] = await Promise.all([
     db
-      .select({ member_id: members.memberId, alias: members.emailAlias })
+      .select({ member_id: members.memberId, prt_email: members.prtEmail })
       .from(members)
-      .where(and(inArray(members.memberId, ids), isNotNull(members.emailAlias))),
+      .where(and(inArray(members.memberId, ids), hasPrtEmail())),
     db
       .select({ id: aliasRequests.id, member_id: aliasRequests.memberId, requested_by: aliasRequests.requestedBy, created_at: aliasRequests.createdAt })
       .from(aliasRequests)
@@ -118,7 +133,7 @@ export async function automaticAliasRequests(becoming: readonly number[]): Promi
   ]);
   const owed = owedAliasRequests({
     becoming: ids,
-    addresses: new Map(aliases.flatMap((r) => (r.alias === null ? [] : [[r.member_id, r.alias] as const]))),
+    addresses: addressesOf(addressed),
     open: open.map((r) => ({ id: r.id, memberId: r.member_id, requesterId: r.requested_by, sentAt: r.created_at })),
   });
   if (owed.length === 0) return () => [];
@@ -144,8 +159,9 @@ export async function cancelAliasRequest(identity: DashboardIdentity, requestId:
 /**
  * Decline or Mark created (boards 94c, 94d), checked by `planAliasAnswer`.
  * The request is closed first, so a second answer finds it gone; then one
- * batch saves the address on the member's record (Mark created) and writes
- * the notices. If that batch fails, the request is open again.
+ * batch saves the address as the member's PRT email (Mark created) and
+ * writes the notices. If that batch fails, the request is open again. The
+ * PRT email is in the cached team snapshot, so Mark created refreshes it.
  */
 export async function answerAlias(identity: DashboardIdentity, requestId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkAliasAnswer(input);
@@ -173,7 +189,7 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
       );
       const [first, ...rest] = told;
       return plan.kind === "created"
-        ? [db.update(members).set({ emailAlias: plan.address }).where(eq(members.memberId, request.memberId)), ...told]
+        ? [db.update(members).set({ prtEmail: plan.address }).where(eq(members.memberId, request.memberId)), ...told]
         : [first!, ...rest];
     });
   } catch (error) {
@@ -182,16 +198,17 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
     );
     throw error;
   }
+  if (plan.kind === "created") refreshAfter("team", updateTag);
   return written(null);
 }
 
 // The member's own alias (issue #542, boards 94f and 94g) ---------------------
 
-/** The viewer's own alias and whether they set it up: their own `members` row alone. */
+/** The viewer's own alias, their PRT email, and whether they set it up: their own `members` row alone. */
 export async function readOwnAlias(identity: DashboardIdentity): Promise<OwnAlias | null> {
   if (identity.memberId === null || isOffTeam(identity.kind)) return null;
   const [row] = await getDb()
-    .select({ alias: members.emailAlias, set_up_at: members.emailAliasSetUpAt })
+    .select({ alias: members.prtEmail, set_up_at: members.emailAliasSetUpAt })
     .from(members)
     .where(eq(members.memberId, identity.memberId));
   return row ? ownAliasOf({ kind: identity.kind, alias: row.alias, setUpAt: row.set_up_at }) : null;
@@ -210,7 +227,7 @@ export async function confirmAliasSetUp(identity: DashboardIdentity): Promise<Wr
     db
       .update(members)
       .set({ emailAliasSetUpAt: new Date().toISOString() })
-      .where(and(eq(members.memberId, memberId), isNotNull(members.emailAlias), isNull(members.emailAliasSetUpAt)))
+      .where(and(eq(members.memberId, memberId), hasPrtEmail(), isNull(members.emailAliasSetUpAt)))
       .returning({ id: members.memberId }),
   );
   return stored.length === 0 ? refused("You already set up your email alias.") : written(null);

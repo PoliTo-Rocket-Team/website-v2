@@ -54,7 +54,7 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
 /**
  * Board 94d: the alias address, prefilled as firstname.lastname on the team
  * domain from the member's name and checked before it is sent; the server
- * checks it again and saves it on the member's record. The form skips the
+ * checks it again and saves it as the member's PRT email. The form skips the
  * browser's own email check, so an address `checkAliasAddress` refuses shows
  * its reason under the field rather than a browser bubble. 440px wide with a
  * 24px pad and the row's 32px pills, as the board draws it.

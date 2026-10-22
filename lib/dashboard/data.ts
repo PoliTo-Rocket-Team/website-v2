@@ -284,15 +284,16 @@ export interface DashboardData {
 
   /**
    * Epic #538 (boards 94, 94b, 94e): the email alias of each of `memberIds`
-   * on the team, as the member drawer shows it to the viewer, with whether
-   * they may request one or cancel the open request (`memberAliasesFor`,
+   * on the team, which is their PRT email (issue #563), as the member
+   * drawer's PRT email row shows it to the viewer, with whether they may
+   * request one or cancel the open request (`memberAliasesFor`,
    * ./alias-request.ts). Someone not on the team is left out.
    */
   memberAliases(memberIds: readonly number[]): Promise<MemberAliases>;
   /**
    * Request alias (board 94): checked by `planAliasRequest`; refused for
    * anyone but a lead, head or the team leader who may manage the member,
-   * and while the member has an alias or an open request.
+   * and while the member's PRT email is set or a request is open.
    */
   requestAlias(memberId: number): Promise<WriteResult<null>>;
   /** Cancel request (board 94b): checked by `planAliasCancel`. */
@@ -300,7 +301,7 @@ export interface DashboardData {
   /**
    * Decline or Mark created on an open request (boards 94c, 94d), checked by
    * `planAliasAnswer`: only the team leader, the operations lead and the IT
-   * lead. Mark created saves the address on the member's record; the answer
+   * lead. Mark created saves the address as the member's PRT email; the answer
    * writes the notices `aliasAnswerNotices` names.
    */
   answerAlias(requestId: number, answer: unknown): Promise<WriteResult<null>>;

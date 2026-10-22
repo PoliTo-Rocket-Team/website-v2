@@ -91,7 +91,7 @@ import { cleanTitle, detailsKey, type DummyAdvisor, type MemberChange, type Team
 import { dummySeatsOf } from "./division";
 import { dummyHandOversOf, nextHandOverId, waitingHandOvers, withDummyHandOver, withLapsedHandOvers } from "./hand-overs";
 import { withDummyNotices } from "./notices";
-import { dummyAliasesOf, dummyAliasRequestsOf, nextAliasRequestId, openAliasRequests, withAutomaticAliasRequests, withDummyAliasRequest } from "./aliases";
+import { dummyAliasRequestsOf, nextAliasRequestId, openAliasRequests, withAutomaticAliasRequests, withDummyAliasRequest } from "./aliases";
 import {
   aliasAnswerNotices,
   aliasAttentionFor,
@@ -100,6 +100,7 @@ import {
   planAliasAnswer,
   planAliasCancel,
   planAliasRequest,
+  teamAddressOf,
 } from "@/lib/dashboard/alias-request";
 import { ownAliasOf, planAliasSetUp } from "@/lib/dashboard/alias-setup";
 import {
@@ -552,6 +553,20 @@ function recordOf(entry: RosterEntry, edits: TeamEdits): PersonRecord {
   };
 }
 
+/**
+ * Each person's PRT email as the test developer left it, by person id, leaving
+ * out the empty ones: a member's email alias, where Mark created saves it
+ * (issue #563).
+ */
+function prtEmailsOf(roster: readonly RosterEntry[], edits: TeamEdits): Map<number, string> {
+  return new Map(
+    roster.flatMap((entry) => {
+      const address = teamAddressOf(recordOf(entry, edits).details.prtEmail);
+      return address === null ? [] : [[entry.id, address] as const];
+    }),
+  );
+}
+
 /** Everyone on the team as the test developer left it, as the Members pages read them: the team leader's Overview counts these. */
 export function dummyRecords(edits: TeamEdits, joiners: readonly DummyJoiner[]): PersonRecord[] {
   return editedRoster(edits, joiners).map((entry) => recordOf(entry, edits));
@@ -671,7 +686,7 @@ function writesFor(
     const added = plan.emails.map((email, i): DummyWaiting => ({ joinId: firstJoinId + i, email, firstName: "", lastName: "", divisionId, title: null }));
     if (added.length > 0) next = { ...next, added: [...next.added, ...added] };
     // Each new lead is owed an alias request when they have none (issue #543).
-    next = withAutomaticAliasRequests(next, [...plan.promote, ...plan.joinAsLead], DUMMY_NOW);
+    next = withAutomaticAliasRequests(next, [...plan.promote, ...plan.joinAsLead], DUMMY_NOW, prtEmailsOf(team, edits));
     await save(next);
     return written(null);
   };
@@ -750,7 +765,7 @@ function writesFor(
       const { name, code, kind, headId } = planned.value;
       const next: TeamEdits = { ...edits, departments: { ...edits.departments, [id]: { name, code, kind, closedOn: null, headId } } };
       // The new head is owed an alias request when they have none (issue #543).
-      await save(withAutomaticAliasRequests(next, [headId], DUMMY_NOW));
+      await save(withAutomaticAliasRequests(next, [headId], DUMMY_NOW, prtEmailsOf(team, edits)));
       return written(id);
     },
     async saveDepartment(departmentId, input) {
@@ -769,7 +784,7 @@ function writesFor(
         next = after;
       }
       // A new head is owed an alias request when they have none (issue #543).
-      await save(withAutomaticAliasRequests(next, head === null ? [] : [head.to], DUMMY_NOW));
+      await save(withAutomaticAliasRequests(next, head === null ? [] : [head.to], DUMMY_NOW, prtEmailsOf(team, edits)));
       return written(null);
     },
     async closeDepartment(departmentId, input) {
@@ -846,7 +861,7 @@ function writesFor(
       const after = step.kind === "advisor" ? withAdvisor(next, from, step) : leftTeam(next, from);
       if (typeof after === "string") return refused(after);
       // The new team leader is owed an alias request when they have none (issue #543).
-      await save(withAutomaticAliasRequests(after, [to], DUMMY_NOW));
+      await save(withAutomaticAliasRequests(after, [to], DUMMY_NOW, prtEmailsOf(team, edits)));
       return written(null);
     },
     async setAlumnusShown(key, shown) {
@@ -1223,7 +1238,7 @@ export function dummyHandOverPages(
         // A successor who becomes the lead or the head is owed an alias request when they have none (issue #543); a co-lead taking over leads already.
         const { toId, role } = plan.request;
         const ledAlready = role.kind === "lead" && team.some((p) => p.id === toId && p.memberships.some((m) => m.divisionId === role.divisionId && m.role === "lead"));
-        next = withAutomaticAliasRequests(after, ledAlready ? [] : [toId], DUMMY_NOW);
+        next = withAutomaticAliasRequests(after, ledAlready ? [] : [toId], DUMMY_NOW, prtEmailsOf(roster, edits));
       }
       const approver = team.find((p) => p.id === self)?.name ?? "";
       next = { ...next, notices: withDummyNotices(next.notices, [answerNoticeOf(plan, team, org)], approver, DUMMY_NOW) };
@@ -1238,7 +1253,8 @@ export function dummyHandOverPages(
  * runs them, with `edits` laid over the arrays: the member drawer's alias,
  * the approvers' rows, Request alias, Cancel request, Decline and Mark
  * created. ./alias-request.ts decides each as the database side does; the
- * requests and the saved aliases live in the edits cookie (./aliases.ts).
+ * requests live in the edits cookie (./aliases.ts), and Mark created saves
+ * the address as the member's PRT email, in the details it keeps (issue #563).
  */
 export function dummyAliasPages(
   kind: TestViewer,
@@ -1256,7 +1272,7 @@ export function dummyAliasPages(
   const { org } = dummyOrg(edits);
   const all = dummyAliasRequestsOf(edits);
   const open = openAliasRequests(all);
-  const addresses = dummyAliasesOf(edits);
+  const addresses = prtEmailsOf(roster, edits);
   // The viewer's own alias (issue #542): their own record and nobody else's.
   const own = () =>
     self === null
@@ -1271,7 +1287,7 @@ export function dummyAliasPages(
     memberAliases: async (memberIds) =>
       canReach(standing, "members") ? memberAliasesFor({ viewerId: self, memberIds, team, org, addresses, open, now: new Date(DUMMY_NOW) }) : {},
     async requestAlias(memberId) {
-      const planned = planAliasRequest({ requesterId: self, memberId, team, org, alias: addresses.get(memberId) ?? null, open });
+      const planned = planAliasRequest({ requesterId: self, memberId, team, org, prtEmail: addresses.get(memberId) ?? null, open });
       if (!planned.ok) return refused(planned.error);
       // The dummy team is seen from DUMMY_NOW, so a request is sent then too.
       await save(withDummyAliasRequest(edits, { id: nextAliasRequestId(all), memberId, requesterId: planned.value.requesterId, sentAt: DUMMY_NOW, outcome: null }));
@@ -1303,7 +1319,12 @@ export function dummyAliasPages(
       const approver = team.find((p) => p.id === self)?.name ?? "";
       const member = team.find((p) => p.id === request.memberId)?.name ?? "";
       let next = close(requestId, plan.kind === "created" ? "created" : "declined");
-      if (plan.kind === "created") next = { ...next, aliases: { ...next.aliases, [request.memberId]: plan.address } };
+      // Mark created saves the address as the member's PRT email, beside the rest of their details.
+      const entry = roster.find((e) => e.id === request.memberId);
+      if (plan.kind === "created" && entry !== undefined) {
+        const key = detailsKey({ kind: "person", id: entry.id });
+        next = { ...next, details: { ...next.details, [key]: { ...recordOf(entry, edits).details, prtEmail: plan.address } } };
+      }
       next = { ...next, notices: withDummyNotices(next.notices, aliasAnswerNotices(plan, approver), member, DUMMY_NOW) };
       await save(next);
       return written(null);
