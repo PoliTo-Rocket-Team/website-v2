@@ -578,7 +578,8 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
             )
           )}
           {position !== null && position.leads.length > 0 && (
-            <div className="mt-4 grid gap-x-3 gap-y-4 sm:grid-cols-2">
+            // One choice per row: a division's name is long beside its hint.
+            <div className="mt-4 flex flex-col gap-4">
               {position.leads.map((choice) => (
                 <Field key={choice.divisionId} label={`In ${choice.short}`} hint="lead or member">
                   {(id) => (
