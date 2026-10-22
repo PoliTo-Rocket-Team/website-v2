@@ -91,13 +91,6 @@ export const ALIAS_NOTICE_ROWS = rowsOf(dashboardNotices, [
     createdAt: "2026-10-16 14:30:00+00",
   },
   {
-    recipientId: CREATED_ALIAS.member,
-    subjectId: CREATED_ALIAS.member,
-    kind: "alias-ready",
-    data: { address: CREATED_ALIAS.address },
-    createdAt: "2026-10-16 14:30:00+00",
-  },
-  {
     recipientId: DECLINED_REQUEST.by,
     subjectId: DECLINED_REQUEST.member,
     kind: "alias-declined",

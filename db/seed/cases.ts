@@ -1364,9 +1364,9 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "aliases",
-    case: "An alias marked created on the member test viewer's record and not yet set up, with the notices it wrote",
+    case: "An alias marked created on the member test viewer's record and not yet set up, with the notice to the division lead who asked for it",
     data: "invented",
-    rows: "`alias_requests` 3, `members` 901 `email_alias`, `dashboard_notices` `alias-created` and `alias-ready`",
+    rows: "`alias_requests` 3, `members` 901 `email_alias`, `dashboard_notices` `alias-created`",
     exercisedBy: `${issue(542)}, ${issue(550)}`,
     holds: (data) => {
       const member = memberOfUser(data, TEST_VIEWER_PEOPLE.member);
@@ -1380,7 +1380,7 @@ export const SEED_CASES: readonly SeedCase[] = [
         own.address === CREATED_ALIAS.address &&
         data.aliasRequests.some((r) => r.id === CREATED_ALIAS.id && r.memberId === member && r.outcome === "created") &&
         drawer?.kind === "set" &&
-        aliasNoticeRowsOf(data, member).some((r) => r.title === "Your email alias is ready") &&
+        !aliasNoticeRowsOf(data, member).some((r) => r.title.includes("email alias")) &&
         aliasNoticeRowsOf(data, CREATED_ALIAS.by).some((r) => r.title.endsWith("'s email alias is ready"))
       );
     },
