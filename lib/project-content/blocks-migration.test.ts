@@ -120,7 +120,8 @@ after(async () => {
 
 test("migration 0050 is journaled, so the migrator runs it", () => {
   const journal = JSON.parse(readFileSync(join(root, "drizzle", "meta", "_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
-  assert.deepEqual(journal.entries.at(-1), { ...journal.entries.at(-1), idx: 50, tag: "0050_project_page_blocks" });
+  const entry = journal.entries.find((e) => e.tag === "0050_project_page_blocks");
+  assert.deepEqual(entry, { ...entry, idx: 50, tag: "0050_project_page_blocks" });
 });
 
 test("migration 0050 only adds the page column: every row keeps its content byte for byte", async () => {
