@@ -107,7 +107,6 @@ describe("every preview route that makes someone a lead, a head or the team lead
 
 test("a role change refused asks for nothing", async () => {
   const { store, as } = preview();
-  assert.equal(await as("division-lead").teamWrites!.promote(SARA, { mode: "together" }), false);
   assert.equal((await as("member").teamWrites?.handOverTeamLeader({ to: SARA, outcome: "advisor" }))?.ok ?? false, false);
   assert.equal((await as("department-head").teamWrites!.createDepartment({ name: "Propulsion", code: "PRP", kind: "technical", heads: [SARA] })).ok, false);
   assert.deepEqual(openFor(store.current, SARA), []);

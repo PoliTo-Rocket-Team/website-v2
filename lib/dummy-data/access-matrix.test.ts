@@ -183,7 +183,6 @@ describe("the test-developer path follows the access matrix", () => {
       const writesTeam = data.teamWrites!;
       if (!canReach(viewer, "members")) {
         writes.push(["save member", () => writesTeam.saveMember(2, { role: null, pageTitle: "x" })]);
-        writes.push(["promote", () => writesTeam.promote(2, { mode: "together" } as never)]);
         writes.push(["move to alumni", () => writesTeam.moveToAlumni(2, { from: 2024, to: 2025, reason: null })]);
         writes.push(["confirm join", () => writesTeam.confirmJoin(team.applications[0].id)]);
         writes.push(["add member", () => writesTeam.addMember({ divisionId: 1, kind: "email", email: "new@example.com" })]);

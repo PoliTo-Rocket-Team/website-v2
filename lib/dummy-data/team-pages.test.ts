@@ -65,7 +65,7 @@ test("a division lead lists only their own division, with every division each pe
   assert.ok(page.people.every((p) => p.divisions[0].divisionId === MISSION_ANALYSIS));
 });
 
-test("a lead's Save sets titles but never a role, and Promote is refused: only the head changes leads (#231)", async () => {
+test("a lead's Save sets titles but never a role: only the head changes leads (#231)", async () => {
   const { view, saved } = pages("division-lead");
   const writes = view.teamWrites!;
   assert.equal(await writes.saveMember(7, { role: null, pageTitle: "Mission Analyst" }), true);
@@ -74,8 +74,6 @@ test("a lead's Save sets titles but never a role, and Promote is refused: only t
   // Ahmed is only in Optimization and Analysis, the lead's second division (#185); Matteo Riva only in Design & Manufacturing.
   assert.equal(await writes.saveMember(33, { role: null, pageTitle: "Optimization Analyst" }), true);
   assert.equal(await writes.saveMember(38, { role: null, pageTitle: "CAD Engineer" }), false, "not a division they lead");
-  assert.equal(await writes.promote(7, { mode: "together" }), false);
-  assert.equal(await writes.promote(7, { mode: "hand-over", outcome: "advisor" }), false);
   assert.equal(saved.length, 2);
 });
 

@@ -9,8 +9,8 @@ import type { FlaggedSeat, FullAccessSeat } from "./viewer";
 // division lead) hands it over in one step: someone takes over, and the person
 // stepping down either becomes an advisor in the team or leaves the team.
 // No hand-over leaves them as a plain member. This module owns that rule;
-// the Team Leader box, Change head, lead replace and Promote's "hand over the
-// division" all read it, and both data sources write what it says.
+// the Team Leader box, Change head and lead replace all read it, and both
+// data sources write what it says.
 
 /** What the person who hands over a role does next: "Become an advisor" or "Leave the team". */
 export const HAND_OVER_OUTCOMES = ["advisor", "leave"] as const;
@@ -296,29 +296,4 @@ export function planTeamLeaderHandOver(input: {
   if (handOver.to === leaderId) return { ok: false, error: "Pick who takes over from you." };
   if (!team.some((p) => p.id === handOver.to)) return { ok: false, error: "They are not on the team." };
   return { ok: true, value: { from: leaderId, to: handOver.to, steppingDown: steppingDown({ kind: "team-leader" }, handOver.outcome) } };
-}
-
-// Promote (board 59e)
-
-/**
- * Promote: the person leads the division beside the lead ("together"), or
- * takes it over ("hand-over"), and the lead then becomes an advisor in the
- * division or leaves the team, never a member.
- */
-export type Promotion = { readonly mode: "together" } | { readonly mode: "hand-over"; readonly outcome: HandOverOutcome };
-
-const promotionSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("together") }),
-  z.object({ mode: z.literal("hand-over"), outcome: z.enum(HAND_OVER_OUTCOMES) }),
-]);
-
-/** Promote as sent; a hand-over without what the lead does next is refused. */
-export function checkPromotion(input: unknown): Checked<Promotion> {
-  const result = promotionSchema.safeParse(input);
-  return result.success ? { ok: true, value: result.data } : { ok: false, error: "Choose what you do next: Become an advisor or Leave the team." };
-}
-
-/** What becomes of the lead who promotes: nothing for "together"; for a hand-over, the stepping down the rule gives. */
-export function promotingLead(promotion: Promotion, divisionId: number): SteppingDown | null {
-  return promotion.mode === "together" ? null : steppingDown({ kind: "lead", divisionId }, promotion.outcome);
 }

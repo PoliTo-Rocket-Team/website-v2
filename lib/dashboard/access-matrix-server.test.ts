@@ -16,7 +16,6 @@ import { members, scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
-import { checkPromotion } from "./hand-over";
 import { membersExportFileName, XLSX_TYPE } from "./members-export";
 import { filterTeam, NO_TEAM_FILTER } from "./team-members";
 import { readSheet } from "./access-matrix/xlsx";
@@ -405,7 +404,6 @@ const DETAILS = { firstName: "A", lastName: "B", phone: "", politoId: "", progra
 const MEMBER_DETAILS = { phone: "", politoId: "", programme: "", level: "", country: "", birthDate: "", linkedin: "", prtEmail: "", discord: "", gender: "" };
 const ORDER = { item: "Bolts", link: "https://example.com/bolts", price: "1", quantity: "1", reason: "Needed", division: String(IDS.division(DM)) };
 const DIVISION = { newLeads: [EXTRA.mover], oldLeads: [], members: [], emails: [] };
-const PROMOTION = { mode: "together" } as const;
 /** A change in Structures' units: a lead's or a head's of it, or full access. DM is the matrix's unit there. */
 const inStructures = (r: MatrixRow) => (r.expect.reads.members.includes(DM) ? leadsOnly(r) : false);
 const siteContent = (r: MatrixRow) => r.expect.siteContent;
@@ -439,14 +437,6 @@ const ACTION_CASES: readonly ActionCase[] = [
 
   // Members, in DM.
   { action: "team-actions.saveMember", run: () => teamActions.saveMember(IDS.person(DM), "member", "Engineer"), may: changesDM("members"), control: by("team leader") },
-  // Only a lead promotes, and only where they may change the division's leads, which no lead may (`mayChangeDivision`, Owner
-  // decision 2026-10-11): no account makes it, so the control shows the input is one the action takes.
-  {
-    action: "team-actions.promote",
-    run: () => teamActions.promote(IDS.person(DM), PROMOTION),
-    may: (r) => (changesDM("members")(r) ? undefined : false),
-    control: { valid: () => checkPromotion(PROMOTION).ok },
-  },
   { action: "team-actions.moveToAlumni", run: () => teamActions.moveToAlumni(IDS.person(DM), "2024 – 2026", null), may: changesDM("members"), control: by("team leader") },
   // Joining takes Members and Applications both; the matrix pins the refusal where Members is not changed.
   { action: "team-actions.confirmJoin", run: () => teamActions.confirmJoin(IDS.joining(DM)), may: (r) => (changesDM("members")(r) ? undefined : false), control: by("team leader") },
