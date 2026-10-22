@@ -268,7 +268,7 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
   - **Department head:** the team leader or full access, with Change head in Edit department
     (board 77e).
   - **Division lead:** the department's head, the team leader or full access, when a new lead
-    replaces them in Edit division (board 68b4), or with Promote's "hand over the division".
+    replaces them in Edit division (board 68b4).
 - **Access after a hand-over** (Owner decision, 2026-10-16): a lead or head who becomes an
   advisor loses every access row they held; they keep only the Advisor role in their own unit.
   A former team leader who becomes an advisor keeps every access row they hold, and the full
@@ -376,17 +376,15 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   first.
 - A lead cannot rename a division, change its code or change its leads; only the head can. The
   lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
-  lead's Promote or lead change.
+  lead's lead change.
 
 - The role on the operations lead's member panel is the person's title on the Team page. The
   public Team page is built from the team's roles, so a saved title shows there once the
   `team-roster` cache refreshes (ADR 0015).
-- Promote changes a division's leads, so it is the department head's (#231). It is confirmed, with
-  "lead together" or "hand over the division"; "hand over the division" is a hand-over, so the
-  old lead becomes an advisor in the division or leaves the team (#253). Each head of the division's department gets a
-  notice under "Needs your attention" on their Overview, naming who now leads the division and how
-  (#188). The head who promoted is not told. No email is sent.
-  - The head changes a division's leads in Edit division (see Divisions below).
+- A division's leads change only through Edit division (see Divisions below): the department's
+  head, the team leader or full access (#231). The Members page has no Promote (removed by #551).
+  - A "promoted" notice written while Promote existed (#188) still shows under "Needs your
+    attention" until it is dismissed.
 - Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
   and every access ends, after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
@@ -572,8 +570,7 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 
   lead, a department head or the team leader: Edit division and New division naming a new lead,
   New department and Change head, the team leader hand-over, and a confirmed hand-over request.
   The request is written with the role change, so a change refused or failed asks for nothing,
-  and only when the person has no alias on their record and no open request. Promote would ask
-  too, but no lead may change a division's leads. Close division and Close department make
+  and only when the person has no alias on their record and no open request. Close division and Close department make
   nobody a lead or a head, so they never ask. Request alias stays for everyone else.
 - Only the team leader, the operations lead and the IT lead answer. Each open request is one row
   on their Overview (board 94c), with Decline and Mark created. The Project Manager and the Chief

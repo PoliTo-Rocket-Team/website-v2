@@ -1,27 +1,16 @@
 import "server-only";
 
-import { and, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { dashboardNotices, divisions, roles, scopes, users } from "@/db/schema";
 import { runAuditQuery } from "@/lib/db-audit";
 import type { DashboardIdentity } from "./database";
-import {
-  attentionOf,
-  memberLeftNotices,
-  noticeOf,
-  promotedNotice,
-  untoldOfPromotion,
-  type AddressedNotice,
-  type DivisionLead,
-  type Promotion,
-} from "./notices";
+import { attentionOf, memberLeftNotices, noticeOf, type AddressedNotice, type DivisionLead } from "./notices";
 import type { AttentionItem } from "./overview";
-import type { PromoteMode } from "./team";
 import { refused, written, type WriteResult } from "./write";
 
 // Dashboard notices on the database (issue #201): the viewer's undismissed
-// ones as attention rows, Dismiss, and who a member leaving or a promotion
-// (#188) tells. What a notice says and who is told is ./notices.ts's; this
+// ones as attention rows, Dismiss, and who a member leaving tells. What a notice says and who is told is ./notices.ts's; this
 // module only reads and writes the rows.
 
 /** The viewer's undismissed notices, newest first, as "Needs your attention" rows. */
@@ -99,61 +88,3 @@ export async function memberLeftNoticesFor(memberId: number, reason: string | nu
   );
   return memberLeftNotices(memberId, left, leads, reason);
 }
-
-/**
- * The promotion Promote is about to write (#188): the division's name and
- * department and the promoting lead's name. Null when the division has no
- * department or the lead is not a user. Who is told is not read here: the
- * notice insert selects the heads itself (promotedNoticesInsert).
- */
-export async function promotionOf(
-  personId: number,
-  divisionId: number,
-  mode: PromoteMode,
-  leadId: number,
-): Promise<Promotion | null> {
-  const db = getDb();
-  const [[division], [lead]] = await Promise.all([
-    db.select({ name: divisions.name, dept_id: divisions.deptId }).from(divisions).where(eq(divisions.id, divisionId)).limit(1),
-    db
-      .select({ first_name: users.firstName, last_name: users.lastName, email: users.email })
-      .from(users)
-      .where(eq(users.member, leadId))
-      .limit(1),
-  ]);
-  if (!division || division.dept_id === null || !lead) return null;
-  const leadName = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || lead.email;
-  return { personId, division: { name: division.name, departmentId: division.dept_id }, mode, lead: { id: leadId, name: leadName } };
-}
-
-/**
- * The statement that writes a promotion's notices, for Promote's
- * runAuditBatch. It reads the department's heads in the same statement
- * (`INSERT ... SELECT`), so a head added before the batch runs is told too:
- * the batch cannot hand one statement's rows to the next (lib/db-audit.ts).
- * It applies ./notices.ts's rule (headsToldOfPromotion): the active head
- * roles of the department, whose department is the role's own or its
- * division's (as the roster places a head), each member once (`DISTINCT`),
- * leaving out untoldOfPromotion. With no head left it writes no row.
- */
-export function promotedNoticesInsert(db: ReturnType<typeof getDb>, promotion: Promotion) {
-  const { personId, division, lead } = promotion;
-  const notice = promotedNotice(promotion);
-  const untold = untoldOfPromotion({ personId, leadId: lead.id });
-  const column = (c: { readonly name: string }) => sql.identifier(c.name);
-  const told = and(
-    eq(roles.type, "head"),
-    isNull(roles.leavedAt),
-    isNotNull(roles.memberId),
-    notInArray(roles.memberId, [...untold]),
-    or(eq(roles.deptId, division.departmentId), and(isNull(roles.deptId), eq(divisions.deptId, division.departmentId))),
-  );
-  const into = sql.join(
-    [dashboardNotices.recipientId, dashboardNotices.subjectId, dashboardNotices.kind, dashboardNotices.data].map(column),
-    sql`, `,
-  );
-  return db.execute(
-    sql`insert into ${dashboardNotices} (${into}) select distinct ${roles.memberId}, ${personId}::integer, ${notice.kind}::text, ${JSON.stringify(notice.data)}::jsonb from ${roles} left join ${divisions} on ${eq(roles.divisionId, divisions.id)} where ${told}`,
-  );
-}
-

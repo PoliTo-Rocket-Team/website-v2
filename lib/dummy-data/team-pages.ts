@@ -894,11 +894,6 @@ function writesFor(
       await save(withChange(personId, next));
       return true;
     },
-    async promote() {
-      // Promote is a division lead's button (board 59e), and changing a division's leads is
-      // only its head's (`mayChangeDivision`); the head changes leads in Edit division (#232).
-      return false;
-    },
     async moveToAlumni(personId, departure) {
       const entry = find(personId);
       // Only people on the dummy roster have an Alumni row to move to.

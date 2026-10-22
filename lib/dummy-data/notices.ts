@@ -6,8 +6,8 @@ import type { DummyPerson } from "./team";
 // The dummy team's dashboard notices (issue #201), as `dashboard_notices`
 // rows would hold them: one "member left" notice for the division lead, so a
 // preview shows the row, and the notices the test developer's own writes
-// added (a promotion, #188). Written and dismissed ones are kept in the Team
-// pages' edits cookie (./edits.ts).
+// added. Written and dismissed ones are kept in the Team pages' edits cookie
+// (./edits.ts).
 
 export type DummyNotice = StoredNotice & {
   /** The person on the dummy roster who reads it (./team.ts). */

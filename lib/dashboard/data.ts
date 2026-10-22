@@ -23,7 +23,6 @@ import type { MyAlumni } from "./my-alumni";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
-import type { Promotion } from "./hand-over";
 import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
 import type { OwnAlias } from "./alias-setup";
@@ -363,14 +362,6 @@ export interface TeamWrites {
    * (Owner decision on #231), so their role change is refused.
    */
   saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
-  /**
-   * Board 59e: a member becomes a lead of the division. Changing a
-   * division's leads is the head's (`mayChangeDivision`, ./team.ts), so a
-   * division lead's Promote is refused (#231). "Hand over the division"
-   * makes the lead an advisor in it or moves them to Alumni
-   * (`promotingLead`, ./hand-over.ts), never a member (#253).
-   */
-  promote(personId: number, promotion: Promotion): Promise<boolean>;
   /**
    * "Leaves the team" (board 59d, widened by #231): every role and every
    * access grant ends and the person moves to Alumni; their account stays.

@@ -107,7 +107,7 @@ export type DummyApproveOrders = { readonly holds: true; readonly givenOn: strin
 export type TeamEdits = {
   /** The Alumni page's fixes and added advisors. */
   readonly alumni: DummyAlumniEdits;
-  /** Saved drawer and Promote changes, by person id. */
+  /** Saved drawer and Edit division changes, by person id. */
   readonly members: Readonly<Record<number, MemberChange>>;
   /** People moved to alumni, with their years on the team and why they left. */
   readonly movedToAlumni: Readonly<Record<number, Departure>>;
