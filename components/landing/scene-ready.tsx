@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, useEffect, useRef, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 
 /**
@@ -74,6 +74,48 @@ export class SceneErrorBoundary extends Component<
   render() {
     return this.state.failed ? null : this.props.children;
   }
+}
+
+/**
+ * Keeps a canvas drawn into another document at its container's layout size.
+ *
+ * The project editor draws its preview into a same-origin iframe through a
+ * portal (components/dashboard/edit-frame.tsx), so the canvas's elements are
+ * that frame's, not this window's. R3F and its measurer tell an HTML element
+ * by `instanceof` against this window's classes, and both checks fail there:
+ * the canvas's CSS size is never set, so it shows at its drawing buffer's
+ * size (wider than the card wherever the pixel ratio is above 1, the rocket
+ * pushed right), and `offsetSize` is ignored, so a turned box (a /projects
+ * panel) is sized by its turned bounding box and the rocket leaves the panel.
+ * In the page's own document both checks pass and this does nothing.
+ */
+export function ForeignDocumentSize() {
+  const gl = useThree((s) => s.gl);
+  const size = useThree((s) => s.size);
+  const setSize = useThree((s) => s.setSize);
+  const canvas = gl.domElement;
+  const foreign = canvas.ownerDocument !== document;
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const container = canvas.parentElement;
+    const view = canvas.ownerDocument.defaultView;
+    if (!foreign || container === null || view === null) return;
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    const measure = () => setBox({ width: container.offsetWidth, height: container.offsetHeight });
+    measure();
+    const observer = new view.ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [canvas, foreign]);
+
+  // R3F sets the measured (turned) size again on every resize; set it back.
+  useEffect(() => {
+    if (box === null || box.width === 0 || box.height === 0) return;
+    if (size.width !== box.width || size.height !== box.height) setSize(box.width, box.height, size.top, size.left);
+  }, [box, size, setSize]);
+  return null;
 }
 
 /**

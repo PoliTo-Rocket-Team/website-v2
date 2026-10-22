@@ -24,6 +24,7 @@ import {
   leadersOnArc,
   NO_TEAM_LAYER,
   resetLayer,
+  type OwnsUpload,
   type TeamBuild,
   type TeamPageLayer,
 } from "./team-layer";
@@ -49,7 +50,8 @@ import type { PersonPhoto, TeamPage } from "./types";
 // together, in one step of the store, so the live page never shows a new
 // layer with old advisors (issue #321); Reset to team writes the layer alone.
 // None of them writes a role, division, department, scope or member. A photo
-// picked with Replace photo (issue #323) is stored the moment it is cropped,
+// picked with Replace photo (issue #323), or uploaded as the group photo
+// (issue #510), is stored the moment it is picked,
 // behind the same gate, and reaches the page only when Save draft or Publish
 // carries its src. Once a write lands, each uploaded photo it left unused by
 // every stored layer version and advisor row is deleted, best-effort, so a
@@ -111,6 +113,8 @@ export interface TeamPageStore {
  */
 export interface TeamPagePhotos {
   put(photo: CheckedPhoto): Promise<PersonPhoto>;
+  /** Whether a remote URL is a file `put` stored, so a layer may keep it as the group photo (issue #510). */
+  readonly owns: OwnsUpload;
   /**
    * Deletes the files of these photos that `put` stored; any other photo (a
    * `/team/` path, a member's own picture) is left alone. A failed delete is
@@ -139,7 +143,7 @@ export interface TeamPageEditor {
   open(): Promise<TeamPageOpening | null>;
   /** Save draft or Publish the whole layer and the Advisors panel's rows, as the editor sent them; either both land or neither. */
   save(step: PublishStep, layer: unknown, advisors: unknown): Promise<WriteResult<TeamPageSaved>>;
-  /** Reset to team (board 80h): a draft with every edit gone except the intro text and the group photo. */
+  /** Reset to team (board 80h): a draft with every edit gone except the intro text, its figures and the group photo. */
   reset(): Promise<WriteResult<Versioned<TeamPageLayer>>>;
   /** A photo cropped in a panel's Replace photo, stored at once; answers the src a save puts on the person or advisor. */
   uploadPhoto(photo: Upload): Promise<WriteResult<PersonPhoto>>;
@@ -202,7 +206,7 @@ export function teamPageEditor(
 
     async save(step, layer, advisors) {
       if (!maySiteContent(viewer)) return refused(SITE_CONTENT_REFUSAL);
-      if (!isTeamPageLayer(layer)) return refused(NOT_A_LAYER);
+      if (!isTeamPageLayer(layer, photos.owns)) return refused(NOT_A_LAYER);
       const refusal = layerRefusal(teamBuildOf(await roles()), base, layer);
       if (refusal !== null) return refused(refusal);
       const writes = advisorWritesOf(await store.advisors(), step, advisors);

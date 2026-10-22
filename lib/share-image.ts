@@ -7,8 +7,8 @@ import { longMonthYear, outreachCopy } from "@/lib/outreach";
 import { storedPhotoPathname } from "@/lib/outreach-photos";
 import type { OutreachPost } from "@/lib/outreach-types";
 import { partnersPage } from "@/lib/partners";
-import { listingOf, type ProjectRecord } from "@/lib/project-content/record";
-import { stageStillOf } from "@/lib/rocket-model";
+import { listingOf, visualModelOf, type ProjectRecord } from "@/lib/project-content/record";
+import { stageStillOf, type OwnModel } from "@/lib/rocket-model";
 import type { PublicStoreHost } from "@/lib/storage/pathname";
 
 // What each public page's share image (Open Graph, 1200 x 630) says and
@@ -86,8 +86,8 @@ export const defaultShareCard: ShareCard = {
  * `position` is its place (from 0) among the published projects.
  */
 export function projectShareCard(record: ProjectRecord, position: number): ShareCard {
-  const { index, years } = listingOf(record, position);
-  const rocket = record.card.rocket;
+  const { index, years, texture } = listingOf(record, position);
+  const rocket = visualModelOf<OwnModel>(record.hero);
   const still = stageStillOf(rocket === undefined ? undefined : { model: rocket, alt: "" }).src;
   return {
     layout: "project",
@@ -95,7 +95,7 @@ export function projectShareCard(record: ProjectRecord, position: number): Share
     title: record.name,
     subtitle: record.card.desc.text,
     url: `${SITE}/PROJECTS`,
-    texture: siteFile(record.texture) ?? STREAK_TEXTURE,
+    texture: siteFile(texture) ?? STREAK_TEXTURE,
     still: siteFile(still) ?? "public/design/placeholder/stage-poster.webp",
   };
 }

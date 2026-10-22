@@ -88,7 +88,8 @@ import { NO_TEAM_EDITS, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyNoticeAttention, dummyNoticesOf, isDummyNoticeOpen, type DummyNotices } from "./notices";
 import { checkPhoto, HAND_OVER_FIRST, leaveReason, type LeaveState } from "@/lib/dashboard/self";
 import { NO_OWN_STORE, type OwnApplicationsStart, type OwnChangesStore } from "./own";
-import { testGrantAreas, type TestGrant } from "./test-grant";
+import { testGrantAreas, testGrantHoldsContent, type TestGrant } from "./test-grant";
+import { accessSummariesOf } from "@/lib/dashboard/access-summary";
 import { dummyDetails, ownApplicationsOf } from "./own-applications";
 import type { YourDetails } from "@/lib/dashboard/details";
 import {
@@ -121,7 +122,7 @@ import {
   type DummyPosition,
 } from "./team";
 import type { DummyRecruitmentStore } from "./recruitment";
-import { dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, dummyTeamPeople, editedAlumniRecord, editedRoster } from "./team-pages";
+import { dummyAliasPages, dummyHandOverPages, dummyJoiners, dummyOrg, dummyRecords, dummyStanding, dummyTeamPages, dummyTeamPeople, editedAlumniRecord, editedRoster } from "./team-pages";
 import { closingLapsedHandOvers } from "./hand-overs";
 
 // The test developer's side of the dashboard data interface: every answer is
@@ -232,21 +233,22 @@ function headDepartment() {
  * and the navbar show this name. Their standing carries "Approve orders" when
  * the person they look as is one of `holders` (issue #270), so a grant the
  * team leader gave opens Orders once the test developer switches to them.
- * The member holding a test grant (./test-grant.ts) is granted its area,
- * Members, as a member with that scope row is (issues #351, #471).
+ * The member holding a test grant (./test-grant.ts) holds what a member with
+ * that scope row holds (issues #351, #471, #504): Members, or Content.
  */
 export function dummyViewer(viewer: TestViewer, holders: readonly ApproveOrdersHolding[], grant: TestGrant | null = null): DashboardViewer {
   if (viewer === "non-member") {
-    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", session: "test-developer" };
+    return { ...testDeveloperStanding(viewer), name: applicant.name, role: "Applicant", photoUrl: null, session: "test-developer" };
   }
   if (viewer === "alumni") {
-    return { ...testDeveloperStanding(viewer), name: formerMember.name, role: VIEWER_KIND_LABELS.alumni, session: "test-developer" };
+    return { ...testDeveloperStanding(viewer), name: formerMember.name, role: VIEWER_KIND_LABELS.alumni, photoUrl: null, session: "test-developer" };
   }
   const person = personFor[viewer];
   const approveOrders = holders.some((h) => h.personId === person.id);
   const standing = testDeveloperStanding(viewer, approveOrders);
-  const withGrant = standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant) } : standing;
-  return { ...withGrant, name: person.name, role: person.title, session: "test-developer" };
+  const withGrant =
+    standing.kind === "member" && grant !== null ? { ...standing, grantedAreas: testGrantAreas(grant), siteContent: testGrantHoldsContent(grant) } : standing;
+  return { ...withGrant, name: person.name, role: person.title, photoUrl: null, session: "test-developer" };
 }
 
 /** The navbar's account menu for a test developer (board 01b): the applicant has no team address, so their sign-in one. */
@@ -581,7 +583,7 @@ function rosterPreview(me: DummyPerson): RosterPerson[] {
   }));
 }
 
-function memberOverview(notices: DummyNotices): PersonalOverview {
+function memberOverview(notices: DummyNotices, content: boolean): PersonalOverview {
   const me = personFor.member;
   const division = divisionOf(myDivisionId("member"));
   const department = departmentOf(division.id);
@@ -622,12 +624,12 @@ function memberOverview(notices: DummyNotices): PersonalOverview {
       size,
       people: rosterPreview(me),
     },
-    // The dummy member holds no grant, so the access hint shows (issue #480).
-    access: [],
+    // The dummy member holds no area grant, so the access hint shows (issue #480), unless they hold the Content test grant (issue #504).
+    access: accessSummariesOf([], {}, content),
   };
 }
 
-function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamSideOverview {
+function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices, content = false): TeamSideOverview {
   switch (kind) {
     case "operations-lead":
       return teamOverview(team, notices);
@@ -636,7 +638,7 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices): TeamS
     case "division-lead":
       return divisionOverview(team, notices);
     case "member":
-      return memberOverview(notices);
+      return memberOverview(notices, content);
     case "non-member":
     case "alumni":
       throw new DashboardRefused("an Overview off the team is built from My applications");
@@ -982,10 +984,11 @@ export function dummyDashboardData(
   const saveOwnDetails = (details: YourDetails) => own.save({ ...own.current, details: { ...own.current.details, [viewer]: details } });
   // Hand over your role from My profile, and its answer on the next level up's Overview (issue #262).
   const handOvers = dummyHandOverPages(viewer, teamEdits.current, teamEdits.save, team.applications);
+  const aliases = dummyAliasPages(viewer, teamEdits.current, teamEdits.save, team.applications);
   const shapeOfOverview = (): TeamSideOverview =>
     viewer === "team-leader"
       ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
-      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current));
+      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current), grant !== null && testGrantHoldsContent(grant));
 
   /**
    * Whether the viewer may change `area` on the role: it is one they reach
@@ -1020,14 +1023,21 @@ export function dummyDashboardData(
       return mine !== null && !hasNoneShown(mine);
     },
     ...(viewer === "alumni" ? dummyOwnAlumni(formerMember.id, teamEdits) : NO_OWN_ALUMNI),
-    // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c).
+    // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c),
+    // then the open alias requests for the three approver seats (board 94c).
     overview: async () => {
       const overview = shapeOfOverview();
-      const answering = handOvers.attention(NOW);
+      const answering = [...handOvers.attention(NOW), ...aliases.attention(NOW)];
       return answering.length === 0 ? overview : { ...overview, attention: [...answering, ...overview.attention] };
     },
     sendHandOver: handOvers.sendHandOver,
     answerHandOver: handOvers.answerHandOver,
+    memberAliases: aliases.memberAliases,
+    requestAlias: aliases.requestAlias,
+    cancelAliasRequest: aliases.cancelAliasRequest,
+    answerAlias: aliases.answerAlias,
+    myAlias: aliases.myAlias,
+    confirmAliasSetUp: aliases.confirmAliasSetUp,
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {
@@ -1143,23 +1153,29 @@ export function dummyDashboardData(
       return written(null);
     },
 
-    // Behind the same site-content gate as the database side; changes live in the test developer's cookie.
-    partners: partnerEditor(dummyViewer(viewer, holders), dummyPartnerStore(partnerEdits), dummyLogoFiles),
+    // Behind the same site-content gate as the database side, read off the viewer's standing, a Content test grant included (issue #504); changes live in the test developer's cookie.
+    partners: partnerEditor(dummyViewer(viewer, holders, grant), dummyPartnerStore(partnerEdits), dummyLogoFiles),
     // Seen from the dummy team's moment, so a question saved here reads "Today".
-    faqs: faqEditor(dummyViewer(viewer, holders), dummyFaqStore(faqEdits), dummyFaqNow),
+    faqs: faqEditor(dummyViewer(viewer, holders, grant), dummyFaqStore(faqEdits), dummyFaqNow),
     // The layer and the advisors live in the test developer's cookies; the layer is laid on the dummy team as they edited it.
     teamPage: teamPageEditor(
-      dummyViewer(viewer, holders),
+      dummyViewer(viewer, holders, grant),
       dummyTeamPageStore(teamPageEdits, advisorEdits),
       async () => dummyTeamRoles(teamEdits.current),
       teamRecord,
       dummyTeamPagePhotos,
     ),
     // The advisors live in their own cookie; End advising adds to the Alumni edits, on the dummy clock's year.
-    teamAdvisors: advisorEditor(dummyViewer(viewer, holders), dummyAdvisorStore(advisorEdits, teamEdits), async () => DUMMY_ALUMNI_YEAR),
-    outreach: outreachEditor(dummyViewer(viewer, holders), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
+    teamAdvisors: advisorEditor(dummyViewer(viewer, holders, grant), dummyAdvisorStore(advisorEdits, teamEdits), async () => DUMMY_ALUMNI_YEAR),
+    outreach: outreachEditor(dummyViewer(viewer, holders, grant), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
     // Seen from the dummy team's moment; the test developer's saves are edits by the person they sign in as.
-    projects: projectEditor(dummyViewer(viewer, holders), dummyProjectStore(projectEdits), dummyProjectHistory(projectEdits, person?.name ?? null), dummyPhotoFiles),
+    projects: projectEditor(
+      dummyViewer(viewer, holders, grant),
+      dummyProjectStore(projectEdits),
+      dummyProjectHistory(projectEdits, person?.name ?? null),
+      dummyPhotoFiles,
+      dummyPhotoFiles,
+    ),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {

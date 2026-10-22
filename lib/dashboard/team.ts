@@ -361,14 +361,6 @@ export type Joining = {
   readonly ndaArrived: boolean;
 };
 
-/** A head of the division's department: who a promotion tells (board 59e, ./notices.ts). */
-export type DepartmentHead = {
-  readonly memberId: number;
-  readonly name: string;
-  /** "Aerodynamics" */
-  readonly department: string;
-};
-
 /**
  * Who a viewer's Members page lists: the whole team with every member field
  * for each full-access seat, the team leader, the operations lead and the IT
@@ -676,11 +668,12 @@ export function mayChangeDivision(actor: TeamActor, divisionId: number, org: Org
   return reachesDivision(actor, divisionId, org) ? ALLOWED : denied("Only the team leader can do this");
 }
 
-// Promote and Move to alumni (boards 59e and 59d)
+// Promoted notices and Move to alumni (boards 59e and 59d)
 
 /**
- * Promote (board 59e): the person leads the division beside the lead, or
- * takes it over and the lead becomes a member of it.
+ * How a stored "promoted" notice (#188) says the person was promoted: beside
+ * the lead, or taking the division over. Promote itself is gone (#551); the
+ * notices it wrote can still be read.
  */
 export const PROMOTE_MODES = ["together", "hand-over"] as const;
 export type PromoteMode = (typeof PROMOTE_MODES)[number];

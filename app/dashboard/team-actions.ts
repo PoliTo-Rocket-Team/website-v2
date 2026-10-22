@@ -7,7 +7,6 @@ import type { TeamWrites } from "@/lib/dashboard/data";
 import type { TeamSearch } from "@/lib/dashboard/division-edit";
 import { isDetailsTarget, type AddLookup, type DetailsTarget } from "@/lib/dashboard/division-members";
 import { openDashboard } from "@/lib/dashboard/open";
-import { checkPromotion } from "@/lib/dashboard/hand-over";
 import { checkDeparture, type EditableRole } from "@/lib/dashboard/team";
 import { refused, type Upload, type WriteResult } from "@/lib/dashboard/write";
 
@@ -84,15 +83,6 @@ export async function saveMember(
   if (!writes || !isId(personId) || (role !== null && role !== "division-lead" && role !== "member")) return REFUSED;
   if (pageTitle !== null && typeof pageTitle !== "string") return REFUSED;
   return done(await writes.saveMember(personId, { role, pageTitle }));
-}
-
-/** Promote (board 59e): "together", or "hand-over" with what the lead does next (issue #253). */
-export async function promote(personId: number, promotion: unknown): Promise<TeamActionResult> {
-  const writes = await writesOn("members");
-  if (!writes || !isId(personId)) return REFUSED;
-  const checked = checkPromotion(promotion);
-  if (!checked.ok) return { ok: false, error: checked.error };
-  return done(await writes.promote(personId, checked.value));
 }
 
 /** Board 59d: the years as typed ("2024 – 2026") and the reason, or none. */

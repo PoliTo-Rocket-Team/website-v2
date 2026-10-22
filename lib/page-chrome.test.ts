@@ -15,14 +15,14 @@ import { team } from "@/lib/about/team";
 import { publicItems } from "@/lib/content/versioned";
 import { featuredCard, iressStory, newestFirst, outreachRecord } from "@/lib/outreach";
 import { mapUpToTwo, type OutreachContent } from "@/lib/outreach-types";
-import { firstImport, importedProjects } from "@/lib/project-content/import";
+import { importedProjects } from "@/lib/project-content/import";
 import { listingOf, listingsNewestFirst, pageRecordOf } from "@/lib/project-content/record";
 import { siteFooterOf } from "./page-chrome";
 
 // The public pages draw the site's navbar and footer; the dashboard editors
 // draw the same pages without them (issue #495).
 
-const projects = publicItems(importedProjects(firstImport));
+const projects = publicItems(importedProjects());
 const footerProjects = projects.map(({ name, slug }) => ({ name, slug }));
 const outreach: OutreachContent = { ...outreachRecord, featured: [iressStory] };
 const [post] = outreachRecord.posts;
@@ -89,10 +89,19 @@ test("the project editor's list and home pages draw no navbar and no footer", ()
   }
 });
 
-test("the Team page draws the navbar and footer publicly, and neither as the editor draws it, keeping the apply band", () => {
-  assert.deepEqual(chromeOf(createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, footerProjects })), SITE);
-  assert.deepEqual(chromeOf(createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, chrome: "none" })), NONE);
+/** Whether the markup carries the apply band (apply-band.tsx's textured section). */
+function drawsApplyBand(page: ReactElement): boolean {
+  return renderToStaticMarkup(page).includes("apply-band.webp");
+}
+
+test("the Team page draws the navbar, footer and apply band publicly, and none of them as the editor draws it", () => {
+  const publicPage = createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, footerProjects });
+  assert.deepEqual(chromeOf(publicPage), SITE);
+  assert.equal(drawsApplyBand(publicPage), true);
+  const bare = createElement(TeamPageView, { page: team, academicYear: ACADEMIC_YEAR, chrome: "none" });
+  assert.deepEqual(chromeOf(bare), NONE);
+  assert.equal(drawsApplyBand(bare), false);
   const edited = createElement(EditedTeamPage, { page: team, academicYear: ACADEMIC_YEAR, frames: {} });
   assert.deepEqual(chromeOf(edited), NONE);
-  assert.match(renderToStaticMarkup(edited), /Apply/);
+  assert.equal(drawsApplyBand(edited), false);
 });

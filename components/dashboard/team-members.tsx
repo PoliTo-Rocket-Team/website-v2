@@ -2,7 +2,8 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { List, Lock, MoreHorizontal, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
+import { FileSpreadsheet, List, Lock, MoreHorizontal, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
+import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import { memberDetailText } from "@/lib/dashboard/details";
 import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-members";
 import {
@@ -70,7 +71,17 @@ type View = "list" | "table";
 
 type Waiting = ShownMembers["waiting"][number];
 
-export function ScopedMembersView({ page, editable: writes }: { page: MembersModel; editable: boolean }) {
+export function ScopedMembersView({
+  page,
+  aliases,
+  editable: writes,
+  exportable,
+}: {
+  page: MembersModel;
+  aliases: MemberAliases;
+  editable: boolean;
+  exportable: boolean;
+}) {
   const [department, setDepartment] = useState<string | null>(null);
   const [divisionId, setDivisionId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
@@ -119,18 +130,23 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
   const drawerOpen = open !== null || editing !== null || adding || teamPage !== null;
 
   return (
-    <DrawerPage drawerOpen={drawerOpen}>
+    <DrawerPage drawerOpen={drawerOpen} wide={open !== null}>
       <PageHeader
         title="Members"
         intro={page.intro}
         phone="bar"
         action={
-          add !== null ? (
-            <button type="button" onClick={() => setAdding(true)} className={`${PRIMARY_PILL} md:h-10 md:px-5`}>
-              <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
-              <span className="md:hidden">Add</span>
-              <span className="hidden md:inline">Add member</span>
-            </button>
+          add !== null || exportable ? (
+            <div className="flex items-center gap-2.5">
+              {exportable && <ExportButton />}
+              {add !== null && (
+                <button type="button" onClick={() => setAdding(true)} className={`${PRIMARY_PILL} md:h-10 md:px-5`}>
+                  <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
+                  <span className="md:hidden">Add</span>
+                  <span className="hidden md:inline">Add member</span>
+                </button>
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -240,6 +256,7 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
 
       <PersonDrawer
         person={open}
+        alias={open === null ? null : (aliases[open.id] ?? null)}
         editable={writes && page.panelEdits && open?.actions != null}
         onClose={() => setOpenId(null)}
         onEdit={editPerson}
@@ -249,6 +266,26 @@ export function ScopedMembersView({ page, editable: writes }: { page: MembersMod
       {add !== null && <AddMemberDrawer open={adding} onOpenChange={setAdding} target={add} />}
       <MemberDialogs asking={asking} onClose={() => setAsking(null)} />
     </DrawerPage>
+  );
+}
+
+/**
+ * Export to Excel (board 95, issue #539): the outlined pill left of Add
+ * member, at its size. A plain download link to the export route, which builds
+ * the file on the server from the whole team, so it ignores the page's search,
+ * filters and pages.
+ */
+function ExportButton() {
+  return (
+    <a
+      href="/dashboard/members/export"
+      download
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-full border border-white-10 px-4 text-[14px] font-semibold text-prt-text transition-colors duration-300 ease-out hover:border-border-strong md:h-10 md:px-5 ${FOCUS}`}
+    >
+      <FileSpreadsheet aria-hidden className="h-4 w-4" strokeWidth={2} />
+      <span className="md:hidden">Export</span>
+      <span className="hidden md:inline">Export to Excel</span>
+    </a>
   );
 }
 

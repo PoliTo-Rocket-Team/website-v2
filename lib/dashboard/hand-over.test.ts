@@ -10,12 +10,10 @@ import {
   advisorOptionDetail,
   advisorsStayLine,
   BECOME_AN_ADVISOR,
-  checkPromotion,
   checkTeamLeaderHandOver,
   mayHandOverTeamLeader,
   movesWithAdvisorRoleLine,
   planTeamLeaderHandOver,
-  promotingLead,
   steppingDown,
   steppingDownLine,
   type HandOverViewer,
@@ -50,16 +48,6 @@ test("every hand-over ends as an advisor in the person's own unit or on Alumni, 
   for (const handed of [{ kind: "lead", divisionId: 1 }, { kind: "head", departmentId: 1 }, { kind: "team-leader" }] as const) {
     assert.deepEqual(steppingDown(handed, "leave"), { kind: "leave" });
   }
-});
-
-test("Promote's hand over the division gives the lead the same two outcomes; together changes nothing for them", () => {
-  assert.equal(promotingLead({ mode: "together" }, 1), null);
-  assert.deepEqual(promotingLead({ mode: "hand-over", outcome: "advisor" }, 1), { kind: "advisor", place: { kind: "division", divisionId: 1 }, access: "ends" });
-  assert.deepEqual(promotingLead({ mode: "hand-over", outcome: "leave" }, 1), { kind: "leave" });
-  assert.ok(checkPromotion({ mode: "together" }).ok);
-  assert.equal(checkPromotion({ mode: "hand-over" }).ok, false, "a hand-over needs what the lead does next");
-  assert.equal(checkPromotion({ mode: "hand-over", outcome: "member" }).ok, false, "never stays as a member");
-  assert.equal(checkPromotion("hand-over").ok, false);
 });
 
 test("only the current team leader may hand over the Team Leader role: the operations lead and the IT lead are refused", () => {

@@ -2,6 +2,8 @@ import { textLength } from "@/lib/content/text";
 import {
   applyLayer,
   isLinkedinHandle,
+  TEAM_PAGE_FIGURE_LABEL_MAX,
+  TEAM_PAGE_FIGURE_VALUE_MAX,
   TEAM_PAGE_INTRO_MAX,
   TEAM_PAGE_TEXT_MAX,
   type ArcSpot,
@@ -14,7 +16,7 @@ import {
 } from "./team-layer";
 import { linkedinHandleOf, personOf, type TeamPerson } from "./team-person";
 import { teamPageOf, withLayerText } from "./team-roles";
-import type { PersonPhoto, Photo, TeamPage } from "./types";
+import type { HeaderStat, HeaderStats, PersonPhoto, Photo, TeamPage } from "./types";
 
 // The Team page editor's own steps (boards 80, 80b and 80h, issue #284): the
 // page as the working layer draws it, the Edit person panel's fields for a
@@ -188,10 +190,10 @@ export function personPhotoChoices(build: TeamBuild, base: TeamPage): PhotoChoic
 const isSitePhoto = (src: PersonPhoto): src is Photo => src.startsWith("/team/");
 
 /** The photos the group photo may be: the site's own photos in public/team/, the record's group photo first. */
-export function groupPhotoChoices(build: TeamBuild, base: TeamPage): PhotoChoice<Photo>[] {
-  const group: PhotoChoice<Photo> = { src: base.coreMembers.groupPhoto.src, label: base.coreMembers.groupPhoto.alt };
+export function groupPhotoChoices(build: TeamBuild, base: TeamPage): PhotoChoice[] {
+  const group: PhotoChoice = { src: base.coreMembers.groupPhoto.src, label: base.coreMembers.groupPhoto.alt };
   const site = personPhotoChoices(build, base).filter((c): c is PhotoChoice<Photo> => isSitePhoto(c.src));
-  return uniqueBySrc([group, ...site]);
+  return uniqueBySrc<PersonPhoto>([group, ...site]);
 }
 
 /** The group photo the page shows under the layer. */
@@ -212,8 +214,18 @@ export function groupPhotoDescriptions(photo: GroupPhoto, original: GroupPhoto):
 }
 
 /** The photo `src` with its own description: the one typed for it, else none. */
-export function describedGroupPhoto(src: Photo, descriptions: GroupPhotoDescriptions): GroupPhoto {
+export function describedGroupPhoto(src: PersonPhoto, descriptions: GroupPhotoDescriptions): GroupPhoto {
   return { src, alt: descriptions[src] ?? "" };
+}
+
+/**
+ * The photos the group photo box shows (issue #510): each photo uploaded in
+ * it, newest first, the one shown now among them when it is an upload, then
+ * the site's own.
+ */
+export function groupPhotoRow(site: readonly PhotoChoice[], uploads: readonly PersonPhoto[], shown: GroupPhoto): PhotoChoice[] {
+  const uploaded = [...uploads, ...(isSitePhoto(shown.src) ? [] : [shown.src])].map((src) => ({ src, label: "Uploaded photo" }));
+  return uniqueBySrc<PersonPhoto>([...uploaded, ...site]);
 }
 
 /** A group photo put back as the record has it is no edit. */
@@ -233,11 +245,62 @@ export function introError(text: string): string | undefined {
   return textLength(text.trim()) > TEAM_PAGE_INTRO_MAX ? `Up to ${TEAM_PAGE_INTRO_MAX} characters.` : undefined;
 }
 
+/** The four figures under the intro as the page shows them under the layer (issue #510). */
+export function figuresOf(base: TeamPage, layer: TeamPageLayer): HeaderStats {
+  return layer.figures ?? base.header.stats;
+}
+
+const trimmedFigure = ({ value, label }: HeaderStat): HeaderStat => {
+  const phone = label.phone?.trim() ?? "";
+  return { value: value.trim(), label: { text: label.text.trim(), ...(phone !== "" && { phone }) } };
+};
+
+const sameFigure = (a: HeaderStat, b: HeaderStat) => a.value === b.value && a.label.text === b.label.text && a.label.phone === b.label.phone;
+
+/**
+ * The figures as typed in place: each trimmed, a blank phone label showing the
+ * desktop one, and all four as the record has them is no edit.
+ */
+export function withFigures(base: TeamPage, layer: TeamPageLayer, figures: HeaderStats): TeamPageLayer {
+  const [a, b, c, d] = figures;
+  const typed: HeaderStats = [trimmedFigure(a), trimmedFigure(b), trimmedFigure(c), trimmedFigure(d)];
+  const { figures: _old, ...rest } = layer;
+  return typed.every((f, i) => sameFigure(f, base.header.stats[i])) ? rest : { ...rest, figures: typed };
+}
+
+/** One figure's fields the page would not take: a value or label blank or too long. */
+export type FigureErrors = { readonly value?: string; readonly label?: string; readonly phone?: string };
+
+function textError(text: string, max: number, required: boolean): string | undefined {
+  const typed = text.trim();
+  if (typed === "") return required ? "Required." : undefined;
+  return textLength(typed) > max ? `Up to ${max} characters.` : undefined;
+}
+
+/** Each figure's errors, in order; an empty object for a figure the page takes. */
+export function figureErrors(figures: HeaderStats): readonly FigureErrors[] {
+  return figures.map(({ value, label }) => {
+    const errors = {
+      value: textError(value, TEAM_PAGE_FIGURE_VALUE_MAX, true),
+      label: textError(label.text, TEAM_PAGE_FIGURE_LABEL_MAX, true),
+      phone: textError(label.phone ?? "", TEAM_PAGE_FIGURE_LABEL_MAX, false),
+    };
+    return Object.fromEntries(Object.entries(errors).filter(([, error]) => error !== undefined)) as FigureErrors;
+  });
+}
+
+/** Why the intro block cannot be saved as typed; undefined when it can. */
+export function introBlockError(base: TeamPage, layer: TeamPageLayer): string | undefined {
+  const intro = introError(layer.intro ?? "");
+  if (intro !== undefined) return `Intro text: ${intro}`;
+  return figureErrors(figuresOf(base, layer)).some((e) => Object.keys(e).length > 0) ? "Figures: fix the highlighted fields." : undefined;
+}
+
 /**
  * How many edits Reset to team removes (board 80h): one per edited spot,
  * added leader, added department and added division lead, and one per
- * department name, hiding and order. The intro text and the group photo stay,
- * so they do not count.
+ * department name, hiding and order. The intro text, its figures and the
+ * group photo stay, so they do not count.
  */
 export function editCount(layer: TeamPageLayer): number {
   const departments = Object.values(layer.departments).reduce(

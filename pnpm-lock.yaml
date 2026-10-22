@@ -85,7 +85,7 @@ importers:
         version: 0.31.10
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(kysely@0.28.8)(pg@8.16.3)(postgres@3.4.9)
+        version: 0.45.2(@electric-sql/pglite@0.5.11)(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(kysely@0.28.8)(pg@8.16.3)(postgres@3.4.9)
       eslint-config-next:
         specifier: ^16.2.4
         version: 16.2.4(@typescript-eslint/parser@8.50.0(eslint@9.39.2(jiti@1.21.7))(typescript@5.7.2))(eslint@9.39.2(jiti@1.21.7))(typescript@5.7.2)
@@ -128,10 +128,16 @@ importers:
       vercel:
         specifier: ^48.2.9
         version: 48.12.1(@emnapi/core@1.7.1)(@emnapi/runtime@1.7.1)(typescript@5.7.2)
+      write-excel-file:
+        specifier: 4.1.1
+        version: 4.1.1
       zod:
         specifier: ^4.2.1
         version: 4.2.1
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.11
+        version: 0.5.11
       '@kampus/fabrika-cli':
         specifier: 0.9.0
         version: 0.9.0(fast-check@4.10.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(redis@6.3.0)(ws@8.22.0)
@@ -384,6 +390,9 @@ packages:
     peerDependencies:
       effect: ^4.0.0-rc.112
       redis: '>=5.0.0 <7.0.0'
+
+  '@electric-sql/pglite@0.5.11':
+    resolution: {integrity: sha512-SWuqsTjA4DDWqgZ05PC1RJaq8e00p5KACxbqaikDFQ8dIGA0SLRzuPniky7IW+q/c5RDNMdEXwv7mFBWIx9Hxw==}
 
   '@emnapi/core@1.7.1':
     resolution: {integrity: sha512-o1uhUASyo921r2XtHYOHy7gdkGLge8ghBEQHMWmyJFoXlpU58kIrhhN3w26lpQb6dspetweapMn2CSNwQ8I4wg==}
@@ -6257,6 +6266,10 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
+  write-excel-file@4.1.1:
+    resolution: {integrity: sha512-MUnCnNtQrcZek832ZcU24uU0rSphFmKPD1DvIjXOlygVb93CV7Tme6H3jUTkxsMmjB2W7HIzERzjqTi5kui71A==}
+    engines: {node: '>=18'}
+
   ws@8.22.0:
     resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
     engines: {node: '>=10.0.0'}
@@ -6615,6 +6628,8 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@electric-sql/pglite@0.5.11': {}
 
   '@emnapi/core@1.7.1':
     dependencies:
@@ -9482,8 +9497,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(kysely@0.28.8)(pg@8.16.3)(postgres@3.4.9):
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.11)(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(kysely@0.28.8)(pg@8.16.3)(postgres@3.4.9):
     optionalDependencies:
+      '@electric-sql/pglite': 0.5.11
       '@neondatabase/serverless': 1.1.0
       '@types/pg': 8.15.6
       kysely: 0.28.8
@@ -12526,6 +12542,10 @@ snapshots:
       strip-ansi: 7.1.0
 
   wrappy@1.0.2: {}
+
+  write-excel-file@4.1.1:
+    dependencies:
+      fflate: 0.8.3
 
   ws@8.22.0: {}
 

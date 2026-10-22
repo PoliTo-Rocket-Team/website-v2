@@ -19,9 +19,7 @@ import { FLAG_OF_SEAT, fullAccessSeatOf, SEAT_OF_FLAG, type FlaggedSeat, type Se
 // a head's. Each runs for real against the in-memory database
 // (./access-matrix/fake-db.ts), which here stores what each write does, and
 // the seat is then read off the active rows with `fullAccessSeatOf`, as the
-// dashboard reads it. Promote's "hand over the division" uses the same rule,
-// but no flagged row reaches it: a lead whose row carries a seat is full
-// access, and Promote is a division lead's.
+// dashboard reads it.
 
 const SEATS: readonly FlaggedSeat[] = ["operations-lead", "it-lead", "project-manager", "chief-engineer"];
 

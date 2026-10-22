@@ -263,6 +263,7 @@ function recordingPhotos() {
         put.push(photo.contentType);
         return STORED as `https://${string}`;
       },
+      owns: (src: string) => src === STORED,
       drop: async () => {},
     },
   };
@@ -348,6 +349,26 @@ test("a replaced uploaded photo's file is deleted after the write lands, once no
   assert.deepEqual(removed, ["photos/team-page-1.jpg"], "the published version still shows b");
   assert.ok((await editor.reset()).ok);
   assert.deepEqual(removed, ["photos/team-page-1.jpg", "photos/team-page-4.jpg"]);
+});
+
+test("an uploaded group photo is in use while any stored version shows it, and its file goes once none does", async () => {
+  const removed: string[] = [];
+  const { store } = editorOver(siteContent);
+  const editor = teamPageEditor(siteContent, store, async () => roles, team, storePhotos(async (pathname) => void removed.push(pathname)));
+  const [a, b] = [await uploaded(editor), await uploaded(editor)];
+  const withGroup = (src: PersonPhoto): TeamPageLayer => ({ ...NO_TEAM_LAYER, groupPhoto: { src, alt: "The team" } });
+
+  assert.ok((await editor.save("publish", withGroup(a), await rowsOf(store))).ok);
+  assert.equal((await publicPage(store)).coreMembers.groupPhoto.src, a);
+
+  // A draft replaces it, but the published version still shows it, and Reset to team keeps the group photo.
+  assert.ok((await editor.save("save-draft", withGroup(b), await rowsOf(store))).ok);
+  assert.ok((await editor.reset()).ok);
+  assert.deepEqual(removed, []);
+
+  // Published again: the first upload is in no version now.
+  assert.ok((await editor.save("publish", withGroup(b), await rowsOf(store))).ok);
+  assert.deepEqual(removed, ["photos/team-page-1.jpg"]);
 });
 
 test("a failed delete of a replaced photo never fails the save, and logs one line naming the Team page's area", async (t) => {

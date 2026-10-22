@@ -19,8 +19,11 @@ function divisionPage(directory: MemberDirectory) {
   return directory;
 }
 
-test("the member holding a test grant is granted Members, so their sidebar lists Members and no other grant page (issue #471)", () => {
-  for (const grant of TEST_GRANTS) {
+/** The test grants on Members; the Content one is below. */
+const MEMBERS_GRANTS = TEST_GRANTS.filter((grant) => grant !== "content");
+
+test("the member holding a Members test grant is granted Members, so their sidebar lists Members and no other grant page (issue #471)", () => {
+  for (const grant of MEMBERS_GRANTS) {
     const viewer = dummyViewer("member", [], grant);
     assert.deepEqual(viewer.kind === "member" ? viewer.grantedAreas : null, ["members"], grant);
     const listed = sidebarFor(viewer, { counts: {}, hasShownApplications: false }).flatMap((s) => s.items.map((item) => item.key));
@@ -28,6 +31,15 @@ test("the member holding a test grant is granted Members, so their sidebar lists
     assert.deepEqual(listed.filter((key) => (grantPages as readonly string[]).includes(key)), ["members"], grant);
     assert.deepEqual(grantPages.filter((key) => canReach(viewer, key)), ["members"], grant);
   }
+});
+
+test("the member holding the Content test grant holds Content alone: the Content group without Alumni, and no grant page (issue #504)", () => {
+  const viewer = dummyViewer("member", [], "content");
+  assert.ok(viewer.kind === "member" && viewer.siteContent && viewer.grantedAreas.length === 0);
+  assert.equal(viewer.alumniGrant, undefined);
+  const content = sidebarFor(viewer, { counts: {}, hasShownApplications: false }).find((s) => s.group === "content");
+  assert.deepEqual(content?.items.map((item) => item.label), ["Projects", "Outreach", "Partners", "FAQ", "Team page"]);
+  for (const key of ["positions", "applications", "members", "division-access", "orders", "alumni"] as const) assert.equal(canReach(viewer, key), false, key);
 });
 
 test("a member with Members at Can view sees their division's people and no action", async () => {

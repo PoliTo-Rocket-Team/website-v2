@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
+import { AtSign, Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DashboardLanding } from "@/lib/dashboard/access";
@@ -17,6 +17,8 @@ import {
 } from "@/lib/dashboard/self";
 import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
 import type { ViewerSession } from "@/lib/dashboard/viewer";
+import type { OwnAlias } from "@/lib/dashboard/alias-setup";
+import { AliasSetupLink } from "./alias-setup";
 import { MarkFallback } from "@/components/mark-fallback";
 import type { WriteResult } from "@/lib/dashboard/write";
 import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
@@ -42,7 +44,12 @@ type Actions = {
 // sizes the site shows it, the details their lead sets with their LinkedIn,
 // "Your details", how they sign in, and Leave or delete. Props in, nothing
 // fetched; every change lives in this page's state once the write answers.
-export function MyProfileView({ profile, session, ...actions }: { profile: MyProfile; session: ViewerSession } & Actions) {
+export function MyProfileView({
+  profile,
+  alias = null,
+  session,
+  ...actions
+}: { profile: MyProfile; alias?: OwnAlias | null; session: ViewerSession } & Actions) {
   return (
     <>
       <PageHeader title="My profile" intro="How you appear on the site and to the team." />
@@ -54,7 +61,7 @@ export function MyProfileView({ profile, session, ...actions }: { profile: MyPro
           detail="Used on the site to show you. Make sure your face is clear even when small. Square image, JPEG or PNG, up to 2 MB; we crop and resize it for you."
           previews={PROFILE_PREVIEWS}
         />
-        <DetailsCard profile={profile} saveLinkedin={actions.saveLinkedin} />
+        <DetailsCard profile={profile} alias={alias} saveLinkedin={actions.saveLinkedin} />
         <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
         <AccountCard signIn={profile.signIn} />
         <LeaveOrDelete
@@ -225,9 +232,10 @@ function PhotoPreview({ url, size, caption }: { url: string | null; size: string
 /**
  * Name, role and team email are set by the lead; LinkedIn is the person's.
  * From md it is board 55's form; on phones board 55m's list, whose Edit opens
- * LinkedIn on a full page.
+ * LinkedIn on a full page. Once their email alias is marked created, it shows
+ * beside the team email with a link to its setup steps (issue #542).
  */
-function DetailsCard({ profile, saveLinkedin }: { profile: MyProfile; saveLinkedin: Actions["saveLinkedin"] }) {
+function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; alias: OwnAlias | null; saveLinkedin: Actions["saveLinkedin"] }) {
   const [saved, setSaved] = useState(profile.linkedin ?? "");
   const [editing, setEditing] = useState(false);
   return (
@@ -241,9 +249,17 @@ function DetailsCard({ profile, saveLinkedin }: { profile: MyProfile; saveLinked
         />
         <DetailValue label="Team email" value={profile.teamEmail} />
         <DetailValue label="LinkedIn" value={saved || null} />
+        {alias && (
+          <div className="col-span-2 min-w-0">
+            <DetailValue label="Email alias" value={alias.address} />
+            <div className="mt-1.5">
+              <AliasSetupLink alias={alias} />
+            </div>
+          </div>
+        )}
       </dl>
       <div className="hidden md:block">
-        <LinkedinForm profile={profile} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
+        <LinkedinForm profile={profile} alias={alias} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
       </div>
       <LinkedinDrawer open={editing} onOpenChange={setEditing} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
     </Card>
@@ -292,11 +308,13 @@ function LinkedinInput({ id, describedBy, value, error, onChange }: { id: string
 
 function LinkedinForm({
   profile,
+  alias,
   saved,
   onSaved,
   saveLinkedin,
 }: {
   profile: MyProfile;
+  alias: OwnAlias | null;
   saved: string;
   onSaved: (value: string) => void;
   saveLinkedin: Actions["saveLinkedin"];
@@ -333,6 +351,14 @@ function LinkedinForm({
             />
           )}
         </Field>
+        {alias && (
+          <Locked
+            label="Email alias"
+            hint={<AliasSetupLink alias={alias} />}
+            value={alias.address}
+            icon={<AtSign aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
+          />
+        )}
       </div>
       <div className="mt-5 flex justify-end">
         <button type="submit" disabled={pending || linkedin.trim() === saved} className={`${GHOST_PILL} h-10 px-4 text-[14px] font-semibold`}>
@@ -400,7 +426,7 @@ function LinkedinDrawer({
 }
 
 /** A field the person cannot change: one locked line per value, so each role of several reads whole (issue #185). */
-function Locked({ label, hint, value, icon }: { label: string; hint: string; value: string | readonly string[]; icon?: ReactNode }) {
+function Locked({ label, hint, value, icon }: { label: string; hint: ReactNode; value: string | readonly string[]; icon?: ReactNode }) {
   const lines = typeof value === "string" ? [value] : value;
   return (
     <div className="min-w-0">

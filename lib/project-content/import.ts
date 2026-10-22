@@ -2,7 +2,8 @@ import type { GalleryItem, GalleryPhoto } from "@/components/gallery/items";
 import type { ContentItem } from "@/lib/content/versioned";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import type { GallerySection, LaunchPhoto, Reasons, Version } from "@/lib/project-pages/types";
-import type { ProjectRecord, VehicleRecord, EngineRecord } from "./record";
+import { blocksRecordOf, type LegacyEngineRecord, type LegacyProjectRecord, type LegacyVehicleRecord } from "./legacy";
+import type { ProjectRecord } from "./record";
 import { revise, type ProjectRevision, type RevisionSet } from "./revision";
 
 // Carrying Cavour, VES and Efesto into the content store (issue #295), each
@@ -98,9 +99,9 @@ const cavourConfig6: Version = {
  * #377, `RETIRED_KEYS`). The import keeps it, as 0037 holds it;
  * `importedRecords` leaves it out.
  */
-type Imported<R extends ProjectRecord> = R & { readonly teaser: string };
+type Imported<R extends LegacyProjectRecord> = R & { readonly teaser: string };
 
-const cavour: Imported<VehicleRecord> = {
+const cavour: Imported<LegacyVehicleRecord> = {
   kind: "vehicle",
   slug: "cavour",
   name: "Cavour",
@@ -333,7 +334,7 @@ const vesMarkI: Version = {
   },
 };
 
-const ves: Imported<VehicleRecord> = {
+const ves: Imported<LegacyVehicleRecord> = {
   kind: "vehicle",
   slug: "ves",
   name: "VES",
@@ -496,7 +497,7 @@ const ves: Imported<VehicleRecord> = {
 // Efesto (boards 25 and 25m): an engine in development, so no hero visual,
 // no versions, no launch history and no gallery yet.
 
-const efesto: Imported<EngineRecord> = {
+const efesto: Imported<LegacyEngineRecord> = {
   kind: "engine",
   slug: "efesto",
   name: "Efesto",
@@ -663,7 +664,7 @@ const efesto: Imported<EngineRecord> = {
  * The three projects as migration 0037 carried them into the store, in site
  * order. Frozen: a later change to their content is a revision below.
  */
-export const firstImport: readonly Imported<ProjectRecord>[] = [cavour, ves, efesto];
+export const firstImport: readonly Imported<LegacyProjectRecord>[] = [cavour, ves, efesto];
 
 /**
  * VES draws its own rocket, Mark I, on its home card and its page (issue
@@ -880,10 +881,16 @@ export const projectRevisions: readonly ProjectRevision[] = [
   efestoSiteContent,
 ];
 
-/** The three projects as the code reads them once every migration ran: the import, revised, with its retired key left out. */
-export const importedRecords: readonly ProjectRecord[] = firstImport.map(({ teaser: _retired, ...record }) =>
+/**
+ * The three projects as stored before page blocks: the import, revised, with
+ * its retired key left out. Migration 0050 turns these into `importedRecords`.
+ */
+export const legacyRecords: readonly LegacyProjectRecord[] = firstImport.map(({ teaser: _retired, ...record }) =>
   projectRevisions.reduce(revise, record),
 );
+
+/** The three projects as the code reads them once every migration ran, page blocks included (migration 0050). */
+export const importedRecords: readonly ProjectRecord[] = legacyRecords.map(blocksRecordOf);
 
 /** The records as stored items: ids and site order from 1, each published with no draft. */
 export function importedProjects(records: readonly ProjectRecord[] = importedRecords): ContentItem<ProjectRecord>[] {
@@ -904,7 +911,7 @@ function literal(value: string): string {
  * published version in `project_versions`, written in one go so the version
  * finds its project's new id.
  */
-export function projectImportSql(records: readonly ProjectRecord[] = firstImport): string {
+export function projectImportSql(records: readonly LegacyProjectRecord[] = firstImport): string {
   return records
     .map((record, i) =>
       [

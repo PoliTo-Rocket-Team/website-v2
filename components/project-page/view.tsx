@@ -3,44 +3,81 @@ import { LandingFooter } from "@/components/landing/footer";
 import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import { siteFooterOf, type PageChrome } from "@/lib/page-chrome";
-import { sectionsOf, type NumberedSection, type ProjectPageRecord } from "@/lib/project-pages";
+import { pageRowsOf, type NumberedBlock, type PageBlock, type PageRow, type ProjectPageRecord, type TextBlock } from "@/lib/project-pages";
 import type { Project } from "@/lib/projects";
+import { ProjectFacts } from "./facts";
 import { ProjectGallery } from "./gallery";
 import { ProjectHero } from "./hero";
 import { ProjectLaunches } from "./launches";
+import { ProjectPhoto } from "./photo";
 import { ProjectPlan } from "./plan";
 import { ProjectReasons } from "./reasons";
-import { ProjectStory } from "./story";
+import { ProjectText, TextRow } from "./story";
 import { ProjectVersions } from "./versions";
 
 // One project page as drawn, from a page record and the project's /projects
 // entry: the public route draws the published record (./project-page.tsx),
 // and the editor draws the record being typed under the edit shell, with each
 // part outlined through `frame` (issue #298), with no navbar and no footer
-// (`chrome="none"`, issue #495).
+// (`chrome="none"`, issue #495). Below the hero the page draws its blocks in
+// order, leaving out a hidden one; two half-width text blocks in a row sit
+// side by side (epic #522, `pageRowsOf`).
 
-/** The page's parts, each one block the editor can outline. */
-export type ProjectPart = "hero" | "name" | "design" | NumberedSection["kind"];
+/** The page's parts the editor can outline: the hero, and each block by its id (`block:<id>`, epic #522). */
+export type ProjectPart = "hero" | `block:${string}`;
 
 /** Wraps one part of the page; the public page draws each part as it is. */
 export type ProjectFrame = (part: ProjectPart, node: ReactNode) => ReactNode;
 
 const bare: ProjectFrame = (_, node) => node;
 
-function Section({ section, project }: { section: NumberedSection; project: Project }) {
-  switch (section.kind) {
+/** The block wrapped in its frame. */
+const framed = (frame: ProjectFrame, block: PageBlock, node: ReactNode): ReactNode => frame(`block:${block.id}`, node);
+
+/** A block that fills the page's width: every kind but text. */
+function WideBlock({ numbered, project }: { numbered: NumberedBlock<Exclude<PageBlock, TextBlock>>; project: Project }) {
+  const { block } = numbered;
+  // Every titled kind takes a number (`hasHeading`); facts and a photo have no heading.
+  const num = numbered.num ?? "";
+  switch (block.kind) {
+    case "facts":
+      return <ProjectFacts facts={block.facts} />;
+    case "photo":
+      return <ProjectPhoto photo={block.photo} caption={block.caption} />;
     case "versions":
-      return <ProjectVersions num={section.num} name={project.name} versions={section.versions} />;
+      return <ProjectVersions num={num} name={project.name} versions={block} />;
     case "launches":
-      return <ProjectLaunches num={section.num} log={section.launches} texture={project.texture} />;
-    case "plan":
-      return <ProjectPlan num={section.num} plan={section.plan} />;
-    case "reasons":
-      return <ProjectReasons num={section.num} reasons={section.reasons} />;
+      return <ProjectLaunches num={num} log={block} texture={project.texture} />;
+    case "timeline":
+      return <ProjectPlan num={num} plan={block} />;
+    case "points":
+      return <ProjectReasons num={num} reasons={block} />;
     case "gallery":
-      return <ProjectGallery num={section.num} name={project.name} gallery={section.gallery} />;
+      return <ProjectGallery num={num} name={project.name} gallery={block} />;
   }
 }
+
+/** A text block's frame sits around its column, inside the row, as the two stories' did. */
+const textColumn = (frame: ProjectFrame, { block, num }: NumberedBlock<TextBlock>) => framed(frame, block, <ProjectText block={block} num={num} />);
+
+function Row({ row, project, frame }: { row: PageRow; project: Project; frame: ProjectFrame }) {
+  if (row.kind === "halves") {
+    return (
+      <TextRow>
+        {row.blocks.map((half) => (
+          <Fragment key={half.block.id}>{textColumn(frame, half)}</Fragment>
+        ))}
+      </TextRow>
+    );
+  }
+  const numbered = row.block;
+  if (numbered.block.kind === "text") {
+    return <TextRow full={numbered.block.width === "full"}>{textColumn(frame, { block: numbered.block, num: numbered.num })}</TextRow>;
+  }
+  return <>{framed(frame, numbered.block, <WideBlock numbered={{ block: numbered.block, num: numbered.num }} project={project} />)}</>;
+}
+
+const rowKey = (row: PageRow) => (row.kind === "halves" ? row.blocks.map((b) => b.block.id).join("+") : row.block.block.id);
 
 export function ProjectPageView(
   props: {
@@ -57,9 +94,8 @@ export function ProjectPageView(
       <PageSky>
         <main>
           {frame("hero", <ProjectHero project={project} hero={record.hero} underNavbar={footer !== null} />)}
-          <ProjectStory name={record.name} design={record.design} frame={frame} />
-          {sectionsOf(record).map((s) => (
-            <Fragment key={s.kind}>{frame(s.kind, <Section section={s} project={project} />)}</Fragment>
+          {pageRowsOf(record).map((row) => (
+            <Row key={rowKey(row)} row={row} project={project} frame={frame} />
           ))}
         </main>
         {footer !== null && <LandingFooter inSky projects={footer} />}

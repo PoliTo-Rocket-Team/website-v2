@@ -200,11 +200,15 @@ export function carouselSpotsOf(departments: readonly ShownDepartment[]): (Shown
   return carouselOf(departments).flatMap((slide) => slide.places.map((place) => (place.kind === "head" ? place.head.at : null)));
 }
 
-/** `page` with the layer's intro text and group photo, where it sets them. */
-export function withLayerText(page: TeamPage, layer: Pick<TeamPageLayer, "intro" | "groupPhoto">): TeamPage {
+/** `page` with the layer's intro text, figures and group photo, where it sets them. */
+export function withLayerText(page: TeamPage, layer: Pick<TeamPageLayer, "intro" | "figures" | "groupPhoto">): TeamPage {
   return {
     ...page,
-    header: layer.intro === null ? page.header : { ...page.header, intro: layer.intro },
+    header: {
+      ...page.header,
+      ...(layer.intro !== null && { intro: layer.intro }),
+      ...(layer.figures !== undefined && { stats: layer.figures }),
+    },
     coreMembers: layer.groupPhoto === null ? page.coreMembers : { ...page.coreMembers, groupPhoto: layer.groupPhoto },
   };
 }

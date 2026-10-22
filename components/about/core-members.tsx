@@ -63,14 +63,18 @@ export function CoreMembers({
   const searching = query.trim() !== "";
   const shown = searchMembers(core.members, query);
   const everyone = showAll || searching;
+  // A photo uploaded in the editor (issue #510) is a store URL, served as
+  // stored as person photos are (./person.tsx), with no blur of its own.
+  const uploaded = !core.groupPhoto.src.startsWith("/");
   const photo = (
     <Image
       src={core.groupPhoto.src}
       alt={core.groupPhoto.alt}
       fill
       sizes="(min-width: 1440px) 1312px, 100vw"
-      placeholder="blur"
-      blurDataURL={groupPhotoBlur}
+      unoptimized={uploaded}
+      placeholder={uploaded ? "empty" : "blur"}
+      blurDataURL={uploaded ? undefined : groupPhotoBlur}
       className="object-cover"
     />
   );

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { promotionNoticeLine } from "./notices";
 import { standingIn } from "./viewer";
 import {
   buildTeamTree,
@@ -153,15 +152,6 @@ test("the team year turns over at midnight on 1 October in Turin, not in UTC (#5
   assert.equal(seasonAt(new Date("2026-09-30T22:01:00Z")), "2026–27");
   // Still 30 September in UTC, already 1 October in Turin.
   assert.equal(seasonAt(new Date("2026-09-30T23:30:00Z")), "2026–27");
-});
-
-test("Promote names the department's heads it tells, never the head promoting (#188, #227)", () => {
-  const chiara = { memberId: 2, name: "Chiara Rinaldi", department: "Aerodynamics" };
-  const luca = { memberId: 8, name: "Luca Moretti", department: "Aerodynamics" };
-  assert.equal(promotionNoticeLine([chiara], { personId: 4, leadId: 3 }), "Chiara Rinaldi, head of Aerodynamics, is told on their dashboard.");
-  assert.equal(promotionNoticeLine([chiara], { personId: 4, leadId: 2 }), null);
-  assert.equal(promotionNoticeLine([chiara, luca], { personId: 4, leadId: 2 }), "Luca Moretti, head of Aerodynamics, is told on their dashboard.");
-  assert.equal(promotionNoticeLine([], { personId: 4, leadId: 2 }), "Your department has no head on the roster, so no one else is told.");
 });
 
 // Who may change whom on the Members page (issue #231). Aerodynamics holds

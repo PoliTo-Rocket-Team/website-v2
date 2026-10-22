@@ -31,7 +31,8 @@ export const ICON_BUTTON =
 // slots the layout wraps in their own Suspense, each with a quiet placeholder:
 // the sidebar's pages and user card (`sidebarPages`, `sheetPages`), the top
 // bar's avatar (`account`) and the screen for a request that did not open
-// the dashboard (`closed`).
+// the dashboard (`closed`). The frame also records each page the tab visits,
+// so an editor's back arrow can return to where it was opened (issue #510).
 export function DashboardShell({
   sidebarPages,
   sheetPages,
@@ -120,7 +121,7 @@ export function TopBarAccount({ chrome }: { chrome: Promise<DashboardChrome> }) 
         aria-label={`${viewer.name}, ${viewer.role}. Open account menu`}
         className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
-        <Avatar accent />
+        <Avatar accent photoUrl={viewer.photoUrl} />
       </button>
     </UserSheet>
   );

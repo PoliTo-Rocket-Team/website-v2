@@ -37,10 +37,10 @@ An admin column comes later. **Planned**, no issue yet.
 | Positions | No | No | No | Own divisions | All divisions in the department, under division tabs | All, plus the site-wide recruitment switch; the team leader also has a division select |
 | Applications | No | No | No | Own divisions | All divisions in the department, under division tabs | All; the team leader has department and division selects |
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
-| Projects | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it first under Content |
-| Partners | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| Alumni | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
-| FAQ | No | No | Only with site-content access | Only with site-content access | Only with site-content access | Yes; the team leader's sidebar shows it under Content |
+| Projects | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it first under Content |
+| Partners | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
+| Alumni | No | No | Only with Alumni | Only with Alumni | Only with Alumni | Yes; the team leader's sidebar shows it under Content |
+| FAQ | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
 | Activity log | No | No | No | No | No | The IT lead only |
@@ -154,17 +154,24 @@ An admin column comes later. **Planned**, no issue yet.
   - A department head's Members page holds every division of their department (#235).
 - **Alumni** is where the team checks the public site's alumni content. By default the full
   admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
-  with site-content access, which the full admins can give to anyone. A division lead or
+  with an **Alumni** grant, which the full admins can give to anyone. A division lead or
   department head gets nothing from their role here (Owner decision, #234). The sidebar item and
   the page read one rule, and the page answers "not found" to everyone else.
-  - Site-content access is the **Alumni** area of the full admins' Access page (#247). It is a
-    `website` scope row, given to the whole team only, at Can view or Can edit; either level opens
-    the Alumni, Projects, Outreach, Partners, FAQ and Team page pages.
+  - The Alumni grant is the **Alumni** area of the full admins' Access page (#247). It is a
+    `website` scope row on `all`, given to the whole team only, at Can view or Can edit. Either
+    level opens the Alumni page and its actions, and nothing else (Owner decision, 2026-10-21,
+    #504). It opens no content editor.
 - **Content** is the team leader's sidebar group of the pages that change the public site:
-  Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80). Everyone else who
-  reaches them sees them under Team. Projects, Outreach, Partners, FAQ and Team page follow the Alumni rule: the full admins, and anyone with site-content access. Whoever
-  may edit may also publish. The server checks the same rule on every write (`maySiteContent`,
-  `lib/content/gate.ts`). See "6. Site content".
+  Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80).
+  Projects, Outreach, Partners, FAQ and Team page follow the site-content rule: the full admins,
+  and anyone with a **Content** grant. Whoever may edit may also publish. The server checks the
+  same rule on every write (`maySiteContent`, `lib/content/gate.ts`). See "6. Site content".
+  - The Content grant is its own Access area (Owner decision, 2026-10-21, #504). It is a
+    `website` scope row on `content`, given to the whole team only and at Can edit only. It opens
+    those five editors and their actions and nothing else, and no other grant opens them. Only a
+    viewer with full access or a Content grant gives, changes or removes it. A member holding it
+    sees the Content group with those five pages, and a "Content" line under "Your access" on
+    their Overview.
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -261,7 +268,7 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
   - **Department head:** the team leader or full access, with Change head in Edit department
     (board 77e).
   - **Division lead:** the department's head, the team leader or full access, when a new lead
-    replaces them in Edit division (board 68b4), or with Promote's "hand over the division".
+    replaces them in Edit division (board 68b4).
 - **Access after a hand-over** (Owner decision, 2026-10-16): a lead or head who becomes an
   advisor loses every access row they held; they keep only the Advisor role in their own unit.
   A former team leader who becomes an advisor keeps every access row they hold, and the full
@@ -369,17 +376,15 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   first.
 - A lead cannot rename a division, change its code or change its leads; only the head can. The
   lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
-  lead's Promote or lead change.
+  lead's lead change.
 
 - The role on the operations lead's member panel is the person's title on the Team page. The
   public Team page is built from the team's roles, so a saved title shows there once the
   `team-roster` cache refreshes (ADR 0015).
-- Promote changes a division's leads, so it is the department head's (#231). It is confirmed, with
-  "lead together" or "hand over the division"; "hand over the division" is a hand-over, so the
-  old lead becomes an advisor in the division or leaves the team (#253). Each head of the division's department gets a
-  notice under "Needs your attention" on their Overview, naming who now leads the division and how
-  (#188). The head who promoted is not told. No email is sent.
-  - The head changes a division's leads in Edit division (see Divisions below).
+- A division's leads change only through Edit division (see Divisions below): the department's
+  head, the team leader or full access (#231). The Members page has no Promote (removed by #551).
+  - A "promoted" notice written while Promote existed (#188) still shows under "Needs your
+    attention" until it is dismissed.
 - Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
   and every access ends, after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
@@ -549,6 +554,44 @@ of 2026-10-16 on #251.
 - The site sends no emails here either: the drawer shows the amber note for anyone added by
   email.
 
+### Email aliases
+
+These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 to 94e,
+`lib/dashboard/alias-request.ts`).
+
+- A division lead, a department head or the team leader asks for a team email alias for a member
+  they may manage, with Request alias on the Email alias row of the member drawer (board 94): a
+  lead for their division, a head for their department, the team leader for anyone. Nobody asks
+  for themselves, and a grant makes nobody a requester. The drawer then shows Requested, who sent
+  it and when, and Cancel request (board 94b).
+- A member has at most one open request, kept by the server and by the database
+  (`alias_requests_one_open`).
+- The site asks by itself (issue #543, `owedAliasRequests`) whenever someone becomes a division
+  lead, a department head or the team leader: Edit division and New division naming a new lead,
+  New department and Change head, the team leader hand-over, and a confirmed hand-over request.
+  The request is written with the role change, so a change refused or failed asks for nothing,
+  and only when the person has no alias on their record and no open request. Close division and Close department make
+  nobody a lead or a head, so they never ask. Request alias stays for everyone else.
+- Only the team leader, the operations lead and the IT lead answer. Each open request is one row
+  on their Overview (board 94c), with Decline and Mark created. The Project Manager and the Chief
+  Engineer get none, and neither does full access from an access row alone. A request the site
+  made by itself has no requester and reads as the automatic row.
+- Mark created asks for the address (board 94d), prefilled as firstname.lastname on the team
+  domain. The server accepts firstname.lastname, or one word for a special-purpose address, and
+  only on the team domain. The address is saved on the member's record and shown beside their
+  team email (board 94e). Mark created and Decline each tell the requester with a notice.
+- The member gets no notice. Their own Overview shows the "Your email alias is ready" card
+  (board 94f, issue #542, `lib/dashboard/alias-setup.ts`, owner ruling on #550) until they set
+  the alias up. Open setup steps opens "Set up your email alias" (board 94g). Close only closes
+  it; the card stays until the member presses "I've set it up", which is stored on their own
+  record. The card shows on every Overview shape, a lead's as a member's, and never off the team.
+- My profile shows the alias in the member's own details, with a "Setup steps" link to the same
+  panel at any time. Nobody reads or sets up another member's alias from either page.
+- The Members export to Excel has an Email alias column beside PRT email: the address on the
+  member's record, empty when they have none.
+- The alias is created by hand in Google Workspace. The site creates nothing there and sends no
+  email.
+
 ### Access
 
 These rules come from #213 (boards 60, 60b, 60c and 60m).
@@ -613,7 +656,7 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - The full-access seats are the team leader, the operations lead, the IT lead, the Project
   Manager and the Chief Engineer (#485). On the Full access tab each shows under its label:
   "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief Engineer".
-- Full access holds every area at Can edit across the whole team, Alumni included: "YOUR ACCESS ·
+- Full access holds every area at Can edit across the whole team, Alumni and Content included: "YOUR ACCESS ·
   Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
   team leader.
 - Above the table: Everyone, Full access and Approve orders tabs, each with its count, and an "All
@@ -621,8 +664,13 @@ These rules come from #238 and #247 (boards 71 and 71b).
   the role", locked), then the heads and division leads with their role's access, locked.
 - Give access picks a person from the whole team and a Where: the whole team (a `team` scope row
   in no unit, which covers every department and any added later), one department, or one division.
-  The areas are Positions, Applications, Members, Alumni and Orders, each at Can view or Can edit.
-  Alumni is given to the whole team only.
+  The areas are Positions, Applications, Members, Alumni, Content and Orders, each at Can view or
+  Can edit but Content. Alumni is the Alumni page only. Content (#504) has no level toggle: it is
+  given at Can edit only. Alumni and Content are given to the whole team only, and the server
+  refuses either in a department or a division, and Content at Can view.
+- A division lead or department head who holds a Content grant also gives Content: their Where
+  adds the whole team, last, where they give Content alone. Nobody else is offered Content, and
+  the server refuses it from them.
 - **Approve orders** is a checkbox in Give access that only the team leader sees; the server refuses
   it from anyone else. The other full-access seats give every other access. The Activity
   log is never given: it stays the IT lead's.
@@ -781,7 +829,7 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   editor (board 75b). The draft has a line of starting copy in every section, a brand texture
   picked by its address, and the placeholder rocket on its card and page. No public page shows
   it, and its address has no page, until it is published.
-- Only the full admins and holders of site-content access reach the page or use New project;
+- Only the full admins and holders of a Content grant reach the page or use New project;
   everyone else gets the dashboard's not found.
 - On a preview with the seeded `preview` branch, a test developer's new order and new projects
   are saved there as the viewer's seeded person and kept across preview builds (ADR
@@ -841,7 +889,7 @@ Projects and FAQ (#254, #255, #258) reuse its foundation in `lib/content/`.
   editor loses it. A section that is off does not stop a save.
 - Save draft and Publish refuse an empty field and open its section. Save draft leaves the
   published page as it is; Publish puts the changes on the public page.
-- Only the full admins and holders of site-content access open the editor or save; everyone else
+- Only the full admins and holders of a Content grant open the editor or save; everyone else
   gets the dashboard's not found.
 - On a preview with the seeded `preview` branch, a test developer's project changes are saved
   there as the viewer's seeded person and kept across preview builds (ADR 0016). Only

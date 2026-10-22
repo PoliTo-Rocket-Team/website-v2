@@ -8,7 +8,7 @@ import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import { readProjectFields } from "@/lib/project-content/fields";
 import { readNewProject } from "@/lib/project-content/new-project";
-import type { ProjectRecord } from "@/lib/project-content/record";
+import type { ProjectRecord, UploadedSrc } from "@/lib/project-content/record";
 
 // The project editor's writes (boards 75 and 75c, issues #297 and #298). Each opens the
 // dashboard as the page did; the projects editor checks the site-content gate
@@ -62,7 +62,21 @@ export async function uploadProjectPhoto(form: FormData): Promise<WriteResult<Ph
   return opening.data.projects.uploadPhoto(photo);
 }
 
-/** A photo removed before a save used it: its file goes, unless a project version shows it. */
+/**
+ * One crop of a background uploaded in the Edit <project> panel (board 93f,
+ * issue #529), Tall or Wide, sent one at a time: stored at once in the
+ * public store under the backgrounds' folder, its type and size checked here;
+ * a save puts both on the project.
+ */
+export async function uploadProjectBackground(form: FormData): Promise<WriteResult<UploadedSrc>> {
+  const crop = await uploadOf(form, "background");
+  if (crop === null) return refused("Choose a picture.");
+  const opening = await openDashboard();
+  if (opening.kind !== "open") return refused("Sign in again to make changes.");
+  return opening.data.projects.uploadBackground(crop);
+}
+
+/** A photo or a background crop removed before a save used it: its file goes, unless a project version shows it. */
 export async function discardProjectPhoto(src: string): Promise<WriteResult<null>> {
   const opening = await openDashboard();
   if (opening.kind !== "open") return refused("Sign in again to make changes.");

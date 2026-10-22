@@ -1,5 +1,5 @@
 import type { AttentionItem } from "./overview";
-import { isPromoteMode, type DepartmentHead, type PromoteMode } from "./team";
+import { isPromoteMode, type PromoteMode } from "./team";
 import { shortDate } from "./write";
 
 // Notices on a member's dashboard (issue #201): something that happened to
@@ -10,7 +10,10 @@ import { shortDate } from "./write";
 // entry here, not a new mechanism: "promoted" (#188), the department head
 // told about a promotion, is the second.
 
-export const NOTICE_KINDS = ["member-left", "promoted", "hand-over-answered"] as const;
+// The member's own "alias ready" news is the board 94f card on their Overview,
+// never a notice row (owner ruling on #550, 2026-10-22): an `alias-ready` row
+// an earlier answer wrote is a kind this code no longer knows, so it is not shown.
+export const NOTICE_KINDS = ["member-left", "promoted", "hand-over-answered", "alias-created", "alias-declined"] as const;
 
 /** How the next level up answered a hand-over (issue #262). */
 export type HandOverAnswered = "confirmed" | "declined";
@@ -29,6 +32,10 @@ type NoticeData = {
    * over, and the answer.
    */
   readonly "hand-over-answered": { readonly role: string; readonly successor: string; readonly answer: HandOverAnswered };
+  /** The alias the recipient asked for was marked created (epic #538): the subject is the member, with the address saved. */
+  readonly "alias-created": { readonly address: string };
+  /** The alias the recipient asked for was declined (epic #538): the subject is the member, `by` who declined it. */
+  readonly "alias-declined": { readonly by: string };
 };
 
 /** A notice to write: its kind and what it stores. */
@@ -81,7 +88,13 @@ const READ: { readonly [K in NoticeKind]: (data: unknown) => NoticeData[K] | nul
     if (typeof role !== "string" || typeof successor !== "string" || (answer !== "confirmed" && answer !== "declined")) return null;
     return { role, successor, answer };
   },
+  "alias-created": readAddress,
+  "alias-declined": (data) => (isRecord(data) && typeof data.by === "string" ? { by: data.by } : null),
 };
+
+function readAddress(data: unknown): { readonly address: string } | null {
+  return isRecord(data) && typeof data.address === "string" ? { address: data.address } : null;
+}
 
 function isNoticeKind(kind: string): kind is NoticeKind {
   return (NOTICE_KINDS as readonly string[]).includes(kind);
@@ -100,6 +113,10 @@ export function noticeOf(row: StoredNotice): Notice | null {
     case "promoted":
       return read(row.kind);
     case "hand-over-answered":
+      return read(row.kind);
+    case "alias-created":
+      return read(row.kind);
+    case "alias-declined":
       return read(row.kind);
   }
 }
@@ -149,6 +166,20 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
         action,
       };
     }
+    case "alias-created":
+      return {
+        kind: "notice",
+        title: `${notice.subject}'s email alias is ready`,
+        detail: [notice.data.address, shortDate(notice.createdAt, now.getUTCFullYear())].join(" · "),
+        action,
+      };
+    case "alias-declined":
+      return {
+        kind: "notice",
+        title: `${notice.data.by} declined the email alias for ${notice.subject}`,
+        detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "you can ask again"].join(" · "),
+        action,
+      };
   }
 }
 
@@ -202,79 +233,4 @@ export function memberLeftNotices(
     recipientId,
     notice: { kind: "member-left", data: { divisions: names, reason } },
   }));
-}
-
-/** Someone with an active head role, and the department it heads. */
-export type DepartmentHeadRole = { readonly memberId: number; readonly departmentId: number };
-
-/** A promotion as Promote ran it (board 59e). */
-export type Promotion = {
-  /** The member who now leads the division. */
-  readonly personId: number;
-  readonly division: { readonly name: string; readonly departmentId: number };
-  readonly mode: PromoteMode;
-  /** The division lead who promoted them. */
-  readonly lead: { readonly id: number; readonly name: string };
-};
-
-/** The two people in a promotion: who is promoted, and the lead who promotes (null before anyone does). */
-export type PromotionParties = { readonly personId: number; readonly leadId: number | null };
-
-/**
- * Who a promotion never tells, whatever head roles they hold: the lead who
- * promoted and the person promoted. Part of the rule below, and the list the
- * database's insert leaves out (./database-notices.ts).
- */
-export function untoldOfPromotion(parties: PromotionParties): readonly number[] {
-  return parties.leadId === null ? [parties.personId] : [parties.leadId, parties.personId];
-}
-
-/**
- * Who a promotion tells (issue #188), stated once here: each head of the
- * division's department, once however many head roles they hold, never the
- * lead who promoted and never the person promoted. A department with no head
- * tells nobody. `heads` are that department's heads. Promote's dialog names
- * these people before the write (components/dashboard/member-drawer.tsx), the
- * dummy data writes their notices with promotedNotices, and the database
- * selects them inside the insert itself (promotedNoticesInsert in
- * ./database-notices.ts: its heads, `DISTINCT` and untoldOfPromotion).
- */
-export function headsToldOfPromotion<H extends { readonly memberId: number }>(
-  heads: readonly H[],
-  parties: PromotionParties,
-): H[] {
-  const untold = untoldOfPromotion(parties);
-  const told = new Map<number, H>();
-  for (const head of heads) if (!untold.includes(head.memberId) && !told.has(head.memberId)) told.set(head.memberId, head);
-  return [...told.values()];
-}
-
-/**
- * The line under Promote's choices (board 59e): who the promotion tells, named
- * only when headsToldOfPromotion tells them. Null when the department's only
- * heads are the viewer or the person promoted (issue #227): nobody is told,
- * and the line would name the viewer. `heads` are the department's heads.
- */
-export function promotionNoticeLine(heads: readonly DepartmentHead[], parties: PromotionParties): string | null {
-  if (heads.length === 0) return "Your department has no head on the roster, so no one else is told.";
-  const told = headsToldOfPromotion(heads, parties);
-  if (told.length === 0) return null;
-  const names = told.map((h) => h.name);
-  const department = told[0].department;
-  if (names.length === 1) return `${names[0]}, head of ${department}, is told on their dashboard.`;
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}, heads of ${department}, are told on their dashboards.`;
-}
-
-/** The notice each head a promotion tells reads. */
-export function promotedNotice(promotion: Promotion): NewNotice {
-  const { division, mode, lead } = promotion;
-  return { kind: "promoted", data: { division: division.name, mode, lead: lead.name } };
-}
-
-/** The notices a promotion writes: one per head headsToldOfPromotion names, among `heads` of any department. */
-export function promotedNotices(promotion: Promotion, heads: readonly DepartmentHeadRole[]): AddressedNotice[] {
-  const { personId, division, lead } = promotion;
-  const departmentHeads = heads.filter((h) => h.departmentId === division.departmentId);
-  const notice = promotedNotice(promotion);
-  return headsToldOfPromotion(departmentHeads, { personId, leadId: lead.id }).map((h) => ({ recipientId: h.memberId, notice }));
 }

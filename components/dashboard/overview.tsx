@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightLeft, ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, AtSign, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
@@ -28,6 +28,7 @@ import {
   interviewSummary,
   rosterSize,
   type ActivityItem,
+  isAnswerAlias,
   isAnswerHandOver,
   isDismissNotice,
   type AttentionAction,
@@ -40,7 +41,10 @@ import {
   type Stat,
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
+import type { OwnAlias } from "@/lib/dashboard/alias-setup";
+import { AliasReadyCard } from "./alias-setup";
 import { Avatar } from "./avatar";
+import { AnswerAlias } from "./answer-alias";
 import { AnswerHandOver } from "./answer-hand-over";
 import { DismissNotice } from "./dismiss-notice";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
@@ -51,11 +55,12 @@ import { PANEL, Panel, RowAction } from "./panel";
 // 50e and 50f for a non-member, and issue #317's board 56 for an alumnus.
 // Props in, nothing fetched: the page hands over what the dashboard data
 // interface answered.
-export function OverviewView({ overview }: { overview: Overview }) {
+export function OverviewView({ overview, aliasCard = null }: { overview: Overview; aliasCard?: OwnAlias | null }) {
   switch (overview.shape) {
     case "team":
       return (
         <LeadView
+          aliasCard={aliasCard}
           stats={overview.stats}
           attention={overview.attention}
           interviews={[]}
@@ -66,6 +71,7 @@ export function OverviewView({ overview }: { overview: Overview }) {
     case "leader":
       return (
         <LeadView
+          aliasCard={aliasCard}
           stats={overview.stats}
           attention={overview.attention}
           departments={{ list: overview.departments, people: overview.people }}
@@ -77,6 +83,7 @@ export function OverviewView({ overview }: { overview: Overview }) {
     case "department":
       return (
         <LeadView
+          aliasCard={aliasCard}
           phone="board-56m"
           stats={overview.stats}
           attention={overview.attention}
@@ -88,6 +95,7 @@ export function OverviewView({ overview }: { overview: Overview }) {
     case "division":
       return (
         <LeadView
+          aliasCard={aliasCard}
           phone="board-56m"
           stats={overview.stats}
           attention={overview.attention}
@@ -96,7 +104,7 @@ export function OverviewView({ overview }: { overview: Overview }) {
         />
       );
     case "personal":
-      return <PersonalView overview={overview} />;
+      return <PersonalView overview={overview} aliasCard={aliasCard} />;
     case "applicant":
       return <ApplicantView overview={overview} />;
     case "alumni":
@@ -123,6 +131,7 @@ type LeadPhoneForm = "full" | "board-56m";
 // activity, as 56m does, while board 62 shows no interviews. Board 72 (the
 // team leader, issue #252) puts the Departments panel there instead.
 function LeadView({
+  aliasCard,
   stats,
   attention,
   divisions = null,
@@ -131,6 +140,7 @@ function LeadView({
   activity,
   phone,
 }: {
+  aliasCard: OwnAlias | null;
   stats: readonly Stat[];
   attention: readonly AttentionItem[];
   divisions?: readonly DivisionSummary[] | null;
@@ -148,6 +158,12 @@ function LeadView({
   return (
     <>
       <h1 className="sr-only">Overview</h1>
+      {/* The viewer's own alias card (board 94f) leads every Overview it shows on, a lead's as a member's. */}
+      {aliasCard && (
+        <div className="mb-5 md:mb-6">
+          <AliasReadyCard alias={aliasCard} />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
         {stats.map((stat, index) => (
           <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
@@ -193,17 +209,22 @@ function LeadView({
 // On board 56m each row is its own card, with no icon tile, the shorter
 // title and a small filled pill. A hand-over waiting for the viewer (board
 // 62c, issue #262) is the top row, on an accent tint with an accent icon
-// tile, and answers with Decline and Confirm.
+// tile, and answers with Decline and Confirm. An open alias request (board
+// 94c, epic #538) follows it the same way, with Decline and Mark created.
+// Below md, outside board 56m's cards, those two buttons move under the text,
+// so the title keeps the row's width (issue #546); a detail with a long
+// address wraps inside its column rather than running under the button.
 function AttentionPanel({ attention, compact }: { attention: readonly AttentionItem[]; compact: boolean }) {
   return (
     <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`} phoneCards={compact}>
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.kind];
-        const handOver = item.kind === "hand-over";
+        const handOver = item.kind === "hand-over" || item.kind === "alias-request";
+        const actionsBelow = handOver && !compact;
         return (
           <li
             key={attentionKey(item)}
-            className={`flex items-center gap-4 px-4 py-3.5 md:px-5 ${handOver ? "bg-accent/[0.05] md:last:rounded-b-xl" : ""}`}
+            className={`flex items-center gap-x-4 gap-y-3 px-4 py-3.5 md:px-5 ${handOver ? "bg-accent/[0.05] md:last:rounded-b-xl" : ""} ${actionsBelow ? "max-md:flex-wrap" : ""}`}
           >
             <span
               className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
@@ -223,7 +244,7 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
                   {item.title}
                 </span>
               )}
-              <span className="block text-[13px] text-prt-muted">{item.detail}</span>
+              <span className="block break-words text-[13px] text-prt-muted">{item.detail}</span>
             </span>
             {compact ? (
               <>
@@ -234,6 +255,10 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
                   <AttentionButton action={item.action} />
                 </span>
               </>
+            ) : actionsBelow ? (
+              <span className="flex max-md:basis-full max-md:pl-12">
+                <AttentionButton action={item.action} />
+              </span>
             ) : (
               <AttentionButton action={item.action} />
             )}
@@ -377,6 +402,7 @@ function waitingCounts({ newApplications, openPositions }: { newApplications: nu
 /** A link to the page that handles the row, or Dismiss on a stored notice. */
 function AttentionButton({ action, chip = false }: { action: AttentionAction; chip?: boolean }) {
   if (isAnswerHandOver(action)) return <AnswerHandOver requestId={action.answerHandOver} chip={chip} />;
+  if (isAnswerAlias(action)) return <AnswerAlias action={action} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -384,9 +410,10 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
   );
 }
 
-/** A notice or a hand-over by its id: two of them may read alike. */
+/** A notice, a hand-over or an alias request by its id: two of them may read alike. */
 function attentionKey(item: AttentionItem): string {
   if (isAnswerHandOver(item.action)) return `hand-over-${item.action.answerHandOver}`;
+  if (isAnswerAlias(item.action)) return `alias-${item.action.answerAlias}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -399,6 +426,7 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "orders-to-decide": ShoppingCart,
   "approved-orders": Package,
   "hand-over": ArrowRightLeft,
+  "alias-request": AtSign,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {
@@ -423,7 +451,9 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
 // Board 52. A member's stored notices, when they have any (the answer to a
 // hand-over they sent, issue #262), sit above it as the leads' "Needs your
 // attention" panel, so board 52 itself is unchanged when there are none.
-function PersonalView({ overview }: { overview: PersonalOverview }) {
+// Board 94f (issue #542): the "Your email alias is ready" card sits under the
+// person until they set the alias up.
+function PersonalView({ overview, aliasCard }: { overview: PersonalOverview; aliasCard: OwnAlias | null }) {
   const { attention, person, checklist, roster, access } = overview;
   const main = checklist ? <ChecklistPanel checklist={checklist} /> : null;
   return (
@@ -445,6 +475,12 @@ function PersonalView({ overview }: { overview: PersonalOverview }) {
           </Link>
         )}
       </section>
+
+      {aliasCard && (
+        <div className="mt-5 md:mt-6">
+          <AliasReadyCard alias={aliasCard} />
+        </div>
+      )}
 
       {(main || roster) && (
         <div className={roster ? GRID : "mt-5 md:mt-6"}>

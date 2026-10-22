@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ContentItem } from "@/lib/content/versioned";
-import { projectRows } from "./dashboard-list";
+import { cardPosterOf, rocketModelOf } from "@/lib/rocket-model";
+import { projectRows, rowVisualOf } from "./dashboard-list";
 import { importedProjects, importedRecords } from "./import";
-import type { ProjectRecord, VehicleRecord } from "./record";
+import { visualModelOf, type ProjectRecord, type VehicleRecord } from "./record";
 
 // The dashboard Projects list (board 91, issue #506): newest first by the
 // rule the public Projects row uses, drafts included.
@@ -42,4 +43,16 @@ test("only a project with a published version links to its page on the site", ()
       ["VES", "/projects/ves", "published"],
     ],
   );
+});
+
+test("a row's thumbnail draws the top visual on the background: a model's card still, the photo, or nothing (Owner decision on #522)", () => {
+  assert.deepEqual(rowVisualOf(rocket), { kind: "still", src: cardPosterOf(rocketModelOf(visualModelOf(rocket.hero))) });
+  const unbuilt: ProjectRecord = { ...rocket, hero: { ...rocket.hero, visual: { kind: "model", caption: "" } } };
+  assert.deepEqual(rowVisualOf(unbuilt), { kind: "still", src: cardPosterOf("placeholder") }, "a model not built yet draws the outline rocket");
+  const photo = { src: "/project-photos/cavour-pad.webp", alt: "Cavour on the pad" } as const;
+  const withPhoto: ProjectRecord = { ...rocket, hero: { ...rocket.hero, visual: { kind: "photo", caption: "", photo } } };
+  assert.deepEqual(rowVisualOf(withPhoto), { kind: "photo", ...photo });
+  const none: ProjectRecord = { ...rocket, hero: { ...rocket.hero, visual: { kind: "none" } } };
+  assert.deepEqual(rowVisualOf(none), { kind: "none" });
+  assert.deepEqual(projectRows([{ id: 1, siteOrder: 1, version: { state: "draft", draft: none } }])[0].visual, { kind: "none" });
 });

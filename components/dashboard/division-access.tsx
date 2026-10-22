@@ -13,6 +13,7 @@ import {
   Info,
   Layers,
   Lock,
+  PenLine,
   Plus,
   ShieldCheck,
   ShoppingCart,
@@ -25,7 +26,6 @@ import { toast } from "sonner";
 import {
   ACCESS_LEVEL_LABELS,
   ACCESS_LEVEL_SHORT_LABELS,
-  ACCESS_LEVELS,
   ACCESS_LEVELS_EXPLAINED,
   ACCESS_TARGET_LABELS,
   ACCESS_TARGETS,
@@ -41,6 +41,7 @@ import {
   holdsApproveOrders,
   holdsEveryArea,
   homePlace,
+  levelsOf,
   PERSON_STANDING_LABELS,
   placeKey,
   placeLine,
@@ -95,8 +96,12 @@ const TARGET_ICONS: Readonly<Record<AccessTarget, LucideIcon>> = {
   applications: Inbox,
   members: Users,
   alumni: GraduationCap,
+  content: PenLine,
   orders: ShoppingCart,
 };
+
+/** The line under Whole team where a lead or head gives Content alone (issue #504). */
+const CONTENT_ONLY_LINE = "Content only, across the whole team";
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
@@ -758,8 +763,8 @@ function AccessDrawer({
   const shown = targetsAt(place).filter((t) => heldLevel(held, t) !== null || current[t] !== undefined);
 
   const choosePerson = (id: number) => {
-    // On a lead's page the place follows the person: their division (issue #185).
-    const at = unit.kind === "division" ? divisionPlaceOf(unit, access.people.find((p) => p.id === id)) : place;
+    // On a lead's page the place follows the person: their division (issue #185), unless Whole team is chosen for Content (issue #504).
+    const at = unit.kind === "division" && place.kind !== "team" ? divisionPlaceOf(unit, access.people.find((p) => p.id === id)) : place;
     setPersonId(id);
     setPlace(at);
     setAreas(areaLevelsOf(grants, id, at));
@@ -896,8 +901,27 @@ function AccessDrawer({
                   group={whereLabel}
                   chosen={samePlace(option, place)}
                   onChoose={() => choosePlace(option)}
-                  title={option.kind === "division" ? option.division.name : "Whole department"}
-                  line={option.kind === "department" ? wholeDepartmentLine(unit) : "Only this division"}
+                  title={option.kind === "division" ? option.division.name : option.kind === "team" ? "Whole team" : "Whole department"}
+                  line={option.kind === "department" ? wholeDepartmentLine(unit) : option.kind === "team" ? CONTENT_ONLY_LINE : "Only this division"}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* A lead holding Content gives it across the whole team (issue #504): their Where is the person's division or the whole team. */}
+        {unit.kind === "division" && unit.content === true && (
+          <div className="mt-6" role="radiogroup" aria-labelledby={whereLabel}>
+            <GroupLabel id={whereLabel} label="Where" hint="their division or the whole team" />
+            <div className="flex flex-col gap-1 rounded-[10px] border border-white-10 p-1">
+              {[divisionPlaceOf(unit, person), WHOLE_TEAM_PLACE].map((option) => (
+                <WhereOption
+                  key={String(placeKey(option))}
+                  group={whereLabel}
+                  chosen={samePlace(option, place)}
+                  onChoose={() => choosePlace(option)}
+                  title={option.kind === "division" ? option.division.name : "Whole team"}
+                  line={option.kind === "division" ? "Only this division" : CONTENT_ONLY_LINE}
                 />
               ))}
             </div>
@@ -1156,7 +1180,11 @@ function ApproveOrdersOption({ on, disabled, onChange }: { on: boolean; disabled
   );
 }
 
-/** One area in a drawer: a tick, and when ticked, Can view or Can edit beneath it (boards 60b, 60c and 65b). */
+/**
+ * One area in a drawer: a tick, and when ticked, Can view or Can edit beneath
+ * it (boards 60b, 60c and 65b). An area given at one level alone, Content
+ * (issue #504), has no toggle: the tick gives it at that level.
+ */
 function AreaOption({
   target,
   placeName,
@@ -1174,6 +1202,7 @@ function AreaOption({
   const on = level !== null;
   const locked = !rule.changeable;
   const levelGroup = useId();
+  const levels = levelsOf(target);
   return (
     <div
       className={`rounded-[10px] border px-3 py-2.5 transition-colors duration-300 ease-out ${
@@ -1185,7 +1214,7 @@ function AreaOption({
           type="checkbox"
           checked={on}
           disabled={locked}
-          onChange={() => onChange(on ? null : "view")}
+          onChange={() => onChange(on ? null : levels[0])}
           className="sr-only"
         />
         <span
@@ -1202,13 +1231,13 @@ function AreaOption({
           <span className="block truncate text-[12px] text-prt-muted">{placeName}</span>
         </span>
       </label>
-      {on && (
+      {on && levels.length > 1 && (
         <div
           role="radiogroup"
           aria-label={`${ACCESS_TARGET_LABELS[target]} level`}
           className="mt-2.5 grid h-9 grid-cols-2 gap-1 rounded-[8px] border border-white-10 p-1"
         >
-          {ACCESS_LEVELS.map((l) => {
+          {levels.map((l) => {
             const disabled = locked || (l === "edit" && rule.changeable && rule.highest !== "edit");
             return (
               <label

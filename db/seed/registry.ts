@@ -5,6 +5,7 @@
 
 import type { SeedModule } from "@/lib/seed/runner";
 import { access } from "./access";
+import { aliasesSeed } from "./aliases";
 import { alumni } from "./alumni";
 import { audit } from "./audit";
 import { faqSeed } from "./faq";
@@ -32,6 +33,8 @@ export const SEED_MODULES: readonly SeedModule<SeedTx>[] = [
   projectsSeed,
   // After people: its rows go in after every role, so no role insert closes the waiting one.
   handOversSeed,
+  // After people: it saves the created alias on a member's row.
+  aliasesSeed,
   teamPageSeed,
   audit,
 ];
