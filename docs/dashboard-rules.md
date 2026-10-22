@@ -576,6 +576,13 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 
   domain. The server accepts firstname.lastname, or one word for a special-purpose address, and
   only on the team domain. The address is saved on the member's record and shown beside their
   team email (board 94e). It tells the requester and the member; Decline tells the requester.
+- Beside that notice, the member's own Overview shows the "Your email alias is ready" card
+  (board 94f, issue #542, `lib/dashboard/alias-setup.ts`) until they set the alias up. Open setup
+  steps opens "Set up your email alias" (board 94g). Close only closes it; the card stays until
+  the member presses "I've set it up", which is stored on their own record. The card shows on
+  every Overview shape, a lead's as a member's, and never off the team.
+- My profile shows the alias in the member's own details, with a "Setup steps" link to the same
+  panel at any time. Nobody reads or sets up another member's alias from either page.
 - The Members export to Excel has an Email alias column beside PRT email: the address on the
   member's record, empty when they have none.
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no

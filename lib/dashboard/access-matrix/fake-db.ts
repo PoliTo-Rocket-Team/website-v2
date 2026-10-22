@@ -76,6 +76,24 @@ export function insertRows(table: Table, rows: readonly Record<string, unknown>[
   store.set(baseName(table), stored);
 }
 
+/**
+ * Changes the stored rows `match` picks, both written with the schema's field
+ * names: the way a test lays a value over a seeded row without recording a write.
+ */
+export function updateRows(table: Table, match: Record<string, unknown>, fields: Record<string, unknown>): void {
+  const columns = getTableColumns(table) as Record<string, Column>;
+  const name = (field: string) => {
+    const column = columns[field];
+    if (!column) throw new Error(`fake db: ${baseName(table)} has no field ${field}`);
+    return column.name;
+  };
+  for (const row of rowsOf(table)) {
+    if (Object.entries(match).every(([field, value]) => row[name(field)] === value)) {
+      for (const [field, value] of Object.entries(fields)) row[name(field)] = value;
+    }
+  }
+}
+
 function rowsOf(table: Table): DbRow[] {
   return store.get(baseName(table)) ?? [];
 }

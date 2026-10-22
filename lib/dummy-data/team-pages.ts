@@ -101,6 +101,7 @@ import {
   planAliasCancel,
   planAliasRequest,
 } from "@/lib/dashboard/alias-request";
+import { ownAliasOf, planAliasSetUp } from "@/lib/dashboard/alias-setup";
 import {
   answerNoticeOf,
   checkHandOverSend,
@@ -1243,7 +1244,7 @@ export function dummyAliasPages(
 ): {
   /** The open requests the viewer answers, as attention rows: none for anyone but the three approver seats. */
   readonly attention: (now: Date) => AttentionItem[];
-} & Pick<DashboardData, "memberAliases" | "requestAlias" | "cancelAliasRequest" | "answerAlias"> {
+} & Pick<DashboardData, "memberAliases" | "requestAlias" | "cancelAliasRequest" | "answerAlias" | "myAlias" | "confirmAliasSetUp"> {
   const self = SELF_ID[kind];
   const standing = testDeveloperStanding(kind);
   const roster = editedRoster(edits, dummyJoiners(current));
@@ -1252,6 +1253,11 @@ export function dummyAliasPages(
   const all = dummyAliasRequestsOf(edits);
   const open = openAliasRequests(all);
   const addresses = dummyAliasesOf(edits);
+  // The viewer's own alias (issue #542): their own record and nobody else's.
+  const own = () =>
+    self === null
+      ? null
+      : ownAliasOf({ kind: kindOfTestViewer(kind), alias: addresses.get(self) ?? null, setUpAt: edits.aliasesSetUp[self] ?? null });
   const close = (id: number, outcome: "created" | "declined" | "cancelled") => {
     const request = all.find((r) => r.id === id);
     return request === undefined ? edits : withDummyAliasRequest(edits, { ...request, outcome });
@@ -1265,6 +1271,13 @@ export function dummyAliasPages(
       if (!planned.ok) return refused(planned.error);
       // The dummy team is seen from DUMMY_NOW, so a request is sent then too.
       await save(withDummyAliasRequest(edits, { id: nextAliasRequestId(all), memberId, requesterId: planned.value.requesterId, sentAt: DUMMY_NOW, outcome: null }));
+      return written(null);
+    },
+    myAlias: async () => own(),
+    async confirmAliasSetUp() {
+      const planned = planAliasSetUp(own());
+      if (!planned.ok || self === null) return refused(planned.ok ? "You have no email alias to set up." : planned.error);
+      await save({ ...edits, aliasesSetUp: { ...edits.aliasesSetUp, [self]: DUMMY_NOW } });
       return written(null);
     },
     async cancelAliasRequest(requestId) {

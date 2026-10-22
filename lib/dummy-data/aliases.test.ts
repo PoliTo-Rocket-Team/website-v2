@@ -39,7 +39,7 @@ test("the division lead's drawer: Request alias for Elif, Requested for Luca, So
   assert.deepEqual(await as("member").memberAliases([ELIF]), {}, "a member does not open Members");
 });
 
-test("Request alias, then Mark created: the address lands on the record and both are told", async () => {
+test("Request alias, then Mark created: the address lands on the record, both are told and the member sees the card", async () => {
   const { as } = preview();
   assert.deepEqual(await as("division-lead").requestAlias(ELIF), { ok: true, value: null });
   assert.equal((await as("division-lead").requestAlias(ELIF)).ok, false, "one open request per member");
@@ -57,6 +57,20 @@ test("Request alias, then Mark created: the address lands on the record and both
   const told = (await as("division-lead").overview()).attention.map((a) => a.title);
   assert.ok(told.includes("Elif Kaya's email alias is ready"), told.join(" | "));
   assert.ok((await as("member").overview()).attention.some((a) => a.title === "Your email alias is ready"));
+  assert.deepEqual(await as("member").myAlias(), { address: "elif.kaya@politorocketteam.it", setUp: false });
+});
+
+test("I've set it up is kept for the member alone, after a round trip through the cookie, and refused without an alias", async () => {
+  const { as } = preview();
+  assert.equal(await as("member").myAlias(), null, "no alias, no card");
+  assert.equal((await as("member").confirmAliasSetUp()).ok, false, "no alias to set up");
+  await as("division-lead").requestAlias(ELIF);
+  await as("team-leader").answerAlias(3, { kind: "created", address: "elif.kaya@politorocketteam.it" });
+  assert.deepEqual(await as("member").confirmAliasSetUp(), { ok: true, value: null });
+  assert.deepEqual(await as("member").myAlias(), { address: "elif.kaya@politorocketteam.it", setUp: true });
+  assert.equal((await as("member").confirmAliasSetUp()).ok, false, "already set up");
+  assert.equal(await as("division-lead").myAlias(), null, "Marco's own alias state is untouched");
+  assert.equal(await as("non-member").myAlias(), null);
 });
 
 test("Decline closes the request and tells the requester; only an approver seat answers", async () => {

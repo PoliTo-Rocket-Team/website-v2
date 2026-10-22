@@ -145,6 +145,8 @@ export type TeamEdits = {
   readonly aliasRequests: readonly DummyAliasRequest[];
   /** Aliases Mark created saved, by person id. */
   readonly aliases: Readonly<Record<number, string>>;
+  /** Who pressed "I've set it up" on their own alias (issue #542), by person id, with when. */
+  readonly aliasesSetUp: Readonly<Record<number, string>>;
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -165,6 +167,7 @@ export const NO_EDITS: TeamEdits = {
   handOvers: [],
   aliasRequests: [],
   aliases: {},
+  aliasesSetUp: {},
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -335,6 +338,15 @@ function readAliases(value: unknown): Record<number, string> {
   return out;
 }
 
+function readAliasesSetUp(value: unknown): Record<number, string> {
+  if (!isRecord(value)) return {};
+  const out: Record<number, string> = {};
+  for (const [key, at] of Object.entries(value).slice(-MAX_ALIASES)) {
+    if (/^[1-9]\d*$/.test(key) && typeof at === "string" && !Number.isNaN(Date.parse(at))) out[Number(key)] = at;
+  }
+  return out;
+}
+
 function readRequestedRole(value: unknown): RequestedRole | null {
   if (!isRecord(value)) return null;
   const id = (key: string) => Number.isInteger(value[key]) && (value[key] as number) > 0;
@@ -453,6 +465,7 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
       ? raw.aliasRequests.flatMap((r) => readAliasRequest(r) ?? []).slice(-MAX_ALIAS_REQUESTS)
       : [],
     aliases: readAliases(raw.aliases),
+    aliasesSetUp: readAliasesSetUp(raw.aliasesSetUp),
   };
 }
 
