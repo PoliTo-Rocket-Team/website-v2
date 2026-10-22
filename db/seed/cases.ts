@@ -6,11 +6,13 @@ import type { InferInsertModel } from "drizzle-orm";
 import {
   applicationStatusEnum,
   orderStatusEnum,
+  type aliasRequests,
   type alumniEntries,
   type alumniImportedRoles,
   type applicationFiles,
   type applications,
   type applyPositions,
+  type dashboardNotices,
   type departments,
   type divisions,
   type faqs,
@@ -54,9 +56,12 @@ import { visualModelOf, type ProjectRecord } from "@/lib/project-content/record"
 import { rowRecordOf } from "@/lib/project-content/row";
 import { rocketModelOf, type OwnModel } from "@/lib/rocket-model";
 import { partnerFromColumns } from "@/lib/partners-rows";
+import { aliasAttentionFor, memberAliasesFor, type AliasRequest } from "@/lib/dashboard/alias-request";
+import { ownAliasOf, showsAliasCard } from "@/lib/dashboard/alias-setup";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
 import type { TeamPerson } from "@/lib/dashboard/division-edit";
 import { steppingDown } from "@/lib/dashboard/hand-over";
+import { attentionOf, noticeOf } from "@/lib/dashboard/notices";
 import { handOverAttentionFor, hasLapsed, successorsFor, type HandOverRequest, type RequestedRole } from "@/lib/dashboard/hand-over-request";
 import { boardSeatOf, headDepartmentOf, membershipsOfRoles, roleBeyondDivisions, type OrgChart, type Placement, type RoleSeat } from "@/lib/dashboard/team";
 import {
@@ -71,6 +76,7 @@ import {
   type TestViewer,
   type ViewerStanding,
 } from "@/lib/dashboard/viewer";
+import { ALIAS_NOTICE_ROWS, ALIAS_REQUEST_ROWS, AUTOMATIC_REQUEST, CREATED_ALIAS, DECLINED_REQUEST, OPEN_REQUEST } from "./aliases";
 import { ALUMNI_ENTRY_ROWS, ALUMNI_IMPORTED_ROLE_ROWS } from "./alumni";
 import { SCOPE_ROWS } from "./access";
 import { FAQ_ROWS, FAQ_VERSION_ROWS } from "./faq";
@@ -84,7 +90,7 @@ import {
 } from "./outreach";
 import { PARTNER_ROWS, PARTNER_VERSION_ROWS } from "./partners";
 import { PROJECT_ROWS, PROJECT_VERSION_ROWS } from "./projects";
-import { MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
+import { IT_LEAD, MEMBER_ROWS, ROLE_ROWS, TEST_VIEWER_PEOPLE, USER_ROWS } from "./people";
 import { APPLICATION_FILE_ROWS, APPLICATION_ROWS, POSITION_ROWS, RECRUITMENT_SETTING_ROWS, SLOT_ROWS } from "./recruitment";
 import { DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
 import {
@@ -120,6 +126,8 @@ export type SeedData = {
   readonly faqs: readonly InferInsertModel<typeof faqs>[];
   readonly faqVersions: readonly InferInsertModel<typeof faqVersions>[];
   readonly handOvers: readonly InferInsertModel<typeof handOverRequests>[];
+  readonly aliasRequests: readonly InferInsertModel<typeof aliasRequests>[];
+  readonly aliasNotices: readonly InferInsertModel<typeof dashboardNotices>[];
   readonly outreachTags: readonly InferInsertModel<typeof outreachTags>[];
   readonly outreachPosts: readonly InferInsertModel<typeof outreachPosts>[];
   readonly outreachPostVersions: readonly InferInsertModel<typeof outreachPostVersions>[];
@@ -151,6 +159,8 @@ export const SEED_DATA: SeedData = {
   faqs: FAQ_ROWS.rows,
   faqVersions: FAQ_VERSION_ROWS.rows,
   handOvers: HAND_OVER_ROWS.rows,
+  aliasRequests: ALIAS_REQUEST_ROWS.rows,
+  aliasNotices: ALIAS_NOTICE_ROWS.rows,
   outreachTags: OUTREACH_TAG_ROWS.rows,
   outreachPosts: OUTREACH_POST_ROWS.rows,
   outreachPostVersions: OUTREACH_POST_VERSION_ROWS.rows,
@@ -451,6 +461,64 @@ export function waitingHandOversOf(data: SeedData): HandOverRequest[] {
   });
 }
 
+// Email aliases (issue #550), read through the alias rules
+// (lib/dashboard/alias-request.ts, alias-setup.ts) the way the database source
+// reads them (lib/dashboard/database-alias.ts).
+
+/** The requests still open, as `readOpenAliasRequests` reads them. */
+export function openAliasRequestsOf(data: SeedData): AliasRequest[] {
+  return data.aliasRequests.flatMap((r) =>
+    r.outcome != null ? [] : [{ id: r.id!, memberId: r.memberId, requesterId: r.requestedBy ?? null, sentAt: r.createdAt! }],
+  );
+}
+
+/** Every alias on a member's record, by member id, as `readAliasAddresses` reads them. */
+export function aliasAddressesOf(data: SeedData): Map<number, string> {
+  return new Map(data.members.flatMap((m) => (m.emailAlias == null ? [] : [[m.memberId!, m.emailAlias] as const])));
+}
+
+/** The member a seeded user is, by member id: the user whose `member` it is. */
+function userOfMember(data: SeedData, memberId: number): string | undefined {
+  return data.users.find((u) => u.member === memberId)?.id;
+}
+
+/** The three approver seats' standings: the team leader, the operations lead and the IT lead. */
+export function aliasApproversOf(data: SeedData): ViewerStanding[] {
+  const users = [TEST_VIEWER_PEOPLE["team-leader"], TEST_VIEWER_PEOPLE["operations-lead"], userOfMember(data, IT_LEAD)];
+  return users.flatMap((id) => {
+    const standing = id === undefined ? null : standingOfUser(data, id);
+    return standing === null ? [] : [standing];
+  });
+}
+
+/** The alias of `memberId` in `viewer`'s member drawer. */
+export function drawerAliasOf(data: SeedData, viewer: number | null, memberId: number) {
+  return memberAliasesFor({
+    viewerId: viewer,
+    memberIds: [memberId],
+    team: teamOf(data),
+    org: orgOf(data),
+    addresses: aliasAddressesOf(data),
+    open: openAliasRequestsOf(data),
+    now: new Date(),
+  })[memberId];
+}
+
+/** The rows each approver reads under "Needs your attention" for the open requests. */
+export function aliasRowsOf(data: SeedData, viewer: ViewerStanding) {
+  return aliasAttentionFor(viewer, openAliasRequestsOf(data), teamOf(data), orgOf(data), new Date());
+}
+
+/** `recipient`'s alias notices as their attention rows, as `readNotices` reads them. */
+export function aliasNoticeRowsOf(data: SeedData, recipient: number | null) {
+  const team = teamOf(data);
+  return data.aliasNotices.flatMap((row, i) => {
+    if (row.recipientId !== recipient) return [];
+    const notice = noticeOf({ id: i + 1, kind: row.kind, subject: team.find((p) => p.id === row.subjectId)?.name ?? "", createdAt: row.createdAt!, data: row.data });
+    return notice === null ? [] : [attentionOf(notice, new Date())];
+  });
+}
+
 /** The member a seeded user is, or null for someone off the team. */
 export function memberOfUser(data: SeedData, userId: string): number | null {
   return data.users.find((u) => u.id === userId)?.member ?? null;
@@ -634,6 +702,7 @@ export type SeedArea =
   | "outreach"
   | "projects"
   | "hand-overs"
+  | "aliases"
   | "team-page";
 
 export const SEED_AREAS: readonly SeedArea[] = [
@@ -648,6 +717,7 @@ export const SEED_AREAS: readonly SeedArea[] = [
   "outreach",
   "projects",
   "hand-overs",
+  "aliases",
   "team-page",
 ];
 
@@ -1252,6 +1322,84 @@ export const SEED_CASES: readonly SeedCase[] = [
     rows: "`hand_over_requests` 1, member 43 to member 10",
     exercisedBy: `${issue(253)}, ${issue(262)}`,
     holds: (data) => data.handOvers.some((row) => row.outcome === "advisor" && confirmedAsWritten(data, row)),
+  },
+  {
+    area: "aliases",
+    case: "An open alias request the division-lead test viewer sent, which they may cancel and each approver may decline or mark created",
+    data: "invented",
+    rows: "`alias_requests` 1, member 902 for member 134",
+    exercisedBy: `${issue(541)}, ${issue(550)}`,
+    holds: (data) => {
+      const lead = memberOfUser(data, TEST_VIEWER_PEOPLE["division-lead"]);
+      const drawer = drawerAliasOf(data, lead, OPEN_REQUEST.member);
+      const approvers = aliasApproversOf(data);
+      return (
+        lead === OPEN_REQUEST.by &&
+        drawer?.kind === "requested" &&
+        drawer.cancellable &&
+        drawer.line.startsWith("by you") &&
+        approvers.length === 3 &&
+        approvers.every((a) => aliasRowsOf(data, a).some((r) => r.kind === "alias-request" && "answerAlias" in r.action && r.action.answerAlias === OPEN_REQUEST.id))
+      );
+    },
+  },
+  {
+    area: "aliases",
+    case: "An open alias request the site made by itself when someone became a division lead",
+    data: "invented",
+    rows: "`alias_requests` 2, member 13, no requester",
+    exercisedBy: `${issue(543)}, ${issue(550)}`,
+    holds: (data) => {
+      const request = openAliasRequestsOf(data).find((r) => r.id === AUTOMATIC_REQUEST.id);
+      const [leader] = aliasApproversOf(data);
+      const row = leader === undefined ? undefined : aliasRowsOf(data, leader).find((r) => r.kind === "alias-request" && "answerAlias" in r.action && r.action.answerAlias === AUTOMATIC_REQUEST.id);
+      return (
+        request?.requesterId === null &&
+        teamOf(data).some((p) => p.id === AUTOMATIC_REQUEST.member && p.memberships.some((m) => m.role === "lead")) &&
+        row !== undefined &&
+        row.title.endsWith("needs an email alias") &&
+        row.detail.startsWith("Automatic · became")
+      );
+    },
+  },
+  {
+    area: "aliases",
+    case: "An alias marked created on the member test viewer's record and not yet set up, with the notice to the division lead who asked for it",
+    data: "invented",
+    rows: "`alias_requests` 3, `members` 901 `email_alias`, `dashboard_notices` `alias-created`",
+    exercisedBy: `${issue(542)}, ${issue(550)}`,
+    holds: (data) => {
+      const member = memberOfUser(data, TEST_VIEWER_PEOPLE.member);
+      const standing = standingOfUser(data, TEST_VIEWER_PEOPLE.member);
+      const row = data.members.find((m) => m.memberId === member);
+      const own = standing === null || row === undefined ? null : ownAliasOf({ kind: standing.kind, alias: row.emailAlias ?? null, setUpAt: row.emailAliasSetUpAt ?? null });
+      const drawer = drawerAliasOf(data, CREATED_ALIAS.by, CREATED_ALIAS.member);
+      return (
+        member === CREATED_ALIAS.member &&
+        showsAliasCard(own) &&
+        own.address === CREATED_ALIAS.address &&
+        data.aliasRequests.some((r) => r.id === CREATED_ALIAS.id && r.memberId === member && r.outcome === "created") &&
+        drawer?.kind === "set" &&
+        !aliasNoticeRowsOf(data, member).some((r) => r.title.includes("email alias")) &&
+        aliasNoticeRowsOf(data, CREATED_ALIAS.by).some((r) => r.title.endsWith("'s email alias is ready"))
+      );
+    },
+  },
+  {
+    area: "aliases",
+    case: "A declined alias request, with the notice to the division lead who sent it, who may ask again",
+    data: "invented",
+    rows: "`alias_requests` 4, member 902 for member 168, `dashboard_notices` `alias-declined`",
+    exercisedBy: `${issue(541)}, ${issue(550)}`,
+    holds: (data) => {
+      const drawer = drawerAliasOf(data, DECLINED_REQUEST.by, DECLINED_REQUEST.member);
+      return (
+        data.aliasRequests.some((r) => r.id === DECLINED_REQUEST.id && r.outcome === "declined" && r.answeredBy === DECLINED_REQUEST.declinedBy) &&
+        drawer?.kind === "none" &&
+        drawer.requestable &&
+        aliasNoticeRowsOf(data, DECLINED_REQUEST.by).some((r) => r.title.includes("declined the email alias for"))
+      );
+    },
   },
   {
     area: "team-page",

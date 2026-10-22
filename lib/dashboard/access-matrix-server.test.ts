@@ -657,14 +657,14 @@ describe("email alias requests: the approver rows, Request alias in the drawer, 
     assert.deepEqual(writes, []);
   });
 
-  test("Mark created saves the address on the member's record and tells the member", async () => {
+  test("Mark created saves the address on the member's record; an automatic request tells nobody (the member sees the board 94f card)", async () => {
     const { answer, writes } = await attempt(accountOf("operations lead").userId, () =>
       actions.answerAlias(IDS.aliasRequest(DM), { kind: "created", address: "lead.dm@politorocketteam.it" }),
     );
     assert.ok(!isRefusal(answer), JSON.stringify(answer));
     assert.deepEqual(
       writes.map((w) => w.table).sort(),
-      ["alias_requests", "dashboard_notices", "members"],
+      ["alias_requests", "members"],
     );
   });
 });

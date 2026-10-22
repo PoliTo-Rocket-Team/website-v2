@@ -211,16 +211,20 @@ function LeadView({
 // 62c, issue #262) is the top row, on an accent tint with an accent icon
 // tile, and answers with Decline and Confirm. An open alias request (board
 // 94c, epic #538) follows it the same way, with Decline and Mark created.
+// Below md, outside board 56m's cards, those two buttons move under the text,
+// so the title keeps the row's width (issue #546); a detail with a long
+// address wraps inside its column rather than running under the button.
 function AttentionPanel({ attention, compact }: { attention: readonly AttentionItem[]; compact: boolean }) {
   return (
     <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`} phoneCards={compact}>
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.kind];
         const handOver = item.kind === "hand-over" || item.kind === "alias-request";
+        const actionsBelow = handOver && !compact;
         return (
           <li
             key={attentionKey(item)}
-            className={`flex items-center gap-4 px-4 py-3.5 md:px-5 ${handOver ? "bg-accent/[0.05] md:last:rounded-b-xl" : ""}`}
+            className={`flex items-center gap-x-4 gap-y-3 px-4 py-3.5 md:px-5 ${handOver ? "bg-accent/[0.05] md:last:rounded-b-xl" : ""} ${actionsBelow ? "max-md:flex-wrap" : ""}`}
           >
             <span
               className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
@@ -240,7 +244,7 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
                   {item.title}
                 </span>
               )}
-              <span className="block text-[13px] text-prt-muted">{item.detail}</span>
+              <span className="block break-words text-[13px] text-prt-muted">{item.detail}</span>
             </span>
             {compact ? (
               <>
@@ -251,6 +255,10 @@ function AttentionPanel({ attention, compact }: { attention: readonly AttentionI
                   <AttentionButton action={item.action} />
                 </span>
               </>
+            ) : actionsBelow ? (
+              <span className="flex max-md:basis-full max-md:pl-12">
+                <AttentionButton action={item.action} />
+              </span>
             ) : (
               <AttentionButton action={item.action} />
             )}

@@ -39,7 +39,7 @@ test("the division lead's drawer: Request alias for Elif, Requested for Luca, So
   assert.deepEqual(await as("member").memberAliases([ELIF]), {}, "a member does not open Members");
 });
 
-test("Request alias, then Mark created: the address lands on the record, both are told and the member sees the card", async () => {
+test("Request alias, then Mark created: the address lands on the record, only the requester is told and the member sees the board 94f card", async () => {
   const { as } = preview();
   assert.deepEqual(await as("division-lead").requestAlias(ELIF), { ok: true, value: null });
   assert.equal((await as("division-lead").requestAlias(ELIF)).ok, false, "one open request per member");
@@ -56,7 +56,7 @@ test("Request alias, then Mark created: the address lands on the record, both ar
   assert.deepEqual((await as("division-lead").memberAliases([ELIF]))[ELIF], { kind: "set", address: "elif.kaya@politorocketteam.it" });
   const told = (await as("division-lead").overview()).attention.map((a) => a.title);
   assert.ok(told.includes("Elif Kaya's email alias is ready"), told.join(" | "));
-  assert.ok((await as("member").overview()).attention.some((a) => a.title === "Your email alias is ready"));
+  assert.ok(!(await as("member").overview()).attention.some((a) => a.title.includes("email alias")), "the card, not a notice row (board 94f)");
   assert.deepEqual(await as("member").myAlias(), { address: "elif.kaya@politorocketteam.it", setUp: false });
 });
 

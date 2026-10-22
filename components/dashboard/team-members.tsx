@@ -130,7 +130,7 @@ export function ScopedMembersView({
   const drawerOpen = open !== null || editing !== null || adding || teamPage !== null;
 
   return (
-    <DrawerPage drawerOpen={drawerOpen}>
+    <DrawerPage drawerOpen={drawerOpen} wide={open !== null}>
       <PageHeader
         title="Members"
         intro={page.intro}

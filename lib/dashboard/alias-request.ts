@@ -231,19 +231,18 @@ export function planAliasAnswer(input: {
 }
 
 /**
- * Who an answer tells (stories 3 and 4): Mark created tells the requester and
- * the member, Decline the requester. A request the site made has no requester
- * to tell. Each notice is about the member; `approver` names who declined.
+ * Who an answer tells (stories 3 and 4): Mark created and Decline each tell the
+ * requester. A request the site made has no requester to tell. The member
+ * learns of their alias from the board 94f card on their Overview, not from a
+ * notice (owner ruling on #550). Each notice is about the member; `approver`
+ * names who declined.
  */
 export function aliasAnswerNotices(plan: AliasAnswerPlan, approver: string): AddressedNotice[] {
   const { requesterId, memberId } = plan.request;
   const requester = requesterId === null || requesterId === memberId ? [] : [requesterId];
   if (plan.kind === "decline") return requester.map((recipientId) => ({ recipientId, notice: { kind: "alias-declined", data: { by: approver } } }));
   const { address } = plan;
-  return [
-    ...requester.map((recipientId): AddressedNotice => ({ recipientId, notice: { kind: "alias-created", data: { address } } })),
-    { recipientId: memberId, notice: { kind: "alias-ready", data: { address } } },
-  ];
+  return requester.map((recipientId): AddressedNotice => ({ recipientId, notice: { kind: "alias-created", data: { address } } }));
 }
 
 // How it reads ---------------------------------------------------------------------------
