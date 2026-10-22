@@ -12,7 +12,7 @@ tags: [hosting, database, neon, vercel, launch]
 
 ## Context
 
-Decided 2026-10-22 by the project owner in chat, while the v2 launch was set up. His words are quoted verbatim, with the questions they answered, at https://github.com/PoliTo-Rocket-Team/website-v2/issues/555#issuecomment-6338589217, recorded as [ADR 0006](0006-pitch-approval-from-chat-ruling.md) says. The settings below were already applied when this record was written; it records them and changes none of them.
+Decided 2026-10-22 by the project owner in chat, while the v2 launch was set up. The decisions are recorded as neutral owner-decision statements at https://github.com/PoliTo-Rocket-Team/website-v2/issues/555#issuecomment-6340615126, as [ADR 0006](0006-pitch-approval-from-chat-ruling.md) says. The settings below were already applied when this record was written; it records them and changes none of them.
 
 Two records described the old setup. [ADR 0003](0003-neon-direct-pooled.md) ruled out a database managed through the host, and [ADR 0016](0016-previews-read-their-own-seeded-branch.md) Decision 9 allowed the Neon integration only in the form that links the project's own Neon account, with a connection that covered Production and Development alike. An agent reading them could move the hosting back. This record amends both in part; the lines it replaces are listed below.
 
