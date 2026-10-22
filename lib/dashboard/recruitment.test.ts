@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ago, appliedLabels, documentsLine, filterPositions, grantPlacesOf, quietDays, type PositionRow } from "./recruitment";
+import { ago, appliedLabels, documentsLine, filterPositions, grantReachOf, placesPhrase, quietDays, type PositionRow } from "./recruitment";
 import { grantedAreasOf, type AreaGrant, type AreaReader } from "./viewer";
 
 // Issue #487: a member's Positions page names the places their Positions
@@ -28,15 +28,53 @@ const grantHolder = (...grants: AreaGrant[]): AreaReader => ({
 test("a member's Positions page names the places their Positions grants cover, not their own division (issue #487)", () => {
   const onPropulsion: AreaGrant = { target: "positions", level: "view", unit: { kind: "department", departmentId: 2 } };
   const onTestBench: AreaGrant = { target: "positions", level: "edit", unit: { kind: "division", divisionId: 3 } };
-  assert.deepEqual(grantPlacesOf(grantHolder(onPropulsion), OPEN), [{ kind: "department", name: "Propulsion" }]);
-  assert.deepEqual(grantPlacesOf(grantHolder(onTestBench), OPEN), [{ kind: "division", name: "Test Bench" }]);
-  assert.deepEqual(grantPlacesOf(grantHolder(onTestBench, onPropulsion), OPEN), [
-    { kind: "department", name: "Propulsion" },
-    { kind: "division", name: "Test Bench" },
-  ]);
+  const places = (...grants: AreaGrant[]) => grantReachOf(grantHolder(...grants), "positions", OPEN);
+  assert.deepEqual(places(onTestBench), { kind: "places", places: [{ kind: "division", name: "Test Bench" }] });
+  assert.deepEqual(places(onTestBench, onPropulsion), {
+    kind: "places",
+    places: [
+      { kind: "department", name: "Propulsion" },
+      { kind: "division", name: "Test Bench" },
+    ],
+  });
   // A grant on another area names no place here.
   const onApplications: AreaGrant = { target: "applications", level: "edit", unit: { kind: "department", departmentId: 1 } };
-  assert.deepEqual(grantPlacesOf(grantHolder(onPropulsion, onApplications), OPEN), [{ kind: "department", name: "Propulsion" }]);
+  assert.deepEqual(places(onTestBench, onApplications), { kind: "places", places: [{ kind: "division", name: "Test Bench" }] });
+  assert.equal(places(onApplications), null);
+});
+
+test("grants that cover every open department reach the whole team (issue #577)", () => {
+  // A `team` scope row is a grant in every open department.
+  const wholeTeam = (area: "positions" | "applications"): AreaGrant[] =>
+    OPEN.departments.map((d) => ({ target: area, level: "view", unit: { kind: "department", departmentId: d.id } }));
+  assert.deepEqual(grantReachOf(grantHolder(...wholeTeam("positions")), "positions", OPEN), { kind: "team" });
+  assert.deepEqual(grantReachOf(grantHolder(...wholeTeam("applications")), "applications", OPEN), { kind: "team" });
+  // One department short of the team names the places it covers.
+  const onPropulsion: AreaGrant = { target: "applications", level: "view", unit: { kind: "department", departmentId: 2 } };
+  assert.deepEqual(grantReachOf(grantHolder(onPropulsion), "applications", OPEN), { kind: "places", places: [{ kind: "department", name: "Propulsion" }] });
+  // The Applications reach is read from the Applications grants alone.
+  assert.equal(grantReachOf(grantHolder(...wholeTeam("positions")), "applications", OPEN), null);
+});
+
+test("a grant's places are named once, and past two they are counted (issue #577)", () => {
+  assert.equal(placesPhrase([{ kind: "department", name: "Propulsion" }]), "the Propulsion Department");
+  assert.equal(placesPhrase([{ kind: "division", name: "Test Bench" }]), "the Test Bench");
+  assert.equal(
+    placesPhrase([
+      { kind: "department", name: "Propulsion" },
+      { kind: "division", name: "Test Bench" },
+    ]),
+    "the Propulsion Department and the Test Bench",
+  );
+  assert.equal(
+    placesPhrase([
+      { kind: "department", name: "Aerodynamics" },
+      { kind: "department", name: "Propulsion" },
+      { kind: "department", name: "Structures" },
+      { kind: "division", name: "Test Bench" },
+    ]),
+    "3 departments and 1 division",
+  );
 });
 
 const row = (title: string, department: string, open: boolean): PositionRow => ({

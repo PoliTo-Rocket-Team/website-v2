@@ -773,7 +773,13 @@ function otherApplications(a: DummyApplication, team: Team): OtherApplication[] 
     });
 }
 
-function applicationEntry(a: DummyApplication, position: DummyPosition, team: Team, onTeam: readonly RosterEntry[]): ApplicationEntry {
+function applicationEntry(
+  a: DummyApplication,
+  position: DummyPosition,
+  team: Team,
+  onTeam: readonly RosterEntry[],
+  writer: PositionWriter,
+): ApplicationEntry {
   return {
     id: a.id,
     state: a.state,
@@ -803,6 +809,8 @@ function applicationEntry(a: DummyApplication, position: DummyPosition, team: Te
     ],
     answers: [a.answer],
     otherApplications: otherApplications(a, team),
+    // The rule the move write asks, as on the database side (issue #577).
+    canChange: mayChangePositionIn(writer, "applications", { divisionId: position.divisionId, departmentId: divisionOf(position.divisionId).departmentId }),
   };
 }
 
@@ -827,13 +835,14 @@ function applicationsPage(kind: ViewerKind, team: Team, onTeam: readonly RosterE
   if (kind !== "operations-lead" && kind !== "department-head" && kind !== "division-lead") throw new DashboardRefused("applications");
   const scoped = positionsFor(kind, team, "applications");
   const byId = new Map(scoped.map((p) => [p.id, p]));
+  const writer = positionWriter(kind);
   return {
     scope: applicationsScope(kind),
     now: NOW.toISOString(),
     positions: scoped.map((p) => ({ ref: p.slug, title: p.title, division: divisionOf(p.divisionId).name, department: departmentOf(p.divisionId).name })),
     applications: applicationsTo(scoped, team)
       .sort((x, y) => new Date(y.appliedAt).getTime() - new Date(x.appliedAt).getTime())
-      .map((a) => applicationEntry(a, byId.get(a.positionId)!, team, onTeam)),
+      .map((a) => applicationEntry(a, byId.get(a.positionId)!, team, onTeam, writer)),
   };
 }
 

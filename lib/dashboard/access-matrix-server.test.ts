@@ -21,8 +21,9 @@ import { filterTeam, NO_TEAM_FILTER } from "./team-members";
 import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
+import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
-import type { PositionsPage } from "./recruitment";
+import type { ApplicationsPage, PositionsPage } from "./recruitment";
 import { insertRows, keepWrites, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
 import type { OwnAlias } from "./alias-setup";
 import { isOffTeam } from "./viewer";
@@ -217,8 +218,8 @@ describe("figures about applications come only where the viewer reads Applicatio
 const GRANT_INTROS: Readonly<Record<string, string>> = {
   "member with a positions grant across the division": "Roles in the Mission Analysis.",
   "member with a positions grant across the department": "Roles in the Aerodynamics Department.",
-  // A `team` row is a grant in every open department, the fixture's spare one included.
-  "member with a positions grant across the team": "Roles in the Aerodynamics Department and the Spare Department and the Structures Department.",
+  // A `team` row is a grant in every open department, the fixture's spare one included: the line names the team once (issue #577).
+  "member with a positions grant across the team": "Every role in the team.",
   "member with a Positions grant (Can view) in MA": "Roles in the Mission Analysis.",
   "member with a Positions grant (Can edit) in MA and (Can view) in DM": "Roles in the Design & Manufacturing and the Mission Analysis.",
 };
@@ -242,6 +243,38 @@ describe("the Positions page offers only what the viewer may do (issue #487)", (
         assert.ok(positionsModelOf(positions).intro.startsWith(`${GRANT_INTROS[name]} `), `${name}: ${positionsModelOf(positions).intro}`);
       } else {
         assert.notEqual(positions.scope, "granted", name);
+      }
+    });
+  }
+});
+
+// The intro each Applications grant holder's page reads: what the grant covers, never their own division (issue #577).
+const APPLICATIONS_GRANT_INTROS: Readonly<Record<string, string>> = {
+  "member with a applications grant across the division": "Applications for roles in the Mission Analysis.",
+  "member with a applications grant across the department": "Applications for roles in the Aerodynamics Department.",
+  "member with a applications grant across the team": "Applications for every role in the team.",
+  "member with an Applications grant (Can view) across the team": "Applications for every role in the team.",
+  "member with an Applications grant (Can edit) in MA and (Can view) in DM": "Applications for roles in the Design & Manufacturing and the Mission Analysis.",
+};
+
+describe("the Applications page offers a move only where the viewer may make it (issue #577)", () => {
+  for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
+    test(name, async () => {
+      const data = await open(name);
+      const page = await answerOf(() => data.applications());
+      if (page === "refused") return;
+      const applications = page as ApplicationsPage;
+      // Each application's panel offers steps exactly where the viewer changes Applications.
+      for (const a of applications.applications) {
+        const position = applications.positions.find((p) => p.ref === a.position.ref)!;
+        const unit = unitOfPosition(Number(position.ref));
+        assert.equal(a.canChange, expect.changes.applications.includes(unit), `${name}: the application in ${unit}`);
+      }
+      if (name in APPLICATIONS_GRANT_INTROS) {
+        assert.equal(applications.scope.kind, "granted", name);
+        assert.equal(applicationsModelOf(applications).intro, APPLICATIONS_GRANT_INTROS[name], name);
+      } else {
+        assert.notEqual(applications.scope.kind, "granted", name);
       }
     });
   }

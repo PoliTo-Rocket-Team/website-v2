@@ -67,32 +67,58 @@ export type PositionRow = {
   readonly content: PositionContent;
 };
 
-/** A place a member's Positions grant covers, as the page's intro names it (issue #487). */
+/** A place a member's grant covers, as a page's intro names it (issue #487). */
 export type GrantPlace = { readonly kind: "department"; readonly name: string } | { readonly kind: "division"; readonly name: string };
 
-/** An open department or division by id, as `grantPlacesOf` names it. */
+/** An open department or division by id, as `grantReachOf` names it. */
 export type NamedUnit = { readonly id: number; readonly name: string };
 
 /**
- * The places a member's Positions grants cover (issue #487): the units
- * `areaUnitsOf` gives for Positions, departments first, each by name, among
- * the open ones. A member's own role adds no unit there, so the page never
- * names their own division for a grant elsewhere.
+ * What a member's grants on one area cover, as the Positions and
+ * Applications intros name it (issues #487, #577): the whole team when they
+ * cover every open department, which is what a `team` scope row opens, else
+ * the places they cover.
  */
-export function grantPlacesOf(
+export type GrantReach = { readonly kind: "team" } | { readonly kind: "places"; readonly places: readonly [GrantPlace, ...GrantPlace[]] };
+
+/**
+ * The reach of a member's grants on `area` (issues #487, #577): the units
+ * `areaUnitsOf` gives, departments first, each by name, among the open ones.
+ * A member's own role adds no unit there, so the page never names their own
+ * division for a grant elsewhere. Null when the grants cover no open unit.
+ */
+export function grantReachOf(
   viewer: AreaReader,
+  area: "positions" | "applications",
   open: { readonly departments: readonly NamedUnit[]; readonly divisions: readonly NamedUnit[] },
-): GrantPlace[] {
-  const units = areaUnitsOf(viewer, "positions");
+): GrantReach | null {
+  const units = areaUnitsOf(viewer, area);
+  if (open.departments.length > 0 && open.departments.every((d) => units.departmentIds.includes(d.id))) return { kind: "team" };
   const named = (list: readonly NamedUnit[], ids: readonly number[]) =>
     list
       .filter((u) => ids.includes(u.id))
       .map((u) => u.name)
       .sort((a, b) => a.localeCompare(b));
-  return [
+  const [first, ...rest] = [
     ...named(open.departments, units.departmentIds).map((name): GrantPlace => ({ kind: "department", name })),
     ...named(open.divisions, units.divisionIds).map((name): GrantPlace => ({ kind: "division", name })),
   ];
+  return first === undefined ? null : { kind: "places", places: [first, ...rest] };
+}
+
+/**
+ * The places a grant covers, named once (issue #577): "the Propulsion
+ * Department", "the Propulsion Department and the Test Bench", and past two
+ * places a count, "3 departments and 1 division", so a line never chains
+ * every department with "and".
+ */
+export function placesPhrase(places: readonly [GrantPlace, ...GrantPlace[]]): string {
+  if (places.length <= 2) return places.map((p) => `the ${p.kind === "department" ? departmentLabel(p.name) : p.name}`).join(" and ");
+  const counted = (kind: GrantPlace["kind"]) => {
+    const n = places.filter((p) => p.kind === kind).length;
+    return n === 0 ? [] : [`${n} ${kind}${n === 1 ? "" : "s"}`];
+  };
+  return [...counted("department"), ...counted("division")].join(" and ");
 }
 
 /**
@@ -120,11 +146,11 @@ export type PositionsPage = (
     }
   | {
       /**
-       * A member who reads Positions by a grant (issue #487): the places their
-       * Positions grants cover (`areaUnitsOf`), never their own role's division.
+       * A member who reads Positions by a grant (issue #487): what their
+       * Positions grants cover (`grantReachOf`), never their own role's division.
        */
       readonly scope: "granted";
-      readonly places: readonly [GrantPlace, ...GrantPlace[]];
+      readonly reach: GrantReach;
       readonly positions: readonly PositionRow[];
     }
 ) & {
@@ -225,11 +251,23 @@ export type ApplicationEntry = {
   readonly answers: readonly { readonly question: string; readonly answer: string }[];
   /** Newest first; the list's "+2 other" tag counts them. */
   readonly otherApplications: readonly OtherApplication[];
+  /**
+   * Whether the viewer may move this application (issue #577), by the rule
+   * every application write asks (`mayChangePositionIn` on Applications in
+   * its position's unit, ./position-access.ts). Where false the panel shows
+   * its stage and offers no step.
+   */
+  readonly canChange: boolean;
 };
 
-/** Whose applications the page lists: the whole team's, a lead's division's, or a head's department's (board 64, issue #230). */
+/**
+ * Whose applications the page lists: the whole team's, a lead's division's, a
+ * head's department's (board 64, issue #230), or what a member's Applications
+ * grants cover (issue #577), never their own role's division.
+ */
 export type ApplicationsScope =
   | { readonly kind: "team" }
+  | { readonly kind: "granted"; readonly reach: GrantReach }
   | {
       readonly kind: "division";
       /** As the page's intro names it; null when the lead's access names none. */

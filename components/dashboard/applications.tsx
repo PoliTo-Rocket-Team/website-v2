@@ -11,11 +11,9 @@ import {
   applyMove,
   dayMonth,
   firstNameOf,
-  footerSteps,
   icsFileName,
   interviewIcs,
   memberDivisionNames,
-  menuSteps,
   PROGRESS_STEPS,
   progressOf,
   pronounsOf,
@@ -47,6 +45,7 @@ import {
   applicationsModelOf,
   divisionOptions,
   NO_APPLICATIONS_FILTER,
+  panelStepsOf,
   shownApplications,
   type ApplicationsFilter,
   type ApplicationsTool,
@@ -70,7 +69,9 @@ import { StagePill, StageTag, toneDot, toneSurface } from "./stage-pill";
 // and the detail panel of the chosen application with its next steps. Props
 // in, nothing fetched. Every step goes through the dashboard's server action;
 // which steps are legal is lib/dashboard/application-flow.ts's alone, and the
-// page shows the result at once.
+// page shows the result at once. Where the viewer may not move an
+// application (`canChange` false, issue #577) the same panel shows it with
+// its stage as a pill and no step to take.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -165,7 +166,8 @@ export function ApplicationsView({
 
   const choose = (application: ApplicationEntry) => {
     setChosenId(application.id);
-    if (application.state.stage === "new") move(application, { kind: "open" });
+    // Opening a new one marks it In review: a move, so only for a viewer who may move it (issue #577).
+    if (application.state.stage === "new" && application.canChange) move(application, { kind: "open" });
   };
 
   return (
@@ -408,7 +410,8 @@ function Detail({
   const first = firstNameOf(a.applicant.name);
   const they = pronounsOf(a.applicant.gender);
   const unit = divisionLabel(a.position.division);
-  const footer = footerSteps(a.state, a.standing, unit);
+  const steps = panelStepsOf(a, unit);
+  const footer = steps.footer;
   const pill = stagePill(a.state, a.standing);
   const close = () => setAsking(null);
   const run = (step: LeadMove) => onMove(a, step, close);
@@ -448,7 +451,7 @@ function Detail({
             <X aria-hidden className="h-4 w-4" strokeWidth={2} />
           </DialogClose>
         </div>
-        <StageMenu label={STAGE_LABELS[a.state.stage]} tone={pill.tone} steps={menuSteps(a.state)} onStep={(step) => setAsking(step.move === "set-nda" || step.move === "open" ? null : step.move)} />
+        <StageMenu label={STAGE_LABELS[a.state.stage]} tone={pill.tone} steps={steps.menu} onStep={(step) => setAsking(step.move === "set-nda" || step.move === "open" ? null : step.move)} />
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 md:px-7 md:py-5">
@@ -670,7 +673,11 @@ function StageCard({
             <div>
               <p className="text-[15px] font-semibold">No time picked yet</p>
               <p className="mt-0.5 text-[12px] text-prt-muted">
-                You offered {state.offered.length} {state.offered.length === 1 ? "time" : "times"}. {first} picks one on {they.possessive} My applications page.
+                {/* A viewer who may not move it offered nothing (issue #577). */}
+                {a.canChange
+                  ? `You offered ${state.offered.length} ${state.offered.length === 1 ? "time" : "times"}.`
+                  : `${state.offered.length} ${state.offered.length === 1 ? "time is" : "times are"} offered.`}{" "}
+                {first} picks one on {they.possessive} My applications page.
               </p>
               <ul className="mt-3 flex flex-wrap gap-1.5">
                 {state.offered.map((s) => (
@@ -681,18 +688,23 @@ function StageCard({
               </ul>
             </div>
           )}
-          <div className={`mt-4 grid gap-2.5 ${booked ? "grid-cols-2" : "grid-cols-1"}`}>
-            {booked && (
-              <button type="button" onClick={() => downloadIcs(a, booked.slot)} className={CARD_BUTTON}>
-                <CalendarPlus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Add to calendar
-              </button>
-            )}
-            <button type="button" onClick={() => onAsk("offer-interview")} className={CARD_BUTTON}>
-              <CalendarClock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Change times
-            </button>
-          </div>
+          {/* Change times is a move, so only for a viewer who may move it (issue #577); Add to calendar is the viewer's own. */}
+          {(booked || a.canChange) && (
+            <div className={`mt-4 grid gap-2.5 ${booked && a.canChange ? "grid-cols-2" : "grid-cols-1"}`}>
+              {booked && (
+                <button type="button" onClick={() => downloadIcs(a, booked.slot)} className={CARD_BUTTON}>
+                  <CalendarPlus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Add to calendar
+                </button>
+              )}
+              {a.canChange && (
+                <button type="button" onClick={() => onAsk("offer-interview")} className={CARD_BUTTON}>
+                  <CalendarClock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Change times
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </Section>
     );
@@ -723,28 +735,31 @@ function StageCard({
             {state.ndaArrived ? "Ready to confirm the join" : "Waiting for the signed NDA"}
           </p>
           <p className="mt-2 text-[12px] leading-relaxed text-text-2">
-            Accepted on {dayMonth(state.acceptedAt)}. The team leader sends the welcome email with the NDA. When {first} sends it back signed,
-            confirm {they.possessive} join.
+            Accepted on {dayMonth(state.acceptedAt)}. The team leader sends the welcome email with the NDA.
+            {a.canChange && ` When ${first} sends it back signed, confirm ${they.possessive} join.`}
           </p>
-          <label htmlFor={boxId} className="mt-3.5 flex cursor-pointer items-center gap-2.5 text-[14px] font-medium">
-            <input
-              id={boxId}
-              type="checkbox"
-              checked={state.ndaArrived}
-              disabled={pending}
-              onChange={(e) => onMove({ kind: "set-nda", arrived: e.target.checked })}
-              className="peer sr-only"
-            />
-            <span
-              aria-hidden
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition-colors duration-300 ease-out peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
-                state.ndaArrived ? "border-success bg-success text-prt-text" : "border-border-strong"
-              }`}
-            >
-              {state.ndaArrived && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
-            </span>
-            The signed NDA arrived
-          </label>
+          {/* Ticking the NDA is a move, so only for a viewer who may move it (issue #577); the title above says where it stands. */}
+          {a.canChange && (
+            <label htmlFor={boxId} className="mt-3.5 flex cursor-pointer items-center gap-2.5 text-[14px] font-medium">
+              <input
+                id={boxId}
+                type="checkbox"
+                checked={state.ndaArrived}
+                disabled={pending}
+                onChange={(e) => onMove({ kind: "set-nda", arrived: e.target.checked })}
+                className="peer sr-only"
+              />
+              <span
+                aria-hidden
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition-colors duration-300 ease-out peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
+                  state.ndaArrived ? "border-success bg-success text-prt-text" : "border-border-strong"
+                }`}
+              >
+                {state.ndaArrived && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+              </span>
+              The signed NDA arrived
+            </label>
+          )}
         </div>
       </Section>
     );

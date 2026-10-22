@@ -268,6 +268,18 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([MEMBER_ROLE], [row("division", "positions", "edit", { divisionId: 1 }), row("division", "positions", "view", { divisionId: 3 })]),
     expect: { ...singleGrant("positions", ["MA", "DM"]), changes: { positions: ["MA"], applications: NONE, members: NONE } },
   },
+  // The same for Applications (issue #577): a whole-team grant at Can view
+  // moves nothing, and Can edit moves only in the unit it names.
+  {
+    name: "member with an Applications grant (Can view) across the team",
+    viewer: viewerOf([MEMBER_ROLE], [row("team", "applications", "view", {})]),
+    expect: { ...singleGrant("applications", ALL), changes: { positions: NONE, applications: NONE, members: NONE } },
+  },
+  {
+    name: "member with an Applications grant (Can edit) in MA and (Can view) in DM",
+    viewer: viewerOf([MEMBER_ROLE], [row("division", "applications", "edit", { divisionId: 1 }), row("division", "applications", "view", { divisionId: 3 })]),
+    expect: { ...singleGrant("applications", ["MA", "DM"]), changes: { positions: NONE, applications: ["MA"], members: NONE } },
+  },
   // Content and Alumni are separate grants (Owner decision, 2026-10-21, issue
   // #504): Content opens the five editors and their actions, Alumni the
   // Alumni page alone, and neither opens the other.

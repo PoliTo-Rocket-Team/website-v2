@@ -35,7 +35,7 @@ const recruitment = { recruitment: { isOpen: true }, canSwitch: false } as unkno
 function rendered(rows: readonly PositionRow[]): string {
   const page: PositionsPage = {
     scope: "granted",
-    places: [{ kind: "department", name: "Propulsion" }],
+    reach: { kind: "places", places: [{ kind: "department", name: "Propulsion" }] },
     positions: rows,
     newPosition: { divisions: [], nextId: 9 },
     readsApplications: false,
@@ -81,4 +81,14 @@ test("a role the viewer may change draws a live switch, with no status text adde
   for (const { tag } of switches) assert.doesNotMatch(tag, /\sdisabled=""/);
   // The table row keeps its "Open" text as before; the card shows the switch alone, as board 57m draws it.
   assert.equal(switches.filter((s) => /^<span[^>]*>Open<\/span>/.test(s.after)).length, 1);
+});
+
+test("a role the viewer cannot change opens to view, not to edit, and a grant holder's notice names no owner (issue #577)", () => {
+  const html = rendered([position(1, "Injector Engineer", true, false), position(2, "Valve Technician", false, true)]);
+  // The row and the card each open the role: read-only where the viewer may not change it.
+  assert.equal(html.match(/aria-label="View Injector Engineer"/g)?.length, 2);
+  assert.doesNotMatch(html, /aria-label="Edit Injector Engineer"/);
+  assert.equal(html.match(/aria-label="Edit Valve Technician"/g)?.length, 2);
+  assert.match(html, /Open roles are public on the site\./);
+  assert.doesNotMatch(html, /Your open roles/);
 });
