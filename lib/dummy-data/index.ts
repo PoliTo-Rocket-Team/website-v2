@@ -1036,6 +1036,8 @@ export function dummyDashboardData(
     requestAlias: aliases.requestAlias,
     cancelAliasRequest: aliases.cancelAliasRequest,
     answerAlias: aliases.answerAlias,
+    myAlias: aliases.myAlias,
+    confirmAliasSetUp: aliases.confirmAliasSetUp,
     async dismissNotice(noticeId) {
       const dismissed = teamEdits.current.dismissedNotices;
       if (person === null || !isDummyNoticeOpen(person, dummyNoticesOf(teamEdits.current), noticeId)) {

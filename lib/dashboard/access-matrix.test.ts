@@ -13,6 +13,7 @@ import { mayChangePositionIn } from "./position-access";
 import { GRANT_AREAS, isOffTeam, mayChange, readsArea, readsAreaIn } from "./viewer";
 import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
 import { aliasAttentionFor, answersAliasRequests, managesMember, type AliasRequest } from "./alias-request";
+import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
 import type { TeamPerson } from "./division-edit";
 import { membershipsOf, type OrgChart } from "./team";
 
@@ -224,6 +225,29 @@ describe("email alias requests: who asks, who answers, and the approver rows (ma
       assert.equal(answersAliasRequests(viewer), expect.aliases.answers, `${name}: answers`);
       const rows = aliasAttentionFor(viewer, open, team, ALIAS_ORG, new Date("2026-10-22T12:00:00Z"));
       assert.equal(rows.length, expect.aliases.answers ? open.length : 0, `${name}: one Overview row per open request`);
+    });
+  }
+});
+
+// A member's own alias card (issue #542): every viewer on the team sees their
+// own alias until they set it up, whatever their role; off the team, none.
+// "I've set it up" is allowed once, and never without an alias.
+
+describe("the member's own alias card and I've set it up (ownAliasOf, showsAliasCard, planAliasSetUp)", () => {
+  const ADDRESS = "viewer.alias@politorocketteam.it";
+  for (const { name, viewer } of VIEWERS) {
+    test(name, () => {
+      const onTeam = !isOffTeam(viewer.kind);
+      const fresh = ownAliasOf({ kind: viewer.kind, alias: ADDRESS, setUpAt: null });
+      assert.deepEqual(fresh, onTeam ? { address: ADDRESS, setUp: false } : null, `${name}: their alias`);
+      assert.equal(showsAliasCard(fresh), onTeam, `${name}: the card`);
+      assert.equal(planAliasSetUp(fresh).ok, onTeam, `${name}: I've set it up`);
+      const done = ownAliasOf({ kind: viewer.kind, alias: ADDRESS, setUpAt: "2026-10-22T10:00:00Z" });
+      assert.equal(showsAliasCard(done), false, `${name}: the card once set up`);
+      assert.equal(planAliasSetUp(done).ok, false, `${name}: a second press`);
+      const none = ownAliasOf({ kind: viewer.kind, alias: null, setUpAt: null });
+      assert.equal(showsAliasCard(none), false, `${name}: no alias, no card`);
+      assert.equal(planAliasSetUp(none).ok, false, `${name}: no alias to set up`);
     });
   }
 });

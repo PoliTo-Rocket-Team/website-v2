@@ -359,6 +359,17 @@ export async function answerAlias(requestId: number, answer: unknown): Promise<W
   return result;
 }
 
+/**
+ * "I've set it up" in the setup steps (board 94g, issue #542): stored on the
+ * viewer's own record; it names no member, so it can reach nobody else's. The
+ * Overview reads again without the card.
+ */
+export async function confirmAliasSetUp(): Promise<WriteResult<null>> {
+  const result = await write(["overview", "my-profile"], (data) => data.confirmAliasSetUp());
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 export async function withdrawApplication(applicationId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(applicationId)) return refused("Unknown application.");
   return write("my-applications", (data) => data.withdrawApplication(applicationId));

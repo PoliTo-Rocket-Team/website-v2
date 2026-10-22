@@ -203,19 +203,19 @@ export function planAliasAnswer(input: {
 }
 
 /**
- * Who an answer tells (stories 3 and 4): Mark created tells the requester and
- * the member, Decline the requester. A request the site made has no requester
- * to tell. Each notice is about the member; `approver` names who declined.
+ * Who an answer tells (story 3): the requester, of Mark created or Decline. A
+ * request the site made has no requester to tell. The member learns of their
+ * own alias from the "Your email alias is ready" card on their Overview
+ * (board 94f, ./alias-setup.ts), not from a notice, so the two never show
+ * the same news twice. Each notice is about the member; `approver` names who
+ * declined.
  */
 export function aliasAnswerNotices(plan: AliasAnswerPlan, approver: string): AddressedNotice[] {
   const { requesterId, memberId } = plan.request;
   const requester = requesterId === null || requesterId === memberId ? [] : [requesterId];
   if (plan.kind === "decline") return requester.map((recipientId) => ({ recipientId, notice: { kind: "alias-declined", data: { by: approver } } }));
   const { address } = plan;
-  return [
-    ...requester.map((recipientId): AddressedNotice => ({ recipientId, notice: { kind: "alias-created", data: { address } } })),
-    { recipientId: memberId, notice: { kind: "alias-ready", data: { address } } },
-  ];
+  return requester.map((recipientId): AddressedNotice => ({ recipientId, notice: { kind: "alias-created", data: { address } } }));
 }
 
 // How it reads ---------------------------------------------------------------------------

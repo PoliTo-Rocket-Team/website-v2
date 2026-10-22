@@ -10,7 +10,7 @@ import { shortDate } from "./write";
 // entry here, not a new mechanism: "promoted" (#188), the department head
 // told about a promotion, is the second.
 
-export const NOTICE_KINDS = ["member-left", "promoted", "hand-over-answered", "alias-created", "alias-ready", "alias-declined"] as const;
+export const NOTICE_KINDS = ["member-left", "promoted", "hand-over-answered", "alias-created", "alias-declined"] as const;
 
 /** How the next level up answered a hand-over (issue #262). */
 export type HandOverAnswered = "confirmed" | "declined";
@@ -31,8 +31,6 @@ type NoticeData = {
   readonly "hand-over-answered": { readonly role: string; readonly successor: string; readonly answer: HandOverAnswered };
   /** The alias the recipient asked for was marked created (epic #538): the subject is the member, with the address saved. */
   readonly "alias-created": { readonly address: string };
-  /** The recipient's own alias was marked created (epic #538): the subject is the recipient, with the address saved. */
-  readonly "alias-ready": { readonly address: string };
   /** The alias the recipient asked for was declined (epic #538): the subject is the member, `by` who declined it. */
   readonly "alias-declined": { readonly by: string };
 };
@@ -88,7 +86,6 @@ const READ: { readonly [K in NoticeKind]: (data: unknown) => NoticeData[K] | nul
     return { role, successor, answer };
   },
   "alias-created": readAddress,
-  "alias-ready": readAddress,
   "alias-declined": (data) => (isRecord(data) && typeof data.by === "string" ? { by: data.by } : null),
 };
 
@@ -115,8 +112,6 @@ export function noticeOf(row: StoredNotice): Notice | null {
     case "hand-over-answered":
       return read(row.kind);
     case "alias-created":
-      return read(row.kind);
-    case "alias-ready":
       return read(row.kind);
     case "alias-declined":
       return read(row.kind);
@@ -172,13 +167,6 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
       return {
         kind: "notice",
         title: `${notice.subject}'s email alias is ready`,
-        detail: [notice.data.address, shortDate(notice.createdAt, now.getUTCFullYear())].join(" · "),
-        action,
-      };
-    case "alias-ready":
-      return {
-        kind: "notice",
-        title: "Your email alias is ready",
         detail: [notice.data.address, shortDate(notice.createdAt, now.getUTCFullYear())].join(" · "),
         action,
       };

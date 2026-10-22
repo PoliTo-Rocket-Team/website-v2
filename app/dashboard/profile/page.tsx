@@ -27,11 +27,12 @@ async function LiveProfile() {
   if (opening.kind === "account-unresolved") return null;
   const { data } = opening;
   if (!canReach(data.viewer, "my-profile")) notFound();
-  const profile = await data.myProfile();
+  const [profile, alias] = await Promise.all([data.myProfile(), data.myAlias()]);
   if (profile === null) notFound();
   return (
     <MyProfileView
       profile={profile}
+      alias={alias}
       session={data.viewer.session}
       saveLinkedin={saveLinkedin}
       uploadPhoto={uploadPhoto}

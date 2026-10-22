@@ -78,7 +78,7 @@ import { projectEditor } from "@/lib/project-content/editor";
 import { blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "./database-projects";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
-import { answerAlias, cancelAliasRequest, readAliasAttention, readMemberAliases, requestAlias } from "./database-alias";
+import { answerAlias, cancelAliasRequest, confirmAliasSetUp, readAliasAttention, readMemberAliases, readOwnAlias, requestAlias } from "./database-alias";
 import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areaUnitsOf, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
 import { written } from "./write";
@@ -916,6 +916,8 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     requestAlias: (memberId) => requestAlias(identity, memberId),
     cancelAliasRequest: (requestId) => cancelAliasRequest(identity, requestId),
     answerAlias: (requestId, answer) => answerAlias(identity, requestId, answer),
+    myAlias: () => readOwnAlias(identity),
+    confirmAliasSetUp: () => confirmAliasSetUp(identity),
     // The member this request already resolved, never the session a second time (issue #397).
     recruitment: () => getRecruitmentControlFor(identity.memberId, identity),
     setRecruitment: (next) =>

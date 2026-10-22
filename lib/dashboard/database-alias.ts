@@ -15,7 +15,9 @@ import {
   type AliasRequest,
   type MemberAliases,
 } from "./alias-request";
+import { ownAliasOf, planAliasSetUp, type OwnAlias } from "./alias-setup";
 import type { DashboardIdentity } from "./database";
+import { isOffTeam } from "./viewer";
 import type { AttentionItem } from "./overview";
 import { readTeamSnapshot, teamPeopleOf } from "./team-database";
 import { refused, written, type WriteResult } from "./write";
@@ -147,4 +149,35 @@ export async function answerAlias(identity: DashboardIdentity, requestId: number
     throw error;
   }
   return written(null);
+}
+
+// The member's own alias (issue #542, boards 94f and 94g) ---------------------
+
+/** The viewer's own alias and whether they set it up: their own `members` row alone. */
+export async function readOwnAlias(identity: DashboardIdentity): Promise<OwnAlias | null> {
+  if (identity.memberId === null || isOffTeam(identity.kind)) return null;
+  const [row] = await getDb()
+    .select({ alias: members.emailAlias, set_up_at: members.emailAliasSetUpAt })
+    .from(members)
+    .where(eq(members.memberId, identity.memberId));
+  return row ? ownAliasOf({ kind: identity.kind, alias: row.alias, setUpAt: row.set_up_at }) : null;
+}
+
+/**
+ * "I've set it up" (board 94g), checked by `planAliasSetUp`: the time is
+ * stored on the viewer's own record, and only while it is still unset, so a
+ * second press writes nothing.
+ */
+export async function confirmAliasSetUp(identity: DashboardIdentity): Promise<WriteResult<null>> {
+  const planned = planAliasSetUp(await readOwnAlias(identity));
+  if (!planned.ok || identity.memberId === null) return refused(planned.ok ? "You have no email alias to set up." : planned.error);
+  const memberId = identity.memberId;
+  const stored = await runAuditQuery((db) =>
+    db
+      .update(members)
+      .set({ emailAliasSetUpAt: new Date().toISOString() })
+      .where(and(eq(members.memberId, memberId), isNotNull(members.emailAlias), isNull(members.emailAliasSetUpAt)))
+      .returning({ id: members.memberId }),
+  );
+  return stored.length === 0 ? refused("You already set up your email alias.") : written(null);
 }

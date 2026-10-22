@@ -138,18 +138,15 @@ test("Mark created checks the address on the server and saves it lower-cased", (
   assert.equal(checkAliasAnswer({ kind: "confirm" }).ok, false);
 });
 
-test("Mark created tells the requester and the member; Decline tells the requester; an automatic request has no requester", () => {
+test("Mark created and Decline tell the requester; an automatic request has no requester; the member is told by their Overview card, not a notice", () => {
   const created = { kind: "created", request: request(1, DAVIDE, MARCO), address: "davide.russo@politorocketteam.it" } as const;
   assert.deepEqual(aliasAnswerNotices(created, "Alessandro Greco"), [
     { recipientId: MARCO, notice: { kind: "alias-created", data: { address: "davide.russo@politorocketteam.it" } } },
-    { recipientId: DAVIDE, notice: { kind: "alias-ready", data: { address: "davide.russo@politorocketteam.it" } } },
   ]);
   assert.deepEqual(aliasAnswerNotices({ kind: "decline", request: request(1, DAVIDE, MARCO) }, "Alessandro Greco"), [
     { recipientId: MARCO, notice: { kind: "alias-declined", data: { by: "Alessandro Greco" } } },
   ]);
-  assert.deepEqual(aliasAnswerNotices({ ...created, request: request(2, DAVIDE, null) }, "Alessandro Greco"), [
-    { recipientId: DAVIDE, notice: { kind: "alias-ready", data: { address: "davide.russo@politorocketteam.it" } } },
-  ]);
+  assert.deepEqual(aliasAnswerNotices({ ...created, request: request(2, DAVIDE, null) }, "Alessandro Greco"), []);
   assert.deepEqual(aliasAnswerNotices({ kind: "decline", request: request(2, DAVIDE, null) }, "Alessandro Greco"), []);
 });
 
@@ -157,9 +154,8 @@ test("the notices read as attention rows", () => {
   const now = new Date("2026-10-22T12:00:00Z");
   const read = (kind: string, data: unknown) => attentionOf(noticeOf({ id: 1, kind, subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", data })!, now);
   assert.equal(read("alias-created", { address: "davide.russo@politorocketteam.it" }).title, "Davide Russo's email alias is ready");
-  assert.equal(read("alias-ready", { address: "davide.russo@politorocketteam.it" }).title, "Your email alias is ready");
   assert.equal(read("alias-declined", { by: "Alessandro Greco" }).title, "Alessandro Greco declined the email alias for Davide Russo");
-  assert.equal(noticeOf({ id: 1, kind: "alias-ready", subject: "x", createdAt: "2026-10-22T10:00:00Z", data: {} }), null);
+  assert.equal(noticeOf({ id: 1, kind: "alias-created", subject: "x", createdAt: "2026-10-22T10:00:00Z", data: {} }), null);
 });
 
 test("the approver's rows (board 94c): one per open request, oldest first, the automatic one as its own row", () => {

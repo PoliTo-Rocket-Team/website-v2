@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { scopes } from "@/db/schema";
+import { members, scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
@@ -24,7 +24,9 @@ import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
 import { positionsModelOf } from "./positions-view";
 import type { PositionsPage } from "./recruitment";
-import { insertRows, keepWrites, recordedWrites } from "./access-matrix/fake-db";
+import { insertRows, keepWrites, recordedWrites, rowsIn, updateRows } from "./access-matrix/fake-db";
+import type { OwnAlias } from "./alias-setup";
+import { isOffTeam } from "./viewer";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
@@ -115,6 +117,7 @@ const READS: readonly Read[] = [
   { path: "myAccount" },
   { path: "myApplications" },
   { path: "memberAliases", args: [[ALL.map((u) => IDS.person(u))]] },
+  { path: "myAlias" },
 ];
 
 /** Calls the method at `path` on the data interface. */
@@ -386,6 +389,9 @@ function proven(proves: Proof, answer: unknown, writes: readonly unknown[]): boo
 }
 
 const DM: Unit = "DM";
+/** An email alias on a member's record, as Mark created leaves it (epic #538), laid over the seeded row. */
+const aliasOf = (memberId: number) => `alias-${memberId}@politorocketteam.it`;
+const giveAlias = (memberId: number) => updateRows(members, { memberId }, { emailAlias: aliasOf(memberId) });
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -571,6 +577,9 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
   { action: "actions.answerAlias", run: () => actions.answerAlias(IDS.aliasRequest(DM), { kind: "decline" }), may: (r) => r.expect.aliases.answers, control: by("IT lead") },
+  // "I've set it up" (issue #542): DM's lead has an alias and stores it; no matrix viewer has one of their own,
+  // so each is refused, and nobody's press reaches the lead's record.
+  { action: "actions.confirmAliasSetUp", run: () => (giveAlias(IDS.lead(DM)), actions.confirmAliasSetUp()), may: nobody, control: by("lead-dm") },
   // A notice, an application and an interview of someone else's.
   { action: "actions.dismissNotice", run: () => actions.dismissNotice(IDS.notice(DM)), may: nobody, control: by("lead-dm") },
   { action: "actions.withdrawApplication", run: () => actions.withdrawApplication(IDS.application(DM)), may: nobody, control: by("applicant-dm") },
@@ -657,15 +666,61 @@ describe("email alias requests: the approver rows, Request alias in the drawer, 
     assert.deepEqual(writes, []);
   });
 
-  test("Mark created saves the address on the member's record and tells the member", async () => {
+  test("Mark created on a request the site made saves the address on the member's record and writes no notice: the member's card tells them", async () => {
     const { answer, writes } = await attempt(accountOf("operations lead").userId, () =>
       actions.answerAlias(IDS.aliasRequest(DM), { kind: "created", address: "lead.dm@politorocketteam.it" }),
     );
     assert.ok(!isRefusal(answer), JSON.stringify(answer));
     assert.deepEqual(
       writes.map((w) => w.table).sort(),
-      ["alias_requests", "dashboard_notices", "members"],
+      ["alias_requests", "members"],
     );
+  });
+});
+
+// A member's own alias card and "I've set it up" (issue #542) -----------------
+//
+// Each viewer, and DM's lead beside them, has an alias on their record. The
+// card reads the viewer's own alias alone; "I've set it up" names no member,
+// so it stores the time on the viewer's own row and leaves DM's lead's alone.
+// Off the team there is no card and nothing to set up.
+
+describe("a member reads only their own alias card and sets up only their own alias", () => {
+  for (const { name, viewer } of VIEWERS as readonly MatrixRow[]) {
+    test(name, async () => {
+      const { userId, memberId } = accountOf(name);
+      const onTeam = memberId !== null && !isOffTeam(viewer.kind);
+      seedFixture();
+      resetFiles();
+      keepWrites();
+      if (memberId !== null) giveAlias(memberId);
+      giveAlias(IDS.lead(DM));
+      signInAs(userId);
+      const opening = await openDashboard();
+      assert.equal(opening.kind, "open");
+      const data = (opening as { data: DashboardData }).data;
+      const own = await data.myAlias();
+      assert.deepEqual(own, onTeam ? ({ address: aliasOf(memberId!), setUp: false } satisfies OwnAlias) : null, `${name}: the card`);
+      assert.ok(!JSON.stringify(own).includes(aliasOf(IDS.lead(DM))), `${name}: read someone else's alias`);
+
+      const answer = await answerOf(() => actions.confirmAliasSetUp());
+      const setUp = rowsIn(members).filter((r) => r.emailAliasSetUpAt !== null).map((r) => r.memberId);
+      if (onTeam) {
+        assert.ok(!isRefusal(answer), `${name}: ${JSON.stringify(answer)}`);
+        assert.deepEqual(setUp, [memberId], `${name}: only their own record is set up`);
+        assert.deepEqual(await data.myAlias(), { address: aliasOf(memberId!), setUp: true }, `${name}: the card is gone`);
+        assert.ok(isRefusal(await answerOf(() => actions.confirmAliasSetUp())), `${name}: a second press`);
+      } else {
+        assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+        assert.deepEqual(setUp, [], `${name}: wrote`);
+      }
+    });
+  }
+
+  test("a member with no alias is refused, and writes nothing", async () => {
+    const { answer, writes } = await attempt(accountOf("member").userId, () => actions.confirmAliasSetUp());
+    assert.ok(isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(writes, []);
   });
 });
 

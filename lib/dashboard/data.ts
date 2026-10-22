@@ -26,6 +26,7 @@ import type { AlumniDirectory } from "./alumni";
 import type { Promotion } from "./hand-over";
 import type { HandOverAnswer } from "./hand-over-request";
 import type { MemberAliases } from "./alias-request";
+import type { OwnAlias } from "./alias-setup";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
@@ -304,6 +305,17 @@ export interface DashboardData {
    * writes the notices `aliasAnswerNotices` names.
    */
   answerAlias(requestId: number, answer: unknown): Promise<WriteResult<null>>;
+  /**
+   * Issue #542 (boards 94f, 94g): the viewer's own alias and whether they set
+   * it up (`ownAliasOf`, ./alias-setup.ts); null off the team or with none.
+   * It reads the viewer's own record and nobody else's.
+   */
+  myAlias(): Promise<OwnAlias | null>;
+  /**
+   * "I've set it up" (board 94g), checked by `planAliasSetUp`: stored on the
+   * viewer's own record only, and refused with no alias or once set up.
+   */
+  confirmAliasSetUp(): Promise<WriteResult<null>>;
 
   /** Board 51: an applicant's own account. */
   myAccount(): Promise<MyAccount | null>;
