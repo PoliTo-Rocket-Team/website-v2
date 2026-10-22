@@ -109,9 +109,11 @@ Where the site already publishes the data, the seed uses it (Owner decision on [
 
 This is an owner action. Agents never change a Vercel, Neon or repository setting or an environment variable; the build only documents the setup. The owner finished it on 2026-10-16 (recorded on [#306](https://github.com/PoliTo-Rocket-Team/website-v2/issues/306)), in this shape:
 
-1. **Preview branching is off on the integration.** The Neon integration for Vercel does not create a branch for each preview deployment. Its connection to website-v2 covers **Production** and **Development** only. The integration cannot choose a parent branch for previews, so it is not used for them.
+1. **Preview branching is off on the integration.** The Neon integration for Vercel does not create a branch for each preview deployment. The integration cannot choose a parent branch for previews, so it is not used for them. Production reads the Neon `main` branch, with its connection strings set for the **Production** environment only ([ADR 0018](../.decisions/0018-v2-hosting-and-launch.md)).
 2. **One schema-only branch named `preview`.** In the Neon console, in the same project, a branch named `preview` was created from `main` with the **Schema only** option. It holds the tables and no rows, so it never holds production data. Its compute endpoint is `ep-floral-mouse-b2er5ebz`, the one Neon endpoint the seed's target check allows.
 3. **Preview-only connection strings.** In Vercel, **Project → Settings → Environment Variables**, `DATABASE_URL` (the pooled string) and `DATABASE_URL_UNPOOLED` (the direct string) point at the `preview` branch, with only the **Preview** environment ticked. No production connection string is set for Preview.
+
+The **Development** environment has its own branch, set up by the owner on 2026-10-22 ([ADR 0018](../.decisions/0018-v2-hosting-and-launch.md)): a branch named `development`, copied from `preview`, whose connection strings are set for the Vercel **Development** environment only. So `vercel env pull` brings the `development` branch, never production. The seed's target check refuses the `development` branch, as it refuses every Neon endpoint but `preview`'s, so `pnpm db:seed` from a laptop runs only on a local database.
 
 The target check needs no other variable: it knows the `preview` branch by the endpoint in these two strings, so it needs no Neon API key and no project id (Owner decision on [#311](https://github.com/PoliTo-Rocket-Team/website-v2/issues/311)).
 
