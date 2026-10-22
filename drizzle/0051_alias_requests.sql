@@ -32,7 +32,6 @@ ALTER TABLE "alias_requests" ADD CONSTRAINT "alias_requests_member_id_members_me
 ALTER TABLE "alias_requests" ADD CONSTRAINT "alias_requests_requested_by_members_member_id_fk" FOREIGN KEY ("requested_by") REFERENCES "public"."members"("member_id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alias_requests" ADD CONSTRAINT "alias_requests_answered_by_members_member_id_fk" FOREIGN KEY ("answered_by") REFERENCES "public"."members"("member_id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "alias_requests_one_open" ON "alias_requests" USING btree ("member_id") WHERE "alias_requests"."outcome" is null;--> statement-breakpoint
-DROP TRIGGER IF EXISTS audit_row_changes ON public.alias_requests;--> statement-breakpoint
 CREATE TRIGGER audit_row_changes AFTER INSERT OR UPDATE OR DELETE ON public.alias_requests FOR EACH ROW EXECUTE FUNCTION public.log_db_changes();--> statement-breakpoint
 ALTER TABLE "members" ADD COLUMN "email_alias" text;--> statement-breakpoint
 ALTER TABLE "members" ADD COLUMN "email_alias_set_up_at" timestamp with time zone;
