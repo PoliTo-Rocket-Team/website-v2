@@ -99,6 +99,10 @@ An admin column comes later. **Planned**, no issue yet.
     codes (a head shows the codes of their department's divisions) and their role. There is no
     Phone or Discord column; those stay in the member panel, which opens read only from a row.
     There is no New division, New department or Closed divisions control here. Pages of eight.
+    Every division's people waiting for their NDA are listed first, with Confirm NDA, Cancel add
+    and Fill details, and every division's "{name} is joining" banners show above the list, as a
+    head or a lead sees their own units' (#584, Owner decision, 2026-10-22). The selects narrow
+    both.
   - **Members, Table view (boards 73b, 73c):** every member field: name, divisions, role, PRT
     email, phone, Discord, PoliTo ID, program, level, from, date of birth, gender and NDA. The
     name column stays pinned; the table fills the screen and scrolls both ways, with no pages.
@@ -206,6 +210,13 @@ An admin column comes later. **Planned**, no issue yet.
   is confirmed. Only then does the person become a member.
   - **Gap:** the dashboard has no recruitment manager; only leads can do this step. Tracked in
     #194.
+- Confirm join, and ticking "The signed NDA arrived", is the last step of the application, so the
+  Applications area decides it wherever it appears (#584, Owner decision, 2026-10-22). On the
+  Applications page and on the Members page's "{name} is joining" banner it shows, and the server
+  accepts it, only for a viewer who may change applications in that division: the same rule as
+  every other move on an application. A Members grant alone neither sees the banner's button nor
+  confirms. Once the person has joined, everything about them (details, role, removal, alumni) is
+  the Members area's.
 - Confirm join for someone new asks "Confirm {name} joins {division}?" in neutral words (they,
   their), whatever the application form says (board 58h).
 - Confirm join for someone already on the team has no NDA wait: they signed the team's one NDA
@@ -452,8 +463,8 @@ These rules come from #235 (boards 69, 69b, 69c and 69m) and the Owner decisions
 - Add member starts with a Division select. It lists only the department's open divisions and
   starts on the open division tab, else the first.
 - A head acts only on people in their department's divisions: adding, Confirm NDA, Cancel add,
-  Confirm join, Edit details, Remove from {division} and Leaves the team. The server refuses the
-  rest.
+  Edit details, Remove from {division} and Leaves the team. Confirm join follows the Applications
+  rule above. The server refuses the rest.
 - The page has no "+ New division", "Edit division", "Close division" or "Reopen": the head edits
   their divisions in the Team tree's edit view (below).
 

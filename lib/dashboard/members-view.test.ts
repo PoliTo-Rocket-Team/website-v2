@@ -4,7 +4,7 @@ import { departmentMembers } from "./department-members";
 import { NO_MEMBER_DETAILS } from "./details";
 import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
 import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
-import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
+import { membershipsOf, type DivisionQueue, type DivisionRole, type Joining, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import { wholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
@@ -51,6 +51,15 @@ const records = [
 ];
 
 const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS };
+const giulia: Joining = { applicationId: 41, name: "Giulia Rossi", position: "Mission Analyst", ndaArrived: true, canConfirm: true };
+const paolo: Joining = { applicationId: 42, name: "Paolo Neri", position: "CAD Engineer", ndaArrived: true, canConfirm: false };
+
+/** Every division's queue on the whole team: Elena waits for Design & Manufacturing, Giulia joins Mission Analysis, Paolo Design & Manufacturing. */
+const queues: readonly DivisionQueue[] = [
+  { divisionId: 1, waiting: [], joining: [giulia], editable: true },
+  { divisionId: 2, waiting: [], joining: [], editable: true },
+  { divisionId: 3, waiting: [elena], joining: [paolo], editable: true },
+];
 
 function leaderPage(): MembersModel {
   return seatPage(7);
@@ -59,7 +68,7 @@ function leaderPage(): MembersModel {
 // Every full-access seat's whole team, the team leader's included (issue #444): the one Edit details panel's position for each person (issue #584).
 function seatPage(selfId: number): MembersModel {
   const positions = positionsOf(records, org, { kind: "team" }, selfId);
-  return membersModelOf({ scope: "whole-team", positions, ...wholeTeamMembers({ records, org, selfId }) })!;
+  return membersModelOf({ scope: "whole-team", positions, queues, ...wholeTeamMembers({ records, org, selfId }) })!;
 }
 
 /** Where a row's menu and Edit details may remove someone from; null where the row offers no change. */
@@ -200,4 +209,17 @@ test("a seat on the whole team opens the same panel, its seat title locked, with
   assert.deepEqual(head.leave, { allowed: true });
   assert.deepEqual(positionIn(leaderPage(), "Lena Fischer")?.title, { kind: "division", divisionId: 1, short: "Mission Analysis", value: null });
   assert.equal(positionIn(headPage(), "Chiara Ferri"), null, "a head's page does not list their own seat");
+});
+
+test("the whole team lists every division's people waiting for their NDA and joining, and the selects narrow them (Owner decision, 2026-10-22, #584)", () => {
+  const leader = leaderPage();
+  const all = shownMembers(leader, NO_MEMBERS_FILTER);
+  assert.deepEqual(all.waiting.map((w) => [w.waiting.email, w.division.code, w.editable]), [["elena@x.it", "DM", true]]);
+  assert.deepEqual(all.joining.map((j) => [j.joining.name, j.division]), [["Giulia Rossi", "Mission Analysis Division"], ["Paolo Neri", "Design & Manufacturing Division"]]);
+  const aero = shownMembers(leader, { ...NO_MEMBERS_FILTER, department: "Aerodynamics" });
+  assert.deepEqual([aero.waiting.length, aero.joining.map((j) => j.joining.name)], [0, ["Giulia Rossi"]]);
+  const dm = shownMembers(leader, { ...NO_MEMBERS_FILTER, divisionId: 3 });
+  assert.deepEqual([dm.waiting.map((w) => w.waiting.joinId), dm.joining.map((j) => j.joining.name)], [[9], ["Paolo Neri"]]);
+  // The selects still narrow the whole team's people, not a division's own list.
+  assert.deepEqual(dm.people.map((p) => p.name).sort(), ["Davide Russo", "Federica Leone"]);
 });

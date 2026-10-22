@@ -233,7 +233,7 @@ function entryOf(person: DummyPerson, change: MemberChange | undefined): RosterE
  * accepted it on the Applications page, and Confirm join on either page
  * moves the application to Joined.
  */
-export type DummyJoiner = Joining & {
+export type DummyJoiner = Omit<Joining, "canConfirm"> & {
   readonly email: string;
   readonly divisionId: number;
   readonly program: string;
@@ -912,9 +912,10 @@ function writesFor(
       await save({ ...edits, movedToAlumni: { ...edits.movedToAlumni, [personId]: departure } });
       return true;
     },
+    // The Applications area decides Confirm join (issue #584): `move` asks its rule, and the Members area adds none.
     async confirmJoin(applicationId) {
       const joiner = joiners.find((j) => j.applicationId === applicationId);
-      if (!joiner || actor === null || !reachesDivision(actor, joiner.divisionId, org) || joiner.joinedIn !== null) return false;
+      if (!joiner || joiner.joinedIn !== null) return false;
       try {
         return (await move(applicationId, { kind: "confirm-join" })).ok;
       } catch (error) {
@@ -1026,6 +1027,8 @@ function writesFor(
  * Applications page's move, which Confirm join runs. `grant` is the member's
  * test grant (./test-grant.ts): the Members page then lists every division it
  * covers and offers changes only where it lets them change (issue #351).
+ * `mayMove` answers whether `move` takes a step on the application: the
+ * Members banner offers Confirm join only there (issue #584).
  */
 export function dummyTeamPages(
   kind: TestViewer,
@@ -1035,6 +1038,7 @@ export function dummyTeamPages(
   move: DummyMove = NO_MOVE,
   openPositionsIn: (divisionId: number) => number = () => 0,
   grant: TestGrant | null = null,
+  mayMove: (applicationId: number) => boolean = () => false,
 ): Pick<DashboardData, "members" | "findForAdd" | "findPeople" | "alumni" | "teamTree" | "teamStructure" | "teamWrites"> {
   const self = SELF_ID[kind];
   const joiners = dummyJoiners(current);
@@ -1053,7 +1057,7 @@ export function dummyTeamPages(
   const joiningIn = (team: readonly RosterEntry[], division: number): Joining[] =>
     joiners
       .filter((j) => j.divisionId === division && j.joinedIn === null && dummyStanding(j.email, j.divisionId, team).kind !== "member")
-      .map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived }));
+      .map(({ applicationId, name, position, ndaArrived }) => ({ applicationId, name, position, ndaArrived, canConfirm: mayMove(applicationId) }));
   return {
     members: async (divisionId) => {
       const team = editedRoster(edits, joiners);
@@ -1061,9 +1065,16 @@ export function dummyTeamPages(
       // and opens the one Edit details panel for each person the actor may edit (issue #584), the team leader included (issue #444).
       if (opensWholeTeam(testDeveloperStanding(kind))) {
         const records = team.map((entry) => recordOf(entry, edits));
+        // Every open division's people waiting for Confirm NDA and joining, as a head or a lead reads their own units' (issue #584).
         return {
           scope: "whole-team",
           positions: positionsOf(records, org, actor, self),
+          queues: org.divisions.map((d) => ({
+            divisionId: d.id,
+            waiting: waitingIn(edits, d.id),
+            joining: readsJoining ? joiningIn(team, d.id) : [],
+            editable: actor !== null && reachesDivision(actor, d.id, org),
+          })),
           ...wholeTeamMembers({ records, org, selfId: self }),
         };
       }
@@ -1077,7 +1088,7 @@ export function dummyTeamPages(
           actor,
           selfId: self,
           waiting: Object.fromEntries(ids.map((id) => [id, waitingIn(edits, id)])),
-          joining: Object.fromEntries(ids.map((id) => [id, joiningIn(team, id)])),
+          joining: Object.fromEntries(ids.map((id) => [id, readsJoining ? joiningIn(team, id) : []])),
         });
         return page === null ? NO_MEMBERS : { scope: "department", ...page };
       }

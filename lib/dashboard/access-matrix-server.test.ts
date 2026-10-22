@@ -18,6 +18,7 @@ import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
 import { membersExportFileName, XLSX_TYPE } from "./members-export";
 import { filterTeam, NO_TEAM_FILTER } from "./team-members";
+import { membersModelOf, NO_MEMBERS_FILTER, shownMembers } from "./members-view";
 import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
@@ -471,8 +472,8 @@ const ACTION_CASES: readonly ActionCase[] = [
   // Members, in DM.
   { action: "team-actions.saveMember", run: () => teamActions.saveMember(IDS.person(DM), IDS.division(DM), "member"), may: changesDM("members"), control: by("team leader") },
   { action: "team-actions.moveToAlumni", run: () => teamActions.moveToAlumni(IDS.person(DM), "2024 – 2026", null), may: changesDM("members"), control: by("team leader") },
-  // Joining takes Members and Applications both; the matrix pins the refusal where Members is not changed.
-  { action: "team-actions.confirmJoin", run: () => teamActions.confirmJoin(IDS.joining(DM)), may: (r) => (changesDM("members")(r) ? undefined : false), control: by("team leader") },
+  // Confirm join is the Applications area's on the Members banner too (Owner decision, 2026-10-22, issue #584).
+  { action: "team-actions.confirmJoin", run: () => teamActions.confirmJoin(IDS.joining(DM)), may: changesDM("applications"), control: by("team leader") },
   { action: "team-actions.findForAdd", run: () => teamActions.findForAdd(IDS.division(DM), "person"), may: changesDM("members"), control: by("team leader", "answer") },
   {
     action: "team-actions.addMember",
@@ -860,6 +861,59 @@ describe("one Edit details panel: whoever may edit a member in scope saves their
     const lead = await attempt(accountOf("division lead").userId, () => teamActions.saveMember(IDS.person("MA"), IDS.division("MA"), "division-lead"));
     assert.ok(isRefusal(lead.answer));
     assert.deepEqual(lead.writes, []);
+  });
+});
+
+describe("Confirm join is decided by the Applications area, and the whole team lists every division's queue (Owner decision, 2026-10-22, issue #584)", () => {
+  /** The unit an accepted applicant joins, by their application. */
+  const unitOfJoining = (applicationId: number) => ALL.find((u) => IDS.joining(u) === applicationId);
+  /** What the viewer's Members page shows with no select or search: its joining banners and its waiting rows. */
+  const shownOf = async (name: string) => {
+    const page = membersModelOf(await (await open(name)).members(null));
+    return page === null ? null : shownMembers(page, NO_MEMBERS_FILTER);
+  };
+
+  test("the Members banner offers Confirm join exactly where the viewer changes Applications", async () => {
+    let offered = 0;
+    for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
+      for (const { joining } of (await shownOf(name))?.joining ?? []) {
+        const u = unitOfJoining(joining.applicationId);
+        assert.ok(u !== undefined, `${name}: a joining banner for application ${joining.applicationId}`);
+        assert.equal(joining.canConfirm, expect.changes.applications.includes(u), `${name}: Confirm join in ${u}`);
+        if (joining.canConfirm) offered++;
+      }
+    }
+    assert.ok(offered > 0, "some banner offers Confirm join, so the check above is not empty");
+  });
+
+  test("the banner's Confirm join and the Applications page's accept and refuse the same viewers", async () => {
+    for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
+      const userId = accountOf(name).userId;
+      const members = await attempt(userId, () => teamActions.confirmJoin(IDS.joining(DM)));
+      const applications = await attempt(userId, () => recruitmentActions.moveApplication(IDS.joining(DM), { kind: "confirm-join" }));
+      const may = expect.changes.applications.includes(DM);
+      assert.equal(!isRefusal(members.answer), may, `${name}: the Members banner's Confirm join: ${JSON.stringify(members.answer)}`);
+      assert.equal(!isRefusal(applications.answer), may, `${name}: the Applications page's Confirm join: ${JSON.stringify(applications.answer)}`);
+      assert.equal(members.writes.length > 0, may, `${name}: the Members banner's writes`);
+    }
+  });
+
+  test("every whole-team viewer sees every division's waiting rows, with Confirm NDA, and its joining banners where they read Applications", async () => {
+    const full = (VIEWERS as readonly MatrixRow[]).filter((r) => r.expect.wholeTeamMembers);
+    assert.ok(full.length >= 5, "the full-access seats are in the matrix");
+    for (const { name, expect } of full) {
+      const shown = (await shownOf(name))!;
+      for (const u of ALL) {
+        const waiting = shown.waiting.find((w) => w.waiting.joinId === IDS.join(u));
+        assert.ok(waiting !== undefined, `${name}: the waiting row in ${u}`);
+        assert.equal(waiting.editable, true, `${name}: Confirm NDA, Cancel add and Fill details in ${u}`);
+        const joining = shown.joining.some((j) => j.joining.applicationId === IDS.joining(u));
+        assert.equal(joining, expect.reads.applications.includes(u), `${name}: the joining banner in ${u}`);
+      }
+    }
+    // And the writes behind the waiting row take it: Confirm NDA from the whole team.
+    const nda = await attempt(accountOf("operations lead").userId, () => teamActions.confirmNda(IDS.join(DM)));
+    assert.deepEqual(nda.answer, { ok: true });
   });
 });
 

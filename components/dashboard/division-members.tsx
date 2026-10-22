@@ -331,7 +331,9 @@ function RemoveDialog({
 /**
  * "Giulia Rossi is joining" (boards 59 and 59m): Confirm join, once "The signed
  * NDA arrived" is ticked on the application (58g). It is the Applications
- * page's own Confirm join, so the button waits for that tick here too.
+ * page's own Confirm join, so the button waits for that tick here too, and
+ * shows only where `editable`: the viewer may change applications there
+ * (`Joining.canConfirm`, issue #584).
  */
 export function JoiningBanner({ joining, division, editable }: { joining: Joining; division: string; editable: boolean }) {
   const [asking, setAsking] = useState(false);

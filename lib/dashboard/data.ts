@@ -370,7 +370,11 @@ export interface TeamWrites {
    * Refused unless `mayLeaveTeam` (./team.ts) allows it.
    */
   moveToAlumni(personId: number, departure: Departure): Promise<boolean>;
-  /** Board 59: the accepted applicant joins the division the position belongs to. */
+  /**
+   * Board 59: the accepted applicant joins the division the position belongs
+   * to. It is the Applications page's Confirm join, decided by the same rule
+   * (`moveApplication`), never by the Members area (issue #584).
+   */
   confirmJoin(applicationId: number): Promise<boolean>;
   /**
    * Add member (boards 61h, 61h2): someone on the team joins the division at

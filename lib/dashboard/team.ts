@@ -1,7 +1,7 @@
 import type { positionTypeEnum } from "@/db/schema/public";
 import { academicYearStart, shortAcademicYearLabel } from "@/lib/about/academic-year-copy";
 import type { DepartmentMembers } from "./department-members";
-import type { DivisionMembers, PersonPosition } from "./division-members";
+import type { DivisionMembers, PersonPosition, WaitingPerson } from "./division-members";
 import type { WholeTeamMembers } from "./team-members";
 
 // The Team pages of the dashboard (issue #143): Members (boards 46, 61g),
@@ -335,6 +335,26 @@ export type Joining = {
   readonly position: string;
   /** "The signed NDA arrived" is ticked on the application: Confirm join waits for it. */
   readonly ndaArrived: boolean;
+  /**
+   * Whether the viewer may Confirm join it: the Applications area decides,
+   * by the one rule every move on an application asks (`mayChangePositionIn`,
+   * ./position-access.ts), never the Members area (Owner decision, 2026-10-22,
+   * issue #584).
+   */
+  readonly canConfirm: boolean;
+};
+
+/**
+ * One division's queue on the whole team's Members page (issue #584): the
+ * people added by email waiting for Confirm NDA, the accepted applicants
+ * joining it, and whether the viewer may change its people (Confirm NDA,
+ * Cancel add, Fill details).
+ */
+export type DivisionQueue = {
+  readonly divisionId: number;
+  readonly waiting: readonly WaitingPerson[];
+  readonly joining: readonly Joining[];
+  readonly editable: boolean;
 };
 
 /**
@@ -345,10 +365,11 @@ export type Joining = {
  * each (boards 61e to 61h2, issue #231); every division of the department for
  * its head (boards 69 to 69c, issue #235); and nothing for anyone else. On
  * the whole team, `positions` holds what the one Edit details panel may
- * change for each person the viewer may edit (`positionsOf`, issue #584).
+ * change for each person the viewer may edit (`positionsOf`), and `queues`
+ * every open division's people waiting for Confirm NDA and joining (issue #584).
  */
 export type MemberDirectory =
-  | ({ readonly scope: "whole-team"; readonly positions: readonly PersonPosition[] } & WholeTeamMembers)
+  | ({ readonly scope: "whole-team"; readonly positions: readonly PersonPosition[]; readonly queues: readonly DivisionQueue[] } & WholeTeamMembers)
   | ({ readonly scope: "division" } & DivisionMembers)
   | ({ readonly scope: "department" } & DepartmentMembers)
   | { readonly scope: "none" };

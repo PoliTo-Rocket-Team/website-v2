@@ -105,6 +105,7 @@ import {
   type TeamSearch,
 } from "./division-edit";
 import { refreshAfter } from "@/lib/cache-tags";
+import { mayChangePositionIn } from "./position-access";
 import { readTeamSnapshot, recordsOf, seatsOf, teamPeopleOf, type TeamSnapshot } from "./team-database";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -208,15 +209,28 @@ function nameOf(row: { first_name: string | null; last_name: string | null; emai
 }
 
 /**
- * Accepted applicants to the division's positions who are not members yet
- * (board 59). The application stays accepted; Confirm join, once the signed
- * NDA arrived, makes them a member. Someone already on the team joins from the
- * Applications page (board 58h2, issue #229) or from Add member (#231).
+ * Accepted applicants to each division's positions who are not members yet
+ * (board 59), by division, for the divisions of `divisionIds` where the
+ * viewer reads the Applications area (issue #471): they are applications
+ * data. The application stays accepted; Confirm join, once the signed NDA
+ * arrived, makes them a member, and the Applications area decides who may
+ * (`canConfirm`: the rule `moveApplication` asks, issue #584). Someone
+ * already on the team joins from the Applications page (board 58h2, issue
+ * #229) or from Add member (#231). One read for every division.
  */
-export async function readJoining(divisionId: number): Promise<Joining[]> {
+async function readJoining(identity: DashboardIdentity, divisionIds: readonly number[], org: OrgChart): Promise<Map<number, Joining[]>> {
+  const units = new Map(
+    org.divisions
+      .filter((d) => divisionIds.includes(d.id))
+      .map((d) => [d.id, { divisionId: d.id, departmentId: d.departmentId }] as const)
+      .filter(([, unit]) => readsAreaIn(identity, "applications", unit)),
+  );
+  const joining = new Map<number, Joining[]>();
+  if (units.size === 0) return joining;
   const rows = await getDb()
     .select({
       application_id: applications.id,
+      division_id: applyPositions.divisionId,
       first_name: users.firstName,
       last_name: users.lastName,
       email: users.email,
@@ -228,19 +242,27 @@ export async function readJoining(divisionId: number): Promise<Joining[]> {
     .innerJoin(users, eq(users.id, applications.userId))
     .where(
       and(
-        eq(applyPositions.divisionId, divisionId),
+        inArray(applyPositions.divisionId, [...units.keys()]),
         eq(applyPositions.isDeleted, false),
         eq(applications.status, "accepted"),
         isNull(users.member),
       ),
     )
     .orderBy(applications.appliedAt);
-  return rows.map((r) => ({
-    applicationId: r.application_id,
-    name: nameOf(r),
-    position: r.position ?? "a position",
-    ndaArrived: r.nda_arrived_at !== null,
-  }));
+  for (const r of rows) {
+    const unit = r.division_id === null ? undefined : units.get(r.division_id);
+    if (unit === undefined) continue;
+    const listed = joining.get(unit.divisionId) ?? [];
+    listed.push({
+      applicationId: r.application_id,
+      name: nameOf(r),
+      position: r.position ?? "a position",
+      ndaArrived: r.nda_arrived_at !== null,
+      canConfirm: mayChangePositionIn(identity, "applications", unit),
+    });
+    joining.set(unit.divisionId, listed);
+  }
+  return joining;
 }
 
 const waitingColumns = {
@@ -307,12 +329,21 @@ function waitingDetails(row: WaitingRow): MemberDetails {
 
 /** The people added to `divisionId` and waiting for Confirm NDA, oldest first. */
 async function readWaiting(divisionId: number): Promise<WaitingRow[]> {
-  return getDb()
+  return (await readWaitingIn([divisionId])).get(divisionId) ?? [];
+}
+
+/** The people added to each of `divisionIds` and waiting for Confirm NDA, by division, oldest first; one read for every division. */
+async function readWaitingIn(divisionIds: readonly number[]): Promise<Map<number, WaitingRow[]>> {
+  const waiting = new Map<number, WaitingRow[]>();
+  if (divisionIds.length === 0) return waiting;
+  const rows = await getDb()
     .select(waitingColumns)
     .from(teamJoins)
     .innerJoin(users, eq(users.id, teamJoins.userId))
-    .where(eq(teamJoins.divisionId, divisionId))
+    .where(inArray(teamJoins.divisionId, [...divisionIds]))
     .orderBy(asc(teamJoins.addedAt));
+  for (const row of rows) waiting.set(row.division_id, [...(waiting.get(row.division_id) ?? []), row]);
+  return waiting;
 }
 
 function waitingPerson(row: WaitingRow): WaitingPerson {
@@ -326,20 +357,20 @@ function waitingPerson(row: WaitingRow): WaitingPerson {
 }
 
 /**
+ * Each division's people joining (where the viewer reads Applications) and
+ * people waiting for Confirm NDA, both read at once.
+ */
+async function readPerDivision(identity: DashboardIdentity, divisionIds: readonly number[], org: OrgChart) {
+  const [joining, waiting] = await Promise.all([readJoining(identity, divisionIds, org), readWaitingIn(divisionIds)]);
+  return divisionIds.map((id) => ({ id, joining: joining.get(id) ?? [], waiting: waiting.get(id) ?? [] }));
+}
+
+/**
  * A department head's Members page (boards 69 to 69c, issue #235): every
  * open division of their department, each with the people waiting for
  * Confirm NDA and the accepted applicants joining. A head of several
  * departments sees the first.
  */
-/** Each division's people joining and people waiting for Confirm NDA, every read at once. */
-function readPerDivision(divisionIds: readonly number[]) {
-  return Promise.all(
-    divisionIds.map(async (id) => {
-      const [joining, waiting] = await Promise.all([readJoining(id), readWaiting(id)]);
-      return { id, joining, waiting };
-    }),
-  );
-}
 
 async function readDepartmentMembers(
   identity: DashboardIdentity,
@@ -349,7 +380,7 @@ async function readDepartmentMembers(
   const [departmentId] = actor.departmentIds;
   if (departmentId === undefined) return NO_MEMBERS;
   const divisionIds = snapshot.org.divisions.filter((d) => d.departmentId === departmentId).map((d) => d.id);
-  const perDivision = await readPerDivision(divisionIds);
+  const perDivision = await readPerDivision(identity, divisionIds, snapshot.org);
   const page = departmentMembers({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -373,7 +404,7 @@ export async function readTeamStructure(identity: DashboardIdentity): Promise<Te
   const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const ids = editableDivisionIds(actor, snapshot.org);
   if (actor === null || actor.kind === "lead") return null;
-  const [perDivision, openPositions] = await Promise.all([readPerDivision(ids), readOpenPositions(ids)]);
+  const [perDivision, openPositions] = await Promise.all([readPerDivision(identity, ids, snapshot.org), readOpenPositions(ids)]);
   return teamStructure({
     records: recordsOf(snapshot),
     org: snapshot.org,
@@ -404,11 +435,9 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
   const division = reach.find((id) => id === divisionId) ?? reach[0];
   if (division === undefined) return NO_MEMBERS;
   // The accepted applicants joining are applications data: listed only for a
-  // viewer who reads the Applications area here (issue #471).
-  const departmentId = snapshot.org.divisions.find((d) => d.id === division)?.departmentId;
-  const readsJoining = departmentId !== undefined && readsAreaIn(identity, "applications", { divisionId: division, departmentId });
+  // viewer who reads the Applications area here (issue #471, `readJoining`).
   const [joining, waiting, actor] = await Promise.all([
-    readsJoining ? readJoining(division) : [],
+    readJoining(identity, [division], snapshot.org),
     readWaiting(division),
     readActor(identity, snapshot.org),
   ]);
@@ -420,7 +449,7 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
     selfId: identity.memberId,
     reach,
     waiting: waiting.map(waitingPerson),
-    joining,
+    joining: joining.get(division) ?? [],
   });
   return page === null ? NO_MEMBERS : { scope: "division", ...page };
 }
@@ -428,16 +457,27 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
 /**
  * The whole team's Members page (boards 73 to 73c, issue #418), for a viewer
  * whose page is the whole team (`opensWholeTeam`), with what the one Edit
- * details panel may change for each person they may edit (`positionsOf`,
- * issue #584), read with the actor every Members write checks.
+ * details panel may change for each person they may edit (`positionsOf`),
+ * and every open division's people waiting for Confirm NDA and joining, as a
+ * head or a lead reads their own units' (Owner decision, 2026-10-22, issue
+ * #584). What it offers to change is read with the actor every Members write
+ * checks; Confirm join, with the Applications rule (`readJoining`).
  */
 export async function readWholeTeamMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
   const snapshotRead = readTeamSnapshot();
   const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
   const records = recordsOf(snapshot);
+  const divisionIds = snapshot.org.divisions.map((d) => d.id);
+  const perDivision = await readPerDivision(identity, divisionIds, snapshot.org);
   return {
     scope: "whole-team",
     positions: positionsOf(records, snapshot.org, actor, identity.memberId),
+    queues: perDivision.map((d) => ({
+      divisionId: d.id,
+      waiting: d.waiting.map(waitingPerson),
+      joining: d.joining,
+      editable: actor !== null && reachesDivision(actor, d.id, snapshot.org),
+    })),
     ...wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId }),
   };
 }
@@ -601,18 +641,12 @@ async function moveToAlumni(identity: DashboardIdentity, personId: number, depar
  * Confirm join from the Members page's banner (boards 59, 69m) is the
  * Applications page's Confirm join (58h): the same move, through the same
  * rule, so it waits for the NDA tick, marks the application joined and never
- * gives someone already on the team a second role. Only for a division the
- * viewer's Members page reaches: the lead's own, or the head's department's.
+ * gives someone already on the team a second role. The Applications area
+ * decides who may, here as there (Owner decision, 2026-10-22, issue #584):
+ * `moveApplication` asks its own rule, and the Members area adds none.
  */
 async function confirmJoin(identity: DashboardIdentity, applicationId: number): Promise<boolean> {
   if (identity.memberId === null) return false;
-  const [row] = await getDb()
-    .select({ division_id: applyPositions.divisionId })
-    .from(applications)
-    .innerJoin(applyPositions, eq(applications.applyPositionId, applyPositions.id))
-    .where(eq(applications.id, applicationId))
-    .limit(1);
-  if (!row || row.division_id === null || (await actingOn(identity, row.division_id)) === null) return false;
   try {
     return (await moveApplication(identity, applicationId, { kind: "confirm-join" })).ok;
   } catch (error) {

@@ -90,8 +90,14 @@ export async function moveToAlumni(personId: number, years: string, reason: stri
   return done(await writes.moveToAlumni(personId, departure.value));
 }
 
+/**
+ * The Members banner's Confirm join (board 59). The Applications area decides
+ * it, as on the Applications page (Owner decision, 2026-10-22, issue #584):
+ * no Members page gate here, and the write runs `moveApplication`'s own rule.
+ */
 export async function confirmJoin(applicationId: number): Promise<TeamActionResult> {
-  const writes = await writesOn("members");
+  const opening = await openDashboard();
+  const writes = opening.kind === "open" ? opening.data.teamWrites : null;
   if (!writes || !isId(applicationId)) return REFUSED;
   return done(await writes.confirmJoin(applicationId));
 }
