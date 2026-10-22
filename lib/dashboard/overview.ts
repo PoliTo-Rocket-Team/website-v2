@@ -78,6 +78,12 @@ export type AttentionItem = {
   readonly phoneTitle?: string;
   readonly detail: string;
   readonly action: AttentionAction;
+  /**
+   * The kind whose icon the row's tile draws, when it is not its own: an alias
+   * notice is a "notice" but draws the alias request's at-sign (boards 94c and
+   * 94f, issue #565).
+   */
+  readonly iconKind?: AttentionKind;
 };
 
 export type ActivityItem = {

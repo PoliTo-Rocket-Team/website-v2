@@ -75,3 +75,15 @@ test("a promoted notice reads as an attention row naming the person, the divisio
   assert.equal(attentionOf(handOver, now).detail, "Marco Bianchi handed over · 8 Oct");
   assert.equal(noticeOf({ ...row, data: { ...row.data, mode: "alone" } }), null);
 });
+
+test("the alias notices draw the alias request's at-sign tile; other notices keep the notice tile (issue #565)", () => {
+  const now = new Date("2026-10-23T12:00:00Z");
+  const read = (kind: string, data: unknown) => {
+    const notice = noticeOf({ id: 5, kind, subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", data });
+    assert.ok(notice);
+    return attentionOf(notice, now);
+  };
+  assert.equal(read("alias-created", { address: "davide.russo@politorocketteam.it" }).iconKind, "alias-request");
+  assert.equal(read("alias-declined", { by: "Andrea Pantano" }).iconKind, "alias-request");
+  assert.equal(read("member-left", { divisions: ["Hardware Division"], reason: null }).iconKind, undefined);
+});

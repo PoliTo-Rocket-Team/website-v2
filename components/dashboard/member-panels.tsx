@@ -81,6 +81,19 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
+/**
+ * A fact row: the 132px label column, then the value (board 94e). A stacked
+ * row puts its label above the value on a phone, where the panel is the whole
+ * screen, so a long address gets the row's width (issue #546).
+ */
+function factRow(stack: boolean): string {
+  return `flex min-h-7 items-center gap-x-3 ${stack ? "flex-wrap md:flex-nowrap" : ""}`;
+}
+
+function factLabel(stack: boolean): string {
+  return `${stack ? "w-full md:w-[132px]" : "w-[132px]"} shrink-0 text-[14px] text-prt-muted`;
+}
+
 /** One fact on the member panel: label, value, and a copy or show button. Empty reads as a dim dash. */
 function Fact({
   label,
@@ -88,6 +101,7 @@ function Fact({
   copy,
   hidden,
   wrap,
+  stack = false,
 }: {
   label: string;
   value: string | null;
@@ -97,12 +111,14 @@ function Fact({
   hidden?: boolean;
   /** Wraps a long value onto a second line instead of cutting it. */
   wrap?: boolean;
+  /** The label sits above the value on a phone. */
+  stack?: boolean;
 }) {
   const [shown, setShown] = useState(false);
   const blur = hidden && !shown && value !== null;
   return (
-    <div className="flex min-h-7 items-center gap-3">
-      <dt className="w-[132px] shrink-0 text-[14px] text-prt-muted">{label}</dt>
+    <div className={factRow(stack)}>
+      <dt className={factLabel(stack)}>{label}</dt>
       <dd className={`min-w-0 flex-1 text-[14px] text-prt-text ${wrap ? "break-words" : "truncate"}`}>
         {value === null ? (
           <span className="text-dim">–</span>
@@ -198,7 +214,7 @@ export function PersonDrawer<P extends PanelPerson>({
         <Section title="Contact">
           <dl className="flex flex-col gap-1.5">
             <PrtEmailFact memberId={p.id} name={p.name} address={memberDetailText(d, "prtEmail")} alias={alias} />
-            <Fact label="Personal email" value={p.signInEmail} copy="Email" />
+            <Fact label="Personal email" value={p.signInEmail} copy="Email" wrap stack />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
             <Fact label="LinkedIn" value={memberDetailText(d, "linkedin")} />
@@ -245,9 +261,10 @@ export function PersonDrawer<P extends PanelPerson>({
  */
 function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; name: string; address: string | null; alias: MemberAlias | null }) {
   const [pending, startTransition] = useTransition();
-  // The address wraps rather than being cut on a phone (issue #546).
+  // The address sits under its label on a phone and wraps rather than being
+  // cut (issue #546).
   if (address !== null || alias === null || alias.kind === "set" || (alias.kind === "none" && !alias.requestable)) {
-    return <Fact label="PRT email" value={address ?? (alias?.kind === "set" ? alias.address : null)} copy="PRT email" wrap />;
+    return <Fact label="PRT email" value={address ?? (alias?.kind === "set" ? alias.address : null)} copy="PRT email" wrap stack />;
   }
   const run = (write: () => Promise<{ ok: boolean; error?: string }>, done: string, failed: string) =>
     startTransition(async () => {
@@ -259,8 +276,8 @@ function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; na
       toast.success(done);
     });
   return (
-    <div className="flex min-h-7 items-center gap-3" aria-busy={pending}>
-      <dt className="w-[132px] shrink-0 text-[14px] text-prt-muted">PRT email</dt>
+    <div className={factRow(true)} aria-busy={pending}>
+      <dt className={factLabel(true)}>PRT email</dt>
       {alias.kind === "requested" ? (
         <>
           <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-[14px]">
