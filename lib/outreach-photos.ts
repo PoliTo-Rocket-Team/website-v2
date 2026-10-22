@@ -47,9 +47,14 @@ const EXTENSION: Readonly<Record<PhotoType, string>> = { "image/jpeg": "jpg", "i
 export type CheckedPhoto = { readonly bytes: Uint8Array; readonly contentType: PhotoType; readonly extension: string };
 
 export function checkPhotoUpload(upload: Upload): WriteResult<CheckedPhoto> {
-  if (upload.bytes.byteLength > PHOTO_MAX_BYTES) return refused("The photo must be at most 4 MB.");
+  return checkImageUpload(upload, PHOTO_MAX_BYTES, "photo");
+}
+
+/** An image upload the store can take: at most `maxBytes`, and a JPEG, PNG or WebP by its own bytes. `what` names it in a refusal. */
+export function checkImageUpload(upload: Upload, maxBytes: number, what: string): WriteResult<CheckedPhoto> {
+  if (upload.bytes.byteLength > maxBytes) return refused(`The ${what} must be at most ${Math.round(maxBytes / (1024 * 1024))} MB.`);
   const type = photoTypeOf(upload.bytes);
-  if (type === null) return refused("The photo must be a JPEG, PNG or WebP file.");
+  if (type === null) return refused(`The ${what} must be a JPEG, PNG or WebP file.`);
   return written({ bytes: upload.bytes, contentType: type, extension: EXTENSION[type] });
 }
 
@@ -63,8 +68,8 @@ export interface PhotoFiles {
   drop(srcs: readonly PhotoSrc[]): Promise<void>;
 }
 
-/** The photos a content editor's panel uploads: Outreach post photos, and project photos. */
-export type PanelPhotoKind = Extract<PublicFileKind, "post-photo" | "project-photo">;
+/** The photos a content editor's panel uploads: Outreach post photos, project photos, and the crops of a project's uploaded background. */
+export type PanelPhotoKind = Extract<PublicFileKind, "post-photo" | "project-photo" | "project-background">;
 
 /**
  * The pathname of an uploaded photo of this kind in this deployment's public

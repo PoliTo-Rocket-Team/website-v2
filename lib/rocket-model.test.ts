@@ -28,27 +28,34 @@ test("a page slot with no model of its own draws the placeholder's still, with n
 test("Cavour and VES draw their own rockets on their cards and pages; Efesto draws its engine", () => {
   // The pages read the stored records (issue #295); these are the imported ones.
   const record = (slug: string) => importedRecords.find((r) => r.slug === slug)!;
-  const pageRecord = (slug: string) => pageRecordOf(record(slug));
-  assert.deepEqual(pageRecord("cavour").hero.visual?.rocket?.own?.model, "cavour");
+  /** The model the page's top visual names, with its alt text. */
+  const own = (slug: string) => {
+    const { visual } = pageRecordOf(record(slug)).hero;
+    return visual.kind === "model" ? visual.own : undefined;
+  };
+  assert.deepEqual(own("cavour")?.model, "cavour");
 
   // Efesto (issue #382): its home card and its page slot draw the engine and its stills.
   const engine = rocketModelOf(homeCardOf(record("efesto"), 2).rocket);
   assert.equal(engine, "efesto");
   assert.equal(cardPosterOf(engine), EFESTO_CARD_POSTER);
-  const engineStill = stageStillOf(pageRecord("efesto").hero.visual?.rocket?.own);
+  const engineStill = stageStillOf(own("efesto"));
   assert.equal(engineStill.src, EFESTO_STAGE_POSTER);
   assert.notEqual(engineStill.alt, "");
-  // Its page panel lays the engine on the orange streak; the rockets keep their own texture.
-  assert.equal(stageTextureOf(pageRecord("efesto").hero.visual?.rocket?.own, "/own.webp"), ENGINE_STAGE_TEXTURE);
-  assert.equal(stageTextureOf(pageRecord("cavour").hero.visual?.rocket?.own, "/own.webp"), "/own.webp");
-  assert.equal(stageTextureOf(pageRecord("ves").hero.visual?.rocket?.own, "/own.webp"), "/own.webp");
-  assert.equal(stageTextureOf(undefined, "/own.webp"), "/own.webp");
+  // Its page panel lays the engine on the orange streak in place of the brand texture it kept;
+  // the rockets keep their own texture, and an engine whose editor picked a preset lies on it (epic #522).
+  const kept = "/textures/project-efesto.webp";
+  assert.equal(stageTextureOf(own("efesto"), kept), ENGINE_STAGE_TEXTURE);
+  assert.equal(stageTextureOf(own("efesto"), "/backgrounds/ember-wide.webp"), "/backgrounds/ember-wide.webp");
+  assert.equal(stageTextureOf(own("cavour"), kept), kept);
+  assert.equal(stageTextureOf(own("ves"), kept), kept);
+  assert.equal(stageTextureOf(undefined, kept), kept);
 
   // VES Mark I (issue #361): its home card and its page slot draw the VES model and its stills.
   const card = rocketModelOf(homeCardOf(record("ves"), 1).rocket);
   assert.equal(card, "ves");
   assert.equal(cardPosterOf(card), VES_CARD_POSTER);
-  const still = stageStillOf(pageRecord("ves").hero.visual?.rocket?.own);
+  const still = stageStillOf(own("ves"));
   assert.equal(still.src, VES_STAGE_POSTER);
   assert.notEqual(still.alt, "");
 });

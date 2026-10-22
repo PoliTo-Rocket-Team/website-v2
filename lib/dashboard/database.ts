@@ -75,7 +75,7 @@ import { databaseAdvisorStore } from "./database-team-advisors";
 import { blobPhotoFiles, databaseOutreachStore } from "./database-outreach";
 import { outreachEditor } from "@/lib/outreach-editor";
 import { projectEditor } from "@/lib/project-content/editor";
-import { blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "./database-projects";
+import { blobProjectBackgroundFiles, blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "./database-projects";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
 import { upcomingInterviews } from "./interview-slots";
@@ -924,7 +924,13 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     teamPage: teamPageEditor(identity, databaseTeamPageStore, databaseTeamRoles, teamRecord, blobTeamPagePhotos()),
     teamAdvisors: advisorEditor(identity, databaseAdvisorStore, currentAcademicYearStart),
     outreach: outreachEditor(identity, databaseOutreachStore, blobPhotoFiles()),
-    projects: projectEditor(identity, databaseProjectStore, { stamps: readProjectStamps, now: () => new Date() }, blobProjectPhotoFiles()),
+    projects: projectEditor(
+      identity,
+      databaseProjectStore,
+      { stamps: readProjectStamps, now: () => new Date() },
+      blobProjectPhotoFiles(),
+      blobProjectBackgroundFiles(),
+    ),
     ...self,
     ...databaseOwnAlumni(identity),
     // Every viewer opens on their Overview, so leaving opens it too (issue #317).

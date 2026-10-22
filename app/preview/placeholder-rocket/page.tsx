@@ -38,7 +38,7 @@ const hero: Hero = {
   intro: { text: "Student-built rocket, in design." },
   status: "IN DESIGN",
   dates: "2026 –",
-  visual: { caption: "NEW PROJECT · FLIGHT CONFIGURATION", rocket: {} },
+  visual: { kind: "model", caption: "NEW PROJECT · FLIGHT CONFIGURATION" },
   facts: [
     { value: "130 mm", label: { text: "DIAMETER" } },
     { value: "3 000 m", label: { text: "TARGET APOGEE" } },

@@ -10,6 +10,7 @@ import { editedLine } from "./edited";
 import { projectEditor } from "./editor";
 import { importedProjects } from "./import";
 import { homeCardOf, listingOf, type ProjectRecord } from "./record";
+import { sectionBlockOf, withSectionBlock } from "./sections";
 
 // The dashboard Projects page (board 75, issue #297): dragging the cards sets
 // the site order Home and /projects read, only the site-content editors reach
@@ -110,7 +111,8 @@ test("each card's line names the last edit, and the one part a draft changes", a
   const cavour = importedProjects()[0];
   assert.equal(cavour.version.state, "published");
   if (cavour.version.state !== "published") return;
-  const launches = { ...cavour.version.published, launches: { ...(cavour.version.published as { launches: object }).launches, title: "Four flights." } } as ProjectRecord;
+  const record = cavour.version.published;
+  const launches = withSectionBlock(record, "launches", { ...sectionBlockOf(record, "launches")!, title: "Four flights." });
   assert.ok((await editor.save(1, "save-draft", async () => ({ ok: true, value: launches }))).ok);
   assert.equal((await editor.board())?.edited[1], "Launch history edited today by Marco Bianchi");
 });

@@ -437,25 +437,39 @@ project's page from its record (`pageRecordOf` in `lib/project-content/record.ts
 per-project components and no per-project routes: a new project is a stored record, created with
 New project on the dashboard Projects page (issue #301), and needs no new file. The built Cavour
 page is the layout reference.
-- Order: hero, 01 The name and 02 The design side by side, then versions, launch history, the
-  plan, numbered reasons and gallery, then the footer. There is no next-project card (Owner
-  decision 2026-10-18, issue #377).
-- A section the record has no data for is an absent key, and the page leaves it out entirely,
-  with no note about what is missing. Section numbers follow the sections that render, so they
-  always run 01, 02, 03 ... (`sectionsOf` in `lib/project-pages/index.ts`).
-- The hero shows the visual panel on the project's texture only when the record has a visual:
+- Order: the hero, then the record's page blocks in their order (epic #522), then the footer.
+  Migration 0050 made each stored project's sections into blocks in the order they had: 01 The
+  name and 02 The design (two half-width text blocks, side by side), then versions, launch
+  history, the plan, numbered reasons and gallery. Two half-width text blocks in a row sit side
+  by side; a full-width one, or a half-width one alone, takes its own row. There is no
+  next-project card (Owner decision 2026-10-18, issue #377).
+- A hidden block, or one the record does not hold, is left out entirely, with no note about
+  what is missing. Numbers follow the headings that render, so they always run 01, 02, 03 ...
+  (`pageRowsOf` in `lib/project-pages/index.ts`).
+- The hero shows the visual panel on the project's background only when its visual is a model
+  or a photo:
   Cavour's still of the parked rocket (Stack above, not 3D), VES's still of Mark I with its
-  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. An engine's
-  still sits centred on the orange streak texture (`/textures/project-ves.webp`) in place of its
-  own texture (`stageTextureOf`, Owner decision, issue #382); its cards keep the grey texture. Up to six key
+  "VES MARK I" caption and Mark I's key facts, Efesto's still of its outline engine. An engine
+  that kept its brand texture has its still centred on the orange streak texture
+  (`/textures/project-ves.webp`) in place of that texture (`stageTextureOf`, Owner decision,
+  issue #382); its cards keep the grey texture. An engine whose editor picked a preset lies on the
+  preset. Backgrounds (epic #522): a project keeps its brand texture from `public/textures/` until
+  an editor picks one of the 17 presets in `public/backgrounds/` (board 93d; one "Dark stripes"
+  preset replaced two copies of one file, Owner decision on #522) or uploads a picture
+  of their own; a preset's tall file is the Home card's, its wide file the page panel's and the
+  Projects list's. An upload is cropped twice in the crop dialog (board 93f, issue #529): Tall
+  (9:16) for the Home card and Wide (2:1) for the page panel and the Projects list, each crop
+  stored in the public store under `project-backgrounds/` and served as it is. Up to six key
   facts. A set with a value longer than ten characters is set at 17px on phones (else 20px),
   and on desktop sits 3 x 2 below xl (1280) so no value runs into the next (`factLayout` in
-  `hero.tsx`); a shorter set is one row of six.
+  `parts.tsx`); a shorter set is one row of six. A Key facts block draws its facts the same way.
 - Versions: one highlighted version, bold under an accent pill on desktop and the default tab
   on phones. A spec with no value shows the dimmed dash (`Value` in `parts.tsx`).
 - The launch history and the /projects header counts read each campaign from the one launch
   list in the project's record (issues #72 and #295). A campaign that did not fly gives its
-  own four numbers and reads "DID NOT FLY"; a setback takes the orange pill, never red.
+  own four numbers and reads "DID NOT FLY"; a setback takes the orange pill, never red. Each
+  campaign card has one cover photo (Owner decision on #522); migration 0050 moved each
+  campaign's second photo to the end of the gallery.
 - The plan (board 25): steps done, the one under way, next and later, in that order by the
   record's shape. Desktop: a row of steps under a top rule, the step under way in accent.
   Phones: a vertical timeline with dots. Numbered reasons (board 25 "Why liquid"): up to three,

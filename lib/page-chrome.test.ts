@@ -15,14 +15,14 @@ import { team } from "@/lib/about/team";
 import { publicItems } from "@/lib/content/versioned";
 import { featuredCard, iressStory, newestFirst, outreachRecord } from "@/lib/outreach";
 import { mapUpToTwo, type OutreachContent } from "@/lib/outreach-types";
-import { firstImport, importedProjects } from "@/lib/project-content/import";
+import { importedProjects } from "@/lib/project-content/import";
 import { listingOf, listingsNewestFirst, pageRecordOf } from "@/lib/project-content/record";
 import { siteFooterOf } from "./page-chrome";
 
 // The public pages draw the site's navbar and footer; the dashboard editors
 // draw the same pages without them (issue #495).
 
-const projects = publicItems(importedProjects(firstImport));
+const projects = publicItems(importedProjects());
 const footerProjects = projects.map(({ name, slug }) => ({ name, slug }));
 const outreach: OutreachContent = { ...outreachRecord, featured: [iressStory] };
 const [post] = outreachRecord.posts;

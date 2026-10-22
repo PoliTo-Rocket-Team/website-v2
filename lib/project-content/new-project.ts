@@ -1,16 +1,17 @@
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { editorVersion, publicVersion, type ContentItem } from "@/lib/content/versioned";
 import type { Spec } from "@/lib/projects";
-import type { EngineRecord, ProjectRecord, VehicleRecord } from "./record";
+import type { Background, EngineBlock, EngineRecord, ProjectRecord, VehicleRecord } from "./record";
 
 // New project on the dashboard Projects page (issue #301): a name, an address
 // and a kind make a stored project whose only version is a draft, so nothing
 // of it reaches Home, /projects or its address until it is published. The
 // draft starts whole, with a line of starting copy in every section, so the
-// editor opens on a page it can save at once and then rewrites. Its card and
-// its page draw the shared placeholder rocket (lib/rocket-model.ts): the card
-// names no model of its own, and the page's visual panel has a rocket slot
-// with none (Owner decision, grill #279, R1.1).
+// editor opens on a page it can save at once and then rewrites: the two
+// stories as half-width text blocks with the ids the panel's sections edit
+// (./sections.ts). Its card and its page draw the shared placeholder rocket
+// (lib/rocket-model.ts): its top visual is a model slot with no model of its
+// own (Owner decision, grill #279, R1.1).
 
 export const PROJECT_KINDS = ["vehicle", "engine"] as const;
 export type ProjectKind = (typeof PROJECT_KINDS)[number];
@@ -75,10 +76,10 @@ export function readNewProject(input: unknown): NewProject | null {
 /** The brand textures (board 21); a new project takes one by its address, so the same address always gets the same one. */
 const TEXTURES = ["/textures/project-cavour.webp", "/textures/project-ves.webp", "/textures/project-efesto.webp"] as const;
 
-function textureOf(slug: string): string {
+function backgroundOf(slug: string): Background {
   let hash = 0;
   for (const char of slug) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return TEXTURES[hash % TEXTURES.length];
+  return { kind: "texture", src: TEXTURES[hash % TEXTURES.length] };
 }
 
 const spec = (label: string, value: string): Spec => ({ label: { text: label }, value: { text: value } });
@@ -92,29 +93,35 @@ export function newProjectRecord(input: NewProject, year: number): ProjectRecord
   const base = {
     slug: input.slug,
     name,
-    texture: textureOf(input.slug),
+    background: backgroundOf(input.slug),
     description: intro,
     hero: {
       intro: { text: intro },
       status: "IN DESIGN",
       dates: `${since} – NOW`,
-      // A rocket slot with no model of its own draws the placeholder.
-      visual: { caption: `${name.toUpperCase()} · IN DESIGN`, rocket: {} },
+      // A model slot with no model of its own draws the placeholder.
+      visual: { kind: "model", caption: `${name.toUpperCase()} · IN DESIGN` } as const,
       facts: [{ value: "In design", label: { text: "STATUS" } }] as const,
     },
-    nameStory: {
-      title: `Why ${name}.`,
-      body: { text: [`Where the name ${name} comes from.`] as [string], phone: `Where the name ${name} comes from.` },
-    },
-    design: {
-      title: "How it is built.",
-      body: { text: ["What it is made of, and why."] as [string], phone: "What it is made of, and why." },
-      parts: {
-        label: "Parts",
-        caption: "BOTTOM TO TOP",
-        items: [{ name, desc: `${kindLabel} · in design`, phone: "In design" }] as const,
+    blocks: [
+      {
+        id: "name",
+        kind: "text",
+        hidden: false,
+        width: "half",
+        heading: { label: "THE NAME", title: `Why ${name}.` },
+        body: { text: [`Where the name ${name} comes from.`], phone: `Where the name ${name} comes from.` },
       },
-    },
+      {
+        id: "design",
+        kind: "text",
+        hidden: false,
+        width: "half",
+        heading: { label: "THE DESIGN", title: "How it is built." },
+        body: { text: ["What it is made of, and why."], phone: "What it is made of, and why." },
+        parts: { label: "Parts", caption: "BOTTOM TO TOP", items: [{ name, desc: `${kindLabel} · in design`, phone: "In design" }] },
+      },
+    ] satisfies EngineBlock[],
   };
   const card = {
     year: { text: `${since}–` },

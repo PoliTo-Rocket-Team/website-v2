@@ -7,12 +7,14 @@ describe("file pathnames", () => {
     assert.equal(privatePathname("application", "a1b2.pdf"), "applications/a1b2.pdf");
     assert.equal(privatePathname("order", "po-17.pdf"), "orders/po-17.pdf");
     assert.equal(publicPathname("photo", "giulia.webp"), "photos/giulia.webp");
+    assert.equal(publicPathname("project-background", "a1b2.jpg"), "project-backgrounds/a1b2.jpg");
   });
 
   test("a new file's name cannot name a folder or climb out of one", () => {
-    for (const name of ["", "../x.pdf", "a/b.pdf", ".hidden", "a b.pdf"]) {
+    for (const name of ["", "../x.pdf", "a/b.pdf", ".hidden", "a b.pdf", "..", "../applications/cv.pdf"]) {
       assert.throws(() => privatePathname("application", name));
       assert.throws(() => publicPathname("photo", name));
+      assert.throws(() => publicPathname("project-background", name));
     }
   });
 

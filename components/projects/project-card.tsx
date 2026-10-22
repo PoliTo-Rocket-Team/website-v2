@@ -21,11 +21,20 @@ function Text({ copy }: { copy: Copy }) {
   );
 }
 
+/** A pill's words and tone: a flown rocket in green; one in design, like an engine in development, in amber. */
+function pillOf(status: ProjectStatus): readonly [label: string, style: string] {
+  switch (status.kind) {
+    case "flown":
+      return [`FLOWN ×${status.flights}`, "bg-success-soft text-success"];
+    case "in-design":
+      return ["IN DESIGN", "bg-warning-soft text-warning"];
+    case "in-development":
+      return ["IN DEVELOPMENT", "bg-warning-soft text-warning"];
+  }
+}
+
 function StatusPill({ status }: { status: ProjectStatus }) {
-  const [label, style] =
-    status.kind === "flown"
-      ? [`FLOWN ×${status.flights}`, "bg-success-soft text-success"]
-      : ["IN DEVELOPMENT", "bg-warning-soft text-warning"];
+  const [label, style] = pillOf(status);
   return (
     <span className={`rounded-full px-2.5 py-1 font-mono text-[11px] tracking-[0.15em] ${style}`}>
       {label}
@@ -52,6 +61,8 @@ function TexturePanel({ project }: { project: Project }) {
           alt=""
           fill
           sizes="(min-width: 1024px) 560px, (min-width: 768px) 100vw, 330px"
+          // An uploaded background (issue #529) is served as it is, as uploaded photos are.
+          unoptimized={!project.texture.startsWith("/")}
           className="object-cover"
         />
         {rocket && (

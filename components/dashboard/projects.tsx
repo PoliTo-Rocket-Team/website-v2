@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ExternalLink, Pencil, Plus } from "lucide-react";
 import type { ContentItem } from "@/lib/content/versioned";
-import { projectRows, type ProjectRow } from "@/lib/project-content/dashboard-list";
+import { projectRows, type ProjectRow, type RowVisual } from "@/lib/project-content/dashboard-list";
 import { takenSlugs } from "@/lib/project-content/new-project";
 import type { ProjectRecord } from "@/lib/project-content/record";
 import { withSubscriptDigits } from "@/lib/project-content/subscript";
@@ -17,7 +17,7 @@ import { PANEL } from "./panel";
 // The dashboard Projects page (board 91, issue #506): one row per stored
 // project, drafts included, newest first by the rule Home and /projects use
 // (lib/project-content/dashboard-list.ts). Each row shows the project's own
-// texture, its name and card line, its kind, years, card status and whether
+// background with its top-of-page visual, its name and card line, its kind, years, card status and whether
 // it is on the site, then Edit page (the project on its page, board 75b),
 // View on site once a version is published. The row has no menu (Owner
 // decision, issue #506). The list sets no order. On phones each row is a compact card with the same fields
@@ -71,13 +71,37 @@ export function ProjectsView({ items }: { items: readonly ContentItem<ProjectRec
   );
 }
 
+/**
+ * The thumbnail's visual over its background, as a home card draws it at
+ * 56px wide (Owner decision on #522): a model's card still in the box the
+ * card's stage takes (as wide as the card, 1048 / 427 of its width tall, its
+ * top 260 / 427 of its width above the card's), a photo filling the
+ * thumbnail, or nothing. Stills only: the list mounts no 3D canvas.
+ */
+function RowVisualImage({ visual }: { visual: RowVisual }) {
+  switch (visual.kind) {
+    case "still":
+      return (
+        <span aria-hidden className="absolute inset-x-0 -top-[34px] h-[137px]">
+          <Image src={visual.src} alt="" fill sizes="64px" className="object-cover" />
+        </span>
+      );
+    case "photo":
+      return <Image src={visual.src} alt={visual.alt} fill sizes="56px" unoptimized={!visual.src.startsWith("/")} className="object-cover" />;
+    case "none":
+      return null;
+  }
+}
+
 function ProjectRowItem({ row }: { row: ProjectRow }) {
   const editHref = `/dashboard/projects/${row.slug}`;
   return (
     <li className={`flex flex-col gap-3 px-4 py-4 transition-colors duration-300 ease-out hover:bg-white-5 ${COLUMNS}`}>
       <div className="flex min-w-0 items-center gap-4">
         <span className="relative h-[72px] w-14 shrink-0 overflow-hidden rounded-md bg-white-5">
-          <Image src={row.texture} alt="" fill sizes="56px" className="object-cover" />
+          {/* An uploaded background (issue #529) is served as it is, as uploaded photos are. */}
+          <Image src={row.texture} alt="" fill sizes="56px" unoptimized={!row.texture.startsWith("/")} className="object-cover" />
+          <RowVisualImage visual={row.visual} />
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[15px] font-semibold text-prt-text">{row.name}</span>
