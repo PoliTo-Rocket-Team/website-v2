@@ -135,10 +135,13 @@ export const members = pgTable("members", {
   // on the team as their lead gave them. Why they left goes to team_leaves.
   teamFrom: integer("team_from"),
   teamTo: integer("team_to"),
-  // The member's team email alias (epic #538, drizzle/0051), saved when an
-  // alias request is marked created; shown beside `prt_email`, never in its
-  // place. `emailAliasSetUpAt` is when they said they set it up (issue #542).
+  // Deprecated (issue #563): the member's team email alias lives in
+  // `prt_email`, where Mark created writes it, and nothing reads or writes
+  // this column any more. drizzle/0053 copied each value into an empty
+  // `prt_email`; #569 drops the column. Do not use it.
   emailAlias: text("email_alias"),
+  // When the member said they set up their alias, the address in
+  // `prt_email` (issue #542).
   emailAliasSetUpAt: timestamp("email_alias_set_up_at", { withTimezone: true, mode: "string" }),
 });
 

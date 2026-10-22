@@ -2,22 +2,23 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { TestViewer } from "@/lib/dashboard/viewer";
 import { dummyAliasRequestsOf } from "./aliases";
-import { NO_EDITS, parseEdits, serializeEdits, type TeamEdits, type TeamEditsStore } from "./edits";
+import { NO_MEMBER_DETAILS } from "@/lib/dashboard/details";
+import { detailsKey, NO_EDITS, parseEdits, serializeEdits, type TeamEdits, type TeamEditsStore } from "./edits";
 import { dummyDashboardData } from "./index";
 import { dummyRecruitmentOf } from "./recruitment";
 import { EMPTY_DUMMY_STATE } from "./state";
 
 // Automatic alias requests on a preview (issue #543): every write that makes
 // someone a division lead, a department head or the team leader asks for
-// their alias in the same save, unless they have one or an open request
-// already, and the approvers answer it as any other. The database side runs
+// their alias in the same save, unless their PRT email is set (issue #563)
+// or they have an open request already, and the approvers answer it as any other. The database side runs
 // the same rule (lib/dashboard/alias-auto-request-server.test.ts).
 
 const AERODYNAMICS = 1;
 const OPERATIONS = 6;
 const MISSION_ANALYSIS = 1;
-const SARA = 7; // a member of Mission Analysis, with no alias and no request
-const ANDREA = 8; // a member of Communications, in Operations, with no alias and no request
+const SARA = 7; // a member of Mission Analysis, with no PRT email and no request
+const ANDREA = 8; // a member of Communications, in Operations, with no PRT email and no request
 const MARCO = 2; // co-leads Mission Analysis
 
 function preview(edits: TeamEdits = NO_EDITS) {
@@ -85,14 +86,15 @@ const ROUTES: readonly { readonly name: string; readonly who: number; readonly r
 
 describe("every preview route that makes someone a lead, a head or the team leader asks for their alias", () => {
   for (const route of ROUTES) {
-    test(`${route.name}: one automatic request when they have no alias and no open request`, async () => {
+    test(`${route.name}: one automatic request when their PRT email is empty and no request is open`, async () => {
       const p = preview();
       assert.equal((await route.run(p)).ok, true);
       assert.deepEqual(openFor(p.store.current, route.who), [null]);
     });
 
-    test(`${route.name}: none when they already have an alias`, async () => {
-      const p = preview({ ...NO_EDITS, aliases: { [route.who]: "already.set@politorocketteam.it" } });
+    test(`${route.name}: none when their PRT email is already set`, async () => {
+      const details = { ...NO_MEMBER_DETAILS, prtEmail: "already.set@politorocketteam.it" };
+      const p = preview({ ...NO_EDITS, details: { [detailsKey({ kind: "person", id: route.who })]: details } });
       assert.equal((await route.run(p)).ok, true);
       assert.deepEqual(openFor(p.store.current, route.who), []);
     });

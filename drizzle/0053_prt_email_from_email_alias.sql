@@ -1,0 +1,12 @@
+-- One address for a member's team email (issue #563). Owner decision
+-- (2026-10-22): the PRT email and the email alias are the same address, so
+-- the alias lives in `prt_email` from now on. Mark created writes there, and
+-- a member may be asked for an alias exactly when it is empty.
+--
+-- Data only, and additive: it copies each alias Mark created saved in
+-- `email_alias` into the member's `prt_email` where that is still null or
+-- empty, and changes nothing else. A PRT email already set is kept. Every
+-- preview build applies this to the shared preview database, which is treated
+-- like production, so `email_alias` is not dropped, renamed or cleared here;
+-- no code reads or writes it any more, and #569 drops it later.
+UPDATE "members" SET "prt_email" = "email_alias" WHERE "email_alias" IS NOT NULL AND ("prt_email" IS NULL OR "prt_email" = '');

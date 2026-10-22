@@ -139,8 +139,10 @@ function seedUnit(u: Unit): void {
   const { divisionId } = UNITS[u];
   const l = lower(u);
   // A member of the division, with the private details the Members page shows.
+  // Their PRT email is empty, so whoever may manage them may request their
+  // alias (issue #563): the alias is saved there.
   const person = IDS.person(u);
-  insertRows(members, [{ memberId: person, mobileNumber: `mob-${l}`, prtEmail: `prt-${l}@team.test`, discord: `disc-${l}`, ndaSignedAt: SINCE }]);
+  insertRows(members, [{ memberId: person, mobileNumber: `mob-${l}`, discord: `disc-${l}`, ndaSignedAt: SINCE }]);
   insertRows(users, [{ id: `person-${l}`, email: `person-${l}@mail.test`, firstName: "Person", lastName: u, member: person, createdAt: SINCE }]);
   insertRows(roles, [{ id: 5_000 + person, memberId: person, divisionId, title: "Member", startedAt: SINCE, type: "core" }]);
   // Its lead, who has asked to hand the division over.

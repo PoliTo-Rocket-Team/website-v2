@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
+import { Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { DashboardLanding } from "@/lib/dashboard/access";
@@ -232,8 +232,9 @@ function PhotoPreview({ url, size, caption }: { url: string | null; size: string
 /**
  * Name, role and team email are set by the lead; LinkedIn is the person's.
  * From md it is board 55's form; on phones board 55m's list, whose Edit opens
- * LinkedIn on a full page. Once their email alias is marked created, it shows
- * beside the team email with a link to its setup steps (issue #542).
+ * LinkedIn on a full page. Their email alias is their team email (issue
+ * #563): once it is set, the team email carries a link to the alias setup
+ * steps (issue #542).
  */
 function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; alias: OwnAlias | null; saveLinkedin: Actions["saveLinkedin"] }) {
   const [saved, setSaved] = useState(profile.linkedin ?? "");
@@ -247,16 +248,15 @@ function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; ali
           label={profile.roles.length === 1 ? "Role" : "Roles"}
           value={profile.roles.length === 1 ? profile.roles[0].title : profile.roles.map(profileRoleLine).join(", ")}
         />
-        <DetailValue label="Team email" value={profile.teamEmail} />
-        <DetailValue label="LinkedIn" value={saved || null} />
-        {alias && (
-          <div className="col-span-2 min-w-0">
-            <DetailValue label="Email alias" value={alias.address} />
+        <div className="min-w-0">
+          <DetailValue label="Team email" value={profile.teamEmail} />
+          {alias && (
             <div className="mt-1.5">
               <AliasSetupLink alias={alias} />
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        <DetailValue label="LinkedIn" value={saved || null} />
       </dl>
       <div className="hidden md:block">
         <LinkedinForm profile={profile} alias={alias} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
@@ -336,7 +336,22 @@ function LinkedinForm({
       <div className="grid grid-cols-2 gap-x-4 gap-y-5">
         <Locked label="Name" hint="set by your lead" value={profile.name} />
         <Locked label={profile.roles.length === 1 ? "Role" : "Roles"} hint="set by your lead" value={profile.roles.map(profileRoleLine)} />
-        {profile.teamEmail && <Locked label="Team email" hint="shown on the site" value={profile.teamEmail} icon={<Mail aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />} />}
+        {profile.teamEmail && (
+          <Locked
+            label="Team email"
+            hint={
+              alias ? (
+                <>
+                  shown on the site · <AliasSetupLink alias={alias} />
+                </>
+              ) : (
+                "shown on the site"
+              )
+            }
+            value={profile.teamEmail}
+            icon={<Mail aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
+          />
+        )}
         <Field label="LinkedIn" hint="optional" error={error} className={profile.teamEmail ? "" : "col-start-2"}>
           {(id, describedBy) => (
             <LinkedinInput
@@ -351,14 +366,6 @@ function LinkedinForm({
             />
           )}
         </Field>
-        {alias && (
-          <Locked
-            label="Email alias"
-            hint={<AliasSetupLink alias={alias} />}
-            value={alias.address}
-            icon={<AtSign aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
-          />
-        )}
       </div>
       <div className="mt-5 flex justify-end">
         <button type="submit" disabled={pending || linkedin.trim() === saved} className={`${GHOST_PILL} h-10 px-4 text-[14px] font-semibold`}>

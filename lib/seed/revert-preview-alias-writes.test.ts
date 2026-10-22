@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 
-// Migration 0053 (issue #572) undoes the other test writes made on the shared
+// Migration 0054 (issue #572) undoes the other test writes made on the shared
 // preview database on 2026-10-22 (alias requests, aliases, their notices and
 // Tester Member's profile edits), and every preview build applies it before
 // merge. This builds the schema from the journaled migrations on an in-memory
@@ -15,7 +15,7 @@ import { PGlite } from "@electric-sql/pglite";
 // lacks them, the local seed's lookalike tester alias rows included.
 
 const root = join(__dirname, "..", "..");
-const TAG = "0053_revert_preview_alias_test_writes";
+const TAG = "0054_revert_preview_alias_test_writes";
 const journal = JSON.parse(readFileSync(join(root, "drizzle", "meta", "_journal.json"), "utf8")) as {
   entries: { tag: string }[];
 };
@@ -25,7 +25,7 @@ async function run(db: PGlite, sql: string) {
   for (const statement of sql.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
 }
 
-/** A database built from every journaled migration before 0053. */
+/** A database built from every journaled migration before 0054, #563's 0053 copy included. */
 async function schemaBefore(): Promise<PGlite> {
   const db = new PGlite();
   await db.exec("set time zone 'UTC'"); // timestamps read back as text in UTC
@@ -35,8 +35,8 @@ async function schemaBefore(): Promise<PGlite> {
   return db;
 }
 
-/** #563's copy (PR #575), which may reach the preview before or after 0053. */
-const COPY_563 = `UPDATE "members" SET "prt_email" = "email_alias" WHERE "email_alias" IS NOT NULL AND ("prt_email" IS NULL OR "prt_email" = '');`;
+/** #563's copy (0053, PR #575), which a database may hold before 0054 runs or gain after it. */
+const COPY_563 = file("0053_prt_email_from_email_alias");
 
 const AS_ANDREA = "5eed0000-0000-4000-8000-000000000001";
 const MARCO = "5eed0000-0000-4000-8000-000000000002";
@@ -118,22 +118,26 @@ insert into logs (id, schema_name, table_name, operation, record_id, old_data, n
   (925, 'public', 'members', 'UPDATE', '901', '{"prt_email": null}', '{"prt_email": null}', '${DIVISION_LEAD}', '2026-10-22 12:14:08.726+00');
 `;
 
-/** The local seed's tester alias rows (db/seed/aliases.ts, people.ts): same ids and addresses, other dates. */
+/**
+ * The local seed's tester alias rows as they stand since #563 (db/seed/aliases.ts, people.ts): the
+ * same request and notice ids, the member tester's alias as their PRT email on the reserved test
+ * domain, and the members still owed one with no PRT email, on other dates.
+ */
 const SEED = `
 insert into members (member_id, prt_email, email_alias, email_alias_set_up_at) values
   (2, 'marco.delogu@prt.example.com', null, null),
-  (901, 'member.tester@example.com', 'tester.member@politorocketteam.it', null),
+  (901, 'member.tester@example.com', null, null),
   (902, 'division-lead.tester@example.com', null, null),
-  (134, null, null, null), (148, null, null, null), (166, null, null, null);
+  (13, null, null, null), (134, null, null, null), (168, null, null, null);
 ${PEOPLE.replace("'%TESTER_POLITO%'", "'s900002'").replace("%TESTER_LEVEL%", "'Master'").replace("%TESTER_UPDATED%", "2026-10-09 08:00:00+00")}
 insert into alias_requests (id, member_id, requested_by, created_at, outcome, answered_by, answered_at) values
   (1, 134, 902, '2026-10-20 09:15:00+00', null, null, null),
-  (2, 148, null, '2026-10-21 08:00:00+00', null, null, null),
+  (2, 13, null, '2026-10-21 08:00:00+00', null, null, null),
   (3, 901, 902, '2026-10-15 10:00:00+00', 'created', 1, '2026-10-16 14:30:00+00'),
-  (4, 166, 902, '2026-10-17 11:00:00+00', 'declined', 903, '2026-10-18 16:45:00+00');
+  (4, 168, 902, '2026-10-17 11:00:00+00', 'declined', 903, '2026-10-18 16:45:00+00');
 insert into dashboard_notices (id, recipient_id, kind, subject_id, data, created_at) values
-  (1, 902, 'alias-created', 901, '{"address": "tester.member@politorocketteam.it"}', '2026-10-16 14:30:00+00'),
-  (2, 902, 'alias-declined', 166, '{"by": "Tester Operations Lead"}', '2026-10-18 16:45:00+00');
+  (1, 902, 'alias-created', 901, '{"address": "member.tester@example.com"}', '2026-10-16 14:30:00+00'),
+  (2, 902, 'alias-declined', 168, '{"by": "Tester Operations Lead"}', '2026-10-18 16:45:00+00');
 `;
 
 async function load(db: PGlite, sql: string) {
@@ -172,7 +176,7 @@ const UNDONE = {
   notices: [7],
 };
 
-test("0053 undoes the 2026-10-22 test writes and leaves every other row and the audit rows", async () => {
+test("0054 undoes the 2026-10-22 test writes and leaves every other row and the audit rows", async () => {
   const db = await schemaBefore();
   await load(db, ROWS + AUDIT);
   const before = await logged(db);
@@ -186,7 +190,7 @@ test("0053 undoes the 2026-10-22 test writes and leaves every other row and the 
   assert.equal((await logged(db)) - before, 14, "the fourteen reversals leave their own audit rows");
 });
 
-test("0053 gives the same result before or after #563's email_alias to prt_email copy", async () => {
+test("0054 gives the same result before or after #563's email_alias to prt_email copy", async () => {
   for (const order of ["copy first", "copy after"] as const) {
     const db = await schemaBefore();
     await load(db, ROWS + AUDIT);
@@ -201,7 +205,7 @@ test("0053 gives the same result before or after #563's email_alias to prt_email
   }
 });
 
-test("0053 changes nothing on a database without the audit rows or people, or shaped like the local seed", async () => {
+test("0054 changes nothing on a database without the audit rows or people, or shaped like the local seed", async () => {
   for (const [name, fixture] of [
     ["no audit rows", ROWS],
     [

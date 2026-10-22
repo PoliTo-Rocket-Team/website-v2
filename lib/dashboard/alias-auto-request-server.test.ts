@@ -11,14 +11,14 @@ import { signInAs } from "./access-matrix/session";
 
 // Automatic alias requests on the database (issue #543): every write that
 // makes someone a division lead, a department head or the team leader asks
-// for their alias in the same batch, unless they have one on their record or
-// an open request already. Each route runs for real against the in-memory
+// for their alias in the same batch, unless their PRT email is set (issue
+// #563) or they have an open request already. Each route runs for real against the in-memory
 // database (./access-matrix/fake-db.ts), which stores what each write does.
 
 const DM = IDS.division("DM");
 const STRUCTURES = IDS.department("DM");
 const LEAD = IDS.lead("DM"); // leads Design & Manufacturing
-const MEMBER = IDS.person("DM"); // a member of Design & Manufacturing, with no alias and no request
+const MEMBER = IDS.person("DM"); // a member of Design & Manufacturing, with no PRT email and no request
 const TEAM_LEADER = accountOf("team leader").userId;
 const OTHER_REQUESTER = accountOf("team leader").memberId;
 
@@ -88,15 +88,15 @@ function seeded(): void {
 
 describe("every route that makes someone a lead, a head or the team leader asks for their alias", () => {
   for (const route of ROUTES) {
-    test(`${route.name}: one automatic request when they have no alias and no open request`, async () => {
+    test(`${route.name}: one automatic request when their PRT email is empty and no request is open`, async () => {
       seeded();
       assert.equal((await route.run()).ok, true);
       assert.deepEqual(openFor(MEMBER), [null]);
     });
 
-    test(`${route.name}: none when they already have an alias on their record`, async () => {
+    test(`${route.name}: none when their PRT email is already set`, async () => {
       seeded();
-      updateRows(members, { memberId: MEMBER }, { emailAlias: "person.dm@politorocketteam.it" });
+      updateRows(members, { memberId: MEMBER }, { prtEmail: "person.dm@politorocketteam.it" });
       assert.equal((await route.run()).ok, true);
       assert.deepEqual(openFor(MEMBER), []);
       assert.equal(aliasInserts(), 0);

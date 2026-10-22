@@ -36,7 +36,7 @@ async function LiveMembers({ searchParams }: { searchParams: Search }) {
   const { division } = await searchParams;
   const divisionId = Number(typeof division === "string" ? division : undefined);
   const directory = await data.members(Number.isSafeInteger(divisionId) && divisionId > 0 ? divisionId : null);
-  // Each member's email alias beside their team email (epic #538, boards 94 to 94e).
+  // Each member's email alias on their PRT email row: the address, or the request state while it is empty (epic #538, boards 94 to 94e; issue #563).
   const model = membersModelOf(directory);
   const aliases = model === null ? {} : await data.memberAliases(memberIdsOf(model));
   return (

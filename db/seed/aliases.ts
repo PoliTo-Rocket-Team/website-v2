@@ -18,26 +18,27 @@
 // The site made the last one by itself when the Mission Analysis lead became
 // lead (issue #543): it has no requester, so the approvers' row reads
 // "Automatic" (board 94c). Each answered request carries the notices the
-// answer writes (lib/dashboard/alias-request.ts, `aliasAnswerNotices`). The
-// created alias itself is on the member tester's row, which `people` owns
-// (`TESTER_MEMBER_ALIAS`); these rows go in after it.
+// answer writes (lib/dashboard/alias-request.ts, `aliasAnswerNotices`). A
+// member's alias is their PRT email (issue #563): the created one is the
+// member tester's PRT email, and the members still owed one have none, on the
+// rows `people` owns (`TESTER_MEMBER_ALIAS`, `OWED_ALIAS`); these rows go in
+// after them.
 
 import { aliasRequests, dashboardNotices } from "@/db/schema";
-import { TEAM_LEADER, TESTER_MEMBER, TESTER_MEMBER_ALIAS } from "./people";
-import { publicMember } from "./public-team";
+import { OWED_ALIAS, TEAM_LEADER, TESTER_MEMBER, TESTER_MEMBER_ALIAS } from "./people";
 import { rowsOf, tableSeedModule } from "./rows";
 
 const LEAD = TESTER_MEMBER["division-lead"];
 const OPERATIONS_LEAD = TESTER_MEMBER["operations-lead"];
 
 /** The open request the Test Bench lead sent, for a Test Engineer. */
-export const OPEN_REQUEST = { id: 1, member: publicMember("Dimitri Mazzone"), by: LEAD } as const;
+export const OPEN_REQUEST = { id: 1, member: OWED_ALIAS.open, by: LEAD } as const;
 /** The open request the site made when the Mission Analysis lead became lead. */
-export const AUTOMATIC_REQUEST = { id: 2, member: publicMember("Maria Angelica Fullone Penna") } as const;
-/** The request marked created: the member tester's alias, on their record and not yet set up. */
+export const AUTOMATIC_REQUEST = { id: 2, member: OWED_ALIAS.automatic } as const;
+/** The request marked created: the member tester's alias, their PRT email, not yet set up. */
 export const CREATED_ALIAS = { id: 3, member: TESTER_MEMBER.member, by: LEAD, address: TESTER_MEMBER_ALIAS } as const;
 /** The request the operations lead declined, for another Test Engineer. */
-export const DECLINED_REQUEST = { id: 4, member: publicMember("Margherita Boatto"), by: LEAD, declinedBy: OPERATIONS_LEAD } as const;
+export const DECLINED_REQUEST = { id: 4, member: OWED_ALIAS.declined, by: LEAD, declinedBy: OPERATIONS_LEAD } as const;
 
 /** Who declined it, by name, as the notice stores it (`aliasAnswerNotices`). */
 const DECLINED_BY = "Tester Operations Lead";

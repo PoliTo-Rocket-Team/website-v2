@@ -28,7 +28,8 @@ export const WRITE_REFRESHES = {
    * Who holds a role (lib/dashboard/database-self.ts, a join in
    * lib/dashboard/database-recruitment.ts), and a division or department
    * created, renamed, recoded, moved or closed (`done` in
-   * lib/dashboard/database-team.ts).
+   * lib/dashboard/database-team.ts). Mark created on an alias request too,
+   * since it saves the member's PRT email (lib/dashboard/database-alias.ts).
    */
   team: [TEAM_ROSTER_CACHE_TAG],
 } as const satisfies Record<string, readonly CacheTag[]>;

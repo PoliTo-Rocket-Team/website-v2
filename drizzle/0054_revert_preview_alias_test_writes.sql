@@ -27,12 +27,12 @@
 -- 1, 2, 3, 6 and 7, and put members 2, 901 and 902 and Tester Member's
 -- `users` row back to the values their audit rows' `old_data` holds.
 --
--- Issue #563 (PR #575) adds a migration that copies `email_alias` into an
--- empty `prt_email`. If it runs first, it fills member 901's cleared
--- `prt_email` with the stray alias, so the member 901 statement accepts
--- either that alias or null there and writes the old address back either
--- way. Members 2 and 902 kept their `prt_email`, which that copy leaves
--- alone. The result is the same in either order.
+-- Issue #563 (PR #575) added 0053, which copies `email_alias` into an
+-- empty `prt_email`. Where it ran first, as on the preview branch, it filled
+-- member 901's cleared `prt_email` with the stray alias, so the member 901
+-- statement accepts either that alias or null there and writes the old
+-- address back either way. Members 2 and 902 kept their `prt_email`, which
+-- that copy leaves alone. The result is the same in either order.
 --
 -- Data only: no table, column, type, index, constraint or trigger changes.
 -- Every statement pins its row by id, by the person through their `users`

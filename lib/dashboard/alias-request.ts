@@ -13,11 +13,17 @@ import { shortDate } from "./write";
 // member they may manage, from the member drawer. The team leader, the
 // operations lead and the IT lead see each open request on their Overview;
 // they create the alias by hand in Google Workspace, then mark the request
-// created with the address, which is saved on the member's record, or
-// decline it. The site may also ask by itself (issue #543): such a request
-// has no requester. This module owns who may ask, who may answer, the one
-// open request per member, the firstname.lastname prefill and the address
-// check; both data sources store what it says.
+// created with the address, or decline it. The site may also ask by itself
+// (issue #543): such a request has no requester. This module owns who may
+// ask, who may answer, the one open request per member, the
+// firstname.lastname prefill and the address check; both data sources store
+// what it says.
+//
+// The alias is the member's PRT email (Owner decision, 2026-10-22, issue
+// #563): Mark created saves the address as their `prt_email`, and a member
+// may be asked for, by hand or by the site, exactly when that field is empty
+// and no request is open. Clearing a wrong PRT email makes them requestable
+// again.
 
 /** The team's mail domain: every alias ends with it. */
 export const TEAM_DOMAIN = "politorocketteam.it";
@@ -30,6 +36,16 @@ export type AliasRequest = {
   /** When it was sent, an ISO timestamp. */
   readonly sentAt: string;
 };
+
+/**
+ * The member's team address as the alias rules read it: their PRT email, or
+ * null while it is empty. A blank field is no address, so a cleared PRT
+ * email makes the member requestable again.
+ */
+export function teamAddressOf(prtEmail: string | null | undefined): string | null {
+  const address = prtEmail?.trim() ?? "";
+  return address === "" ? null : address;
+}
 
 /** How a request closed, as stored. */
 export const ALIAS_OUTCOMES = ["created", "declined", "cancelled"] as const;
@@ -125,16 +141,17 @@ export function checkAliasAddress(input: string): Checked<AliasAddress> {
 
 /**
  * Request alias as the rules allow it, or the first reason it is refused: the
- * requester may manage the member, who has no alias and no open request. The
- * database refuses a second open request too (`alias_requests_one_open`).
+ * requester may manage the member, whose PRT email is empty and who has no
+ * open request. The database refuses a second open request too
+ * (`alias_requests_one_open`).
  */
 export function planAliasRequest(input: {
   readonly requesterId: number | null;
   readonly memberId: number;
   readonly team: readonly TeamPerson[];
   readonly org: OrgChart;
-  /** The member's alias on their record, if any. */
-  readonly alias: string | null;
+  /** The member's PRT email as stored; empty or null is no address. */
+  readonly prtEmail: string | null;
   /** The open requests; only the member's is read. */
   readonly open: readonly AliasRequest[];
 }): Checked<{ readonly memberId: number; readonly requesterId: number }> {
@@ -143,7 +160,7 @@ export function planAliasRequest(input: {
   if (requesterId === null || member === undefined || !mayAskFor(requesterId, memberId, team, org)) {
     return { ok: false, error: "You can request an alias only for someone you lead or head." };
   }
-  if (input.alias !== null) return { ok: false, error: `${member.name} already has an email alias.` };
+  if (teamAddressOf(input.prtEmail) !== null) return { ok: false, error: `${member.name} already has a PRT email.` };
   if (input.open.some((r) => r.memberId === memberId)) return { ok: false, error: `An alias for ${member.name} is already requested.` };
   return { ok: true, value: { memberId, requesterId } };
 }
@@ -157,22 +174,22 @@ export type AutomaticAliasRequest = { readonly memberId: number; readonly reques
  * The requests the site owes after a role change (Owner decision,
  * 2026-10-22), as if each person's new head had pressed Request alias:
  * `becoming` is everyone the change makes a division lead, a department head
- * or the team leader, and each of them is owed one request unless they
- * already have an alias on their record or an open request. Each person is
+ * or the team leader, and each of them is owed one request unless their PRT
+ * email is already set or they have an open request. Each person is
  * asked for once, so an automatic write never reaches the one-open-request
  * index (`alias_requests_one_open`). The role change and these requests are
  * written together, so a change refused or failed asks for nothing.
  */
 export function owedAliasRequests(input: {
   readonly becoming: readonly number[];
-  /** Each member's alias on their record, by member id; a member missing has none. */
+  /** Each member's PRT email, by member id; a member missing, or whose PRT email is empty, has none. */
   readonly addresses: ReadonlyMap<number, string>;
   /** The open requests; only those of `becoming` are read. */
   readonly open: readonly AliasRequest[];
 }): AutomaticAliasRequest[] {
   const { addresses, open } = input;
   return [...new Set(input.becoming)]
-    .filter((memberId) => !addresses.has(memberId) && !open.some((r) => r.memberId === memberId))
+    .filter((memberId) => teamAddressOf(addresses.get(memberId)) === null && !open.some((r) => r.memberId === memberId))
     .map((memberId) => ({ memberId, requesterId: null }));
 }
 
@@ -192,7 +209,7 @@ export function planAliasCancel(input: {
 
 // Decline and Mark created (boards 94c, 94d) ----------------------------------------------
 
-/** An approver's answer: Decline, or Mark created with the address as typed. */
+/** An approver's answer: Decline, or Mark created with the address as typed, saved as the member's PRT email. */
 export type AliasAnswer = { readonly kind: "decline" } | { readonly kind: "created"; readonly address: string };
 
 const answerSchema = z.discriminatedUnion("kind", [
@@ -206,7 +223,7 @@ export function checkAliasAnswer(input: unknown): Checked<AliasAnswer> {
   return result.success ? { ok: true, value: result.data } : { ok: false, error: "Choose Decline or Mark created." };
 }
 
-/** An answer as the rules allow it: what closes the request, and the address saved on Mark created. */
+/** An answer as the rules allow it: what closes the request, and the address Mark created saves as the PRT email. */
 export type AliasAnswerPlan =
   | { readonly kind: "decline"; readonly request: AliasRequest }
   | { readonly kind: "created"; readonly request: AliasRequest; readonly address: string };
@@ -248,10 +265,10 @@ export function aliasAnswerNotices(plan: AliasAnswerPlan, approver: string): Add
 // How it reads ---------------------------------------------------------------------------
 
 /**
- * A member's alias as the member drawer shows it, beside their team email
- * (boards 94, 94b, 94e): the address on their record; the open request, who
- * sent it and when, and whether the viewer may cancel it; or none, and
- * whether the viewer may request one.
+ * A member's alias as the member drawer's PRT email row shows it (boards 94,
+ * 94b, 94e; issue #563): their PRT email; while it is empty, the open
+ * request, who sent it and when, and whether the viewer may cancel it; or
+ * none, and whether the viewer may request one.
  */
 export type MemberAlias =
   | { readonly kind: "set"; readonly address: string }
@@ -272,13 +289,13 @@ export function requestedLine(request: AliasRequest, viewerId: number | null, te
   return `${by} · ${shortDate(request.sentAt, now.getUTCFullYear())}`;
 }
 
-/** The alias of each of `memberIds` on the team, as `viewerId` sees it in the member drawer. */
+/** The alias of each of `memberIds` on the team, as `viewerId` sees it on the member drawer's PRT email row. */
 export function memberAliasesFor(input: {
   readonly viewerId: number | null;
   readonly memberIds: readonly number[];
   readonly team: readonly TeamPerson[];
   readonly org: OrgChart;
-  /** Each member's alias on their record, by member id; a member missing has none. */
+  /** Each member's PRT email, by member id; a member missing, or whose PRT email is empty, has none. */
   readonly addresses: ReadonlyMap<number, string>;
   readonly open: readonly AliasRequest[];
   readonly now: Date;
@@ -287,11 +304,11 @@ export function memberAliasesFor(input: {
   const out: Record<number, MemberAlias> = {};
   for (const memberId of input.memberIds) {
     if (!team.some((p) => p.id === memberId)) continue;
-    const address = addresses.get(memberId);
+    const address = teamAddressOf(addresses.get(memberId));
     const request = open.find((r) => r.memberId === memberId);
     const mayAsk = viewerId !== null && mayAskFor(viewerId, memberId, team, org);
     out[memberId] =
-      address !== undefined
+      address !== null
         ? { kind: "set", address }
         : request !== undefined
           ? {

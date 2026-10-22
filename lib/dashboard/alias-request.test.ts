@@ -7,6 +7,7 @@ import {
   checkAliasAddress,
   checkAliasAnswer,
   memberAliasesFor,
+  owedAliasRequests,
   planAliasAnswer,
   planAliasCancel,
   planAliasRequest,
@@ -63,8 +64,8 @@ const team: TeamPerson[] = [
 ];
 
 const request = (id: number, memberId: number, requesterId: number | null, sentAt = "2026-10-22T09:00:00+02:00"): AliasRequest => ({ id, memberId, requesterId, sentAt });
-const ask = (requesterId: number | null, memberId: number, extra: { alias?: string | null; open?: AliasRequest[] } = {}) =>
-  planAliasRequest({ requesterId, memberId, team, org, alias: extra.alias ?? null, open: extra.open ?? [] });
+const ask = (requesterId: number | null, memberId: number, extra: { prtEmail?: string | null; open?: AliasRequest[] } = {}) =>
+  planAliasRequest({ requesterId, memberId, team, org, prtEmail: extra.prtEmail ?? null, open: extra.open ?? [] });
 
 test("a lead asks for their division, a head for their department, the team leader for anyone", () => {
   assert.ok(ask(MARCO, DAVIDE).ok);
@@ -83,10 +84,27 @@ test("nobody else asks: a member, the operations lead without a lead role, nobod
   assert.equal(ask(MARCO, 999).ok, false, "someone not on the team");
 });
 
-test("a member with an alias or an open request gets no second one", () => {
-  assert.deepEqual(ask(MARCO, DAVIDE, { alias: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has an email alias." });
+test("a member with a PRT email or an open request gets no second one", () => {
+  assert.deepEqual(ask(MARCO, DAVIDE, { prtEmail: "davide.russo@politorocketteam.it" }), { ok: false, error: "Davide Russo already has a PRT email." });
   assert.deepEqual(ask(MARCO, DAVIDE, { open: [request(1, DAVIDE, null)] }), { ok: false, error: "An alias for Davide Russo is already requested." });
   assert.ok(ask(MARCO, DAVIDE, { open: [request(1, LENA, CHIARA)] }).ok, "another member's request blocks nothing");
+});
+
+test("a member whose PRT email was cleared can be requested again, by hand and by the site (issue #563)", () => {
+  const created = "davide.russo@politorocketteam.it";
+  assert.equal(ask(MARCO, DAVIDE, { prtEmail: created }).ok, false, "while the PRT email is set");
+  for (const cleared of [null, "", "  "]) {
+    assert.ok(ask(MARCO, DAVIDE, { prtEmail: cleared }).ok, `Request alias once it is ${JSON.stringify(cleared)}`);
+  }
+  const owed = (addresses: ReadonlyMap<number, string>) => owedAliasRequests({ becoming: [DAVIDE], addresses, open: [] });
+  assert.deepEqual(owed(new Map([[DAVIDE, created]])), [], "no automatic request while it is set");
+  assert.deepEqual(owed(new Map()), [{ memberId: DAVIDE, requesterId: null }], "an automatic one once it is cleared");
+  assert.deepEqual(owed(new Map([[DAVIDE, ""]])), [{ memberId: DAVIDE, requesterId: null }], "an empty PRT email is no address");
+  assert.deepEqual(
+    memberAliasesFor({ viewerId: MARCO, memberIds: [DAVIDE], team, org, addresses: new Map([[DAVIDE, ""]]), open: [], now: new Date("2026-10-22T12:00:00Z") }),
+    { [DAVIDE]: { kind: "none", requestable: true } },
+    "the drawer offers Request alias again",
+  );
 });
 
 test("Cancel request: the sender, or anyone who may ask for the member", () => {
