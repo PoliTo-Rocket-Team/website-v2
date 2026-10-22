@@ -172,6 +172,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
         title: `${notice.subject}'s email alias is ready`,
         detail: [notice.data.address, shortDate(notice.createdAt, now.getUTCFullYear())].join(" · "),
         action,
+        iconKind: "alias-request",
       };
     case "alias-declined":
       return {
@@ -179,6 +180,7 @@ export function attentionOf(notice: Notice, now: Date): AttentionItem {
         title: `${notice.data.by} declined the email alias for ${notice.subject}`,
         detail: [shortDate(notice.createdAt, now.getUTCFullYear()), "you can ask again"].join(" · "),
         action,
+        iconKind: "alias-request",
       };
   }
 }
