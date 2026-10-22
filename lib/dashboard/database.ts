@@ -28,13 +28,11 @@ import { DashboardRefused, type DashboardData } from "./data";
 import {
   buildTeamTree,
   seasonAt,
-  teamPageEditOf,
   type MemberDirectory,
   type RoleType,
 } from "./team";
 import { readTeamSnapshot, recordsOf, rosterOf } from "./team-database";
 import { departmentSummaries, leaderAttention, leaderStats } from "./leader-overview";
-import { wholeTeamMembers } from "./team-members";
 import { opensWholeTeam } from "./members-view";
 import { databaseAlumniWrites, databaseOwnAlumni, readAlumniDirectory, readOwnAlumnus } from "./database-alumni";
 import { formatEuro, waitingOrders } from "./orders";
@@ -58,7 +56,7 @@ import { databaseDivisionPages, readHeadDepartment, readOrdersIn } from "./datab
 import { databaseRecruitmentPages, readSlots } from "./database-recruitment";
 import { divisionOverviewOf, overviewAreasOf, type DivisionFigures } from "./division-overview";
 import { accessSummariesOf, type AccessFigures, type AccessSummary } from "./access-summary";
-import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure } from "./database-team";
+import { answerHandOver, databaseTeamWrites, findForAdd, findPeople, readDivisionMembers, readTeamStructure, readWholeTeamMembers } from "./database-team";
 import { databaseSelfPages } from "./database-self";
 import { blobLogoFiles, databasePartnerStore } from "./database-partners";
 import { partnerEditor } from "@/lib/partners-editor";
@@ -844,20 +842,12 @@ async function navCountsOf(identity: Identity): Promise<NavCounts> {
  * full-access seat, the team leader, the operations lead and the IT lead alike
  * (boards 73 to 73c, issue #418); for a division lead one of their divisions,
  * with the people waiting for Confirm NDA and the people joining it
- * (./database-team.ts). Every full-access seat, the team leader included,
- * gets the Team page panel's edits on every row (board 46b; Owner decision,
- * 2026-10-19, issue #444).
+ * (./database-team.ts). Every page opens the same Edit details panel for each
+ * person the viewer may edit (issue #584), the team leader's included (Owner
+ * decision, 2026-10-19, issue #444).
  */
 async function membersOf(identity: Identity, divisionId: number | null): Promise<MemberDirectory> {
-  if (opensWholeTeam(identity)) {
-    const snapshot = await readTeamSnapshot();
-    return {
-      scope: "whole-team",
-      teamPageEdits: rosterOf(snapshot).map((entry) => teamPageEditOf(entry, snapshot.org)),
-      ...wholeTeamMembers({ records: recordsOf(snapshot), org: snapshot.org, selfId: identity.memberId }),
-    };
-  }
-  return readDivisionMembers(identity, divisionId);
+  return opensWholeTeam(identity) ? readWholeTeamMembers(identity) : readDivisionMembers(identity, divisionId);
 }
 
 /**

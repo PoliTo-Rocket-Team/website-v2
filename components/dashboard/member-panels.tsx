@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { AtSign, Building2, Check, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserPlus, X } from "lucide-react";
+import { AtSign, Building2, Check, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserMinus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
-import { addMember, findForAdd, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { addMember, findForAdd, saveMember, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
 import { cancelAliasRequest, requestAlias } from "@/app/dashboard/actions";
 import type { MemberAlias } from "@/lib/dashboard/alias-request";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
@@ -24,15 +24,18 @@ import {
   type AddMemberErrors,
   type DivisionHeader,
   type DivisionPerson,
+  type MemberPosition,
   type TeamMatch,
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
-import { divisionLabel } from "@/lib/dashboard/team";
+import type { EditPerson, MemberActions } from "@/lib/dashboard/members-view";
+import { divisionLabel, type DivisionRole } from "@/lib/dashboard/team";
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Chips } from "./division-chips";
+import { MemberDialogs, type Asking } from "./division-members";
 import { Drawer, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, inputClass, LOCKED_INPUT } from "./field";
 import { PersonCombobox } from "./person-combobox";
@@ -40,10 +43,12 @@ import { Toggle } from "./controls";
 import { EYEBROW, GHOST_PILL } from "./page-header";
 import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
 
-// The member panels of a division's Members page (issue #231): the member
-// panel with their private data (board 61f), Edit details (61g) and Add
-// member (61h, 61h2). Private data is blurred until hover; there is no access
-// section, since access lives only on the Access page.
+// The member panels of every Members page (issues #231 and #584): the member
+// panel with their private data (board 61f), Edit details (61g, with board
+// 46b's position part: lead or member, Leaving the team), the one member
+// editor for every viewer who may edit someone, and Add member (61h, 61h2).
+// Private data is blurred until hover; there is no access section, since
+// access lives only on the Access page.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -319,8 +324,14 @@ function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; na
   );
 }
 
-/** Who Edit details is open for: someone in the division, or someone waiting (Fill details). */
-export type EditTarget = { readonly kind: "person"; readonly person: DivisionPerson } | { readonly kind: "waiting"; readonly waiting: WaitingPerson };
+/**
+ * Who Edit details is open for: someone the viewer may edit, with what its
+ * position part offers (issue #584), on any Members page; or someone waiting
+ * to join a division (Fill details).
+ */
+export type EditTarget =
+  | { readonly kind: "person"; readonly actions: MemberActions }
+  | { readonly kind: "waiting"; readonly waiting: WaitingPerson; readonly division: DivisionHeader };
 
 type Draft = Record<MemberDetailKey, string> & { title: string };
 
@@ -444,23 +455,49 @@ function detailsOf(draft: Draft): Record<MemberDetailKey, string> {
   return details;
 }
 
-/** Edit details (board 61g), or Fill details for someone waiting: the role in this division only, contact, studies, personal. */
-export function EditDetailsDrawer({ target, division, onClose }: { target: EditTarget | null; division: DivisionHeader; onClose: () => void }) {
+/**
+ * Edit details (board 61g), the one member editor of every Members page
+ * (issue #584): the photo, the role title, contact, studies and personal
+ * details, and for someone on the team the position part of board 46b: lead
+ * or member in each division where the viewer may change its leads, and
+ * Leaving the team (Remove from a division, Move to alumni), each locked with
+ * its reason where the viewer may not. Fill details, for someone waiting,
+ * holds the role in their division and the details.
+ */
+export function EditDetailsDrawer({ target, onClose }: { target: EditTarget | null; onClose: () => void }) {
   const [shown, setShown] = useState(target);
   if (target !== null && target !== shown) setShown(target);
   const t = target ?? shown;
   if (t === null) return null;
-  return <EditForm key={t.kind === "person" ? `p${t.person.id}` : `w${t.waiting.joinId}`} open={target !== null} target={t} division={division} onClose={onClose} />;
+  return <EditForm key={t.kind === "person" ? `p${t.actions.person.id}` : `w${t.waiting.joinId}`} open={target !== null} target={t} onClose={onClose} />;
 }
 
-function EditForm({ open, target, division, onClose }: { open: boolean; target: EditTarget; division: DivisionHeader; onClose: () => void }) {
-  const person = target.kind === "person" ? target.person : null;
+const LEAD_OPTIONS: readonly { value: DivisionRole; label: string }[] = [
+  { value: "member", label: "Member" },
+  { value: "lead", label: "Division lead" },
+];
+
+function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget; onClose: () => void }) {
+  const person = target.kind === "person" ? target.actions.person : null;
+  const position = target.kind === "person" ? target.actions.position : null;
   const waiting = target.kind === "waiting" ? target.waiting : null;
   const name = person?.name ?? waiting?.name ?? waiting?.email ?? "";
   const email = person?.signInEmail ?? waiting?.email ?? "";
-  const { draft, errors, setErrors, set } = useDraft(draftOf(person?.title ?? waiting?.title ?? null, person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS));
+  const title = position?.title ?? null;
+  // The division whose role title the form sets: the waiting person's, or the person's titled one; none for a seat.
+  const titleDivision =
+    target.kind === "waiting"
+      ? { id: target.division.id, short: divisionLabel(target.division.name) }
+      : title?.kind === "division"
+        ? { id: title.divisionId, short: title.short }
+        : null;
+  const startTitle = waiting?.title ?? (title?.kind === "division" ? title.value : null);
+  const { draft, errors, setErrors, set } = useDraft(draftOf(startTitle, person?.details ?? waiting?.details ?? NO_MEMBER_DETAILS));
+  const [leads, setLeads] = useState<Readonly<Record<number, DivisionRole>>>(() =>
+    Object.fromEntries((position?.leads ?? []).map((l) => [l.divisionId, l.role])),
+  );
+  const [asking, setAsking] = useState<Asking | null>(null);
   const [pending, setPending] = useState(false);
-  const short = divisionLabel(division.name);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -471,12 +508,22 @@ function EditForm({ open, target, division, onClose }: { open: boolean; target: 
     try {
       const result = await saveMemberDetails(
         person ? { kind: "person", id: person.id } : { kind: "waiting", joinId: waiting!.joinId },
-        division.id,
+        titleDivision?.id ?? null,
         input,
       );
       if (!result.ok) {
         toast.error("Could not save the details", { description: result.error });
         return;
+      }
+      // Lead or member, only where it changed: each division is its own write, checked on the server.
+      for (const choice of position?.leads ?? []) {
+        const role = leads[choice.divisionId] ?? choice.role;
+        if (person === null || role === choice.role) continue;
+        const changed = await saveMember(person.id, choice.divisionId, role === "lead" ? "division-lead" : "member");
+        if (!changed.ok) {
+          toast.error(`Could not change who leads ${choice.short}`, { description: changed.error });
+          return;
+        }
       }
       toast.success(`Saved ${name}`);
       onClose();
@@ -486,76 +533,174 @@ function EditForm({ open, target, division, onClose }: { open: boolean; target: 
   };
 
   return (
-    <Drawer
-      open={open}
-      onOpenChange={(next) => !next && onClose()}
-      title={name}
-      detail={person ? "Edit details" : "Fill details"}
-      leading={person ? <Avatar size="panel" photoUrl={person.photoUrl} /> : undefined}
-      submitLabel="Save"
-      submitting={pending}
-      onSubmit={submit}
-    >
-      {person && (
-        <Section title="Photo">
-          <PhotoField person={person} divisionId={division.id} />
-        </Section>
-      )}
+    <>
+      <Drawer
+        open={open}
+        onOpenChange={(next) => !next && onClose()}
+        title={name}
+        detail={person ? "Edit details" : "Fill details"}
+        leading={person ? <Avatar size="panel" photoUrl={person.photoUrl} /> : undefined}
+        submitLabel="Save"
+        submitting={pending}
+        onSubmit={submit}
+      >
+        {person && (
+          <Section title="Photo">
+            <PhotoField person={person} />
+          </Section>
+        )}
 
-      <Section title="Role">
-        <Field label={`Role in ${short}`} hint="shown on the Team page" error={errors.title}>
-          {(id, describedBy) => (
-            <input
-              id={id}
-              value={draft.title}
-              maxLength={80}
-              aria-describedby={describedBy}
-              aria-invalid={errors.title !== undefined}
-              onChange={(e) => set("title", e.target.value)}
-              className={inputClass(errors.title)}
-            />
+        <Section title="Role">
+          {titleDivision !== null ? (
+            <Field label={`Role in ${titleDivision.short}`} hint="shown on the Team page" error={errors.title}>
+              {(id, describedBy) => (
+                <input
+                  id={id}
+                  value={draft.title}
+                  maxLength={80}
+                  aria-describedby={describedBy}
+                  aria-invalid={errors.title !== undefined}
+                  onChange={(e) => set("title", e.target.value)}
+                  className={inputClass(errors.title)}
+                />
+              )}
+            </Field>
+          ) : (
+            title?.kind === "seat" && (
+              <Field label="Role" hint="set on the Team tree">
+                {(id) => (
+                  <span id={id} className={LOCKED_INPUT}>
+                    <span className="min-w-0 flex-1 truncate">{title.label}</span>
+                    <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                  </span>
+                )}
+              </Field>
+            )
           )}
-        </Field>
-      </Section>
+          {position !== null && position.leads.length > 0 && (
+            <div className="mt-4 grid gap-x-3 gap-y-4 sm:grid-cols-2">
+              {position.leads.map((choice) => (
+                <Field key={choice.divisionId} label={`In ${choice.short}`} hint="lead or member">
+                  {(id) => (
+                    <div className="relative">
+                      <select
+                        id={id}
+                        value={leads[choice.divisionId] ?? choice.role}
+                        onChange={(e) => setLeads((l) => ({ ...l, [choice.divisionId]: e.target.value as DivisionRole }))}
+                        className={`${inputClass()} cursor-pointer appearance-none pr-10`}
+                      >
+                        {LEAD_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value} className="bg-panel text-prt-text">
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-prt-muted" strokeWidth={1.75} />
+                    </div>
+                  )}
+                </Field>
+              ))}
+            </div>
+          )}
+        </Section>
 
-      <Section title="Contact">
-        <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
-          <DetailInput name="prtEmail" label="PRT email" draft={draft} errors={errors} set={set} />
-          <Field label="Personal email" hint="sign-in email">
-            {(id) => (
-              <span id={id} className={LOCKED_INPUT}>
-                <span className="min-w-0 flex-1 truncate">{email}</span>
-                <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-              </span>
-            )}
-          </Field>
-          <DetailInput name="phone" label="Phone" draft={draft} errors={errors} set={set} />
-          <DetailInput name="discord" label="Discord" draft={draft} errors={errors} set={set} />
-          <DetailInput name="linkedin" label="LinkedIn" draft={draft} errors={errors} set={set} className="sm:col-span-2" />
-        </div>
-      </Section>
+        <Section title="Contact">
+          <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
+            <DetailInput name="prtEmail" label="PRT email" draft={draft} errors={errors} set={set} />
+            <Field label="Personal email" hint="sign-in email">
+              {(id) => (
+                <span id={id} className={LOCKED_INPUT}>
+                  <span className="min-w-0 flex-1 truncate">{email}</span>
+                  <Lock aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                </span>
+              )}
+            </Field>
+            <DetailInput name="phone" label="Phone" draft={draft} errors={errors} set={set} />
+            <DetailInput name="discord" label="Discord" draft={draft} errors={errors} set={set} />
+            <DetailInput name="linkedin" label="LinkedIn" draft={draft} errors={errors} set={set} className="sm:col-span-2" />
+          </div>
+        </Section>
 
-      <Section title="Studies">
-        <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
-          <DetailInput name="politoId" label="PoliTo ID" draft={draft} errors={errors} set={set} />
-          <DetailInput name="programme" label="Program" draft={draft} errors={errors} set={set} />
-          <DetailInput name="level" label="Level" draft={draft} errors={errors} set={set} />
-          <DetailInput name="country" label="From" draft={draft} errors={errors} set={set} />
-        </div>
-      </Section>
+        <Section title="Studies">
+          <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
+            <DetailInput name="politoId" label="PoliTo ID" draft={draft} errors={errors} set={set} />
+            <DetailInput name="programme" label="Program" draft={draft} errors={errors} set={set} />
+            <DetailInput name="level" label="Level" draft={draft} errors={errors} set={set} />
+            <DetailInput name="country" label="From" draft={draft} errors={errors} set={set} />
+          </div>
+        </Section>
 
-      <Section title="Personal">
-        <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
-          <DetailInput name="birthDate" label="Date of birth" draft={draft} errors={errors} set={set} />
-          <DetailInput name="gender" label="Gender" draft={draft} errors={errors} set={set} />
-        </div>
-      </Section>
-    </Drawer>
+        <Section title="Personal">
+          <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
+            <DetailInput name="birthDate" label="Date of birth" draft={draft} errors={errors} set={set} />
+            <DetailInput name="gender" label="Gender" draft={draft} errors={errors} set={set} />
+          </div>
+        </Section>
+
+        {person && position && <LeavingSection person={person} position={position} onAsk={setAsking} />}
+      </Drawer>
+      <MemberDialogs asking={asking} onClose={() => setAsking(null)} onDone={onClose} />
+    </>
+  );
+}
+
+const LEAVING_BUTTON = `inline-flex h-9 items-center gap-2 rounded-full border border-danger/60 px-4 text-[13px] font-semibold text-danger transition-colors duration-300 ease-out hover:border-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-danger/60 disabled:hover:bg-transparent ${FOCUS}`;
+
+/**
+ * Leaving the team (board 46b), the end of Edit details: Remove from each of
+ * the person's divisions the viewer reaches, where `removalFrom` offers it,
+ * then Move to alumni. Each opens the row ⋯ menu's own "are you sure"; an
+ * action the viewer may not take is locked with the reason the menu gives.
+ */
+function LeavingSection({ person, position, onAsk }: { person: EditPerson; position: MemberPosition; onAsk: (asking: Asking) => void }) {
+  const firstName = person.name.split(" ")[0];
+  const removals = position.removals.filter((r) => r.removal.kind === "offered" || r.removal.kind === "locked");
+  return (
+    <section className="mt-8 rounded-xl border border-danger/40 bg-danger/[0.06] p-4">
+      <h3 className="text-[14px] font-semibold text-prt-text">Leaving the team</h3>
+      <p className="mt-2 text-[12px] leading-relaxed text-prt-muted">
+        {removals.length > 0 && `Remove from a division ends only that role; ${firstName} keeps the others. `}
+        Move to alumni moves {firstName} to Alumni with the years on the team. The account stays; dashboard access ends.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2.5">
+        {removals.map((r) => (
+          <button
+            key={r.divisionId}
+            type="button"
+            disabled={r.removal.kind === "locked"}
+            title={r.removal.kind === "locked" ? r.removal.reason : undefined}
+            onClick={() => onAsk({ kind: "remove", person, divisionId: r.divisionId, short: r.short })}
+            className={LEAVING_BUTTON}
+          >
+            {r.removal.kind === "locked" ? <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} /> : <UserMinus aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
+            Remove from {r.short}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={!position.leave.allowed}
+          title={position.leave.allowed ? undefined : position.leave.reason}
+          onClick={() => onAsk({ kind: "leave", person })}
+          className={LEAVING_BUTTON}
+        >
+          {!position.leave.allowed && <Lock aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />}
+          Move to alumni
+        </button>
+      </div>
+      {[...removals.flatMap((r) => (r.removal.kind === "locked" ? [r.removal.reason] : [])), ...(position.leave.allowed ? [] : [position.leave.reason])]
+        .filter((reason, i, all) => all.indexOf(reason) === i)
+        .map((reason) => (
+          <p key={reason} className="mt-2.5 flex items-start gap-2 text-[12px] leading-snug text-prt-muted">
+            <Lock aria-hidden className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={1.75} />
+            {reason}
+          </p>
+        ))}
+    </section>
   );
 }
 
 /** The photo row of Edit details: Upload photo opens the square crop; the saved photo is a JPEG under 500 KB. */
-function PhotoField({ person, divisionId }: { person: DivisionPerson; divisionId: number }) {
+function PhotoField({ person }: { person: Pick<EditPerson, "id" | "photoUrl"> }) {
   const [cropping, setCropping] = useState<File | null>(null);
   const [pending, setPending] = useState(false);
   const [preview, setPreview] = useState<string | null>(person.photoUrl);
@@ -571,7 +716,7 @@ function PhotoField({ person, divisionId }: { person: DivisionPerson; divisionId
     try {
       const form = new FormData();
       form.set("photo", square);
-      const result = await setMemberPhoto(person.id, divisionId, form);
+      const result = await setMemberPhoto(person.id, form);
       if (!result.ok) {
         toast.error("Could not upload the photo", { description: result.error });
         return;

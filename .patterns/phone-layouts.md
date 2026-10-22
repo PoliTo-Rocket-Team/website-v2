@@ -25,7 +25,7 @@ Tailwind breakpoint, not a second component per screen size.
    member panel in [member-panels.tsx](../components/dashboard/member-panels.tsx), as boards 94 to
    94e draw it, and the alias setup steps). The footer with the actions is
    pinned at the foot in both forms. Callers:
-   [member-drawer.tsx](../components/dashboard/member-drawer.tsx) and
+   [member-panels.tsx](../components/dashboard/member-panels.tsx) and
    [division-orders.tsx](../components/dashboard/division-orders.tsx). The application panel in
    [applications.tsx](../components/dashboard/applications.tsx) builds its phone page with
    `PhoneTopBar` from [shell.tsx](../components/dashboard/shell.tsx), the same bar the shell uses,

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { departmentMembers } from "./department-members";
 import { NO_MEMBER_DETAILS } from "./details";
-import { divisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
+import { divisionMembers, positionsOf, type PersonRecord, type WaitingPerson } from "./division-members";
 import { MEMBERS_TOOLS, membersModelOf, NO_MEMBERS_FILTER, opensWholeTeam, shownMembers, type MemberEntry, type MembersModel } from "./members-view";
-import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions, type TeamActor, type TeamPageEdit } from "./team";
+import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import { wholeTeamMembers } from "./team-members";
 import type { ViewerStanding } from "./viewer";
 
@@ -56,20 +56,15 @@ function leaderPage(): MembersModel {
   return seatPage(7);
 }
 
-// Every full-access seat's whole team, the team leader's included (issue #444): the Team page panel's edits for each person (board 46b).
-const teamPageEdits: readonly TeamPageEdit[] = records.map((r) => ({
-  id: r.id,
-  pageTitle: null,
-  role: r.memberships.length === 0 ? null : r.memberships.some((m) => m.role === "lead") ? "division-lead" : "member",
-}));
-
+// Every full-access seat's whole team, the team leader's included (issue #444): the one Edit details panel's position for each person (issue #584).
 function seatPage(selfId: number): MembersModel {
-  return membersModelOf({ scope: "whole-team", teamPageEdits, ...wholeTeamMembers({ records, org, selfId }) })!;
+  const positions = positionsOf(records, org, { kind: "team" }, selfId);
+  return membersModelOf({ scope: "whole-team", positions, ...wholeTeamMembers({ records, org, selfId }) })!;
 }
 
-/** Where a row's menu may remove someone from; null where the row offers no division change. */
+/** Where a row's menu and Edit details may remove someone from; null where the row offers no change. */
 function removalsOf(entry: MemberEntry) {
-  return entry.actions?.kind === "division" ? entry.actions.removals : null;
+  return entry.actions?.position.removals ?? null;
 }
 
 function headPage(): MembersModel {
@@ -101,16 +96,13 @@ test("the operations lead and the IT lead open the whole team like the team lead
   for (const set of tools) assert.deepEqual(set, MEMBERS_TOOLS);
 });
 
-test("every full-access seat, the team leader included, gets the Team page panel's edits on every row (#418, #444)", () => {
+test("every full-access seat, the team leader included, opens Edit details on every row but their own (#418, #444, #584)", () => {
   const ops = seatPage(8);
   const leader = leaderPage();
-  for (const page of [ops, leader]) {
-    assert.equal(page.panelEdits, true);
-    assert.deepEqual(
-      page.everyone.map((p) => [p.name, p.actions?.kind === "team-page" ? p.actions.edit.role : "none"]),
-      page.everyone.map((p) => [p.name, teamPageEdits.find((e) => e.id === p.id)!.role]),
-    );
-  }
+  assert.equal(ops.panelEdits, true);
+  assert.ok(ops.everyone.every((p) => p.actions?.person.id === p.id));
+  assert.equal(leader.everyone.find((p) => p.id === 7)?.actions, null, "never their own row");
+  assert.ok(leader.everyone.filter((p) => p.id !== 7).every((p) => p.actions !== null));
   assert.deepEqual(ops.everyone.map((p) => p.id), leader.everyone.map((p) => p.id));
 });
 
@@ -122,7 +114,7 @@ test("only the rows differ: the whole team, the department, the division", () =>
   assert.deepEqual(headPage().units.map((u) => [u.name, u.divisions.map((d) => d.code)]), [["Aerodynamics", ["MA", "OA"]]]);
 });
 
-test("actions are the data's own: what the lead's and head's pages allow, the Team page panel on the whole team, none under Can view", () => {
+test("actions are the data's own: what the lead's and head's pages allow, the same panel on the whole team, none under Can view", () => {
   const lead = leadPage();
   const lena = lead.everyone.find((p) => p.name === "Lena Fischer")!;
   assert.deepEqual(removalsOf(lena)?.map((r) => [r.short, r.removal.kind]), [["Mission Analysis", "offered"]]);
@@ -134,7 +126,7 @@ test("actions are the data's own: what the lead's and head's pages allow, the Te
   assert.equal(viewOnly.panelEdits, false);
 
   const leader = leaderPage();
-  assert.ok(leader.everyone.every((p) => p.actions?.kind === "team-page"));
+  assert.deepEqual(removalsOf(leader.everyone.find((p) => p.name === "Davide Russo")!)?.map((r) => r.short), ["Mission Analysis", "Design & Manufacturing"]);
   assert.equal(leader.panelEdits, true);
   assert.equal(leader.add?.kind, "department");
 
@@ -148,7 +140,8 @@ test("choosing a division lists it as that division does, with the people waitin
   const oa = shownMembers(head, { ...NO_MEMBERS_FILTER, divisionId: 2 });
   assert.equal(oa.division?.code, "OA");
   assert.deepEqual(oa.people.map((p) => p.name), ["Laura Greco", "Lena Fischer"]);
-  assert.deepEqual(removalsOf(oa.people.find((p) => p.name === "Lena Fischer")!)?.map((r) => r.short), ["Optimization and Analysis"]);
+  // Edit details' position covers every division of theirs the head reaches, whichever tab opened it (issue #584).
+  assert.deepEqual(removalsOf(oa.people.find((p) => p.name === "Lena Fischer")!)?.map((r) => r.short), ["Mission Analysis", "Optimization and Analysis"]);
   assert.deepEqual(oa.waiting, []);
   assert.deepEqual(shownMembers(head, { ...NO_MEMBERS_FILTER, divisionId: 1 }).waiting.map((w) => w.waiting.email), ["elena@x.it"]);
   assert.deepEqual(shownMembers(head, { ...NO_MEMBERS_FILTER, query: "elena" }).waiting.map((w) => w.division.code), ["MA"]);
@@ -169,4 +162,42 @@ test("on the whole team the selects narrow everyone, and a division from another
   assert.equal(names({ department: "Structures", divisionId: 2 }).length, 2);
   assert.equal(shownMembers(leader, { ...NO_MEMBERS_FILTER, department: "Structures", divisionId: 2 }).division, null);
   assert.deepEqual(names({ query: "lena" }), ["Lena Fischer"]);
+});
+
+// Issue #584: one Edit details panel for every viewer who may edit someone.
+// Its position part is the data's own, worked out by the rules the server
+// checks: lead or member only where the viewer may change a division's leads,
+// Remove from each division they reach, Move to alumni where allowed.
+
+function positionIn(page: MembersModel, name: string) {
+  return page.everyone.find((p) => p.name === name)?.actions?.position ?? null;
+}
+
+test("the lead or member control shows only where the viewer may change who leads the division (#584)", () => {
+  const leads = (page: MembersModel, name: string) => positionIn(page, name)?.leads.map((l) => [l.short, l.role]);
+  assert.deepEqual(leads(leaderPage(), "Lena Fischer"), [["Mission Analysis", "member"], ["Optimization and Analysis", "member"]]);
+  assert.deepEqual(leads(leaderPage(), "Marco Bianchi"), [["Mission Analysis", "lead"]]);
+  assert.deepEqual(leads(headPage(), "Davide Russo"), [["Mission Analysis", "member"]], "Design & Manufacturing is not the head's");
+  assert.deepEqual(leads(leadPage(), "Lena Fischer"), [], "a division lead never changes leads (#231)");
+});
+
+test("a division lead's panel reaches only their divisions, a head's only their department, the whole team everyone (#584)", () => {
+  const removals = (page: MembersModel, name: string) => positionIn(page, name)?.removals.map((r) => r.short);
+  assert.deepEqual(removals(leadPage(), "Lena Fischer"), ["Mission Analysis"]);
+  assert.deepEqual(removals(headPage(), "Davide Russo"), ["Mission Analysis"]);
+  assert.deepEqual(removals(leaderPage(), "Davide Russo"), ["Mission Analysis", "Design & Manufacturing"]);
+  assert.deepEqual(positionIn(leadPage(), "Davide Russo")?.leave, { allowed: false, reason: "Also in Design & Manufacturing, so only the team leader can do this" });
+  assert.deepEqual(positionIn(leaderPage(), "Davide Russo")?.leave, { allowed: true });
+  const lead: TeamActor = { kind: "lead", divisionIds: [1] };
+  assert.deepEqual(positionsOf(records, org, lead, 1).map((p) => p.id), [2, 3], "only people in Mission Analysis, never the lead");
+  assert.deepEqual(positionsOf(records, org, null, null), [], "no actor, no panel");
+});
+
+test("a seat on the whole team opens the same panel, its seat title locked, with no division to change (#584)", () => {
+  const head = positionIn(leaderPage(), "Chiara Ferri")!;
+  assert.deepEqual(head.title, { kind: "seat", label: "Head of Aerodynamics" });
+  assert.deepEqual([head.leads, head.removals], [[], []]);
+  assert.deepEqual(head.leave, { allowed: true });
+  assert.deepEqual(positionIn(leaderPage(), "Lena Fischer")?.title, { kind: "division", divisionId: 1, short: "Mission Analysis", value: null });
+  assert.equal(positionIn(headPage(), "Chiara Ferri"), null, "a head's page does not list their own seat");
 });

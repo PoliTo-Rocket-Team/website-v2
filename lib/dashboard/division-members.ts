@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { NO_MEMBER_DETAILS, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
 import {
+  beyondTitle,
   divisionLabel,
   homeFirst,
   leadsChangedBy,
   matchesQuery,
+  mayChangeDivision,
   mayLeaveTeam,
   reachesDivision,
   removalFrom,
@@ -81,7 +83,91 @@ export type DivisionPerson = {
   readonly self: boolean;
   readonly leave: Permission;
   readonly removal: Removal;
+  /** What Edit details may change about them (`positionOf`); null when the viewer may change nothing here, or it is their own row. */
+  readonly position: MemberPosition | null;
 };
+
+// The position part of the one Edit details panel (issue #584): every viewer
+// who may edit a member in scope gets the same panel, and what it offers is
+// worked out here, on both sides of the data interface, from the same rules
+// the server checks (./team.ts).
+
+/** "Remove from <division>" for one division a person is in. */
+export type DivisionRemoval = {
+  readonly divisionId: number;
+  /** "Mission Analysis" */
+  readonly short: string;
+  readonly removal: Removal;
+};
+
+/** Lead or member in one division, offered where the viewer may change who leads it (`mayChangeDivision`). */
+export type LeadChoice = {
+  readonly divisionId: number;
+  readonly short: string;
+  readonly role: DivisionRole;
+};
+
+/**
+ * The role title Edit details sets: their title in one division the viewer
+ * reaches, or, for someone in none (a seat on the whole team: the team
+ * leader, a board seat, a head), their seat's title, which Edit details shows
+ * locked. A seat's title is set where the seat is (the Team tree).
+ */
+export type PositionTitle =
+  | { readonly kind: "division"; readonly divisionId: number; readonly short: string; readonly value: string | null }
+  | { readonly kind: "seat"; readonly label: string };
+
+/** What the viewer may change about someone's place on the team from Edit details. */
+export type MemberPosition = {
+  readonly title: PositionTitle;
+  readonly leads: readonly LeadChoice[];
+  /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
+  readonly removals: readonly DivisionRemoval[];
+  readonly leave: Permission;
+};
+
+/** A person's position with whose it is: the whole team's rows. */
+export type PersonPosition = MemberPosition & { readonly id: number };
+
+/**
+ * Whether `actor` may edit the person at all: the team reaches everyone, a
+ * head or a lead (or a Members grant at Can edit) whoever is in a division
+ * they reach. The server's `rolesTheViewerChanges` is the same rule.
+ */
+export function editsPerson(actor: TeamActor, record: Pick<PersonRecord, "memberships">, org: OrgChart): boolean {
+  return actor.kind === "team" || record.memberships.some((m) => reachesDivision(actor, m.divisionId, org));
+}
+
+/**
+ * The position part for `record` as `actor` sees it. `titleIn` is the
+ * division the page lists them under; the title falls back to their first
+ * division the actor reaches, and to their seat when there is none.
+ */
+export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor, titleIn: number | null): MemberPosition {
+  const standing = { memberships: record.memberships, beyond: record.beyondDivisions };
+  const reached = homeFirst(record.memberships).filter((m) => org.divisions.some((d) => d.id === m.divisionId) && reachesDivision(actor, m.divisionId, org));
+  const short = (divisionId: number) => divisionLabel(org.divisions.find((d) => d.id === divisionId)?.name ?? "");
+  const titled = reached.find((m) => m.divisionId === titleIn) ?? reached[0];
+  const seat = record.beyondDivisions[0];
+  return {
+    title:
+      titled === undefined
+        ? { kind: "seat", label: seat === undefined ? "Member" : beyondTitle(seat, org) }
+        : { kind: "division", divisionId: titled.divisionId, short: short(titled.divisionId), value: record.titles[titled.divisionId] ?? null },
+    // An Advisor role is no lead or member role, so the switch does not set it.
+    leads: reached
+      .filter((m) => !record.advising.includes(m.divisionId) && mayChangeDivision(actor, m.divisionId, org).allowed)
+      .map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), role: m.role })),
+    removals: reached.map((m) => ({ divisionId: m.divisionId, short: short(m.divisionId), removal: removalFrom(actor, standing, m.divisionId, org) })),
+    leave: mayLeaveTeam(actor, standing, org),
+  };
+}
+
+/** The whole team's positions: everyone `actor` may edit, never the viewer; none for no actor. */
+export function positionsOf(records: readonly PersonRecord[], org: OrgChart, actor: TeamActor | null, selfId: number | null): PersonPosition[] {
+  if (actor === null) return [];
+  return records.flatMap((r) => (r.id === selfId || !editsPerson(actor, r, org) ? [] : [{ id: r.id, ...positionOf(r, org, actor, null) }]));
+}
 
 /**
  * Someone added by email who is not on the team yet (Owner decision,
@@ -182,9 +268,10 @@ function byRoleThenName(a: DivisionPerson, b: DivisionPerson): number {
 }
 
 /** A row's actions where the viewer may not change the division: none is offered (issue #351). */
-const VIEW_ONLY: { readonly leave: Permission; readonly removal: Removal } = {
+const VIEW_ONLY: { readonly leave: Permission; readonly removal: Removal; readonly position: null } = {
   leave: { allowed: false, reason: "You can view this division, not change it" },
   removal: { kind: "not-in-reach" },
+  position: null,
 };
 
 /**
@@ -232,7 +319,11 @@ export function divisionMembers(input: {
         self: record.id === input.selfId,
         ...(changer === null
           ? VIEW_ONLY
-          : { leave: mayLeaveTeam(changer, standing, org), removal: removalFrom(changer, standing, divisionId, org) }),
+          : {
+              leave: mayLeaveTeam(changer, standing, org),
+              removal: removalFrom(changer, standing, divisionId, org),
+              position: record.id === input.selfId ? null : positionOf(record, org, changer, divisionId),
+            }),
       },
     ];
   });

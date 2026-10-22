@@ -469,7 +469,7 @@ const ACTION_CASES: readonly ActionCase[] = [
   { action: "recruitment-actions.setRecruitment", run: () => recruitmentActions.setRecruitment(false), may: (r) => r.expect.switchesRecruitment, control: by("team leader") },
 
   // Members, in DM.
-  { action: "team-actions.saveMember", run: () => teamActions.saveMember(IDS.person(DM), "member", "Engineer"), may: changesDM("members"), control: by("team leader") },
+  { action: "team-actions.saveMember", run: () => teamActions.saveMember(IDS.person(DM), IDS.division(DM), "member"), may: changesDM("members"), control: by("team leader") },
   { action: "team-actions.moveToAlumni", run: () => teamActions.moveToAlumni(IDS.person(DM), "2024 – 2026", null), may: changesDM("members"), control: by("team leader") },
   // Joining takes Members and Applications both; the matrix pins the refusal where Members is not changed.
   { action: "team-actions.confirmJoin", run: () => teamActions.confirmJoin(IDS.joining(DM)), may: (r) => (changesDM("members")(r) ? undefined : false), control: by("team leader") },
@@ -493,7 +493,7 @@ const ACTION_CASES: readonly ActionCase[] = [
   },
   {
     action: "team-actions.setMemberPhoto",
-    run: () => teamActions.setMemberPhoto(IDS.person(DM), IDS.division(DM), form({ photo: PHOTO() })),
+    run: () => teamActions.setMemberPhoto(IDS.person(DM), form({ photo: PHOTO() })),
     may: changesDM("members"),
     control: by("team leader"),
   },
@@ -815,6 +815,53 @@ const EXPECTED_EXPORT_HEADER = [
   "NDA signed on",
   "NDA confirmed by",
 ];
+
+describe("one Edit details panel: whoever may edit a member in scope saves their details and position (issue #584)", () => {
+  const tables = (writes: readonly { readonly kind: string; readonly table: string }[]) => [...new Set(writes.map((w) => `${w.kind} ${w.table}`))].sort();
+  const SAVE = { title: "Engineer", details: MEMBER_DETAILS };
+
+  test("full access saves the details of a seat with no division from the whole team, and never their seat's title", async () => {
+    for (const name of ["operations lead", "team leader"]) {
+      const { answer, writes } = await attempt(accountOf(name).userId, () => teamActions.saveMemberDetails({ kind: "person", id: EXTRA.head }, null, SAVE));
+      assert.deepEqual(answer, { ok: true }, name);
+      assert.ok(writes.length > 0, `${name}: wrote nothing`);
+      assert.ok(!tables(writes).some((t) => t.endsWith(" roles")), `${name}: touched a role: ${tables(writes)}`);
+    }
+    const photo = await attempt(accountOf("operations lead").userId, () => teamActions.setMemberPhoto(EXTRA.head, form({ photo: PHOTO() })));
+    assert.deepEqual(photo.answer, { ok: true });
+    const named = await attempt(accountOf("team leader").userId, () => teamActions.saveMemberDetails({ kind: "person", id: EXTRA.head }, IDS.division(DM), SAVE));
+    assert.ok(isRefusal(named.answer), "a title in a division they are not in");
+    assert.deepEqual(named.writes, []);
+  });
+
+  test("full access saves the details of someone in a division, with their title there, and changes who leads it", async () => {
+    const details = await attempt(accountOf("operations lead").userId, () =>
+      teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE),
+    );
+    assert.deepEqual(details.answer, { ok: true });
+    assert.ok(tables(details.writes).some((t) => t.endsWith(" roles")), "the title in DM");
+    const lead = await attempt(accountOf("operations lead").userId, () => teamActions.saveMember(IDS.person(DM), IDS.division(DM), "division-lead"));
+    assert.deepEqual(lead.answer, { ok: true });
+    assert.ok(lead.writes.length > 0);
+  });
+
+  test("a head edits their department's people only, and a division lead never changes who leads", async () => {
+    const head = accountOf("department head").userId;
+    assert.deepEqual((await attempt(head, () => teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE))).answer, { ok: true });
+    for (const run of [
+      () => teamActions.saveMemberDetails({ kind: "person", id: EXTRA.head }, null, SAVE),
+      () => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, null, SAVE),
+      () => teamActions.setMemberPhoto(IDS.person(DM), form({ photo: PHOTO() })),
+    ]) {
+      const { answer, writes } = await attempt(head, run);
+      assert.ok(isRefusal(answer), `not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, []);
+    }
+    const lead = await attempt(accountOf("division lead").userId, () => teamActions.saveMember(IDS.person("MA"), IDS.division("MA"), "division-lead"));
+    assert.ok(isRefusal(lead.answer));
+    assert.deepEqual(lead.writes, []);
+  });
+});
 
 describe("the Members export gives a file to full access alone (issue #539)", () => {
   async function exported(userId: string | null) {

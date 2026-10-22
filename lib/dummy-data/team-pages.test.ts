@@ -47,10 +47,13 @@ test("every role that opens Members gets the same tools; the operations lead ope
     ops.map((p) => p.id),
     leader.map((p) => p.id),
   );
-  // Both seats get the Team page panel's edits (board 46b) on every row, the team leader included (issue #444).
+  // Both seats open the one Edit details panel on every row but their own, the team leader included (issues #444, #584).
   assert.ok(opsPage.scope === "whole-team" && leaderPage.scope === "whole-team");
-  assert.deepEqual(opsPage.teamPageEdits.map((e) => e.id).sort(), ops.map((p) => p.id).sort());
-  assert.deepEqual(leaderPage.teamPageEdits, opsPage.teamPageEdits);
+  assert.deepEqual(
+    opsPage.positions.map((e) => e.id).sort(),
+    ops.map((p) => p.id).filter((id) => id !== 1).sort(),
+  );
+  assert.ok(!leaderPage.positions.some((e) => e.id === 14), "never the team leader's own row");
 });
 
 test("a division lead lists only their own division, with every division each person is in", async () => {
@@ -65,27 +68,47 @@ test("a division lead lists only their own division, with every division each pe
   assert.ok(page.people.every((p) => p.divisions[0].divisionId === MISSION_ANALYSIS));
 });
 
-test("a lead's Save sets titles but never a role: only the head changes leads (#231)", async () => {
+test("a lead's Edit details sets titles but never a role: only the head changes leads (#231)", async () => {
   const { view, saved } = pages("division-lead");
   const writes = view.teamWrites!;
-  assert.equal(await writes.saveMember(7, { role: null, pageTitle: "Mission Analyst" }), true);
-  assert.equal(await writes.saveMember(7, { role: "division-lead", pageTitle: null }), false, "no new lead");
-  assert.equal(await writes.saveMember(2, { role: null, pageTitle: null }), false, "never themselves");
+  const titled = { title: "Mission Analyst", details: NO_MEMBER_DETAILS };
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 7 }, MISSION_ANALYSIS, titled)).ok, true);
+  assert.equal(await writes.saveMember(7, { divisionId: MISSION_ANALYSIS, role: "division-lead" }), false, "no new lead");
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 2 }, MISSION_ANALYSIS, titled)).ok, false, "never themselves");
   // Ahmed is only in Optimization and Analysis, the lead's second division (#185); Matteo Riva only in Design & Manufacturing.
-  assert.equal(await writes.saveMember(33, { role: null, pageTitle: "Optimization Analyst" }), true);
-  assert.equal(await writes.saveMember(38, { role: null, pageTitle: "CAD Engineer" }), false, "not a division they lead");
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 33 }, 2, { ...titled, title: "Optimization Analyst" })).ok, true);
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 38 }, 3, titled)).ok, false, "not a division they lead");
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 38 }, null, titled)).ok, false, "nor anyone outside them, with no division named");
+  assert.equal((await writes.setMemberPhoto(38, null)).ok, false);
   assert.equal(saved.length, 2);
 });
 
-test("the team leader and a head keep their place when the operations lead saves their title", async () => {
+test("the whole team's Edit details saves a seat's details, never their seat or its title, and the team leader keeps their place (#584)", async () => {
   const ops = pages("operations-lead");
   const writes = ops.view.teamWrites!;
-  assert.equal(await writes.saveMember(14, { role: null, pageTitle: "Team Leader 2026" }), true);
-  assert.equal(await writes.saveMember(15, { role: "member", pageTitle: null }), false); // a head's role is not the drawer's
+  const details = { ...NO_MEMBER_DETAILS, discord: "alessandro.g" };
+  assert.deepEqual(await writes.saveMemberDetails({ kind: "person", id: 14 }, null, { title: "Ignored", details }), { ok: true, value: null });
+  assert.deepEqual(await writes.setMemberPhoto(14, null), { ok: true, value: null });
+  assert.equal(await writes.saveMember(15, { divisionId: MISSION_ANALYSIS, role: "member" }), false, "a head is no member of a division here");
   const edits = reread(ops.saved[0]);
   const leader = wholeTeam(await pages("operations-lead", edits).view.members()).find((p) => p.id === 14);
   assert.equal(leader?.role, "team-leader");
-  assert.equal(editedRoster(edits).find((e) => e.id === 14)?.pageTitle, "Team Leader 2026");
+  assert.equal(leader?.details.discord, "alessandro.g");
+  assert.equal(editedRoster(edits).find((e) => e.id === 14)?.pageTitle, editedRoster(NO_EDITS).find((e) => e.id === 14)?.pageTitle);
+});
+
+test("the whole team's Edit details saves a member's details and title in a division, and their lead switch (#584)", async () => {
+  const ops = pages("operations-lead");
+  const writes = ops.view.teamWrites!;
+  const details = { ...NO_MEMBER_DETAILS, politoId: "s300007" };
+  assert.deepEqual(await writes.saveMemberDetails({ kind: "person", id: 7 }, MISSION_ANALYSIS, { title: "Orbit Analyst", details }), { ok: true, value: null });
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 7 }, 3, { title: "x", details })).ok, false, "not in Design & Manufacturing");
+  const afterDetails = reread(ops.saved[0]);
+  assert.equal(await pages("operations-lead", afterDetails).view.teamWrites!.saveMember(7, { divisionId: MISSION_ANALYSIS, role: "division-lead" }), true);
+  const page = await pages("operations-lead", reread(ops.saved[0])).view.members();
+  const person = wholeTeam(page).find((p) => p.id === 7)!;
+  assert.equal(person.details.politoId, "300007");
+  assert.deepEqual(person.divisions.find((d) => d.divisionId === MISSION_ANALYSIS)?.title, "Orbit Analyst");
 });
 
 test("Leaves the team takes someone off the tree and onto the Alumni page", async () => {
@@ -269,7 +292,7 @@ test("Edit details saves the title in the lead's own division only, and the deta
   };
   assert.deepEqual(await writes.saveMemberDetails({ kind: "person", id: 3 }, 3, { title: "CAD Lead", details }), {
     ok: false,
-    error: "You can edit only people in your own division.",
+    error: "You can edit only people your Members page lets you change.",
   });
   assert.deepEqual(await writes.saveMemberDetails({ kind: "person", id: 3 }, MISSION_ANALYSIS, { title: "Orbit Analyst", details }), { ok: true, value: null });
   const sofia = divisionPage(await pages("division-lead", reread(lead.saved[0])).view.members()).people.find((p) => p.id === 3)!;
@@ -367,14 +390,16 @@ test("a department head edits members in their own department and nowhere else (
   const LUCA = 4; // Mission Analysis only
   const AHMED = 33; // Optimization and Analysis only
   const MATTEO_RIVA = 38; // Design & Manufacturing only, in Structures
-  assert.equal(await writes.saveMember(LUCA, { role: null, pageTitle: "Orbit Analyst" }), true);
-  assert.equal(await writes.saveMember(AHMED, { role: "division-lead", pageTitle: null }), true, "the head changes their division's leads");
-  assert.equal(await writes.saveMember(MATTEO_RIVA, { role: null, pageTitle: "CAD Engineer" }), false, "Structures is not the head's");
-  assert.equal(await writes.saveMember(15, { role: null, pageTitle: null }), false, "never themselves");
+  assert.equal(await writes.saveMember(AHMED, { divisionId: 2, role: "division-lead" }), true, "the head changes their division's leads");
+  assert.equal(await writes.saveMember(MATTEO_RIVA, { divisionId: 3, role: "division-lead" }), false, "Structures is not the head's");
+  assert.equal(await writes.saveMember(15, { divisionId: MISSION_ANALYSIS, role: "member" }), false, "never themselves");
   const details = { title: "Orbit Analyst", details: NO_MEMBER_DETAILS };
   assert.equal((await writes.saveMemberDetails({ kind: "person", id: LUCA }, MISSION_ANALYSIS, details)).ok, true);
   assert.equal((await writes.saveMemberDetails({ kind: "person", id: MATTEO_RIVA }, 3, details)).ok, false);
-  assert.equal(saved.length, 3);
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: MATTEO_RIVA }, null, details)).ok, false, "outside the department, with no division named");
+  assert.equal((await writes.setMemberPhoto(MATTEO_RIVA, null)).ok, false);
+  assert.equal((await writes.setMemberPhoto(LUCA, null)).ok, true);
+  assert.equal(saved.length, 2);
 });
 
 test("the team leader edits, removes and moves to alumni anyone on the team, as the operations lead does (#444)", async () => {
@@ -382,15 +407,59 @@ test("the team leader edits, removes and moves to alumni anyone on the team, as 
   const writes = view.teamWrites!;
   const SOFIA = 3; // Mission Analysis, and Design & Manufacturing in Structures
   const ANNA = 13; // Mission Analysis and Optimization and Analysis
-  assert.equal(await writes.saveMember(SOFIA, { role: null, pageTitle: "Mission Analyst" }), true);
-  assert.equal(await writes.saveMember(7, { role: "division-lead", pageTitle: null }), true);
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: SOFIA }, 3, { title: "CAD Engineer", details: NO_MEMBER_DETAILS })).ok, true);
+  assert.equal(await writes.saveMember(7, { divisionId: MISSION_ANALYSIS, role: "division-lead" }), true);
   assert.equal(await writes.removeFromDivision(ANNA, MISSION_ANALYSIS), true);
   assert.equal(await writes.moveToAlumni(SOFIA, { from: 2024, to: 2026, reason: null }), true, "in two departments, still the team leader's to move");
-  assert.equal(await writes.saveMember(14, { role: null, pageTitle: null }), false, "never themselves");
+  assert.equal(await writes.saveMember(14, { divisionId: MISSION_ANALYSIS, role: "member" }), false, "never themselves");
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 14 }, null, { title: null, details: NO_MEMBER_DETAILS })).ok, false, "nor their own details here");
   assert.equal(saved.length, 4);
 });
 
 test("a malformed edits cookie reads as no edits", () => {
   assert.deepEqual(parseEdits("not json"), NO_EDITS);
   assert.deepEqual(parseEdits(JSON.stringify({ members: { 7: { role: "admin" } }, shownOnSite: { x: true } })), NO_EDITS);
+});
+
+// Issue #584: whoever may edit a member in scope saves their details and
+// position from the one Edit details panel; a Members grant at Can view
+// opens no editor and every one of these writes refuses it (cf. #577).
+
+/** The pages as the member holding `grant` sees them (./test-grant.ts). */
+function granted(grant: Parameters<typeof dummyTeamPages>[6]) {
+  const saved: TeamEdits[] = [];
+  const view = dummyTeamPages("member", NO_EDITS, async (next) => void saved.push(next), undefined, undefined, undefined, grant);
+  return { view, saved };
+}
+
+test("a Members grant at Can edit saves details inside its scope only, and never changes a division's leads (#584)", async () => {
+  const { view, saved } = granted("members-edit-department");
+  const writes = view.teamWrites!;
+  const details = { title: "Mission Analyst", details: NO_MEMBER_DETAILS };
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 7 }, MISSION_ANALYSIS, details)).ok, true, "Mission Analysis is in Aerodynamics");
+  assert.equal((await writes.setMemberPhoto(7, null)).ok, true);
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 38 }, 3, details)).ok, false, "Design & Manufacturing is outside the grant");
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 38 }, null, details)).ok, false);
+  assert.equal((await writes.setMemberPhoto(38, null)).ok, false);
+  assert.equal(await writes.saveMember(7, { divisionId: MISSION_ANALYSIS, role: "division-lead" }), false, "leads change through Edit division");
+  assert.equal(saved.length, 1);
+  const page = membersModelOf(await view.members())!;
+  assert.ok(page.everyone.some((p) => p.actions !== null));
+  assert.ok(page.everyone.every((p) => (p.actions?.position.leads ?? []).length === 0), "no lead or member control for a grant");
+});
+
+test("a Members grant at Can view opens no editor, and every Edit details write refuses it (#584, cf. #577)", async () => {
+  const { view, saved } = granted("members-view");
+  const writes = view.teamWrites!;
+  const page = membersModelOf(await view.members())!;
+  assert.ok(page.everyone.length > 0);
+  assert.ok(page.everyone.every((p) => p.actions === null));
+  assert.equal(page.panelEdits, false);
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 7 }, MISSION_ANALYSIS, { title: "x", details: NO_MEMBER_DETAILS })).ok, false);
+  assert.equal((await writes.saveMemberDetails({ kind: "person", id: 7 }, null, { title: "x", details: NO_MEMBER_DETAILS })).ok, false);
+  assert.equal((await writes.setMemberPhoto(7, null)).ok, false);
+  assert.equal(await writes.saveMember(7, { divisionId: MISSION_ANALYSIS, role: "member" }), false);
+  assert.equal(await writes.removeFromDivision(13, MISSION_ANALYSIS), false);
+  assert.equal(await writes.moveToAlumni(7, { from: 2024, to: 2026, reason: null }), false);
+  assert.deepEqual(saved, []);
 });

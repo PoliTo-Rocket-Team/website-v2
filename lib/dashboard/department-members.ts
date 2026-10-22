@@ -1,5 +1,14 @@
-import { divisionMembers, type DivisionHeader, type DivisionMembers, type DivisionPerson, type PersonRecord, type WaitingPerson } from "./division-members";
-import { divisionLabel, type Joining, type OrgChart, type Removal, type TeamActor } from "./team";
+import {
+  divisionMembers,
+  type DivisionHeader,
+  type DivisionMembers,
+  type DivisionPerson,
+  type DivisionRemoval,
+  type PersonRecord,
+  type WaitingPerson,
+} from "./division-members";
+import { divisionLabel, type Joining, type OrgChart, type TeamActor } from "./team";
+export type { DivisionRemoval } from "./division-members";
 
 // A department head's Members page (issue #235, boards 69 to 69c and 69m):
 // every division of the department as a tab, each the division page the lead
@@ -8,14 +17,6 @@ import { divisionLabel, type Joining, type OrgChart, type Removal, type TeamActo
 // are created, edited and closed in the Team tree's edit view, and a closed
 // division never opens again (issue #251). Both sides of the data interface
 // build it here from their own records.
-
-/** "Remove from <division>" for one division of the department a person is in. */
-export type DivisionRemoval = {
-  readonly divisionId: number;
-  /** "Mission Analysis" */
-  readonly short: string;
-  readonly removal: Removal;
-};
 
 /**
  * Someone under All divisions: their row as their first division of the

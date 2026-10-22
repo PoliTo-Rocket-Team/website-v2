@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Check, Lock, Pencil, Plus } from "lucide-react";
-import type { DivisionHeader, DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
+import type { DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
 import { divisionLabel, matchesQuery } from "@/lib/dashboard/team";
 import type { StructureDepartment, StructureDivision, StructureLeader, TeamStructure } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
@@ -64,8 +64,6 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
   const [closing, setClosing] = useState<number | null>(null);
   const [department, setDepartment] = useState<DepartmentDrawerTarget | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);
-  // The division whose waiting person Fill details edits; kept while the drawer closes.
-  const [editDivision, setEditDivision] = useState<DivisionHeader | null>(null);
   // Each opening of "Hand over your role" starts from nothing picked.
   const [handOver, setHandOver] = useState<{ readonly open: boolean; readonly round: number }>({ open: false, round: 0 });
 
@@ -84,8 +82,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
   const closingTab = pageOf(closing);
   const fill = (w: WaitingPerson, tab: DivisionMembers) => {
     setDivision(null);
-    setEditDivision(tab.division);
-    setEditing({ kind: "waiting", waiting: w });
+    setEditing({ kind: "waiting", waiting: w, division: tab.division });
   };
 
   const own = structure.departments.filter((d) => d.divisionsEditable).map((d) => d.name);
@@ -142,7 +139,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         }}
       />
       {structure.departmentsEditable && <DepartmentDrawer target={department} structure={structure} onClose={() => setDepartment(null)} onTarget={setDepartment} />}
-      {editDivision && <EditDetailsDrawer target={editing} division={editDivision} onClose={() => setEditing(null)} />}
+      <EditDetailsDrawer target={editing} onClose={() => setEditing(null)} />
       {structure.leader?.handsOver && (
         <TeamLeaderDrawer key={handOver.round} open={handOver.open} leader={structure.leader} onClose={() => setHandOver((h) => ({ ...h, open: false }))} />
       )}

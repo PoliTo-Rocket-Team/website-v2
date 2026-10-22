@@ -39,6 +39,7 @@ import {
   checkMemberPhoto,
   divisionMembers,
   lookupForAdd,
+  positionsOf,
   type AddLookup,
   type AddStanding,
   type DetailsTarget,
@@ -46,7 +47,6 @@ import {
 } from "./division-members";
 import {
   headDepartmentOf,
-  homeDivision,
   isDivisionRole,
   mayChangeDivision,
   mayLeaveTeam,
@@ -67,6 +67,7 @@ import {
   type TeamActor,
 } from "./team";
 import { departmentMembers } from "./department-members";
+import { wholeTeamMembers } from "./team-members";
 import {
   ADVISOR_TITLE,
   advisorAfterDivisionCloses,
@@ -424,6 +425,23 @@ export async function readDivisionMembers(identity: DashboardIdentity, divisionI
   return page === null ? NO_MEMBERS : { scope: "division", ...page };
 }
 
+/**
+ * The whole team's Members page (boards 73 to 73c, issue #418), for a viewer
+ * whose page is the whole team (`opensWholeTeam`), with what the one Edit
+ * details panel may change for each person they may edit (`positionsOf`,
+ * issue #584), read with the actor every Members write checks.
+ */
+export async function readWholeTeamMembers(identity: DashboardIdentity): Promise<MemberDirectory> {
+  const snapshotRead = readTeamSnapshot();
+  const [snapshot, actor] = await Promise.all([snapshotRead, readActor(identity, snapshotRead.then((s) => s.org))]);
+  const records = recordsOf(snapshot);
+  return {
+    scope: "whole-team",
+    positions: positionsOf(records, snapshot.org, actor, identity.memberId),
+    ...wholeTeamMembers({ records, org: snapshot.org, selfId: identity.memberId }),
+  };
+}
+
 /** Add member's field (boards 61h, 69c): the team, searched by name or email, and who is waiting here. */
 export async function findForAdd(identity: DashboardIdentity, divisionId: number, query: string): Promise<AddLookup> {
   const snapshot = await readTeamSnapshot();
@@ -526,25 +544,26 @@ function done(): true {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * Lead or member in one division, from Edit details' position part (issue
+ * #584): the person's lead or member rows there change type, nothing else.
+ * Only for someone the viewer may edit, in a division they reach, and only
+ * where `mayChangeDivision` lets them change its leads: never a division lead
+ * (#231). The panel offers the switch by the same rule (`positionOf`).
+ */
 async function saveMember(identity: DashboardIdentity, personId: number, edit: MemberEdit): Promise<boolean> {
   const { org } = await readTeamSnapshot();
   const actor = await readActor(identity, org);
   const active = await rolesTheViewerChanges(identity, actor, personId);
   if (actor === null || active === null) return false;
-  // The panel's role is the role in one division: the home one among those
-  // the viewer reaches. Their other divisions keep their roles (issue #229).
-  const division = homeDivision(membershipsOfActive(active));
-  // Changing who leads a division is the head's, never a division lead's (#231).
-  if (edit.role !== null && division !== null && !mayChangeDivision(actor, division, org).allowed) return false;
-  const divisionRoles = active.filter((r) => r.division_id === division && (r.type === "lead" || r.type === "core"));
-  const target = edit.role === null ? active : divisionRoles;
-  if (target.length === 0) return false;
-  const ids = target.map((r) => r.id);
+  if (!org.divisions.some((d) => d.id === edit.divisionId) || !mayChangeDivision(actor, edit.divisionId, org).allowed) return false;
+  const ids = active.filter((r) => r.division_id === edit.divisionId && (r.type === "lead" || r.type === "core")).map((r) => r.id);
+  if (ids.length === 0) return false;
   await runAuditQuery((db) =>
     db
       .update(roles)
-      .set({ title: edit.pageTitle ?? "", ...(edit.role === null ? {} : { type: ROLE_TYPE[edit.role] }) })
-      .where(inArray(roles.id, ids)),
+      .set({ type: ROLE_TYPE[edit.role] })
+      .where(and(inArray(roles.id, ids), isNull(roles.leavedAt))),
   );
   return done();
 }
@@ -634,7 +653,7 @@ async function addMember(identity: DashboardIdentity, input: unknown): Promise<W
   const checked = checkAddMember(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
   const add = checked.value;
-  if ((await actingOn(identity, add.divisionId)) === null) return refused("You can add people only to a division you lead.");
+  if ((await actingOn(identity, add.divisionId)) === null) return refused("You can add people only to a division your Members page lets you change.");
 
   const [account] =
     add.kind === "email"
@@ -789,24 +808,32 @@ async function removeFromDivision(identity: DashboardIdentity, personId: number,
   return done();
 }
 
+const NOT_IN_SCOPE = "You can edit only people your Members page lets you change.";
+
 /**
- * Edit details or Fill details (board 61g): the title of their role in this
- * division (never another division's), and their details, written where each
- * lives (`columnsFromMemberDetails`).
+ * Edit details (board 61g, issue #584) for anyone the viewer may edit
+ * (`rolesTheViewerChanges`): the team leader, full access and the operations
+ * lead reach everyone, a head their department's people, a division lead or a
+ * Members grant at Can edit the people in the divisions it covers. `divisionId`
+ * names the division whose role title the form sets, which the viewer must
+ * reach and the person be in; null for someone in no division the viewer
+ * reaches (a seat), whose details are saved and whose seat title is not.
+ * Fill details, for someone waiting, names the division they wait for. Each
+ * detail is written where it lives (`columnsFromMemberDetails`).
  */
 async function saveMemberDetails(
   identity: DashboardIdentity,
   target: DetailsTarget,
-  divisionId: number,
+  divisionId: number | null,
   input: unknown,
 ): Promise<WriteResult<null>> {
   const checked = checkMemberEdit(input);
   if (!checked.ok) return refused(Object.values(checked.errors)[0] ?? "Check the form.");
-  if ((await actingOn(identity, divisionId)) === null) return refused("You can edit only people in a division you lead.");
   const { title, details } = checked.value;
   const columns = columnsFromMemberDetails(details);
 
   if (target.kind === "waiting") {
+    if (divisionId === null || (await actingOn(identity, divisionId)) === null) return refused(NOT_IN_SCOPE);
     const [join] = await getDb()
       .select({ user_id: teamJoins.userId })
       .from(teamJoins)
@@ -820,26 +847,32 @@ async function saveMemberDetails(
     return written(null);
   }
 
-  const active = await personIn(identity, target.id, divisionId);
-  if (active === null) return refused("You can edit only people in your division.");
-  const titled = divisionRowsIn(active, divisionId).map((r) => r.id);
+  const { org } = await readTeamSnapshot();
+  const actor = await readActor(identity, org);
+  const active = await rolesTheViewerChanges(identity, actor, target.id);
+  if (actor === null || active === null) return refused(NOT_IN_SCOPE);
+  const titled = divisionId === null ? [] : divisionRowsIn(active, divisionId).map((r) => r.id);
+  if (divisionId !== null && (titled.length === 0 || !reachesDivision(actor, divisionId, org))) return refused(NOT_IN_SCOPE);
   await runAuditBatch((db) => [
-    db
-      .update(roles)
-      .set({ title: title ?? "" })
-      .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
     db.update(users).set({ ...columns.user, updatedAt: sql`now()` }).where(eq(users.member, target.id)),
     db.update(members).set(columns.member).where(eq(members.memberId, target.id)),
+    ...(titled.length === 0
+      ? []
+      : [
+          db
+            .update(roles)
+            .set({ title: title ?? "" })
+            .where(and(inArray(roles.id, titled), isNull(roles.leavedAt))),
+        ]),
   ]);
   done();
   return written(null);
 }
 
-/** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none. */
-async function setMemberPhoto(identity: DashboardIdentity, personId: number, divisionId: number, photo: Upload | null): Promise<WriteResult<null>> {
-  if ((await actingOn(identity, divisionId)) === null || (await personIn(identity, personId, divisionId)) === null) {
-    return refused("You can edit only people in your division.");
-  }
+/** The photo in Edit details (board 61g): a square JPEG under 500 KB in the public store, or none; for anyone the viewer may edit. */
+async function setMemberPhoto(identity: DashboardIdentity, personId: number, photo: Upload | null): Promise<WriteResult<null>> {
+  const { org } = await readTeamSnapshot();
+  if ((await rolesTheViewerChanges(identity, await readActor(identity, org), personId)) === null) return refused(NOT_IN_SCOPE);
   if (photo !== null) {
     const error = checkMemberPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
     if (error !== null) return refused(error);
@@ -1428,7 +1461,7 @@ export function databaseTeamWrites(
     cancelAdd: (joinId) => cancelAdd(identity, joinId),
     removeFromDivision: (personId, divisionId) => removeFromDivision(identity, personId, divisionId),
     saveMemberDetails: (target, divisionId, input) => saveMemberDetails(identity, target, divisionId, input),
-    setMemberPhoto: (personId, divisionId, photo) => setMemberPhoto(identity, personId, divisionId, photo),
+    setMemberPhoto: (personId, photo) => setMemberPhoto(identity, personId, photo),
     createDivision: (departmentId, input) => createDivision(identity, departmentId, input),
     saveDivision: (divisionId, input) => saveDivision(identity, divisionId, input),
     closeDivision: (divisionId) => closeDivision(identity, divisionId),

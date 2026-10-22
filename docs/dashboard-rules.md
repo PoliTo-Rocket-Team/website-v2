@@ -354,9 +354,28 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   have to use the site.
 - The site sends no emails. An amber note tells the actor to let the person know, with Fill
   details, Copy email and Open email.
-- In Edit details, the role field is only for the editor's own division. Roles in other divisions
-  show on the member panel, not in the form.
-- The row ⋯ menu has "Remove from {division}" and "Leaves the team".
+- Edit details is one panel for every viewer who may edit a member (#584, Owner decision,
+  2026-10-22): the same panel opens from the member panel on the whole team, a department and a
+  division. Who may edit a member: the team leader, full access and the operations lead, anyone on
+  the team; a department head, the people in their department's divisions; a division lead, or a
+  member with a Members grant at Can edit, the people in the divisions it covers. Nobody edits
+  themselves here. A Members grant at Can view, or a grant on another area, opens no editor, and
+  the server refuses every write below from it.
+  - Details (board 61g): photo, contact, studies and personal details, with the same field checks.
+  - Role: the person's title in one division, shown on the Team page: the division the page lists
+    them under, else their first division the editor reaches. Titles in their other divisions
+    show on the member panel, not in the form. A seat with no division the editor reaches (the
+    team leader, a board seat, a department head) shows their seat's title locked: it is set on
+    the Team tree, and Save never changes it.
+  - Lead or member: one choice per division of the person where the editor may change who leads
+    it (the department's head, the team leader or full access, as Edit division allows). A
+    division lead and a Members grant never see it, and the server refuses their change.
+  - Leaving the team (board 46b): "Remove from {division}" for each of the person's divisions the
+    editor reaches, and "Move to alumni", under the rules of the ⋯ menu below. An action the editor
+    may not take is locked with the menu's reason, and opens the menu's own "are you sure".
+  - Save writes the details and the title, then each changed lead or member choice. The server
+    checks each against the same rules.
+- The row ⋯ menu has "Remove from {division}" and "Leaves the team", on every Members page.
   - "Remove from {division}" ends only that division's role and its division access; the person
     keeps their other divisions. When it is the person's only division and they hold no seat (the
     team leader, a board seat or a department head), the menu does not offer it, and the server
@@ -379,15 +398,16 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   lead's page shows "Leads are changed by the Head of {department}", and the server refuses a
   lead's lead change.
 
-- The role on the operations lead's member panel is the person's title on the Team page. The
-  public Team page is built from the team's roles, so a saved title shows there once the
-  `team-roster` cache refreshes (ADR 0015).
-- A division's leads change only through Edit division (see Divisions below): the department's
-  head, the team leader or full access (#231). The Members page has no Promote (removed by #551).
+- The role in Edit details is the person's title on the Team page. The public Team page is built
+  from the team's roles, so a saved title shows there once the `team-roster` cache refreshes
+  (ADR 0015).
+- A division's leads change through Edit division (see Divisions below), or through Edit
+  details' lead or member choice, for the same people: the department's head, the team leader or
+  full access (#231, #584). The Members page has no Promote (removed by #551).
   - A "promoted" notice written while Promote existed (#188) still shows under "Needs your
     attention" until it is dismissed.
-- Move to alumni from the operations lead's member panel is the same "Leaves the team": every role
-  and every access ends, after a confirm with the years and an optional reason.
+- Move to alumni in Edit details is the same "Leaves the team": every role and every access ends,
+  after a confirm with the years and an optional reason.
 - Leave the team (by the member) is confirmed, with an optional reason. The lead and the
   recruitment manager are told. The person moves to Alumni. A division lead or a department head
   hands their role over instead (see Handing over a role).
