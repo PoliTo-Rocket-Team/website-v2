@@ -50,9 +50,9 @@ import { featuredIdsOf, type FeaturedIds } from "@/lib/outreach-featured";
 import { draftFromColumns, outreachPostOf, postFromColumns } from "@/lib/outreach-rows";
 import { CHANNEL_NAMES, type OutreachDraft, type OutreachTag, type PostItem, type PostVersions } from "@/lib/outreach-types";
 import type { Partner } from "@/lib/partners";
-import { storedProjectRecord } from "@/lib/project-content/check";
-import type { ProjectRecord } from "@/lib/project-content/record";
-import { rocketModelOf } from "@/lib/rocket-model";
+import { visualModelOf, type ProjectRecord } from "@/lib/project-content/record";
+import { rowRecordOf } from "@/lib/project-content/row";
+import { rocketModelOf, type OwnModel } from "@/lib/rocket-model";
 import { partnerFromColumns } from "@/lib/partners-rows";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
 import type { TeamPerson } from "@/lib/dashboard/division-edit";
@@ -384,7 +384,7 @@ export function projectItemsOf(data: SeedData): ContentItem<ProjectRecord>[] {
   return itemsOf(
     data.projects,
     data.projectVersions.map((v) => {
-      const content = storedProjectRecord(v.content);
+      const content = rowRecordOf(v);
       if (content === null) throw new Error(`project ${v.projectId} holds a ${v.version} version that is not a project record`);
       return { itemId: v.projectId, kind: v.version, content };
     }),
@@ -393,8 +393,9 @@ export function projectItemsOf(data: SeedData): ContentItem<ProjectRecord>[] {
 
 /** The rocket a project's home card and its page's panel draw: its own model, or the placeholder. */
 export function rocketsOf(record: ProjectRecord): { card: string; page: string | null } {
-  const slot = record.hero.visual?.rocket;
-  return { card: rocketModelOf(record.card.rocket), page: slot === undefined ? null : rocketModelOf(slot.own?.model) };
+  const { visual } = record.hero;
+  const model = rocketModelOf(visualModelOf<OwnModel>(record.hero));
+  return { card: model, page: visual.kind === "model" ? model : null };
 }
 
 // Hand-overs (issue #308), read through the hand-over rules

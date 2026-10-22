@@ -40,25 +40,21 @@ import { Field, inputClass } from "./field";
 import { PhotosSection, shrunkPhoto, type PhotoUploads } from "./outreach-post-photos";
 import { CopyField, EditableList, RowButton, type FieldErrors } from "./project-panel-parts";
 
-// The list sections of the Edit <project> panel (board 75c, issue #299):
-// Versions, Launch history, Plan and Gallery. Each sits in its own section
-// card with its show-on-page switch in the header (./project-edit-panel.tsx).
-// The rules each list keeps (one version highlighted, a launch at least in a
-// shown history, one plan step under way, a photo at least in a shown
-// gallery) live in lib/project-content/list-fields.ts: an edit that would
-// break one is refused there, and its message shows as a toast.
+// The list blocks of the Edit <project> panel (board 75c, issue #299; page
+// blocks since epic #522): Versions, Launch history, Timeline and Gallery,
+// each drawn in its block's panel (./project-blocks.tsx). The rules each list
+// keeps (one version highlighted, a launch at least in a history, one step
+// under way, a photo at least in a gallery) live in
+// lib/project-content/list-fields.ts: an edit that would break one is refused
+// there, and its message shows as a toast.
 
 /** Photos of a launch or of the gallery go through the projects editor, as Outreach's go through its own. */
-const PROJECT_UPLOADS: PhotoUploads = { upload: uploadProjectPhoto, discard: discardProjectPhoto };
+export const PROJECT_UPLOADS: PhotoUploads = { upload: uploadProjectPhoto, discard: discardProjectPhoto };
 
 /** Applies a refusable edit: the new fields, or the refusal's message. */
 function apply<T>(result: WriteResult<T>, set: (value: T) => void) {
   if (result.ok) set(result.value);
   else toast.error(result.error);
-}
-
-export function OffNote({ shown }: { shown: boolean }) {
-  return shown ? null : <p className="text-[12px] text-prt-muted">Off the page. Switch it on to show it; the text here is kept.</p>;
 }
 
 // Versions
@@ -83,7 +79,6 @@ export function VersionsEditor({
 }) {
   return (
     <>
-      <OffNote shown={versions.shown} />
       <TextField label="Title" value={versions.title} error={errors["versions.title"]} onChange={(title) => onChange({ ...versions, title })} />
       <CopyField
         label="Note under the table"
@@ -151,12 +146,6 @@ export function VersionsEditor({
   );
 }
 
-export function versionsSummary(versions: VersionsFields): string {
-  if (!versions.shown) return "Not on the page";
-  const names = versions.items.map((v) => v.pill.trim()).filter((name) => name !== "");
-  return `${names.join(", ") || "No versions yet"} · specs table`;
-}
-
 // Launch history
 
 const OUTCOMES: readonly { value: Outcome; label: string }[] = [
@@ -186,6 +175,7 @@ export function LaunchesEditor({
   phone,
   errors,
   onChange,
+  uploads = PROJECT_UPLOADS,
 }: {
   launches: LaunchesFields;
   /** The versions' names, for each launch's Version. */
@@ -193,6 +183,8 @@ export function LaunchesEditor({
   phone: boolean;
   errors: FieldErrors;
   onChange: (change: (launches: LaunchesFields) => LaunchesFields) => void;
+  /** Where its photos are stored and let go: the projects' by default. */
+  uploads?: PhotoUploads;
 }) {
   // Each card keeps one key while it moves, so the open one stays open.
   const [keys, setKeys] = useState(() => launches.items.map((_, i) => i));
@@ -223,7 +215,7 @@ export function LaunchesEditor({
       setKeys(rowKeys.filter((k) => k !== key));
       onChange(() => next);
       // The server keeps a file while a stored version of a project shows it.
-      for (const src of letGo) void PROJECT_UPLOADS.discard(src);
+      for (const src of letGo) void uploads.discard(src);
     });
   const add = () => {
     const key = nextKey.current++;
@@ -239,7 +231,6 @@ export function LaunchesEditor({
 
   return (
     <>
-      <OffNote shown={launches.shown} />
       <TextField label="Title" value={launches.title} error={errors["launches.title"]} onChange={(title) => onChange((l) => ({ ...l, title }))} />
       <div>
         <p className="mb-2 text-[13px] leading-snug text-prt-text">
@@ -286,6 +277,7 @@ export function LaunchesEditor({
                       versionNames={versionNames}
                       phone={phone}
                       errors={errors}
+                      uploads={uploads}
                       onChange={(change) => updateAt(key, change)}
                     />
                     <div className="flex items-center justify-end gap-1 border-t border-hairline pt-2">
@@ -310,13 +302,14 @@ export function LaunchesEditor({
   );
 }
 
-/** One launch card's fields (board 75c): date and place, version, motor and outcome, what happened, the four numbers, the /projects line, the award and the photos. */
+/** One launch card's fields (board 75c): date and place, version, motor and outcome, what happened, the four numbers, the /projects line, the award and the cover photo. */
 function LaunchCard({
   launch,
   at,
   versionNames,
   phone,
   errors,
+  uploads,
   onChange,
 }: {
   launch: LaunchFields;
@@ -325,6 +318,7 @@ function LaunchCard({
   versionNames: readonly string[];
   phone: boolean;
   errors: FieldErrors;
+  uploads: PhotoUploads;
   onChange: (change: (launch: LaunchFields) => LaunchFields) => void;
 }) {
   const set = (change: Partial<LaunchFields>) => onChange((l) => ({ ...l, ...change }));
@@ -485,12 +479,12 @@ function LaunchCard({
 
       <div>
         <p className="mb-2 text-[13px] leading-snug text-prt-text">
-          Photos<span className="ml-1.5 text-prt-muted">two at most, beside the card</span>
+          Cover photo<span className="ml-1.5 text-prt-muted">one, beside the card</span>
         </p>
         <PhotosSection
           photos={launch.photos}
           onChange={(change) => onChange((l) => ({ ...l, photos: change(l.photos) }))}
-          uploads={PROJECT_UPLOADS}
+          uploads={uploads}
           cover={false}
           max={LAUNCH_PHOTOS_MAX}
           error={errors[`${at}.photos`]}
@@ -554,12 +548,6 @@ function NumberBox({
   );
 }
 
-export function launchesSummary(launches: LaunchesFields): string {
-  if (!launches.shown) return "Not on the page";
-  const n = launches.items.length;
-  return `${n} ${n === 1 ? "launch" : "launches"}`;
-}
-
 // Plan
 
 const STATUS_LABELS: Readonly<Record<PlanStatus, string>> = { done: "Done", now: "Under way", next: "Next", later: "Later" };
@@ -577,7 +565,6 @@ export function PlanEditor({
 }) {
   return (
     <>
-      <OffNote shown={plan.shown} />
       <TextField label="Title" hint="a new line breaks it" rows={2} value={plan.title} error={errors["plan.title"]} onChange={(title) => onChange({ ...plan, title })} />
       <CopyField label="Intro" rows={2} copy={plan.intro} phone={phone} error={errors["plan.intro"]} onChange={(intro) => onChange({ ...plan, intro })} />
       <EditableList
@@ -631,20 +618,9 @@ export function PlanEditor({
   );
 }
 
-export function planSummary(plan: PlanFields): string {
-  if (!plan.shown) return "Not on the page";
-  const n = plan.steps.length;
-  const now = plan.steps.find((s) => s.status === "now")?.title.trim();
-  return `${n} ${n === 1 ? "step" : "steps"}${now ? ` · under way: ${now}` : ""}`;
-}
-
 // Gallery
 
-/**
- * The Gallery section's fields: its title, then its photos in carousel
- * order. The Edit post panel (issue #430) holds a post's gallery here too,
- * through the posts' own upload (`uploads`).
- */
+/** A Gallery block's fields: its title, then its photos in carousel order. */
 export function GalleryEditor({
   gallery,
   errors,
@@ -659,7 +635,6 @@ export function GalleryEditor({
 }) {
   return (
     <>
-      <OffNote shown={gallery.shown} />
       <TextField label="Title" value={gallery.title} error={errors["gallery.title"]} onChange={(title) => onChange((g) => ({ ...g, title }))} />
       <GalleryPhotosEditor
         items={gallery.items}
@@ -780,13 +755,7 @@ function GalleryThumb({ src }: { src: string | null }) {
   );
 }
 
-export function gallerySummary(gallery: GalleryFields): string {
-  if (!gallery.shown) return "Not on the page";
-  const n = gallery.items.length;
-  return `${n} ${n === 1 ? "photo" : "photos"}`;
-}
-
-function AddButton({ label, icon, onClick }: { label: string; icon?: ReactNode; onClick: () => void }) {
+export function AddButton({ label, icon, onClick }: { label: string; icon?: ReactNode; onClick: () => void }) {
   return (
     <button
       type="button"

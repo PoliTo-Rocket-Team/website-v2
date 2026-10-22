@@ -1,13 +1,14 @@
 import type { FilledGallery } from "@/components/gallery/items";
 import type { PhotoSrc } from "@/lib/outreach-types";
 import type { Award, Copy } from "@/lib/projects";
-import type { OwnRocket } from "@/lib/rocket-model";
+import type { OwnModel, OwnRocket } from "@/lib/rocket-model";
 
 // One project page as data: every /projects/<slug> page is one of these
 // records drawn by the same components (components/project-page/), read off
-// the project's stored record (lib/project-content/record.ts). A section
-// the project has no data for is an absent key, never an empty value, so the
-// page leaves it out; the section numbers follow the sections that are there.
+// the project's stored record (lib/project-content/record.ts). The page is a
+// fixed top (the hero) and an ordered list of page blocks below it (epic
+// #522): the page draws the blocks in their order and leaves out a hidden
+// one. The section numbers follow the blocks that show a heading.
 
 /** A title with forced line breaks; a plain string wraps where it falls. */
 export type Title = string | readonly [string, ...string[]];
@@ -29,38 +30,43 @@ export type KeyFacts =
   | readonly [Fact, Fact, Fact, Fact, Fact]
   | readonly [Fact, Fact, Fact, Fact, Fact, Fact];
 
-export type Hero = {
+/** A photo uploaded from the dashboard (lib/outreach-photos.ts) and what it shows, for assistive tech. */
+export type Photo = { src: PhotoSrc; alt: string };
+
+/**
+ * The top of the page's visual (Owner decision on #522): the project's 3D
+ * model, a photo, or none. A model or a photo sits in the panel on the
+ * project's background with its caption; with none the page has no panel and
+ * the key facts sit under the title. The model slot draws a still of the
+ * project's `own` model, or of the shared placeholder when it has none
+ * (lib/rocket-model.ts); the home card and the /projects panel draw the same
+ * model. `M` narrows the models it may name: a rocket's page names a rocket.
+ */
+export type TopVisual<M extends OwnModel = OwnModel> =
+  | { kind: "model"; caption: string; own?: OwnRocket<M> }
+  | { kind: "photo"; caption: string; photo: Photo }
+  | { kind: "none" };
+
+export type Hero<M extends OwnModel = OwnModel> = {
   intro: Copy;
   /** The status pill, beside the dates. */
   status: string;
   dates: string;
-  /**
-   * The panel on the project's texture. Its rocket slot draws a still of the
-   * project's `own` model, or of the shared placeholder when it has none
-   * (lib/rocket-model.ts). Without a `rocket` it shows the texture alone; a
-   * project with no visual at all leaves the panel out. The stored record
-   * check refuses an engine on a rocket's page (lib/project-content/check.ts).
-   */
-  visual?: { caption: string; rocket?: { own?: OwnRocket } };
+  visual: TopVisual<M>;
   facts: KeyFacts;
 };
 
-/** One row of the design story's list, in the order drawn, top to bottom. */
+/** One row of a text block's parts list, in the order drawn, top to bottom. */
 export type Part = { name: string; desc: string; phone: string };
 
-export type NameStory = { title: Title; body: Prose };
-
-export type DesignStory = {
-  title: Title;
-  body: Prose;
-  parts: {
-    /** What the list is, for assistive tech. */
-    label: string;
-    /** The note under the list, before its number range. */
-    caption: string;
-    /** Drawn top to bottom and numbered bottom to top. */
-    items: readonly [Part, ...Part[]];
-  };
+/** A numbered list under a text block's paragraphs, as the design story drew its compartments. */
+export type PartList = {
+  /** What the list is, for assistive tech. */
+  label: string;
+  /** The note under the list, before its number range. */
+  caption: string;
+  /** Drawn top to bottom and numbered bottom to top. */
+  items: readonly [Part, ...Part[]];
 };
 
 /** The versions table's rows, in order; every version gives each one, null where no value is known. */
@@ -104,11 +110,8 @@ export type Versions = {
 
 export type Outcome = "nominal" | "recovery-failed" | "did-not-fly";
 
-/** A photo of a campaign: a file uploaded from the dashboard (lib/outreach-photos.ts) and what it shows, for assistive tech. */
-export type LaunchPhoto = { src: PhotoSrc; alt: string };
-
-/** A launch card draws two photo slots, so it holds one or two photos; with none the key is absent and the slots show the texture. */
-export type LaunchPhotos = readonly [LaunchPhoto] | readonly [LaunchPhoto, LaunchPhoto];
+/** A photo of a campaign. A launch card has one cover photo (Owner decision on #522); with none the key is absent and its slot shows the background. */
+export type LaunchPhoto = Photo;
 
 /** One campaign on the launch history, as the page draws it. */
 export type LogEntry = {
@@ -123,7 +126,7 @@ export type LogEntry = {
   stats: readonly [Stat, Stat, Stat, Stat];
   /** The phone card keeps three numbers, with shorter labels. */
   phoneStats: readonly [Stat, Stat, Stat];
-  photos?: LaunchPhotos;
+  cover?: LaunchPhoto;
 };
 
 export type LaunchLog = { title: string; entries: readonly [LogEntry, ...LogEntry[]] };
@@ -157,16 +160,68 @@ export type Reasons = {
 
 export type GallerySection = { title: string; items: FilledGallery };
 
+// Page blocks (epic #522, boards 93 and 93b): the eight kinds an editor adds
+// below the top of the page. Each has a stable id, unique in its project, and
+// a hidden flag: a hidden block stays in the record with its content and the
+// page leaves it out.
+
+export type BlockMeta = { id: string; hidden: boolean };
+
+/** A text block takes the full content width, or half: two half blocks in a row sit side by side (Owner decision on #522). */
+export type TextWidth = "full" | "half";
+
+/** A heading over a block: the numbered eyebrow's label ("THE NAME") and the title. */
+export type BlockHeading = { label: string; title: Title };
+
+/** Text: an optional heading, paragraphs, and the parts list the design story had. */
+export type TextBlock = BlockMeta & { kind: "text"; width: TextWidth; heading?: BlockHeading; body: Prose; parts?: PartList };
+
+/** Two to six big numbers with their labels. */
+export type BlockFacts =
+  | readonly [Fact, Fact]
+  | readonly [Fact, Fact, Fact]
+  | readonly [Fact, Fact, Fact, Fact]
+  | readonly [Fact, Fact, Fact, Fact, Fact]
+  | readonly [Fact, Fact, Fact, Fact, Fact, Fact];
+
+export type KeyFactsBlock = BlockMeta & { kind: "facts"; facts: BlockFacts };
+
+/** One wide photo with a caption. */
+export type PhotoBlock = BlockMeta & { kind: "photo"; photo: Photo; caption: string };
+
+export type GalleryBlock = BlockMeta & { kind: "gallery" } & GallerySection;
+
+export type VersionsBlock = BlockMeta & { kind: "versions" } & Versions;
+
+/** One card per flight, in date order; `L` is a launch as stored, or as the page draws it. */
+export type LaunchesBlockOf<L> = BlockMeta & { kind: "launches"; title: string; entries: readonly [L, ...L[]] };
+
+/** Done, now, next and later steps. */
+export type TimelineBlock = BlockMeta & { kind: "timeline" } & Plan;
+
+/** A title and numbered points. */
+export type PointsBlock = BlockMeta & { kind: "points" } & Reasons;
+
+export type PageBlockOf<L> =
+  | TextBlock
+  | KeyFactsBlock
+  | PhotoBlock
+  | GalleryBlock
+  | VersionsBlock
+  | LaunchesBlockOf<L>
+  | TimelineBlock
+  | PointsBlock;
+
+export type BlockKind = PageBlockOf<unknown>["kind"];
+
+/** A block as the page draws it: a launch history's campaigns as their cards. */
+export type PageBlock = PageBlockOf<LogEntry>;
+
 /** One project's page, as `pageRecordOf` (lib/project-content/record.ts) reads it off the stored record. */
 export type ProjectPageRecord = {
   /** The page's meta description. */
   description: string;
   hero: Hero;
-  name: NameStory;
-  design: DesignStory;
-  versions?: Versions;
-  launches?: LaunchLog;
-  plan?: Plan;
-  reasons?: Reasons;
-  gallery?: GallerySection;
+  /** In page order, hidden ones included: the page leaves those out (`pageRowsOf`). */
+  blocks: readonly PageBlock[];
 };

@@ -1169,7 +1169,13 @@ export function dummyDashboardData(
     teamAdvisors: advisorEditor(dummyViewer(viewer, holders, grant), dummyAdvisorStore(advisorEdits, teamEdits), async () => DUMMY_ALUMNI_YEAR),
     outreach: outreachEditor(dummyViewer(viewer, holders, grant), dummyOutreachStore(outreachEdits), dummyPhotoFiles),
     // Seen from the dummy team's moment; the test developer's saves are edits by the person they sign in as.
-    projects: projectEditor(dummyViewer(viewer, holders, grant), dummyProjectStore(projectEdits), dummyProjectHistory(projectEdits, person?.name ?? null), dummyPhotoFiles),
+    projects: projectEditor(
+      dummyViewer(viewer, holders, grant),
+      dummyProjectStore(projectEdits),
+      dummyProjectHistory(projectEdits, person?.name ?? null),
+      dummyPhotoFiles,
+      dummyPhotoFiles,
+    ),
 
     myProfile: async () => (person === null ? null : dummyMyProfile(viewer, person, own.current, leaveStateOf(person), handOvers.offer())),
     async saveLinkedin(text) {

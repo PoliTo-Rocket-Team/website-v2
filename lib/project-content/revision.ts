@@ -1,6 +1,8 @@
-import type { ProjectRecord } from "./record";
+import type { LegacyProjectRecord as ProjectRecord } from "./legacy";
 
-// A change to a project's stored content made after the import (issue #361).
+// A change to a project's stored content made after the import (issue #361),
+// on the record as it was stored before page blocks (./legacy.ts): every
+// revision here ran before migration 0050 turned the records into blocks.
 // The import (./import.ts) is frozen: migration 0037 already carried it into
 // every database, and no migration runs twice. So a later change is a
 // revision: a few values set at paths in one project's record, read the same

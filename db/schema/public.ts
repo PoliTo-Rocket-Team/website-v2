@@ -949,6 +949,8 @@ export const teamPageAdvisorVersions = pgTable(
 // does: a published one, a draft, or both. The record is one JSON document
 // (lib/project-content/record.ts, checked on every read), because its
 // sections nest lists of their own. Removing a project removes its versions.
+// Since page blocks (migration 0050) the record is in `page`, and `content`
+// keeps the record from before them (lib/project-content/row.ts).
 export const projects = pgTable("projects", {
   id: serial("id").primaryKey(),
   siteOrder: integer("site_order").notNull(),
@@ -965,7 +967,10 @@ export const projectVersions = pgTable(
       .references(() => projects.id, { onDelete: "cascade" })
       .notNull(),
     version: contentVersionEnum("version").notNull(),
+    /** The record from before page blocks, kept for code built then (lib/project-content/row.ts). */
     content: jsonb("content").notNull(),
+    /** The page blocks record (migration 0050); null on a row written by code from before page blocks. */
+    page: jsonb("page"),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),

@@ -4,7 +4,8 @@ import { contentEditor } from "@/lib/content/editor";
 import { editorVersion, publicItems, statusOf } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { importedRecords } from "@/lib/project-content/import";
-import { pageRecordOf, type ProjectRecord, type StoredLaunch, type VehicleRecord } from "@/lib/project-content/record";
+import type { ProjectRecord, StoredLaunch, VehicleRecord } from "@/lib/project-content/record";
+import { sectionBlockOf, withSectionBlock } from "@/lib/project-content/sections";
 import { PREVIEW_FULL } from "./content-edits";
 import {
   dummyProjectSeed,
@@ -68,32 +69,40 @@ test("previews start from the import: the public versions are the imported recor
 test("a test developer's edit keeps only the sections it changed, fits the cookie, and is read back on the next request", async () => {
   const jar = cookie();
   const editor = contentEditor(admin, dummyProjectStore(jar));
-  const withLaunch: VehicleRecord = { ...cavour, launches: { ...cavour.launches!, entries: [...cavour.launches!.entries, newLaunch] } };
+  const history = sectionBlockOf(cavour, "launches")!;
+  const withLaunch = withSectionBlock(cavour, "launches", { ...history, entries: [...history.entries, newLaunch] });
   assert.ok((await editor.save(1, "publish", save(withLaunch))).ok);
   assert.ok((await editor.save(3, "save-draft", save({ ...importedRecords[2], description: "Edited." }))).ok);
 
   const kept = parseProjectEdits(jar.value);
   assert.deepEqual(kept.saved.map((item) => [item.id, Object.keys(editorVersion(item.version))]), [
-    [1, ["launches"]],
+    [1, ["blocks"]],
     [3, ["description"]],
   ]);
+  const blocks = editorVersion(kept.saved[0].version).blocks as readonly unknown[];
+  assert.deepEqual(
+    blocks.filter((b) => (b as { same?: string }).same === undefined).map((b) => (b as { id: string }).id),
+    ["launches"],
+    "the blocks it did not change are kept by id",
+  );
   assert.ok(jar.value!.length <= DUMMY_STATE_COOKIE_BYTES, `${jar.value!.length} bytes`);
 
   // The next request reads the cookie again.
   const next = await dummyProjectStore(jar).list();
   const shown = publicItems(next);
-  assert.equal(pageRecordOf(shown[0]).launches?.entries.length, 4);
+  assert.equal(sectionBlockOf(shown[0], "launches")?.entries.length, 4);
+  assert.deepEqual(shown[0], withLaunch);
   assert.equal(shown[2].description, importedRecords[2].description, "a draft is not published");
   assert.equal(editorVersion(next[2].version).description, "Edited.");
   assert.deepEqual(editorVersion(next[1].version).hero, editorVersion(dummyProjectSeed()[1].version).hero, "VES keeps its seeded draft");
 });
 
-test("an optional section switched off is kept as left out, and comes back when switched on", async () => {
+test("a block taken out is kept as left out, and comes back when put back", async () => {
   const jar = cookie();
   const editor = contentEditor(admin, dummyProjectStore(jar));
-  const { gallery: _, ...noGallery } = ves;
+  const noGallery = withSectionBlock(ves, "gallery", null);
   assert.ok((await editor.save(2, "save-draft", save(noGallery))).ok);
-  assert.equal(editorVersion((await dummyProjectStore(jar).list())[1].version).gallery, undefined);
+  assert.equal(sectionBlockOf(editorVersion((await dummyProjectStore(jar).list())[1].version), "gallery"), undefined);
   assert.ok((await editor.save(2, "save-draft", save(ves))).ok);
   assert.deepEqual(editorVersion((await dummyProjectStore(jar).list())[1].version), ves);
 });

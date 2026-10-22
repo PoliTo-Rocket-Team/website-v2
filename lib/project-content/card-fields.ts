@@ -8,8 +8,9 @@ import type { HomeCard, ProjectRecord } from "./record";
 // status pill, its description and its three specs) and the project's name,
 // which the card, the page and the /projects entry all show. The card's
 // number is its place in the site order, set by dragging on the Projects
-// page, so it is not a field. Its texture tint and its rocket are carried
-// over from the version the panel opened on.
+// page, so it is not a field. Its texture tint is carried over from the
+// version the panel opened on; its background and its model are the top of
+// the page's (record.ts).
 
 export type SpecFields = { readonly label: CopyFields; readonly value: CopyFields };
 

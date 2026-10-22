@@ -5,13 +5,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { HomeProjectCard } from "@/components/landing/project-card";
 import { ProjectsSection } from "@/components/landing/projects-section";
 import { publicItems } from "@/lib/content/versioned";
-import { firstImport, importedProjects } from "./import";
+import { importedProjects } from "./import";
 import { homeCardOf, landingCardOf, pageOf } from "./record";
 
 // The home project cards link to their project pages (issue #372); the same
 // card drawn anywhere else stays plain.
 
-const published = () => publicItems(importedProjects(firstImport));
+const published = () => publicItems(importedProjects());
 
 /** Each link in the markup that carries its own name: its name and target. */
 function namedLinks(markup: string): { name: string; href: string }[] {
