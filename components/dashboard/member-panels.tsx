@@ -130,7 +130,7 @@ export type PanelPerson = Pick<DivisionPerson, "id" | "name" | "signInEmail" | "
 /**
  * The member panel (board 61f): divisions, contact, studies, personal and the
  * NDA. Close, and Edit details. It is the wide panel, as boards 94 to 94e
- * draw it, so the Email alias row keeps its whole address and request line.
+ * draw it, so the PRT email row keeps its whole address and request line.
  */
 export function PersonDrawer<P extends PanelPerson>({
   person,
@@ -140,7 +140,7 @@ export function PersonDrawer<P extends PanelPerson>({
   onEdit,
 }: {
   person: P | null;
-  /** Their email alias as the viewer sees it (epic #538); null when it was not read. */
+  /** Their email alias, their PRT email, as the viewer sees it (epic #538, issue #563); null when it was not read. */
   alias: MemberAlias | null;
   editable: boolean;
   onClose: () => void;
@@ -197,8 +197,7 @@ export function PersonDrawer<P extends PanelPerson>({
 
         <Section title="Contact">
           <dl className="flex flex-col gap-1.5">
-            <Fact label="PRT email" value={memberDetailText(d, "prtEmail")} copy="PRT email" />
-            <AliasFact memberId={p.id} name={p.name} alias={alias} />
+            <PrtEmailFact memberId={p.id} name={p.name} address={memberDetailText(d, "prtEmail")} alias={alias} />
             <Fact label="Personal email" value={p.signInEmail} copy="Email" />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
@@ -237,16 +236,19 @@ export function PersonDrawer<P extends PanelPerson>({
 }
 
 /**
- * The member's email alias beside their team email (epic #538): the address
- * with a copy button once it is set (board 94e); Requested, who sent it and
- * when, and Cancel request while one is open (board 94b); or None, with
- * Request alias for a lead, head or the team leader who may manage them
- * (board 94). The server decides which; the row only shows it.
+ * The member's PRT email, which is also their email alias (epic #538, issue
+ * #563): the address with a copy button once it is set (board 94e). While it
+ * is empty, Requested, who sent it and when, and Cancel request while a
+ * request is open (board 94b); or None, with Request alias for a lead, head
+ * or the team leader who may manage them (board 94). The server decides
+ * which; the row only shows it.
  */
-function AliasFact({ memberId, name, alias }: { memberId: number; name: string; alias: MemberAlias | null }) {
+function PrtEmailFact({ memberId, name, address, alias }: { memberId: number; name: string; address: string | null; alias: MemberAlias | null }) {
   const [pending, startTransition] = useTransition();
   // The address wraps rather than being cut on a phone (issue #546).
-  if (alias === null || alias.kind === "set") return <Fact label="Email alias" value={alias?.address ?? null} copy="Email alias" wrap />;
+  if (address !== null || alias === null || alias.kind === "set" || (alias.kind === "none" && !alias.requestable)) {
+    return <Fact label="PRT email" value={address ?? (alias?.kind === "set" ? alias.address : null)} copy="PRT email" wrap />;
+  }
   const run = (write: () => Promise<{ ok: boolean; error?: string }>, done: string, failed: string) =>
     startTransition(async () => {
       const result = await write();
@@ -258,7 +260,7 @@ function AliasFact({ memberId, name, alias }: { memberId: number; name: string; 
     });
   return (
     <div className="flex min-h-7 items-center gap-3" aria-busy={pending}>
-      <dt className="w-[132px] shrink-0 text-[14px] text-prt-muted">Email alias</dt>
+      <dt className="w-[132px] shrink-0 text-[14px] text-prt-muted">PRT email</dt>
       {alias.kind === "requested" ? (
         <>
           <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-[14px]">
@@ -282,9 +284,7 @@ function AliasFact({ memberId, name, alias }: { memberId: number; name: string; 
         </>
       ) : (
         <>
-          <dd className="min-w-0 flex-1 truncate text-[14px]">
-            {alias.requestable ? <span className="text-prt-muted">None</span> : <span className="text-dim">–</span>}
-          </dd>
+          <dd className="min-w-0 flex-1 truncate text-[14px] text-prt-muted">None</dd>
           {alias.requestable && (
             <button
               type="button"

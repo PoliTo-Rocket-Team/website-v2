@@ -214,11 +214,24 @@ const TESTER_PEOPLE = [
 export const SEED_EMAIL_DOMAIN = "example.com";
 export const SEED_TEAM_EMAIL_DOMAIN = "prt.example.com";
 
+/**
+ * The members the alias seed (./aliases.ts) asks an email alias for: their
+ * PRT email is empty, since the alias is saved there once it is created
+ * (issue #563). One request is open, one the site made by itself, one was
+ * declined.
+ */
+export const OWED_ALIAS = {
+  open: publicMember("Dimitri Mazzone"),
+  automatic: publicMember("Maria Angelica Fullone Penna"),
+  declined: publicMember("Margherita Boatto"),
+} as const;
+const OWED_ALIAS_MEMBERS: ReadonlySet<number> = new Set(Object.values(OWED_ALIAS));
+
 function memberRow(person: Person & { readonly memberId: number }) {
   const handle = handleOf(person.first, person.last);
   const row = {
     memberId: person.memberId,
-    prtEmail: `${handle}@${SEED_TEAM_EMAIL_DOMAIN}`,
+    prtEmail: OWED_ALIAS_MEMBERS.has(person.memberId) ? null : `${handle}@${SEED_TEAM_EMAIL_DOMAIN}`,
     mobileNumber: `+39 3${String(person.memberId).padStart(9, "0")}`,
     discord: handle,
     ndaSignedAt: at(person.joined),
@@ -255,11 +268,14 @@ function userRow(person: Person) {
 }
 
 /**
- * The member tester's team email alias (issue #550): marked created on the
- * alias request the `aliases` module seeds (./aliases.ts), and not yet set
- * up, so their Overview shows "Your email alias is ready" (board 94f).
+ * The member tester's team email alias (issue #550), which is their PRT email
+ * (issue #563): marked created on the alias request the `aliases` module
+ * seeds (./aliases.ts), and not yet set up, so their Overview shows "Your
+ * email alias is ready" (board 94f). Like every seeded email it is on a
+ * reserved test domain, so no mail reaches a real inbox; a real alias is on
+ * the team domain.
  */
-export const TESTER_MEMBER_ALIAS = "tester.member@politorocketteam.it";
+export const TESTER_MEMBER_ALIAS = TESTERS.member.email;
 
 export const MEMBER_ROWS = rowsOf(members, [
   ...PEOPLE.flatMap((p) => (p.memberId === null ? [] : [memberRow({ ...p, memberId: p.memberId })])),
@@ -270,7 +286,6 @@ export const MEMBER_ROWS = rowsOf(members, [
     ndaSignedAt: TESTER_JOINED,
     ndaName: `${t.tester.name} NDA`,
     ndaConfirmedBy: TEAM_LEADER,
-    emailAlias: t.memberId === TESTER_MEMBER.member ? TESTER_MEMBER_ALIAS : null,
     emailAliasSetUpAt: null,
   })),
 ]);

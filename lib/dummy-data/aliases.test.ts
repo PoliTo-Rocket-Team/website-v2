@@ -10,9 +10,9 @@ import { EMPTY_DUMMY_STATE } from "./state";
 // and Decline as the test developer runs them, each save kept after a round
 // trip through the cookie. The rules are lib/dashboard/alias-request.test.ts's.
 
-const ELIF = 5; // a member of Mission Analysis, with no alias and no request
-const LUCA = 4; // a member of Mission Analysis Marco asked an alias for (seeded)
-const SOFIA = 3; // a member of Mission Analysis with an alias already (seeded)
+const ELIF = 5; // a member of Mission Analysis, with no PRT email and no request
+const LUCA = 4; // a member of Mission Analysis Marco asked an alias for (seeded), with no PRT email
+const SOFIA = 3; // a member of Mission Analysis whose PRT email, her alias, is set
 
 function preview(edits: TeamEdits = NO_EDITS) {
   const store: TeamEditsStore & { current: TeamEdits } = {
@@ -29,17 +29,17 @@ function preview(edits: TeamEdits = NO_EDITS) {
 const aliasRows = async (data: ReturnType<ReturnType<typeof preview>["as"]>) =>
   (await data.overview()).attention.filter((a) => a.kind === "alias-request");
 
-test("the division lead's drawer: Request alias for Elif, Requested for Luca, Sofia's alias", async () => {
+test("the division lead's drawer: Request alias for Elif, Requested for Luca, Sofia's PRT email", async () => {
   const { as } = preview();
   assert.deepEqual(await as("division-lead").memberAliases([ELIF, LUCA, SOFIA]), {
     [ELIF]: { kind: "none", requestable: true },
     [LUCA]: { kind: "requested", requestId: 1, line: "by you · 8 Oct", cancellable: true },
-    [SOFIA]: { kind: "set", address: "sofia.neri@politorocketteam.it" },
+    [SOFIA]: { kind: "set", address: "s.neri@politorocketteam.it" },
   });
   assert.deepEqual(await as("member").memberAliases([ELIF]), {}, "a member does not open Members");
 });
 
-test("Request alias, then Mark created: the address lands on the record, only the requester is told and the member sees the board 94f card", async () => {
+test("Request alias, then Mark created: the address lands in the PRT email, only the requester is told and the member sees the board 94f card", async () => {
   const { as } = preview();
   assert.deepEqual(await as("division-lead").requestAlias(ELIF), { ok: true, value: null });
   assert.equal((await as("division-lead").requestAlias(ELIF)).ok, false, "one open request per member");
@@ -54,6 +54,10 @@ test("Request alias, then Mark created: the address lands on the record, only th
   assert.equal((await as("team-leader").answerAlias(3, { kind: "created", address: "elif.kaya@gmail.com" })).ok, false, "the team domain only");
   assert.deepEqual(await as("team-leader").answerAlias(3, { kind: "created", address: "elif.kaya@politorocketteam.it" }), { ok: true, value: null });
   assert.deepEqual((await as("division-lead").memberAliases([ELIF]))[ELIF], { kind: "set", address: "elif.kaya@politorocketteam.it" });
+  const directory = await as("team-leader").members(null);
+  assert.ok(directory.scope === "whole-team");
+  const elif = directory.people.find((p) => p.id === ELIF);
+  assert.equal(elif?.details.prtEmail, "elif.kaya@politorocketteam.it", "Mark created saved it as her PRT email");
   const told = (await as("division-lead").overview()).attention.map((a) => a.title);
   assert.ok(told.includes("Elif Kaya's email alias is ready"), told.join(" | "));
   assert.ok(!(await as("member").overview()).attention.some((a) => a.title.includes("email alias")), "the card, not a notice row (board 94f)");
@@ -69,7 +73,7 @@ test("I've set it up is kept for the member alone, after a round trip through th
   assert.deepEqual(await as("member").confirmAliasSetUp(), { ok: true, value: null });
   assert.deepEqual(await as("member").myAlias(), { address: "elif.kaya@politorocketteam.it", setUp: true });
   assert.equal((await as("member").confirmAliasSetUp()).ok, false, "already set up");
-  assert.equal(await as("division-lead").myAlias(), null, "Marco's own alias state is untouched");
+  assert.deepEqual(await as("division-lead").myAlias(), { address: "m.bianchi@politorocketteam.it", setUp: false }, "Marco's own alias, his PRT email, is untouched");
   assert.equal(await as("non-member").myAlias(), null);
 });
 

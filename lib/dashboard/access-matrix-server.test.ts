@@ -388,9 +388,9 @@ function proven(proves: Proof, answer: unknown, writes: readonly unknown[]): boo
 }
 
 const DM: Unit = "DM";
-/** An email alias on a member's record, as Mark created leaves it (epic #538), laid over the seeded row. */
+/** An email alias as Mark created leaves it, the member's PRT email (epic #538, issue #563), laid over the seeded row. */
 const aliasOf = (memberId: number) => `alias-${memberId}@politorocketteam.it`;
-const giveAlias = (memberId: number) => updateRows(members, { memberId }, { emailAlias: aliasOf(memberId) });
+const giveAlias = (memberId: number) => updateRows(members, { memberId }, { prtEmail: aliasOf(memberId) });
 const changesDM = (area: "positions" | "applications" | "members") => (r: MatrixRow) => r.expect.changes[area].includes(DM);
 const reaches = (page: Expect["pages"][number]) => (r: MatrixRow) => r.expect.pages.includes(page);
 const fullAccess = (r: MatrixRow) => r.expect.wholeTeamMembers;
@@ -657,7 +657,7 @@ describe("email alias requests: the approver rows, Request alias in the drawer, 
     assert.deepEqual(writes, []);
   });
 
-  test("Mark created saves the address on the member's record; an automatic request tells nobody (the member sees the board 94f card)", async () => {
+  test("Mark created saves the address as the member's PRT email; an automatic request tells nobody (the member sees the board 94f card)", async () => {
     const { answer, writes } = await attempt(accountOf("operations lead").userId, () =>
       actions.answerAlias(IDS.aliasRequest(DM), { kind: "created", address: "lead.dm@politorocketteam.it" }),
     );
@@ -768,7 +768,6 @@ const EXPECTED_EXPORT_HEADER = [
   "Divisions",
   "Member since",
   "PRT email",
-  "Email alias",
   "Personal email",
   "Phone",
   "Discord",
@@ -851,7 +850,7 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.equal(membersExportFileName(new Date("2026-10-21T23:30:00Z")), "prt-members-2026-10-22.xlsx");
   });
 
-  test("the Email alias column holds the address on a member's record, and is empty for everyone without one (epic #538)", async () => {
+  test("Mark created fills the PRT email column, and there is no Email alias column (epic #538, issue #563)", async () => {
     const address = "lead.dm@politorocketteam.it";
     seedFixture();
     resetFiles();
@@ -868,11 +867,12 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     const lead = directory.people.find((p) => p.id === IDS.lead(DM));
     assert.ok(lead !== undefined, "the DM lead is on the team");
     const [header, ...rows] = readSheet(Buffer.from(await (await membersExportGET()).arrayBuffer()));
-    const column = header.indexOf("Email alias");
+    assert.ok(!header.includes("Email alias"), "no Email alias column");
+    const column = header.indexOf("PRT email");
     const cells = new Map(rows.map((r) => [r[0], r[column]]));
-    assert.equal(cells.get(lead.name), address, "the DM lead's row carries the alias");
+    assert.equal(cells.get(lead.name), address, "the DM lead's PRT email is the alias");
     cells.delete(lead.name);
-    assert.deepEqual([...cells.values()].filter((v) => v !== ""), [], "every other member's alias cell is empty");
+    assert.deepEqual([...cells.values()].filter((v) => v !== ""), [], "every other member's PRT email cell is empty");
   });
 });
 

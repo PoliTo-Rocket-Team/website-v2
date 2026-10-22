@@ -556,13 +556,18 @@ of 2026-10-16 on #251.
 
 ### Email aliases
 
-These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 to 94e,
-`lib/dashboard/alias-request.ts`).
+These rules come from the Owner decisions of 2026-10-22 on epic #538 and issue #563 (boards 94 to
+94e, `lib/dashboard/alias-request.ts`).
 
+- A member's team address lives in one field, their PRT email (`members.prt_email`), and their
+  email alias is that address. A member may be asked for an alias, by hand or by the site, when
+  their PRT email is empty and no request is open. Clearing a wrong PRT email makes them
+  requestable again.
 - A division lead, a department head or the team leader asks for a team email alias for a member
-  they may manage, with Request alias on the Email alias row of the member drawer (board 94): a
-  lead for their division, a head for their department, the team leader for anyone. Nobody asks
-  for themselves, and a grant makes nobody a requester. The drawer then shows Requested, who sent
+  they may manage, with Request alias on the PRT email row of the member drawer (board 94): a
+  lead for their division, a head for their department, the team leader for anyone. While the
+  PRT email is empty the row shows None and Request alias to a viewer who may ask. Nobody asks
+  for themselves, and a grant makes nobody a requester. The row then shows Requested, who sent
   it and when, and Cancel request (board 94b).
 - A member has at most one open request, kept by the server and by the database
   (`alias_requests_one_open`).
@@ -570,7 +575,7 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 
   lead, a department head or the team leader: Edit division and New division naming a new lead,
   New department and Change head, the team leader hand-over, and a confirmed hand-over request.
   The request is written with the role change, so a change refused or failed asks for nothing,
-  and only when the person has no alias on their record and no open request. Close division and Close department make
+  and only when the person's PRT email is empty and no request is open. Close division and Close department make
   nobody a lead or a head, so they never ask. Request alias stays for everyone else.
 - Only the team leader, the operations lead and the IT lead answer. Each open request is one row
   on their Overview (board 94c), with Decline and Mark created. The Project Manager and the Chief
@@ -578,17 +583,21 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 
   made by itself has no requester and reads as the automatic row.
 - Mark created asks for the address (board 94d), prefilled as firstname.lastname on the team
   domain. The server accepts firstname.lastname, or one word for a special-purpose address, and
-  only on the team domain. The address is saved on the member's record and shown beside their
-  team email (board 94e). Mark created and Decline each tell the requester with a notice.
+  only on the team domain. The address is saved as the member's PRT email and shown on the
+  drawer's PRT email row (board 94e). Mark created and Decline each tell the requester with a
+  notice.
 - The member gets no notice. Their own Overview shows the "Your email alias is ready" card
   (board 94f, issue #542, `lib/dashboard/alias-setup.ts`, owner ruling on #550) until they set
-  the alias up. Open setup steps opens "Set up your email alias" (board 94g). Close only closes
-  it; the card stays until the member presses "I've set it up", which is stored on their own
-  record. The card shows on every Overview shape, a lead's as a member's, and never off the team.
-- My profile shows the alias in the member's own details, with a "Setup steps" link to the same
-  panel at any time. Nobody reads or sets up another member's alias from either page.
-- The Members export to Excel has an Email alias column beside PRT email: the address on the
-  member's record, empty when they have none.
+  the alias up. The card reads the address from their PRT email, so it shows for any member with
+  a PRT email who has not set it up yet. Open setup steps opens "Set up your email alias" (board
+  94g). Close only closes it; the card stays until the member presses "I've set it up", which is
+  stored on their own record (`email_alias_set_up_at`) only while they have a PRT email and have
+  not set it up. The card shows on every Overview shape, a lead's as a member's, and never off
+  the team.
+- My profile shows the team email in the member's own details, with a "Setup steps" link to the
+  same panel at any time. Nobody reads or sets up another member's alias from either page.
+- The Members export to Excel has the PRT email column, which holds the alias once it is
+  created.
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no
   email.
 

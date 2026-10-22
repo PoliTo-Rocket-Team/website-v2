@@ -56,7 +56,7 @@ import { visualModelOf, type ProjectRecord } from "@/lib/project-content/record"
 import { rowRecordOf } from "@/lib/project-content/row";
 import { rocketModelOf, type OwnModel } from "@/lib/rocket-model";
 import { partnerFromColumns } from "@/lib/partners-rows";
-import { aliasAttentionFor, memberAliasesFor, type AliasRequest } from "@/lib/dashboard/alias-request";
+import { aliasAttentionFor, memberAliasesFor, teamAddressOf, type AliasRequest } from "@/lib/dashboard/alias-request";
 import { ownAliasOf, showsAliasCard } from "@/lib/dashboard/alias-setup";
 import { UNIT_TARGETS } from "@/lib/dashboard/division-access";
 import type { TeamPerson } from "@/lib/dashboard/division-edit";
@@ -472,9 +472,14 @@ export function openAliasRequestsOf(data: SeedData): AliasRequest[] {
   );
 }
 
-/** Every alias on a member's record, by member id, as `readAliasAddresses` reads them. */
+/** Every member's PRT email that is set, their alias, by member id, as `readAliasAddresses` reads them (issue #563). */
 export function aliasAddressesOf(data: SeedData): Map<number, string> {
-  return new Map(data.members.flatMap((m) => (m.emailAlias == null ? [] : [[m.memberId!, m.emailAlias] as const])));
+  return new Map(
+    data.members.flatMap((m) => {
+      const address = teamAddressOf(m.prtEmail);
+      return address === null ? [] : [[m.memberId!, address] as const];
+    }),
+  );
 }
 
 /** The member a seeded user is, by member id: the user whose `member` it is. */
@@ -1366,13 +1371,13 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "aliases",
     case: "An alias marked created on the member test viewer's record and not yet set up, with the notice to the division lead who asked for it",
     data: "invented",
-    rows: "`alias_requests` 3, `members` 901 `email_alias`, `dashboard_notices` `alias-created`",
+    rows: "`alias_requests` 3, `members` 901 `prt_email`, `dashboard_notices` `alias-created`",
     exercisedBy: `${issue(542)}, ${issue(550)}`,
     holds: (data) => {
       const member = memberOfUser(data, TEST_VIEWER_PEOPLE.member);
       const standing = standingOfUser(data, TEST_VIEWER_PEOPLE.member);
       const row = data.members.find((m) => m.memberId === member);
-      const own = standing === null || row === undefined ? null : ownAliasOf({ kind: standing.kind, alias: row.emailAlias ?? null, setUpAt: row.emailAliasSetUpAt ?? null });
+      const own = standing === null || row === undefined ? null : ownAliasOf({ kind: standing.kind, alias: row.prtEmail ?? null, setUpAt: row.emailAliasSetUpAt ?? null });
       const drawer = drawerAliasOf(data, CREATED_ALIAS.by, CREATED_ALIAS.member);
       return (
         member === CREATED_ALIAS.member &&

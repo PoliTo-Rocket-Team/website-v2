@@ -43,12 +43,19 @@ function levelOf(study: string): (typeof STUDY_PROGRAMMES)[number] | "" {
 
 const pad = (n: number, width: number) => String(n).padStart(width, "0");
 
+/**
+ * The people whose email alias is still owed, so their PRT email is empty
+ * (issue #563): Luca Marino and Pietro Ricci, with the seeded requests
+ * (./aliases.ts), and Elif Kaya, Sara Conti and Andrea Ferri, with none yet.
+ */
+const AWAITING_ALIAS: ReadonlySet<number> = new Set([4, 5, 6, 7, 8]);
+
 export function dummyMemberDetails(person: DummyPerson): MemberDetails {
   const { first, last } = nameParts(person.name);
   const id = person.id;
   const teamEmail = signIns.find((s) => s.personId === id)?.teamEmail ?? person.email;
   return {
-    prtEmail: teamEmail.endsWith("@politorocketteam.it") ? teamEmail : "",
+    prtEmail: !AWAITING_ALIAS.has(id) && teamEmail.endsWith("@politorocketteam.it") ? teamEmail : "",
     phone: `+39 3${40 + (id % 10)} ${100 + ((id * 37) % 900)} ${pad(1000 + ((id * 271) % 9000), 4)}`,
     discord: `${first}.${last.slice(0, 1)}`,
     linkedin: `linkedin.com/in/${first}-${last}`,
