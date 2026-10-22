@@ -353,14 +353,17 @@ function Linked({ children }: { children: ReactNode }) {
   );
 }
 
-/** A division's box: its name, its lead and how many are in it; a pencil where the viewer may change it. */
+/**
+ * A division's box, set like a department's: its name as the small label, its
+ * lead in bold, then "Lead" and how many are in it; a pencil where the viewer
+ * may change it.
+ */
 function DivisionBox({ division, found, onOpen }: { division: StructureDivision; found: boolean; onOpen: () => void }) {
-  const label = divisionLabel(division.name);
-  const line = division.lead ? `${division.lead.name} · ${peopleLine(division.size)}` : peopleLine(division.size);
   const body = (
     <>
-      <span className="line-clamp-2 pr-5 text-[13px] font-semibold leading-tight text-prt-text">{label}</span>
-      <span className="mt-1 block text-[12px] leading-snug text-prt-muted">{line}</span>
+      <span className="block truncate pr-5 font-mono text-[10px] uppercase tracking-[0.2em] text-prt-muted">{divisionLabel(division.name)}</span>
+      <span className="mt-1 block truncate text-[13px] font-semibold leading-tight text-prt-text">{division.lead?.name ?? "No lead"}</span>
+      <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{division.lead ? `Lead · ${peopleLine(division.size)}` : peopleLine(division.size)}</span>
     </>
   );
   const frame = `${BOX} ${boxMark(found, division.yours)}`;

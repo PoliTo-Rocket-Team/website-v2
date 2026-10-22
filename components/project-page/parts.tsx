@@ -2,11 +2,42 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import { MarkFallback } from "@/components/mark-fallback";
 import type { Copy } from "@/lib/projects";
-import type { LaunchPhoto, Title } from "@/lib/project-pages";
+import type { Fact, LaunchPhoto, Title } from "@/lib/project-pages";
 
 // Pieces every project-page section shares: the accent rule over a numbered
-// eyebrow and the section title, the mono status pill, a photo slot, and the
-// text that has a shorter phone version.
+// eyebrow and the section title, the mono status pill, a photo slot, a row of
+// key facts, and the text that has a shorter phone version.
+
+/**
+ * A set holding a value as long as board 25's "Regenerative" needs room a
+ * short set does not. A phone column is about 106px at 360 wide, so it is set
+ * at board 25m's 17px, not board 23m's 20px. A six-column desktop row is
+ * about 149px at 1024 wide, under the 172px such a value takes at 28px, so it
+ * stays 3 x 2 until xl, where a column is 192px.
+ */
+const LONG_FACT = 10;
+const factLayout = (facts: readonly Fact[]) =>
+  facts.some((f) => f.value.length > LONG_FACT)
+    ? { grid: "md:grid-cols-3 md:gap-y-6 xl:grid-cols-6 xl:gap-y-0", size: "text-[17px]" }
+    : { grid: "md:grid-cols-6", size: "text-[20px]" };
+
+/** Key facts: big numbers over their labels, three to a row on phones, up to six on desktop (`factLayout`). */
+export function FactList({ facts, className = "" }: { facts: readonly Fact[]; className?: string }) {
+  const layout = factLayout(facts);
+  return (
+    <dl className={`${className} grid grid-cols-3 ${layout.grid} md:border-t md:border-hairline md:pt-6`}>
+      {facts.map((f) => (
+        // Label under the value, as drawn; the markup keeps term before value.
+        <div key={f.label.text} className="flex flex-col-reverse border-t border-hairline py-3 md:border-0 md:py-0">
+          <dt className="mt-1 font-mono text-[9px] tracking-[0.2em] text-dim md:mt-2 md:text-[10px]">
+            <CopyText copy={f.label} />
+          </dt>
+          <dd className={`whitespace-nowrap ${layout.size} font-bold tracking-[-0.02em] md:text-[28px]`}>{f.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 /** A title's forced line breaks; a plain string wraps where it falls. */
 export function TitleText({ title }: { title: Title }) {

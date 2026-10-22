@@ -9,6 +9,25 @@ export const PHONE_FRAME_WIDTH = 390;
 /** Desktop shows the page at the window's width; Phone in a 390px frame. */
 export type EditDevice = "desktop" | "phone";
 
+/** The width a scaled Desktop preview lays the page out at: the 1440 board (board 93). */
+export const DESKTOP_FRAME_WIDTH = 1440;
+
+/** A page laid out at `width` x `height` and drawn at `scale` of that size. */
+export type ScaledFrame = { readonly width: number; readonly height: number; readonly scale: number };
+
+/**
+ * Desktop beside an open panel, for a content type that opts in (board 93,
+ * issue #526): the page keeps the desktop layout, laid out at least 1440px
+ * wide, and is scaled down to fill the room left of the panel, never up. Its
+ * height fills the room once scaled. A room with no size yet has no frame.
+ */
+export function scaledFrameOf(room: { readonly width: number; readonly height: number }): ScaledFrame | null {
+  if (room.width <= 0 || room.height <= 0) return null;
+  const width = Math.max(DESKTOP_FRAME_WIDTH, room.width);
+  const scale = room.width / width;
+  return { width, height: room.height / scale, scale };
+}
+
 /**
  * One outlined block of the page: the name its outline shows, the panel
  * section its Edit chip opens, and the chip's words when they are not just
@@ -54,10 +73,18 @@ export function checklistDone(checks: readonly PublishCheck[]): boolean {
   return checks.every((c) => c.done);
 }
 
-/** One page the switch shows (board 75d: Project page, Home, Projects list). */
+/**
+ * Whether the editor still has to check the item on a page of the switch
+ * before Publish (board 93e): a red cross until they confirm it looks right,
+ * then a green tick.
+ */
+export type PageCheck = "unchecked" | "checked";
+
+/** One page the switch shows (board 75d: Project page, Home, Projects list), with its check mark where it has one. */
 export type PageTarget<Page extends string> = {
   readonly id: Page;
   readonly label: string;
+  readonly check?: PageCheck;
 };
 
 /** The page switch shows only when there is another page to switch to. */

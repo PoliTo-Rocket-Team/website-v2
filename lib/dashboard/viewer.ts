@@ -1,6 +1,7 @@
 // Who is looking at the dashboard (issue #141). Every page and the sidebar
 // decide what to show from the viewer's standing: their kind, plus the
-// site-content access the Alumni page reads (issue #234), plus the "Approve
+// Content grant the content editors read and the Alumni grant the Alumni page
+// reads (issues #234, #504), plus the "Approve
 // orders" grant the Orders page reads (issue #270), plus, for full access,
 // which full-access seat they hold (issue #238). Someone off the team is an
 // alumnus when the Alumni record knows them, else a non-member (issue #317).
@@ -98,21 +99,25 @@ export type GrantArea = (typeof GRANT_AREAS)[number];
 
 /**
  * What decides the dashboard pages a viewer reaches: their kind, and whether
- * they hold site-content access (a `website` scope row) or "Approve orders"
- * (the `team` row on `approve_orders`, issue #270) on top of it. Someone off
- * the team holds neither, whatever scope rows remain (issue #201). Full
- * access is the `operations-lead` kind, and it says which seat gives it:
- * null when an `admin` or `org` scope row gives it and no seat does.
+ * they hold a Content grant (`siteContent`, the `website` row on `content`,
+ * issue #504), an Alumni grant (`alumniGrant`, any other `website` row) or
+ * "Approve orders" (the `team` row on `approve_orders`, issue #270) on top of
+ * it. The three are separate facts: an Alumni row never reads as Content, nor
+ * the reverse. Someone off the team holds none, whatever scope rows remain
+ * (issue #201). Full access is the `operations-lead` kind, and it says which
+ * seat gives it: null when an `admin` or `org` scope row gives it and no seat
+ * does.
  */
 export type ViewerStanding =
-  | { readonly kind: OffTeamKind; readonly siteContent: false; readonly approveOrders: false }
+  | { readonly kind: OffTeamKind; readonly siteContent: false; readonly alumniGrant?: never; readonly approveOrders: false }
   | {
       readonly kind: "operations-lead";
       readonly seat: FullAccessSeat | null;
       readonly siteContent: boolean;
+      readonly alumniGrant?: true;
       readonly approveOrders: boolean;
     }
-  | { readonly kind: "department-head" | "division-lead"; readonly siteContent: boolean; readonly approveOrders: boolean }
+  | { readonly kind: "department-head" | "division-lead"; readonly siteContent: boolean; readonly alumniGrant?: true; readonly approveOrders: boolean }
   | {
       readonly kind: "member";
       /**
@@ -124,8 +129,14 @@ export type ViewerStanding =
        */
       readonly grantedAreas: readonly GrantArea[];
       readonly siteContent: boolean;
+      readonly alumniGrant?: true;
       readonly approveOrders: boolean;
     };
+
+/** Present only while the viewer holds an Alumni grant: an absent key reads as none. */
+function alumniGrantOf(holds: boolean): { readonly alumniGrant?: true } {
+  return holds ? { alumniGrant: true } : {};
+}
 
 /**
  * Who a test developer looks as (issue #141): one of the viewer kinds, the
@@ -183,11 +194,17 @@ export function standingOf(viewer: ViewerStanding): ViewerStanding {
     case "alumni":
       return { kind: viewer.kind, siteContent: false, approveOrders: false };
     case "operations-lead":
-      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
+      return { kind: viewer.kind, seat: viewer.seat, siteContent: viewer.siteContent, ...alumniGrantOf(viewer.alumniGrant === true), approveOrders: viewer.approveOrders };
     case "member":
-      return { kind: viewer.kind, grantedAreas: viewer.grantedAreas, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
+      return {
+        kind: viewer.kind,
+        grantedAreas: viewer.grantedAreas,
+        siteContent: viewer.siteContent,
+        ...alumniGrantOf(viewer.alumniGrant === true),
+        approveOrders: viewer.approveOrders,
+      };
     default:
-      return { kind: viewer.kind, siteContent: viewer.siteContent, approveOrders: viewer.approveOrders };
+      return { kind: viewer.kind, siteContent: viewer.siteContent, ...alumniGrantOf(viewer.alumniGrant === true), approveOrders: viewer.approveOrders };
   }
 }
 
@@ -268,6 +285,8 @@ export type DashboardViewer = ViewerStanding & {
   readonly name: string;
   /** The line under the name in the user card: "Operations Lead", "Member". */
   readonly role: string;
+  /** Their profile photo, which the user card draws in place of the PRT mark. */
+  readonly photoUrl: string | null;
   readonly session: ViewerSession;
 };
 
@@ -294,8 +313,12 @@ export function userCardRole(viewer: DashboardViewer, hasShownApplications: bool
  */
 export type ScopeKind = "admin" | "org" | "department" | "division" | "website" | "team";
 
-/** `scopes.target`: the area a row is on; `all` covers every area. */
-export type ScopeTarget = "all" | "positions" | "applications" | "members" | "orders" | "faq" | "blog" | "logs" | "approve_orders";
+/**
+ * `scopes.target`: the area a row is on; `all` covers every area. `content`
+ * is the Content grant's own target, on a `website` row alone (issue #504,
+ * drizzle/0049).
+ */
+export type ScopeTarget = "all" | "positions" | "applications" | "members" | "orders" | "faq" | "blog" | "logs" | "approve_orders" | "content";
 
 /** `scopes.access_level`: Can view or Can edit (docs/dashboard-rules.md, "Access"). */
 export type AccessLevel = "view" | "edit";
@@ -391,21 +414,41 @@ export function ledDivisionIds(access: MemberAccess): number[] {
 }
 
 /**
- * A real account's standing: its viewer kind, its full-access seat,
- * site-content access from a `website` scope row, "Approve orders" from a
- * `team` one (`unitRowsOf` leaves no other `team` row), and, for a member,
- * the areas their `division` and `department` rows grant (`grantedAreasOf`).
+ * Whether the rows hold a Content grant (issue #504): a `website` row on
+ * `content`, and only that row. The Alumni row is never one.
+ */
+export function holdsContentGrant(scopes: readonly Pick<ScopeRef, "scope" | "target">[]): boolean {
+  return scopes.some((s) => s.scope === "website" && s.target === "content");
+}
+
+/**
+ * Whether the rows hold an Alumni grant: a `website` row on any target but
+ * `content`. The Access page stores it on `all` (`grantRowOf`,
+ * ./division-access.ts), and an older `website` row keeps the meaning it had
+ * before Content was split from it.
+ */
+export function holdsAlumniGrant(scopes: readonly Pick<ScopeRef, "scope" | "target">[]): boolean {
+  return scopes.some((s) => s.scope === "website" && s.target !== "content");
+}
+
+/**
+ * A real account's standing: its viewer kind, its full-access seat, a
+ * Content grant and an Alumni grant from its `website` rows, each read on its
+ * own (issue #504), "Approve orders" from a `team` row (`unitRowsOf` leaves
+ * no other `team` row), and, for a member, the areas their `division` and
+ * `department` rows grant (`grantedAreasOf`).
  */
 export function viewerStandingOf(access: MemberAccess | null): ViewerStanding {
   const kind = viewerKindOf(access);
   // Off the team, scope rows that outlived the roles reach nothing (issue #201).
   if (isOffTeam(kind)) return { kind, siteContent: false, approveOrders: false };
   if (access === null) return { kind: "non-member", siteContent: false, approveOrders: false };
-  const siteContent = access.scopes.some((s) => s.scope === "website");
+  const siteContent = holdsContentGrant(access.scopes);
+  const alumni = alumniGrantOf(holdsAlumniGrant(access.scopes));
   const approveOrders = access.scopes.some((s) => s.scope === "team");
-  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, approveOrders };
-  if (kind === "member") return { kind, grantedAreas: grantedAreasOf(access.scopes), siteContent, approveOrders };
-  return { kind, siteContent, approveOrders };
+  if (kind === "operations-lead") return { kind, seat: fullAccessSeatOf(access.activeRoles), siteContent, ...alumni, approveOrders };
+  if (kind === "member") return { kind, grantedAreas: grantedAreasOf(access.scopes), siteContent, ...alumni, approveOrders };
+  return { kind, siteContent, ...alumni, approveOrders };
 }
 
 /** A scope row as `readIdentity` reads it: which unit it opens, on which area, at which level. */

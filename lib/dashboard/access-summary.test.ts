@@ -82,3 +82,14 @@ test("no name read beside the counts reaches a summary", () => {
     assert.equal(text.includes(name), false, name);
   }
 });
+
+test("a Content grant adds a Content line last, naming the editors it opens and linking to the first (issue #504)", () => {
+  const holder = viewerStandingOf({ scopes: [{ scope: "website", target: "content", level: "edit" }], activeRoles: [core] });
+  const [line] = accessSummariesOf(overviewAreasOf(holder), everything, holder.siteContent);
+  assert.equal(accessLine(line), "Content · Edit Projects, Outreach, Partners, FAQ and Team page");
+  assert.equal(line.href, "/dashboard/projects");
+  assert.deepEqual(accessSummariesOf(["orders"], everything, true).map((s) => s.area), ["orders", "content"]);
+  // An Alumni grant adds no line.
+  const alumni = viewerStandingOf({ scopes: [{ scope: "website", target: "all", level: "edit" }], activeRoles: [core] });
+  assert.deepEqual(accessSummariesOf(overviewAreasOf(alumni), everything, alumni.siteContent), []);
+});

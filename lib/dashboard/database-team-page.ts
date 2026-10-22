@@ -4,6 +4,8 @@ import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getDb } from "@/db/client";
 import { teamPageLayerVersions } from "@/db/schema";
 import { isTeamPageLayer, type TeamPageLayer } from "@/lib/about/team-layer";
+import { ownsTeamPageUpload } from "@/lib/about/team-page-photos";
+import { ownPublicStoreHost } from "@/lib/storage/public-store";
 import type { ContentStore } from "@/lib/content/editor";
 import { versionedFromRows, versionRows, type ContentItem, type Versioned, type VersionKind } from "@/lib/content/versioned";
 import { runAuditBatch, runAuditQuery } from "@/lib/db-audit";
@@ -32,11 +34,16 @@ function isUndefinedTable(error: unknown): boolean {
   return false;
 }
 
-/** The layer document, or none before the first save. A row no write of this code leaves is skipped. */
+/**
+ * The layer document, or none before the first save. A row no write of this
+ * code leaves is skipped; a group photo it uploaded is one in this
+ * deployment's public store (issue #510).
+ */
 export async function readTeamPageLayer(): Promise<ContentItem<TeamPageLayer>[]> {
   const rows = await getDb().select().from(teamPageLayerVersions);
+  const owns = ownsTeamPageUpload(ownPublicStoreHost());
   const versions = rows.flatMap((row): { kind: VersionKind; content: TeamPageLayer }[] =>
-    isTeamPageLayer(row.layer) ? [{ kind: row.version, content: row.layer }] : [],
+    isTeamPageLayer(row.layer, owns) ? [{ kind: row.version, content: row.layer }] : [],
   );
   const version = versionedFromRows(versions);
   return version === null ? [] : [{ ...DOCUMENT, version }];

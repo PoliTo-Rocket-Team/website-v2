@@ -23,8 +23,9 @@ import type { MyAlumni } from "./my-alumni";
 import type { DeleteAccount, MyAccount, MyProfile } from "./self";
 import type { AlumnusKey } from "@/lib/about/alumni-record";
 import type { AlumniDirectory } from "./alumni";
-import type { Promotion } from "./hand-over";
 import type { HandOverAnswer } from "./hand-over-request";
+import type { MemberAliases } from "./alias-request";
+import type { OwnAlias } from "./alias-setup";
 import type { Departure, MemberDirectory, MemberEdit, TeamTree } from "./team";
 import type { DashboardViewer } from "./viewer";
 import type { Upload, WriteResult } from "./write";
@@ -281,6 +282,40 @@ export interface DashboardData {
    */
   answerHandOver(requestId: number, answer: HandOverAnswer): Promise<WriteResult<null>>;
 
+  /**
+   * Epic #538 (boards 94, 94b, 94e): the email alias of each of `memberIds`
+   * on the team, as the member drawer shows it to the viewer, with whether
+   * they may request one or cancel the open request (`memberAliasesFor`,
+   * ./alias-request.ts). Someone not on the team is left out.
+   */
+  memberAliases(memberIds: readonly number[]): Promise<MemberAliases>;
+  /**
+   * Request alias (board 94): checked by `planAliasRequest`; refused for
+   * anyone but a lead, head or the team leader who may manage the member,
+   * and while the member has an alias or an open request.
+   */
+  requestAlias(memberId: number): Promise<WriteResult<null>>;
+  /** Cancel request (board 94b): checked by `planAliasCancel`. */
+  cancelAliasRequest(requestId: number): Promise<WriteResult<null>>;
+  /**
+   * Decline or Mark created on an open request (boards 94c, 94d), checked by
+   * `planAliasAnswer`: only the team leader, the operations lead and the IT
+   * lead. Mark created saves the address on the member's record; the answer
+   * writes the notices `aliasAnswerNotices` names.
+   */
+  answerAlias(requestId: number, answer: unknown): Promise<WriteResult<null>>;
+  /**
+   * Issue #542 (boards 94f, 94g): the viewer's own alias and whether they set
+   * it up (`ownAliasOf`, ./alias-setup.ts); null off the team or with none.
+   * It reads the viewer's own record and nobody else's.
+   */
+  myAlias(): Promise<OwnAlias | null>;
+  /**
+   * "I've set it up" (board 94g), checked by `planAliasSetUp`: stored on the
+   * viewer's own record only, and refused with no alias or once set up.
+   */
+  confirmAliasSetUp(): Promise<WriteResult<null>>;
+
   /** Board 51: an applicant's own account. */
   myAccount(): Promise<MyAccount | null>;
   /**
@@ -327,14 +362,6 @@ export interface TeamWrites {
    * (Owner decision on #231), so their role change is refused.
    */
   saveMember(personId: number, edit: MemberEdit): Promise<boolean>;
-  /**
-   * Board 59e: a member becomes a lead of the division. Changing a
-   * division's leads is the head's (`mayChangeDivision`, ./team.ts), so a
-   * division lead's Promote is refused (#231). "Hand over the division"
-   * makes the lead an advisor in it or moves them to Alumni
-   * (`promotingLead`, ./hand-over.ts), never a member (#253).
-   */
-  promote(personId: number, promotion: Promotion): Promise<boolean>;
   /**
    * "Leaves the team" (board 59d, widened by #231): every role and every
    * access grant ends and the person moves to Alumni; their account stays.

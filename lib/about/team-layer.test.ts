@@ -12,7 +12,9 @@ import {
   type AddedLeader,
   type TeamPageLayer,
 } from "./team-layer";
+import { publicStoreHost } from "@/lib/storage/pathname";
 import { describedGroupPhoto, groupPhotoDescriptions } from "./team-page-edit";
+import { ownsTeamPageUpload } from "./team-page-photos";
 import type { TeamPerson } from "./team-person";
 import { team } from "./team";
 import { teamBuildOf, teamPageFromRoles, type TeamRoles } from "./team-roles";
@@ -239,10 +241,16 @@ test("a layer is read back only when this code could have written it", () => {
     addedLeaders: [added(1, 4, { at: "start" }), added(2, 5, { after: "added:1" })],
     addedDepartments: [{ id: 3, name: "Outreach", head: { person: 10, role: "Lead" }, leads: [{ id: 4, person: 11, division: "Events" }] }],
   };
-  assert.ok(isTeamPageLayer(JSON.parse(JSON.stringify(full))));
-  assert.ok(isTeamPageLayer(NO_TEAM_LAYER));
+  const owns = ownsTeamPageUpload(publicStoreHost("store_Own123"));
+  const own = "https://own123.public.blob.vercel-storage.com/photos/team-page-1.jpg";
+  assert.ok(isTeamPageLayer(JSON.parse(JSON.stringify(full)), owns));
+  assert.ok(isTeamPageLayer(NO_TEAM_LAYER, owns));
   // The group photo's description is optional (issue #430).
-  assert.ok(isTeamPageLayer({ ...NO_TEAM_LAYER, groupPhoto: { src: "/team/team-2026.jpg", alt: "" } }));
+  assert.ok(isTeamPageLayer({ ...NO_TEAM_LAYER, groupPhoto: { src: "/team/team-2026.jpg", alt: "" } }, owns));
+  // A group photo uploaded in the editor, on the store's own host (issue #510).
+  assert.ok(isTeamPageLayer({ ...NO_TEAM_LAYER, groupPhoto: { src: own, alt: "The team in 2026" } }, owns));
+  // A layer saved before the figures were editable has no figures key, and reads as one that left them alone.
+  assert.ok(isTeamPageLayer({ ...NO_TEAM_LAYER, figures: team.header.stats }, owns));
   const bad: unknown[] = [
     null,
     { ...NO_TEAM_LAYER, intro: undefined },
@@ -254,10 +262,16 @@ test("a layer is read back only when this code could have written it", () => {
     { ...NO_TEAM_LAYER, addedLeaders: [added(1, 4, { after: "head:1:0" as never })] },
     { ...NO_TEAM_LAYER, addedLeaders: [added(1, 4, { at: "start" }), added(1, 5, { at: "end" })] },
     { ...NO_TEAM_LAYER, groupPhoto: { src: "https://x.example/p.jpg", alt: "x" } },
+    // Another Blob store's Team page upload, and a file of the own store that the editor did not upload.
+    { ...NO_TEAM_LAYER, groupPhoto: { src: "https://other456.public.blob.vercel-storage.com/photos/team-page-1.jpg", alt: "x" } },
+    { ...NO_TEAM_LAYER, groupPhoto: { src: "https://own123.public.blob.vercel-storage.com/photos/member-1.jpg", alt: "x" } },
+    // Always four figures, each with a value and a label.
+    { ...NO_TEAM_LAYER, figures: team.header.stats.slice(0, 3) },
+    { ...NO_TEAM_LAYER, figures: [{ value: "", label: { text: "MEMBERS" } }, ...team.header.stats.slice(1)] },
     { ...NO_TEAM_LAYER, departments: { abc: {} } },
     { ...NO_TEAM_LAYER, extra: 1 },
   ];
-  for (const value of bad) assert.equal(isTeamPageLayer(value), false, JSON.stringify(value));
+  for (const value of bad) assert.equal(isTeamPageLayer(value, owns), false, JSON.stringify(value));
 });
 
 test("picking another group photo shows that photo's own description, never the one typed for the last", () => {

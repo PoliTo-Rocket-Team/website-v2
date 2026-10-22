@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attentionOf, memberLeftNotices, noticeOf, promotedNotices, untoldOfPromotion, type Promotion } from "./notices";
+import { attentionOf, memberLeftNotices, noticeOf } from "./notices";
 
 const missionAnalysis = { id: 1, name: "Mission Analysis Division" };
 const hardware = { id: 9, name: "Hardware Division" };
@@ -51,52 +51,6 @@ test("a stored notice reads as an attention row with Dismiss; an unknown kind or
   });
   assert.equal(noticeOf({ ...row, kind: "member-joined" }), null);
   assert.equal(noticeOf({ ...row, data: { divisions: "Mission Analysis" } }), null);
-});
-
-// A promotion (#188): Marco (2) promotes Sara (7) in Mission Analysis, a division of Aerodynamics (1).
-const promotion: Promotion = {
-  personId: 7,
-  division: { name: "Mission Analysis Division", departmentId: 1 },
-  mode: "together",
-  lead: { id: 2, name: "Marco Bianchi" },
-};
-
-test("a promotion tells the head of the division's department once, and no other head", () => {
-  const heads = [
-    { memberId: 15, departmentId: 1 },
-    { memberId: 15, departmentId: 1 }, // a second head role in the same department
-    { memberId: 16, departmentId: 2 },
-  ];
-  assert.deepEqual(promotedNotices(promotion, heads), [
-    { recipientId: 15, notice: { kind: "promoted", data: { division: "Mission Analysis Division", mode: "together", lead: "Marco Bianchi" } } },
-  ]);
-});
-
-test("a promotion in a department with no head writes no notice", () => {
-  assert.deepEqual(promotedNotices(promotion, [{ memberId: 16, departmentId: 2 }]), []);
-  assert.deepEqual(promotedNotices(promotion, []), []);
-});
-
-test("the lead who promotes is never told, even when they also head the department", () => {
-  const heads = [
-    { memberId: 2, departmentId: 1 },
-    { memberId: 15, departmentId: 1 },
-  ];
-  assert.deepEqual(
-    promotedNotices({ ...promotion, mode: "hand-over" }, heads).map((n) => n.recipientId),
-    [15],
-  );
-  assert.deepEqual(promotedNotices(promotion, [{ memberId: 2, departmentId: 1 }]), []);
-});
-
-test("the person promoted is never told, even when they hold a head role in the department", () => {
-  const heads = [
-    { memberId: 7, departmentId: 1 },
-    { memberId: 15, departmentId: 1 },
-  ];
-  assert.deepEqual(promotedNotices(promotion, heads).map((n) => n.recipientId), [15]);
-  // The database's insert leaves out the same two people (database-notices.ts).
-  assert.deepEqual(untoldOfPromotion({ personId: 7, leadId: 2 }), [2, 7]);
 });
 
 test("a promoted notice reads as an attention row naming the person, the division and the mode", () => {

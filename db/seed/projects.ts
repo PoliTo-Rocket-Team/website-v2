@@ -9,9 +9,10 @@
 
 import { projects, projectVersions } from "@/db/schema";
 import type { ContentItem } from "@/lib/content/versioned";
-import { importedProjects } from "@/lib/project-content/import";
+import { importedProjects, legacyRecords } from "@/lib/project-content/import";
 import { newProjectRecord } from "@/lib/project-content/new-project";
-import type { ProjectRecord } from "@/lib/project-content/record";
+import { withIntro, type ProjectRecord } from "@/lib/project-content/record";
+import { newRowContent } from "@/lib/project-content/row";
 import { contentVersionRows } from "./content";
 import { rowsOf, tableSeedModule } from "./rows";
 
@@ -32,7 +33,7 @@ export const PROJECT_ITEMS: readonly ContentItem<ProjectRecord>[] = [
     if (item.id !== DRAFT_CHANGES_PROJECT || item.version.state !== "published") return item;
     const published = item.version.published;
     const intro = "The second Founding Fathers rocket, named after Vittorio Emanuele II. Mark II won Design & Build at IREC 2025.";
-    const draft: ProjectRecord = { ...published, hero: { ...published.hero, intro: { text: intro } } };
+    const draft = withIntro(published, intro);
     return { ...item, version: { state: "published", published, draft } };
   }),
   {
@@ -47,12 +48,19 @@ export const PROJECT_ROWS = rowsOf(
   PROJECT_ITEMS.map(({ id, siteOrder }) => ({ id, siteOrder, createdAt: CREATED })),
 );
 
+/**
+ * Each row holds its record in `page` and, in `content`, the record from
+ * before page blocks (lib/project-content/row.ts): an imported project's
+ * stored record as migration 0050 found it, and a later project's as New
+ * project made it then.
+ */
 export const PROJECT_VERSION_ROWS = rowsOf(
   projectVersions,
   contentVersionRows(PROJECT_ITEMS).map(({ itemId, kind, content }) => ({
     projectId: itemId,
     version: kind,
-    content,
+    content: legacyRecords[itemId - 1] ?? newRowContent(content),
+    page: content,
     updatedAt: kind === "published" ? PUBLISHED : DRAFTED,
   })),
 );

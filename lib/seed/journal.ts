@@ -58,6 +58,27 @@ export function journaledSchema(folder: string = resolve(process.cwd(), "drizzle
   return tables;
 }
 
+/**
+ * The statements in one migration that change or remove what already exists:
+ * any DROP, any RENAME, an ALTER COLUMN … TYPE, and any UPDATE or DELETE.
+ * Every preview build applies pending migrations to the shared preview
+ * database, which holds real edits, so a migration meant to be additive only
+ * must return none. `ON UPDATE` and `ON DELETE` inside a foreign key or a
+ * trigger are not statements and are not counted.
+ */
+export function nonAdditiveStatements(sql: string): readonly string[] {
+  return sql
+    .replace(/--.*$/gm, "")
+    .split(";")
+    .map((statement) => statement.trim().replace(/\s+/g, " "))
+    .filter(
+      (statement) =>
+        /^(UPDATE|DELETE)\b/i.test(statement) ||
+        /\b(DROP|RENAME)\b/i.test(statement) ||
+        /\bALTER\s+COLUMN\b.*\bTYPE\b/i.test(statement),
+    );
+}
+
 /** The table and columns a single `insert into … (…) values` statement names. */
 export function insertTarget(sql: string): { readonly table: TableName; readonly columns: readonly string[] } {
   const m = /^insert\s+into\s+((?:"\w+"\.)?"\w+")\s*\(([^)]*)\)\s+values/i.exec(sql);

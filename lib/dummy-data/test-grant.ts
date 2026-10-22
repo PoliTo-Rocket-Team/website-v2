@@ -2,6 +2,7 @@ import {
   areaGrantsOf,
   coveredDivisionIds,
   grantedAreasOf,
+  holdsContentGrant,
   mayChange,
   viewerUnitsOf,
   type GrantArea,
@@ -10,13 +11,13 @@ import {
 } from "@/lib/dashboard/viewer";
 import type { OrgChart, TeamActor } from "@/lib/dashboard/team";
 
-// A Members grant the member test viewer can hold (issue #351), so a preview
-// shows the Members page as a grant holder sees it. The test developer signs
-// in as the member with `grant=<one of TEST_GRANTS>`; View as never passes
-// it, so switching viewer drops the grant. The member is Elif Kaya, in
-// Mission Analysis (division 1, in Aerodynamics, department 1).
+// A grant the member test viewer can hold, so a preview shows a page as a
+// grant holder sees it: Members (issue #351), or Content (issue #504). The
+// test developer signs in as the member with `grant=<one of TEST_GRANTS>`;
+// View as never passes it, so switching viewer drops the grant. The member is
+// Elif Kaya, in Mission Analysis (division 1, in Aerodynamics, department 1).
 
-export const TEST_GRANTS = ["members-view", "members-edit-department"] as const;
+export const TEST_GRANTS = ["members-view", "members-edit-department", "content"] as const;
 export type TestGrant = (typeof TEST_GRANTS)[number];
 
 /** The grant a cookie or a query names; null for anything else. */
@@ -28,17 +29,24 @@ const MISSION_ANALYSIS = 1;
 const AERODYNAMICS = 1;
 
 /**
- * The scope row each grant is: Members at Can view in Mission Analysis, or
- * Members at Can edit across Aerodynamics.
+ * The scope row each grant is: Members at Can view in Mission Analysis,
+ * Members at Can edit across Aerodynamics, or Content, the `website` row on
+ * `content` the Access page stores (`grantRowOf`).
  */
 const SCOPE_ROW: Readonly<Record<TestGrant, ScopeUnitRow>> = {
   "members-view": { scope: "division", target: "members", level: "view", divisionId: MISSION_ANALYSIS, deptId: null },
   "members-edit-department": { scope: "department", target: "members", level: "edit", divisionId: null, deptId: AERODYNAMICS },
+  content: { scope: "website", target: "content", level: "edit", divisionId: null, deptId: null },
 };
 
-/** The areas the member holding `grant` is granted (issue #471): Members alone, by its scope row. */
+/** The areas the member holding `grant` is granted (issue #471), by its scope row: Members, or none for Content. */
 export function testGrantAreas(grant: TestGrant): readonly GrantArea[] {
   return grantedAreasOf([SCOPE_ROW[grant]]);
+}
+
+/** Whether the member holding `grant` holds Content, read off its scope row as the database side reads it (issue #504). */
+export function testGrantHoldsContent(grant: TestGrant): boolean {
+  return holdsContentGrant([SCOPE_ROW[grant]]);
 }
 
 /** The member's own role: a member of Mission Analysis, which changes nobody. */

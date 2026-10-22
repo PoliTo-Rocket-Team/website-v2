@@ -75,7 +75,12 @@ export type Engine = ProjectBase & {
 
 export type Project = Vehicle | Engine;
 
-export type ProjectStatus = { kind: "flown"; flights: number } | { kind: "in-development" };
+/**
+ * A /projects pill: a rocket that has flown counts its flights; one that has
+ * not reads IN DESIGN, as its Home card does (Owner decision on #522); an
+ * engine is in development.
+ */
+export type ProjectStatus = { kind: "flown"; flights: number } | { kind: "in-design" } | { kind: "in-development" };
 
 export function flightsOf(project: Project): Flight[] {
   if (project.kind === "engine") return [];
@@ -83,9 +88,9 @@ export function flightsOf(project: Project): Flight[] {
 }
 
 export function statusOf(project: Project): ProjectStatus {
-  return project.kind === "engine"
-    ? { kind: "in-development" }
-    : { kind: "flown", flights: flightsOf(project).length };
+  if (project.kind === "engine") return { kind: "in-development" };
+  const flights = flightsOf(project).length;
+  return flights === 0 ? { kind: "in-design" } : { kind: "flown", flights };
 }
 
 /**

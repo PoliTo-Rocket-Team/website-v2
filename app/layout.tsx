@@ -7,6 +7,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { brand } from "@/lib/brand-colors";
+import { rootRobots, siteIndexable } from "@/lib/site-indexing";
 
 const defaultUrl =
   process.env.BETTER_AUTH_URL ??
@@ -17,6 +18,9 @@ export const metadata = {
   title: "PoliTo Rocket Team",
   description:
     "The rocket engineering student team of Politecnico di Torino. Born for space, built in Torino.",
+  // Every page says noindex, nofollow until SITE_INDEXABLE is "true" (issue
+  // #549). A page that sets its own `robots: { index: false }` keeps it.
+  robots: rootRobots(siteIndexable()),
 };
 
 // The accent orange as the theme colour: chat apps paint a shared link's

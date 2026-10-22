@@ -8,7 +8,7 @@ import { stepCardTurn } from "@/lib/card-turn";
 import type { RocketModel } from "@/lib/rocket-model";
 import { builtRockets } from "./rocket-built";
 import type { WeatherUniforms } from "./hero-weathering";
-import { SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
+import { ForeignDocumentSize, SceneErrorBoundary, WarmUp, WatchContext } from "./scene-ready";
 import { CAVOUR_HDRI } from "./cavour-assets";
 import type { RocketTurn } from "./rocket-turn";
 
@@ -233,6 +233,7 @@ export default function RocketCard3D({ model, turn, tuning, onReadout, onReady, 
       eventSource={undefined}
     >
       <WatchContext onLost={onLost} />
+      <ForeignDocumentSize />
       <ambientLight intensity={0.12} />
       {/* Sun on the camera side, as on the hero: no shadow angles to manage,
           and no shadow map, because a card has nothing to cast onto. */}

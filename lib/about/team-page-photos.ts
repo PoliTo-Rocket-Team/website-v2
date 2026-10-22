@@ -1,6 +1,7 @@
 import type { PublicFileWrites } from "@/lib/outreach-photos";
 import { deleteBestEffort } from "@/lib/storage/best-effort-delete";
 import { publicFolderOf, publicPathname, publicPathnameOfUrl, type PublicPathname, type PublicStoreHost } from "@/lib/storage/pathname";
+import type { OwnsUpload } from "./team-layer";
 import type { TeamPagePhotos } from "./team-page-editor";
 
 // The Team page editor's uploaded photos (issue #323) in a public Blob store,
@@ -18,6 +19,11 @@ export function teamPagePhotoPathname(src: string, host: PublicStoreHost): Publi
   return pathname !== null && pathname.startsWith(publicFolderOf("photo") + NAME_START) ? pathname : null;
 }
 
+/** Which URLs are Team page uploads in the store `host` serves; none while no store is configured (`host` null). */
+export function ownsTeamPageUpload(host: PublicStoreHost | null): OwnsUpload {
+  return (src) => host !== null && teamPagePhotoPathname(src, host) !== null;
+}
+
 /**
  * Team page photos in the public store whose files `host` serves; `host` is
  * null while no store is configured, and then no photo is this side's.
@@ -31,6 +37,7 @@ export function publicStoreTeamPagePhotos(host: PublicStoreHost | null, writes: 
       if (pathnameOf(url) !== pathname) throw new Error(`The public store answered a URL off its own host: ${url}`);
       return url as `https://${string}`;
     },
+    owns: ownsTeamPageUpload(host),
     async drop(photos) {
       const pathnames = photos.flatMap((src) => pathnameOf(src) ?? []);
       await Promise.all(pathnames.map((pathname) => deleteBestEffort({ store: "public", area: "team-photo", pathname, remove: writes.remove })));

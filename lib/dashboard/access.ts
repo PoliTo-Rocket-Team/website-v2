@@ -4,8 +4,9 @@ import { seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type View
 // v2 boards 51b, 52, 56 and 72). One row per page: a new page adds one row. A
 // viewer whose kind is missing from a row's `reach` does not reach the page,
 // unless the row names a `grantArea` and they are a member granted that area
-// (issues #160, #471), `siteContent` and they hold site-content access, or
-// `approveOrders` and they hold "Approve orders". A row that names a `seat` is
+// (issues #160, #471), `siteContent` and they hold a Content grant, `alumni`
+// and they hold an Alumni grant (issue #504), or `approveOrders` and they
+// hold "Approve orders". A row that names a `seat` is
 // reached by that full-access seat alone (issue #238). The `operations-lead`
 // kind is full access: the team leader, the operations lead and the IT lead,
 // or an admin or org scope row (./viewer.ts), so it reaches every page of the
@@ -51,8 +52,10 @@ type PageRow = {
   readonly reach: readonly ViewerKind[];
   /** The area whose grant lets a member reach the page, that area's alone (issues #160, #471). */
   readonly grantArea?: GrantArea;
-  /** A viewer whose kind does not reach the page reaches it with site-content access. */
+  /** A viewer whose kind does not reach the page reaches it with a Content grant (issue #504). */
   readonly siteContent?: true;
+  /** A viewer whose kind does not reach the page reaches it with an Alumni grant (issue #504). */
+  readonly alumni?: true;
   /** A viewer whose kind does not reach the page reaches it with "Approve orders". */
   readonly approveOrders?: true;
   /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
@@ -133,8 +136,8 @@ export const DASHBOARD_PAGES = [
     key: "projects",
     label: "Projects",
     href: "/dashboard/projects",
-    // Board 75 (issue #297): the site-content rule Outreach, Partners, Alumni
-    // and FAQ follow (maySiteContent, lib/content/gate.ts), placed first in
+    // Board 75 (issue #297): the site-content rule Outreach, Partners, FAQ
+    // and the Team page follow (maySiteContent, lib/content/gate.ts), placed first in
     // the Content group as board 75 lists it.
     place: "content",
     reach: ["operations-lead"],
@@ -144,7 +147,7 @@ export const DASHBOARD_PAGES = [
     key: "outreach",
     label: "Outreach",
     href: "/dashboard/outreach",
-    // Board 74 (issue #289): the site-content rule Partners, Alumni and FAQ
+    // Board 74 (issue #289): the site-content rule Partners and FAQ
     // follow (maySiteContent, lib/content/gate.ts), placed ahead of Partners
     // as board 74 lists the Content group.
     place: "content",
@@ -155,9 +158,9 @@ export const DASHBOARD_PAGES = [
     key: "partners",
     label: "Partners",
     href: "/dashboard/partners",
-    // Boards 76 and 76b (issue #256): the Alumni rule (maySiteContent,
-    // lib/content/gate.ts), placed as Alumni is: under Content, ahead of
-    // Alumni as board 76 lists them.
+    // Boards 76 and 76b (issue #256): the site-content rule (maySiteContent,
+    // lib/content/gate.ts, a Content grant since issue #504), placed under
+    // Content, ahead of Alumni as board 76 lists them.
     place: "content",
     reach: ["operations-lead"],
     siteContent: true,
@@ -166,21 +169,21 @@ export const DASHBOARD_PAGES = [
     key: "alumni",
     label: "Alumni",
     href: "/dashboard/alumni",
-    // Owner decision on #234: full access (the team leader, the operations
-    // lead and the IT lead, issue #238) and anyone given site-content access.
-    // A division lead or department head gets nothing from their role here.
-    // It sits under Content (board 72, issue #252).
+    // Owner decision on #234: full access (issue #238) and anyone given an
+    // Alumni grant; a Content grant does not open it (Owner decision,
+    // 2026-10-21, issue #504). A division lead or department head gets
+    // nothing from their role here. It sits under Content (board 72, issue #252).
     place: "content",
     reach: ["operations-lead"],
-    siteContent: true,
+    alumni: true,
   },
   {
     key: "faq",
     label: "FAQ",
     href: "/dashboard/faq",
-    // Boards 79 and 79b (issue #258): the site-content rule Partners and
-    // Alumni follow (maySiteContent, lib/content/gate.ts), placed after
-    // Alumni, under Content, as board 79 lists them.
+    // Boards 79 and 79b (issue #258): the site-content rule Partners follows
+    // (maySiteContent, lib/content/gate.ts), placed after Alumni, under
+    // Content, as board 79 lists them.
     place: "content",
     reach: ["operations-lead"],
     siteContent: true,
@@ -190,7 +193,7 @@ export const DASHBOARD_PAGES = [
     label: "Team page",
     href: "/dashboard/team-page",
     // The Team page editor (boards 80 to 80h, issues #283 and #284): the
-    // site-content rule Partners, Alumni and FAQ follow (maySiteContent,
+    // site-content rule Partners and FAQ follow (maySiteContent,
     // lib/content/gate.ts), placed after FAQ, under Content.
     place: "content",
     reach: ["operations-lead"],
@@ -283,6 +286,7 @@ function reaches(page: PageRow, viewer: ViewerStanding): boolean {
     page.reach.includes(viewer.kind) ||
     (viewer.kind === "member" && page.grantArea !== undefined && viewer.grantedAreas.includes(page.grantArea)) ||
     (viewer.siteContent && page.siteContent === true) ||
+    (viewer.alumniGrant === true && page.alumni === true) ||
     (viewer.approveOrders && page.approveOrders === true)
   );
 }

@@ -25,8 +25,8 @@ import { publicPathname } from "@/lib/storage/pathname";
 import { deletePublicFile, uploadPublicFile } from "@/lib/storage/public-store";
 import { alumniMove } from "./alumni-move";
 import { DashboardRefused, type TeamWrites } from "./data";
+import { automaticAliasRequests } from "./database-alias";
 import { readWaitingHandOvers } from "./database-hand-over";
-import { promotedNoticesInsert, promotionOf } from "./database-notices";
 import { moveApplication } from "./database-recruitment";
 import { answerNoticeOf, planHandOverAnswer, type HandOverAnswer, type HandOverAnswerPlan } from "./hand-over-request";
 import { storedPhotoPathname } from "./database-self";
@@ -72,11 +72,9 @@ import {
   advisorAfterDivisionCloses,
   checkTeamLeaderHandOver,
   planTeamLeaderHandOver,
-  promotingLead,
   seatHandOver,
   steppingDown,
   type AdvisorPlace,
-  type Promotion,
   type SeatMove,
   type SeatRow,
   type SteppingDown,
@@ -552,42 +550,6 @@ async function saveMember(identity: DashboardIdentity, personId: number, edit: M
 }
 
 /**
- * Promote (board 59e): the role change and a notice to each head of the
- * division's department (#188), in one batch. No email is sent. Changing a
- * division's leads is its head's (`mayChangeDivision`), so a division lead's
- * Promote is refused (#231). "Hand over the division" is a hand-over (issue
- * #253): the lead becomes an advisor in the division or leaves the team, as
- * `promotingLead` says, never a member.
- */
-async function promote(identity: DashboardIdentity, personId: number, promotion: Promotion): Promise<boolean> {
-  const leadId = identity.memberId;
-  if (identity.kind !== "division-lead" || leadId === null) return false;
-  const { org } = await readTeamSnapshot();
-  const actor = await readActor(identity, org);
-  // Their member role in a division the lead leads, whichever of the lead's divisions it is (issue #185).
-  const theirs = (await rolesTheViewerChanges(identity, actor, personId))?.find((r) => r.type === "core");
-  const division = theirs?.division_id ?? null;
-  if (actor === null || !theirs || division === null || !mayChangeDivision(actor, division, org).allowed) return false;
-  const myRoles = await activeRoles(leadId);
-  const mine = myRoles.find((r) => r.division_id === division && r.type === "lead");
-  const stepping = promotingLead(promotion, division);
-  if (stepping !== null && !mine) return false;
-  // A seat on the lead row they hand over moves to the person promoted, on the row this promotes (issue #501).
-  const handed = stepping !== null && mine ? seatHandOver([mine], [personId]) : null;
-  if (handed !== null && !handed.ok) return false;
-  const seat = handed?.value ?? null;
-  const notice = await promotionOf(personId, division, promotion.mode, leadId);
-  const on = today();
-  await runAuditBatch((db) => [
-    db.update(roles).set({ type: "lead", ...seatFor(seat, personId) }).where(eq(roles.id, theirs.id)),
-    ...(stepping !== null && mine ? steppingDownWrites(db, { memberId: leadId, active: myRoles }, stepping, [mine.id], on) : []),
-    // The insert reads the department's heads itself, inside this batch (issue #227).
-    ...(notice ? [promotedNoticesInsert(db, notice)] : []),
-  ]);
-  return done();
-}
-
-/**
  * "Leaves the team" (board 59d, widened by #231): when `mayLeaveTeam` allows
  * it, every open role ends, every access grant goes, and the years and the
  * team_leaves row are written, in one batch. The account and the member row
@@ -1033,6 +995,8 @@ async function writeDivisionPlan(
   const joining = [...plan.joinAsLead.map((id) => ({ ...newRole(id, "lead"), ...seatFor(seat, id) })), ...plan.joinAsMember.map((id) => newRole(id, "core"))];
   // A new lead promoted from a member takes the seat on the row that becomes a lead's.
   const seatRow = held.find((r) => seat !== null && r.memberId === seat.to && rows.toLead.includes(r.id))?.id;
+  // Each new lead is owed an alias request when they have none (issue #543).
+  const aliasAsked = await automaticAliasRequests([...plan.promote, ...plan.joinAsLead]);
 
   await runAuditBatch((db) => [
     create
@@ -1054,6 +1018,7 @@ async function writeDivisionPlan(
       steppingDownWrites(db, { memberId, active: [] }, steppingDown({ kind: "lead", divisionId }, "advisor"), [], on),
     ),
     ...leavers.flatMap((leaver) => leaveTeamWrites(db, leaver, on)),
+    ...aliasAsked(db),
   ]);
   done();
 
@@ -1171,9 +1136,12 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   // The batch cannot read one write's result in the next, so the department id is taken first.
   const next = await getDb().execute(sql`select nextval(pg_get_serial_sequence('departments', 'id'))::int as id`);
   const departmentId = Number((next.rows[0] as { id: number }).id);
+  // The new head is owed an alias request when they have none (issue #543).
+  const aliasAsked = await automaticAliasRequests([headId]);
   await runAuditBatch((db) => [
     db.insert(departments).values({ id: departmentId, name, code, kind }),
     db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: today() }),
+    ...aliasAsked(db),
   ]);
   done();
   return written(departmentId);
@@ -1197,6 +1165,8 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const handed = head === null ? null : seatHandOver(replaced.flatMap((person) => person.active.filter(isHeadRow)), [head.to]);
   if (handed !== null && !handed.ok) return refused(handed.error);
   const seat = handed?.value ?? null;
+  // A new head is owed an alias request when they have none (issue #543).
+  const aliasAsked = await automaticAliasRequests(head === null ? [] : [head.to]);
   await runAuditBatch((db) => [
     db
       .update(departments)
@@ -1215,6 +1185,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
     ...(head === null
       ? []
       : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
+    ...aliasAsked(db),
   ]);
   done();
   return written(null);
@@ -1343,10 +1314,13 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
       .where(and(eq(scopes.memberId, from), inArray(scopes.scope, ["admin", "org"]))),
   ]);
   const seat = active.filter((r) => r.type === "president");
+  // The new team leader is owed an alias request when they have none (issue #543).
+  const aliasAsked = await automaticAliasRequests([to]);
   const on = today();
   await runAuditBatch((db) => [
     db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
     ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
+    ...aliasAsked(db),
   ]);
   done();
   return written(null);
@@ -1380,16 +1354,22 @@ async function confirmedHandOverWrites(
     const theirs = (await heldRows(role.divisionId)).filter((r) => r.memberId === toId);
     const promote = theirs.some((r) => r.type === "lead" || r.type === "head") ? [] : theirs.map((r) => r.id);
     const seatRow = promote[0] ?? theirs.find((r) => r.type === "lead")?.id ?? theirs[0]?.id;
+    // A successor who becomes the lead here is owed an alias request when they have none (issue #543).
+    const aliasAsked = await automaticAliasRequests(promote.length === 0 ? [] : [toId]);
     return (db) => [
       ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
       ...seatOnto(db, seat, seatRow),
       ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
+      ...aliasAsked(db),
     ];
   }
   const department = org.departments.find((d) => d.id === role.departmentId)?.name ?? "";
+  // The successor becomes a head, owed an alias request when they have none (issue #543).
+  const aliasAsked = await automaticAliasRequests([toId]);
   return (db) => [
     db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: headTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
+    ...aliasAsked(db),
   ];
 }
 
@@ -1441,7 +1421,6 @@ export function databaseTeamWrites(
 ): Omit<TeamWrites, "setAlumnusShown" | "fixAlumnus" | "setAlumnusPhoto" | "addAdvisor"> {
   return {
     saveMember: (personId, edit) => saveMember(identity, personId, edit),
-    promote: (personId, mode) => promote(identity, personId, mode),
     moveToAlumni: (personId, departure) => moveToAlumni(identity, personId, departure),
     confirmJoin: (applicationId) => confirmJoin(identity, applicationId),
     addMember: (input) => addMember(identity, input),

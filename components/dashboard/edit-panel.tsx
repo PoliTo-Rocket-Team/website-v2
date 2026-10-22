@@ -12,7 +12,8 @@ import { PANEL_PRIMARY_BUTTON } from "./drawer";
 // type that edits on the page brings its own sections; Save draft and
 // Publish sit on the edit bar, not here.
 
-const SECTION_CARD =
+/** A section card's frame; a closed card that opens its panel in the cards' place wears it too. */
+export const SECTION_CARD =
   "scroll-mt-4 rounded-xl border border-hairline bg-ground/40 transition-colors duration-300 ease-out data-[state=open]:border-accent/40";
 
 export function EditPanel<Section extends string>({

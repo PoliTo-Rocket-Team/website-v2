@@ -14,8 +14,12 @@ import type { HeaderFigures } from "@/lib/about/types";
 /** The intro's type, so a text box in its place reads the same. */
 export const PAGE_INTRO = "text-[15px] leading-[1.6] text-text-2 md:text-[18px]";
 
+/** How far the intro sits under the title. */
+const INTRO_TOP = "mt-4 md:mt-7";
+/** How wide the intro runs. */
+export const INTRO_WIDTH = "max-w-[600px]";
 /** Where the intro sits under the title. */
-const INTRO_BOX = "mt-4 max-w-[600px] md:mt-7";
+const INTRO_BOX = `${INTRO_TOP} ${INTRO_WIDTH}`;
 
 type Figures =
   | { stats?: undefined; statsOnPhone?: undefined }
@@ -32,9 +36,14 @@ export function PageHeader({
   eyebrow: string;
   title: string;
   intro: string;
-  /** Wraps the intro: the Team page editor outlines it, or puts the text box in its place (board 80, issue #284). */
+  /**
+   * Wraps the intro and the figures under it as one block: the Team page
+   * editor outlines them, or puts its fields in their place (board 80,
+   * issues #284 and #510).
+   */
   introFrame?: (intro: ReactNode) => ReactNode;
 } & Figures) {
+  const figures = stats !== undefined && <Stats stats={stats} onPhone={statsOnPhone} />;
   return (
     <div className="px-5 md:px-16">
       <div className="mx-auto max-w-[1312px]">
@@ -43,14 +52,23 @@ export function PageHeader({
           <h1 className="mt-4 text-[34px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-6 md:text-[64px] md:leading-[1.03]">
             {title}
           </h1>
-          {/* The public page draws the intro as the one paragraph it always
-              was (issue #325); only the editor's frame gets a box around it. */}
+          {/* The public page draws the intro and figures as they always were
+              (issue #325); only the editor's frame gets a box around them. */}
           {introFrame === undefined ? (
-            <p className={`${INTRO_BOX} ${PAGE_INTRO}`}>{intro}</p>
+            <>
+              <p className={`${INTRO_BOX} ${PAGE_INTRO}`}>{intro}</p>
+              {figures}
+            </>
           ) : (
-            <div className={INTRO_BOX}>{introFrame(<p className={PAGE_INTRO}>{intro}</p>)}</div>
+            <div className={INTRO_TOP}>
+              {introFrame(
+                <>
+                  <p className={`${INTRO_WIDTH} ${PAGE_INTRO}`}>{intro}</p>
+                  {figures}
+                </>,
+              )}
+            </div>
           )}
-          {stats !== undefined && <Stats stats={stats} onPhone={statsOnPhone} />}
         </header>
       </div>
     </div>

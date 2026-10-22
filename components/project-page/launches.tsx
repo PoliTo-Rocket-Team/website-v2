@@ -4,9 +4,10 @@ import { CopyText, PhotoSlot, Pill, SectionHead, type PillTone } from "./parts";
 
 // Launch history. Boards 23 and 24: one row per campaign under a hairline:
 // number, date, place, version and outcome left; title, summary, award and
-// four numbers in the middle; two photo slots right, which show the launch's
-// photos once uploaded (issue #299). Boards 23m and 24m: one glass card per
-// campaign, its first photo on top. No red: a setback takes the orange accent pill.
+// four numbers in the middle; the cover photo slot right, which shows the
+// launch's cover once uploaded (issue #299; one cover, Owner decision on
+// #522). Boards 23m and 24m: one glass card per campaign, its cover on top.
+// No red: a setback takes the orange accent pill.
 
 const outcome: Record<Outcome, { label: string; tone: PillTone }> = {
   nominal: { label: "NOMINAL", tone: "success" },
@@ -60,10 +61,9 @@ function EntryRow({ entry, num, texture }: { entry: LogEntry; num: string; textu
         <Stats stats={entry.stats} className="mt-6 grid grid-cols-4 border-t border-hairline pt-6" />
       </div>
 
-      {/* Beside the copy from lg; under it, side by side, from md to lg. */}
-      <div className="col-start-2 flex gap-3 lg:col-start-auto lg:flex-col">
-        <PhotoSlot texture={texture} photo={entry.photos?.[0]} sizes="(min-width: 1024px) 300px, 50vw" className="h-[180px] flex-1 lg:flex-none" />
-        <PhotoSlot texture={texture} photo={entry.photos?.[1]} sizes="(min-width: 1024px) 300px, 50vw" className="h-[180px] flex-1 lg:h-[96px] lg:flex-none" />
+      {/* Beside the copy from lg; under it from md to lg. */}
+      <div className="col-start-2 flex lg:col-start-auto lg:flex-col">
+        <PhotoSlot texture={texture} photo={entry.cover} sizes="(min-width: 1024px) 300px, 50vw" className="h-[180px] flex-1 lg:flex-none" />
       </div>
     </article>
   );
@@ -73,7 +73,7 @@ function EntryCard({ entry, num, texture }: { entry: LogEntry; num: string; text
   const o = outcome[entry.outcome];
   return (
     <article className="glass-card rounded-2xl p-3 md:hidden">
-      <PhotoSlot texture={texture} photo={entry.photos?.[0]} sizes="100vw" className="h-[112px]" />
+      <PhotoSlot texture={texture} photo={entry.cover} sizes="100vw" className="h-[112px]" />
       <div className="px-1 pb-1">
         <div className="mt-4 flex items-center justify-between gap-3">
           <p className="font-mono text-[11px] tracking-[0.15em] text-prt-muted">

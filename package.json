@@ -59,9 +59,11 @@
     "three": "^0.185.1",
     "tsx": "^4.21.0",
     "vercel": "^48.2.9",
+    "write-excel-file": "4.1.1",
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@kampus/fabrika-cli": "0.9.0",
     "@snaplet/copycat": "^6.0.0",
     "@snaplet/seed": "^0.98.0",

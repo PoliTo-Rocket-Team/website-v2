@@ -335,6 +335,41 @@ export async function answerHandOver(requestId: number, answer: unknown): Promis
   return result;
 }
 
+/** Request alias in the member drawer (board 94, epic #538): the drawer reads again with the request waiting. */
+export async function requestAlias(memberId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(memberId)) return refused("Unknown member.");
+  const result = await write("members", (data) => data.requestAlias(memberId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** Cancel request in the member drawer (board 94b). */
+export async function cancelAliasRequest(requestId: number): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");
+  const result = await write("members", (data) => data.cancelAliasRequest(requestId));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/** Decline or Mark created on the Overview (boards 94c, 94d): the row leaves, and the member drawer shows the alias. */
+export async function answerAlias(requestId: number, answer: unknown): Promise<WriteResult<null>> {
+  if (!Number.isSafeInteger(requestId)) return refused("Unknown alias request.");
+  const result = await write("overview", (data) => data.answerAlias(requestId, answer));
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
+/**
+ * "I've set it up" in the setup steps (board 94g, issue #542): stored on the
+ * viewer's own record; it names no member, so it can reach nobody else's. The
+ * Overview reads again without the card.
+ */
+export async function confirmAliasSetUp(): Promise<WriteResult<null>> {
+  const result = await write(["overview", "my-profile"], (data) => data.confirmAliasSetUp());
+  if (result.ok) revalidatePath("/dashboard", "layout");
+  return result;
+}
+
 export async function withdrawApplication(applicationId: number): Promise<WriteResult<null>> {
   if (!Number.isSafeInteger(applicationId)) return refused("Unknown application.");
   return write("my-applications", (data) => data.withdrawApplication(applicationId));

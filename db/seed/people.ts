@@ -254,6 +254,13 @@ function userRow(person: Person) {
   return { ...row, ...clearedUser(new Date(ANONYMIZED_ACCOUNT.anonymizedAt)), deletedAt: ANONYMIZED_ACCOUNT.deletedAt };
 }
 
+/**
+ * The member tester's team email alias (issue #550): marked created on the
+ * alias request the `aliases` module seeds (./aliases.ts), and not yet set
+ * up, so their Overview shows "Your email alias is ready" (board 94f).
+ */
+export const TESTER_MEMBER_ALIAS = "tester.member@politorocketteam.it";
+
 export const MEMBER_ROWS = rowsOf(members, [
   ...PEOPLE.flatMap((p) => (p.memberId === null ? [] : [memberRow({ ...p, memberId: p.memberId })])),
   ...TESTER_PEOPLE.map((t) => ({
@@ -263,6 +270,8 @@ export const MEMBER_ROWS = rowsOf(members, [
     ndaSignedAt: TESTER_JOINED,
     ndaName: `${t.tester.name} NDA`,
     ndaConfirmedBy: TEAM_LEADER,
+    emailAlias: t.memberId === TESTER_MEMBER.member ? TESTER_MEMBER_ALIAS : null,
+    emailAliasSetUpAt: null,
   })),
 ]);
 
