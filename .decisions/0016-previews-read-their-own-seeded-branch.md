@@ -1,7 +1,7 @@
 ---
 id: 0016
 title: "Previews read a database branch created from an empty schema and filled with the dummy seed; dummy arrays stay only where no database is configured"
-status: accepted
+status: amended-in-part by [0018](0018-v2-hosting-and-launch.md)
 date: 2026-10-16
 tags: [previews, seed, dummy-data, database]
 ---
@@ -26,7 +26,7 @@ Decided 2026-10-16 by the project owner (Owner decision), recorded in the amendm
 6. **The test developer stays.** The preview's test developer sign-in and viewer switch stay, and the viewers resolve to seeded people. On a preview, the test developer's changes are saved to the `preview` branch as that seeded person (the amendment of 2026-10-17).
 7. **Production unchanged.** Production never shows dummy data, never offers the test developer sign-in, and is never a seed target.
 8. **Tester sign-in stays local only.** The seeded tester rows of issue #129 are part of the one dummy set (Decision 3), so they now exist on preview branches too. Signing in as them stays local only: `testerSignInOn` in [lib/dev-tester.ts](../lib/dev-tester.ts) is true only under `next dev` off Vercel.
-9. **Previews connect through the project's own Neon account.** The Neon integration for Vercel is used only in the form that links the project's existing Neon account and creates branches in it. That is not the host-resold database [ADR 0003](0003-neon-direct-pooled.md) rules out: the database and its billing stay with the project's own Neon account, the integration connects only Production and Development and creates no preview branches, and the exit path of 0003 (`pg_dump`, one variable) is unchanged. If the only form offered is a database created and billed through Vercel, the owner setup stops.
+9. **Previews connect through the project's own Neon account.** The Neon integration for Vercel is used only in the form that links the project's existing Neon account and creates branches in it. That is not the host-resold database [ADR 0003](0003-neon-direct-pooled.md) rules out: the database and its billing stay with the project's own Neon account, the integration connects only Production and Development and creates no preview branches, and the exit path of 0003 (`pg_dump`, one variable) is unchanged. If the only form offered is a database created and billed through Vercel, the owner setup stops. *(Replaced by [ADR 0018](0018-v2-hosting-and-launch.md): the database is the Neon project the Vercel integration made; Production reads its `main` branch and Development its `development` branch.)*
 
 **What happens to ADR 0009's rules.**
 - Decision 1 ("no database on previews") and the binding constraint "never connect a preview to a database" are retired by the Owner decision this record holds: previews read the seeded `preview` branch.
@@ -42,7 +42,7 @@ Decided 2026-10-16 by the project owner (Owner decision), recorded in the amendm
 - Never seed or migrate production or any database other than a local one or the `preview` branch, and never let the `preview` branch hold production data.
 - Every gate that turns dummy data, the test developer or tester sign-in on is false in production.
 - A test developer's changes never reach a database other than the `preview` branch, and reach it only from a preview deployment (the amendment of 2026-10-17).
-- No database created or billed through the host ([ADR 0003](0003-neon-direct-pooled.md)); the Neon integration only links the project's own Neon account.
+- No database created or billed through the host ([ADR 0003](0003-neon-direct-pooled.md)); the Neon integration only links the project's own Neon account. *(Replaced by [ADR 0018](0018-v2-hosting-and-launch.md).)*
 - No agent runs a seed or a migration against any real database.
 - Connecting previews to the `preview` branch (the database integration, the branch and the Preview environment variables) is an owner action; a build documents it and does not change the settings.
 
@@ -62,7 +62,7 @@ Followed today: the guard is `guardSeedTarget` in [lib/seed/target.ts](../lib/se
 
 ## Amendment, 2026-10-16
 
-The first text of this record gave each preview its own branch, created by the Neon integration for Vercel from a schema-only parent. The integration cannot choose a parent branch for previews, so the owner set previews up differently (Owner decision, recorded on [#306](https://github.com/PoliTo-Rocket-Team/website-v2/issues/306)): preview branching is off on the integration, which connects Production and Development only; one schema-only branch named `preview` serves every preview through Preview-only `DATABASE_URL` and `DATABASE_URL_UNPOOLED`. Decisions 1, 2 and 9, the title and the binding constraints above state that shape. The aims are unchanged: previews read a real, seeded database, and never production data.
+The first text of this record gave each preview its own branch, created by the Neon integration for Vercel from a schema-only parent. The integration cannot choose a parent branch for previews, so the owner set previews up differently (Owner decision, recorded on [#306](https://github.com/PoliTo-Rocket-Team/website-v2/issues/306)): preview branching is off on the integration, which connects Production and Development only *(the shared Production and Development connection is replaced by [ADR 0018](0018-v2-hosting-and-launch.md): Development reads its own `development` branch)*; one schema-only branch named `preview` serves every preview through Preview-only `DATABASE_URL` and `DATABASE_URL_UNPOOLED`. Decisions 1, 2 and 9, the title and the binding constraints above state that shape. The aims are unchanged: previews read a real, seeded database, and never production data.
 
 ## Amendment, 2026-10-16: one shared branch, migrated and re-seeded by every preview build
 
