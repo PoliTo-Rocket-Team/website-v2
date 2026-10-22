@@ -39,8 +39,16 @@ import { Photo } from "./photo";
 // (header, text and photo grid) is one column at the 760px reading width,
 // centred (Owner decision, issue #519). The gallery and the older / newer
 // cards keep the 1116px width either way.
+//
+// A long unbroken word in the title, the lead or the text wraps inside its
+// block rather than running across the page (Owner decision, issue #519):
+// `[overflow-wrap:anywhere]` also lowers the block's min-content width, so a
+// grid track cannot grow to fit the word.
 
 const width = "mx-auto max-w-[1116px]";
+
+/** Lets a long unbroken word break inside its block, at any width. */
+const wrapWords = "[overflow-wrap:anywhere]";
 
 /**
  * How a post's article is laid out from lg: beside its original posts, or
@@ -128,12 +136,12 @@ export function PostHeader({ post, frame = bare, hints = false }: PostPartsProps
         )}
       </div>
       <h1
-        className={`mt-4 text-[30px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-5 md:text-[56px] md:leading-[1.05] ${title === "" ? "text-dim" : ""}`}
+        className={`mt-4 ${wrapWords} text-[30px] font-bold leading-[1.08] tracking-[-0.025em] md:mt-5 md:text-[56px] md:leading-[1.05] ${title === "" ? "text-dim" : ""}`}
       >
         {title === "" ? UNTITLED_POST : post.title}
       </h1>
       {(lead !== "" || hints) && (
-        <p className={`mt-4 max-w-[760px] text-[16px] leading-[1.55] md:mt-5 md:text-[20px] ${lead === "" ? "text-dim" : "text-text-2"}`}>
+        <p className={`mt-4 max-w-[760px] ${wrapWords} text-[16px] leading-[1.55] md:mt-5 md:text-[20px] ${lead === "" ? "text-dim" : "text-text-2"}`}>
           {lead === "" ? LEAD_HINT : post.lead}
         </p>
       )}
@@ -269,7 +277,8 @@ function PhotoGrid({ photos }: { photos: readonly OutreachPhoto[] }) {
  * The body's lg-only grid classes per layout. Below lg both are the same one
  * column, so nothing here applies under lg. Centred, every part simply
  * follows the one before it, as on phones: the editor's empty "Original
- * posts" block comes after the text and the photo grid.
+ * posts" block comes after the text and the photo grid. Its one track is
+ * `minmax(0,1fr)`, so it never grows past the 760px column.
  */
 const BODY_GRID: Record<ArticleLayout, { grid: string; text: string; photos: string; channels: string; sticky: string }> = {
   "beside-channels": {
@@ -279,7 +288,7 @@ const BODY_GRID: Record<ArticleLayout, { grid: string; text: string; photos: str
     channels: "lg:col-start-2 lg:row-start-1",
     sticky: "lg:sticky lg:top-[96px]",
   },
-  centred: { grid: "", text: "", photos: "", channels: "", sticky: "" },
+  centred: { grid: "lg:grid-cols-[minmax(0,1fr)]", text: "", photos: "", channels: "", sticky: "" },
 };
 
 export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) {
@@ -294,7 +303,7 @@ export function PostBody({ post, frame = bare, hints = false }: PostPartsProps) 
       <div className={grid.text}>
         {frame(
           "text",
-          <article className="space-y-5 text-[16px] leading-[1.75] text-text-2 md:text-[17px] md:leading-[1.8]">
+          <article className={`space-y-5 ${wrapWords} text-[16px] leading-[1.75] text-text-2 md:text-[17px] md:leading-[1.8]`}>
             {post.body.map((b, i) => (
               <Block key={i} block={b} />
             ))}
