@@ -21,12 +21,14 @@ export type RecordedWrite = { readonly kind: string; readonly table: string };
 
 const store = new Map<string, DbRow[]>();
 const writes: RecordedWrite[] = [];
+const batches: RecordedWrite[][] = [];
 let keeping = false;
 
-/** Empties every table and the write record, and stores writes no more. */
+/** Empties every table, the write record and the batch record, and stores writes no more. */
 export function resetFakeDb(): void {
   store.clear();
   writes.length = 0;
+  batches.length = 0;
   keeping = false;
 }
 
@@ -48,6 +50,19 @@ export function rowsIn(table: Table): Record<string, unknown>[] {
 /** The writes started since the last reset. */
 export function recordedWrites(): readonly RecordedWrite[] {
   return [...writes];
+}
+
+/** The writes each audited batch made together since the last reset, one list per batch: what one database transaction would hold. */
+export function recordedBatches(): readonly (readonly RecordedWrite[])[] {
+  return batches.map((batch) => [...batch]);
+}
+
+/** Runs one audited batch and notes the writes it made as one. */
+export async function inBatch<T>(run: () => Promise<T>): Promise<T> {
+  const from = writes.length;
+  const result = await run();
+  batches.push(writes.slice(from));
+  return result;
 }
 
 /** Notes a write that did not go through the builder (an audited query, a file store call). */

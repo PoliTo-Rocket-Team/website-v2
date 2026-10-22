@@ -3,12 +3,16 @@ import "./access-matrix/install";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { outreachPosts, outreachPostTags, outreachPostVersions, outreachTags } from "@/db/schema";
+import { dummyPhotoFiles } from "@/lib/dummy-data/outreach";
 import { outreachRecord } from "@/lib/outreach";
-import { publicOutreach } from "@/lib/outreach-editor";
+import { outreachEditor, publicOutreach } from "@/lib/outreach-editor";
 import { FEATURED_FULL, type FeaturedSlot } from "@/lib/outreach-featured";
 import { postColumns } from "@/lib/outreach-rows";
-import { insertRows, recordedWrites, resetFakeDb } from "./access-matrix/fake-db";
+import { insertRows, keepWrites, recordedBatches, recordedWrites, resetFakeDb, rowsIn } from "./access-matrix/fake-db";
 import { databaseOutreachStore, readStoredOutreach } from "./database-outreach";
+import type { ViewerStanding } from "./viewer";
+
+const admin: ViewerStanding = { kind: "operations-lead", seat: "operations-lead", siteContent: false, approveOrders: false };
 
 // The database path of featured posts (issue #496): the store reads which
 // posts hold the two featured slots of `outreach_posts` (migration 0048),
@@ -85,4 +89,55 @@ test("featuring a post writes its slot while one is free, and a third is refused
 
   assert.deepEqual(await databaseOutreachStore.unfeature(2), { ok: true, value: null });
   assert.deepEqual(recordedWrites(), [{ kind: "update", table: "outreach_posts" }]);
+});
+
+// Unpublish and Delete free a featured post's slot (Owner decision, issue #502).
+
+const editor = () => outreachEditor(admin, databaseOutreachStore, dummyPhotoFiles);
+const slotOf = (id: number) => rowsIn(outreachPosts).find((row) => row.id === id)?.featuredSlot;
+
+test("unpublishing a featured post clears its slot in the same batch write as its version rows", async () => {
+  seed([1, 2, null]);
+  keepWrites();
+  const unpublished = await editor().posts.unpublish(2);
+  assert.ok(unpublished.ok, unpublished.ok ? "" : unpublished.error);
+  assert.equal(slotOf(2), null, "its slot is free");
+  assert.equal(slotOf(1), 1, "the other featured post keeps its slot");
+  assert.deepEqual(recordedBatches(), [
+    [
+      { kind: "delete", table: "outreach_post_versions" },
+      { kind: "insert", table: "outreach_post_versions" },
+      { kind: "insert", table: "outreach_post_tags" },
+      { kind: "update", table: "outreach_posts" },
+    ],
+  ]);
+  assert.deepEqual(recordedWrites(), recordedBatches()[0], "nothing is written outside that batch");
+  assert.deepEqual(await databaseOutreachStore.featured(), [1]);
+});
+
+test("unpublishing a post that is not featured writes only its version rows", async () => {
+  seed([1, null, null]);
+  keepWrites();
+  assert.ok((await editor().posts.unpublish(3)).ok);
+  assert.ok(!recordedWrites().some((write) => write.table === "outreach_posts"));
+  assert.equal(slotOf(1), 1);
+});
+
+test("with two posts featured, unpublishing one frees its slot and a third published post can then be featured", async () => {
+  seed([1, 2, null]);
+  keepWrites();
+  assert.deepEqual(await databaseOutreachStore.feature(3), { ok: false, error: FEATURED_FULL });
+  assert.ok((await editor().posts.unpublish(1)).ok);
+  assert.deepEqual(await databaseOutreachStore.feature(3), { ok: true, value: null });
+  assert.equal(slotOf(3), 1, "the third takes the freed slot");
+  assert.deepEqual(await databaseOutreachStore.featured(), [3, 2]);
+});
+
+test("deleting a featured post frees its slot, so a third published post can then be featured", async () => {
+  seed([1, 2, null]);
+  keepWrites();
+  assert.ok((await editor().posts.remove(2)).ok);
+  assert.deepEqual(await databaseOutreachStore.featured(), [1]);
+  assert.deepEqual(await databaseOutreachStore.feature(3), { ok: true, value: null });
+  assert.deepEqual(await databaseOutreachStore.featured(), [1, 3]);
 });

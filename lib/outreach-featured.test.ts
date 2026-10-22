@@ -11,11 +11,14 @@ import {
   featuredCardFeature,
   featuredOpen,
   featureStateOf,
+  isFeatured,
   listedCardFeature,
   runFeatureMove,
+  unfeaturing,
   withFeatured,
   type CardFeature,
 } from "./outreach-featured";
+import { isLive, outreachRow } from "./outreach-list";
 import { titleOf } from "./outreach-types";
 
 // Feature and Unfeature on the edit shell's Outreach list (issues #431,
@@ -52,6 +55,23 @@ const asMove = (move: CardFeature | null) => {
   assert.ok(move !== null && move.kind !== "locked", `a move, not ${JSON.stringify(move)}`);
   return move;
 };
+
+test("after Unpublish the Outreach list drops the post from its featured state, as the server does, and its row's Feature is locked", async () => {
+  const { editor, read } = await opened();
+  assert.ok((await editor.feature(1)).ok);
+  const before = await read();
+  assert.ok(isFeatured(before.featured, 1));
+
+  const unpublished = await editor.posts.unpublish(1);
+  assert.ok(unpublished.ok, unpublished.ok ? "" : unpublished.error);
+  // What components/dashboard/outreach.tsx keeps after a successful Unpublish (issue #502).
+  const kept = unfeaturing(before.featured, 1);
+  assert.deepEqual(kept, (await read()).featured, "the page keeps what the server now holds");
+  assert.ok(!isFeatured(kept, 1), "its row shows no Featured mark");
+  const row = outreachRow(unpublished.value, "row");
+  assert.equal(isLive(row.status), false, "so the row offers Feature locked with FEATURE_LOCKED");
+  assert.deepEqual(await editor.feature(1), { ok: false, error: FEATURE_LOCKED }, "the server refuses it with the same words");
+});
 
 test("Feature on a listed card features that card's post beside the one featured, and the page keeps what the server now shows", async () => {
   const { editor, read } = await opened();

@@ -103,6 +103,55 @@ test("a test developer's featured posts stay in their cookie, two at most, and a
   assert.deepEqual(await nextRequest(), [], "a removed post is featured no more");
 });
 
+// Unpublish and Delete free a featured post's slot (Owner decision, issue #502).
+
+test("unpublishing a featured post drops its id from the featured ids in the same cookie write as the post edit", async () => {
+  const jar = cookie();
+  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const [story] = await editor.featured();
+  assert.ok(story !== undefined);
+  assert.ok((await editor.feature(1)).ok);
+
+  const saved: DummyOutreachEdits[] = [];
+  const watched: DummyOutreachEditsStore = {
+    get current() {
+      return jar.current;
+    },
+    save: async (next) => {
+      saved.push(next);
+      await jar.save(next);
+    },
+  };
+  const unpublished = await outreachEditor(admin, dummyOutreachStore(watched), dummyPhotoFiles).posts.unpublish(1);
+  assert.ok(unpublished.ok, unpublished.ok ? "" : unpublished.error);
+  assert.equal(saved.length, 1, "one cookie write");
+  assert.equal(saved[0].posts.saved.find((item) => item.id === 1)?.version.state, "draft", "it holds the post edit");
+  assert.deepEqual(saved[0].featured, [story], "and the featured ids without the post");
+  assert.deepEqual(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).featured(), [story], "the next request reads it");
+});
+
+test("with two posts featured on the dummy-data path, unpublishing one frees its slot and a third published post can then be featured", async () => {
+  const jar = cookie();
+  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const [story] = await editor.featured();
+  assert.ok((await editor.feature(1)).ok);
+  assert.deepEqual(await editor.feature(2), { ok: false, error: FEATURED_FULL });
+  assert.ok((await editor.posts.unpublish(1)).ok);
+  assert.deepEqual(await editor.feature(2), { ok: true, value: null });
+  assert.deepEqual(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).featured(), [story, 2]);
+});
+
+test("deleting a featured post on the dummy-data path frees its slot, so a third published post can then be featured", async () => {
+  const jar = cookie();
+  const editor = outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles);
+  const [story] = await editor.featured();
+  assert.ok((await editor.feature(1)).ok);
+  assert.ok((await editor.posts.remove(1)).ok);
+  assert.deepEqual(jar.current.featured, [story], "the same cookie write drops its id");
+  assert.deepEqual(await editor.feature(2), { ok: true, value: null });
+  assert.deepEqual(await outreachEditor(admin, dummyOutreachStore(jar), dummyPhotoFiles).featured(), [story, 2]);
+});
+
 test("a cookie this code did not write reads as no changes", () => {
   assert.deepEqual(parseOutreachEdits(undefined), NO_OUTREACH_EDITS);
   assert.deepEqual(parseOutreachEdits("not json"), NO_OUTREACH_EDITS);

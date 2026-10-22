@@ -1,7 +1,7 @@
 import { memoryContentStore } from "@/lib/content/memory";
 import { refused, written } from "@/lib/dashboard/write";
 import { checkNewTag, type OutreachStore, type StoredOutreach } from "@/lib/outreach-editor";
-import { featuredIdsOf, featuring, unfeaturing, type FeaturedIds } from "@/lib/outreach-featured";
+import { featuredAmong, featuredIdsOf, featuring, unfeaturing, type FeaturedIds } from "@/lib/outreach-featured";
 import { importedOutreach } from "@/lib/outreach-import";
 import type { PhotoFiles } from "@/lib/outreach-photos";
 import { outreachDraftOf, outreachPostOf } from "@/lib/outreach-rows";
@@ -204,15 +204,20 @@ export function dummyOutreachStore(edits: DummyOutreachEditsStore): OutreachStor
     return null;
   }
 
-  const posts = memoryContentStore(withContentEdits(SEED.posts, current.posts), (items: readonly PostItem[]) =>
-    keep({ ...current, posts: contentEditsOf(SEED.posts, items, keptVersion) }),
-  );
+  // A post removed or unpublished gives up its featured slot in the same
+  // cookie write as the post edit (issue #502), as the database's row does.
+  const posts = memoryContentStore(withContentEdits(SEED.posts, current.posts), (items: readonly PostItem[]) => {
+    const was = current.featured ?? SEED.featured;
+    const left = featuredAmong(was, items);
+    return keep({
+      ...current,
+      posts: contentEditsOf(SEED.posts, items, keptVersion),
+      featured: left.length === was.length ? current.featured : left,
+    });
+  });
 
-  // A removed post takes its featured slot with it, as the database's row does.
   async function featured(): Promise<FeaturedIds> {
-    const ids: readonly number[] = current.featured ?? SEED.featured;
-    const items = await posts.list();
-    return featuredIdsOf(ids.filter((id) => items.some((item) => item.id === id))) ?? [];
+    return featuredAmong(current.featured ?? SEED.featured, await posts.list());
   }
 
   async function keepFeatured(next: FeaturedIds) {
