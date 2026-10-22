@@ -10,8 +10,23 @@ import { PageHeader } from "./page-header";
 // lead, the IT lead, a department head and a division lead, gets one view with
 // the same tools (issues #408 and #418, ./team-members.tsx); only their rows
 // (the whole team, the department, the division) and the actions their data
-// allows differ.
-export function MembersView({ directory, aliases, editable }: { directory: MemberDirectory; aliases: MemberAliases; editable: boolean }) {
+// allows differ. Export to Excel is one such action, full access's alone
+// (issue #539): `exportable` comes from the same rule the export route checks.
+export function MembersView({
+  directory,
+  aliases,
+  editable,
+  exportable,
+}: {
+  directory: MemberDirectory;
+  aliases: MemberAliases;
+  editable: boolean;
+  exportable: boolean;
+}) {
   const page = membersModelOf(directory);
-  return page === null ? <PageHeader title="Members" intro="" phone="bar" /> : <ScopedMembersView page={page} aliases={aliases} editable={editable} />;
+  return page === null ? (
+    <PageHeader title="Members" intro="" phone="bar" />
+  ) : (
+    <ScopedMembersView page={page} aliases={aliases} editable={editable} exportable={exportable} />
+  );
 }

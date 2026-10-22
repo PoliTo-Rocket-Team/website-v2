@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { MembersView } from "@/components/dashboard/members";
 import { canReach } from "@/lib/dashboard/access";
+import { mayExportMembers } from "@/lib/dashboard/members-export";
 import { memberIdsOf, membersModelOf } from "@/lib/dashboard/members-view";
 import { openDashboard } from "@/lib/dashboard/open";
 
@@ -38,5 +39,12 @@ async function LiveMembers({ searchParams }: { searchParams: Search }) {
   // Each member's email alias beside their team email (epic #538, boards 94 to 94e).
   const model = membersModelOf(directory);
   const aliases = model === null ? {} : await data.memberAliases(memberIdsOf(model));
-  return <MembersView directory={directory} aliases={aliases} editable={data.teamWrites !== null} />;
+  return (
+    <MembersView
+      directory={directory}
+      aliases={aliases}
+      editable={data.teamWrites !== null}
+      exportable={mayExportMembers(data.viewer)}
+    />
+  );
 }
