@@ -1,0 +1,342 @@
+import { z } from "zod";
+import type { Checked } from "./department-edit";
+import type { TeamPerson } from "./division-edit";
+import { sentWhen } from "./hand-over-request";
+import type { AddressedNotice } from "./notices";
+import { divisionShortName, type AttentionItem } from "./overview";
+import type { OrgChart } from "./team";
+import { seatOf, type FullAccessSeat, type ViewerStanding } from "./viewer";
+import { shortDate } from "./write";
+
+// Team email alias requests (epic #538, issue #541; boards 94 to 94e). A
+// division lead, a department head or the team leader asks for an alias for a
+// member they may manage, from the member drawer. The team leader, the
+// operations lead and the IT lead see each open request on their Overview;
+// they create the alias by hand in Google Workspace, then mark the request
+// created with the address, which is saved on the member's record, or
+// decline it. The site may also ask by itself (issue #543): such a request
+// has no requester. This module owns who may ask, who may answer, the one
+// open request per member, the firstname.lastname prefill and the address
+// check; both data sources store what it says.
+
+/** The team's mail domain: every alias ends with it. */
+export const TEAM_DOMAIN = "politorocketteam.it";
+
+/** An open alias request. `requesterId` is null for one the site made by itself. */
+export type AliasRequest = {
+  readonly id: number;
+  readonly memberId: number;
+  readonly requesterId: number | null;
+  /** When it was sent, an ISO timestamp. */
+  readonly sentAt: string;
+};
+
+/** How a request closed, as stored. */
+export const ALIAS_OUTCOMES = ["created", "declined", "cancelled"] as const;
+export type AliasOutcome = (typeof ALIAS_OUTCOMES)[number];
+
+// Who may ask ---------------------------------------------------------------------
+
+/**
+ * Whether `requester` may ask for an alias for `member`: the team leader for
+ * anyone else on the team, a department head for anyone in a division of
+ * their department, a division lead for anyone in a division they lead.
+ * Nobody asks for themselves, and a grant makes nobody a requester.
+ */
+export function managesMember(requester: TeamPerson, member: TeamPerson, org: OrgChart): boolean {
+  if (requester.id === member.id) return false;
+  if (requester.beyond.some((b) => b.kind === "team-leader")) return true;
+  const headed = requester.beyond.flatMap((b) => (b.kind === "head" && b.departmentId !== null ? [b.departmentId] : []));
+  const led = requester.memberships.filter((m) => m.role === "lead").map((m) => m.divisionId);
+  return member.memberships.some(
+    (m) => led.includes(m.divisionId) || headed.includes(org.divisions.find((d) => d.id === m.divisionId)?.departmentId ?? -1),
+  );
+}
+
+function mayAskFor(requesterId: number | null, memberId: number, team: readonly TeamPerson[], org: OrgChart): boolean {
+  const requester = team.find((p) => p.id === requesterId);
+  const member = team.find((p) => p.id === memberId);
+  return requester !== undefined && member !== undefined && managesMember(requester, member, org);
+}
+
+// Who may answer ------------------------------------------------------------------
+
+/**
+ * The seats that answer alias requests (Owner decision, 2026-10-22): the team
+ * leader, the operations lead and the IT lead. Not the Project Manager or the
+ * Chief Engineer, and not full access from a scope row alone (`seatOf` is null).
+ */
+export const ALIAS_APPROVER_SEATS = ["team-leader", "operations-lead", "it-lead"] as const satisfies readonly FullAccessSeat[];
+
+export function answersAliasRequests(viewer: ViewerStanding): boolean {
+  const seat = seatOf(viewer);
+  return seat !== null && (ALIAS_APPROVER_SEATS as readonly FullAccessSeat[]).includes(seat);
+}
+
+// The address -------------------------------------------------------------------------
+
+function asciiWords(name: string): string[] {
+  return name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s-]/g, "")
+    .split(/\s+/)
+    .filter((w) => w !== "");
+}
+
+/**
+ * The address Mark created starts from (board 94d): firstname.lastname on the
+ * team domain, from the member's name. Accents are dropped and a last name of
+ * several words is written as one: "Anna De Luca" is anna.deluca.
+ */
+export function aliasPrefill(name: string): string {
+  const [first = "", ...rest] = asciiWords(name);
+  const local = rest.length === 0 ? first : `${first}.${rest.join("")}`;
+  return `${local}@${TEAM_DOMAIN}`;
+}
+
+/** The form the dialog asks for, under the field (board 94d). */
+export const ALIAS_FORM_HINT = `firstname.lastname@${TEAM_DOMAIN}`;
+
+const PERSONAL = /^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*$/;
+const SPECIAL = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
+/** A checked alias: the address as saved, and whether it is a person's or a special-purpose one. */
+export type AliasAddress = { readonly address: string; readonly form: "personal" | "special" };
+
+/**
+ * The address as typed, checked before it is saved: it ends with the team
+ * domain, and before it is firstname.lastname, or one word for a
+ * special-purpose address such as sponsoring (Owner input, 2026-10-22).
+ * Saved in lower case.
+ */
+export function checkAliasAddress(input: string): Checked<AliasAddress> {
+  const address = input.trim().toLowerCase();
+  const at = address.lastIndexOf("@");
+  if (at === -1 || address.slice(at + 1) !== TEAM_DOMAIN) return { ok: false, error: `The alias must end with @${TEAM_DOMAIN}.` };
+  const local = address.slice(0, at);
+  if (PERSONAL.test(local)) return { ok: true, value: { address, form: "personal" } };
+  if (SPECIAL.test(local)) return { ok: true, value: { address, form: "special" } };
+  return { ok: false, error: `Use ${ALIAS_FORM_HINT}, or one word for a special-purpose address.` };
+}
+
+// Request alias (boards 94, 94b) -----------------------------------------------------
+
+/**
+ * Request alias as the rules allow it, or the first reason it is refused: the
+ * requester may manage the member, who has no alias and no open request. The
+ * database refuses a second open request too (`alias_requests_one_open`).
+ */
+export function planAliasRequest(input: {
+  readonly requesterId: number | null;
+  readonly memberId: number;
+  readonly team: readonly TeamPerson[];
+  readonly org: OrgChart;
+  /** The member's alias on their record, if any. */
+  readonly alias: string | null;
+  /** The open requests; only the member's is read. */
+  readonly open: readonly AliasRequest[];
+}): Checked<{ readonly memberId: number; readonly requesterId: number }> {
+  const { requesterId, memberId, team, org } = input;
+  const member = team.find((p) => p.id === memberId);
+  if (requesterId === null || member === undefined || !mayAskFor(requesterId, memberId, team, org)) {
+    return { ok: false, error: "You can request an alias only for someone you lead or head." };
+  }
+  if (input.alias !== null) return { ok: false, error: `${member.name} already has an email alias.` };
+  if (input.open.some((r) => r.memberId === memberId)) return { ok: false, error: `An alias for ${member.name} is already requested.` };
+  return { ok: true, value: { memberId, requesterId } };
+}
+
+/** Cancel request (board 94b): whoever sent it, or anyone who may ask for the member. */
+export function planAliasCancel(input: {
+  readonly viewerId: number | null;
+  readonly request: AliasRequest;
+  readonly team: readonly TeamPerson[];
+  readonly org: OrgChart;
+}): Checked<AliasRequest> {
+  const { viewerId, request, team, org } = input;
+  if (viewerId !== null && (viewerId === request.requesterId || mayAskFor(viewerId, request.memberId, team, org))) {
+    return { ok: true, value: request };
+  }
+  return { ok: false, error: "You can cancel only a request for someone you lead or head." };
+}
+
+// Decline and Mark created (boards 94c, 94d) ----------------------------------------------
+
+/** An approver's answer: Decline, or Mark created with the address as typed. */
+export type AliasAnswer = { readonly kind: "decline" } | { readonly kind: "created"; readonly address: string };
+
+const answerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("decline") }),
+  z.object({ kind: z.literal("created"), address: z.string().max(200) }),
+]);
+
+/** An answer as sent, in its shape; the rules are `planAliasAnswer`'s. */
+export function checkAliasAnswer(input: unknown): Checked<AliasAnswer> {
+  const result = answerSchema.safeParse(input);
+  return result.success ? { ok: true, value: result.data } : { ok: false, error: "Choose Decline or Mark created." };
+}
+
+/** An answer as the rules allow it: what closes the request, and the address saved on Mark created. */
+export type AliasAnswerPlan =
+  | { readonly kind: "decline"; readonly request: AliasRequest }
+  | { readonly kind: "created"; readonly request: AliasRequest; readonly address: string };
+
+/**
+ * Decline or Mark created as the rules allow it, or the first reason it is
+ * refused: only the three approver seats answer (`answersAliasRequests`), the
+ * server refuses everyone else, and Mark created needs an address
+ * `checkAliasAddress` accepts.
+ */
+export function planAliasAnswer(input: {
+  readonly viewer: ViewerStanding;
+  readonly request: AliasRequest;
+  readonly answer: AliasAnswer;
+}): Checked<AliasAnswerPlan> {
+  const { viewer, request, answer } = input;
+  if (!answersAliasRequests(viewer)) return { ok: false, error: "Only the team leader, the operations lead or the IT lead can answer alias requests." };
+  if (answer.kind === "decline") return { ok: true, value: { kind: "decline", request } };
+  const checked = checkAliasAddress(answer.address);
+  if (!checked.ok) return checked;
+  return { ok: true, value: { kind: "created", request, address: checked.value.address } };
+}
+
+/**
+ * Who an answer tells (stories 3 and 4): Mark created tells the requester and
+ * the member, Decline the requester. A request the site made has no requester
+ * to tell. Each notice is about the member; `approver` names who declined.
+ */
+export function aliasAnswerNotices(plan: AliasAnswerPlan, approver: string): AddressedNotice[] {
+  const { requesterId, memberId } = plan.request;
+  const requester = requesterId === null || requesterId === memberId ? [] : [requesterId];
+  if (plan.kind === "decline") return requester.map((recipientId) => ({ recipientId, notice: { kind: "alias-declined", data: { by: approver } } }));
+  const { address } = plan;
+  return [
+    ...requester.map((recipientId): AddressedNotice => ({ recipientId, notice: { kind: "alias-created", data: { address } } })),
+    { recipientId: memberId, notice: { kind: "alias-ready", data: { address } } },
+  ];
+}
+
+// How it reads ---------------------------------------------------------------------------
+
+/**
+ * A member's alias as the member drawer shows it, beside their team email
+ * (boards 94, 94b, 94e): the address on their record; the open request, who
+ * sent it and when, and whether the viewer may cancel it; or none, and
+ * whether the viewer may request one.
+ */
+export type MemberAlias =
+  | { readonly kind: "set"; readonly address: string }
+  | { readonly kind: "requested"; readonly requestId: number; readonly line: string; readonly cancellable: boolean }
+  | { readonly kind: "none"; readonly requestable: boolean };
+
+/** Every member's alias the Members page shows, by member id. */
+export type MemberAliases = Readonly<Record<number, MemberAlias>>;
+
+/** "by you · 22 Oct", "by Marco Bianchi · 22 Oct", "automatic · 22 Oct": who sent a request, and when (board 94b). */
+export function requestedLine(request: AliasRequest, viewerId: number | null, team: readonly TeamPerson[], now: Date): string {
+  const by =
+    request.requesterId === null
+      ? "automatic"
+      : request.requesterId === viewerId
+        ? "by you"
+        : `by ${team.find((p) => p.id === request.requesterId)?.name ?? "someone"}`;
+  return `${by} · ${shortDate(request.sentAt, now.getUTCFullYear())}`;
+}
+
+/** The alias of each of `memberIds` on the team, as `viewerId` sees it in the member drawer. */
+export function memberAliasesFor(input: {
+  readonly viewerId: number | null;
+  readonly memberIds: readonly number[];
+  readonly team: readonly TeamPerson[];
+  readonly org: OrgChart;
+  /** Each member's alias on their record, by member id; a member missing has none. */
+  readonly addresses: ReadonlyMap<number, string>;
+  readonly open: readonly AliasRequest[];
+  readonly now: Date;
+}): MemberAliases {
+  const { viewerId, team, org, addresses, open, now } = input;
+  const out: Record<number, MemberAlias> = {};
+  for (const memberId of input.memberIds) {
+    if (!team.some((p) => p.id === memberId)) continue;
+    const address = addresses.get(memberId);
+    const request = open.find((r) => r.memberId === memberId);
+    const mayAsk = viewerId !== null && mayAskFor(viewerId, memberId, team, org);
+    out[memberId] =
+      address !== undefined
+        ? { kind: "set", address }
+        : request !== undefined
+          ? {
+              kind: "requested",
+              requestId: request.id,
+              line: requestedLine(request, viewerId, team, now),
+              cancellable: planAliasCancel({ viewerId, request, team, org }).ok,
+            }
+          : { kind: "none", requestable: mayAsk };
+  }
+  return out;
+}
+
+/** "Mission Analysis lead", "Aerodynamics head", "team leader": the role an automatic request was made for. */
+function roleBecome(person: TeamPerson | undefined, org: OrgChart): string | null {
+  if (person === undefined) return null;
+  if (person.beyond.some((b) => b.kind === "team-leader")) return "team leader";
+  for (const b of person.beyond) {
+    if (b.kind === "head" && b.departmentId !== null) {
+      const name = org.departments.find((d) => d.id === b.departmentId)?.name;
+      if (name) return `${name} head`;
+    }
+  }
+  const led = person.memberships.find((m) => m.role === "lead");
+  const division = led ? org.divisions.find((d) => d.id === led.divisionId) : undefined;
+  return division ? `${divisionShortName(division.name)} lead` : null;
+}
+
+/**
+ * An open request as the approver's row under "Needs your attention" (board
+ * 94c): "Marco Bianchi asks for an email alias for Davide Russo", or, for one
+ * the site made, "Pietro Ricci needs an email alias", with Decline and Mark
+ * created.
+ */
+export function aliasAttention(request: AliasRequest, team: readonly TeamPerson[], org: OrgChart, now: Date): AttentionItem {
+  const member = team.find((p) => p.id === request.memberId);
+  const name = member?.name ?? "Someone";
+  const when = sentWhen(request.sentAt, now);
+  const action = { answerAlias: request.id, member: name, prefill: aliasPrefill(name) };
+  if (request.requesterId === null) {
+    const role = roleBecome(member, org);
+    return {
+      kind: "alias-request",
+      title: `${name} needs an email alias`,
+      detail: role === null ? `Automatic · sent ${when}` : `Automatic · became ${role} ${when} and has no alias`,
+      action,
+    };
+  }
+  const requester = team.find((p) => p.id === request.requesterId)?.name ?? "Someone";
+  return {
+    kind: "alias-request",
+    title: `${requester} asks for an email alias for ${name}`,
+    detail: `Sent ${when} · create it in Google Workspace, then mark it created`,
+    action,
+  };
+}
+
+/**
+ * The open requests as the viewer's rows, oldest first: one per request for
+ * each approver seat (`answersAliasRequests`), none for anyone else. A request
+ * for someone no longer on the team is not shown.
+ */
+export function aliasAttentionFor(
+  viewer: ViewerStanding,
+  open: readonly AliasRequest[],
+  team: readonly TeamPerson[],
+  org: OrgChart,
+  now: Date,
+): AttentionItem[] {
+  if (!answersAliasRequests(viewer)) return [];
+  return open
+    .filter((r) => team.some((p) => p.id === r.memberId))
+    .sort((a, b) => Date.parse(a.sentAt) - Date.parse(b.sentAt) || a.id - b.id)
+    .map((r) => aliasAttention(r, team, org, now));
+}

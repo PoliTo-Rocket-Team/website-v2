@@ -556,6 +556,29 @@ of 2026-10-16 on #251.
 - The site sends no emails here either: the drawer shows the amber note for anyone added by
   email.
 
+### Email aliases
+
+These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 to 94e,
+`lib/dashboard/alias-request.ts`).
+
+- A division lead, a department head or the team leader asks for a team email alias for a member
+  they may manage, with Request alias on the Email alias row of the member drawer (board 94): a
+  lead for their division, a head for their department, the team leader for anyone. Nobody asks
+  for themselves, and a grant makes nobody a requester. The drawer then shows Requested, who sent
+  it and when, and Cancel request (board 94b).
+- A member has at most one open request, kept by the server and by the database
+  (`alias_requests_one_open`).
+- Only the team leader, the operations lead and the IT lead answer. Each open request is one row
+  on their Overview (board 94c), with Decline and Mark created. The Project Manager and the Chief
+  Engineer get none, and neither does full access from an access row alone. A request the site
+  made by itself has no requester and reads as the automatic row.
+- Mark created asks for the address (board 94d), prefilled as firstname.lastname on the team
+  domain. The server accepts firstname.lastname, or one word for a special-purpose address, and
+  only on the team domain. The address is saved on the member's record and shown beside their
+  team email (board 94e). It tells the requester and the member; Decline tells the requester.
+- The alias is created by hand in Google Workspace. The site creates nothing there and sends no
+  email.
+
 ### Access
 
 These rules come from #213 (boards 60, 60b, 60c and 60m).

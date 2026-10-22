@@ -1,4 +1,5 @@
 import {
+  aliasRequests,
   alumniEntries,
   applicationFiles,
   applications,
@@ -65,6 +66,7 @@ export const IDS = {
   join: (u: Unit) => 70 + UNIT_INDEX[u],
   notice: (u: Unit) => 80 + UNIT_INDEX[u],
   handOver: (u: Unit) => 90 + UNIT_INDEX[u],
+  aliasRequest: (u: Unit) => 95 + UNIT_INDEX[u],
   lead: (u: Unit) => 300 + UNIT_INDEX[u],
   cvFile: (u: Unit) => 400 + UNIT_INDEX[u],
   letterFile: (u: Unit) => 500 + UNIT_INDEX[u],
@@ -149,6 +151,8 @@ function seedUnit(u: Unit): void {
   // DM's lead has sent one, waiting for the team leader: Structures has no head.
   if (u === "DM") insertRows(handOverRequests, [{ id: IDS.handOver(u), fromId: lead, role: "lead", divisionId, toId: person, outcome: "advisor", createdAt: daysAgo(1) }]);
   insertRows(dashboardNotices, [{ id: IDS.notice(u), recipientId: lead, kind: "member-left", subjectId: person, data: {}, createdAt: daysAgo(1) }]);
+  // An email alias the site asked for the lead by itself (epic #538), open for the three approver seats.
+  insertRows(aliasRequests, [{ id: IDS.aliasRequest(u), memberId: lead, requestedBy: null, createdAt: daysAgo(1) }]);
   // Someone the lead added, waiting for the NDA.
   insertRows(users, [{ id: `joiner-${l}`, email: `join-${l}@mail.test`, firstName: "Joiner", lastName: u, createdAt: SINCE }]);
   insertRows(teamJoins, [{ id: IDS.join(u), userId: `joiner-${l}`, divisionId, title: "Member", prtEmail: `join-${l}@team.test`, addedBy: lead, addedAt: daysAgo(2) }]);

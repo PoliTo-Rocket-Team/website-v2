@@ -110,6 +110,7 @@ const READS: readonly Read[] = [
   { path: "myProfile" },
   { path: "myAccount" },
   { path: "myApplications" },
+  { path: "memberAliases", args: [[ALL.map((u) => IDS.person(u))]] },
 ];
 
 /** Calls the method at `path` on the data interface. */
@@ -556,6 +557,16 @@ const ACTION_CASES: readonly ActionCase[] = [
   },
   // DM's lead asks; the head of Structures answers (board 62c), and nobody in the matrix is.
   { action: "actions.answerHandOver", run: () => actions.answerHandOver(IDS.handOver(DM), "decline"), may: nobody, control: by("head-str") },
+  // Email aliases (epic #538), for someone in DM: a lead, a head or the team leader who may manage them asks or cancels;
+  // only the team leader, the operations lead and the IT lead answer.
+  { action: "actions.requestAlias", run: () => actions.requestAlias(IDS.person(DM)), may: (r) => r.expect.aliases.requests.includes(DM), control: by("team leader") },
+  {
+    action: "actions.cancelAliasRequest",
+    run: () => actions.cancelAliasRequest(IDS.aliasRequest(DM)),
+    may: (r) => r.expect.aliases.requests.includes(DM),
+    control: by("team leader"),
+  },
+  { action: "actions.answerAlias", run: () => actions.answerAlias(IDS.aliasRequest(DM), { kind: "decline" }), may: (r) => r.expect.aliases.answers, control: by("IT lead") },
   // A notice, an application and an interview of someone else's.
   { action: "actions.dismissNotice", run: () => actions.dismissNotice(IDS.notice(DM)), may: nobody, control: by("lead-dm") },
   { action: "actions.withdrawApplication", run: () => actions.withdrawApplication(IDS.application(DM)), may: nobody, control: by("applicant-dm") },
@@ -618,6 +629,40 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
       }
     });
   }
+});
+
+// Email alias requests (epic #538) ------------------------------------------
+
+describe("email alias requests: the approver rows, Request alias in the drawer, and one open request per member", () => {
+  for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
+    test(name, async () => {
+      const data = await open(name);
+      const overview = await answerOf(() => data.overview());
+      const rows = overview === "refused" ? [] : (overview as TeamSideOverview).attention.filter((a) => a.kind === "alias-request");
+      assert.equal(rows.length, expect.aliases.answers ? ALL.length : 0, `${name}: one Overview row per open request`);
+      const aliases = (await data.memberAliases(ALL.map((u) => IDS.person(u)))) as Record<number, { kind: string; requestable?: boolean }>;
+      const requestable = ALL.filter((u) => aliases[IDS.person(u)]?.requestable === true);
+      assert.deepEqual(requestable, expect.pages.includes("members") ? expect.aliases.requests : [], `${name}: Request alias`);
+      assert.deepEqual(recordedWrites(), [], `${name}: a read wrote`);
+    });
+  }
+
+  test("a second request for a member with one open is refused by the server, and writes nothing", async () => {
+    const { answer, writes } = await attempt(accountOf("team leader").userId, () => actions.requestAlias(IDS.lead(DM)));
+    assert.ok(isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(writes, []);
+  });
+
+  test("Mark created saves the address on the member's record and tells the member", async () => {
+    const { answer, writes } = await attempt(accountOf("operations lead").userId, () =>
+      actions.answerAlias(IDS.aliasRequest(DM), { kind: "created", address: "lead.dm@politorocketteam.it" }),
+    );
+    assert.ok(!isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(
+      writes.map((w) => w.table).sort(),
+      ["alias_requests", "dashboard_notices", "members"],
+    );
+  });
 });
 
 // A lead's Access page ------------------------------------------------------

@@ -78,6 +78,7 @@ import { projectEditor } from "@/lib/project-content/editor";
 import { blobProjectPhotoFiles, databaseProjectStore, readProjectStamps } from "./database-projects";
 import { dismissNotice, readNoticeAttention } from "./database-notices";
 import { readHandOverAttention, sendHandOver } from "./database-hand-over";
+import { answerAlias, cancelAliasRequest, readAliasAttention, readMemberAliases, requestAlias } from "./database-alias";
 import { upcomingInterviews } from "./interview-slots";
 import { SEAT_OF_FLAG, VIEWER_KIND_LABELS, areaGrantsOf, areaUnitsOf, isOffTeam, isTeamLeader, readsArea, readsAreaIn, standingOf, unitRowsOf, viewerStandingOf, viewerUnitsOf, type AreaGrant, type DashboardViewer, type FlaggedSeat, type GrantArea, type ViewerStanding } from "./viewer";
 import { written } from "./write";
@@ -786,11 +787,14 @@ async function readMemberAccess(identity: Identity): Promise<NonNullable<AccessF
 /**
  * The viewer's Overview, with the hand-overs they answer as its top
  * attention rows (board 62c, issue #262): a head of the sender's department
- * or the team leader, whatever their Overview's shape.
+ * or the team leader, whatever their Overview's shape. The open alias
+ * requests follow them for the three approver seats (board 94c, epic #538).
  */
 async function overviewOf(identity: Identity): Promise<TeamSideOverview> {
-  const [overview, handOvers] = await Promise.all([overviewShapeOf(identity), readHandOverAttention(identity, new Date())]);
-  return handOvers.length === 0 ? overview : { ...overview, attention: [...handOvers, ...overview.attention] };
+  const now = new Date();
+  const [overview, handOvers, aliases] = await Promise.all([overviewShapeOf(identity), readHandOverAttention(identity, now), readAliasAttention(identity, now)]);
+  const top = [...handOvers, ...aliases];
+  return top.length === 0 ? overview : { ...overview, attention: [...top, ...overview.attention] };
 }
 
 function overviewShapeOf(identity: Identity): Promise<TeamSideOverview> {
@@ -908,6 +912,10 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     dismissNotice: (noticeId) => dismissNotice(identity, noticeId),
     sendHandOver: (input) => sendHandOver(identity, input),
     answerHandOver: (requestId, answer) => answerHandOver(identity, requestId, answer),
+    memberAliases: async (memberIds) => (canReach(identity, "members") ? readMemberAliases(identity, memberIds) : {}),
+    requestAlias: (memberId) => requestAlias(identity, memberId),
+    cancelAliasRequest: (requestId) => cancelAliasRequest(identity, requestId),
+    answerAlias: (requestId, answer) => answerAlias(identity, requestId, answer),
     // The member this request already resolved, never the session a second time (issue #397).
     recruitment: () => getRecruitmentControlFor(identity.memberId, identity),
     setRecruitment: (next) =>

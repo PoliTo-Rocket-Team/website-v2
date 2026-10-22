@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightLeft, ArrowUpRight, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, ArrowUpRight, AtSign, CalendarClock, Check, ChevronRight, Hourglass, Inbox, Info, Package, Pencil, ShoppingCart, Timer, UserMinus, UserPlus, type LucideIcon } from "lucide-react";
 import { RocketArrow } from "@/components/landing/rocket-arrow";
 import {
   APPLICANT_PILL_LABELS,
@@ -28,6 +28,7 @@ import {
   interviewSummary,
   rosterSize,
   type ActivityItem,
+  isAnswerAlias,
   isAnswerHandOver,
   isDismissNotice,
   type AttentionAction,
@@ -41,6 +42,7 @@ import {
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import { Avatar } from "./avatar";
+import { AnswerAlias } from "./answer-alias";
 import { AnswerHandOver } from "./answer-hand-over";
 import { DismissNotice } from "./dismiss-notice";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
@@ -193,13 +195,14 @@ function LeadView({
 // On board 56m each row is its own card, with no icon tile, the shorter
 // title and a small filled pill. A hand-over waiting for the viewer (board
 // 62c, issue #262) is the top row, on an accent tint with an accent icon
-// tile, and answers with Decline and Confirm.
+// tile, and answers with Decline and Confirm. An open alias request (board
+// 94c, epic #538) follows it the same way, with Decline and Mark created.
 function AttentionPanel({ attention, compact }: { attention: readonly AttentionItem[]; compact: boolean }) {
   return (
     <Panel title="Needs your attention" meta={attention.length === 1 ? "1 item" : `${attention.length} items`} phoneCards={compact}>
       {attention.map((item) => {
         const Icon = ATTENTION_ICONS[item.kind];
-        const handOver = item.kind === "hand-over";
+        const handOver = item.kind === "hand-over" || item.kind === "alias-request";
         return (
           <li
             key={attentionKey(item)}
@@ -377,6 +380,7 @@ function waitingCounts({ newApplications, openPositions }: { newApplications: nu
 /** A link to the page that handles the row, or Dismiss on a stored notice. */
 function AttentionButton({ action, chip = false }: { action: AttentionAction; chip?: boolean }) {
   if (isAnswerHandOver(action)) return <AnswerHandOver requestId={action.answerHandOver} chip={chip} />;
+  if (isAnswerAlias(action)) return <AnswerAlias action={action} chip={chip} />;
   return isDismissNotice(action) ? (
     <DismissNotice noticeId={action.dismissNotice} label={action.label} chip={chip} />
   ) : (
@@ -384,9 +388,10 @@ function AttentionButton({ action, chip = false }: { action: AttentionAction; ch
   );
 }
 
-/** A notice or a hand-over by its id: two of them may read alike. */
+/** A notice, a hand-over or an alias request by its id: two of them may read alike. */
 function attentionKey(item: AttentionItem): string {
   if (isAnswerHandOver(item.action)) return `hand-over-${item.action.answerHandOver}`;
+  if (isAnswerAlias(item.action)) return `alias-${item.action.answerAlias}`;
   return isDismissNotice(item.action) ? `notice-${item.action.dismissNotice}` : item.title;
 }
 
@@ -399,6 +404,7 @@ const ATTENTION_ICONS: Readonly<Record<AttentionKind, LucideIcon>> = {
   "orders-to-decide": ShoppingCart,
   "approved-orders": Package,
   "hand-over": ArrowRightLeft,
+  "alias-request": AtSign,
 };
 
 function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boolean; hiddenOnPhone: boolean }) {

@@ -1,5 +1,6 @@
 "use client";
 
+import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import type { MemberDirectory } from "@/lib/dashboard/team";
 import { membersModelOf } from "@/lib/dashboard/members-view";
 import { ScopedMembersView } from "./team-members";
@@ -10,7 +11,7 @@ import { PageHeader } from "./page-header";
 // the same tools (issues #408 and #418, ./team-members.tsx); only their rows
 // (the whole team, the department, the division) and the actions their data
 // allows differ.
-export function MembersView({ directory, editable }: { directory: MemberDirectory; editable: boolean }) {
+export function MembersView({ directory, aliases, editable }: { directory: MemberDirectory; aliases: MemberAliases; editable: boolean }) {
   const page = membersModelOf(directory);
-  return page === null ? <PageHeader title="Members" intro="" phone="bar" /> : <ScopedMembersView page={page} editable={editable} />;
+  return page === null ? <PageHeader title="Members" intro="" phone="bar" /> : <ScopedMembersView page={page} aliases={aliases} editable={editable} />;
 }
