@@ -87,6 +87,7 @@ function Fact({
   value,
   copy,
   hidden,
+  wrap,
 }: {
   label: string;
   value: string | null;
@@ -94,13 +95,15 @@ function Fact({
   copy?: string;
   /** Blurred until hover, with an eye that shows it for good. */
   hidden?: boolean;
+  /** Wraps a long value onto a second line instead of cutting it. */
+  wrap?: boolean;
 }) {
   const [shown, setShown] = useState(false);
   const blur = hidden && !shown && value !== null;
   return (
     <div className="flex min-h-7 items-center gap-3">
       <dt className="w-[132px] shrink-0 text-[14px] text-prt-muted">{label}</dt>
-      <dd className="min-w-0 flex-1 truncate text-[14px] text-prt-text">
+      <dd className={`min-w-0 flex-1 text-[14px] text-prt-text ${wrap ? "break-words" : "truncate"}`}>
         {value === null ? (
           <span className="text-dim">–</span>
         ) : (
@@ -124,7 +127,11 @@ function Fact({
 /** What the member panel shows of someone: a division page's person, or one on the team leader's whole-team page (issue #252). */
 export type PanelPerson = Pick<DivisionPerson, "id" | "name" | "signInEmail" | "photoUrl" | "since" | "divisions" | "details" | "nda" | "self">;
 
-/** The member panel (board 61f): divisions, contact, studies, personal and the NDA. Close, and Edit details. */
+/**
+ * The member panel (board 61f): divisions, contact, studies, personal and the
+ * NDA. Close, and Edit details. It is the wide panel, as boards 94 to 94e
+ * draw it, so the Email alias row keeps its whole address and request line.
+ */
 export function PersonDrawer<P extends PanelPerson>({
   person,
   alias,
@@ -153,6 +160,7 @@ export function PersonDrawer<P extends PanelPerson>({
       title={p.name}
       detail={`Member since ${p.since} · ${count} ${count === 1 ? "division" : "divisions"}`}
       leading={<Avatar size="panel" photoUrl={p.photoUrl} />}
+      wide
       footer={
         editable && !p.self ? (
           <>
@@ -237,7 +245,8 @@ export function PersonDrawer<P extends PanelPerson>({
  */
 function AliasFact({ memberId, name, alias }: { memberId: number; name: string; alias: MemberAlias | null }) {
   const [pending, startTransition] = useTransition();
-  if (alias === null || alias.kind === "set") return <Fact label="Email alias" value={alias?.address ?? null} copy="Email alias" />;
+  // The address wraps rather than being cut on a phone (issue #546).
+  if (alias === null || alias.kind === "set") return <Fact label="Email alias" value={alias?.address ?? null} copy="Email alias" wrap />;
   const run = (write: () => Promise<{ ok: boolean; error?: string }>, done: string, failed: string) =>
     startTransition(async () => {
       const result = await write();
@@ -252,12 +261,13 @@ function AliasFact({ memberId, name, alias }: { memberId: number; name: string; 
       <dt className="w-[132px] shrink-0 text-[14px] text-prt-muted">Email alias</dt>
       {alias.kind === "requested" ? (
         <>
-          <dd className="flex min-w-0 flex-1 items-center gap-2.5 text-[14px]">
+          <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-[14px]">
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[13px] font-medium text-warning">
               <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
               Requested
             </span>
-            <span className="truncate text-[13px] text-prt-muted">{alias.line}</span>
+            {/* Wraps under the pill where the row is short, never cut (issue #546). */}
+            <span className="min-w-0 break-words text-[13px] text-prt-muted">{alias.line}</span>
           </dd>
           {alias.cancellable && (
             <button

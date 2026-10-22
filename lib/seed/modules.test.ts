@@ -37,7 +37,7 @@ const tableModules = SEED_MODULES.flatMap((m) => ("seed" in m ? [(m as typeof m 
 test("the registry runs every area module, people before the orders and applications that name them, and the audit clear last", () => {
   assert.deepEqual(
     SEED_MODULES.map((m) => m.name),
-    ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq", "outreach", "projects", "hand-overs", "team-page", "audit"],
+    ["structure", "people", "alumni", "access", "orders", "recruitment", "partners", "faq", "outreach", "projects", "hand-overs", "aliases", "team-page", "audit"],
   );
   assert.equal(SEED_MODULES.at(-1), audit);
 });
@@ -123,6 +123,7 @@ test("every typed row sets each column whose default reads the clock or a random
 test("rows that set their own serial ids move the sequence past them", () => {
   const seeded = tableModules.flatMap((s) => s.rows).filter((set) => sequenceStatement(set) !== null);
   assert.deepEqual(seeded.map((set) => getTableName(set.table)).sort(), [
+    "alias_requests",
     "alumni_entries",
     "application_files",
     "applications",

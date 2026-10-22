@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { answerAlias } from "@/app/dashboard/actions";
 import { ALIAS_FORM_HINT, checkAliasAddress } from "@/lib/dashboard/alias-request";
 import type { AnswerAlias as AnswerAliasAction } from "@/lib/dashboard/overview";
@@ -53,7 +54,10 @@ export function AnswerAlias({ action, chip = false }: { action: AnswerAliasActio
 /**
  * Board 94d: the alias address, prefilled as firstname.lastname on the team
  * domain from the member's name and checked before it is sent; the server
- * checks it again and saves it on the member's record.
+ * checks it again and saves it on the member's record. The form skips the
+ * browser's own email check, so an address `checkAliasAddress` refuses shows
+ * its reason under the field rather than a browser bubble. 440px wide with a
+ * 24px pad and the row's 32px pills, as the board draws it.
  */
 function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOpenChange: (open: boolean) => void; action: AnswerAliasAction }) {
   const [address, setAddress] = useState(action.prefill);
@@ -80,16 +84,17 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
         <DialogOverlay className={SHEET_OVERLAY} />
-        <DialogPrimitive.Content aria-describedby={undefined} className={`${SHEET_CONTENT} sm:w-[560px]`}>
+        <DialogPrimitive.Content aria-describedby={undefined} className={cn(SHEET_CONTENT, "sm:w-[440px] sm:p-6")}>
           <SheetGrabber />
           <form
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
               save();
             }}
           >
             <DialogTitle className="text-[20px] font-bold leading-snug">Email alias for {action.member}</DialogTitle>
-            <p className="mt-2 text-[14px] leading-relaxed text-text-2">
+            <p className="mt-2 text-[14px] leading-relaxed text-prt-muted">
               Create it in Google Workspace first (recipient address map), then type it here. It is saved to {first}&apos;s details and {first} gets the
               setup steps.
             </p>
@@ -116,11 +121,11 @@ function MarkCreatedDialog({ open, onOpenChange, action }: { open: boolean; onOp
                 </>
               )}
             </Field>
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <DialogClose className="inline-flex h-10 items-center justify-center rounded-full border border-white-10 px-5 text-[14px] font-medium transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:mt-5 sm:flex-row sm:justify-end sm:gap-2.5">
+              <DialogClose className="inline-flex h-10 items-center justify-center rounded-full border border-white-10 px-5 text-[14px] font-medium transition-colors duration-300 ease-out hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:h-8 sm:px-3.5">
                 Cancel
               </DialogClose>
-              <button type="submit" disabled={pending} className={`${PAPER} h-10 px-5 text-[14px]`}>
+              <button type="submit" disabled={pending} className={`${PAPER} h-10 px-5 text-[14px] sm:h-8 sm:px-3.5`}>
                 Mark created
               </button>
             </div>
