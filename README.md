@@ -13,7 +13,16 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 2. Copy `.env.example` to `.env` and fill in the required values.
    Use `BETTER_AUTH_URL` and `BETTER_AUTH_SECRET` for the auth base URL and secret.
 
-3. Create a Neon project and set `DATABASE_URL`.
+3. Set `DATABASE_URL`. The site's database is one Neon project, made through
+   the Neon integration for Vercel ([ADR 0018](.decisions/0018-v2-hosting-and-launch.md)).
+   `vercel env pull` brings the Vercel Development environment's variables,
+   which are the connection strings of the Neon `development` branch, never
+   production's. Production is the Neon `main` branch, and its strings are set
+   for the Vercel Production environment only.
+
+   `pnpm db:seed` refuses the `development` branch. To load the dummy set,
+   point `DATABASE_URL` at a local Postgres (see
+   [Where the seed runs](#where-the-seed-runs)).
 
    Uploaded files live in two Vercel Blob stores, and `vercel env pull` brings
    their credentials: `BLOB_READ_WRITE_TOKEN` for the private store
@@ -22,7 +31,7 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
    (`prt-public`: profile photos). The helpers are in [`lib/storage`](lib/storage).
    Tests do not touch either store.
 
-4. Apply the schema and load seed data:
+4. Apply the schema and load seed data (the seed runs on a local database only):
 
    ```bash
    pnpm db:migrate
@@ -73,27 +82,40 @@ also get Vercel's own `X-Robots-Tag: noindex` header, whatever the value.
 
 ## Neon Branching Workflow
 
+The Neon project has three branches ([ADR 0018](.decisions/0018-v2-hosting-and-launch.md)):
+
+| Neon branch | Used by |
+| --- | --- |
+| `main` | Production (v2.politorocketteam.it), through the Vercel Production environment only |
+| `preview` | Vercel previews only ([ADR 0016](.decisions/0016-previews-read-their-own-seeded-branch.md)) |
+| `development` | The Vercel Development environment; copied from `preview` |
+
 ### Local development
 
-- Use a dedicated Neon development branch locally instead of sharing the production database.
-- A good default is one long-lived personal branch per developer, such as `dev/huey`.
-- Put that branch's connection string in your local `.env`.
-- Run migrations locally against that branch with `pnpm db:migrate`.
+- `vercel env pull` brings the `development` branch's connection strings, never
+  production's.
+- Never point your local env files at the `main` branch.
 
-Typical local flow:
+### Where the seed runs
+
+`pnpm db:seed` checks its target first (`guardSeedTarget` in
+[`lib/seed/target.ts`](lib/seed/target.ts)) and writes only to:
+
+- a local database (`localhost`, `127.x.x.x` or `::1`), from any machine;
+- the `preview` branch, and only on a Vercel preview build, which seeds it
+  itself when it is empty.
+
+It refuses every other target, the `development` and `main` branches among
+them, and no flag turns a refusal into a pass. To work with the dummy set,
+run a local Postgres, set `DATABASE_URL` to it, then:
 
 ```bash
 pnpm db:migrate
+pnpm db:seed
 pnpm dev
 ```
 
-If you need a clean development database, reset your Neon development branch and rerun migrations:
-
-```bash
-neonctl branches reset dev/huey
-pnpm db:migrate
-pnpm db:seed
-```
+`pnpm db:seed --check` runs the target check alone and writes nothing.
 
 #### Sign in as a tester (local only)
 
@@ -102,8 +124,8 @@ account. This exists only under `next dev`: on Vercel previews, on production
 and on `pnpm build` / `pnpm start`, the routes below are not registered and
 answer 404. Sign-in there stays Google only.
 
-1. Load the testers into your own development branch (never a preview or
-   production database):
+1. Load the testers into a local database (the seed refuses every Neon
+   branch from a laptop; see [Where the seed runs](#where-the-seed-runs)):
 
    ```bash
    pnpm db:migrate
@@ -142,7 +164,8 @@ example after `vercel env pull`. If the tester links answer 404 on
 
 ### Production
 
-- Keep production on a separate Neon branch or database.
+- Production is the Neon `main` branch. Its connection strings are set for the
+  Vercel Production environment only.
 - Never point local `.env` at production.
 - Treat files in [`drizzle/`](drizzle) as append-only migrations.
 
