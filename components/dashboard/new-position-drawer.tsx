@@ -14,11 +14,13 @@ import {
   type NewPositionErrors,
   type PositionContent,
 } from "@/lib/dashboard/new-position";
+import { positionDrawerModeOf } from "@/lib/dashboard/positions-view";
 import type { PositionRow } from "@/lib/dashboard/recruitment";
 import { Toggle } from "./controls";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { DropdownMenu, DropdownMenuPortal, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Drawer } from "./drawer";
+import { DialogClose } from "@/components/ui/dialog";
+import { Drawer, PANEL_GHOST_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 
 // New position (boards 57a and 57b): the division first, locked when the lead
@@ -29,6 +31,10 @@ import { Field, GroupLabel, inputClass, LOCKED_INPUT } from "./field";
 // Edit position (issue #207) is the same drawer opened on a saved role: its
 // division locked, its fields as saved, no "Open now" (the row's switch opens
 // and closes it), and Save changes writes through editPosition.
+// For a viewer who may not change the role (`canChange` false, issue #577)
+// the same drawer shows it read-only: its text and lists as plain text, no
+// input, and only Close at the foot, as the Members panel does for a viewer
+// who may not edit.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -167,6 +173,7 @@ export function NewPositionDrawer({
   };
 
   if (field === null && editing === null) return null;
+  if (editing !== null && positionDrawerModeOf(editing) === "view") return <PositionReadOnly open={open} onOpenChange={onOpenChange} position={editing} />;
 
   return (
     <Drawer
@@ -302,6 +309,65 @@ export function NewPositionDrawer({
         )}
       </div>
     </Drawer>
+  );
+}
+
+/** A saved role as a viewer who may not change it sees it (issue #577): every field as text, and Close. */
+function PositionReadOnly({ open, onOpenChange, position }: { open: boolean; onOpenChange: (open: boolean) => void; position: PositionRow }) {
+  const c = position.content;
+  const documents = ["CV", ...(c.motivationLetter ? ["Motivation letter"] : [])];
+  return (
+    <SidePanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title={position.title}
+      detail={`Code ${position.code}`}
+      footer={<DialogClose className={`${PANEL_GHOST_BUTTON} col-span-2`}>Close</DialogClose>}
+    >
+      <PanelBody>
+        <div className="flex flex-col gap-6">
+          <ReadOnlySection title="Division">
+            <p className="text-[14px] text-prt-text">
+              {position.department} · {position.division}
+            </p>
+          </ReadOnlySection>
+          <ReadOnlySection title="Description">
+            {c.description.trim() === "" ? (
+              <p className="text-[14px] text-prt-muted">No description</p>
+            ) : (
+              <p className="whitespace-pre-line text-[14px] leading-relaxed text-text-2">{c.description}</p>
+            )}
+          </ReadOnlySection>
+          {LISTS.map((list) => {
+            const items = c[list.key].filter((item) => item.trim() !== "");
+            return items.length === 0 ? null : (
+              <ReadOnlySection key={list.key} title={list.label}>
+                <ul className="flex flex-col gap-2">
+                  {items.map((item, i) => (
+                    <li key={i} className="flex items-start gap-3 text-[14px] leading-snug text-text-2">
+                      <span className="mt-0.5 shrink-0">{list.icon}</span>
+                      <span className="min-w-0 break-words">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </ReadOnlySection>
+            );
+          })}
+          <ReadOnlySection title="Documents to ask for">
+            <p className="text-[14px] text-text-2">{documents.join(" and ")}</p>
+          </ReadOnlySection>
+        </div>
+      </PanelBody>
+    </SidePanel>
+  );
+}
+
+function ReadOnlySection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-dim">{title}</h3>
+      {children}
+    </section>
   );
 }
 

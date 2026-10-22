@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { NO_POSITIONS_FILTER, POSITIONS_COLUMNS, POSITIONS_TOOLS, positionsModelOf, shownPositions, type PositionsFilter } from "./positions-view";
-import type { GrantPlace, PositionRow, PositionsPage } from "./recruitment";
+import {
+  NO_POSITIONS_FILTER,
+  POSITIONS_COLUMNS,
+  POSITIONS_TOOLS,
+  positionDrawerModeOf,
+  positionsModelOf,
+  recruitmentNoticeOf,
+  shownPositions,
+  type PositionsFilter,
+} from "./positions-view";
+import type { GrantPlace, GrantReach, PositionRow, PositionsPage } from "./recruitment";
 
 // Issue #417: the team leader, the operations lead, the IT lead, a department
 // head and a division lead open one Positions toolbar with the same columns;
@@ -54,13 +63,14 @@ const byRole: Record<string, PositionsPage> = {
 };
 
 // A member holding a Positions grant reads no Applications (issue #487).
-const granted = (...places: [GrantPlace, ...GrantPlace[]]): PositionsPage => ({
+const grantedOver = (reach: GrantReach): PositionsPage => ({
   scope: "granted",
-  places,
+  reach,
   positions: [{ ...trajectory, applications: null, canChange: false }],
   newPosition,
   readsApplications: false,
 });
+const granted = (...places: [GrantPlace, ...GrantPlace[]]): PositionsPage => grantedOver({ kind: "places", places });
 
 const ids = (p: PositionsPage, filter: PositionsFilter = NO_POSITIONS_FILTER) =>
   shownPositions(positionsModelOf(p).units, p.positions, filter).rows.map((r) => r.id);
@@ -96,6 +106,36 @@ test("the line under the title names each role's reach (issue #487)", () => {
     intro(granted({ kind: "department", name: "Propulsion" }, { kind: "division", name: MA })),
     `Roles in the Propulsion Department and the ${MA}. ${after}`,
   );
+});
+
+test("a grant holder's line names the grant's reach once, never every department (issue #577)", () => {
+  const after = "Open roles show on the site while recruitment is on.";
+  const intro = (p: PositionsPage) => positionsModelOf(p).intro;
+  assert.equal(intro(grantedOver({ kind: "team" })), `Every role in the team. ${after}`);
+  const many = intro(
+    granted(
+      { kind: "department", name: "Aerodynamics" },
+      { kind: "department", name: "Propulsion" },
+      { kind: "department", name: "Structures" },
+    ),
+  );
+  assert.equal(many, `Roles in 3 departments. ${after}`);
+});
+
+test("the recruitment notice names no owner for a grant holder, and keeps a lead's and a head's (issue #577)", () => {
+  assert.deepEqual(recruitmentNoticeOf("granted", true), { phone: "Open roles are public on the site.", wide: "Open roles are public on the site." });
+  assert.deepEqual(recruitmentNoticeOf("granted", false), { phone: "Open roles are hidden on the site.", wide: "Open roles are hidden on the site." });
+  assert.deepEqual(recruitmentNoticeOf("division", true), { phone: "Your open roles are public on the site.", wide: "Your open roles are public on the site." });
+  assert.deepEqual(recruitmentNoticeOf("department", false), {
+    phone: "Your open roles are hidden on the site.",
+    wide: "Your department\u2019s open roles are hidden on the site.",
+  });
+});
+
+test("a row opens Edit position where the viewer may change the role, else the same drawer read-only (issue #577)", () => {
+  assert.equal(positionDrawerModeOf({ canChange: true }), "edit");
+  assert.equal(positionDrawerModeOf({ canChange: false }), "view");
+  assert.equal(positionDrawerModeOf(null), "new");
 });
 
 test("the selects offer only the departments and divisions the viewer reaches", () => {

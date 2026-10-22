@@ -1,5 +1,15 @@
-import { inTab, tabCounts, type ApplicationStage, type ApplicationTab } from "./application-flow";
-import { departmentLabel, divisionsOf, type ApplicationsPage, type PositionRef } from "./recruitment";
+import {
+  footerSteps,
+  inTab,
+  menuSteps,
+  tabCounts,
+  type ApplicantStanding,
+  type ApplicationStage,
+  type ApplicationState,
+  type ApplicationTab,
+  type LeadStep,
+} from "./application-flow";
+import { departmentLabel, divisionsOf, placesPhrase, type ApplicationsPage, type PositionRef } from "./recruitment";
 
 // The Applications page as one view for every role that opens it (Owner
 // decision, 2026-10-19, issues #408 and #416): the team leader, the operations
@@ -54,7 +64,26 @@ function introOf(page: ApplicationsPage): string {
       return page.scope.division ? `Applications for ${page.scope.division} roles.` : "Applications for the positions you lead.";
     case "department":
       return `Applications for ${departmentLabel(page.scope.department.name)} roles. Pick a division to narrow the list.`;
+    case "granted":
+      // The grant's reach, named once, never the member's own division (issue #577).
+      return page.scope.reach.kind === "team"
+        ? "Applications for every role in the team."
+        : `Applications for roles in ${placesPhrase(page.scope.reach.places)}.`;
   }
+}
+
+/**
+ * The steps the detail panel offers on an application (issue #577): its
+ * stage menu's and its footer's, as ./application-flow.ts allows them from
+ * where it stands, only where the viewer may move it. Where they may not,
+ * the menu offers none, so the stage reads as a pill, and there is no footer.
+ */
+export function panelStepsOf(
+  application: { readonly state: ApplicationState; readonly standing: ApplicantStanding; readonly canChange: boolean },
+  division: string,
+): { readonly menu: readonly LeadStep[]; readonly footer: ReturnType<typeof footerSteps> } {
+  if (!application.canChange) return { menu: [], footer: null };
+  return { menu: menuSteps(application.state), footer: footerSteps(application.state, application.standing, division) };
 }
 
 // Narrowing the list: the same selects, switch, search and sort for every role

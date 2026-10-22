@@ -12,6 +12,7 @@ import {
   NO_POSITIONS_FILTER,
   POSITIONS_SORTS,
   positionsModelOf,
+  recruitmentNoticeOf,
   shownPositions,
   type PositionsColumn,
   type PositionsFilter,
@@ -30,7 +31,8 @@ import { TopBarAction } from "./top-bar-slot";
 // Props in, nothing fetched: the page hands over what the dashboard data
 // interface answered, and the switches and the New position drawer write
 // through its server actions. A row or card opens the same drawer on that
-// role to edit it (issue #207); its open switch only opens or closes it. The site-wide switch is #121's, read and
+// role to edit it (issue #207), or read-only where the viewer may not change
+// it (issue #577); its open switch only opens or closes it. The site-wide switch is #121's, read and
 // written through the same interface; this page only draws it as board 41.
 
 /** Flip a switch at once; a refusal flips it back and says why. */
@@ -103,7 +105,7 @@ export function PositionsView({
       {page.scope === "team" ? (
         <RecruitmentSwitch open={recruitment.recruitment.isOpen} canSwitch={recruitment.canSwitch} />
       ) : (
-        <RecruitmentNotice open={recruitment.recruitment.isOpen} department={page.scope === "department"} />
+        <RecruitmentNotice open={recruitment.recruitment.isOpen} scope={page.scope} />
       )}
 
       <div className="mt-4 flex flex-col gap-3 md:mt-6 md:flex-row md:flex-wrap md:items-center">
@@ -236,8 +238,9 @@ function applicationsLine({ total }: PositionApplications): string {
 
 // A row or card is one target: the title is a button whose ::after covers
 // the whole row, as a /projects card's name covers its card, so a click
-// anywhere on it, or Enter or Space on the title, opens Edit position. The
-// open switch sits above that cover, so it only flips the role.
+// anywhere on it, or Enter or Space on the title, opens Edit position, or the
+// role read-only where the viewer may not change it (issue #577). The open
+// switch sits above that cover, so it only flips the role.
 const ROW_TARGET =
   "text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-accent";
 
@@ -245,7 +248,7 @@ type RowProps = { row: PositionRow; chosen: boolean; onEdit: (row: PositionRow) 
 
 function EditTarget({ row, onEdit, className }: { row: PositionRow; onEdit: (row: PositionRow) => void; className: string }) {
   return (
-    <button type="button" onClick={() => onEdit(row)} aria-label={`Edit ${row.title}`} className={`${ROW_TARGET} ${className}`}>
+    <button type="button" onClick={() => onEdit(row)} aria-label={`${row.canChange ? "Edit" : "View"} ${row.title}`} className={`${ROW_TARGET} ${className}`}>
       {row.title}
     </button>
   );
@@ -375,16 +378,10 @@ function RecruitmentSwitch({ open: saved, canSwitch }: { open: boolean; canSwitc
 
 // Boards 57 and 57m: a division lead sees the switch's state, not the switch,
 // in one sentence and nothing more. On a phone the strip takes the state's tint.
-// A department head's strip names their department's roles from md (board 63).
-function RecruitmentNotice({ open, department }: { open: boolean; department: boolean }) {
-  const whose = department ? (
-    <>
-      <span className="md:hidden">Your</span>
-      <span className="hidden md:inline">Your department&rsquo;s</span>
-    </>
-  ) : (
-    "Your"
-  );
+// A department head's strip names their department's roles from md (board 63);
+// a grant holder's names no owner, as they own no roles (issue #577).
+function RecruitmentNotice({ open, scope }: { open: boolean; scope: PositionsPage["scope"] }) {
+  const line = recruitmentNoticeOf(scope, open);
   return (
     <p
       className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-[13px] md:mt-6 md:items-center md:border-hairline md:bg-panel/60 md:px-5 ${
@@ -394,9 +391,14 @@ function RecruitmentNotice({ open, department }: { open: boolean; department: bo
       <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full md:mt-0 ${open ? "bg-success" : "bg-dim"}`} />
       <span>
         <span className="font-semibold text-prt-text">{open ? "Recruitment is open." : "Recruitment is closed."}</span>{" "}
-        <span className="text-text-2">
-          {whose} open roles are {open ? "public" : "hidden"} on the site.
-        </span>
+        {line.phone === line.wide ? (
+          <span className="text-text-2">{line.wide}</span>
+        ) : (
+          <>
+            <span className="text-text-2 md:hidden">{line.phone}</span>
+            <span className="hidden text-text-2 md:inline">{line.wide}</span>
+          </>
+        )}
       </span>
     </p>
   );

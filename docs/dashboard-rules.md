@@ -180,7 +180,8 @@ An admin column comes later. **Planned**, no issue yet.
 ## 2. Applications
 
 - The steps are: Received (New), In review, Interview, Decision, and, after an accept, Joined.
-- In review starts when the lead first opens the application.
+- In review starts when the lead first opens the application. Opening it as someone who may not
+  move it changes nothing (#577).
 
 ### Interview
 
@@ -612,6 +613,16 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
   - Applications at Can edit moves applications between steps and accepts or rejects them.
   - Positions at Can edit opens, closes, adds and edits positions. A grant at Can view, or on
     another area, changes neither page, and no grant makes its holder a division lead (#160).
+  - Where a person may not change a position or an application, its drawer opens read-only:
+    the position's text and lists as plain text with only Close at the foot, and the
+    application's stage as a pill with no stage menu, no footer actions, no Change times and no
+    NDA tick. Opening a new application does not mark it In review for them. It is the same
+    drawer every role opens; only the actions differ (#577).
+  - A member's Positions and Applications lines name what their grant covers, once: "Every role
+    in the team." and "Applications for every role in the team." for a grant across the team,
+    else the department or division it names, never their own division, and a count past two
+    places. Their recruitment notice reads "Open roles are public on the site.", with no "Your"
+    (#577).
   - Orders at either level shows every order in the team (#233). Orders at Can edit also lets
     them request, edit and cancel the orders of that division. Orders at Can view edits nothing.
     A person with no Orders access does not see the Orders page.

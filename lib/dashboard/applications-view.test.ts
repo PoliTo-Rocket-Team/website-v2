@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ApplicationStage } from "./application-flow";
-import { APPLICATIONS_TOOLS, applicationsModelOf, NO_APPLICATIONS_FILTER, shownApplications } from "./applications-view";
+import { footerSteps, menuSteps, type ApplicantStanding, type ApplicationStage, type ApplicationState } from "./application-flow";
+import { APPLICATIONS_TOOLS, applicationsModelOf, NO_APPLICATIONS_FILTER, panelStepsOf, shownApplications } from "./applications-view";
 import type { ApplicationsPage, ApplicationsScope } from "./recruitment";
 
 // Issue #416: the team leader, the operations lead, the IT lead, a department
@@ -98,4 +98,40 @@ test("the stage counts follow the selects and search; the sort orders what is le
   assert.deepEqual(order("newest"), [1, 2, 3, 4]);
   assert.deepEqual(order("oldest"), [4, 3, 2, 1]);
   assert.deepEqual(order("name"), [3, 2, 1, 4]);
+});
+
+test("a grant holder's line names the grant's reach, never their own division; the other lines stay (issue #577)", () => {
+  const intro = (scope: ApplicationsScope) => applicationsModelOf(page(scope, [ma])).intro;
+  assert.equal(intro({ kind: "granted", reach: { kind: "team" } }), "Applications for every role in the team.");
+  assert.equal(
+    intro({ kind: "granted", reach: { kind: "places", places: [{ kind: "department", name: "Propulsion" }] } }),
+    "Applications for roles in the Propulsion Department.",
+  );
+  assert.equal(
+    intro({ kind: "granted", reach: { kind: "places", places: [{ kind: "division", name: "Test Bench" }] } }),
+    "Applications for roles in the Test Bench.",
+  );
+  // Full access, a head and a lead read as before.
+  assert.equal(applicationsModelOf(byRole["team leader"]).intro, "Applications for the positions you lead.");
+  assert.equal(applicationsModelOf(byRole["department head"]).intro, "Applications for Aerodynamics Department roles. Pick a division to narrow the list.");
+  assert.equal(applicationsModelOf(byRole["division lead"]).intro, `Applications for ${ma.division} roles.`);
+});
+
+test("the panel offers no stage step and no footer on an application the viewer may not move (issue #577)", () => {
+  const standing: ApplicantStanding = { kind: "applicant" };
+  const states: readonly ApplicationState[] = [
+    { stage: "new" },
+    { stage: "in-review" },
+    { stage: "accepted", acceptedAt: "2026-10-18T09:00:00.000Z", ndaArrived: true },
+  ];
+  for (const state of states) {
+    assert.deepEqual(panelStepsOf({ state, standing, canChange: false }, "Test Bench"), { menu: [], footer: null }, state.stage);
+    // Where they may move it, the panel offers what the flow allows, as before.
+    assert.deepEqual(
+      panelStepsOf({ state, standing, canChange: true }, "Test Bench"),
+      { menu: menuSteps(state), footer: footerSteps(state, standing, "Test Bench") },
+      state.stage,
+    );
+    assert.ok(menuSteps(state).length > 0 && footerSteps(state, standing, "Test Bench") !== null, `${state.stage}: the flow offers steps here`);
+  }
 });

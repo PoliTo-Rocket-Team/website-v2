@@ -40,7 +40,7 @@ import {
   ago,
   appliedLabels,
   fileSize,
-  grantPlacesOf,
+  grantReachOf,
   quietDays,
   quietNote,
   type ApplicationDocument,
@@ -48,7 +48,7 @@ import {
   type ApplicationsPage,
   type ApplicationsScope,
   type DepartmentUnit,
-  type GrantPlace,
+  type GrantReach,
   type OtherApplication,
   type PositionRow,
   type PositionsPage,
@@ -108,8 +108,10 @@ async function mayChangePosition(identity: Identity, area: "positions" | "applic
  * Applications page in the Applications area (issue #471). A row's
  * application counts are Applications data: they come only where the viewer
  * reads Applications, so a Positions grant alone gets none (issue #477).
+ * Each row keeps the unit it sits in, for the Applications page's change
+ * rule (issue #577); `rowOf` drops it before a page carries the row.
  */
-async function readPositionRows(identity: Identity, area: RecruitmentArea, now: Date): Promise<PositionRow[]> {
+async function readPositionRows(identity: Identity, area: RecruitmentArea, now: Date): Promise<ReadPosition[]> {
   const db = getDb();
   // The tallies are read for every position, beside the positions rather than
   // after them, and picked per row below: one round trip, not two (issue #397).
@@ -157,6 +159,7 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
     const own = tallies.filter((t) => t.position_id === r.id);
     const latest = own.reduce<string | null>((at, t) => (t.last !== null && (at === null || t.last > at) ? t.last : at), null);
     return {
+      unit,
       id: r.id,
       ref: String(r.id),
       title: r.title ?? "Untitled position",
@@ -185,6 +188,14 @@ async function readPositionRows(identity: Identity, area: RecruitmentArea, now: 
       },
     };
   });
+}
+
+/** A position as `readPositionRows` reads it: its row, and the unit it sits in. */
+type ReadPosition = PositionRow & { readonly unit: DivisionUnit };
+
+/** The row a page carries, without the unit it was read with. */
+function rowOf({ unit: _unit, ...row }: ReadPosition): PositionRow {
+  return row;
 }
 
 /**
@@ -220,23 +231,26 @@ async function readNextPositionId(): Promise<number> {
 async function positionsPage(identity: Identity): Promise<PositionsPage> {
   if (!readsRecruitment(identity, "positions")) throw new DashboardRefused("positions");
   // The head's department needs nothing of the positions, so it is read beside them (issue #397).
-  const [positions, divisionChoices, nextId, department, places] = await Promise.all([
+  const [positions, divisionChoices, nextId, department, reach] = await Promise.all([
     readPositionRows(identity, "positions", new Date()),
     readPostableDivisions(identity),
     readNextPositionId(),
     identity.kind === "operations-lead" ? null : readDepartmentUnit(identity),
-    identity.kind === "member" ? readGrantPlaces(identity) : [],
+    identity.kind === "member" ? readGrantReach(identity, "positions") : null,
   ]);
-  const shared = { positions, newPosition: { divisions: divisionChoices, nextId }, readsApplications: readsRecruitment(identity, "applications") };
+  const shared = {
+    positions: positions.map(rowOf),
+    newPosition: { divisions: divisionChoices, nextId },
+    readsApplications: readsRecruitment(identity, "applications"),
+  };
   if (identity.kind === "operations-lead") return { scope: "team", ...shared };
   if (department !== null) return { scope: "department", department, ...shared };
-  const [first, ...rest] = places;
-  if (first !== undefined) return { scope: "granted", places: [first, ...rest], ...shared };
+  if (reach !== null) return { scope: "granted", reach, ...shared };
   return { scope: "division", division: identity.role?.divisionName ?? null, ...shared };
 }
 
-/** The places a member's Positions grants cover (`grantPlacesOf`, issue #487), named from the open departments and divisions. */
-async function readGrantPlaces(identity: Identity): Promise<GrantPlace[]> {
+/** What a member's grants on `area` cover (`grantReachOf`, issues #487, #577), named from the open departments and divisions. */
+async function readGrantReach(identity: Identity, area: "positions" | "applications"): Promise<GrantReach | null> {
   const db = getDb();
   const [openDepartments, openDivisions] = await Promise.all([
     db.select({ id: departments.id, name: departments.name }).from(departments).where(isNull(departments.closedAt)),
@@ -246,7 +260,7 @@ async function readGrantPlaces(identity: Identity): Promise<GrantPlace[]> {
       .innerJoin(departments, eq(divisions.deptId, departments.id))
       .where(and(isNull(divisions.closedAt), isNull(departments.closedAt))),
   ]);
-  return grantPlacesOf(identity, { departments: openDepartments, divisions: openDivisions });
+  return grantReachOf(identity, area, { departments: openDepartments, divisions: openDivisions });
 }
 
 /** A department head's department as the recruitment pages name it, with its division tabs (issue #230). */
@@ -257,8 +271,13 @@ async function readDepartmentUnit(identity: Identity): Promise<DepartmentUnit | 
 
 async function applicationsScope(identity: Identity): Promise<ApplicationsScope> {
   if (identity.kind === "operations-lead") return { kind: "team" };
-  const department = await readDepartmentUnit(identity);
+  const [department, reach] = await Promise.all([
+    readDepartmentUnit(identity),
+    identity.kind === "member" ? readGrantReach(identity, "applications") : null,
+  ]);
   if (department !== null) return { kind: "department", department };
+  // A member reads Applications by a grant: the page names what it covers, never their own division (issue #577).
+  if (reach !== null) return { kind: "granted", reach };
   return { kind: "division", division: identity.role?.divisionName ?? null };
 }
 
@@ -507,6 +526,8 @@ async function applicationsPage(identity: Identity): Promise<ApplicationsPage> {
           ],
           answers: answersOf(r.answers),
           otherApplications: others.get(r.id) ?? [],
+          // The rule the move write asks (`moveApplication`), so the panel never offers a step the server refuses.
+          canChange: mayChangePositionIn(identity, "applications", position.unit),
         },
       ];
     }),

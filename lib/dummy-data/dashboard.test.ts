@@ -45,6 +45,14 @@ test("full access, a head and a lead may switch every role their Positions page 
   }
 });
 
+test("full access, a head and a lead may move every application their Applications page lists (issue #577)", async () => {
+  for (const kind of ["operations-lead", "department-head", "division-lead"] as const) {
+    const page = await session(kind).data.applications();
+    assert.ok(page.applications.length > 0, kind);
+    assert.ok(page.applications.every((a) => a.canChange), kind);
+  }
+});
+
 test("a division lead sees only their division's positions and applications (board 41c)", async () => {
   const { data } = session("division-lead");
   const positions = await data.positions();
