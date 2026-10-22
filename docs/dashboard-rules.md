@@ -576,6 +576,8 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 
   domain. The server accepts firstname.lastname, or one word for a special-purpose address, and
   only on the team domain. The address is saved on the member's record and shown beside their
   team email (board 94e). It tells the requester and the member; Decline tells the requester.
+- The Members export to Excel has an Email alias column beside PRT email: the address on the
+  member's record, empty when they have none.
 - The alias is created by hand in Google Workspace. The site creates nothing there and sends no
   email.
 

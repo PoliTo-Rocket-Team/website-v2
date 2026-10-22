@@ -22,7 +22,8 @@ export async function GET(): Promise<Response> {
   const directory = await data.members(null);
   if (directory.scope !== "whole-team") return refusal(403, "Only full access may export members.");
 
-  const file = await membersWorkbook(directory.people);
+  const aliases = await data.memberAliases(directory.people.map((p) => p.id));
+  const file = await membersWorkbook(directory.people, aliases);
   return new Response(new Uint8Array(file), {
     status: 200,
     headers: {

@@ -24,7 +24,7 @@ import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
 import { positionsModelOf } from "./positions-view";
 import type { PositionsPage } from "./recruitment";
-import { insertRows, recordedWrites } from "./access-matrix/fake-db";
+import { insertRows, keepWrites, recordedWrites } from "./access-matrix/fake-db";
 import { fileReads, resetFiles } from "./access-matrix/fakes/files";
 import { ownPublicStoreHost } from "./access-matrix/fakes/public-store";
 import { accountOf, cvHash, EXTRA, IDS, MARKERS, seedFixture } from "./access-matrix/fixture";
@@ -722,6 +722,7 @@ const EXPECTED_EXPORT_HEADER = [
   "Divisions",
   "Member since",
   "PRT email",
+  "Email alias",
   "Personal email",
   "Phone",
   "Discord",
@@ -802,6 +803,30 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.equal(membersExportFileName(new Date("2026-10-22T09:00:00Z")), "prt-members-2026-10-22.xlsx");
     // 23:30 UTC on the 21st is already the 22nd in Turin.
     assert.equal(membersExportFileName(new Date("2026-10-21T23:30:00Z")), "prt-members-2026-10-22.xlsx");
+  });
+
+  test("the Email alias column holds the address on a member's record, and is empty for everyone without one (epic #538)", async () => {
+    const address = "lead.dm@politorocketteam.it";
+    seedFixture();
+    resetFiles();
+    keepWrites();
+    signInAs(accountOf("operations lead").userId);
+    const marked = await answerOf(() => actions.answerAlias(IDS.aliasRequest(DM), { kind: "created", address }));
+    assert.ok(!isRefusal(marked), JSON.stringify(marked));
+    // Same database, no re-seed: the team leader exports after the alias is saved.
+    signInAs(accountOf("team leader").userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    const directory = await (opening as { data: DashboardData }).data.members(null);
+    assert.ok(directory.scope === "whole-team", "the team leader reads the whole team");
+    const lead = directory.people.find((p) => p.id === IDS.lead(DM));
+    assert.ok(lead !== undefined, "the DM lead is on the team");
+    const [header, ...rows] = readSheet(Buffer.from(await (await membersExportGET()).arrayBuffer()));
+    const column = header.indexOf("Email alias");
+    const cells = new Map(rows.map((r) => [r[0], r[column]]));
+    assert.equal(cells.get(lead.name), address, "the DM lead's row carries the alias");
+    cells.delete(lead.name);
+    assert.deepEqual([...cells.values()].filter((v) => v !== ""), [], "every other member's alias cell is empty");
   });
 });
 
