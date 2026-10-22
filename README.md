@@ -59,6 +59,18 @@ This repository powers the PoliTo Rocket Team website. The stack is Next.js, Ver
 3. Keep the default Next.js framework preset and use the repository root as the project root.
 4. Deploy from the Vercel dashboard or run `pnpm deploy` after authenticating the Vercel CLI.
 
+### Search engine indexing
+
+`SITE_INDEXABLE` decides whether search engines may index the site. Leave it
+unset while the site runs on v2.politorocketteam.it: every page then carries
+`<meta name="robots" content="noindex, nofollow">` and `/robots.txt` disallows
+all paths for all crawlers. Set it to exactly `true` in the Vercel Production
+environment only when politorocketteam.it moves to the new site, then redeploy:
+a changed value takes effect only on a new deployment. Any other value counts
+as unset. The switch is
+read in [`lib/site-indexing.ts`](lib/site-indexing.ts). Preview deployments
+also get Vercel's own `X-Robots-Tag: noindex` header, whatever the value.
+
 ## Neon Branching Workflow
 
 ### Local development
