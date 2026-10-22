@@ -575,9 +575,9 @@ These rules come from the Owner decisions of 2026-10-22 on epic #538 (boards 94 
 - Mark created asks for the address (board 94d), prefilled as firstname.lastname on the team
   domain. The server accepts firstname.lastname, or one word for a special-purpose address, and
   only on the team domain. The address is saved on the member's record and shown beside their
-  team email (board 94e). It tells the requester with a notice; Decline tells the requester.
-- The member learns of their alias from the "Your email alias is ready" card on their own
-  Overview (board 94f, issue #542, `lib/dashboard/alias-setup.ts`), not from a notice. Open setup
+  team email (board 94e). It tells the requester and the member; Decline tells the requester.
+- Beside that notice, the member's own Overview shows the "Your email alias is ready" card
+  (board 94f, issue #542, `lib/dashboard/alias-setup.ts`) until they set the alias up. Open setup
   steps opens "Set up your email alias" (board 94g). Close only closes it; the card stays until
   the member presses "I've set it up", which is stored on their own record. The card shows on
   every Overview shape, a lead's as a member's, and never off the team.
