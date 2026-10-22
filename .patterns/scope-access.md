@@ -1,0 +1,114 @@
+# Auth and scope checks
+
+How the app decides who is signed in and what they may see: Better Auth owns sign-in and the
+session cookie; server code reads the user id from that cookie, then turns the member's rows in
+`scopes` into a `ScopeInfo` for one target (`"positions"`, `"applications"`, ...) and filters by it.
+
+## The shape
+
+1. **Better Auth is built in one place.** `getAuth()` in [lib/auth.ts](../lib/auth.ts) configures
+   Google as the only sign-in provider, a 10-minute session cookie cache and a `customSession`
+   plugin. The catch-all route [app/api/auth/[...all]/route.ts](../app/api/auth/[...all]/route.ts)
+   serves it. Client code uses `authClient`, `signIn` and `useSession` from
+   [lib/auth-client.ts](../lib/auth-client.ts); it never calls `/api/auth` by hand.
+
+2. **The edge gate only checks that a cookie exists.** [proxy.ts](../proxy.ts) sends a request for
+   `/dashboard/*` to `/login?cb=<path>` when `getSessionCookie` finds nothing,
+   sends a signed-in user on `/login` to the `cb` path (`callbackPath` in
+   [lib/auth-callback.ts](../lib/auth-callback.ts), which falls back to `/dashboard` for any `cb`
+   that resolves off-site), and sends `/sign-up` and `/sign-in` to `/login`. It does not validate
+   the session or check any role. On previews and under `next dev` a test developer cookie
+   (`testDeveloperViewer` in [lib/test-developer.ts](../lib/test-developer.ts)) also counts as
+   signed in; in production the cookie is ignored.
+
+3. **Dashboard pages read through one data interface.** `openDashboard()` in
+   [lib/dashboard/open.ts](../lib/dashboard/open.ts) returns a `DashboardOpening`
+   ([lib/dashboard/opening.ts](../lib/dashboard/opening.ts)). It is `open` with the viewer and
+   their data: the dummy arrays in `lib/dummy-data/` for a test developer where no database is
+   configured, else the database rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts))
+   of the signed-in account, or of the viewer's seeded person for a test developer, whose writes
+   are saved as that person on a preview and refused anywhere else ([lib/db-audit.ts](../lib/db-audit.ts)). With no session
+   token it is `signed-out`, and the page sends the visitor to `/login`. With a token but no
+   account it is `account-unresolved`, and the shell shows a sign-out screen: `/login` would send
+   a token holder back to `/dashboard`, so a redirect there would loop. The viewer's kind and
+   `canReach`/`sidebarFor` in [lib/dashboard/access.ts](../lib/dashboard/access.ts) decide what
+   shows. The legacy dashboard pages still use the shape below.
+
+4. **Server code gets the user id from `getCurrentUserId()`.**
+   [lib/current-user.ts](../lib/current-user.ts) reads Better Auth's signed cookie cache with
+   `getCookieCache`. The cache lives 10 minutes and the session token 7 days, so when the cache
+   has lapsed and a token is present it asks Better Auth for the session. It returns the user id
+   or `null`. `getCurrentMemberId()` in
+   [app/actions/get-memberId.ts](../app/actions/get-memberId.ts) maps it to `users.member`.
+
+5. **Access is a `ScopeInfo` for one target.**
+   [app/actions/get-member-scopes.ts](../app/actions/get-member-scopes.ts) reads the member's
+   `scopes` rows, keeps those whose `target` is the asked target or `"all"`, and folds them into:
+
+   ```ts
+   export type ScopeInfo = {
+     hasAdminAccess: boolean;  hasOrgAccess: boolean;
+     hasAdminEdit: boolean;    hasOrgEdit: boolean;
+     departmentIds: Set<number>;          divisionIds: Set<number>;
+     editableDepartmentIds: Set<number>;  editableDivisionIds: Set<number>;
+   };
+   ```
+
+   `access_level: "edit"` adds to the `edit` flags and sets as well. No signed-in user, no member,
+   or no matching scope gives the empty `ScopeInfo`.
+
+6. **Consumers bail early, then widen or filter.** Each consumer returns an empty result on
+   `isEmptyScopeInfo`, shows everything for admin/org, and otherwise filters by department or
+   division id:
+
+   ```ts
+   const scoped =
+     identity.kind === "operations-lead"
+       ? rows
+       : rows.filter((r) => identity.divisionIds.includes(r.division_id) || identity.departmentIds.includes(r.dept_id));
+   if (scoped.length === 0) return [];
+   ```
+   (`readPositionRows` in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts),
+   which reads the viewer's reach from the dashboard identity rather than from `ScopeInfo`)
+
+   A route that serves dashboard data asks the dashboard's rule, never `ScopeInfo`: the file route
+   [docs/applications/[r2key]/[filename]/route.ts](../app/(legacy)/docs/applications/[r2key]/[filename]/route.ts)
+   returns 401 with no user, lets applicants read their own files, and otherwise opens a file only
+   when `applicationDocument` (the rule the dashboard's document route answers by) hands it over,
+   returning 403 when it does not (issue #477).
+
+## When this applies
+
+Any server read or route that shows member-only data. Pass the target that matches the
+`target_type` enum in [db/schema/public.ts](../db/schema/public.ts). Writes need the same check; the dashboard's writes have it (the recruitment switch, and the position and application writes in [lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts); see [audited-mutations.md](./audited-mutations.md)). The Access page and Orders read the viewer's division scopes per area instead, at two levels (`view`, `edit`) on four areas (`positions`, `applications`, `members`, `orders`), with `all` covering each ([lib/dashboard/database-division.ts](../lib/dashboard/database-division.ts), rules in [lib/dashboard/division-access.ts](../lib/dashboard/division-access.ts)). Unit tests cover
+the rules: [lib/dashboard/division-access.test.ts](../lib/dashboard/division-access.test.ts)
+for the Access page's areas and levels, [lib/dashboard/orders.test.ts](../lib/dashboard/orders.test.ts)
+for what each Orders level may do, and [lib/apply/recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
+for who may flip the recruitment switch. The database reads that load `ScopeInfo` and the division
+scopes have no tests of their own.
+
+## Why it is not obvious
+
+- The proxy cookie check is not an access check. A page or action that trusts "the proxy let them
+  in" serves any signed-in user, applicants included.
+- Scope rows are per target. Checking a member's role title, or one scope row without the target
+  filter, grants access across targets.
+
+## Known inconsistencies (not the pattern)
+
+- **Two access models.** [get-members.ts](../app/actions/get-members.ts) decides visibility from
+  `roles.type` (`president`, `head`, `lead`), not from `scopes`. Everything else uses `ScopeInfo`.
+- **Unused rank table.** [lib/permission.config.ts](../lib/permission.config.ts) defines
+  `SCOPE_RANK` and `TARGET_MIN_REQUIREMENTS`, but nothing imports them.
+- **Two entry points to the same check.** Callers use `getScopeInfoForCurrentUser(target)` (one
+  join on `users.id`) or `getCurrentMemberId()` + `getScopeInfoForMember(memberId, target)` (two
+  queries). [get-user-scope.ts](../app/actions/get-user-scope.ts) is a third, which nothing calls
+  since the file route moved to the dashboard's rule (issue #477).
+- **Fallback cannot refresh the cache.** When the cookie cache has lapsed, `getCurrentUserId()`
+  asks Better Auth's `getSession`, which reads the database. A Server Component cannot set cookies,
+  so the cache stays lapsed and every request reads the database until a client call refreshes it.
+  With no `DATABASE_URL` the fallback is skipped and the answer is null.
+- **Writes check scope their own way.** The recruitment switch's database side
+  (`setRecruitment`) reads `getScopeInfoForCurrentUser("positions")` and refuses unless
+  `hasOrgEdit || hasAdminEdit`, and the position and application writes refuse a row outside the
+  lead's scope ([lib/dashboard/database-recruitment.ts](../lib/dashboard/database-recruitment.ts)).

@@ -1,0 +1,61 @@
+# PRT website redesign — handoff (2026-08-24)
+
+Redesign of politorocketteam.it. **Design-first in Pencil; no website code until design approved.**
+Landing page design is APPROVED. Now designing subroutes.
+
+## Files
+- Everything lives in the `website-v2` repo now (moved 2026-08-24 so sessions start at repo root and threejs skills auto-load).
+- Pencil doc (the only working file): `website-v2/design/prt-website.pen`. STALE copies exist at `~/.pencil/documents/413de05c-.../` and `~/Documents/projects/test/prt-design/` — never edit those.
+- Images live NEXT TO the .pen file (referenced as `./name.png`). Partner logos in `./sponsors/` (use `color-*.png` versions).
+- Site stack: Next.js, Tailwind, shadcn, Better Auth magic link + Google, Drizzle + Neon, Vercel.
+- `.claude/skills/` has threejs-* skills — USE THEM for any 3D work.
+- `.claude/skills/rocket-surface/` = the approved rocket look (lighting, worn paint, fins) and the process for building the next vehicles in code. Load it before touching any rocket model.
+- `design/cavour.glb` = the Blender export of Cavour, kept ONLY as the measurement reference. It is NOT served: the hero renders Cavour from code (`components/landing/rocket-cavour.tsx`, numbers measured off this file on 2026-09-17), with the GLB's livery wrap and decal strip extracted to `public/design/cavour/`. Do not move it back under `public/`.
+
+- `design/handoff-hero-rocket.md` = the 2026-09-17 hero rocket session: what was decided, why, and what is still open.
+
+## Hard rules
+- NEVER modify boards 00–03 (`Bqh4w` 00 Tokens, `lKPB9` 01 Navbar, `LJCAP` 02 Buttons & Pills, `H4S7dd` 03 Cards, `onDQB` 04 Form fields, `X45Jje` 03 Landing draft). New ideas → new boards.
+- User style: plain language, ≤6 lines per message, one yes/no question at a time, recs with why + tradeoffs + confidence. No em dashes in site copy. Verify visually with Export (note: unfilled nested frames export dim — add `fill:"$ground"` to parents; it's fine in Pencil itself).
+- Branch prefix `huey/`, GitHub via `gh`, user handle `hueypov`.
+
+## Approved landing page = these boards, in page order
+1. `dXIoU` 04 Hero (+ `SOhKN` 04a load-in, `cFTg5` 04b scroll 30%, `A0XGR` 04c scroll 60%). Team name 90px, "BORN FOR SPACE", body text, footer strip "EST. 2021 · TORINO, ITALY …". **Starfield added to idle board only** (`T7pTl4`): 34 dim stars + 8 navbar stars; mirror to 04a/b/c when final. Plume smoke/shake/zoom = Three.js stage later.
+2. `EcEwO` 05 "Latest" (track record): header "TRACK RECORD / We fly against the best student teams on earth." + featured post card + 3-row list + centered "All news →". Posts come from dashboard posts table. Tag colors: Launch=accent, Competition=warning, Outreach=success, Team=white-10.
+3. `qXl0e` 06 Projects section: header "Three flown. A fourth on the pad." + 4 cards. Cavour card (`iaTkL`): rocket render INSIDE card, tilted 16°, nose stays inside border; tail fades under text (gradient rect). Hover (`Q7XFK1`): scales ~15% in place ("toward viewer"), rotates to 12°, nose pops out of top-right corner; card fill surface-2, stroke border-strong; ≈`transform: scale(1.15) rotate(4deg)`, 300ms ease-out. Other 3 cards empty until renders exist. Render file: `cavour-render-vert.png`.
+4. `mi7Mb` 07 Inside the team: title left "Who's behind the rockets." intro "People who design, machine, solder, test and fly the vehicle themselves, between lectures and exams." Links right (03-style rows): 01 The Team ("The 150+ people flying this year's vehicle"), 02 Alumni ("Everyone who got us off the ground since 2021"), 03 Our University ("Where the team studies, builds and gets its funding"), 04 Mission & Vision ("What we're trying to prove, and where it's going").
+5. `b46m8` 08 Partners: "Their logos fly with the rocket." + logo marquee (right→left loop ~40s, pause on hover) + "Become a partner" → mailto to team address. In Pencil the strip is unclipped/full-length for review; on site it clips + edge-fades. BETA CAE is styled text (their SVG is broken UTF-16 — get a clean file). Magicar/Mul2 logos are low-res (user kept them).
+6. `gDMOf` 09 Apply band (orange): "Build with us." / "Open to every student. No rocketry experience required. We learn together." / Apply to join button / "6 POSITIONS OPEN NOW" = live count from dashboard positions table, hidden at 0.
+7. `xLYRW` 10 Footer: 4 columns; About order = The Team, Alumni, Our University, Mission & Vision; Projects = Cavour, VES, VES Mark II, Efesto (no "All projects"). **Starfield bg** (`eUZY1`, ~52 stars, few twinkle) + shooting star every ~20s upper half. Stars ONLY on hero + footer (bookends) — user rejected stars on middle sections.
+
+## Animations (all agreed with user)
+- **Hero — SUPERSEDED by website-v2 `.decisions/0004-hero-entrance.md` (2026-08-24, amended 2026-09-17; user rejected pinning + scroll dimming).** Built: gathered title+slogan block staggers in → 2s hold → block parts while the rocket climbs in from off-screen lower-left (7s, heavy Starship pace, shader plume) → parks center. No scroll lift-off and no replay: both were built then cut on 2026-09-17. No PNG fallback (no-WebGL = text only). No vibration/shake — bob only. Boards 04a/b/c are design history now.
+- **Projects card hover:** rocket scales ~15% IN PLACE ("toward the viewer" — user explicitly rejected sliding up) + rotates 16°→12°; nose crosses the top-right border because it grows, not because it moves. Card fill → surface-2, stroke → border-strong. 300ms ease-out. ≈ `transform: scale(1.15) rotate(4deg)`, transform-origin center, on the rocket img.
+- **Partners marquee:** logos scroll right→left, continuous loop ~40s, pause on hover. Full-color logos (user rejected grayscale). Edge fade masks on site only (removed in Pencil for review).
+- **Footer starfield:** stars fixed, a few brighter ones twinkle slowly (opacity pulse). One shooting star streaks across the upper half every ~20s. Same field (dimmer, sparser) behind hero navbar + team name. Stars ONLY hero + footer.
+- All doable in CSS except the hero (Three.js).
+
+## Site structure decisions
+- Public: `/` landing; `/projects` index (board `yDRL8` 11, in progress); `/projects/[slug]`; `/about/{the-team,alumni,our-university,mission-vision}`; `/outreach`; `/partners`; `/apply` = list of open positions LINKING TO UNI SITE (no application form on our site, no positions on landing); news post page for "Read the record".
+- Navbar: Projects · About · Outreach · Partners | Apply (orange pill) + Sign in ghost. Logged in: Apply + name+avatar.
+- Members data: joined/left dates on member rows. Active = no leave date → "The Team" page. Alumni = grouped by academic year computed from date ranges. No yearly maintenance.
+- Posts written in dashboard → landing "Latest".
+- PoliTo funds 28% of team budget (use on partners/university pages).
+
+## In progress
+- Board `yDRL8` 11 = /projects index, FIRST DRAFT: 4 rows with guessed specs. Superseded by 11b; keep only for comparison.
+- Board `Qv3JM` 11b = /projects index, v2 (2026-09-20): real data from `specs-from-old-site.md`. Follows the old site's split: THREE projects, not four. H1 "Two rockets flown. One engine on the bench.", stats strip (4 flights · 3 countries · 3 awards · 9 000 m · 5 kN), then one tall card per project. Rocket cards: texture + render left, meta/name/desc, version pills (Cavour CVR 100-75-3/-75-4/-54-6; VES Mark II/Mark I/Test), 2×3 spec grid, and a **launch log** table (date · where · apogee · max speed · result, awards in accent). Efesto card: engine specs (N₂O/ethanol, 5 kN, pressure-fed, regenerative, printed Cu chamber) and five work-line chips (TCA · EC · LSA · TB · ECS). VES and Efesto visuals read "RENDER TBD". Textures are `../public/design/news/tex-*.jpg`. **APPROVED 2026-09-20.** The three-project split is settled (user: "keep project split"): VES Mark I and Mark II are versions of one VES project, not two projects. Do not re-open. Note: the footer Projects column (`xLYRW` 10) still lists four entries; it should follow the split (Cavour, VES, Efesto).
+
+## Todo / open
+- **PARKED (agreed 2026-09-18): the other three rockets.** VES, VES Mark II and Efesto are not being built now. Cavour alone carries the hero and the Cavour project card; the other three cards stay empty and their `/projects` rows read "RENDER TBD". Picking this up needs one side-on photo plus logo PNGs per vehicle from the user, then `.claude/skills/rocket-surface/SKILL.md` and the structure of `components/landing/rocket-cavour.tsx`. Do not start it unprompted.
+- Hosting is settled, do not re-open: `.decisions/0005` (Vercel Hobby, Cloudflare free rejected on CPU time).
+- **Deploys (checked 2026-09-18).** The live project is `website-v2` on the TEAM Vercel account (`info@politorocketteam.it`, `prj_3DEiZelyFEff4LOXUMjqEy9ehhfT`), linked to the GitHub org repo and auto-deploying every push since April. Each branch gets a preview URL; `huey/landing-page` is at https://website-v2-git-huey-landing-page-info-42486522s-projects.vercel.app . A second `website-v2` project on Huey's PERSONAL Vercel account is a stale duplicate, safe to delete.
+- **PARKED (agreed 2026-09-18): production.** The project has never had a successful production deploy — the one production attempt (April, `dev` branch) errored, and `live` is false. Previews are all we use for now. Fix it when the landing page is ready to go public; no custom domain is pointed at Vercel yet.
+- Subroutes to design: /projects/[slug] (next after index), /apply, /about pages, news post page, /outreach, /partners.
+- Full-page assembly board of landing (user hasn't said yes yet).
+- Mirror hero starfield to 04a/b/c once hero final.
+- Real renders for VES, VES Mark II, Efesto (parked, see top of this list); clean BETA CAE + better Magicar logos.
+- Real specs for all vehicles; VES Mark II 2025 IREC result wording verify.
+- ~~Three.js hero stage~~ DONE 2026-08-24, reworked 2026-09-17: `components/landing/hero.tsx` + `hero-rocket-3d.tsx` + `rocket-cavour.tsx` (code-built Cavour, no mesh served; drive-in with throttled plume, no lift-off; belly light driven by the rocket's height on screen; top-lit hero type). Verify with `node scripts/shoot-hero-settled.mjs <outdir>` against `pnpm preview`.
+- React vs Next.js final call (leaning: keep website-v2 Next.js stack).
+- prt-3d roadmap.md step numbering is stale.

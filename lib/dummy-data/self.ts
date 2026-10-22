@@ -1,0 +1,260 @@
+import { positionCode } from "@/lib/apply/positions";
+import { canReach } from "@/lib/dashboard/access";
+import {
+  applyDetailsChange,
+  firstDetailError,
+  parseDetailsChange,
+  type DetailsEditor,
+  type YourDetails,
+} from "@/lib/dashboard/details";
+import {
+  canWithdraw,
+  pickableSlot,
+  type ActiveApplication,
+  type ActiveStage,
+  type InterviewSlot,
+  type MyApplications,
+  type PastApplication,
+} from "@/lib/dashboard/my-applications";
+import type { HandOverOffer } from "@/lib/dashboard/hand-over-request";
+import { fileSize } from "@/lib/dashboard/recruitment";
+import {
+  checkPhoto,
+  normalizeLinkedin,
+  profileRolesOf,
+  type DeleteAccount,
+  type LeaveState,
+  type MyAccount,
+  type MyProfile,
+} from "@/lib/dashboard/self";
+import { homeDivisionOf, homeFirst, membershipsIn, roleIn } from "@/lib/dashboard/team";
+import { testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
+import { refused, written, type Upload, type WriteResult } from "@/lib/dashboard/write";
+import { dummyApplyPosition } from "./apply";
+import { dummyDetails, isOpenOwn, isShownOwn, isWithdrawn, ownApplicationsOf, type DummyOwnApplication } from "./own-applications";
+import type { OwnApplicationsStart, OwnChanges } from "./own";
+import { departments, divisions, people, positions, type DummyPerson } from "./team";
+
+// The viewer's own pages for the test developer (boards 50 to 55, issue
+// #169): built from ./own-applications.ts and ./team.ts, with what the test
+// developer changed (./own.ts) laid over them. Writes answer what the page
+// shows next; the caller (./index.ts) saves the changed cookie.
+
+export type DummySignIn = {
+  readonly personId: number;
+  /** The Google account they sign in with. */
+  readonly signInEmail: string;
+  /** The team address shown on the site. */
+  readonly teamEmail: string;
+};
+
+/** Sign-in and team addresses for the people the test developer can be. */
+export const signIns = [
+  { personId: 1, signInEmail: "giulia.rossi@gmail.com", teamEmail: "g.rossi@politorocketteam.it" },
+  { personId: 2, signInEmail: "marco.bianchi@gmail.com", teamEmail: "m.bianchi@politorocketteam.it" },
+  { personId: 5, signInEmail: "elif.kaya@gmail.com", teamEmail: "elif.kaya@politorocketteam.it" },
+] as const satisfies readonly DummySignIn[];
+
+function signInOf(person: DummyPerson): DummySignIn {
+  return signIns.find((s) => s.personId === person.id) ?? { personId: person.id, signInEmail: person.email, teamEmail: person.email };
+}
+
+/** The team address the site shows for a person the test developer can be. */
+export function teamEmailOf(person: DummyPerson): string {
+  return signInOf(person).teamEmail;
+}
+
+/**
+ * Every division the person is in, home first, as My profile lists them
+ * (issue #185): the home one carries their title, each other one reads by its
+ * role. A seat or a head, in no division, has their title alone.
+ */
+function dummyProfileRoles(person: DummyPerson): MyProfile["roles"] {
+  const home = homeDivisionOf(person.placement);
+  const sources = homeFirst(membershipsIn(person.placement)).map((m) => ({
+    title: m.divisionId === home ? person.title : null,
+    type: m.role === "lead" ? ("lead" as const) : ("core" as const),
+    divisionName: divisions.find((d) => d.id === m.divisionId)?.name ?? null,
+  }));
+  return sources.length === 0 ? [{ title: person.title, division: null }] : profileRolesOf(null, sources);
+}
+
+export function dummyMyProfile(
+  kind: TestViewer,
+  person: DummyPerson,
+  changes: OwnChanges,
+  leave: LeaveState,
+  handOver: HandOverOffer | null,
+): MyProfile {
+  const login = signInOf(person);
+  const details = dummyDetails(kind, changes);
+  return {
+    name: person.name,
+    roles: dummyProfileRoles(person),
+    teamEmail: login.teamEmail,
+    linkedin: details.linkedin === "" ? null : details.linkedin,
+    photoUrl: null,
+    signIn: { provider: "google", email: login.signInEmail },
+    leave,
+    details,
+    handOver,
+  };
+}
+
+export function dummySaveLinkedin(text: string): WriteResult<string | null> {
+  const checked = normalizeLinkedin(text);
+  return checked.ok ? written(checked.value) : refused(checked.error);
+}
+
+export function dummySetPhoto(photo: Upload | null): WriteResult<null> {
+  if (photo === null) return written(null);
+  const error = checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
+  return error === null ? written(null) : refused(error);
+}
+
+/**
+ * The details after a save, checked as the database side checks them: only
+ * the fields `editor` may write change, every other keeps its saved value.
+ */
+export function dummySaveDetails(input: unknown, editor: DetailsEditor, current: YourDetails): WriteResult<YourDetails> {
+  const parsed = parseDetailsChange(input, editor);
+  return parsed.ok ? written(applyDetailsChange(current, parsed.value)) : refused(firstDetailError(parsed.errors));
+}
+
+/** My account for someone off the team: the applicant, or the alumnus (issue #317). */
+export function dummyMyAccount(
+  viewer: "non-member" | "alumni",
+  person: { name: string; email: string },
+  changes: OwnChanges,
+  start: OwnApplicationsStart,
+): MyAccount {
+  return {
+    name: person.name,
+    signIn: { provider: "google", email: person.email },
+    details: dummyDetails(viewer, changes),
+    openApplications: ownApplicationsOf(viewer, start).filter((a) => isOpenOwn(a, changes)).length,
+  };
+}
+
+export function dummyDeleteAccount(options: DeleteAccount): WriteResult<null> {
+  return typeof options.withdrawOpenApplications === "boolean" && typeof options.removeFromAlumni === "boolean"
+    ? written(null)
+    : refused("Check the form.");
+}
+
+// My applications ---------------------------------------------------------
+
+function placeOf(positionId: number) {
+  const position = positions.find((p) => p.id === positionId)!;
+  const division = divisions.find((d) => d.id === position.divisionId)!;
+  const department = departments.find((d) => d.id === division.departmentId)!;
+  return { position, division, department };
+}
+
+/** The lead of a division, who offers its interview times. */
+function leadOf(divisionId: number): string {
+  return people.find((p) => roleIn(membershipsIn(p.placement), divisionId) === "lead")?.name ?? "Your lead";
+}
+
+function activeStage(application: DummyOwnApplication, changes: OwnChanges): ActiveStage | null {
+  const status = application.status;
+  switch (status.kind) {
+    case "received":
+    case "in-review":
+    case "accepted":
+      return { kind: status.kind };
+    case "interview": {
+      const chosenId = changes.slots[application.id];
+      const division = placeOf(application.positionId).division;
+      return {
+        kind: "interview",
+        interview: {
+          lead: leadOf(division.id),
+          slots: status.slots,
+          chosen: status.slots.find((s) => s.id === chosenId) ?? null,
+        },
+      };
+    }
+    case "not-selected":
+    case "joined":
+    case "withdrawn":
+      return null;
+  }
+}
+
+function activeOf(application: DummyOwnApplication, stage: ActiveStage): ActiveApplication {
+  const { position, division, department } = placeOf(application.positionId);
+  return {
+    id: application.id,
+    code: positionCode(dummyApplyPosition(position)),
+    title: position.title,
+    department: department.name,
+    division: division.name,
+    sent: application.sent,
+    stage,
+    files: application.files.map((f) => ({ name: f.name, size: fileSize(f.bytes) })),
+    answers: [{ question: position.question, answer: application.answer }],
+  };
+}
+
+function pastOf(application: DummyOwnApplication, withdrawn: boolean): PastApplication {
+  const { position, division, department } = placeOf(application.positionId);
+  const status = application.status;
+  return {
+    id: application.id,
+    title: position.title,
+    department: department.name,
+    division: division.name,
+    sent: application.sent,
+    outcome: withdrawn
+      ? { kind: "withdrawn" }
+      : status.kind === "joined"
+        ? { kind: "joined", since: status.since }
+        : { kind: "not-selected" },
+  };
+}
+
+/**
+ * Boards 50 and 53 for a test developer looking as `kind`: empty lists for
+ * someone who has not applied yet (issue #179); null for a viewer the access
+ * table keeps off My applications.
+ */
+export function dummyMyApplications(
+  kind: TestViewer,
+  me: { firstName: string; email: string },
+  changes: OwnChanges,
+  start: OwnApplicationsStart,
+): MyApplications | null {
+  if (!canReach(testDeveloperStanding(kind), "my-applications")) return null;
+  // Only what the one-month rule shows, seen from the dummy team's moment (issue #317).
+  const own = ownApplicationsOf(kind, start).filter((a) => isShownOwn(a, changes));
+  const active: ActiveApplication[] = [];
+  const past: PastApplication[] = [];
+  for (const application of own) {
+    const withdrawn = isWithdrawn(application, changes);
+    const stage = withdrawn ? null : activeStage(application, changes);
+    if (stage === null) past.push(pastOf(application, withdrawn));
+    else active.push(activeOf(application, stage));
+  }
+  return { firstName: me.firstName, email: me.email, active, past };
+}
+
+/** Withdraw: the changes with this application withdrawn, or why it cannot be. */
+export function dummyWithdraw(mine: MyApplications | null, changes: OwnChanges, applicationId: number): WriteResult<OwnChanges> {
+  const application = mine?.active.find((a) => a.id === applicationId);
+  if (!application) return refused("That application is not yours, or it is already over.");
+  if (!canWithdraw(application.stage)) return refused("An accepted application cannot be withdrawn.");
+  return written({ ...changes, withdrawn: [...changes.withdrawn, applicationId] });
+}
+
+/** Pick a time: the changes with this slot chosen, and the slot; or why it cannot be. */
+export function dummyChooseSlot(
+  mine: MyApplications | null,
+  changes: OwnChanges,
+  applicationId: number,
+  slotId: number,
+): WriteResult<{ changes: OwnChanges; slot: InterviewSlot }> {
+  const pick = pickableSlot(mine?.active.find((a) => a.id === applicationId), slotId);
+  if (!pick.ok) return refused(pick.error);
+  return written({ changes: { ...changes, slots: { ...changes.slots, [applicationId]: slotId } }, slot: pick.slot });
+}

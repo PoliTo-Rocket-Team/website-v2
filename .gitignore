@@ -10,6 +10,7 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.neon
 
 # testing
 /coverage
@@ -18,9 +19,11 @@
 /.next/
 /out/
 .open-next/
+/bundled/
 
 # production
 /build
+/bundled/
 
 # misc
 .DS_Store
@@ -34,13 +37,22 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
-.dev.vars*
 
 # vercel
 .vercel
 .wrangler/
 
+# legacy local runtime files
+.dev.vars*
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 cloudflare-env.d.ts
+
+# fabrika's local machine state — the per-lane ledger `fabrika lane` writes under
+# `.fabrika/lanes/<n>/`. One machine's run log; never committed.
+/.fabrika/
+
+# personal Claude Code settings
+.claude/settings.local.json

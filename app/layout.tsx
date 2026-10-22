@@ -1,26 +1,56 @@
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import type { Viewport } from "next";
 import { ThemeProvider } from "next-themes";
-import Link from "next/link";
+import { Archivo, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
-import MaxWidthWrapper from "@/components/max-width-wrapper";
-import AuthButton from "@/components/header-auth";
 import { Toaster } from "@/components/ui/sonner";
+import { brand } from "@/lib/brand-colors";
+import { rootRobots, siteIndexable } from "@/lib/site-indexing";
 
 const defaultUrl =
   process.env.BETTER_AUTH_URL ??
   "http://localhost:3000/";
 
-//! todo metadata update
 export const metadata = {
   metadataBase: new URL(defaultUrl),
   title: "PoliTo Rocket Team",
-  description: "PoliTo Rocket Team website and recruitment platform",
+  description:
+    "The rocket engineering student team of Politecnico di Torino. Born for space, built in Torino.",
+  // Every page says noindex, nofollow until SITE_INDEXABLE is "true" (issue
+  // #549). A page that sets its own `robots: { index: false }` keeps it.
+  robots: rootRobots(siteIndexable()),
 };
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  display: "swap",
+// The accent orange as the theme colour: chat apps paint a shared link's
+// card bar with it (issue #454).
+export const viewport: Viewport = {
+  themeColor: brand.accent,
+};
+
+const archivo = Archivo({
   subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["400", "500", "600", "700", "800", "900"],
+});
+
+// Archivo's own "&" is a narrow, old-style shape that reads as another font
+// (issue #363). This face carries Inter Tight's "&" alone (a Google Fonts
+// `text=&` subset of the variable font, weights 400 to 900, SIL Open Font
+// License) and claims only U+0026, so it sits first in the display stack and
+// every other glyph falls through to Archivo at the same weight.
+const ampersand = localFont({
+  src: "./fonts/inter-tight-ampersand.woff2",
+  variable: "--font-ampersand",
+  weight: "400 900",
+  adjustFontFallback: false,
+  declarations: [{ prop: "unicode-range", value: "U+0026" }],
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
 });
 
 export default function RootLayout({
@@ -29,54 +59,32 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={plusJakartaSans.className}
-      suppressHydrationWarning
-    >
-      <body className="bg-background text-foreground">
+    // Background on <html>, not just <body>: on reload the browser paints the
+    // root before the stylesheet lands, and its default is white. That white
+    // shows through every transparent canvas for a frame. The colour is the
+    // `ground` token, read from the module tailwind.config.ts builds it from.
+    <html lang="en" suppressHydrationWarning style={{ background: brand.ground, colorScheme: "dark" }}>
+      <body className={`${ampersand.variable} ${archivo.variable} ${geistMono.variable} bg-ground text-prt-text font-display antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="dark"
+          enableSystem={false}
           disableTransitionOnChange
         >
-          <main>
-            {/* //! todo nav component needed here */}
-            <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16 items-center mb-5">
-              <div className="w-full max-w-7xl flex justify-between items-center p-3 px-5 text-sm">
-                <div className="flex gap-5 items-center font-bold">
-                  {/* //! todo add logo here and link to home page */}
-                  <Link href={"/"}>PRT</Link>
-                </div>
-                <div className="flex items-center">
-                  <Link href={"/apply"} className="mr-4 ">
-                    Apply
-                  </Link>
-                </div>
-                <AuthButton />
-              </div>
-              <ThemeSwitcher />
-            </nav>
-
-            <MaxWidthWrapper>{children}</MaxWidthWrapper>
-            <Toaster
-              richColors
-              position="bottom-center"
-              closeButton={false}
-              toastOptions={{
-                style: {
-                  marginBottom: "3rem",
-                },
-              }}
-            />
-
-            {/* //! todo footer component needed here */}
-            <footer className="w-full flex mt-10 items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-              <p>Footer and Copyright text here</p>
-            </footer>
-          </main>
+          {children}
+          <Toaster
+            richColors
+            position="bottom-center"
+            closeButton={false}
+            toastOptions={{
+              style: {
+                marginBottom: "3rem",
+              },
+            }}
+          />
         </ThemeProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

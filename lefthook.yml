@@ -1,0 +1,10 @@
+# Git hooks, managed by lefthook. `pnpm install` installs them through the
+# `prepare` script, tools/install-git-hooks.sh.
+
+# `git worktree add` fires post-checkout, and so does Fabrika's WorktreeCreate
+# hook after its own add. The script acts only on that first checkout of a
+# linked worktree; a branch switch returns at once.
+post-checkout:
+  commands:
+    set-up-worktree:
+      run: sh tools/set-up-worktree.sh {1}

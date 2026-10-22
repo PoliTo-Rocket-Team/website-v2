@@ -1,50 +1,28 @@
-"use server";
+import type { Metadata } from "next";
+import { ApplyContent, ApplyFrame } from "@/components/apply/apply-page";
+import { plainApplyData } from "@/lib/apply/open";
+import { applyPage } from "@/lib/apply/page";
+import { applyListing } from "@/lib/apply/positions";
 
-import { getPublicPositions } from "@/app/actions/get-apply-positions";
-import { ApplyPositionsList } from "@/components/apply-positions-list";
-import { Button } from "@/components/ui/button";
+export const metadata: Metadata = {
+  title: "Apply · PoliTo Rocket Team",
+  description: applyPage.description,
+};
 
-export default async function Apply() {
-  const { positions: openPositions } = await getPublicPositions();
+// The whole page is prerendered, positions included, so it is all there in
+// the first paint (issue #163). It reads no request data: the positions come
+// from the environment's side (lib/apply/open.ts), which on the database is
+// the cached public read the dashboard refreshes when a position or the
+// recruitment switch changes. The questions are read the same way, and a
+// question write refreshes their cached read (issue #258). In dummy mode, a request carrying `?open=`,
+// the dummy recruitment cookie or the test developer's dashboard state is sent to ./dummy-state by
+// proxy.ts instead.
+export default async function ApplyPage() {
+  const data = plainApplyData();
+  const [positions, faqs] = await Promise.all([data.publicPositions(), data.faqs()]);
   return (
-    <div>
-      <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
-        <h2 className="text-4xl md:text-7xl font-bold text-primary border-b pt-5 pb-10 ">
-          Apply
-        </h2>
-
-        <p className="text-muted-foreground w-3/4">
-          Get Involved! PoliTo Rocket Team has numerous positions available for
-          undergraduate and graduate students of Politecnico di Torino. Here you
-          can find our Open Positions and some Frequently Asked Questions about
-          our recruitment process or about the Team. If you still have some
-          questions, don’t hesitate to reach out to us on social media or at{" "}
-          <a
-            href="mailto:recruitment@politorocketteam.it"
-            className="underline text-orange-500"
-          >
-            recruitment@politorocketteam.it
-          </a>
-        </p>
-      </div>
-      <div className=" max-w-5xl mx-auto">
-        <h2 className="text-lg md:text-4xl font-bold text-center text-primary mb-4 md:mb-8">
-          Open Positions
-        </h2>
-        <>
-          <div className="hidden md:visible md:grid md:grid-cols-[3fr_2fr_2fr_auto] text-center md:justify-items-start text-base px-4 py-5">
-            <h3>Position</h3>
-            <h3>Department</h3>
-            <h3>Division</h3>
-            <Button className="invisible h-4 w-10"></Button>
-          </div>
-          <ApplyPositionsList
-            positions={openPositions}
-            pageContext="apply"
-            disclaimer="true"
-          />
-        </>
-      </div>
-    </div>
+    <ApplyFrame>
+      <ApplyContent listing={applyListing(positions)} faqs={faqs} />
+    </ApplyFrame>
   );
 }

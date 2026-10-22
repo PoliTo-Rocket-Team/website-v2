@@ -1,0 +1,629 @@
+"use client";
+
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { AtSign, Info, Linkedin, Lock, LogOut, Mail, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import type { DashboardLanding } from "@/lib/dashboard/access";
+import type { YourDetails } from "@/lib/dashboard/details";
+import {
+  checkPhoto,
+  DELETE_MEMBER_ACCOUNT_COPY,
+  MAX_LEAVE_REASON,
+  normalizeLinkedin,
+  profileRoleLine,
+  type LeaveState,
+  type MyProfile,
+} from "@/lib/dashboard/self";
+import type { HandOverOffer, HandOverSend } from "@/lib/dashboard/hand-over-request";
+import type { ViewerSession } from "@/lib/dashboard/viewer";
+import type { OwnAlias } from "@/lib/dashboard/alias-setup";
+import { AliasSetupLink } from "./alias-setup";
+import { MarkFallback } from "@/components/mark-fallback";
+import type { WriteResult } from "@/lib/dashboard/write";
+import { AccountCard, Card, DANGER_GHOST_PILL, DANGER_PILL, DangerBox, DangerRow, DeleteAccountDialog, RemoveFromAlumniBox } from "./account-parts";
+import { ConfirmDialog } from "./confirm-dialog";
+import { Drawer } from "./drawer";
+import { Field, inputClass, LOCKED_INPUT } from "./field";
+import { HandOverDialog, handOverRowText } from "./hand-over-dialog";
+import { GHOST_PILL, PageHeader, PRIMARY_PILL } from "./page-header";
+import { PHOTO_ACCEPT, PhotoCropDialog } from "./photo-crop-dialog";
+import { DetailValue, EditPill, YourDetailsCard } from "./your-details";
+
+type Actions = {
+  saveLinkedin: (text: string) => Promise<WriteResult<string | null>>;
+  uploadPhoto: (form: FormData) => Promise<WriteResult<null>>;
+  removePhoto: () => Promise<WriteResult<null>>;
+  saveDetails: (input: unknown) => Promise<WriteResult<YourDetails>>;
+  leaveTeam: (reason: string, removeFromAlumni: boolean) => Promise<WriteResult<DashboardLanding>>;
+  sendHandOver: (input: HandOverSend) => Promise<WriteResult<null>>;
+  deleteAccount: (withdrawOpenApplications: boolean, removeFromAlumni: boolean) => Promise<WriteResult<null>>;
+};
+
+// Board 55 (55m on phones): a team member's own profile. The photo at the two
+// sizes the site shows it, the details their lead sets with their LinkedIn,
+// "Your details", how they sign in, and Leave or delete. Props in, nothing
+// fetched; every change lives in this page's state once the write answers.
+export function MyProfileView({
+  profile,
+  alias = null,
+  session,
+  ...actions
+}: { profile: MyProfile; alias?: OwnAlias | null; session: ViewerSession } & Actions) {
+  return (
+    <>
+      <PageHeader title="My profile" intro="How you appear on the site and to the team." />
+      <div className="mt-6 flex flex-col gap-5">
+        <PhotoCard
+          photoUrl={profile.photoUrl}
+          uploadPhoto={actions.uploadPhoto}
+          removePhoto={actions.removePhoto}
+          detail="Used on the site to show you. Make sure your face is clear even when small. Square image, JPEG or PNG, up to 2 MB; we crop and resize it for you."
+          previews={PROFILE_PREVIEWS}
+        />
+        <DetailsCard profile={profile} alias={alias} saveLinkedin={actions.saveLinkedin} />
+        <YourDetailsCard details={profile.details} editor="member" saveDetails={actions.saveDetails} />
+        <AccountCard signIn={profile.signIn} />
+        <LeaveOrDelete
+          leave={profile.leave}
+          handOver={profile.handOver}
+          session={session}
+          leaveTeam={actions.leaveTeam}
+          sendHandOver={actions.sendHandOver}
+          deleteAccount={actions.deleteAccount}
+        />
+      </div>
+    </>
+  );
+}
+
+/** One size the photo shows at on the site, with where: "Team page", "Dashboard", "Alumni page". */
+export type PhotoPreviewSize = { readonly caption: string; readonly size: string };
+
+/** Board 55: the Team page's size beside the dashboard's. */
+const PROFILE_PREVIEWS: readonly PhotoPreviewSize[] = [
+  { caption: "Team page", size: "h-[72px] w-[72px] md:h-24 md:w-24" },
+  { caption: "Dashboard", size: "h-8 w-8 md:h-10 md:w-10" },
+];
+
+/**
+ * The Photo card: the photo at each size the site shows it, Upload photo
+ * through the crop dialog, and Remove photo. My profile (board 55) and My
+ * alumni (board 56b, issue #317) each hand in their own writes and sizes.
+ */
+export function PhotoCard({
+  photoUrl,
+  uploadPhoto,
+  removePhoto,
+  detail,
+  previews,
+}: {
+  photoUrl: string | null;
+  uploadPhoto: Actions["uploadPhoto"];
+  removePhoto: Actions["removePhoto"];
+  detail: string;
+  previews: readonly PhotoPreviewSize[];
+}) {
+  const [shown, setShown] = useState(photoUrl);
+  const [cropping, setCropping] = useState<File | null>(null);
+  const [pending, setPending] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const local = useRef<string | null>(null);
+  useEffect(() => () => {
+    if (local.current) URL.revokeObjectURL(local.current);
+  }, []);
+
+  const show = (url: string | null) => {
+    if (local.current) URL.revokeObjectURL(local.current);
+    local.current = url !== null && url.startsWith("blob:") ? url : null;
+    setShown(url);
+  };
+
+  const choose = (file: File) => {
+    const error = checkPhoto(file);
+    if (error !== null) {
+      toast.error("Could not use that photo", { description: error });
+      return;
+    }
+    setCropping(file);
+  };
+
+  const save = async (square: File) => {
+    setPending(true);
+    try {
+      const form = new FormData();
+      form.set("photo", square);
+      const result = await uploadPhoto(form);
+      if (!result.ok) {
+        toast.error("Could not upload the photo", { description: result.error });
+        return;
+      }
+      show(URL.createObjectURL(square));
+      setCropping(null);
+      toast.success("Photo updated");
+    } catch (err) {
+      toast.error("Could not upload the photo", { description: err instanceof Error ? err.message : "Please try again." });
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const remove = async () => {
+    setPending(true);
+    try {
+      const result = await removePhoto();
+      if (!result.ok) {
+        toast.error("Could not remove the photo", { description: result.error });
+        return;
+      }
+      show(null);
+      toast.success("Photo removed");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Card title="Photo" detail={detail}>
+      <div className="flex flex-col gap-6 px-5 py-5 md:flex-row md:items-end md:justify-between md:px-6">
+        <div className="flex items-end gap-6 md:gap-7">
+          {previews.map((preview) => (
+            <PhotoPreview key={preview.caption} url={shown} size={preview.size} caption={preview.caption} />
+          ))}
+        </div>
+        <div className="flex flex-col items-stretch gap-3 md:items-end">
+          <input
+            ref={input}
+            type="file"
+            accept={PHOTO_ACCEPT}
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) choose(file);
+            }}
+          />
+          <button type="button" disabled={pending} onClick={() => input.current?.click()} className={`${PRIMARY_PILL} h-11 md:h-10`}>
+            <Upload aria-hidden className="h-4 w-4" strokeWidth={2} />
+            Upload photo
+          </button>
+          {shown !== null && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={remove}
+              className="text-[13px] text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              Remove photo
+            </button>
+          )}
+        </div>
+      </div>
+      <PhotoCropDialog
+        file={cropping}
+        onOpenChange={(open) => !open && setCropping(null)}
+        onChooseAnother={() => input.current?.click()}
+        onSave={save}
+        pending={pending}
+      />
+    </Card>
+  );
+}
+
+function PhotoPreview({ url, size, caption }: { url: string | null; size: string; caption: string }) {
+  return (
+    <figure className="flex flex-col items-center gap-2">
+      {url === null ? (
+        <span aria-hidden className={`relative block rounded-full bg-white-10 ${size}`}>
+          <MarkFallback />
+        </span>
+      ) : (
+        // A blob: preview or a Blob store URL; next/image would need every store host configured.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className={`rounded-full object-cover ${size}`} />
+      )}
+      <figcaption className="text-[12px] text-prt-muted">{caption}</figcaption>
+    </figure>
+  );
+}
+
+/**
+ * Name, role and team email are set by the lead; LinkedIn is the person's.
+ * From md it is board 55's form; on phones board 55m's list, whose Edit opens
+ * LinkedIn on a full page. Once their email alias is marked created, it shows
+ * beside the team email with a link to its setup steps (issue #542).
+ */
+function DetailsCard({ profile, alias, saveLinkedin }: { profile: MyProfile; alias: OwnAlias | null; saveLinkedin: Actions["saveLinkedin"] }) {
+  const [saved, setSaved] = useState(profile.linkedin ?? "");
+  const [editing, setEditing] = useState(false);
+  return (
+    <Card title="Details" meta={<span className="md:hidden"><EditPill onClick={() => setEditing(true)} /></span>}>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 px-5 py-5 md:hidden">
+        <DetailValue label="Name" value={profile.name} />
+        {/* One role reads by its title (board 55m); several name each division (issue #185). */}
+        <DetailValue
+          label={profile.roles.length === 1 ? "Role" : "Roles"}
+          value={profile.roles.length === 1 ? profile.roles[0].title : profile.roles.map(profileRoleLine).join(", ")}
+        />
+        <DetailValue label="Team email" value={profile.teamEmail} />
+        <DetailValue label="LinkedIn" value={saved || null} />
+        {alias && (
+          <div className="col-span-2 min-w-0">
+            <DetailValue label="Email alias" value={alias.address} />
+            <div className="mt-1.5">
+              <AliasSetupLink alias={alias} />
+            </div>
+          </div>
+        )}
+      </dl>
+      <div className="hidden md:block">
+        <LinkedinForm profile={profile} alias={alias} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
+      </div>
+      <LinkedinDrawer open={editing} onOpenChange={setEditing} saved={saved} onSaved={setSaved} saveLinkedin={saveLinkedin} />
+    </Card>
+  );
+}
+
+/** Checks and saves the LinkedIn field; answers the error to show, or null once saved. */
+function useLinkedinSave(saveLinkedin: Actions["saveLinkedin"], onSaved: (value: string) => void) {
+  const [pending, setPending] = useState(false);
+  const save = async (text: string): Promise<string | null> => {
+    const checked = normalizeLinkedin(text);
+    if (!checked.ok) return checked.error;
+    setPending(true);
+    try {
+      const result = await saveLinkedin(text);
+      if (!result.ok) return result.error;
+      onSaved(result.value ?? "");
+      toast.success("Saved");
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : "Please try again.";
+    } finally {
+      setPending(false);
+    }
+  };
+  return { pending, save };
+}
+
+function LinkedinInput({ id, describedBy, value, error, onChange }: { id: string; describedBy: string | undefined; value: string; error?: string; onChange: (value: string) => void }) {
+  return (
+    <div className="relative">
+      <Linkedin aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-2" strokeWidth={1.75} />
+      <input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="linkedin.com/in/your-name"
+        autoComplete="url"
+        aria-invalid={error !== undefined}
+        aria-describedby={describedBy}
+        className={`${inputClass(error)} pl-10`}
+      />
+    </div>
+  );
+}
+
+function LinkedinForm({
+  profile,
+  alias,
+  saved,
+  onSaved,
+  saveLinkedin,
+}: {
+  profile: MyProfile;
+  alias: OwnAlias | null;
+  saved: string;
+  onSaved: (value: string) => void;
+  saveLinkedin: Actions["saveLinkedin"];
+}) {
+  const [linkedin, setLinkedin] = useState(saved);
+  const [error, setError] = useState<string>();
+  const { pending, save } = useLinkedinSave(saveLinkedin, (value) => {
+    setLinkedin(value);
+    onSaved(value);
+  });
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError((await save(linkedin)) ?? undefined);
+  };
+
+  return (
+    <form noValidate onSubmit={submit} className="px-6 py-5">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+        <Locked label="Name" hint="set by your lead" value={profile.name} />
+        <Locked label={profile.roles.length === 1 ? "Role" : "Roles"} hint="set by your lead" value={profile.roles.map(profileRoleLine)} />
+        {profile.teamEmail && <Locked label="Team email" hint="shown on the site" value={profile.teamEmail} icon={<Mail aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />} />}
+        <Field label="LinkedIn" hint="optional" error={error} className={profile.teamEmail ? "" : "col-start-2"}>
+          {(id, describedBy) => (
+            <LinkedinInput
+              id={id}
+              describedBy={describedBy}
+              value={linkedin}
+              error={error}
+              onChange={(value) => {
+                setLinkedin(value);
+                setError(undefined);
+              }}
+            />
+          )}
+        </Field>
+        {alias && (
+          <Locked
+            label="Email alias"
+            hint={<AliasSetupLink alias={alias} />}
+            value={alias.address}
+            icon={<AtSign aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
+          />
+        )}
+      </div>
+      <div className="mt-5 flex justify-end">
+        <button type="submit" disabled={pending || linkedin.trim() === saved} className={`${GHOST_PILL} h-10 px-4 text-[14px] font-semibold`}>
+          Save changes
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function LinkedinDrawer({
+  open,
+  onOpenChange,
+  saved,
+  onSaved,
+  saveLinkedin,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  saved: string;
+  onSaved: (value: string) => void;
+  saveLinkedin: Actions["saveLinkedin"];
+}) {
+  const [linkedin, setLinkedin] = useState(saved);
+  const [error, setError] = useState<string>();
+  const { pending, save } = useLinkedinSave(saveLinkedin, (value) => {
+    onSaved(value);
+    onOpenChange(false);
+  });
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          setLinkedin(saved);
+          setError(undefined);
+        }
+        onOpenChange(next);
+      }}
+      title="Details"
+      detail="Your lead sets your name, role and team email."
+      submitLabel="Save changes"
+      submitting={pending}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError((await save(linkedin)) ?? undefined);
+      }}
+    >
+      <Field label="LinkedIn" hint="optional" error={error}>
+        {(id, describedBy) => (
+          <LinkedinInput
+            id={id}
+            describedBy={describedBy}
+            value={linkedin}
+            error={error}
+            onChange={(value) => {
+              setLinkedin(value);
+              setError(undefined);
+            }}
+          />
+        )}
+      </Field>
+    </Drawer>
+  );
+}
+
+/** A field the person cannot change: one locked line per value, so each role of several reads whole (issue #185). */
+function Locked({ label, hint, value, icon }: { label: string; hint: ReactNode; value: string | readonly string[]; icon?: ReactNode }) {
+  const lines = typeof value === "string" ? [value] : value;
+  return (
+    <div className="min-w-0">
+      <p className="mb-2 text-[13px] leading-snug text-prt-text">
+        {label}
+        <span className="ml-1.5 text-prt-muted">{hint}</span>
+      </p>
+      <div className="flex flex-col gap-2">
+        {lines.map((line) => (
+          <p key={line} className={LOCKED_INPUT}>
+            {icon}
+            <span className="truncate">{line}</span>
+            <Lock aria-label="Locked" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const LEAVE_TEXT = "Your division lead sees a notice on their dashboard, and you move to Alumni. You keep your account.";
+const LEFT_TEXT = "You left the team and are on the Alumni list. You keep your account.";
+
+/**
+ * Board 55's "Leave or delete": one card from md, two on phones (55m). Leave
+ * asks first, with an optional reason (55b); Delete asks for the word DELETE
+ * (55c). A division lead or a department head has "Hand over your role" in
+ * place of Leave (board 55d, issue #262): it asks who takes over and what
+ * they do next, then waits for the next level up.
+ */
+function LeaveOrDelete({
+  leave: initial,
+  handOver: initialOffer,
+  session,
+  leaveTeam,
+  sendHandOver,
+  deleteAccount,
+}: {
+  leave: LeaveState;
+  handOver: HandOverOffer | null;
+  session: ViewerSession;
+  leaveTeam: Actions["leaveTeam"];
+  sendHandOver: Actions["sendHandOver"];
+  deleteAccount: Actions["deleteAccount"];
+}) {
+  const [leave, setLeave] = useState(initial);
+  const [offer, setOffer] = useState(initialOffer);
+  const [asking, setAsking] = useState<"leave" | "hand-over" | "delete" | null>(null);
+  const left = leave === "left";
+
+  const exitRow =
+    offer !== null ? (
+      <DangerRow title="Hand over your role" text={handOverRowText(offer)}>
+        {offer.waiting === null && (
+          <button type="button" onClick={() => setAsking("hand-over")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
+            Hand over your role
+          </button>
+        )}
+      </DangerRow>
+    ) : (
+      <DangerRow title="Leave the team" text={left ? LEFT_TEXT : LEAVE_TEXT}>
+        {!left && (
+          <button type="button" onClick={() => setAsking("leave")} className={`${DANGER_GHOST_PILL} w-full md:w-auto`}>
+            Leave the team
+          </button>
+        )}
+      </DangerRow>
+    );
+  const deleteButton = (
+    <button type="button" onClick={() => setAsking("delete")} className={`${DANGER_PILL} w-full md:w-auto`}>
+      Delete account
+    </button>
+  );
+
+  return (
+    <>
+      <Card title="Leave or delete" danger className="hidden md:block">
+        <div className="divide-y divide-danger/25">
+          {exitRow}
+          <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
+            {deleteButton}
+          </DangerRow>
+        </div>
+      </Card>
+      <div className="flex flex-col gap-5 md:hidden">
+        <section className="rounded-xl border border-hairline bg-panel/60">{exitRow}</section>
+        <DangerBox>
+          <DangerRow title="Delete account" text={DELETE_MEMBER_ACCOUNT_COPY}>
+            {deleteButton}
+          </DangerRow>
+        </DangerBox>
+      </div>
+
+      <LeaveDialog
+        open={asking === "leave"}
+        onOpenChange={(open) => setAsking(open ? "leave" : null)}
+        leaveTeam={leaveTeam}
+        // The dialog stays open, pending, until the applicant's page replaces this one (issue #227).
+        onLeft={() => setLeave("left")}
+      />
+      {offer !== null && (
+        <HandOverDialog
+          open={asking === "hand-over"}
+          onOpenChange={(open) => setAsking(open ? "hand-over" : null)}
+          offer={offer}
+          sendHandOver={sendHandOver}
+          onSent={(waiting) => {
+            setOffer({ ...offer, waiting });
+            setAsking(null);
+          }}
+        />
+      )}
+      <DeleteAccountDialog
+        open={asking === "delete"}
+        onOpenChange={(open) => setAsking(open ? "delete" : null)}
+        session={session}
+        openApplications={null}
+        member
+        deleteAccount={deleteAccount}
+      />
+    </>
+  );
+}
+
+function LeaveDialog({
+  open,
+  onOpenChange,
+  leaveTeam,
+  onLeft,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  leaveTeam: Actions["leaveTeam"];
+  onLeft: () => void;
+}) {
+  const router = useRouter();
+  const [reason, setReason] = useState("");
+  const [removeFromAlumni, setRemoveFromAlumni] = useState(false);
+  const [leaving, startLeaving] = useTransition();
+  const reasonId = useId();
+
+  // The dialog stays open and pending from the confirm until the applicant's
+  // page replaces this one: the write, then the move, run as one transition
+  // (issue #227). Off the team, the dashboard opens as an applicant's (issue
+  // #201), on the page the write names, so no redirect runs on the way; the
+  // page loads over the dashboard's loading fallback, never an empty main area.
+  const confirm = () =>
+    startLeaving(async () => {
+      const result = await leaveTeam(reason, removeFromAlumni);
+      if (!result.ok) {
+        toast.error("Could not leave the team", { description: result.error });
+        return;
+      }
+      onLeft();
+      toast.success("You left the team");
+      router.replace(result.value);
+    });
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setReason("");
+          setRemoveFromAlumni(false);
+        }
+        onOpenChange(next);
+      }}
+      icon={<LogOut className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+      title="Leave the team?"
+      description="Your division lead sees a notice on their dashboard. You move to Alumni with your years on the team."
+      cancelLabel="Stay"
+      confirmLabel="Leave the team"
+      danger
+      pending={leaving}
+      onConfirm={confirm}
+    >
+      <ul className="mt-5 flex flex-col gap-2.5 rounded-xl border border-hairline bg-white-5 px-4 py-3.5 text-[13px] text-text-2">
+        {["You lose access to team pages", "Your account stays, so you can apply again later"].map((line) => (
+          <li key={line} className="flex items-center gap-2.5">
+            <Info aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+            {line}
+          </li>
+        ))}
+      </ul>
+      <label htmlFor={reasonId} className="mt-5 block text-[13px] font-medium">
+        Why are you leaving?<span className="ml-1.5 font-normal text-prt-muted">optional</span>
+      </label>
+      <textarea
+        id={reasonId}
+        value={reason}
+        maxLength={MAX_LEAVE_REASON}
+        onChange={(e) => setReason(e.target.value)}
+        rows={3}
+        className={`${inputClass()} mt-2 h-auto resize-none py-2.5`}
+      />
+      <RemoveFromAlumniBox checked={removeFromAlumni} onChange={setRemoveFromAlumni} />
+    </ConfirmDialog>
+  );
+}

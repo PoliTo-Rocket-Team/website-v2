@@ -1,0 +1,160 @@
+"use client";
+
+import { Suspense, use, useState, type ReactNode } from "react";
+import { redirect, usePathname } from "next/navigation";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Menu, X } from "lucide-react";
+import { Dialog, DialogClose, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { pageTitleFor } from "@/lib/dashboard/access";
+import type { DashboardChrome } from "@/lib/dashboard/chrome";
+import { AccountUnresolved } from "./account-unresolved";
+import { Avatar } from "./avatar";
+import { Sidebar, SidebarNavigate } from "./sidebar";
+import { TopBarSlot } from "./top-bar-slot";
+import { UserSheet } from "./user-card";
+
+/** A round icon button in the phone top bar: the menu, or a full page's back arrow. */
+export const ICON_BUTTON =
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white-10";
+
+// The dashboard frame (boards 51b, 52, 56): a 248px sidebar fixed on the left
+// and the page to its right, 40px in. Below md (boards 50m-b, 52m, 56m) a 56px
+// top bar holds a menu button, the page's title, the page's main action where
+// it puts one there (boards 60m, 61m) and the viewer's avatar. The
+// menu button opens the sidebar as a 300px sheet from the left; the avatar
+// opens the user menu as a bottom sheet. Both are the repo's Radix dialog,
+// built on the primitive as nav-menu.tsx is: they slide in only under
+// motion-safe and close at once (issues #79, #80). A page may put its main action
+// in the top bar beside the avatar (board 57m "+ New") with TopBarAction.
+// The frame paints at once and the page streams into it (issue #397): the
+// viewer's chrome arrives on its own, so the parts that need it come in as
+// slots the layout wraps in their own Suspense, each with a quiet placeholder:
+// the sidebar's pages and user card (`sidebarPages`, `sheetPages`), the top
+// bar's avatar (`account`) and the screen for a request that did not open
+// the dashboard (`closed`). The frame also records each page the tab visits,
+// so an editor's back arrow can return to where it was opened (issue #510).
+export function DashboardShell({
+  sidebarPages,
+  sheetPages,
+  account,
+  closed,
+  children,
+}: {
+  sidebarPages: ReactNode;
+  sheetPages: ReactNode;
+  account: ReactNode;
+  closed: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
+  // The address is request data on a page with a dynamic segment, so the
+  // title reading it sits in its own Suspense and never holds the frame back.
+  const title = (
+    <Suspense fallback={null}>
+      <PageTitle />
+    </Suspense>
+  );
+  return (
+    <div className="min-h-svh bg-ground text-prt-text">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-hairline bg-panel/50 md:block">
+        <Sidebar pages={sidebarPages} />
+      </aside>
+
+      <PhoneTopBar
+        title={title}
+        leading={
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger aria-label="Open menu" className={ICON_BUTTON}>
+              <Menu aria-hidden className="h-[22px] w-[22px]" strokeWidth={2} />
+            </DialogTrigger>
+            <DialogPortal>
+              <DialogOverlay className="bg-ground/55 backdrop-blur-[3px]" />
+              <DialogPrimitive.Content
+                aria-describedby={undefined}
+                className="fixed inset-y-0 left-0 z-50 w-[300px] max-w-[85vw] border-r border-hairline bg-ground focus:outline-none motion-safe:duration-300 motion-safe:ease-out motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-left"
+              >
+                <DialogTitle className="sr-only">Dashboard menu</DialogTitle>
+                <SidebarNavigate.Provider value={() => setOpen(false)}>
+                  <Sidebar
+                    pages={sheetPages}
+                    close={
+                      <DialogClose aria-label="Close menu" className={`${ICON_BUTTON} -mr-1.5 text-prt-muted hover:text-prt-text`}>
+                        <X aria-hidden className="h-5 w-5" strokeWidth={1.75} />
+                      </DialogClose>
+                    }
+                  />
+                </SidebarNavigate.Provider>
+              </DialogPrimitive.Content>
+            </DialogPortal>
+          </Dialog>
+        }
+      >
+        <div ref={setActionSlot} className="mr-1.5 flex shrink-0 items-center empty:hidden" />
+        {account}
+      </PhoneTopBar>
+
+      <main className="px-4 pb-12 pt-4 md:ml-[248px] md:px-10 md:pb-16 md:pt-8">
+        <TopBarSlot.Provider value={actionSlot}>{children}</TopBarSlot.Provider>
+      </main>
+
+      {closed}
+    </div>
+  );
+}
+
+/** The phone top bar's title: the page's name. */
+function PageTitle() {
+  const pathname = usePathname();
+  return pageTitleFor(pathname ?? "/dashboard") ?? "Dashboard";
+}
+
+/** The top bar's avatar, which opens the user menu as a bottom sheet. */
+export function TopBarAccount({ chrome }: { chrome: Promise<DashboardChrome> }) {
+  const resolved = use(chrome);
+  if (resolved.kind !== "open") return null;
+  const { viewer, menuPage } = resolved;
+  return (
+    <UserSheet viewer={viewer} menuPage={menuPage}>
+      <button
+        type="button"
+        aria-label={`${viewer.name}, ${viewer.role}. Open account menu`}
+        className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      >
+        <Avatar accent photoUrl={viewer.photoUrl} />
+      </button>
+    </UserSheet>
+  );
+}
+
+/**
+ * A request that did not open the dashboard: signed out goes to /login; an
+ * account that did not resolve gets the sign-out screen over the whole frame,
+ * whose pages show nothing for it.
+ */
+export function ClosedOpening({ chrome }: { chrome: Promise<DashboardChrome> }) {
+  const resolved = use(chrome);
+  if (resolved.kind === "signed-out") redirect("/login?cb=/dashboard");
+  if (resolved.kind !== "account-unresolved") return null;
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <AccountUnresolved />
+    </div>
+  );
+}
+
+/**
+ * The phone top bar (boards 50m-b, 52m, 56m): a round button on the left, the
+ * title, then what follows it. The shell's bar holds the menu and the avatar;
+ * a panel that opens as a full page on phones (58d-m) uses the same bar with
+ * a back arrow in place of the menu.
+ */
+export function PhoneTopBar({ leading, title, children }: { leading: ReactNode; title: ReactNode; children?: ReactNode }) {
+  return (
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-hairline bg-ground/90 pl-2 pr-4 backdrop-blur md:hidden">
+      {leading}
+      <p className="min-w-0 flex-1 truncate text-[17px] font-semibold">{title}</p>
+      {children}
+    </header>
+  );
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/api/cron/anonymize-deleted-accounts",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/delete-withdrawn-files",
+      "schedule": "30 3 * * *"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "gh-readonly-queue/**": false
+    }
+  }
+}

@@ -1,0 +1,471 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { canReach } from "./access";
+import {
+  areaGrantsOf,
+  areaUnitsOf,
+  coveredDivisionIds,
+  fullAccessSeatOf,
+  GRANT_AREAS,
+  grantedAreasOf,
+  headDivisionsOf,
+  holdsAlumniGrant,
+  holdsContentGrant,
+  isTeamLeader,
+  ledDivisionIds,
+  mayChange,
+  readsArea,
+  readsAreaIn,
+  standingIn,
+  testDeveloperStanding,
+  viewerKindOf,
+  viewerStandingOf,
+  viewerUnitsOf,
+  userCardRole,
+  VIEWER_KIND_LABELS,
+  type AccessLevel,
+  type ActiveRoleRef,
+  type AreaGrant,
+  type AreaReader,
+  type ChangeAuthority,
+  type FlaggedSeat,
+  type ScopeKind,
+  type ScopeRef,
+  type ScopeTarget,
+  type ScopeUnitRow,
+} from "./viewer";
+import { decideRightOf } from "./orders";
+
+const role = (type: ActiveRoleRef["type"], divisionId: number | null = null, fullAccess: FlaggedSeat | null = null): ActiveRoleRef => ({
+  type,
+  divisionId,
+  fullAccess,
+});
+
+const row = (scope: ScopeKind, target: ScopeTarget = "all", level: AccessLevel = "view"): ScopeRef => ({ scope, target, level });
+
+// The full-access seats as the data holds them (issues #238, #485): the team
+// leader's `president` role, the flagged Operations head and IT lead roles,
+// and the flagged board roles (no type, no unit) of the Project Manager and
+// the Chief Engineer.
+const teamLeader = role("president");
+const operationsLead = role("head", null, "operations-lead");
+const itLead = role("lead", 17, "it-lead");
+const projectManager = role(null, null, "project-manager");
+const chiefEngineer = role(null, null, "chief-engineer");
+
+test("a real account's viewer kind follows its scopes and role", () => {
+  assert.equal(viewerKindOf(null), "non-member");
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [role("core")] }), "member");
+  assert.equal(viewerKindOf({ scopes: [row("website")], activeRoles: [role(null)] }), "member");
+  assert.equal(viewerKindOf({ scopes: [row("division")], activeRoles: [role("core")] }), "member");
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [role("lead")] }), "division-lead");
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [role("head")] }), "department-head");
+  assert.equal(viewerKindOf({ scopes: [row("division"), row("org")], activeRoles: [role("lead")] }), "operations-lead");
+  assert.equal(viewerKindOf({ scopes: [row("admin")], activeRoles: [role(null)] }), "operations-lead");
+});
+
+test("a member row with no active role is a non-member, whatever scope rows remain (issue #201)", () => {
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [] }), "non-member");
+  assert.equal(viewerKindOf({ scopes: [row("division")], activeRoles: [] }), "non-member");
+  assert.equal(viewerKindOf({ scopes: [row("org"), row("admin")], activeRoles: [] }), "non-member");
+});
+
+test("with no active role, an Alumni record entry makes an alumnus and none a non-member; an active role keeps its kind (issue #317)", () => {
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [], onAlumniRecord: true }), "alumni");
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [], onAlumniRecord: false }), "non-member");
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [role("core")], onAlumniRecord: true }), "member");
+  assert.equal(VIEWER_KIND_LABELS.alumni, "Alumni");
+});
+
+test("the user card reads Alumni for an alumnus, and Applicant or Signed in for a non-member (boards 56, 50e, 50f)", () => {
+  const off = (kind: "alumni" | "non-member") => ({ ...testDeveloperStanding(kind), name: "Luca Moretti", role: "Applicant", photoUrl: null, session: "account" as const });
+  assert.equal(userCardRole(off("alumni"), false), "Alumni");
+  assert.equal(userCardRole(off("non-member"), true), "Applicant");
+  assert.equal(userCardRole(off("non-member"), false), "Signed in");
+});
+
+test("an alumnus holds no access, whatever scope rows outlived their roles (issue #317)", () => {
+  for (const scope of ["website", "team", "division", "org", "admin"] as const) {
+    assert.deepEqual(viewerStandingOf({ scopes: [row(scope)], activeRoles: [], onAlumniRecord: true }), { kind: "alumni", siteContent: false, approveOrders: false }, scope);
+  }
+});
+
+test("the viewer kind reads every active role: a lead role beside a newer member role still leads (issue #229)", () => {
+  // The member role in division 2 is the newer one; the lead role in division 1 still counts.
+  const access = { scopes: [], activeRoles: [role("core", 2), role("lead", 1)] };
+  assert.equal(viewerKindOf(access), "division-lead");
+});
+
+test("someone who leads division A and is a member of division B is a lead for A and a member for B", () => {
+  const access = { scopes: [], activeRoles: [role("lead", 1), role("core", 2)] };
+  assert.equal(standingIn(access, 1), "lead");
+  assert.equal(standingIn(access, 2), "member");
+  assert.equal(standingIn(access, 3), null);
+  assert.deepEqual(ledDivisionIds(access), [1]);
+});
+
+test("a website row on content is a Content grant and any other website row an Alumni grant, two separate facts, and neither for someone who left the team (issues #234, #504)", () => {
+  const member = (...scopes: ScopeRef[]) => viewerStandingOf({ scopes, activeRoles: [role("core")] });
+  // The Alumni row as the Access page stores it never reads as Content.
+  assert.deepEqual(member(row("website", "all")), { kind: "member", grantedAreas: [], siteContent: false, alumniGrant: true, approveOrders: false });
+  assert.deepEqual(member(row("website", "content", "edit")), { kind: "member", grantedAreas: [], siteContent: true, approveOrders: false });
+  assert.deepEqual(member(row("website", "all"), row("website", "content", "edit")), {
+    kind: "member",
+    grantedAreas: [],
+    siteContent: true,
+    alumniGrant: true,
+    approveOrders: false,
+  });
+  assert.deepEqual(viewerStandingOf({ scopes: [row("division")], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: false, approveOrders: false });
+  assert.deepEqual(viewerStandingOf({ scopes: [row("website", "content", "edit")], activeRoles: [role("lead")] }), { kind: "division-lead", siteContent: true, approveOrders: false });
+  assert.deepEqual(viewerStandingOf({ scopes: [row("website"), row("website", "content", "edit")], activeRoles: [] }), { kind: "non-member", siteContent: false, approveOrders: false });
+  assert.equal(holdsContentGrant([row("website", "all")]), false);
+  assert.equal(holdsAlumniGrant([row("website", "content", "edit")]), false);
+});
+
+test("a head role is a department head, unless org or admin access makes them the operations lead (issue #230)", () => {
+  assert.equal(viewerKindOf({ scopes: [], activeRoles: [role("head")] }), "department-head");
+  assert.equal(viewerKindOf({ scopes: [row("division")], activeRoles: [role("head")] }), "department-head");
+  assert.equal(viewerKindOf({ scopes: [row("org")], activeRoles: [role("head")] }), "operations-lead");
+  assert.equal(viewerKindOf({ scopes: [row("department")], activeRoles: [role("core")] }), "member");
+});
+
+test("a head sees every open division of their department and none from another", () => {
+  const divisions = [
+    { id: 2, name: "Optimization and Analysis Division", departmentId: 1, closedAt: null },
+    { id: 1, name: "Mission Analysis Division", departmentId: 1, closedAt: null },
+    { id: 3, name: "Wind Tunnel Division", departmentId: 1, closedAt: "2025-06-30" },
+    { id: 4, name: "Structures Analysis Division", departmentId: 2, closedAt: null },
+  ];
+  assert.deepEqual(
+    headDivisionsOf(1, divisions).map((d) => d.id),
+    [1, 2],
+  );
+  assert.deepEqual(
+    headDivisionsOf(2, divisions).map((d) => d.id),
+    [4],
+  );
+});
+
+test("a Members edit grant across a department reaches, and changes, every division of it (issue #351)", () => {
+  const divisions = [
+    { id: 1, departmentId: 1 },
+    { id: 2, departmentId: 1 },
+    { id: 3, departmentId: 2 },
+  ];
+  const rows = [{ scope: "department" as const, target: "members" as const, level: "edit" as const, divisionId: null, deptId: 1 }];
+  const covered = coveredDivisionIds(viewerUnitsOf(rows, []), divisions);
+  assert.deepEqual(covered, [1, 2]);
+  const authority: ChangeAuthority = { kind: "member", roles: [], grants: areaGrantsOf(rows) };
+  assert.ok(covered.every((divisionId) => mayChange(authority, "members", { divisionId, departmentId: 1 })));
+  // The divisions a viewer names come first, each once.
+  assert.deepEqual(coveredDivisionIds({ divisionIds: [3, 2], departmentIds: [1] }, divisions), [3, 2, 1]);
+});
+
+test("a head role covers its department with no department scope row (issues #184, #230)", () => {
+  assert.deepEqual(viewerUnitsOf([], [{ type: "head", divisionId: null, departmentId: 1 }]), { divisionIds: [], departmentIds: [1] });
+  // A scope row on top adds its unit, each unit once.
+  assert.deepEqual(
+    viewerUnitsOf(
+      [
+        { ...row("department"), divisionId: null, deptId: 1 },
+        { ...row("division"), divisionId: 7, deptId: null },
+      ],
+      [{ type: "head", divisionId: null, departmentId: 1 }],
+    ),
+    { divisionIds: [7], departmentIds: [1] },
+  );
+  // A lead covers their division only; a member's role adds nothing.
+  assert.deepEqual(viewerUnitsOf([], [{ type: "lead", divisionId: 3, departmentId: 1 }]), { divisionIds: [3], departmentIds: [] });
+  assert.deepEqual(viewerUnitsOf([], [{ type: "core", divisionId: 3, departmentId: 1 }]), { divisionIds: [], departmentIds: [] });
+  // Every active role counts (issue #229): a lead of two divisions covers both.
+  assert.deepEqual(
+    viewerUnitsOf(
+      [],
+      [
+        { type: "lead", divisionId: 3, departmentId: 1 },
+        { type: "core", divisionId: 5, departmentId: 2 },
+        { type: "lead", divisionId: 6, departmentId: 2 },
+      ],
+    ),
+    { divisionIds: [3, 6], departmentIds: [] },
+  );
+});
+
+test("the team leader, the operations lead and the IT lead get full access from the role, with no scope row (issue #238)", () => {
+  const seats = [
+    [teamLeader, "team-leader"],
+    [operationsLead, "operations-lead"],
+    [itLead, "it-lead"],
+  ] as const;
+  for (const [held, seat] of seats) {
+    assert.equal(fullAccessSeatOf([held]), seat);
+    assert.deepEqual(viewerStandingOf({ scopes: [], activeRoles: [held] }), { kind: "operations-lead", seat, siteContent: false, approveOrders: false });
+  }
+});
+
+test("a division lead, a department head and a member hold no full-access seat (issue #238)", () => {
+  for (const held of [role("lead", 3), role("head"), role("core", 3), role(null)]) {
+    assert.equal(fullAccessSeatOf([held]), null);
+    assert.notEqual(viewerKindOf({ scopes: [], activeRoles: [held] }), "operations-lead");
+  }
+});
+
+test("an admin or org scope row still gives full access, with no seat (issue #238)", () => {
+  for (const scope of ["admin", "org"] as const) {
+    assert.deepEqual(viewerStandingOf({ scopes: [row(scope)], activeRoles: [role("core", 3)] }), { kind: "operations-lead", seat: null, siteContent: false, approveOrders: false });
+  }
+});
+
+test("the Project Manager and the Chief Engineer get full access from the flagged role, with no scope row (issue #485)", () => {
+  for (const [held, seat] of [
+    [projectManager, "project-manager"],
+    [chiefEngineer, "chief-engineer"],
+  ] as const) {
+    assert.equal(fullAccessSeatOf([held]), seat);
+    assert.equal(viewerKindOf({ scopes: [], activeRoles: [held] }), "operations-lead");
+    assert.deepEqual(viewerStandingOf({ scopes: [], activeRoles: [held] }), { kind: "operations-lead", seat, siteContent: false, approveOrders: false });
+  }
+});
+
+test("once the flagged role ends, the Project Manager and the Chief Engineer hold no seat (issue #485)", () => {
+  // `activeRoles` holds only roles with no `leaved_at`: an ended seat role is not in it.
+  assert.equal(fullAccessSeatOf([role("core", 3)]), null);
+  assert.deepEqual(viewerStandingOf({ scopes: [], activeRoles: [role("core", 3)] }), { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false });
+  assert.deepEqual(viewerStandingOf({ scopes: [], activeRoles: [] }), { kind: "non-member", siteContent: false, approveOrders: false });
+});
+
+test("someone in two seats is read as the higher one", () => {
+  assert.equal(fullAccessSeatOf([itLead, teamLeader]), "team-leader");
+  assert.equal(fullAccessSeatOf([operationsLead, itLead]), "it-lead");
+});
+
+test("seats rank team leader, IT lead, operations lead, Project Manager, Chief Engineer (issue #485)", () => {
+  const ranked = [
+    [teamLeader, "team-leader"],
+    [itLead, "it-lead"],
+    [operationsLead, "operations-lead"],
+    [projectManager, "project-manager"],
+    [chiefEngineer, "chief-engineer"],
+  ] as const;
+  ranked.forEach(([higher, seat], i) => {
+    for (const [lower] of ranked.slice(i + 1)) {
+      assert.equal(fullAccessSeatOf([lower, higher]), seat);
+      assert.equal(fullAccessSeatOf([higher, lower]), seat);
+    }
+  });
+});
+
+test("by default only the team leader decides orders; the operations lead and the IT lead need Approve orders (issue #238)", () => {
+  const decides = (held: ActiveRoleRef, approveOrders: boolean) =>
+    decideRightOf({ teamLeader: isTeamLeader(viewerStandingOf({ scopes: [], activeRoles: [held] })), approveOrders });
+  assert.equal(decides(teamLeader, false), "team-leader");
+  assert.equal(decides(operationsLead, false), null);
+  assert.equal(decides(itLead, false), null);
+  assert.equal(decides(operationsLead, true), "approve-orders");
+  assert.equal(decides(itLead, true), "approve-orders");
+  // The Project Manager and the Chief Engineer, like them (issue #485).
+  assert.equal(decides(projectManager, false), null);
+  assert.equal(decides(chiefEngineer, false), null);
+  // Full access from a scope row alone is not the team leader either.
+  assert.equal(isTeamLeader(viewerStandingOf({ scopes: [row("admin")], activeRoles: [role("core", 3)] })), false);
+  assert.equal(isTeamLeader(testDeveloperStanding("operations-lead")), false);
+});
+
+// Issue #160: an area grant, at any area and level, makes nobody a division
+// lead. It opens the pages a division lead reaches, and only a grant on the
+// area at Can edit lets its holder change that area.
+
+const MSA = 3;
+const MSA_DEPARTMENT = 1;
+const OTHER_DIVISION = 5;
+const OTHER_DEPARTMENT = 2;
+const inMsa = { divisionId: MSA, departmentId: MSA_DEPARTMENT };
+
+/** A member of MSA whose only reach beyond their own role is the given grants. */
+const memberWith = (...grants: AreaGrant[]): ChangeAuthority => ({
+  kind: "member",
+  roles: [{ type: "core", divisionId: MSA, departmentId: MSA_DEPARTMENT }],
+  grants,
+});
+const grantIn = (target: ScopeTarget, level: AccessLevel, divisionId = MSA): AreaGrant => ({ target, level, unit: { kind: "division", divisionId } });
+
+test("a Members, an Applications or a Positions grant, at either level, makes a member no division lead (issue #160)", () => {
+  for (const target of ["members", "applications", "positions"] as const) {
+    for (const level of ["view", "edit"] as const) {
+      for (const scope of ["division", "department"] as const) {
+        const access = { scopes: [row(scope, target, level)], activeRoles: [role("core", MSA)] };
+        const label = `${target} at ${level} on a ${scope}`;
+        assert.equal(viewerKindOf(access), "member", label);
+        assert.deepEqual(viewerStandingOf(access), { kind: "member", grantedAreas: [target], siteContent: false, approveOrders: false }, label);
+      }
+    }
+  }
+});
+
+test("an area grant opens its own area's page as a division lead reaches it, and no other lead page (issues #160, #471)", () => {
+  const holder = viewerStandingOf({ scopes: [row("division", "members", "view")], activeRoles: [role("core", MSA)] });
+  const lead = viewerStandingOf({ scopes: [], activeRoles: [role("lead", MSA)] });
+  const plain = viewerStandingOf({ scopes: [], activeRoles: [role("core", MSA)] });
+  // A granted member reads their area alone, never as a division lead reads every one (issue #471).
+  assert.deepEqual(GRANT_AREAS.map((area) => readsArea(holder, area)), [false, false, true, false]);
+  assert.deepEqual(GRANT_AREAS.map((area) => readsArea(lead, area)), [true, true, true, true]);
+  assert.deepEqual(GRANT_AREAS.map((area) => readsArea(plain, area)), [false, false, false, false]);
+  for (const page of ["members", "team-tree", "my-profile", "alumni"] as const) {
+    assert.equal(canReach(holder, page), canReach(lead, page), page);
+  }
+  for (const page of ["positions", "applications", "division-access", "orders"] as const) {
+    assert.equal(canReach(holder, page), false, page);
+  }
+  for (const page of ["positions", "applications", "members", "division-access", "orders"] as const) {
+    assert.equal(canReach(plain, page), false, page);
+  }
+});
+
+test("each grant area is read on its own, over the units its own grants name (issue #471)", () => {
+  const OTHER = MSA + 1;
+  const reader = (rows: readonly ScopeUnitRow[], activeRoles: readonly ActiveRoleRef[] = [role("core", MSA)]): AreaReader => ({
+    ...viewerStandingOf({ scopes: rows, activeRoles }),
+    roles: activeRoles.map((r) => ({ ...r, departmentId: MSA_DEPARTMENT })),
+    grants: areaGrantsOf(rows),
+  });
+  const on = (target: ScopeTarget, divisionId: number): ScopeUnitRow => ({ scope: "division", target, level: "view", divisionId, deptId: null });
+  const at = (divisionId: number) => ({ divisionId, departmentId: MSA_DEPARTMENT });
+
+  // Positions in MSA, Applications in the other division: each area only where its own grant is.
+  const split = reader([on("positions", MSA), on("applications", OTHER)]);
+  assert.deepEqual(areaUnitsOf(split, "positions"), { divisionIds: [MSA], departmentIds: [] });
+  assert.deepEqual(areaUnitsOf(split, "applications"), { divisionIds: [OTHER], departmentIds: [] });
+  assert.deepEqual(areaUnitsOf(split, "members"), { divisionIds: [], departmentIds: [] });
+  assert.deepEqual([readsAreaIn(split, "positions", at(MSA)), readsAreaIn(split, "positions", at(OTHER))], [true, false]);
+  assert.deepEqual([readsAreaIn(split, "applications", at(MSA)), readsAreaIn(split, "applications", at(OTHER))], [false, true]);
+  for (const area of ["members", "orders"] as const) assert.equal(readsAreaIn(split, area, at(MSA)), false, area);
+
+  // A grant on every area reads each of them, over its own unit; a department grant over each of its divisions.
+  const all = reader([on("all", MSA)]);
+  for (const area of GRANT_AREAS) assert.deepEqual([readsAreaIn(all, area, at(MSA)), readsAreaIn(all, area, at(OTHER))], [true, false], area);
+  const department = reader([{ scope: "department", target: "orders", level: "edit", divisionId: null, deptId: MSA_DEPARTMENT }]);
+  assert.deepEqual([readsAreaIn(department, "orders", at(MSA)), readsAreaIn(department, "orders", at(OTHER))], [true, true]);
+  assert.equal(readsAreaIn(department, "applications", at(MSA)), false);
+
+  // A lead reads every area over their own units, as before; full access everywhere.
+  const lead = reader([], [role("lead", MSA)]);
+  for (const area of GRANT_AREAS) assert.deepEqual([readsAreaIn(lead, area, at(MSA)), readsAreaIn(lead, area, at(OTHER))], [true, false], area);
+  const leader = reader([], [role("president", null)]);
+  for (const area of GRANT_AREAS) assert.equal(readsAreaIn(leader, area, at(OTHER)), true, area);
+});
+
+test("a member's standing carries the areas their division and department rows grant; a row on all grants every area (issue #471)", () => {
+  const standing = (...scopes: ScopeRef[]) => viewerStandingOf({ scopes, activeRoles: [role("core", MSA)] });
+  assert.deepEqual(standing(row("division", "positions", "view")), { kind: "member", grantedAreas: ["positions"], siteContent: false, approveOrders: false });
+  assert.deepEqual(standing(row("division", "all", "view")), {
+    kind: "member",
+    grantedAreas: ["positions", "applications", "members", "orders"],
+    siteContent: false,
+    approveOrders: false,
+  });
+  assert.deepEqual(
+    standing(row("department", "orders", "edit"), row("division", "applications", "view"), row("division", "orders", "view")),
+    { kind: "member", grantedAreas: ["applications", "orders"], siteContent: false, approveOrders: false },
+  );
+  // Content, Alumni and "Approve orders" are no grant area.
+  assert.deepEqual(standing(row("website", "content", "edit"), row("team", "approve_orders", "edit")), {
+    kind: "member",
+    grantedAreas: [],
+    siteContent: true,
+    approveOrders: true,
+  });
+  assert.deepEqual(standing(row("website")), { kind: "member", grantedAreas: [], siteContent: false, alumniGrant: true, approveOrders: false });
+  assert.deepEqual(grantedAreasOf([row("division", "all", "edit")]), GRANT_AREAS);
+});
+
+test("each area grant keeps its area, level and unit", () => {
+  assert.deepEqual(
+    areaGrantsOf([
+      { ...row("division", "applications", "edit"), divisionId: MSA, deptId: null },
+      { ...row("department", "members", "view"), divisionId: null, deptId: MSA_DEPARTMENT },
+      { ...row("website"), divisionId: null, deptId: null },
+    ]),
+    [
+      { target: "applications", level: "edit", unit: { kind: "division", divisionId: MSA } },
+      { target: "members", level: "view", unit: { kind: "department", departmentId: MSA_DEPARTMENT } },
+    ],
+  );
+});
+
+test("moveApplication's check refuses a view-only Applications grant and a Members grant, and allows Applications at Can edit (issue #160)", () => {
+  assert.equal(mayChange(memberWith(grantIn("applications", "view")), "applications", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("members", "view")), "applications", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("members", "edit")), "applications", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("applications", "edit")), "applications", inMsa), true);
+  // A grant covers only its own unit: in another division it moves nothing here.
+  assert.equal(mayChange(memberWith(grantIn("applications", "edit", OTHER_DIVISION)), "applications", inMsa), false);
+  // A grant across the department covers each of its divisions; "all" covers every area.
+  assert.equal(mayChange(memberWith({ target: "applications", level: "edit", unit: { kind: "department", departmentId: MSA_DEPARTMENT } }), "applications", inMsa), true);
+  assert.equal(mayChange(memberWith({ target: "applications", level: "edit", unit: { kind: "department", departmentId: OTHER_DEPARTMENT } }), "applications", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("all", "edit")), "applications", inMsa), true);
+  assert.equal(mayChange(memberWith(grantIn("all", "view")), "applications", inMsa), false);
+});
+
+test("setPositionOpen's check refuses any grant but Positions at Can edit (issue #160)", () => {
+  assert.equal(mayChange(memberWith(grantIn("positions", "view")), "positions", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("members", "edit")), "positions", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("applications", "edit")), "positions", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("positions", "edit")), "positions", inMsa), true);
+});
+
+test("division leads, department heads and full access change recruitment as before (issue #160)", () => {
+  const lead: ChangeAuthority = { kind: "division-lead", roles: [{ type: "lead", divisionId: MSA, departmentId: MSA_DEPARTMENT }], grants: [] };
+  const head: ChangeAuthority = { kind: "department-head", roles: [{ type: "head", divisionId: null, departmentId: MSA_DEPARTMENT }], grants: [] };
+  const elsewhere = { divisionId: OTHER_DIVISION, departmentId: MSA_DEPARTMENT };
+  for (const area of ["positions", "applications"] as const) {
+    assert.equal(mayChange(lead, area, inMsa), true, `${area}: a lead in their division`);
+    assert.equal(mayChange(head, area, inMsa), true, `${area}: a head in their department`);
+    assert.equal(mayChange(head, area, elsewhere), true, `${area}: a head in another division of their department`);
+    assert.equal(mayChange({ kind: "operations-lead", roles: [], grants: [] }, area, inMsa), true, `${area}: full access`);
+    // A role reaches only its own unit.
+    assert.equal(mayChange(lead, area, elsewhere), false, `${area}: a lead elsewhere`);
+    assert.equal(mayChange(head, area, { divisionId: OTHER_DIVISION, departmentId: OTHER_DEPARTMENT }), false, `${area}: a head elsewhere`);
+    // A lead of MSA with a view-only grant in another division changes nothing there.
+    assert.equal(mayChange({ ...lead, grants: [grantIn(area, "view", OTHER_DIVISION)] }, area, elsewhere), false, `${area}: a lead's view grant`);
+    // An advisor leads nothing, and someone off the team changes nothing.
+    assert.equal(mayChange({ kind: "member", roles: [{ type: "advisor", divisionId: MSA, departmentId: MSA_DEPARTMENT }], grants: [] }, area, inMsa), false);
+    assert.equal(mayChange({ kind: "alumni", roles: [], grants: [grantIn(area, "edit")] }, area, inMsa), false);
+  }
+});
+
+test("a Members page change takes a lead or head role, full access, or a Members grant at Can edit covering the division (issue #342)", () => {
+  // A view-only Members grant, or a Can-edit grant on another area, changes nobody.
+  assert.equal(mayChange(memberWith(grantIn("members", "view")), "members", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("applications", "edit")), "members", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("positions", "edit")), "members", inMsa), false);
+  assert.equal(mayChange(memberWith(grantIn("all", "view")), "members", inMsa), false);
+  // A Can-edit Members grant changes people in the division it covers, and in no other.
+  assert.equal(mayChange(memberWith(grantIn("members", "edit")), "members", inMsa), true);
+  assert.equal(mayChange(memberWith(grantIn("all", "edit")), "members", inMsa), true);
+  assert.equal(mayChange(memberWith({ target: "members", level: "edit", unit: { kind: "department", departmentId: MSA_DEPARTMENT } }), "members", inMsa), true);
+  assert.equal(mayChange(memberWith(grantIn("members", "edit", OTHER_DIVISION)), "members", inMsa), false);
+  assert.equal(mayChange(memberWith({ target: "members", level: "edit", unit: { kind: "department", departmentId: OTHER_DEPARTMENT } }), "members", inMsa), false);
+  // Lead, head and full access change people; a member role alone does not.
+  const lead: ChangeAuthority = { kind: "division-lead", roles: [{ type: "lead", divisionId: MSA, departmentId: MSA_DEPARTMENT }], grants: [] };
+  const head: ChangeAuthority = { kind: "department-head", roles: [{ type: "head", divisionId: null, departmentId: MSA_DEPARTMENT }], grants: [] };
+  assert.equal(mayChange(lead, "members", inMsa), true);
+  assert.equal(mayChange(head, "members", inMsa), true);
+  assert.equal(mayChange({ kind: "operations-lead", roles: [], grants: [] }, "members", inMsa), true);
+  assert.equal(mayChange(memberWith(), "members", inMsa), false);
+});
+
+test("a lead of several divisions changes people in each division they lead, and in no other (issues #185, #342)", () => {
+  const both: ChangeAuthority = {
+    kind: "division-lead",
+    roles: [
+      { type: "lead", divisionId: MSA, departmentId: MSA_DEPARTMENT },
+      { type: "lead", divisionId: OTHER_DIVISION, departmentId: OTHER_DEPARTMENT },
+    ],
+    grants: [],
+  };
+  assert.equal(mayChange(both, "members", inMsa), true);
+  assert.equal(mayChange(both, "members", { divisionId: OTHER_DIVISION, departmentId: OTHER_DEPARTMENT }), true);
+  assert.equal(mayChange(both, "members", { divisionId: 9, departmentId: OTHER_DEPARTMENT }), false);
+});

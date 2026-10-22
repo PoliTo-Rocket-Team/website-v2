@@ -1,0 +1,37 @@
+// Every seed module, in the order the runner inserts them (and resets them in
+// reverse). An area slice adds its module with one line here and its cases in
+// docs/seed-cases.md. `audit` stays last: it clears the audit rows every
+// module before it wrote.
+
+import type { SeedModule } from "@/lib/seed/runner";
+import { access } from "./access";
+import { alumni } from "./alumni";
+import { audit } from "./audit";
+import { faqSeed } from "./faq";
+import { handOversSeed } from "./hand-overs";
+import { ordersSeed } from "./orders";
+import { outreachSeed } from "./outreach";
+import { partnersSeed } from "./partners";
+import { people } from "./people";
+import { projectsSeed } from "./projects";
+import { recruitmentSeed } from "./recruitment";
+import { structure } from "./structure";
+import { teamPageSeed } from "./team-page";
+import type { SeedTx } from "./tx";
+
+export const SEED_MODULES: readonly SeedModule<SeedTx>[] = [
+  structure,
+  people,
+  alumni,
+  access,
+  ordersSeed,
+  recruitmentSeed,
+  partnersSeed,
+  faqSeed,
+  outreachSeed,
+  projectsSeed,
+  // After people: its rows go in after every role, so no role insert closes the waiting one.
+  handOversSeed,
+  teamPageSeed,
+  audit,
+];

@@ -1,26 +1,25 @@
+// `pnpm db:seed`: guard the target, then run every registered module.
+// `pnpm db:seed --check` runs the guard alone and writes nothing.
+
 import "dotenv/config";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import postgres from "postgres";
+import { runSeed } from "@/lib/seed/runner";
+import { guardSeedTarget } from "@/lib/seed/target";
+import { seedConnection } from "./seed/connection";
+import { SEED_MODULES } from "./seed/registry";
 
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
-
-  if (!connectionString) {
-    throw new Error("DATABASE_URL must be configured");
+  const verdict = guardSeedTarget(process.env.DATABASE_URL, { VERCEL_ENV: process.env.VERCEL_ENV });
+  if (!verdict.ok) {
+    console.error(`Seed refused (${verdict.refusal.reason}): ${verdict.refusal.detail}`);
+    process.exit(2);
   }
-
-  const seedPath = resolve(process.cwd(), "db/seed.sql");
-  const seedSql = await readFile(seedPath, "utf8");
-  const client = postgres(connectionString, {
-    max: 1,
-  });
-
-  try {
-    await client.unsafe(seedSql);
-  } finally {
-    await client.end();
+  const { kind, label } = verdict.target;
+  if (process.argv.includes("--check")) {
+    console.log(`Seed target allowed: ${kind} ${label}`);
+    return;
   }
+  const report = await runSeed(verdict.target, SEED_MODULES, seedConnection);
+  console.log(`Seeded ${kind} ${label}: ${report.modules.join(", ")}`);
 }
 
 main().catch((error) => {

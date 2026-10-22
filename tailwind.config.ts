@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { brand } from "./lib/brand-colors";
 
 const config = {
   darkMode: ["class"],
@@ -18,7 +19,39 @@ const config = {
       },
     },
     extend: {
+      spacing: {
+        // The one section rhythm: every landing section pads its top and
+        // bottom by this, so the gap between any two adjacent sections is
+        // twice it. The value lives in --section-pad (app/globals.css).
+        section: "var(--section-pad)",
+      },
       colors: {
+        // PRT design tokens (Pencil variables, board 00; brand colours from
+        // board 21, lib/brand-colors.ts)
+        ground: brand.ground,
+        panel: "#141416",
+        "surface-2": "#1C1C1F",
+        hairline: "#232326",
+        "border-strong": "#34343A",
+        "prt-text": brand.text,
+        "text-2": brand.text2,
+        "prt-muted": "#8A8A8F",
+        dim: "#5E5E64",
+        accent: {
+          DEFAULT: brand.accent,
+          hover: brand.accentHover,
+          pressed: brand.accentPressed,
+          soft: `${brand.accent}24`,
+          "on-accent": brand.ground,
+        },
+        "white-5": "#FFFFFF0D",
+        "white-10": "#FFFFFF1A",
+        success: { DEFAULT: "#2E9B4F", soft: "#2E9B4F26" },
+        warning: { DEFAULT: "#F5A623", soft: "#F5A62326" },
+        danger: { DEFAULT: "#CE2B4B", soft: "#CE2B4B26" },
+        // The "In review" stage pill on the Applications page (Dashboard v2
+        // board 58b, issue #171), measured off the board.
+        info: { DEFAULT: "#4DA3FF", soft: "#4DA3FF26" },
         // Existing shadcn/ui colors
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -41,10 +74,7 @@ const config = {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
+        // NOTE: PRT brand `accent` (orange) below replaces shadcn's gray accent.
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
@@ -87,27 +117,107 @@ const config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-      keyframes: {
-        "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
-        },
-        "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
-        },
+      fontFamily: {
+        // Inter Tight's "&" first: its face claims U+0026 only (app/layout.tsx).
+        display: ["var(--font-ampersand)", "var(--font-display)", "Archivo", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        twinkle: "twinkle 4s ease-in-out infinite",
+        "shoot": "shoot 1.4s ease-in forwards",
+        "shooting-star": "shooting-star 20s linear infinite",
+        marquee: "marquee 40s linear infinite",
+        "rocket-hover": "rocket-hover 6s ease-in-out infinite",
+        "word-up": "word-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "slogan-down": "slogan-down 0.7s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "hero-fade": "hero-fade 0.9s ease-out both",
+        // Heavy drive-in: Starship pace — slow, deliberate, long deceleration
+        "rocket-drive-in": "rocket-drive-in 7s linear both",
+        // Title/slogan part to make room for the rocket: same 7s, same curve
+        "hero-separate": "hero-separate 7s linear both",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+        twinkle: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.25" },
+        },
+        "word-up": {
+          "0%": { transform: "translateY(0.7em)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
+        "slogan-down": {
+          "0%": { transform: "translateY(-0.45em)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
+        "hero-fade": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        // Angled arrival: climbs in from lower-left over the type at ~22°,
+        // leveling out as it decelerates. Deceleration is baked into the stop
+        // spacing, so the animation runs linear.
+        // Straight climb from fully off-screen lower-left, decelerating. The
+        // nose eases from 14° to 6° up over the flight (a gentle settle, never
+        // a pitch-over) and parks still slightly nose-up.
+        "rocket-drive-in": {
+          "0%": { transform: "translate(-105vw, 36vh) rotate(-14deg)" },
+          "20%": { transform: "translate(-65vw, 22.3vh) rotate(-13deg)" },
+          "40%": { transform: "translate(-36.8vw, 12.6vh) rotate(-11.5deg)" },
+          "60%": { transform: "translate(-17.9vw, 6.1vh) rotate(-9.5deg)" },
+          "80%": { transform: "translate(-5.6vw, 1.9vh) rotate(-7.5deg)" },
+          "92%": { transform: "translate(-1.4vw, 0.5vh) rotate(-6.5deg)" },
+          "100%": { transform: "translate(0, 0) rotate(-6deg)" },
+        },
+        // Gathered → final position, keyed to the drive-in's deceleration so
+        // the type parts at the rocket's pace. --gather-y is the element's
+        // gathered offset (title +, slogan −).
+        "hero-separate": {
+          "0%": { transform: "translateY(var(--gather-y))" },
+          "20%": { transform: "translateY(calc(var(--gather-y) * 0.62))" },
+          "40%": { transform: "translateY(calc(var(--gather-y) * 0.35))" },
+          "60%": { transform: "translateY(calc(var(--gather-y) * 0.17))" },
+          "80%": { transform: "translateY(calc(var(--gather-y) * 0.053))" },
+          "92%": { transform: "translateY(calc(var(--gather-y) * 0.013))" },
+          "100%": { transform: "translateY(0)" },
+        },
+        shoot: {
+          "0%": { transform: "translate(0, 0) rotate(-18deg)", opacity: "0" },
+          "8%": { opacity: "1" },
+          "60%": { opacity: "1" },
+          "100%": {
+            transform: "translate(-420px, 136px) rotate(-18deg)",
+            opacity: "0",
+          },
+        },
+        marquee: {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
+        "rocket-hover": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        "rocket-fly-in": {
+          "0%": { transform: "translateX(-55vw)", opacity: "0" },
+          "15%": { opacity: "1" },
+          "100%": { transform: "translateX(0)", opacity: "1" },
+        },
+        "shooting-star": {
+          "0%": { transform: "translate(0, 0) rotate(-18deg)", opacity: "0" },
+          "1%": { opacity: "1" },
+          "7%": { transform: "translate(-420px, 136px) rotate(-18deg)", opacity: "0" },
+          "100%": { transform: "translate(0, 0) rotate(-18deg)", opacity: "0" },
+        },
       },
     },
   },

@@ -4,26 +4,56 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    /* Rocket theme */
+    --rocket: 20 100% 50%; /* #FF4B00 hsl main-color */
+    --rocket-hover: 18 100% 45%; /* #E04400 hsl */
+    --rocket-light: 20 100% 65%; /* #FF8350 hsl */
+
+    /* Mission grayscale */
+    --mission-gray-1: 0 0% 77%; /* #C4C4C4 */
+    --mission-gray-2: 0 0% 54%; /* #8A8A8A */
+    --mission-gray-3: 0 0% 23%; /* #3A3A3A */
+
+    /* Cosmos text */
+    --cosmos-white: 0 0% 93%; /* #EDEDED */
+    --cosmos-secondary: 0 0% 66%; /* #A8A8A8 */
+    --cosmos-disabled: 0 0% 42%; /* #6A6A6A */
+
+    /* Space theme backgrounds */
+    --space-black: 0 0% 7%; /* #121212 */
+    --space-surface: 0 0% 10%; /* #1A1A1A */
+
+    --background: 0 0% 100%; /* white background for light mode */
+    --foreground: var(--space-black);
+
+    --card: 0 0% 100%; /* white cards */
+    --card-foreground: var(--space-black);
+
+    --primary: var(--rocket);
+    --primary-foreground: var(--cosmos-white);
+
+    --secondary: var(--mission-gray-1);
+    --secondary-foreground: var(--space-black);
+
+    --muted: var(--mission-gray-1);
+    --muted-foreground: var(--cosmos-secondary);
+
+    --accent: var(--mission-gray-1);
+    --accent-foreground: var(--space-black);
+
+    --popover: 0 0% 100%; /* white popover */
+    --popover-foreground: var(--space-black);
+
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --destructive-foreground: var(--cosmos-white);
+
+    --border: var(--mission-gray-1);
+    --input: var(--mission-gray-1);
+
+    --ring: var(--rocket);
+
     --radius: 0.5rem;
+
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
@@ -32,25 +62,35 @@
   }
 
   .dark {
-    --background: 0 0% 7.1%;  /* #121212 */
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
+    --background: var(--space-black);
+    --foreground: var(--cosmos-white);
+
+    --card: var(--space-surface);
+    --card-foreground: var(--cosmos-white);
+
+    --popover: var(--space-surface);
+    --popover-foreground: var(--cosmos-white);
+
+    --primary: var(--rocket);
+    --primary-foreground: var(--cosmos-white);
+
+    --secondary: var(--mission-gray-3);
+    --secondary-foreground: var(--cosmos-white);
+
+    --muted: var(--space-surface);
+    --muted-foreground: var(--cosmos-secondary);
+
+    --accent: var(--mission-gray-3);
+    --accent-foreground: var(--space-black);
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: var(--cosmos-white);
+
+    --border: var(--mission-gray-3);
+    --input: var(--mission-gray-3);
+
+    --ring: var(--rocket);
+
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -63,7 +103,351 @@
   * {
     @apply border-border;
   }
+  /* Section rhythm (the `section` spacing token in tailwind.config.ts):
+     56px on phones (board 24), 120px from md (board 21). Each section pads
+     its top and bottom by it, so every gap between sections is the same.
+     --hero-bottom-space is the empty hero left below its last line of text,
+     which already counts toward the gap after the hero. On phones the body
+     copy's last line ends 35px above the 650px frame's bottom at 390 wide
+     (hero-phone.tsx). From md the fact strip's 16.5px line box ends at y404.5
+     of the 436px bottom band (hero.tsx), 31.5 board px that scale with the
+     board. */
+  :root {
+    --section-pad: 56px;
+    --hero-bottom-space: 35px;
+  }
+  @media (min-width: 768px) {
+    :root {
+      --section-pad: 120px;
+      --hero-bottom-space: calc(31.5px * var(--hero-scale, 1));
+    }
+  }
+  html {
+    font-family:
+      "Plus Jakarta Sans",
+      "Avenir Next",
+      Avenir,
+      "Segoe UI",
+      sans-serif;
+  }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Hero display type: lit like the rocket (sun on the camera side, a touch
+   above), so the glyphs shade from white at the top to a cooler gray at the
+   bottom and cast a soft shadow onto whatever sits behind them. Applied to
+   the animated word spans, not the heading: background-clip: text does not
+   survive transformed children. drop-shadow, not text-shadow — text-shadow
+   shows through the transparent fill. */
+.hero-type {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f2f0 45%, #c9c9d0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* The sun sits at the camera, a touch up and right ([3,4,26] in the
+     scene), so the shadow falls almost straight behind the glyphs, nudged
+     down-left in the same 3:4 ratio. */
+  filter: drop-shadow(-3px 4px 16px rgba(0, 0, 0, 0.65));
+}
+
+/* Components layer, so a utility on the same element (absolute, a radius)
+   still wins over these defaults. */
+@layer components {
+  /* Page sky (board 21): the one background behind every section from below
+   the hero to the apply band. Two layers, with the stars a Starfield on top
+   (app/page.tsx).
+   .page-sky-light is a seamless tile cut from the approved background, with
+   the soft diagonal streaks baked onto ground at the board's 16% strength
+   (public/textures/page-streaks-tile.webp, 1440 x 1800, lossless). It repeats
+   down the page with no seam, so the sky has no fixed height. It is 1440px
+   wide and centred, and it scales up with the page on wider screens; on a
+   phone it scales down to the page width. Its top
+   fades in so the hero's own scrim meets it without a line.
+   The tile carries its own dither. Its tones span only 16 grey levels,
+   so a plain 8-bit tile draws each level as a flat column with an edge (issue
+   #87). Instead the tile is a smooth field under an 8 x 8 ordered (Bayer)
+   dither of one level, which reads as one even tone at any scale. 1800 is a
+   multiple of 8, so the dither runs on across the tile's wrap. The grain
+   is not the layer for this job: it is random noise, not a one-level
+   ordered dither.
+   .page-sky-grain is the fine film grain, a separate stitched SVG noise tile:
+   webp compression drops the grain from the streak tile. It is one octave
+   of pixel-fine grey noise in soft-light blend, with no threshold: it
+   lightens and darkens the sky around its own tone, so it reads as even
+   film grain, never as specks or scratches, and leaves the sky as dark as
+   the board. Its frequency and opacity are matched to board 21, recorded as
+   an exception in design-system-manifest.md. It is set per screen density.
+   On 2x screens (1.5dppx and up) it is frequency 2 at 60%, the approved
+   look. On 1x screens SVG noise at frequency 2 samples only its lattice
+   points and renders flat (issue #89), so there it is 1.8 at 70%. Frequency
+   1.8 on a 2x screen draws the grain as visible small squares, so it never
+   applies there.
+   Both layers are drawn down from the sky's top edge, so every page shows
+   the same texture at the same height, whatever its length. Where the sky
+   runs straight into the footer (/projects, the project pages), the footer
+   sits inside the sky (LandingFooter inSky) and adds only its stars, so the
+   tile runs on with no line (issue #69). After the apply band the footer
+   paints the two layers itself, drawn down from its own top edge.
+   .page-sky-fade ramps the streak tile in over one section pad where the sky
+   meets the hero: the tile is about ten levels lighter than the ground the
+   hero scrim ends on, so a hard start would draw a line. The stars start at the top edge. */
+  .page-sky-light,
+  .page-sky-grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .page-sky-fade {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
+    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--section-pad));
+  }
+  /* On a phone the tile scales down to the page width, as on the phone
+     boards: kept at 1440px, a phone would show only the tile's plain middle
+     and no streaks. From 768px up it keeps its full 1440px. */
+  .page-sky-light {
+    background: theme("colors.ground") url("/textures/page-streaks-tile.webp")
+      top center / 100% auto repeat-y;
+  }
+  @media (min-width: 768px) {
+    .page-sky-light {
+      background-size: max(100%, 1440px) auto;
+    }
+  }
+  .page-sky-grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.8' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+    mix-blend-mode: soft-light;
+    opacity: 0.7;
+  }
+  @media (min-resolution: 1.5dppx) {
+    .page-sky-grain {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.6;
+    }
+  }
+
+  /* Liquid glass (board 21 spec table). Every glass surface draws its edge as
+   a gradient ring on ::before: padding sets the ring width and the mask cuts
+   the inside out, so the fill under it stays see-through. The rgba whites and
+   blacks here are the spec's own values, recorded as an exception in
+   design-system-manifest.md. */
+  .glass-card,
+  .glass-info,
+  .glass-project {
+    position: relative;
+  }
+  /* The blur averages the page sky's dither away, so the blurred sky inside
+   a card falls back into one-level tone steps (issue #89). Each blurring
+   glass surface lays its own dither on top: pixel-fine white noise, the sky
+   grain's frequency, at an alpha of 0 to about 1.5% (0 to 4 levels on the
+   dark sky). Its mean lift, about 1% white, is taken off the surface's own
+   white fill, so the card keeps the spec's tone on average. The
+   project card needs none: its texture is opaque, and no sky shows inside. */
+  .glass-card,
+  .glass-info {
+    --glass-dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.8' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.08 0 0 0 -0.032'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")
+      0 0 / 160px 160px;
+  }
+  .glass-card::before,
+  .glass-info::before,
+  .glass-project::before,
+  .glass-project::after,
+  .glass-linked::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    padding: var(--glass-edge-width, 1px);
+    background: var(--glass-edge);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+    pointer-events: none;
+  }
+
+  /* Track record and team cards. */
+  .glass-card {
+    --glass-edge: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.2),
+      rgba(255, 255, 255, 0.04)
+    );
+    /* The spec's white 3%: 2% flat plus the dither's mean. */
+    background:
+      var(--glass-dither),
+      rgba(255, 255, 255, 0.02);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  /* The project card edge, shared by the card and its info box. */
+  .glass-project,
+  .glass-info {
+    --glass-edge: linear-gradient(
+      215deg,
+      rgba(255, 255, 255, 0.7),
+      rgba(255, 255, 255, 0.2) 30%,
+      rgba(255, 255, 255, 0.05) 55%,
+      rgba(255, 255, 255, 0.15) 80%,
+      rgba(255, 255, 255, 0.5)
+    );
+  }
+
+  /* Project card: the texture is the fill, so only the edge and the shadows
+   are glass. On hover the edge brightens: a second, brighter ring fades in
+   over the first, because a gradient cannot transition. That is the one hover
+   change left under reduced motion. A home card that links to its project's
+   page (issue #372) brightens the same way on keyboard focus. `glass-linked`
+   gives a glass-info card
+   that links to its page (/projects) the same brighter edge on hover and
+   keyboard focus. */
+  .glass-project {
+    --glass-edge-width: 1.5px;
+    box-shadow:
+      inset 0 1px 2px rgba(255, 255, 255, 0.25),
+      0 16px 40px rgba(0, 0, 0, 0.6);
+  }
+  .glass-project::after,
+  .glass-linked::after {
+    background: linear-gradient(
+      215deg,
+      rgba(255, 255, 255, 0.95),
+      rgba(255, 255, 255, 0.45) 30%,
+      rgba(255, 255, 255, 0.2) 55%,
+      rgba(255, 255, 255, 0.35) 80%,
+      rgba(255, 255, 255, 0.8)
+    );
+    opacity: 0;
+    transition: opacity 300ms ease-out;
+  }
+  .glass-project:hover::after,
+  .glass-project:has(> a:focus-visible)::after,
+  .glass-linked:hover::after,
+  .glass-linked:has(a:focus-visible)::after {
+    opacity: 1;
+  }
+
+  /* Navbar (board 21 hero section): a full-width bar fixed to the top edge,
+   not floating. Translucent ink with the info box's sheen, a 1px bottom edge
+   brightest in the middle, and a soft drop shadow. No UI package in the repo
+   ships a glass surface, so it is drawn here with the other glass. */
+  .glass-bar {
+    background:
+      linear-gradient(
+        200deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.02) 50%,
+        rgba(255, 255, 255, 0.05)
+      ),
+      rgba(10, 10, 10, 0.35);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    transition:
+      -webkit-backdrop-filter 300ms ease-out,
+      backdrop-filter 300ms ease-out;
+  }
+  /* While the hero canvas shows under the bar, the bar drops its blur and
+   keeps the same tint, so a canvas frame never forces a re-blur (issue #63,
+   glass-bar.ts). The sky there is near black, so the bar reads the same. */
+  html[data-glass-bar="clear"] .glass-bar,
+  html[data-glass-bar="clear"] .glass-hang {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  /* The bottom edge leaves a gap where a hanging panel joins the bar
+   (`.glass-hang` below), so bar and panel read as one shape. The gap runs
+   between --bar-join-from and --bar-join-to, set on <html> by glass-bar.ts;
+   unset, the two are equal and the edge is whole. */
+  .glass-bar::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0.25) 50%,
+      rgba(255, 255, 255, 0.08)
+    );
+    --join-mask: linear-gradient(
+      90deg,
+      #000 var(--bar-join-from, 0px),
+      transparent var(--bar-join-from, 0px),
+      transparent var(--bar-join-to, 0px),
+      #000 var(--bar-join-to, 0px)
+    );
+    -webkit-mask-image: var(--join-mask);
+    mask-image: var(--join-mask);
+    pointer-events: none;
+  }
+
+  /* A panel hanging from the navbar (board 27, the About menu): flush under
+   the bar with no top edge, so the two read as one surface. Same ink, blur
+   and shadow as the bar. Its fill is the tone the bar's 200deg sheen has
+   along its bottom edge above the panel (about 2.7% white at the panel's
+   left to 2% at its right, at 1024 to 1440 wide), flat down the panel, so
+   there is no step in colour at the join. Side and bottom edges are 1px
+   white 12%, the bottom corners 12px. The shadow is clipped at the top so it
+   never darkens the bar. */
+  .glass-hang {
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.027), rgba(255, 255, 255, 0.02)),
+      rgba(10, 10, 10, 0.35);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    border-radius: 0 0 12px 12px;
+    box-shadow:
+      inset 1px 0 0 rgba(255, 255, 255, 0.12),
+      inset -1px 0 0 rgba(255, 255, 255, 0.12),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+      0 8px 24px rgba(0, 0, 0, 0.35);
+    clip-path: inset(0 -32px -32px -32px);
+  }
+
+  /* Project info box. Efesto's texture is bright grey, so its card sets
+   --glass-tint darker to keep the text readable. */
+  .glass-info {
+    /* The spec's sheen (white 10%, 2%, 5%) with the dither's mean taken off
+       each stop. */
+    background:
+      var(--glass-dither),
+      linear-gradient(
+        200deg,
+        rgba(255, 255, 255, 0.09),
+        rgba(255, 255, 255, 0.01) 50%,
+        rgba(255, 255, 255, 0.04)
+      ),
+      rgba(10, 10, 10, var(--glass-tint, 0.6));
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  /* Phone menu (board 24b): a full-height sidebar from the right. Darker
+   than the bar (ink at 70%) under the same 200deg sheen, blur 32px, a 1px
+   left edge and a shadow cast onto the dimmed page. */
+  .glass-sidebar {
+    background:
+      linear-gradient(
+        200deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.02) 50%,
+        rgba(255, 255, 255, 0.05)
+      ),
+      rgba(10, 10, 10, 0.7);
+    -webkit-backdrop-filter: blur(32px);
+    backdrop-filter: blur(32px);
+    box-shadow:
+      inset 1px 0 0 rgba(255, 255, 255, 0.18),
+      -16px 0 48px rgba(0, 0, 0, 0.5);
   }
 }

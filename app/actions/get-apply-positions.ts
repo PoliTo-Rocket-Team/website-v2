@@ -3,19 +3,28 @@ import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ApplyPosition } from "./types";
-import { getCurrentMemberId } from "./get-memberId";
+import { getScopeInfoForMember } from "./get-member-scopes";
+import type { ViewerStanding } from "@/lib/dashboard/viewer";
+import { getDb, isDatabaseConfigured } from "@/db/client";
+import { PUBLIC_POSITIONS_CACHE_TAG } from "@/lib/cache-tags";
 import {
-  getEditableDivisionsForScope,
-  getScopeInfoForCurrentUser,
-  getScopeInfoForMember,
-  isEmptyScopeInfo,
-} from "./get-member-scopes";
-import type { Division } from "@/db/types";
-import { getDb } from "@/db/client";
-import { applyPositions, departments, divisions } from "@/db/schema";
+  applyPositions,
+  departments,
+  divisions,
+  recruitmentSetting,
+} from "@/db/schema";
+import {
+  DEFAULT_RECRUITMENT,
+  isPublic,
+  type Recruitment,
+} from "@/lib/apply/positions";
+import {
+  canSwitchRecruitment,
+  type RecruitmentControl,
+} from "@/lib/apply/recruitment-switch";
 
-export const POSITIONS_CACHE_TAG = "apply-positions";
-export const PUBLIC_POSITIONS_CACHE_TAG = "public-apply-positions";
+// The tag lives in lib/cache-tags.ts, beside the other reads that carry it (issue #397).
+export { PUBLIC_POSITIONS_CACHE_TAG };
 
 export type PositionSnapshotRow = {
   id: number;
@@ -57,16 +66,13 @@ function basePositionSelection() {
   };
 }
 
-async function queryPositionSnapshot(
-  activeOnly = false,
-): Promise<PositionSnapshotRow[]> {
+async function queryPositionSnapshot(): Promise<PositionSnapshotRow[]> {
   const db = getDb();
 
   const whereClauses = [
     eq(applyPositions.isDeleted, false),
     isNull(divisions.closedAt),
     isNull(departments.closedAt),
-    activeOnly ? eq(applyPositions.status, true) : undefined,
   ];
 
   return db
@@ -78,149 +84,151 @@ async function queryPositionSnapshot(
     .orderBy(asc(divisions.deptId), asc(applyPositions.title));
 }
 
-async function queryAllPositionSnapshot(): Promise<PositionSnapshotRow[]> {
-  return queryPositionSnapshot();
+/** Postgres' "undefined_table" error: the recruitment migration has not run here yet. */
+const UNDEFINED_TABLE = "42P01";
+
+function isUndefinedTable(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if ((e as { code?: unknown }).code === UNDEFINED_TABLE) return true;
+  }
+  return false;
 }
 
-async function queryActivePositionSnapshot(): Promise<PositionSnapshotRow[]> {
-  return queryPositionSnapshot(true);
+// The stored recruitment switch. No row, or no table on a database the
+// migration has not reached yet, reads as the default: recruitment on. Only
+// the missing table is caught; any other error still throws.
+async function queryRecruitment(): Promise<Recruitment> {
+  const db = getDb();
+
+  try {
+    const [row] = await db
+      .select({ isOpen: recruitmentSetting.isOpen })
+      .from(recruitmentSetting)
+      .limit(1);
+    return row ?? DEFAULT_RECRUITMENT;
+  } catch (error) {
+    if (isUndefinedTable(error)) return DEFAULT_RECRUITMENT;
+    throw error;
+  }
 }
 
-async function getAllPositionSnapshotCached(): Promise<PositionSnapshotRow[]> {
-  "use cache";
-
-  cacheTag(POSITIONS_CACHE_TAG);
-  cacheLife("weeks");
-
-  return queryAllPositionSnapshot();
-}
-
-async function getActivePositionSnapshotCached(): Promise<
-  PositionSnapshotRow[]
-> {
+// The public read: the positions and the recruitment switch under one tag, so
+// a position edit and the dashboard switch (#121) both refresh /apply with
+// updateTag(PUBLIC_POSITIONS_CACHE_TAG).
+async function getPublicSnapshotCached(): Promise<{
+  positions: PositionSnapshotRow[];
+  recruitment: Recruitment;
+}> {
   "use cache";
 
   cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
   cacheLife("weeks");
 
-  return queryActivePositionSnapshot();
+  const [positions, recruitment] = await Promise.all([
+    queryPositionSnapshot(),
+    queryRecruitment(),
+  ]);
+  return { positions, recruitment };
 }
 
-function toApplyPosition(
-  position: PositionSnapshotRow,
-  canEdit?: boolean,
-): ApplyPosition {
+function toApplyPosition(position: PositionSnapshotRow): ApplyPosition {
   return {
     ...position,
     div_code: position.div_code ?? "",
     dept_code: position.dept_code ?? "",
-    canEdit,
   };
 }
 
-function filterPositionSnapshotByScope(
-  positions: PositionSnapshotRow[],
-  departmentIds: number[],
-  divisionIds: number[],
-): PositionSnapshotRow[] {
-  if (!departmentIds.length && !divisionIds.length) {
-    return [];
-  }
-
-  const departmentIdSet = new Set(departmentIds);
-  const divisionIdSet = new Set(divisionIds);
-
-  return positions.filter(
-    (position) =>
-      (position.division_id !== null &&
-        divisionIdSet.has(position.division_id)) ||
-      departmentIdSet.has(position.dept_id),
-  );
-}
-
-function mapPositionsWithEditScope(
-  positions: PositionSnapshotRow[],
-  scopeInfo: Awaited<ReturnType<typeof getScopeInfoForMember>>,
-): ApplyPosition[] {
-  return positions.map((position) => {
-    const canEdit =
-      scopeInfo.hasAdminEdit ||
-      scopeInfo.hasOrgEdit ||
-      (position.division_id !== null &&
-        scopeInfo.editableDivisionIds.has(position.division_id)) ||
-      scopeInfo.editableDepartmentIds.has(position.dept_id);
-
-    return toApplyPosition(position, canEdit);
-  });
-}
-
-export async function getPositionsByMemberScope(): Promise<{
-  positions: ApplyPosition[];
-}> {
-  const memberId = await getCurrentMemberId();
-
-  if (!memberId) {
-    return { positions: [] };
-  }
-
-  const scopeInfo = await getScopeInfoForMember(memberId, "positions");
-  if (isEmptyScopeInfo(scopeInfo)) {
-    return { positions: [] };
-  }
-
-  const hasFullVisibility = scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess;
-  const departmentIds = Array.from(scopeInfo.departmentIds);
-  const divisionIds = Array.from(scopeInfo.divisionIds);
-  const allPositions = await getAllPositionSnapshotCached();
-  const visiblePositions = hasFullVisibility
-    ? allPositions
-    : filterPositionSnapshotByScope(allPositions, departmentIds, divisionIds);
-
-  if (!hasFullVisibility && visiblePositions.length === 0) {
-    return { positions: [] };
-  }
-
-  return {
-    positions: mapPositionsWithEditScope(visiblePositions, scopeInfo),
-  };
-}
-
-export async function getPositionsPageData(): Promise<{
-  editableDivisions: Division[];
-  positions: ApplyPosition[];
-}> {
-  const scopeInfo = await getScopeInfoForCurrentUser("positions");
-  if (isEmptyScopeInfo(scopeInfo)) {
-    return {
-      editableDivisions: [],
-      positions: [],
-    };
-  }
-
-  const hasFullVisibility = scopeInfo.hasAdminAccess || scopeInfo.hasOrgAccess;
-  const departmentIds = Array.from(scopeInfo.departmentIds);
-  const divisionIds = Array.from(scopeInfo.divisionIds);
-
-  const [allPositions, editableDivisions] = await Promise.all([
-    getAllPositionSnapshotCached(),
-    getEditableDivisionsForScope(scopeInfo),
+/**
+ * The dashboard's recruitment switch: its stored state, read fresh, and
+ * whether this member may change it. Everyone else sees it read-only. The
+ * member is the one the caller has already resolved (the dashboard's
+ * identity, issue #397), so the session is not read again; their standing
+ * carries the team leader's seat (issue #444), their scope rows the rest.
+ */
+export async function getRecruitmentControlFor(memberId: number | null, viewer: ViewerStanding): Promise<RecruitmentControl> {
+  const [scopeInfo, recruitment] = await Promise.all([
+    getScopeInfoForMember(memberId, "positions"),
+    queryRecruitment(),
   ]);
-  const positions = hasFullVisibility
-    ? allPositions
-    : filterPositionSnapshotByScope(allPositions, departmentIds, divisionIds);
+
+  return { recruitment, canSwitch: canSwitchRecruitment(viewer, scopeInfo) };
+}
+
+export type PublicPositions =
+  | { status: "available"; positions: ApplyPosition[] }
+  | { status: "database-not-configured" };
+
+export async function getPublicPositions(): Promise<PublicPositions> {
+  if (!isDatabaseConfigured()) {
+    return { status: "database-not-configured" };
+  }
+
+  const { positions, recruitment } = await getPublicSnapshotCached();
 
   return {
-    editableDivisions,
-    positions: mapPositionsWithEditScope(positions, scopeInfo),
+    status: "available",
+    positions: positions
+      .filter((position) => isPublic(position, recruitment))
+      .map((position) => toApplyPosition(position)),
   };
 }
 
-export async function getPublicPositions(): Promise<{
-  positions: ApplyPosition[];
-}> {
-  const positions = await getActivePositionSnapshotCached();
+export type PositionWithRecruitment =
+  | { status: "found"; position: ApplyPosition; recruitment: Recruitment }
+  | { status: "missing" }
+  | { status: "database-not-configured" };
 
-  return {
-    positions: positions.map((position) => toApplyPosition(position)),
-  };
+/**
+ * One position and the recruitment switch, read fresh for the submit (issue
+ * #120), never from a cache: the submit must see a position closed a minute
+ * ago. Deleted positions are read too, so the page can say the position is
+ * not public rather than not found.
+ */
+export async function getPositionWithRecruitment(id: number): Promise<PositionWithRecruitment> {
+  if (!isDatabaseConfigured()) {
+    return { status: "database-not-configured" };
+  }
+
+  return queryPositionWithRecruitment(id);
+}
+
+/**
+ * The same read for the position page (issue #395), cached under the public
+ * tag, so a position edit, a division code change and the recruitment switch
+ * refresh it with updateTag(PUBLIC_POSITIONS_CACHE_TAG) as they refresh
+ * /apply. The submit still reads fresh (getPositionWithRecruitment).
+ */
+export async function getShownPositionWithRecruitment(id: number): Promise<PositionWithRecruitment> {
+  if (!isDatabaseConfigured()) {
+    return { status: "database-not-configured" };
+  }
+
+  return getShownPositionCached(id);
+}
+
+async function getShownPositionCached(id: number): Promise<PositionWithRecruitment> {
+  "use cache";
+
+  cacheTag(PUBLIC_POSITIONS_CACHE_TAG);
+  cacheLife("weeks");
+
+  return queryPositionWithRecruitment(id);
+}
+
+async function queryPositionWithRecruitment(id: number): Promise<PositionWithRecruitment> {
+  const [[row], recruitment] = await Promise.all([
+    getDb()
+      .select(basePositionSelection())
+      .from(applyPositions)
+      .innerJoin(divisions, eq(applyPositions.divisionId, divisions.id))
+      .innerJoin(departments, eq(divisions.deptId, departments.id))
+      .where(eq(applyPositions.id, id))
+      .limit(1),
+    queryRecruitment(),
+  ]);
+
+  return row === undefined
+    ? { status: "missing" }
+    : { status: "found", position: toApplyPosition(row), recruitment };
 }

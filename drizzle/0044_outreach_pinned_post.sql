@@ -1,0 +1,16 @@
+-- A post can be pinned to the top of /outreach, where the Featured card tells
+-- its story and opens its page (issue #392). The partial unique index keeps it
+-- to one pinned post at any time, as outreach_tags_one_award does for the
+-- award tag.
+ALTER TABLE "outreach_posts" ADD COLUMN "pinned" boolean DEFAULT false NOT NULL;
+--> statement-breakpoint
+CREATE UNIQUE INDEX "outreach_posts_one_pinned" ON "outreach_posts" USING btree ("pinned") WHERE "outreach_posts"."pinned";
+--> statement-breakpoint
+-- The summit's story, published, after every post the database holds, and
+-- pinned. Written by `pinnedStoryImportSql` (lib/outreach-import.ts);
+-- lib/outreach-store.test.ts checks this file ends with exactly its output.
+WITH "post" AS (INSERT INTO "outreach_posts" ("site_order", "pinned") SELECT COALESCE(MAX("site_order"), 0) + 1, true FROM "outreach_posts" RETURNING "id"),
+"version" AS (INSERT INTO "outreach_post_versions" ("post_id", "version", "title", "date", "place", "summary", "summary_phone", "lead", "body", "photos", "channels")
+SELECT "id", 'published', 'IRESS, the Italian Rocket Engineering Student Summit', '2023-05-02', 'Torino, Italy', 'In May 2023 we brought rocket teams from Italy''s main universities together for the first time, in the Aula Magna of Politecnico di Torino, with speakers from ArianeSpace and Avio. The summit now moves city every year: Padova in 2024, Rome in 2025.', 'In May 2023 we brought rocket teams from Italy''s main universities together for the first time, in the Aula Magna of Politecnico di Torino. The summit now moves city every year.', 'The student summit we started in 2023 brings Italy’s university rocket teams together every year, in a new city each time.', '[{"kind":"paragraph","text":"In May 2023 we brought rocket teams from Italy’s main universities together for the first time, in the Aula Magna of Politecnico di Torino, with speakers from ArianeSpace and Avio. The summit gave students a place to show their projects, share ideas and meet professionals and industry leaders in rocket and space engineering."},{"kind":"paragraph","text":"The summit now moves city every year and runs on its own: Team Thrust organised the second edition in Padova in 2024, and SASA hosted the third in Rome in 2025."},{"kind":"highlight","label":"EDITIONS","text":"Torino 2023 · Padova 2024 · Rome 2025"}]'::jsonb, '[{"src":"/outreach/iress-2023-torino.webp","alt":"Students from Italy''s rocket teams in the Aula Magna of Politecnico di Torino, under the IRESS screen."},{"src":"/outreach/iress-2024-padova.webp","alt":"Students from Italy''s rocket teams under the IRESS screen at the second edition in Padova."},{"src":"/outreach/iress-2025-rome.webp","alt":"Students from Italy''s rocket teams on stage under a fresco at IRESS 2025 in Rome."}]'::jsonb, '{"instagram":{"url":"https://www.instagram.com/p/CrwPytBs6Kr/","caption":"The event brought together rocket teams from major Italian universities, promoting collaboration and networking…"}}'::jsonb FROM "post" RETURNING "post_id")
+INSERT INTO "outreach_post_tags" ("post_id", "version", "tag_name", "position")
+SELECT "post_id", 'published', "tag"."name", "tag"."position" FROM "version", (VALUES ('Summit', 1)) AS "tag" ("name", "position");

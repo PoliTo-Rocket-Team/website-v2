@@ -1,57 +1,42 @@
 import { Suspense } from "react";
-import { getPositionsPageData } from "@/app/actions/get-apply-positions";
-import { ApplyPositionsList } from "@/components/apply-positions-list";
-import { LoadingSkeleton } from "@/components/loading-skeleton";
-import {
-  handleDelete,
-  handleEditPosition,
-  handleAddPosition,
-} from "./server-actions";
+import type { Metadata } from "next";
+import { notFound, redirect } from "next/navigation";
+import { PageSkeleton } from "@/components/dashboard/page-skeleton";
+import { PositionsView } from "@/components/dashboard/positions";
+import { canReach } from "@/lib/dashboard/access";
+import { openDashboard } from "@/lib/dashboard/open";
+import { divisionTabFor } from "@/lib/dashboard/recruitment";
 
-async function PositionsContent() {
-  const { positions, editableDivisions } = await getPositionsPageData();
+export const metadata: Metadata = {
+  title: "Positions · Dashboard · PoliTo Rocket Team",
+};
 
+type SearchParams = Promise<{ division?: string | string[] }>;
+
+// Boards 41 (the operations lead, with the recruitment switch), 41c (a
+// division lead, their division's roles) and 63 (a department head, every
+// division of their department, issue #230). Replaces the legacy page here
+// (issue #142). Every role that opens it gets the same toolbar and columns;
+// only the rows differ (issue #417). `?division=<id>` opens a head's page
+// narrowed to that division, as the Overview's Divisions panel links it.
+// Members and applicants do not reach it.
+export default function PositionsPage({ searchParams }: { searchParams: SearchParams }) {
   return (
-    <ApplyPositionsList
-      positions={positions}
-      handleDelete={handleDelete}
-      handleEditPosition={handleEditPosition}
-      handleAddPosition={handleAddPosition}
-      editableDivisions={editableDivisions}
-      pageContext="dashboard"
-    />
+    <Suspense fallback={<PageSkeleton kind="list" />}>
+      <LivePositions searchParams={searchParams} />
+    </Suspense>
   );
 }
 
-function PositionsFallback() {
-  return (
-    <div className="w-full relative max-w-5xl mx-auto">
-      <div
-        className="absolute top-0 right-0 -translate-y-12 h-10 w-[132px] rounded-md border border-border bg-muted/40 animate-pulse"
-        aria-hidden="true"
-      />
-      <LoadingSkeleton className="space-y-2 md:space-y-4" />
-    </div>
-  );
-}
-
-export default function Positions() {
-  return (
-    <div className="w-full">
-      <div className="flex flex-col space-y-4 md:space-y-8 mb-8 md:mb-16">
-        <h2 className="text-lg md:text-2xl font-bold text-primary">
-          Positions
-        </h2>
-        <p className="text-muted-foreground w-3/4">
-          Manage recruitment positions for your divisions. You can create new
-          positions, edit existing ones, and control their visibility to
-          applicants. Active positions are displayed to potential candidates on
-          the application page.
-        </p>
-      </div>
-      <Suspense fallback={<PositionsFallback />}>
-        <PositionsContent />
-      </Suspense>
-    </div>
-  );
+async function LivePositions({ searchParams }: { searchParams: SearchParams }) {
+  const opening = await openDashboard();
+  if (opening.kind === "signed-out") redirect("/login?cb=/dashboard/positions");
+  // The layout shows the sign-out screen in place of this page.
+  if (opening.kind === "account-unresolved") return null;
+  const { data } = opening;
+  if (!canReach(data.viewer, "positions")) notFound();
+  const [page, recruitment, { division }] = await Promise.all([data.positions(), data.recruitment(), searchParams]);
+  const asked = typeof division === "string" ? division : null;
+  const initialDivision = page.scope === "department" ? divisionTabFor(page.department, asked) : null;
+  return <PositionsView page={page} recruitment={recruitment} initialDivision={initialDivision} />;
 }

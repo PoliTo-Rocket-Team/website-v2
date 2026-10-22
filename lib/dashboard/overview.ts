@@ -1,0 +1,387 @@
+// What the Overview page shows. The operations lead sees the team shape
+// (board 40: figures, what needs attention, recent activity); the team leader
+// sees the leader shape (board 72, issue #252: the same across the team, with
+// what waits for their decision and a Departments panel); a division lead
+// sees the division shape (board 56: the same, scoped to their division, plus
+// upcoming interviews); a department head sees the department shape (board
+// 62, issue #230: the same across their department, plus a Divisions panel);
+// a member sees the personal shape (board 52: who they
+// are and what is theirs), with a grant or without one (issue #480). A non-member sees the applicant shape (boards 50e
+// and 50f, ./applicant-overview.ts) and an alumnus the alumni shape (issue
+// #317's board 56, not the division lead's board 56 above; ./my-alumni.ts),
+// which the page builds from My applications and My alumni. The components
+// in components/dashboard/ render these and fetch nothing.
+
+import type { AccessSummary } from "./access-summary";
+import type { ApplicantOverview } from "./applicant-overview";
+import type { AlumniOverview } from "./my-alumni";
+
+export type Link = { readonly label: string; readonly href: string };
+
+export type Stat = {
+  readonly label: string;
+  readonly value: string;
+  readonly detail: string;
+  /** A green dot before the value: the thing is live (recruitment open, orders waiting). */
+  readonly live?: boolean;
+};
+
+/**
+ * "notice": a stored dashboard notice (./notices.ts), whatever its own kind.
+ * "hand-over": a hand-over waiting for the viewer's answer (board 62c,
+ * ./hand-over-request.ts), always the top row. The team leader's rows (board 72, ./leader-overview.ts): orders waiting for
+ * their decision, approved orders not ordered yet, and positions closing soon.
+ */
+export type AttentionKind =
+  | "applications"
+  | "quiet-position"
+  | "unassigned"
+  | "no-photo"
+  | "notice"
+  | "orders-to-decide"
+  | "approved-orders"
+  | "hand-over"
+  | "alias-request";
+
+/** A row's button that dismisses the stored notice it shows (./notices.ts). */
+export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
+
+/** A row's Decline and Confirm on a hand-over waiting for the viewer (board 62c, ./hand-over-request.ts). */
+export type AnswerHandOver = { readonly answerHandOver: number };
+
+/**
+ * A row's Decline and Mark created on an open alias request (board 94c,
+ * ./alias-request.ts): the member it is for, and the address Mark created's
+ * dialog starts from (board 94d).
+ */
+export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string };
+
+/** Where a row's button goes, the notice it dismisses, or the request it answers. */
+export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias;
+
+export function isDismissNotice(action: AttentionAction): action is DismissNotice {
+  return "dismissNotice" in action;
+}
+
+export function isAnswerHandOver(action: AttentionAction): action is AnswerHandOver {
+  return "answerHandOver" in action;
+}
+
+export function isAnswerAlias(action: AttentionAction): action is AnswerAlias {
+  return "answerAlias" in action;
+}
+
+export type AttentionItem = {
+  readonly kind: AttentionKind;
+  readonly title: string;
+  /** The shorter title phones show (board 56m), when it differs. */
+  readonly phoneTitle?: string;
+  readonly detail: string;
+  readonly action: AttentionAction;
+};
+
+export type ActivityItem = {
+  readonly actor: string;
+  readonly text: string;
+  readonly when: string;
+  /** The viewer did it: their circle shows on the accent. */
+  readonly self: boolean;
+};
+
+export type TeamOverview = {
+  readonly shape: "team";
+  readonly stats: readonly Stat[];
+  readonly attention: readonly AttentionItem[];
+  readonly activity: readonly ActivityItem[];
+};
+
+/** An interview the lead has booked, or one still waiting for the applicant to pick a time. */
+export type UpcomingInterview = {
+  readonly applicant: string;
+  readonly position: string;
+} & (
+  | { readonly state: "booked"; readonly start: Date; readonly end: Date }
+  | { readonly state: "waiting" }
+);
+
+export type DivisionOverview = {
+  readonly shape: "division";
+  readonly stats: readonly Stat[];
+  readonly attention: readonly AttentionItem[];
+  readonly interviews: readonly UpcomingInterview[];
+  readonly activity: readonly ActivityItem[];
+};
+
+/** One division on a department head's Overview (boards 62 and 62m): who leads it, how big it is, what waits. */
+export type DivisionSummary = {
+  readonly id: number;
+  /** "Mission Analysis Division" */
+  readonly name: string;
+  readonly leads: readonly string[];
+  readonly people: number;
+  readonly newApplications: number;
+  readonly openPositions: number;
+};
+
+/**
+ * Board 62 and 62m (issue #230): a department head's figures and attention
+ * across their department, a Divisions panel with one row per division,
+ * upcoming interviews (62m) and recent activity (62).
+ */
+export type DepartmentOverview = {
+  readonly shape: "department";
+  readonly stats: readonly Stat[];
+  readonly attention: readonly AttentionItem[];
+  readonly divisions: readonly DivisionSummary[];
+  readonly interviews: readonly UpcomingInterview[];
+  readonly activity: readonly ActivityItem[];
+};
+
+/** One department on the team leader's Overview (board 72): who heads it, how big it is, what waits. */
+export type DepartmentSummary = {
+  readonly id: number;
+  /** "Aerodynamics" */
+  readonly name: string;
+  readonly heads: readonly string[];
+  readonly divisions: number;
+  /** Everyone in its divisions and its heads, each once. */
+  readonly people: number;
+  readonly newApplications: number;
+  readonly openPositions: number;
+};
+
+/**
+ * Board 72 (issue #252): the team leader's figures across the team, what
+ * waits for them (./leader-overview.ts), a Departments panel with one row
+ * per department, and recent activity. The Activity log is the IT lead's
+ * alone, so the panel links to none.
+ */
+export type TeamLeaderOverview = {
+  readonly shape: "leader";
+  readonly stats: readonly Stat[];
+  readonly attention: readonly AttentionItem[];
+  readonly departments: readonly DepartmentSummary[];
+  /** Everyone on the team once: the panel's people count. */
+  readonly people: number;
+  readonly activity: readonly ActivityItem[];
+};
+
+/** "6 departments · 112 people", beside the Departments panel's title (board 72). */
+export function departmentsMeta(departments: number, people: number): string {
+  return `${departments} ${departments === 1 ? "department" : "departments"} · ${rosterSize(people)}`;
+}
+
+/** "Head Chiara Ferri · 2 divisions · 16 people" under a department's name (board 72). */
+export function departmentLine(department: DepartmentSummary): string {
+  const heads = department.heads.length === 0 ? "No head yet" : `Head ${department.heads.join(", ")}`;
+  const divisions = `${department.divisions} ${department.divisions === 1 ? "division" : "divisions"}`;
+  return `${heads} · ${divisions} · ${rosterSize(department.people)}`;
+}
+
+/** "2 divisions · 16 people", beside the Divisions panel's title (board 62). */
+export function divisionsMeta(divisions: readonly DivisionSummary[]): string {
+  const people = divisions.reduce((sum, d) => sum + d.people, 0);
+  return `${divisions.length} ${divisions.length === 1 ? "division" : "divisions"} · ${people} ${people === 1 ? "person" : "people"}`;
+}
+
+/** "Leads", "Lead", or null for a division with no lead yet. */
+export function leadsLabel(leads: readonly string[]): string | null {
+  if (leads.length === 0) return null;
+  return leads.length === 1 ? "Lead" : "Leads";
+}
+
+/** "MA" for "Mission Analysis Division", "OA" for "Optimization and Analysis Division" (board 62's tile). */
+export function divisionInitials(name: string): string {
+  const words = divisionShortName(name)
+    .split(/\s+/)
+    .filter((w) => w !== "" && !["and", "&", "of", "the"].includes(w.toLowerCase()));
+  if (words.length === 0) return "";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+export type PersonHeader = {
+  readonly name: string;
+  /** "Member · Mission Analysis Division · Aerodynamics" */
+  readonly line: string;
+  /** "In the team since October 2025" */
+  readonly since: string | null;
+  readonly edit: Link | null;
+};
+
+export type ChecklistItem = {
+  readonly label: string;
+  readonly detail: string;
+  readonly done: boolean;
+  readonly action: Link | null;
+};
+
+export type Checklist = {
+  readonly title: string;
+  readonly detail: string;
+  readonly items: readonly ChecklistItem[];
+};
+
+export type RosterPerson = {
+  readonly name: string;
+  /** "Division lead" or "Member"; the viewer's own row reads "You" on desktop (board 52). */
+  readonly role: string;
+  readonly lead: boolean;
+  readonly self: boolean;
+};
+
+export type Roster = {
+  readonly title: string;
+  readonly detail: string;
+  /** Everyone in the division, not only the people listed. */
+  readonly size: number;
+  readonly people: readonly RosterPerson[];
+};
+
+/** One active role row in the viewer's division, as the personal roster reads it. */
+export type RosterRow = {
+  readonly memberId: number;
+  readonly name: string;
+  /** The row's position type; "lead" or "head" makes the member a division lead. */
+  readonly type: string | null;
+};
+
+/**
+ * The viewer's division on the personal Overview (board 52). One member can
+ * hold more than one active role row in a division (a department head who
+ * also leads it), so the rows collapse to one person per member (issue #249),
+ * a lead when any of their rows is. Leads come first, then up to two other
+ * members, then the viewer; `size` and the detail count distinct members.
+ */
+export function divisionRoster(
+  division: { readonly title: string; readonly department: string },
+  rows: readonly RosterRow[],
+  viewerId: number | null,
+): Roster {
+  const byMember = new Map<number, RosterPerson>();
+  for (const row of rows) {
+    const lead = (byMember.get(row.memberId)?.lead ?? false) || row.type === "lead" || row.type === "head";
+    byMember.set(row.memberId, {
+      name: row.name,
+      role: lead ? "Division lead" : "Member",
+      lead,
+      self: row.memberId === viewerId,
+    });
+  }
+  const people = [...byMember.values()];
+  const leads = people.filter((p) => p.lead && !p.self);
+  const others = people.filter((p) => !p.lead && !p.self).slice(0, 2);
+  const me = people.filter((p) => p.self);
+  return {
+    title: division.title,
+    detail: `${division.department} · ${rosterSize(people.length)}`,
+    size: people.length,
+    people: [...leads, ...others, ...me],
+  };
+}
+
+export type PersonalOverview = {
+  readonly shape: "personal";
+  /**
+   * The member's stored notices (./notices.ts), when they have any: the
+   * answer to a hand-over they sent (issue #262) reaches a sender who is now
+   * an advisor here.
+   */
+  readonly attention: readonly AttentionItem[];
+  readonly person: PersonHeader;
+  readonly checklist: Checklist | null;
+  readonly roster: Roster | null;
+  /**
+   * "Your access" (issue #480): one summary per area the member is granted,
+   * in `GRANT_AREAS` order, at the grant's scope; none when they hold no
+   * grant, and then the access hint (`ACCESS_HINT`) shows in its place. A
+   * grant adds these lines and nothing else: no attention row and no panel.
+   */
+  readonly access: readonly AccessSummary[];
+};
+
+/** The one-line strip under a member's panels when they hold no grant (board 40m). */
+export const ACCESS_HINT = "Need to work on recruitment or site content? Ask your division lead or the admin team for access.";
+
+/** What the dashboard data interface answers: the team's own Overviews. */
+export type TeamSideOverview = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
+
+/** Someone off the team: a non-member (boards 50e, 50f) or an alumnus (board 56, issue #317), built by the page. */
+export type Overview = TeamSideOverview | ApplicantOverview | AlumniOverview;
+
+/** "2 of 4 done", the count phones show beside the checklist title (board 52m). */
+export function checklistCount(items: readonly ChecklistItem[]): string {
+  return `${items.filter((item) => item.done).length} of ${items.length} done`;
+}
+
+/** "2 of 4 done." */
+export function checklistProgress(items: readonly ChecklistItem[]): string {
+  return `${checklistCount(items)}.`;
+}
+
+/** "6 people", beside the division's title on phones (board 52m). */
+export function rosterSize(size: number): string {
+  return `${size} ${size === 1 ? "person" : "people"}`;
+}
+
+/** Booked interviews first, soonest first, then the ones waiting for a time. */
+export function interviewOrder(interviews: readonly UpcomingInterview[]): UpcomingInterview[] {
+  const booked = interviews.flatMap((i) => (i.state === "booked" ? [i] : []));
+  const waiting = interviews.filter((i) => i.state === "waiting");
+  return [...booked.sort((a, b) => a.start.getTime() - b.start.getTime()), ...waiting];
+}
+
+/** "2 booked · 1 waiting"; a side with none is left out. */
+export function interviewSummary(interviews: readonly UpcomingInterview[]): string {
+  const booked = interviews.filter((i) => i.state === "booked").length;
+  const waiting = interviews.length - booked;
+  return [booked > 0 ? `${booked} booked` : null, waiting > 0 ? `${waiting} waiting` : null].filter(Boolean).join(" · ");
+}
+
+const TEAM_TIME_ZONE = "Europe/Rome";
+const dayOf = new Intl.DateTimeFormat("en-GB", { day: "numeric", timeZone: TEAM_TIME_ZONE });
+const monthOf = new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: TEAM_TIME_ZONE });
+const weekdayOf = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: TEAM_TIME_ZONE });
+const timeOf = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TEAM_TIME_ZONE });
+
+/**
+ * A booked slot as board 56 shows it, in the team's time zone: "16", "OCT",
+ * "Thu 17:30 – 18:00"; and as the phone pill shows it (board 56m): "Thu 16, 17:30".
+ */
+export function interviewSlot(start: Date, end: Date): { day: string; month: string; when: string; short: string } {
+  const weekday = weekdayOf.format(start);
+  const day = dayOf.format(start);
+  return {
+    day,
+    month: monthOf.format(start).toUpperCase(),
+    when: `${weekday} ${timeOf.format(start)} – ${timeOf.format(end)}`,
+    short: `${weekday} ${day}, ${timeOf.format(start)}`,
+  };
+}
+
+/** "Mission Analysis Division" reads "Mission Analysis" after "people in". */
+export function divisionShortName(name: string): string {
+  return name.replace(/\s+Division$/, "");
+}
+
+/** "Oldest is 6 days old"; "Oldest is from today" for one sent today. */
+export function oldestLine(oldest: Date, now: Date): string {
+  const days = Math.floor((now.getTime() - oldest.getTime()) / 86_400_000);
+  if (days < 1) return "Oldest is from today";
+  return `Oldest is ${days} ${days === 1 ? "day" : "days"} old`;
+}
+
+/** One attention row for the division's members with no photo on The Team page (board 56). */
+export function noPhotoItem(names: readonly string[]): AttentionItem | null {
+  if (names.length === 0) return null;
+  return {
+    kind: "no-photo",
+    title:
+      names.length === 1
+        ? `${names[0]} has no photo on the Team page`
+        : `${names.length} members have no photo on the Team page`,
+    phoneTitle: names.length === 1 ? `${names[0]} has no photo` : `${names.length} members have no photo`,
+    detail: names.length === 1 ? "Ask them to add one in My profile" : names.join(", "),
+    action: { label: "View", href: "/dashboard/members" },
+  };
+}
