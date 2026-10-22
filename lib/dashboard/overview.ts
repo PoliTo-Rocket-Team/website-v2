@@ -40,7 +40,8 @@ export type AttentionKind =
   | "notice"
   | "orders-to-decide"
   | "approved-orders"
-  | "hand-over";
+  | "hand-over"
+  | "alias-request";
 
 /** A row's button that dismisses the stored notice it shows (./notices.ts). */
 export type DismissNotice = { readonly label: string; readonly dismissNotice: number };
@@ -48,8 +49,15 @@ export type DismissNotice = { readonly label: string; readonly dismissNotice: nu
 /** A row's Decline and Confirm on a hand-over waiting for the viewer (board 62c, ./hand-over-request.ts). */
 export type AnswerHandOver = { readonly answerHandOver: number };
 
-/** Where a row's button goes, the notice it dismisses, or the hand-over it answers. */
-export type AttentionAction = Link | DismissNotice | AnswerHandOver;
+/**
+ * A row's Decline and Mark created on an open alias request (board 94c,
+ * ./alias-request.ts): the member it is for, and the address Mark created's
+ * dialog starts from (board 94d).
+ */
+export type AnswerAlias = { readonly answerAlias: number; readonly member: string; readonly prefill: string };
+
+/** Where a row's button goes, the notice it dismisses, or the request it answers. */
+export type AttentionAction = Link | DismissNotice | AnswerHandOver | AnswerAlias;
 
 export function isDismissNotice(action: AttentionAction): action is DismissNotice {
   return "dismissNotice" in action;
@@ -57,6 +65,10 @@ export function isDismissNotice(action: AttentionAction): action is DismissNotic
 
 export function isAnswerHandOver(action: AttentionAction): action is AnswerHandOver {
   return "answerHandOver" in action;
+}
+
+export function isAnswerAlias(action: AttentionAction): action is AnswerAlias {
+  return "answerAlias" in action;
 }
 
 export type AttentionItem = {

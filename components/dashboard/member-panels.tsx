@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Building2, Check, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserPlus, X } from "lucide-react";
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { AtSign, Building2, Check, ChevronDown, Copy, Eye, EyeOff, FileCheck2, Lock, Mail, Upload, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DialogClose } from "@/components/ui/dialog";
 import { addMember, findForAdd, saveMemberDetails, setMemberPhoto } from "@/app/dashboard/team-actions";
+import { cancelAliasRequest, requestAlias } from "@/app/dashboard/actions";
+import type { MemberAlias } from "@/lib/dashboard/alias-request";
 import { DEGREE_PROGRAMMES, GENDERS, STUDY_PROGRAMMES } from "@/lib/apply/application-form";
 import {
   levelLabel,
@@ -120,16 +122,19 @@ function Fact({
 }
 
 /** What the member panel shows of someone: a division page's person, or one on the team leader's whole-team page (issue #252). */
-export type PanelPerson = Pick<DivisionPerson, "name" | "signInEmail" | "photoUrl" | "since" | "divisions" | "details" | "nda" | "self">;
+export type PanelPerson = Pick<DivisionPerson, "id" | "name" | "signInEmail" | "photoUrl" | "since" | "divisions" | "details" | "nda" | "self">;
 
 /** The member panel (board 61f): divisions, contact, studies, personal and the NDA. Close, and Edit details. */
 export function PersonDrawer<P extends PanelPerson>({
   person,
+  alias,
   editable,
   onClose,
   onEdit,
 }: {
   person: P | null;
+  /** Their email alias as the viewer sees it (epic #538); null when it was not read. */
+  alias: MemberAlias | null;
   editable: boolean;
   onClose: () => void;
   onEdit: (person: P) => void;
@@ -185,6 +190,7 @@ export function PersonDrawer<P extends PanelPerson>({
         <Section title="Contact">
           <dl className="flex flex-col gap-1.5">
             <Fact label="PRT email" value={memberDetailText(d, "prtEmail")} copy="PRT email" />
+            <AliasFact memberId={p.id} name={p.name} alias={alias} />
             <Fact label="Personal email" value={p.signInEmail} copy="Email" />
             <Fact label="Phone" value={memberDetailText(d, "phone")} hidden />
             <Fact label="Discord" value={memberDetailText(d, "discord")} copy="Discord" />
@@ -219,6 +225,70 @@ export function PersonDrawer<P extends PanelPerson>({
         )}
       </PanelBody>
     </SidePanel>
+  );
+}
+
+/**
+ * The member's email alias beside their team email (epic #538): the address
+ * with a copy button once it is set (board 94e); Requested, who sent it and
+ * when, and Cancel request while one is open (board 94b); or None, with
+ * Request alias for a lead, head or the team leader who may manage them
+ * (board 94). The server decides which; the row only shows it.
+ */
+function AliasFact({ memberId, name, alias }: { memberId: number; name: string; alias: MemberAlias | null }) {
+  const [pending, startTransition] = useTransition();
+  if (alias === null || alias.kind === "set") return <Fact label="Email alias" value={alias?.address ?? null} copy="Email alias" />;
+  const run = (write: () => Promise<{ ok: boolean; error?: string }>, done: string, failed: string) =>
+    startTransition(async () => {
+      const result = await write();
+      if (!result.ok) {
+        toast.error(failed, { description: result.error });
+        return;
+      }
+      toast.success(done);
+    });
+  return (
+    <div className="flex min-h-7 items-center gap-3" aria-busy={pending}>
+      <dt className="w-[132px] shrink-0 text-[14px] text-prt-muted">Email alias</dt>
+      {alias.kind === "requested" ? (
+        <>
+          <dd className="flex min-w-0 flex-1 items-center gap-2.5 text-[14px]">
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[13px] font-medium text-warning">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />
+              Requested
+            </span>
+            <span className="truncate text-[13px] text-prt-muted">{alias.line}</span>
+          </dd>
+          {alias.cancellable && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => cancelAliasRequest(alias.requestId), "Alias request cancelled", "Could not cancel the alias request")}
+              className={`shrink-0 rounded-md text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text disabled:opacity-60 ${FOCUS}`}
+            >
+              Cancel request
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <dd className="min-w-0 flex-1 truncate text-[14px]">
+            {alias.requestable ? <span className="text-prt-muted">None</span> : <span className="text-dim">–</span>}
+          </dd>
+          {alias.requestable && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => requestAlias(memberId), `Alias requested for ${name}`, "Could not request the alias")}
+              className={GHOST_PILL}
+            >
+              <AtSign aria-hidden className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Request alias
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

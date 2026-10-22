@@ -37,7 +37,8 @@ test("the team leader's Overview is board 72 and the operations lead's board 40;
   assert.equal(leaderOverview.people, leaderMembers.people.length);
   assert.deepEqual(
     leaderOverview.attention.map((item) => item.kind).filter((kind) => kind !== "notice"),
-    ["orders-to-decide", "approved-orders"],
+    // The two open alias requests the dummy team seeds come first (board 94c, epic #538).
+    ["alias-request", "alias-request", "orders-to-decide", "approved-orders"],
   );
   // No figure on the Overview names a price.
   assert.ok(leaderOverview.stats.every((stat) => !stat.value.includes("€") && !stat.detail.includes("€")));

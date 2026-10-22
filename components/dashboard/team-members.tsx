@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { FileSpreadsheet, List, Lock, MoreHorizontal, Pencil, Plus, Table2, UserMinus, UserX } from "lucide-react";
+import type { MemberAliases } from "@/lib/dashboard/alias-request";
 import { memberDetailText } from "@/lib/dashboard/details";
 import type { DivisionHeader, WaitingPerson } from "@/lib/dashboard/division-members";
 import {
@@ -70,7 +71,17 @@ type View = "list" | "table";
 
 type Waiting = ShownMembers["waiting"][number];
 
-export function ScopedMembersView({ page, editable: writes, exportable }: { page: MembersModel; editable: boolean; exportable: boolean }) {
+export function ScopedMembersView({
+  page,
+  aliases,
+  editable: writes,
+  exportable,
+}: {
+  page: MembersModel;
+  aliases: MemberAliases;
+  editable: boolean;
+  exportable: boolean;
+}) {
   const [department, setDepartment] = useState<string | null>(null);
   const [divisionId, setDivisionId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
@@ -245,6 +256,7 @@ export function ScopedMembersView({ page, editable: writes, exportable }: { page
 
       <PersonDrawer
         person={open}
+        alias={open === null ? null : (aliases[open.id] ?? null)}
         editable={writes && page.panelEdits && open?.actions != null}
         onClose={() => setOpenId(null)}
         onEdit={editPerson}
