@@ -12,7 +12,7 @@ tags: [process, agents, merge-queue]
 
 ## Context
 
-PR #136 (https://github.com/PoliTo-Rocket-Team/website-v2/pull/136, "chore: let the shipper merge through a merge queue", merged 2026-10-09) set this route up, but no decision record said so. Huey approved the route in chat on 2026-10-09 ("okay so you can use all these"), quoted at https://github.com/PoliTo-Rocket-Team/website-v2/issues/137#issuecomment-6081238745.
+PR #136 (https://github.com/PoliTo-Rocket-Team/website-v2/pull/136, "chore: let the shipper merge through a merge queue", merged 2026-10-09) set this route up, but no decision record said so. Huey approved the route in chat (owner decision, 2026-10-09), recorded at https://github.com/PoliTo-Rocket-Team/website-v2/issues/137#issuecomment-6081238745.
 
 The model is the sibling repo's ADR 0006 (not this repo's 0006), which made a passing review the merge gate and let the shipper merge, with its two amendments: one moved merging to the merge queue and took the rule files out of CODEOWNERS, and one made the queue also require `ci-required`.
 

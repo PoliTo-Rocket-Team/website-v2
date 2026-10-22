@@ -33,7 +33,7 @@ export function AliasReadyCard({ alias }: { alias: OwnAlias }) {
           Set it up once to send from it. It only works for email: sharing files with the alias does not.
         </p>
       </div>
-      <button type="button" onClick={() => setOpen(true)} className={`${PAPER_PILL} self-start`}>
+      <button type="button" onClick={() => setOpen(true)} className={`${PAPER_PILL} self-start sm:self-center`}>
         Open setup steps
       </button>
       <AliasSetupSteps alias={alias} open={open} onOpenChange={setOpen} />
@@ -126,6 +126,7 @@ function AliasSetupSteps({ alias, open, onOpenChange }: { alias: OwnAlias; open:
           </ol>
         </section>
         <OptionalSteps address={alias.address} />
+        <p className="text-[12px] leading-snug text-prt-muted">You can open these steps again any time from My profile → Setup steps.</p>
       </PanelBody>
     </SidePanel>
   );
