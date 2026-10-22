@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { PageSkeleton } from "@/components/dashboard/page-skeleton";
 import { MembersView } from "@/components/dashboard/members";
 import { canReach } from "@/lib/dashboard/access";
+import { mayExportMembers } from "@/lib/dashboard/members-export";
 import { openDashboard } from "@/lib/dashboard/open";
 
 export const metadata: Metadata = {
@@ -34,5 +35,5 @@ async function LiveMembers({ searchParams }: { searchParams: Search }) {
   const { division } = await searchParams;
   const divisionId = Number(typeof division === "string" ? division : undefined);
   const directory = await data.members(Number.isSafeInteger(divisionId) && divisionId > 0 ? divisionId : null);
-  return <MembersView directory={directory} editable={data.teamWrites !== null} />;
+  return <MembersView directory={directory} editable={data.teamWrites !== null} exportable={mayExportMembers(data.viewer)} />;
 }

@@ -59,6 +59,7 @@
     "three": "^0.185.1",
     "tsx": "^4.21.0",
     "vercel": "^48.2.9",
+    "write-excel-file": "4.1.1",
     "zod": "^4.2.1"
   },
   "devDependencies": {

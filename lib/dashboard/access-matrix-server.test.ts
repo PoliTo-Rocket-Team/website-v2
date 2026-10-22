@@ -11,11 +11,15 @@ import * as recruitmentActions from "@/app/dashboard/recruitment-actions";
 import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
+import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
 import { scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
 import { checkPromotion } from "./hand-over";
+import { membersExportFileName, XLSX_TYPE } from "./members-export";
+import { filterTeam, NO_TEAM_FILTER } from "./team-members";
+import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
 import { positionsModelOf } from "./positions-view";
@@ -660,6 +664,99 @@ describe("a lead's Access page covers only the divisions they lead by role (Owne
     signInAs(accountOf(LEAD).userId);
     await answerOf(() => actions.removeAllAccess(IDS.person("MA")));
     assert.deepEqual(recordedWrites(), [], "a grant outside the led division was touched");
+  });
+});
+
+// The Members export --------------------------------------------------------
+
+// Every field the member drawer shows, written out by hand so a column
+// dropped from the export fails here instead of agreeing with itself.
+const EXPECTED_EXPORT_HEADER = [
+  "Name",
+  "Role",
+  "Divisions",
+  "Member since",
+  "PRT email",
+  "Personal email",
+  "Phone",
+  "Discord",
+  "LinkedIn",
+  "PoliTo ID",
+  "Program",
+  "Level",
+  "From",
+  "Date of birth",
+  "Gender",
+  "NDA",
+  "NDA signed on",
+  "NDA confirmed by",
+];
+
+describe("the Members export gives a file to full access alone (issue #539)", () => {
+  async function exported(userId: string | null) {
+    seedFixture();
+    resetFiles();
+    signInAs(userId);
+    const response = await membersExportGET();
+    const body = Buffer.from(await response.arrayBuffer());
+    return { response, body, writes: recordedWrites().length };
+  }
+
+  test("signed out, and every matrix viewer without full access, is refused and gets no file", async () => {
+    const signedOut = await exported(null);
+    assert.deepEqual([signedOut.response.status, signedOut.writes], [401, 0], "signed out");
+    assert.equal(signedOut.response.headers.get("Content-Disposition"), null, "signed out: a file");
+    for (const { name, expect } of VIEWERS) {
+      if (expect.wholeTeamMembers) continue;
+      const { response, body, writes } = await exported(accountOf(name).userId);
+      assert.deepEqual([response.status, writes], [403, 0], name);
+      assert.equal(response.headers.get("Content-Disposition"), null, `${name}: a file`);
+      assert.deepEqual(leaked(body.toString("utf8"), expect), [], `${name}: answered data they do not read`);
+    }
+  });
+
+  test("every full-access viewer gets the dated .xlsx of the whole team with every field", async () => {
+    const full = VIEWERS.filter((r) => r.expect.wholeTeamMembers);
+    assert.ok(full.length >= 5, "the full-access seats are in the matrix");
+    for (const { name } of full) {
+      const data = await open(name);
+      const directory = await data.members(null);
+      assert.ok(directory.scope === "whole-team", `${name}: the whole team`);
+      const { response, body, writes } = await exported(accountOf(name).userId);
+      assert.equal(response.status, 200, name);
+      assert.equal(writes, 0, `${name}: the export wrote`);
+      assert.equal(response.headers.get("Content-Type"), XLSX_TYPE, name);
+      assert.equal(response.headers.get("Content-Disposition"), `attachment; filename="${membersExportFileName(new Date())}"`, name);
+      const [header, ...rows] = readSheet(body);
+      assert.deepEqual(header, EXPECTED_EXPORT_HEADER, `${name}: the header row`);
+      assert.deepEqual(rows.map((r) => r[0]).sort(), directory.people.map((p) => p.name).sort(), `${name}: one row per member`);
+      // Each unit's private details, phone and Discord, are in the file.
+      const text = rows.flat().join("\n");
+      for (const u of ALL) for (const m of MARKERS.members(u).filter((x) => !x.startsWith("join-"))) assert.ok(text.includes(m), `${name}: ${m}`);
+    }
+  });
+
+  test("a member the page's filters would hide is still in the file", async () => {
+    const data = await open("team leader");
+    const directory = await data.members(null);
+    assert.ok(directory.scope === "whole-team");
+    const person = directory.people.find((p) => p.id === IDS.person(DM))!;
+    const filters = [
+      { ...NO_TEAM_FILTER, departmentId: IDS.department("MA") },
+      { ...NO_TEAM_FILTER, divisionId: IDS.division("MA") },
+      { ...NO_TEAM_FILTER, query: "no one is called this" },
+    ];
+    for (const filter of filters) assert.ok(!filterTeam(directory.people, filter).some((p) => p.id === person.id), `the filter hides ${person.name}`);
+    const { body } = await exported(accountOf("team leader").userId);
+    const row = readSheet(body).find((r) => r[0] === person.name);
+    assert.ok(row !== undefined, `${person.name} is in the file`);
+    assert.ok(row.includes(MARKERS.members(DM)[0]), "with their phone");
+  });
+
+  test("the file is named by the day it is made, in the team's time zone", () => {
+    assert.equal(membersExportFileName(new Date("2026-10-22T09:00:00Z")), "prt-members-2026-10-22.xlsx");
+    // 23:30 UTC on the 21st is already the 22nd in Turin.
+    assert.equal(membersExportFileName(new Date("2026-10-21T23:30:00Z")), "prt-members-2026-10-22.xlsx");
   });
 });
 
