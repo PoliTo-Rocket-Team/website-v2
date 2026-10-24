@@ -132,6 +132,16 @@ This amendment overrides these earlier lines, which stay as written:
 - the 2026-10-21 amendment's "Never reset. No preview build runs the seed's reset on the shared branch", narrowed: no preview build resets the branch unless it carries a re-seed request the branch has not served;
 - the 2026-10-21 amendment's "Rows made on a preview, by a test developer or anyone else, stay until someone removes them", extended: or until the next requested re-seed.
 
+## Amendment, 2026-10-24: tester sign-in on previews of the `preview` branch
+
+Checks sign in without Google as a seeded seat or a seeded admin tester and get a real session, on previews as well as under `next dev`, so they run the real code against a real database (Owner decisions on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597), https://github.com/PoliTo-Rocket-Team/website-v2/issues/597#issuecomment-6383054423, built by [#608](https://github.com/PoliTo-Rocket-Team/website-v2/issues/608)). Decision 8 reads with it as follows:
+
+- **Where it is on.** `testerSignInOn` in [lib/dev-tester.ts](../lib/dev-tester.ts) is true under `next dev` with no `VERCEL_ENV`, and on a Vercel preview (`VERCEL_ENV` is `preview`) whose `DATABASE_URL` names the `preview` branch, read by `isPreviewDatabase` in [lib/seed/target.ts](../lib/seed/target.ts), the same check the seed guard and the test developer's write gate ask.
+- **Where it is off.** On production, on every other Vercel environment and on a preview whose `DATABASE_URL` names any other database or none, the tester plugin is not registered and its routes answer 404. Decision 7 and the binding constraint that every tester sign-in gate is false in production stand.
+- **Who it signs in as.** Any seat or admin tester of [lib/seeded-accounts.ts](../lib/seeded-accounts.ts) ([#607](https://github.com/PoliTo-Rocket-Team/website-v2/issues/607)). The session is a real Better Auth session; signing out deletes it.
+
+This amendment overrides Decision 8's "Signing in as them stays local only", which stays as written, and the line of ADR 0009's mapping above that restates it.
+
 ## Records
 
 Pattern: [.patterns/schema-migrations.md](../.patterns/schema-migrations.md) (how `pnpm db:seed` runs).

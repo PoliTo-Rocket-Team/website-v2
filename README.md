@@ -130,12 +130,15 @@ pnpm dev
 
 `pnpm db:seed --check` runs the target check alone and writes nothing.
 
-#### Sign in as a tester (local only)
+#### Sign in as a tester
 
-On `pnpm dev` you can sign in as one of five seeded testers, with no Google
-account. This exists only under `next dev`: on Vercel previews, on production
-and on `pnpm build` / `pnpm start`, the routes below are not registered and
-answer 404. Sign-in there stays Google only.
+On `pnpm dev`, and on a Vercel preview whose database is the shared `preview`
+branch, you can sign in as any seeded seat or admin tester with no Google
+account, and get a real session. On production, on any other Vercel
+environment, on a preview pointed at another database and on a local
+`pnpm build` / `pnpm start`, the routes below are not registered and answer
+404. Sign-in there stays Google only. On a preview, use the same paths on the
+preview's own URL; its accounts come from the preview seed.
 
 1. Load the testers into a local database (the seed refuses every Neon
    branch from a laptop; see [Where the seed runs](#where-the-seed-runs)):
@@ -156,23 +159,19 @@ answer 404. Sign-in there stays Google only.
    `cb` is the page to land on (default `/dashboard`). The link sets the same
    Better Auth session cookies a Google sign-in sets, so a browser or a
    Playwright script that opens it is signed in for every later page. To
-   switch tester, open another tester's link.
+   switch tester, open another tester's link. Signing out ends the session.
 
-| Tester | `key` | Who it is | What it can see |
-| --- | --- | --- | --- |
-| Tester Applicant | `applicant` | Not a member, no scopes | The application form on an open position, for example `/apply/15-mission-analyst` |
-| Tester Member | `member` | Member in Test Bench, no scopes | `/dashboard`, with no edit rights |
-| Tester Division Lead | `division-lead` | Leads Test Bench; no scope rows, the lead role covers the division | `/dashboard`, and that division's positions and applications |
-| Tester Department Head | `department-head` | Head of Research and Development; no scope rows, the head role covers the department | `/dashboard`, with that department's one division |
-| Tester Operations Lead | `operations-lead` | The operations lead's full-access seat; no scope rows | `/dashboard`, with every page full access reaches |
+`key` is the key of a seat or an admin tester in
+[`lib/seeded-accounts.ts`](lib/seeded-accounts.ts), for example `member`,
+`division-lead`, `it-lead`, `non-member` (the applicant) or `admin-1`. Each
+seat holds exactly the roles and grants its name says
+([`docs/seed-cases.md`](docs/seed-cases.md#test-seats)). An admin tester has no
+team role and may use View as on a preview or under `next dev`
+([`docs/seed-cases.md`](docs/seed-cases.md#admin-testers)).
 
-No tester holds a scope row: each holds only what its role gives
-([`docs/seed-cases.md`](docs/seed-cases.md#test-seats)).
-
-The testers' ids, emails and names live in `lib/dev-tester.ts` and
-`db/seed/people.ts`; nothing comes from `.env`. The gate is `testerSignInOn()` in
-`lib/dev-tester.ts`, and `lib/dev-tester.test.ts` proves it is off outside
-`next dev`.
+The accounts' ids, emails and names live in `lib/seeded-accounts.ts`; nothing
+comes from `.env`. The gate is `testerSignInOn()` in `lib/dev-tester.ts`, and
+`lib/dev-tester.test.ts` proves it is off everywhere else.
 
 The gate is also off when `VERCEL_ENV` is set in your shell or env files, for
 example after `vercel env pull`. If the tester links answer 404 on
