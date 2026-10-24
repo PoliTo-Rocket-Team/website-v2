@@ -450,7 +450,7 @@ const siteContent = (r: MatrixRow) => r.expect.siteContent;
  */
 const accessInDM = (r: MatrixRow) =>
   fullAccess(r) ? true : r.viewer.kind === "department-head" && r.viewer.rawRows.some((x) => x.divisionId === IDS.division(DM)) ? undefined : false;
-const decidesOrders = (r: MatrixRow) => r.name === "team leader" || r.name === "member with Approve orders";
+const decidesOrders = (r: MatrixRow) => r.expect.decidesOrders;
 const HOST = ownPublicStoreHost();
 
 const ACTION_CASES: readonly ActionCase[] = [
@@ -739,6 +739,45 @@ describe("email alias requests: the approver rows, Request alias in the drawer, 
       writes.map((w) => w.table).sort(),
       ["alias_requests", "members"],
     );
+  });
+});
+
+// What waits for a decision on the Overview (issue #592) ---------------------
+//
+// Each unit holds one order waiting for a decision and one approved, not
+// ordered yet. Deciding is team-wide, so whoever decides orders, whatever
+// their Overview's shape, gets both rows counted across the team; nobody else
+// gets either. A member holding Approve orders also gets one "Your access"
+// line for it.
+
+describe("the decision rows come to every Overview whose viewer decides orders (issue #592)", () => {
+  for (const { name, expect } of VIEWERS as readonly MatrixRow[]) {
+    test(name, async () => {
+      const data = await open(name);
+      const overview = await answerOf(() => data.overview());
+      if (overview === "refused") return;
+      const titles = (overview as TeamSideOverview).attention
+        .filter((a) => a.kind === "orders-to-decide" || a.kind === "approved-orders")
+        .map((a) => `${a.kind}: ${a.title} → ${a.action !== null && "href" in a.action ? a.action.href : "no link"}`);
+      assert.deepEqual(
+        titles,
+        expect.decidesOrders
+          ? [
+              `orders-to-decide: ${ALL.length} orders wait for your decision → /dashboard/orders`,
+              `approved-orders: ${ALL.length} approved orders are not ordered yet → /dashboard/orders`,
+            ]
+          : [],
+        `${name}: the decision rows`,
+      );
+    });
+  }
+
+  test("a member whose only scope row is Approve orders gets one Approve orders line under Your access", async () => {
+    const name = "member with Approve orders";
+    assert.deepEqual(VIEWERS.find((v) => v.name === name)!.viewer.rawRows.map((r) => [r.scope, r.target]), [["team", "approve_orders"]]);
+    const board = (await (await open(name)).overview()) as TeamSideOverview;
+    assert.ok(board.shape === "personal", `${name}: ${board.shape}`);
+    assert.deepEqual(board.access, [{ area: "approve-orders", href: "/dashboard/orders", waiting: ALL.length }]);
   });
 });
 
