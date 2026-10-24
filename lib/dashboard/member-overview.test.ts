@@ -5,9 +5,9 @@ import { test } from "node:test";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
 import type { TeamSideOverview } from "./overview";
-import { members, users } from "@/db/schema";
-import { accountOf, seedFixture } from "./access-matrix/fixture";
-import { updateRows } from "./access-matrix/fake-db";
+import { members, roles, users } from "@/db/schema";
+import { accountOf, EXTRA, seedFixture } from "./access-matrix/fixture";
+import { changeRows } from "./access-matrix/test-database";
 import { signInAs } from "./access-matrix/session";
 
 // One Overview for every team seat on the database path (issue #593): the
@@ -16,12 +16,12 @@ import { signInAs } from "./access-matrix/session";
 // (the profile header with Edit profile, "Your page on the site" and their
 // division's roster), and anyone holding a grant gets "Your access" listing
 // it. Only the figures, rows and panels their scope reads differ. It runs on
-// the access matrix's in-memory database (./access-matrix/install.ts).
+// the access matrix's migrated in-memory Postgres (./access-matrix/test-database.ts).
 
 /** The Overview `name` opens; `lay` changes their seeded rows before it is read. */
-async function overviewOf(name: string, lay?: (account: ReturnType<typeof accountOf>) => void): Promise<TeamSideOverview> {
-  seedFixture();
-  lay?.(accountOf(name));
+async function overviewOf(name: string, lay?: (account: ReturnType<typeof accountOf>) => Promise<void>): Promise<TeamSideOverview> {
+  await seedFixture();
+  await lay?.(accountOf(name));
   signInAs(accountOf(name).userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open", `${name}: the dashboard opens`);
@@ -71,19 +71,28 @@ test("every seat's Name and division step is done and names who sets it for that
   }
 });
 
+// The IT lead's seat as the team holds it is a lead role in the IT division, flagged as the seat (db/seed/people.ts).
+test("an IT lead whose flagged role sits in a division reads that the team leader sets their name and division", async () => {
+  const overview = await overviewOf("IT lead", async ({ memberId }) => {
+    await changeRows(roles, { memberId }, { type: "lead", divisionId: EXTRA.testing, deptId: null });
+  });
+  const step = overview.checklist?.items.find((item) => item.label === "Name and division");
+  assert.deepEqual([step?.done, step?.detail], [true, "Set by the team leader"]);
+});
+
 /** A stored photo and a LinkedIn link: with name, division and email, every step of their page is done. */
-function completeProfile({ userId, memberId }: ReturnType<typeof accountOf>): void {
-  updateRows(users, { id: userId }, { linkedin: "https://www.linkedin.com/in/viewer" });
-  updateRows(members, { memberId }, { picture: "https://blob.test/viewer.jpg" });
+async function completeProfile({ userId, memberId }: ReturnType<typeof accountOf>): Promise<void> {
+  await changeRows(users, { id: userId }, { linkedin: "https://www.linkedin.com/in/viewer" });
+  await changeRows(members, { memberId }, { picture: "https://blob.test/viewer.jpg" });
 }
 
 test("Your page on the site is hidden once all four steps are done, and back with its count when the photo is removed", async () => {
   for (const seat of ["member", "department head", "team leader"]) {
     const done = await overviewOf(seat, completeProfile);
     assert.equal(done.checklist, null, `${seat}: no panel with every step done`);
-    const undone = await overviewOf(seat, (account) => {
-      completeProfile(account);
-      updateRows(members, { memberId: account.memberId }, { picture: null });
+    const undone = await overviewOf(seat, async (account) => {
+      await completeProfile(account);
+      await changeRows(members, { memberId: account.memberId }, { picture: null });
     });
     assert.deepEqual(
       [undone.checklist?.title, undone.checklist?.items.length, undone.checklist?.items.find((i) => !i.done)?.label],

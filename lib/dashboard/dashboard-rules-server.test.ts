@@ -7,7 +7,7 @@ import * as recruitmentActions from "@/app/dashboard/recruitment-actions";
 import { applications, applyPositions, scopes } from "@/db/schema";
 import { maySiteContent } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
-import { insertRows, keepWrites, recordedWrites, rowsIn } from "./access-matrix/fake-db";
+import { addRows, databaseWrites, tableRows } from "./access-matrix/test-database";
 import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
 import { ALL, UNITS, VIEWERS } from "./access-matrix/matrix";
 import { signInAs } from "./access-matrix/session";
@@ -16,16 +16,16 @@ import { isOffTeam } from "./viewer";
 
 // Dashboard rules the removed in-memory copy (lib/dummy-data/, issue #613)
 // was the only one to test, now run on the database path: every loader and
-// action called for real, as a matrix viewer, against the in-memory database
-// of the access tests (./access-matrix/), seeded by ./access-matrix/fixture.ts.
+// action called for real, as a matrix viewer, against the migrated in-memory
+// Postgres of the access tests (./access-matrix/test-database.ts), seeded by
+// ./access-matrix/fixture.ts.
 
 const DAY = 86_400_000;
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 
-/** Signs in as `name` (a matrix viewer, or a fixture user id) and opens their dashboard on a freshly seeded database that keeps its writes. */
+/** Signs in as `name` (a matrix viewer, or a fixture user id) and opens their dashboard on a freshly seeded database. */
 async function open(name: string): Promise<DashboardData> {
-  seedFixture();
-  keepWrites();
+  await seedFixture();
   return reopen(name);
 }
 
@@ -123,14 +123,14 @@ describe("the Overview and Access of a lead and a head", () => {
 describe("closing a division and changing its code reach its positions", () => {
   test("closing an empty division closes its open positions, drops the access given in it, and takes it off the chart", async () => {
     await open("team leader");
-    insertRows(applyPositions, [
+    await addRows(applyPositions, [
       { id: 900, status: true, divisionId: EXTRA.emptyDivision, title: "Spare role", description: "x", requiredSkills: ["x"], desirableSkills: [], customQuestions: [], createdAt: daysAgo(5), requiresMotivationLetter: false, isDeleted: false },
     ]);
-    insertRows(scopes, [{ id: 901, memberId: IDS.person("DM"), scope: "division", target: "positions", accessLevel: "view", divisionId: EXTRA.emptyDivision }]);
+    await addRows(scopes, [{ id: 901, memberId: IDS.person("DM"), scope: "division", target: "positions", accessLevel: "view", divisionId: EXTRA.emptyDivision }]);
     const answer = await teamActions.closeDivision(EXTRA.emptyDivision);
     assert.ok(answer.ok, JSON.stringify(answer));
-    assert.equal(rowsIn(applyPositions).find((p) => p.id === 900)?.status, false, "its open position is closed, so /apply and its page show it closed");
-    assert.equal(rowsIn(scopes).some((s) => s.id === 901), false, "the access given in it is gone");
+    assert.equal((await tableRows(applyPositions)).find((p) => p.id === 900)?.status, false, "its open position is closed, so /apply and its page show it closed");
+    assert.equal((await tableRows(scopes)).some((s) => s.id === 901), false, "the access given in it is gone");
     const structure = (await (await reopen("team leader")).teamStructure())!;
     assert.ok(!structure.departments.flatMap((d) => d.divisions).some((d) => d.id === EXTRA.emptyDivision), "off the chart");
     assert.ok(await refused(() => teamActions.closeDivision(UNITS.MA.divisionId)), "a division with people in it stays open");
@@ -152,20 +152,20 @@ describe("an applicant's applications", () => {
   test("Accept leaves the person's other applications at their stages", async () => {
     await open("team leader");
     // The person at interview in DM also applied for the MA role, still New there.
-    insertRows(applications, [
+    await addRows(applications, [
       { id: 990, applyPositionId: IDS.position("MA"), userId: "interviewee-dm", appliedAt: daysAgo(2), status: "received", customAnswers: [{ question: "Why?", answer: "x" }] },
     ]);
-    const before = rowsIn(applications).find((a) => a.id === 990);
+    const before = (await tableRows(applications)).find((a) => a.id === 990);
     const answer = await recruitmentActions.moveApplication(IDS.interview("DM"), { kind: "accept" });
     assert.ok(answer.ok, JSON.stringify(answer));
-    assert.equal(rowsIn(applications).find((a) => a.id === IDS.interview("DM"))?.status, "accepted");
-    assert.deepEqual(rowsIn(applications).find((a) => a.id === 990), before, "the other application is unchanged");
+    assert.equal((await tableRows(applications)).find((a) => a.id === IDS.interview("DM"))?.status, "accepted");
+    assert.deepEqual((await tableRows(applications)).find((a) => a.id === 990), before, "the other application is unchanged");
   });
 
   test("an accepted application cannot be withdrawn, and the refusal writes nothing", async () => {
     await open("joining-dm");
-    const writes = recordedWrites().length;
+    const writes = (await databaseWrites()).length;
     assert.ok(await refused(() => (async () => (await reopen("joining-dm")).withdrawApplication(IDS.joining("DM")))()));
-    assert.equal(recordedWrites().length, writes);
+    assert.equal((await databaseWrites()).length, writes);
   });
 });

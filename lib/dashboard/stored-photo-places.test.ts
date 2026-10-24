@@ -2,12 +2,12 @@
 import "./access-matrix/install";
 
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { before, test } from "node:test";
 import { JSDOM } from "jsdom";
 import { members, users } from "@/db/schema";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
-import { insertRows, updateRows } from "./access-matrix/fake-db";
+import { addRows, changeRows, resetDatabase } from "./access-matrix/test-database";
 import { accountOf, IDS, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import type { MyApplications } from "./my-applications";
@@ -42,9 +42,14 @@ class StillObserver {
 }
 globals.ResizeObserver = StillObserver;
 globals.IntersectionObserver = StillObserver;
-for (const [name, value] of Object.entries(globals)) {
-  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
-}
+// The test database starts its Postgres engine with Node's own globals, so it
+// starts before the page's globals take their place.
+before(async () => {
+  await resetDatabase();
+  for (const [name, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  }
+});
 
 const PHOTO = "https://store.example/photo/stored.jpg";
 
@@ -63,9 +68,9 @@ const LEADER = accountOf("team leader");
 const ALUMNUS = accountOf("alumnus with scope rows left over");
 
 /** Seeds the fixture with `stored` as the picture of each member named. */
-function seedWith(stored: string | null, memberIds: readonly number[]): void {
-  seedFixture();
-  for (const memberId of memberIds) updateRows(members, { memberId }, { picture: stored });
+async function seedWith(stored: string | null, memberIds: readonly number[]): Promise<void> {
+  await seedFixture();
+  for (const memberId of memberIds) await changeRows(members, { memberId }, { picture: stored });
 }
 
 async function signedIn(userId: string): Promise<DashboardData> {
@@ -162,7 +167,7 @@ const NO_WRITE = async () => ({ ok: false as const, error: "not in this test" })
 
 for (const { stored, shows, label } of CASES) {
   test(`Hand over your role: the team leader and the person picked to take over; ${label}`, async () => {
-    seedWith(stored, [LEADER.memberId!, PICKED.id]);
+    await seedWith(stored, [LEADER.memberId!, PICKED.id]);
     const data = await signedIn(LEADER.userId);
     const structure = (await data.teamStructure())!;
     const { createElement } = await import("react");
@@ -178,9 +183,9 @@ for (const { stored, shows, label } of CASES) {
   });
 
   test(`Change holder: the holder, the person picked and the holder they replace; ${label}`, async () => {
-    seedFixture();
+    await seedFixture();
     const holderId = (await (await signedIn(LEADER.userId)).teamStructure())!.board[0].holder.id;
-    seedWith(stored, [holderId, PICKED.id]);
+    await seedWith(stored, [holderId, PICKED.id]);
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const seat = structure.board[0];
     const { createElement } = await import("react");
@@ -196,7 +201,7 @@ for (const { stored, shows, label } of CASES) {
   });
 
   test(`New department: the head picked; ${label}`, async () => {
-    seedWith(stored, [PICKED.id]);
+    await seedWith(stored, [PICKED.id]);
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const { createElement } = await import("react");
     const { DepartmentDrawer } = await import("@/components/dashboard/department-drawers");
@@ -209,7 +214,7 @@ for (const { stored, shows, label } of CASES) {
   });
 
   test(`Edit department: the head, the head picked and the head they replace; ${label}`, async () => {
-    seedWith(stored, [HEAD.id, PICKED.id]);
+    await seedWith(stored, [HEAD.id, PICKED.id]);
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const { createElement } = await import("react");
     const { DepartmentDrawer } = await import("@/components/dashboard/department-drawers");
@@ -224,7 +229,7 @@ for (const { stored, shows, label } of CASES) {
   });
 
   test(`Close department: each person it moves; ${label}`, async () => {
-    seedWith(stored, [PICKED.id]);
+    await seedWith(stored, [PICKED.id]);
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const { createElement } = await import("react");
     const { DepartmentDrawer } = await import("@/components/dashboard/department-drawers");
@@ -235,7 +240,7 @@ for (const { stored, shows, label } of CASES) {
   });
 
   test(`New division: the lead and the member picked; ${label}`, async () => {
-    seedWith(stored, [PICKED.id]);
+    await seedWith(stored, [PICKED.id]);
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const { createElement } = await import("react");
     const { DivisionDrawer } = await import("@/components/dashboard/division-drawer");
@@ -283,7 +288,7 @@ const GRANTEE = { id: IDS.person("DM"), name: "Person DM" };
 
 for (const { stored, shows, label } of CASES) {
   test(`Access: the phone card, the table row, the locked Person field and the picked person in the field; ${label}`, async () => {
-    seedWith(stored, [GRANTEE.id, PICKED.id]);
+    await seedWith(stored, [GRANTEE.id, PICKED.id]);
     const access = (await (await signedIn(LEADER.userId)).divisionAccess())!;
     const { createElement } = await import("react");
     const { DivisionAccessView } = await import("@/components/dashboard/division-access");
@@ -322,7 +327,7 @@ for (const { stored, shows, label } of CASES) {
   });
 
   test(`Add member: the person picked from the team; ${label}`, async () => {
-    seedWith(stored, [PICKED.id]);
+    await seedWith(stored, [PICKED.id]);
     const structure = (await (await signedIn(LEADER.userId)).teamStructure())!;
     const division = structure.departments.find((d) => d.id === 2)!.divisions[0].page!.division;
     const { createElement } = await import("react");
@@ -339,9 +344,9 @@ for (const { stored, shows, label } of CASES) {
 
 for (const { stored, shows, label } of CASES) {
   test(`Applications: the list row and the detail panel's header; ${label}`, async () => {
-    seedFixture();
-    insertRows(members, [{ memberId: 900, ndaSignedAt: "2025-10-01", picture: stored }]);
-    updateRows(users, { id: "applicant-ma" }, { member: 900 });
+    await seedFixture();
+    await addRows(members, [{ memberId: 900, ndaSignedAt: "2025-10-01", picture: stored }]);
+    await changeRows(users, { id: "applicant-ma" }, { member: 900 });
     const page = await (await signedIn(LEADER.userId)).applications();
     const applicant = page.applications.find((a) => a.applicant.email === "appl-ma@mail.test")!;
     const { createElement } = await import("react");
@@ -362,7 +367,7 @@ for (const { stored, shows, label } of CASES) {
 
 for (const { stored, shows, label } of CASES) {
   test(`My account: the Sign-in card shows the photo the sidebar shows; ${label}`, async () => {
-    seedWith(stored, [ALUMNUS.memberId!]);
+    await seedWith(stored, [ALUMNUS.memberId!]);
     const data = await signedIn(ALUMNUS.userId);
     const account = (await data.myAccount())!;
     assert.equal(account.photoUrl, data.viewer.photoUrl, "the sidebar's photo");
@@ -376,7 +381,7 @@ for (const { stored, shows, label } of CASES) {
   });
 
   test(`The alumni Overview's header shows the viewer's photo; ${label}`, async () => {
-    seedWith(stored, [ALUMNUS.memberId!]);
+    await seedWith(stored, [ALUMNUS.memberId!]);
     const data = await signedIn(ALUMNUS.userId);
     const [mine, me] = await Promise.all([data.myApplications(), data.myAlumni()]);
     const { createElement } = await import("react");

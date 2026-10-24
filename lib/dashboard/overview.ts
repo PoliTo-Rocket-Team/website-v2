@@ -20,6 +20,7 @@ import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
 import type { RoleType } from "./team";
+import type { FlaggedSeat } from "./viewer";
 
 export type Link = { readonly label: string; readonly href: string };
 
@@ -244,18 +245,23 @@ export type Checklist = {
  */
 export type PageSetter = "division-lead" | "team-leader" | "previous-team-leader";
 
-/** One active role, as "Your page on the site" reads it. */
-export type PageRole = { readonly type: RoleType; readonly divisionId: number | null };
+/**
+ * One active role, as "Your page on the site" reads it. `fullAccess` is the
+ * team-level seat the role is flagged as, whether or not it sits in a
+ * division: the IT lead's seat is a lead role in the IT division.
+ */
+export type PageRole = { readonly type: RoleType; readonly divisionId: number | null; readonly fullAccess: FlaggedSeat | null };
 
 /**
  * The setter of the highest seat among someone's active roles: the team
- * leader's seat, then a head's or any role in no division (a team-level
- * seat), then a role in a division. Null for someone holding no role.
+ * leader's seat, then a head's, a role flagged as a team-level seat or any
+ * role in no division, then a role in a division. Null for someone holding
+ * no role.
  */
 export function pageSetterOf(roles: readonly PageRole[]): PageSetter | null {
   if (roles.length === 0) return null;
   if (roles.some((r) => r.type === "president")) return "previous-team-leader";
-  if (roles.some((r) => r.type === "head" || r.divisionId === null)) return "team-leader";
+  if (roles.some((r) => r.type === "head" || r.fullAccess !== null || r.divisionId === null)) return "team-leader";
   return "division-lead";
 }
 

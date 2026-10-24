@@ -9,7 +9,7 @@ import { members } from "@/db/schema";
 import { OverviewView } from "@/components/dashboard/overview";
 import type { DashboardData } from "./data";
 import { openDashboard } from "./open";
-import { updateRows } from "./access-matrix/fake-db";
+import { changeRows } from "./access-matrix/test-database";
 import { accountOf, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 
@@ -22,9 +22,9 @@ import { signInAs } from "./access-matrix/session";
 const PHOTO = "https://store.example/photo/member-a.jpg";
 
 async function signedIn(name: string, picture: string | null): Promise<DashboardData> {
-  seedFixture();
+  await seedFixture();
   const { userId, memberId } = accountOf(name);
-  if (picture !== null) updateRows(members, { memberId }, { picture });
+  if (picture !== null) await changeRows(members, { memberId }, { picture });
   signInAs(userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open", `${name}: the dashboard opens`);
