@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, roles, scopes, teamLeaves, users } from "@/db/schema";
+import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, recruitmentSetting, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
 import { importedProjects } from "@/lib/project-content/import";
@@ -690,6 +690,40 @@ describe("every server action refuses every viewer the matrix keeps out, and wri
         assert.ok(isRefusal(answer), `${row.name}: not refused: ${JSON.stringify(answer)}`);
         assert.deepEqual(writes, [], `${row.name}: wrote`);
       }
+    });
+  }
+});
+
+// The recruitment switch follows full access (Owner decision, 2026-10-24, issue #621)
+//
+// The refusal loop above visits only the rows the matrix keeps out, so each
+// row it lets in is proven here: the switch closes and opens again on the
+// database, as that viewer. The seats among them hold no scope row at all.
+
+describe("every full-access viewer switches recruitment on the database (issue #621)", () => {
+  const switchers = VIEWERS.filter((r) => r.expect.switchesRecruitment);
+  const isOpen = async () => (await tableRows(recruitmentSetting)).map((r) => r.isOpen);
+
+  test("the matrix lets in every full-access row and no other", () => {
+    assert.deepEqual(
+      switchers.map((r) => r.name).sort(),
+      ["Chief Engineer", "IT lead", "Project Manager", "operations lead", "operations lead with Approve orders", "org-wide editor", "team leader"].sort(),
+    );
+  });
+
+  for (const row of switchers) {
+    test(`${row.name}: Close recruitment and Open recruitment each write the recruitment_setting row`, async () => {
+      const closed = await attempt(accountOf(row.name).userId, () => recruitmentActions.setRecruitment(false));
+      assert.ok(!isRefusal(closed.answer), `${row.name}: refused: ${JSON.stringify(closed.answer)}`);
+      assert.ok(
+        closed.writes.some((w) => w.table === "recruitment_setting"),
+        `${row.name}: no recruitment_setting write: ${JSON.stringify(closed.writes)}`,
+      );
+      assert.deepEqual(await isOpen(), [false], `${row.name}: recruitment is still open`);
+
+      const opened = await answerOf(() => recruitmentActions.setRecruitment(true));
+      assert.ok(!isRefusal(opened), `${row.name}: refused to open: ${JSON.stringify(opened)}`);
+      assert.deepEqual(await isOpen(), [true], `${row.name}: recruitment did not open`);
     });
   }
 });
