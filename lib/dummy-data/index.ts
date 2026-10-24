@@ -6,7 +6,7 @@ import { hasNoneShown } from "@/lib/dashboard/my-applications";
 import { myAlumniOf } from "@/lib/dashboard/my-alumni";
 import { DUMMY_ALUMNI_YEAR, dummyAlumni } from "./alumni";
 import { DashboardRefused, type DashboardData } from "@/lib/dashboard/data";
-import { formatEuro, waitingOrders, type ApproveOrdersChange } from "@/lib/dashboard/orders";
+import { decideRightOfStanding, formatEuro, waitingOrders, type ApproveOrdersChange, type Order } from "@/lib/dashboard/orders";
 import { partnerEditor } from "@/lib/partners-editor";
 import { dummyLogoFiles, dummyPartnerStore, NO_PARTNER_EDITS_STORE, type DummyPartnerEditsStore } from "./partners";
 import { faqEditor } from "@/lib/faq/editor";
@@ -417,17 +417,23 @@ function teamOverview(team: Team, notices: DummyNotices): TeamOverview {
   };
 }
 
+/** Every order in the team as the test developer left it: deciding is team-wide, so what waits for a decision counts across it. */
+function dummyTeamOrders(edits: TeamEdits): Order[] {
+  return dummyOrdersIn(dummyOrg(edits).org.divisions.map((d) => d.id));
+}
+
 /**
- * Board 72 (issue #252): the team leader's figures, what waits for their
- * decision, the Departments panel and the team's recent activity, over the
- * team as the test developer left it.
+ * Board 72 (issue #252): the team leader's figures, the Departments panel
+ * and the team's recent activity, over the team as the test developer left
+ * it. What waits for their decision is added beside the hand-overs, as for
+ * anyone who decides orders (issue #592).
  */
 function leaderOverview(team: Team, edits: TeamEdits, notices: DummyNotices): TeamLeaderOverview {
   const me = personFor["team-leader"];
   const { org } = dummyOrg(edits);
   const records = dummyRecords(edits, dummyJoiners(team.applications));
   const open = team.positions.filter((p) => p.open);
-  const orders = dummyOrdersIn(org.divisions.map((d) => d.id));
+  const orders = dummyTeamOrders(edits);
   return {
     shape: "leader",
     stats: leaderStats({
@@ -439,10 +445,7 @@ function leaderOverview(team: Team, edits: TeamEdits, notices: DummyNotices): Te
       people: records.length,
       departments: org.departments.length,
     }),
-    attention: [
-      ...leaderAttention({ orders, now: NOW }),
-      ...dummyNoticeAttention(me, notices, NOW),
-    ],
+    attention: dummyNoticeAttention(me, notices, NOW),
     departments: departmentSummaries(
       records,
       org,
@@ -581,7 +584,8 @@ function rosterPreview(me: DummyPerson): RosterPerson[] {
   }));
 }
 
-function memberOverview(notices: DummyNotices, content: boolean): PersonalOverview {
+/** The member's own page; `teamOrders` is the team's orders when they hold Approve orders, else null. */
+function memberOverview(notices: DummyNotices, content: boolean, teamOrders: readonly Order[] | null): PersonalOverview {
   const me = personFor.member;
   const division = divisionOf(myDivisionId("member"));
   const department = departmentOf(division.id);
@@ -622,12 +626,13 @@ function memberOverview(notices: DummyNotices, content: boolean): PersonalOvervi
       size,
       people: rosterPreview(me),
     },
-    // The dummy member holds no area grant, so the access hint shows (issue #480), unless they hold the Content test grant (issue #504).
-    access: accessSummariesOf([], {}, content),
+    // The dummy member holds no area grant, so the access hint shows (issue #480), unless they hold
+    // the Content test grant (issue #504) or Approve orders (issue #592).
+    access: accessSummariesOf([], { approveOrders: teamOrders === null ? undefined : { waiting: waitingOrders(teamOrders).count } }, content),
   };
 }
 
-function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices, content = false): TeamSideOverview {
+function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices, content: boolean, teamOrders: readonly Order[] | null): TeamSideOverview {
   switch (kind) {
     case "operations-lead":
       return teamOverview(team, notices);
@@ -636,7 +641,7 @@ function overviewFor(kind: ViewerKind, team: Team, notices: DummyNotices, conten
     case "division-lead":
       return divisionOverview(team, notices);
     case "member":
-      return memberOverview(notices, content);
+      return memberOverview(notices, content, teamOrders);
     case "non-member":
     case "alumni":
       throw new DashboardRefused("an Overview off the team is built from My applications");
@@ -992,10 +997,13 @@ export function dummyDashboardData(
   // Hand over your role from My profile, and its answer on the next level up's Overview (issue #262).
   const handOvers = dummyHandOverPages(viewer, teamEdits.current, teamEdits.save, team.applications);
   const aliases = dummyAliasPages(viewer, teamEdits.current, teamEdits.save, team.applications);
-  const shapeOfOverview = (): TeamSideOverview =>
+  // Whoever decides orders, whatever their Overview's shape, reads the team's orders for it (issue #592).
+  const decidingOrders = (): Order[] | null =>
+    offTeam === null && decideRightOfStanding(dummyViewer(viewer, holders, grant)) !== null ? dummyTeamOrders(teamEdits.current) : null;
+  const shapeOfOverview = (teamOrders: Order[] | null): TeamSideOverview =>
     viewer === "team-leader"
       ? leaderOverview(team, teamEdits.current, dummyNoticesOf(teamEdits.current))
-      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current), grant !== null && testGrantHoldsContent(grant));
+      : overviewFor(kind, team, dummyNoticesOf(teamEdits.current), grant !== null && testGrantHoldsContent(grant), teamOrders);
 
   /**
    * Whether the viewer may change `area` on the role: it is one they reach
@@ -1031,10 +1039,13 @@ export function dummyDashboardData(
     },
     ...(viewer === "alumni" ? dummyOwnAlumni(formerMember.id, teamEdits) : NO_OWN_ALUMNI),
     // The hand-overs the viewer answers are the top rows, whatever the Overview's shape (board 62c),
-    // then the open alias requests for the three approver seats (board 94c).
+    // then the open alias requests for the three approver seats (board 94c),
+    // then what waits for a decision, for whoever decides orders (issue #592).
     overview: async () => {
-      const overview = shapeOfOverview();
-      const answering = [...handOvers.attention(NOW), ...aliases.attention(NOW)];
+      const teamOrders = decidingOrders();
+      const overview = shapeOfOverview(teamOrders);
+      const decisions = teamOrders === null ? [] : leaderAttention({ orders: teamOrders, now: NOW });
+      const answering = [...handOvers.attention(NOW), ...aliases.attention(NOW), ...decisions];
       return answering.length === 0 ? overview : { ...overview, attention: [...answering, ...overview.attention] };
     },
     sendHandOver: handOvers.sendHandOver,
