@@ -1,15 +1,16 @@
-// The seeded accounts a check signs in as or views as (issue #607, epic
-// #597): one plain seat per kind, each holding exactly the roles and grants
-// its name says, and the seeded admin testers, who may use View as on a
-// preview and under `next dev` only (lib/dashboard/view-as.ts). Every one has
-// a stable id and email, so the tester sign-in and the View as dialog can
-// name them. The seed's people and access modules (db/seed/people.ts,
-// db/seed/access.ts) seed each one from this table, and lib/seed/cases.test.ts
-// fails when a seeded seat holds anything its row does not name. It lives
-// apart from the seed rows, so the app reads it without loading the seed.
+// The seeded accounts a check signs in as or views as (issues #607, #653,
+// epic #597): one plain seat per kind, each a normal seeded person who holds
+// exactly the roles and grants its name says, and the seeded admin testers,
+// who hold no team role. Every one has a stable id and email, so the tester
+// sign-in and the View as dialog can name them. No seat is a dedicated tester
+// person (issue #653): each is someone the people seed writes like any other
+// member or applicant (db/seed/people.ts), and lib/seed/cases.test.ts fails
+// when a seeded seat holds anything its row does not name. A check that needs
+// a grant gives it to a normal seeded member through the Access page and
+// removes it afterwards (docs/seed-cases.md, "Test seats"). It lives apart
+// from the seed rows, so the app reads it without loading the seed.
 
 import type { AccessLevel, AccessTarget } from "@/lib/dashboard/division-access";
-import { TESTERS } from "@/lib/dev-tester";
 
 /** One active role a seat holds: its type, the kind of unit it sits in, and the full-access seat it carries, if any. */
 export type SeatRole = {
@@ -38,7 +39,7 @@ type Account = {
   readonly sees: string;
 };
 
-/** A plain seat: a seeded person a check views as. */
+/** A plain seat: a seeded person a check signs in as or views as. */
 export type Seat = Account & {
   readonly kind: "seat";
   /** The seat's name in docs/seed-cases.md. */
@@ -62,41 +63,32 @@ export type AdminTester = Account & {
 
 export type SeededAccount = Seat | AdminTester;
 
-const role = (type: SeatRole["type"], unit: SeatRole["unit"], fullAccess: SeatRole["fullAccess"] = null): SeatRole => ({ type, unit, fullAccess });
-
-/** A seeded tester's id: `7e57e500-…-0000000000NN`. */
-function testerId(n: number): string {
-  return `7e57e500-0000-4000-8000-${String(n).padStart(12, "0")}`;
-}
+/** The domain every seeded person's email sits on: reserved for examples, so no mail reaches anyone and no real account has it. */
+export const SEED_EMAIL_DOMAIN = "example.com";
 
 /**
- * One member per single grant: each Access page area at Can edit across the
- * whole team, held by an invented member of Test Bench beside the member
- * seat. Each keeps its own number (members 905 to 910, testers 11 to 16), so
- * a seat's id and email stay put when an area leaves the Access page, as
- * Alumni did (issue #589): 908 and tester 14 are its old numbers.
+ * A seeded person's sign-in key (issue #653): the part of their seeded email
+ * before the `@`, such as `beatrice.la.motta`. Every seeded person has one,
+ * since the seed gives each a unique email on `SEED_EMAIL_DOMAIN`.
  */
-export const ONE_GRANT_SEATS: readonly (Seat & { readonly memberId: number })[] = (
-  [
-    ["positions", "Positions", 0],
-    ["applications", "Applications", 1],
-    ["members", "Members", 2],
-    ["content", "Content", 4],
-    ["orders", "Orders", 5],
-  ] as const satisfies readonly (readonly [AccessTarget, string, number])[]
-).map(([area, title, n]): Seat & { readonly memberId: number } => ({
-  kind: "seat",
-  key: `${area}-grant`,
-  label: `${title} grant`,
-  id: testerId(11 + n),
-  email: `${area}-grant.tester@example.com`,
-  name: `Tester ${title} Grant`,
-  memberId: 905 + n,
-  roles: [role("core", "division")],
-  former: false,
-  grants: [{ area, level: "edit" }],
-  sees: `A member of Test Bench whose one grant is ${title} at Can edit across the whole team.`,
-}));
+export const PERSON_KEY = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
+
+/** The seeded email a person key names. */
+export function seededEmailOf(personKey: string): string {
+  return `${personKey}@${SEED_EMAIL_DOMAIN}`;
+}
+
+/** Whether an email is one the seed makes: on the reserved domain the seed's people use. */
+export function isSeededEmail(email: string): boolean {
+  return email.endsWith(`@${SEED_EMAIL_DOMAIN}`);
+}
+
+const role = (type: SeatRole["type"], unit: SeatRole["unit"], fullAccess: SeatRole["fullAccess"] = null): SeatRole => ({ type, unit, fullAccess });
+
+/** An admin tester's id: `7e57e500-…-0000000000NN`. */
+function adminTesterId(n: number): string {
+  return `7e57e500-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
 
 /** Every seat and admin tester, in the order docs/seed-cases.md lists them. */
 export const SEEDED_ACCOUNTS: readonly SeededAccount[] = [
@@ -117,11 +109,11 @@ export const SEEDED_ACCOUNTS: readonly SeededAccount[] = [
     kind: "seat",
     key: "operations-lead",
     label: "Operations lead",
-    id: TESTERS["operations-lead"].id,
-    email: TESTERS["operations-lead"].email,
-    name: "Tester Operations Lead",
-    memberId: 903,
-    roles: [role("lead", "department", "operations_lead")],
+    id: "5eed0000-0000-4000-8000-000000000003",
+    email: "rocco.bellon@example.com",
+    name: "Rocco Bellon",
+    memberId: 3,
+    roles: [role("head", "department", "operations_lead")],
     former: false,
     grants: [],
     sees: "Every dashboard page, by the operations lead's full-access seat alone.",
@@ -156,11 +148,11 @@ export const SEEDED_ACCOUNTS: readonly SeededAccount[] = [
     kind: "seat",
     key: "division-lead",
     label: "Division lead",
-    id: TESTERS["division-lead"].id,
-    email: TESTERS["division-lead"].email,
-    name: "Tester Division Lead",
-    memberId: 902,
-    roles: [role("lead", "division")],
+    id: "5eed0000-0000-4000-8000-000000000195",
+    email: "stefano.motta@example.com",
+    name: "Stefano Motta",
+    memberId: 195,
+    roles: [role("lead", "division"), role("core", "division")],
     former: false,
     grants: [],
     sees: "Leads Test Bench: edits that division's positions and applications by the lead role alone.",
@@ -169,16 +161,15 @@ export const SEEDED_ACCOUNTS: readonly SeededAccount[] = [
     kind: "seat",
     key: "member",
     label: "Member",
-    id: TESTERS.member.id,
-    email: TESTERS.member.email,
-    name: "Tester Member",
-    memberId: 901,
+    id: "5eed0000-0000-4000-8000-000000000140",
+    email: "filippo.prosperi@example.com",
+    name: "Filippo Prosperi",
+    memberId: 140,
     roles: [role("core", "division")],
     former: false,
     grants: [],
     sees: "A member of Test Bench with no grant: reaches /dashboard with no edit rights.",
   },
-  ...ONE_GRANT_SEATS,
   {
     kind: "seat",
     key: "approve-orders",
@@ -209,20 +200,20 @@ export const SEEDED_ACCOUNTS: readonly SeededAccount[] = [
     kind: "seat",
     key: "non-member",
     label: "Applicant",
-    id: TESTERS.applicant.id,
-    email: TESTERS.applicant.email,
-    name: "Tester Applicant",
+    id: "1e444444-4444-4444-4444-444444444444",
+    email: "giulia.ferri@example.com",
+    name: "Giulia Ferri",
     memberId: null,
     roles: [],
     former: false,
     grants: [],
-    sees: "Not a member: sees the application form on an open /apply/<slug>.",
+    sees: "Not a member: holds an application with interview times to pick and a new one, and sees the form on an open /apply/<slug>.",
   },
   {
     kind: "admin-tester",
     key: "admin-1",
     label: "Admin tester 1",
-    id: testerId(21),
+    id: adminTesterId(21),
     email: "admin-1.tester@example.com",
     name: "Tester Admin One",
     storedRole: "admin",
@@ -232,7 +223,7 @@ export const SEEDED_ACCOUNTS: readonly SeededAccount[] = [
     kind: "admin-tester",
     key: "admin-2",
     label: "Admin tester 2",
-    id: testerId(22),
+    id: adminTesterId(22),
     email: "admin-2.tester@example.com",
     name: "Tester Admin Two",
     storedRole: "admin",
@@ -242,6 +233,11 @@ export const SEEDED_ACCOUNTS: readonly SeededAccount[] = [
 
 export const SEATS: readonly Seat[] = SEEDED_ACCOUNTS.filter((a): a is Seat => a.kind === "seat");
 export const ADMIN_TESTERS: readonly AdminTester[] = SEEDED_ACCOUNTS.filter((a): a is AdminTester => a.kind === "admin-tester");
+
+/** The seat or admin tester with this key, or undefined. */
+export function seededAccountOf(key: string): SeededAccount | undefined {
+  return SEEDED_ACCOUNTS.find((a) => a.key === key);
+}
 
 /** The seat with this key; throws on a key no seat has. */
 export function seatOf(key: string): Seat {

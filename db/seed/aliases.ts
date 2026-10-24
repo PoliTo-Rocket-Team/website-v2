@@ -1,14 +1,14 @@
 // The email alias seed (issue #550, epic #538): one request in each state
 // boards 94 to 94g show, so a preview reaches every alias screen without a
 // hand-made write. Alias requests are private, so every row is invented
-// (issue #326). The division-lead tester, the Test Bench lead, sent the
+// (issue #326). The Test Bench lead, the division-lead plain seat, sent the
 // manual ones for people in Test Bench:
 //
 // - one still open, so the lead's member drawer shows "Requested · by you"
 //   with Cancel request (board 94b), and the team leader's, the operations
 //   lead's and the IT lead's Overviews show it with Decline and Mark created
 //   (boards 94c, 94d);
-// - one marked created, for the member tester, whose alias is on their record
+// - one marked created, for the member plain seat, whose alias is on their record
 //   and not yet set up, so their Overview shows "Your email alias is ready"
 //   and its setup steps (boards 94f, 94g) and the lead's drawer shows the
 //   address (board 94e);
@@ -20,28 +20,29 @@
 // "Automatic" (board 94c). Each answered request carries the notices the
 // answer writes (lib/dashboard/alias-request.ts, `aliasAnswerNotices`). A
 // member's alias is their PRT email (issue #563): the created one is the
-// member tester's PRT email, and the members still owed one have none, on the
-// rows `people` owns (`TESTER_MEMBER_ALIAS`, `OWED_ALIAS`); these rows go in
+// member seat's PRT email, and the members still owed one have none, on the
+// rows `people` owns (`MEMBER_SEAT_ALIAS`, `OWED_ALIAS`); these rows go in
 // after them.
 
 import { aliasRequests, dashboardNotices } from "@/db/schema";
-import { OWED_ALIAS, TEAM_LEADER, TESTER_MEMBER, TESTER_MEMBER_ALIAS } from "./people";
+import { MEMBER_SEAT, MEMBER_SEAT_ALIAS, OPERATIONS_HEAD, OWED_ALIAS, TEAM_LEADER, TEST_BENCH_LEAD } from "./people";
 import { rowsOf, tableSeedModule } from "./rows";
 
-const LEAD = TESTER_MEMBER["division-lead"];
-const OPERATIONS_LEAD = TESTER_MEMBER["operations-lead"];
+const LEAD = TEST_BENCH_LEAD;
+/** The head of Operations, in the operations lead's seat: an approver. */
+const OPERATIONS_LEAD = OPERATIONS_HEAD;
 
 /** The open request the Test Bench lead sent, for a Test Engineer. */
 export const OPEN_REQUEST = { id: 1, member: OWED_ALIAS.open, by: LEAD } as const;
 /** The open request the site made when the Mission Analysis lead became lead. */
 export const AUTOMATIC_REQUEST = { id: 2, member: OWED_ALIAS.automatic } as const;
-/** The request marked created: the member tester's alias, their PRT email, not yet set up. */
-export const CREATED_ALIAS = { id: 3, member: TESTER_MEMBER.member, by: LEAD, address: TESTER_MEMBER_ALIAS } as const;
+/** The request marked created: the member seat's alias, their PRT email, not yet set up. */
+export const CREATED_ALIAS = { id: 3, member: MEMBER_SEAT, by: LEAD, address: MEMBER_SEAT_ALIAS } as const;
 /** The request the operations lead declined, for another Test Engineer. */
 export const DECLINED_REQUEST = { id: 4, member: OWED_ALIAS.declined, by: LEAD, declinedBy: OPERATIONS_LEAD } as const;
 
 /** Who declined it, by name, as the notice stores it (`aliasAnswerNotices`). */
-const DECLINED_BY = "Tester Operations Lead";
+const DECLINED_BY = "Rocco Bellon";
 
 export const ALIAS_REQUEST_ROWS = rowsOf(aliasRequests, [
   {

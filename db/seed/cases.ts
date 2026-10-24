@@ -797,7 +797,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "people",
     case: "One operations lead and one IT lead, the two full-access seats",
     data: "invented",
-    rows: "`roles.full_access`, members 903 and 11",
+    rows: "`roles.full_access`, members 3 and 11",
     exercisedBy: `${issue(238)}, ${issue(252)}`,
     holds: (data) =>
       (["operations_lead", "it_lead"] as const).every(
@@ -1095,7 +1095,7 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "recruitment",
-    case: "The local applicant tester holds applications to act on",
+    case: "The applicant plain seat holds applications to act on",
     data: "invented",
     rows: "`applications` 24 and 25",
     exercisedBy: `${issue(129)}, ${issue(169)}`,
@@ -1308,7 +1308,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "hand-overs",
     case: "A division lead's hand-over waiting for the head of their department, on the department-head plain seat's Overview",
     data: "invented",
-    rows: "`hand_over_requests` 2, member 902 to member 901",
+    rows: "`hand_over_requests` 2, member 195 to member 140",
     exercisedBy: issue(262),
     holds: (data) => {
       const waiting = waitingHandOversOf(data);
@@ -1334,7 +1334,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "aliases",
     case: "An open alias request the division-lead plain seat sent, which they may cancel and each approver may decline or mark created",
     data: "invented",
-    rows: "`alias_requests` 1, member 902 for member 134",
+    rows: "`alias_requests` 1, member 195 for member 134",
     exercisedBy: `${issue(541)}, ${issue(550)}`,
     holds: (data) => {
       const lead = memberOfUser(data, PLAIN_SEAT_PEOPLE["division-lead"]);
@@ -1373,7 +1373,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "aliases",
     case: "An alias marked created on the member plain seat's record and not yet set up, with the notice to the division lead who asked for it",
     data: "invented",
-    rows: "`alias_requests` 3, `members` 901 `prt_email`, `dashboard_notices` `alias-created`",
+    rows: "`alias_requests` 3, `members` 140 `prt_email`, `dashboard_notices` `alias-created`",
     exercisedBy: `${issue(542)}, ${issue(550)}`,
     holds: (data) => {
       const member = memberOfUser(data, PLAIN_SEAT_PEOPLE.member);
@@ -1396,7 +1396,7 @@ export const SEED_CASES: readonly SeedCase[] = [
     area: "aliases",
     case: "A declined alias request, with the notice to the division lead who sent it, who may ask again",
     data: "invented",
-    rows: "`alias_requests` 4, member 902 for member 168, `dashboard_notices` `alias-declined`",
+    rows: "`alias_requests` 4, member 195 for member 168, `dashboard_notices` `alias-declined`",
     exercisedBy: `${issue(541)}, ${issue(550)}`,
     holds: (data) => {
       const drawer = drawerAliasOf(data, DECLINED_REQUEST.by, DECLINED_REQUEST.member);

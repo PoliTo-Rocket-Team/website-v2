@@ -26,7 +26,7 @@ import {
 } from "../../db/seed/cases";
 import { DRAFT_CHANGES_POST, DRAFT_ONLY_POST, EVERY_CHANNEL_POST, RECORD_GALLERY_POSTS } from "../../db/seed/outreach";
 import { DRAFT_ONLY_PARTNER } from "../../db/seed/partners";
-import { DIVISION_ADVISOR, FORMER_TEAM_LEADER, TESTER_MEMBER } from "../../db/seed/people";
+import { DIVISION_ADVISOR, FORMER_TEAM_LEADER } from "../../db/seed/people";
 import { PLACEHOLDER_ROCKET_PROJECT } from "../../db/seed/projects";
 
 // The seed uses the data the site already publishes and invents everything
@@ -112,14 +112,14 @@ test("each public person carries the photo and LinkedIn handle lib/about/team.ts
   }
 });
 
-test("everyone on the seeded team is someone lib/about/team.ts names, a local tester, or one of the two invented advisors", () => {
+test("everyone on the seeded team is someone lib/about/team.ts names, or one of the two invented advisors: no tester person (issue #653)", () => {
   const publicNames = new Set([
     team.orgChart.leader.name,
     ...team.orgChart.leaders.map((l) => l.name),
     ...team.departments.groups.flatMap((g) => g.members.flatMap((m) => (m.kind === "head" ? [m.name, ...m.leads.map((l) => l.name)] : [m.name]))),
     ...team.coreMembers.members.map((m) => m.name),
   ]);
-  const invented = new Set<number>([...Object.values(TESTER_MEMBER), FORMER_TEAM_LEADER, DIVISION_ADVISOR]);
+  const invented = new Set<number>([FORMER_TEAM_LEADER, DIVISION_ADVISOR]);
   const onTeam = new Set(data.roles.filter(isActive).map((r) => r.memberId!));
   for (const id of onTeam) assert.ok(publicNames.has(nameOf(id)) || invented.has(id), `member ${id} (${nameOf(id)}) is on no public page`);
   for (const name of publicNames) assert.ok(onTeam.has(memberNamed(name)), `${name} holds no active role`);

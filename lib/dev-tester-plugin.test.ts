@@ -15,13 +15,15 @@ import {
   setEnv,
   type MemoryDb,
 } from "./dev-tester-fixture";
-import { ADMIN_TESTERS, SEEDED_ACCOUNTS, seatOf, type SeededAccount } from "./seeded-accounts";
+import type { TesterDirectory } from "./dev-tester-plugin";
+import { ADMIN_TESTERS, SEATS, SEEDED_ACCOUNTS, seatOf, type SeededAccount } from "./seeded-accounts";
 import type { ViewAsGate } from "./view-as-plugin";
 
-// The tester sign-in through the real Better Auth instance (issue #608),
-// over an in-memory database: under `next dev` and on a preview of the
-// shared `preview` database it opens a real session for any seeded seat or
-// admin tester, any account signed in this way passes the View as rule there
+// The tester sign-in through the real Better Auth instance (issues #608,
+// #653), over an in-memory database: under `next dev` and on a preview of the
+// shared `preview` database it opens a real session for any seeded person,
+// named by a seat's key, a person key or a member id, and for no account the
+// seed did not make; any account signed in this way passes the View as rule there
 // (issues #604, #648), and signing out deletes the session. A Google session
 // reaches the same View as check as a tester one and gets the same answer.
 // Where the gate is off, the plugin is not registered (lib/dev-tester.test.ts).
@@ -90,6 +92,85 @@ test("an account missing from the database gets no session", async () => {
     const response = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=member`));
     assert.equal(response.status, 404, label(vars));
     assert.equal(response.headers.getSetCookie().length, 0, label(vars));
+  }
+});
+
+/** A seeded person who is no seat, as the seed writes their sign-in row: named by their person key. */
+const PERSON = { id: "5eed0000-0000-4000-8000-000000000119", email: "beatrice.la.motta@example.com", name: "Beatrice La Motta", memberId: 119 };
+/** A developer's own account, which no seed made. */
+const OWN_ACCOUNT = { id: "own-account", email: "someone@gmail.com", name: "Someone", memberId: 777 };
+
+function withAccounts(...accounts: readonly { id: string; email: string; name: string }[]): MemoryDb {
+  const db = seededMemoryDb();
+  const now = new Date();
+  for (const a of accounts) db.user.push({ id: a.id, name: a.name, email: a.email, emailVerified: true, image: null, createdAt: now, updatedAt: now, role: null });
+  return db;
+}
+
+/** Member ids as the `users` rows name them: each seat's, the person's and the developer's own. */
+const DIRECTORY: TesterDirectory = {
+  memberUserId: async (memberId) => [...SEATS, PERSON, OWN_ACCOUNT].find((a) => a.memberId === memberId)?.id ?? null,
+};
+
+async function signInAt(auth: Awaited<ReturnType<typeof memoryAuth>>, query: string): Promise<{ response: Response; jar: Jar }> {
+  const response = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?${query}`));
+  const jar = new Jar();
+  jar.take(response);
+  return { response, jar };
+}
+
+test("any seeded person signs in by their person key or their member id, through a real session (issue #653)", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const db = withAccounts(PERSON, OWN_ACCOUNT);
+    const auth = await memoryAuth(db, undefined, DIRECTORY);
+
+    for (const [query, id] of [
+      ["tester=beatrice.la.motta&cb=/dashboard", PERSON.id],
+      ["member=119&cb=/dashboard", PERSON.id],
+      [`member=${seatOf("member").memberId}&cb=/dashboard`, seatOf("member").id],
+      ["tester=filippo.prosperi&cb=/dashboard", seatOf("member").id],
+    ] as const) {
+      const at = `${label(vars)} ${query}`;
+      const { response, jar } = await signInAt(auth, query);
+      assert.equal(response.status, 302, at);
+      assert.equal(response.headers.get("location"), "/dashboard", at);
+      const session = await auth.api.getSession({ headers: jar.headers(), query: { disableCookieCache: true } });
+      assert.equal(session?.user.id, id, `${at}: the session row the server reads`);
+      assert.equal(session?.impersonatedBy, null, `${at}: a plain session`);
+    }
+  }
+});
+
+test("the sign-in refuses an account no seed made, a person who is not seeded, and a query that names nobody or two people", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const db = withAccounts(PERSON, OWN_ACCOUNT);
+    const auth = await memoryAuth(db, undefined, DIRECTORY);
+
+    for (const [query, status] of [
+      [`member=${OWN_ACCOUNT.memberId}`, 404],
+      ["tester=someone.else", 404],
+      ["member=4242", 404],
+      ["", 400],
+      ["tester=member&member=119", 400],
+      ["member=nobody", 400],
+      ["tester=Beatrice", 400],
+    ] as const) {
+      const { response } = await signInAt(auth, query);
+      assert.equal(response.status, status, `${label(vars)} ${query}`);
+      assert.equal(response.headers.getSetCookie().length, 0, `${label(vars)} ${query}`);
+    }
+    assert.deepEqual(db.session, [], `${label(vars)}: no session was made`);
+  }
+});
+
+test("the tester list says how to name any seeded person: a seat, a person key or a member id", async () => {
+  for (const vars of GATE_ON) {
+    setEnv({ ...TEST_ENV, ...vars });
+    const auth = await memoryAuth();
+    const html = await (await auth.handler(new Request(`${BASE}/dev-tester`))).text();
+    for (const how of ["?tester=&lt;seat&gt;", "?tester=&lt;person key&gt;", "?member=&lt;member id&gt;"]) assert.ok(html.includes(how), `${label(vars)} ${how}`);
   }
 });
 

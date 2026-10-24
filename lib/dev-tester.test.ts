@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { SCOPE_ROWS } from "../db/seed/access";
-import { PROPULSION_HEAD, ROLE_ROWS, TESTER_AUTH_ROWS, TESTER_MEMBER, USER_ROWS } from "../db/seed/people";
+import { PROPULSION_HEAD, ROLE_ROWS, SIGN_IN_ROWS, USER_ROWS } from "../db/seed/people";
 import { DEPARTMENT } from "../db/seed/structure";
-import { TESTER_KEYS, TESTERS, isTesterKey, testerSignInOn } from "./dev-tester";
-import { seatOf } from "./seeded-accounts";
+import { testerSignInOn } from "./dev-tester";
+import { ADMIN_TESTERS, isSeededEmail, seatOf } from "./seeded-accounts";
 import { BASE, GATE_OFF, GATE_ON, LOOKALIKE_DB, OTHER_DB, PREVIEW_DB, PREVIEW_DB_DIRECT, TEST_ENV, envRestorer, memoryAuth, setEnv } from "./dev-tester-fixture";
 
 afterEach(envRestorer());
@@ -77,18 +77,14 @@ test("where the gate is on, getAuth registers the tester plugin beside Google al
   }
 });
 
-test("every tester key names a tester with its own id and email", () => {
-  assert.deepEqual(Object.keys(TESTERS).sort(), [...TESTER_KEYS].sort());
-  for (const key of TESTER_KEYS) assert.equal(TESTERS[key].key, key);
-  assert.equal(new Set(TESTER_KEYS.map((key) => TESTERS[key].id)).size, TESTER_KEYS.length);
-  assert.equal(new Set(TESTER_KEYS.map((key) => TESTERS[key].email)).size, TESTER_KEYS.length);
-  assert.equal(isTesterKey("operations-lead"), true);
-  assert.equal(isTesterKey("admin"), false);
+test("no seeded person is a dedicated tester: no user is named Tester but the admin testers, and no member is (issue #653)", () => {
+  const testers = USER_ROWS.rows.filter((u) => u.firstName === "Tester" || u.email.endsWith(".tester@example.com"));
+  assert.deepEqual(testers.map((u) => u.id).sort(), ADMIN_TESTERS.map((a) => a.id).sort());
+  for (const user of testers) assert.equal(user.member ?? null, null, `${user.email} has no member row`);
+  assert.ok(!ROLE_ROWS.rows.some((r) => r.memberId != null && r.memberId >= 900 && r.memberId < 1000), "the old tester members 901 to 910 are gone");
 });
 
-test("no tester is a department head: that seat is the seeded head of Propulsion, with no scope row (issue #644)", () => {
-  assert.equal(isTesterKey("department-head"), false);
-  assert.ok(!(Object.values(TESTER_MEMBER) as number[]).includes(904), "the old department-head tester's member 904 is gone");
+test("the department-head seat is the seeded head of Propulsion, with no scope row (issue #644)", () => {
   const seat = seatOf("department-head");
   assert.equal(seat.memberId, PROPULSION_HEAD);
   const held = ROLE_ROWS.rows.filter((r) => r.memberId === seat.memberId && r.leavedAt == null);
@@ -99,10 +95,15 @@ test("no tester is a department head: that seat is the seeded head of Propulsion
   assert.ok(!SCOPE_ROWS.rows.some((s) => s.memberId === seat.memberId));
 });
 
-test("the seed puts every tester in better_auth.user and public.users", () => {
-  for (const key of TESTER_KEYS) {
-    const { id, email } = TESTERS[key];
-    assert.ok(USER_ROWS.rows.some((u) => u.id === id && u.email === email), `public.users row for ${key}`);
-    assert.ok(TESTER_AUTH_ROWS.rows.some((u) => u.id === id && u.email === email), `better_auth.user row for ${key}`);
+test("the seed gives every seeded person a sign-in row, under the id and email of their users row, so the tester sign-in reaches anyone (issue #653)", () => {
+  for (const user of USER_ROWS.rows) {
+    const signIn = SIGN_IN_ROWS.rows.filter((row) => row.id === user.id);
+    if (user.anonymizedAt != null) {
+      assert.deepEqual(signIn, [], `${user.id}: an anonymized account has no sign-in`);
+      continue;
+    }
+    assert.deepEqual(signIn.map((row) => row.email), [user.email], `${user.email} has one sign-in row`);
+    assert.ok(isSeededEmail(user.email), `${user.email} is on the seed's reserved domain`);
   }
+  assert.equal(SIGN_IN_ROWS.rows.length, USER_ROWS.rows.filter((u) => u.anonymizedAt == null).length, "a sign-in row is a seeded person's");
 });

@@ -23,13 +23,17 @@ Tailwind 3.
   production. Do not run the seed against a real database, set that variable or read env files.
 - Check a signed-in page with a real session. The test developer cookie and the dummy-data
   pages are gone, and every page reads a database. Under `next dev` and on a preview
-  of the shared `preview` database, sign in with no Google account at `/api/auth/dev-tester` as a
-  seeded seat or admin tester (keys in [lib/seeded-accounts.ts](lib/seeded-accounts.ts),
-  [README.md](README.md#sign-in-as-a-tester)); on production those routes answer 404. To see
-  another person's dashboard, sign in as an admin tester and open "View as…" in the user menu, and
-  pick a seeded seat. On production only the IT lead seat may use View as. The seats and admin testers,
-  with what each holds, are listed in [docs/seed-cases.md](docs/seed-cases.md#test-seats)
-  (Test seats, Admin testers).
+  of the shared `preview` database, sign in with no Google account at `/api/auth/dev-tester` as
+  any seeded person: a seat or admin tester by key ([lib/seeded-accounts.ts](lib/seeded-accounts.ts)),
+  anyone else by their person key or member id ([README.md](README.md#sign-in-as-a-tester)); on
+  production those routes answer 404. No seeded person is a dedicated tester; every seat is a
+  normal member or applicant. To see another person's dashboard, sign in and open "View as…" in
+  the user menu; it shows what that person's own sign-in shows
+  ([lib/dashboard/view-as-equivalence-server.test.ts](lib/dashboard/view-as-equivalence-server.test.ts)).
+  On production only the IT lead seat may use View as. To check a grant, give it to a normal
+  seeded member on the Access page as the team leader and remove it there afterwards. The seats
+  and admin testers, with what each holds, are listed in
+  [docs/seed-cases.md](docs/seed-cases.md#test-seats) (Test seats, Admin testers).
 - The check every change passes is `pnpm exec tsc --noEmit`, the same one CI runs
   ([ci.yml](.github/workflows/ci.yml)). `pnpm build` prerenders pages that query Neon, so it
   needs `DATABASE_URL`.
