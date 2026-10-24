@@ -104,7 +104,7 @@ The five local testers of issue #129 are seeded by the `people` module, with the
 
 ## Test seats
 
-The seven seats a check views as: the test developer's viewers on a preview ([lib/test-viewer-people.ts](../lib/test-viewer-people.ts)), five of them also the local testers of [lib/dev-tester.ts](../lib/dev-tester.ts). Each holds only what its roles give and no `scopes` row, so an access check on a freshly seeded branch starts from a clean seat; a case that needs a grant gives it to another seeded person ([db/seed/access.ts](../db/seed/access.ts)). A unit test in [lib/seed/cases.test.ts](../lib/seed/cases.test.ts) reads this table back from the seed.
+The seven seats a check views as: the test developer's viewers on a preview ([lib/test-viewer-people.ts](../lib/test-viewer-people.ts)), four of them also the local testers of [lib/dev-tester.ts](../lib/dev-tester.ts). Each holds only what its roles give and no `scopes` row, so an access check on a freshly seeded branch starts from a clean seat; a case that needs a grant gives it to another seeded person ([db/seed/access.ts](../db/seed/access.ts)). A unit test in [lib/seed/cases.test.ts](../lib/seed/cases.test.ts) reads this table back from the seed.
 
 | Seat | Seeded person | Roles | Grants |
 |---|---|---|---|

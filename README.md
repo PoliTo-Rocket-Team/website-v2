@@ -118,8 +118,9 @@ amendment of 2026-10-24):
   preview; that one build empties the branch and loads the dummy set again
   ([Re-seed the preview branch](docs/seed-cases.md#re-seed-the-preview-branch)).
 - Production is never written to or seeded by agents.
-- Never use a Neon "reset from parent" on `preview`: its parent is production. To work with the dummy set,
-run a local Postgres, set `DATABASE_URL` to it, then:
+- Never use a Neon "reset from parent" on `preview`: its parent is production.
+
+To work with the dummy set, run a local Postgres, set `DATABASE_URL` to it, then:
 
 ```bash
 pnpm db:migrate
