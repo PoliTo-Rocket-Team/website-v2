@@ -6,8 +6,7 @@ import { publicItems, versionRows, type ContentItem } from "../content/versioned
 import { ANONYMIZED_EMAIL, CLEARED_MEMBER } from "../dashboard/anonymize";
 import { APPLICATION_STAGES } from "../dashboard/application-flow";
 import { PLAIN_SEATS } from "../dashboard/viewer";
-import { ACCESS_LEVEL_LABELS, ACCESS_TARGET_LABELS, ACCESS_TARGETS } from "../dashboard/division-access";
-import { TESTERS } from "../dev-tester";
+import { ACCESS_LEVEL_LABELS, ACCESS_TARGET_LABELS } from "../dashboard/division-access";
 import {
   ADMIN_TESTERS,
   SEATS,
@@ -55,7 +54,7 @@ import {
   waitingHandOversOf,
 } from "../../db/seed/cases";
 import { handOverAttentionFor } from "../dashboard/hand-over-request";
-import { ANONYMIZED_ALUMNUS, TESTER_AUTH_ROWS, PLAIN_SEAT_PEOPLE } from "../../db/seed/people";
+import { ANONYMIZED_ALUMNUS, SIGN_IN_ROWS, PLAIN_SEAT_PEOPLE } from "../../db/seed/people";
 import { PUBLIC_TEAM } from "../../db/seed/public-team";
 import { DIVISION_ROWS } from "../../db/seed/structure";
 import { teamPageSeed } from "../../db/seed/team-page";
@@ -89,7 +88,7 @@ test("the seed holds one waiting and one confirmed hand-over, and the department
   const [waiting] = waitingHandOversOf(data);
   const head = memberOfUser(data, PLAIN_SEAT_PEOPLE["department-head"]);
   const [row] = handOverAttentionFor(head, [waiting], teamOf(data), orgOf(data), new Date("2026-10-16T12:00:00Z"));
-  assert.equal(row?.title, "Tester Division Lead wants to hand over Test Bench lead to Tester Member");
+  assert.equal(row?.title, "Stefano Motta wants to hand over Test Bench lead to Filippo Prosperi");
   assert.deepEqual(row?.action, { answerHandOver: waiting.id });
   for (const viewer of ["team-leader", "division-lead", "member"] as const) {
     assert.deepEqual(handOverAttentionFor(memberOfUser(data, PLAIN_SEAT_PEOPLE[viewer]), [waiting], teamOf(data), orgOf(data), new Date()), [], viewer);
@@ -135,7 +134,7 @@ test("the anonymized alumnus carries no personal data but keeps its alumni entry
   for (const key of ["firstName", "lastName", "phone", "linkedin", "politoId"] as const) assert.equal(user[key] ?? null, null, key);
   assert.ok(user.deletedAt != null && user.anonymizedAt != null && user.deletedAt < user.anonymizedAt);
   for (const [key, value] of Object.entries(CLEARED_MEMBER)) assert.equal(member[key as keyof typeof member] ?? null, value, key);
-  assert.ok(!TESTER_AUTH_ROWS.rows.some((row) => row.id === user.id), "an anonymized account has no sign-in");
+  assert.ok(!SIGN_IN_ROWS.rows.some((row) => row.id === user.id), "an anonymized account has no sign-in");
 
   const entry = data.alumniEntries.find((e) => e.memberId === ANONYMIZED_ALUMNUS);
   assert.ok(entry);
@@ -154,11 +153,14 @@ test("every plain seat resolves to a seeded person read as that seat", () => {
   }
 });
 
-test("each local tester is seeded with the id and email lib/dev-tester.ts names, and can sign in", () => {
-  for (const tester of Object.values(TESTERS)) {
-    assert.ok(data.users.some((u) => u.id === tester.id && u.email === tester.email), tester.key);
-    assert.ok(TESTER_AUTH_ROWS.rows.some((row) => row.id === tester.id && row.email === tester.email), tester.key);
+test("no seat is a dedicated tester person: each is someone the people seed writes like any member or applicant (issue #653)", () => {
+  for (const seat of SEATS) {
+    const user = data.users.find((u) => u.id === seat.id);
+    assert.ok(user, seat.key);
+    assert.notEqual(user.firstName, "Tester", `${seat.key} is a tester person`);
+    assert.ok(!seat.email.endsWith(".tester@example.com"), `${seat.key} has a tester email`);
   }
+  assert.ok(!data.users.some((u) => u.member != null && u.firstName === "Tester"), "no member is a tester person");
 });
 
 // The schema: every reference resolves, and every key is unique.
@@ -590,9 +592,11 @@ test("each seat holds exactly the roles and grants its name says, and nothing el
   assert.ok(data.alumniEntries.some((e) => e.memberId === seatOf("alumni").memberId), "the alumnus keeps an Alumni entry");
 });
 
-test("the seats cover every kind the seed names: one per single grant and an Approve-orders holder among them", () => {
-  const oneGrant = SEATS.filter((s) => s.grants.length === 1 && s.grants[0].area !== "approve_orders").map((s) => s.grants[0].area);
-  assert.deepEqual([...oneGrant].sort(), [...ACCESS_TARGETS].sort());
+test("no seat holds an area grant: a check gives one through the Access page; the Approve-orders holder holds that alone (issue #653)", () => {
+  assert.deepEqual(
+    SEATS.filter((s) => s.grants.some((g) => g.area !== "approve_orders")).map((s) => s.key),
+    [],
+  );
   assert.deepEqual(seatOf("approve-orders").grants, [{ area: "approve_orders", level: "edit" }]);
   for (const viewer of PLAIN_SEATS) assert.equal(PLAIN_SEAT_PEOPLE[viewer], seatOf(viewer).id, `${viewer} views as its seat`);
 });
@@ -603,10 +607,10 @@ test("the seeded admin testers are stored as admins and hold no team role and no
     const user = data.users.find((u) => u.id === admin.id);
     assert.ok(user, `${admin.key} has a users row`);
     assert.equal(user.member ?? null, null, `${admin.key} has no member row, so no role and no grant`);
-    const signIn = TESTER_AUTH_ROWS.rows.filter((row) => row.id === admin.id);
+    const signIn = SIGN_IN_ROWS.rows.filter((row) => row.id === admin.id);
     assert.deepEqual(signIn.map((row) => [row.email, row.role]), [[admin.email, "admin"]], admin.key);
   }
-  const admins = TESTER_AUTH_ROWS.rows.filter((row) => row.role === "admin").map((row) => row.id);
+  const admins = SIGN_IN_ROWS.rows.filter((row) => row.role === "admin").map((row) => row.id);
   assert.deepEqual(admins, ADMIN_TESTERS.map((a) => a.id), "nobody else is stored as an admin");
 });
 
@@ -619,7 +623,7 @@ test("every seat and admin tester has one stable id and email, seeded on its use
     assert.ok(user, `${account.key} has a users row`);
     assert.equal(user.email, account.email, `${account.key} email`);
     assert.equal(`${user.firstName} ${user.lastName}`, account.name, `${account.key} name`);
-    const signIn = TESTER_AUTH_ROWS.rows.filter((row) => row.id === account.id);
+    const signIn = SIGN_IN_ROWS.rows.filter((row) => row.id === account.id);
     assert.deepEqual(signIn.map((row) => row.email), [account.email], `${account.key} has one sign-in row`);
   }
 });

@@ -3,9 +3,8 @@ import { afterEach, test } from "node:test";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { getCookieCache } from "better-auth/cookies";
 import type { ViewAsEntry, ViewAsRefusal } from "./dashboard/view-as";
-import { TESTERS } from "./dev-tester";
 import { seededMemoryDb } from "./dev-tester-fixture";
-import { ADMIN_TESTERS } from "./seeded-accounts";
+import { ADMIN_TESTERS, seatOf } from "./seeded-accounts";
 import { accountUserOf, impersonatorOf } from "./session-user";
 import type { ViewAsGate } from "./view-as-plugin";
 
@@ -35,8 +34,10 @@ afterEach(() => {
   Object.assign(process.env, savedEnv);
 });
 
-const ACTING = TESTERS["operations-lead"];
-const PERSON = TESTERS.member;
+const ACTING = seatOf("operations-lead");
+const PERSON = seatOf("member");
+/** The applicant seat: a second person to try to view as. */
+const APPLICANT = seatOf("non-member");
 /** A stored admin the stand-in gate refuses, as production refuses one. */
 const STORED_ADMIN = ADMIN_TESTERS[0];
 
@@ -147,7 +148,7 @@ test("a start the gate refuses makes no session and logs nothing, though the plu
   for (const tester of [PERSON, STORED_ADMIN]) {
     const jar = await signIn(auth, tester);
     const sessions = db.session.length;
-    const refused = await post(auth, jar, "/admin/impersonate-user", { userId: TESTERS.applicant.id });
+    const refused = await post(auth, jar, "/admin/impersonate-user", { userId: APPLICANT.id });
     assert.equal(refused.status, 403, tester.key);
     assert.equal(db.session.length, sessions, `${tester.key}: no session is made`);
     assert.deepEqual(await cachedUser(jar), { id:tester.id, name: tester.name, actingAccountId: null }, `${tester.key} is still themselves`);
@@ -163,8 +164,8 @@ test("from inside a View as session, the gate is told so and refuses a second st
   const { auth, asked, entries } = await setUp();
   const jar = await signIn(auth, ACTING);
   assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: PERSON.id })).status, 200);
-  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: TESTERS.applicant.id })).status, 403);
-  assert.deepEqual(asked.at(-1), { actingAccountId: PERSON.id, viewingAs: true, personId: TESTERS.applicant.id });
+  assert.equal((await post(auth, jar, "/admin/impersonate-user", { userId: APPLICANT.id })).status, 403);
+  assert.deepEqual(asked.at(-1), { actingAccountId: PERSON.id, viewingAs: true, personId: APPLICANT.id });
   assert.equal(entries.length, 1, "only the first start is logged");
 });
 

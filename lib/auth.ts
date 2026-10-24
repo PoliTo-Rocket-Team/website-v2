@@ -1,10 +1,11 @@
 import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { eq } from "drizzle-orm";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { customSession } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { getDb } from "@/db/client";
 import { recordViewAs, viewAsRefusal } from "@/lib/dashboard/database-view-as";
-import { devTesterPlugin } from "@/lib/dev-tester-plugin";
+import { devTesterPlugin, type TesterDirectory } from "@/lib/dev-tester-plugin";
 import { testerSignInOn } from "@/lib/dev-tester";
 import { impersonatorOf } from "@/lib/session-user";
 import {
@@ -19,6 +20,7 @@ import {
   betterAuthSessions,
   betterAuthUsers,
   betterAuthVerifications,
+  users,
 } from "@/db/schema";
 
 const authBaseUrl = process.env.BETTER_AUTH_URL;
@@ -46,11 +48,19 @@ export function getAuth() {
 /** Who may start View as, read from the database at request time, and where each start and stop is logged (issue #604). */
 const databaseViewAs: ViewAsGate = { refusal: (start) => viewAsRefusal(start), record: recordViewAs };
 
+/** Which account the tester sign-in reads a member id as (issue #653): the `users` row whose member it is. */
+const databaseTesters: TesterDirectory = {
+  memberUserId: async (memberId) => {
+    const [row] = await getDb().select({ id: users.id }).from(users).where(eq(users.member, memberId)).limit(1);
+    return row?.id ?? null;
+  },
+};
+
 /**
  * getAuth() over any database adapter; tests pass an in-memory one, and may
- * pass a View as gate that reads no database.
+ * pass a View as gate and a tester directory that read no database.
  */
-export function createAuth(database: BetterAuthOptions["database"], viewAs: ViewAsGate = databaseViewAs) {
+export function createAuth(database: BetterAuthOptions["database"], viewAs: ViewAsGate = databaseViewAs, testers: TesterDirectory = databaseTesters) {
   return betterAuth({
     baseURL: authBaseUrl as string,
     secret: process.env.BETTER_AUTH_SECRET as string,
@@ -90,10 +100,10 @@ export function createAuth(database: BetterAuthOptions["database"], viewAs: View
         impersonationSessionDuration: VIEW_AS_SESSION_SECONDS,
       }),
       viewAsPlugin(viewAs),
-      // Tester sign-in (issues #129, #608): registered under `next dev` and
+      // Tester sign-in as any seeded person (issues #129, #608, #653): registered under `next dev` and
       // on a preview of the shared `preview` database only, so production
       // and every other environment keep the plugins above alone.
-      ...(testerSignInOn() ? [devTesterPlugin()] : []),
+      ...(testerSignInOn() ? [devTesterPlugin(testers)] : []),
     ],
   });
 }
