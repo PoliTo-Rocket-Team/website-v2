@@ -309,7 +309,7 @@ describe("the test-developer path follows the access matrix", () => {
     assert.ok(page !== null && page.unit.kind === "team");
     const holder = page.grants.find((g) => g.target === "content");
     assert.ok(holder !== undefined && holder.place.kind === "team" && holder.level === "edit", "a Content grant across the whole team");
-    const someone = page.people.find((p) => p.standing === "member" && p.id !== holder.person.id)!;
+    const someone = page.people.find((p) => p.role.kind === "member" && p.id !== holder.person.id)!;
     assert.equal((await data.saveAccess({ personId: someone.id, where: "team", areas: { content: "edit" } })).ok, true);
     assert.equal((await data.saveAccess({ personId: someone.id, where: "team", areas: { content: "view" } })).ok, false);
     const division = placesOf(page.unit).find((p) => p.kind === "division")!;
