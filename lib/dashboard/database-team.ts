@@ -1004,7 +1004,7 @@ async function heldRows(divisionId: number): Promise<HeldRow[]> {
  * access row goes, their years on the team are set from their roles, and the
  * leave is recorded, so they appear on Alumni.
  */
-function leaveTeamWrites(db: Tx, leaver: { readonly memberId: number; readonly active: readonly ActiveRole[] }, on: string) {
+function leaveTeamWrites(db: Tx, leaver: { readonly memberId: number; readonly active: readonly ActiveRole[] }, on: string): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
   const { memberId, active } = leaver;
   const year = Number(on.slice(0, 4));
   return [
@@ -1048,18 +1048,19 @@ function steppingDownWrites(
   on: string,
   /** Org-wide or admin rows they hold now: a former team leader who holds one keeps it, and gets no second. */
   fullAccessRows = 0,
-): BatchItem<"pg">[] {
+): [BatchItem<"pg">, ...BatchItem<"pg">[]] {
   if (step.kind === "leave") return leaveTeamWrites(db, person, on);
   const { memberId } = person;
-  return [
-    ...(ending.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...ending]), isNull(roles.leavedAt)))]),
-    db.insert(roles).values({ memberId, ...advisorUnit(step.place), title: ADVISOR_TITLE, type: "advisor", startedAt: on }),
-    ...(step.access === "ends"
+  const advisor = db.insert(roles).values({ memberId, ...advisorUnit(step.place), title: ADVISOR_TITLE, type: "advisor", startedAt: on });
+  const access =
+    step.access === "ends"
       ? [db.delete(scopes).where(eq(scopes.memberId, memberId))]
       : fullAccessRows > 0
         ? []
-        : [db.insert(scopes).values({ memberId, givenBy: memberId, scope: "org", target: "all", accessLevel: "edit" })]),
-  ];
+        : [db.insert(scopes).values({ memberId, givenBy: memberId, scope: "org", target: "all", accessLevel: "edit" })];
+  return ending.length === 0
+    ? [advisor, ...access]
+    : [db.update(roles).set({ leavedAt: on }).where(and(inArray(roles.id, [...ending]), isNull(roles.leavedAt))), advisor, ...access];
 }
 
 /**
@@ -1107,6 +1108,8 @@ async function writeDivisionPlan(
           .set({ name: plan.name, code: plan.code })
           .where(and(eq(divisions.id, divisionId), isNull(divisions.closedAt))),
     ...(rows.end.length === 0 ? [] : [db.update(roles).set({ leavedAt: on }).where(open(rows.end))]),
+    // Old leads who leave the team end every role before a seat on one moves to a new lead (issue #667).
+    ...leavers.flatMap((leaver) => leaveTeamWrites(db, leaver, on)),
     ...(rows.toLead.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(open(rows.toLead))]),
     ...seatOnto(db, seat, seatRow),
     ...(joining.length === 0 ? [] : [db.insert(roles).values(joining)]),
@@ -1118,7 +1121,6 @@ async function writeDivisionPlan(
     ...plan.advise.flatMap((memberId) =>
       steppingDownWrites(db, { memberId, active: [] }, steppingDown({ kind: "lead", divisionId }, "advisor"), [], on),
     ),
-    ...leavers.flatMap((leaver) => leaveTeamWrites(db, leaver, on)),
     ...aliasAsked(db),
   ]);
   done();
@@ -1420,9 +1422,10 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   // The new team leader is owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([to]);
   const on = today();
+  // The old role ends before the new one starts: the database keeps one active team leader (issue #667).
   await runAuditBatch((db) => [
-    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
     ...steppingDownWrites(db, { memberId: from, active }, step, seat.map((r) => r.id), on, Number(held?.count ?? 0)),
+    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: seat[0]?.title.trim() || "Team Leader", type: "president", startedAt: on }),
     ...aliasAsked(db),
   ]);
   done();
@@ -1455,9 +1458,10 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   if (!handed.ok) return refused(handed.error);
   const active = await activeRoles(from);
   const on = today();
+  // The holder's row ends before the successor's starts: the database keeps one active holder per seat (issue #667).
   await runAuditBatch((db) => [
-    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
     ...steppingDownWrites(db, { memberId: from, active }, step, [roleId], on),
+    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
   ]);
   done();
   return written(null);
@@ -1534,19 +1538,21 @@ async function confirmedHandOverWrites(
     const seatRow = promote[0] ?? theirs.find((r) => r.type === "lead")?.id ?? theirs[0]?.id;
     // A successor who becomes the lead here is owed an alias request when they have none (issue #543).
     const aliasAsked = await automaticAliasRequests(promote.length === 0 ? [] : [toId]);
+    // The sender's rows end before the seat lands on the successor's: one active holder per seat (issue #667).
     return (db) => [
       ...(promote.length === 0 ? [] : [db.update(roles).set({ type: "lead" }).where(and(inArray(roles.id, promote), isNull(roles.leavedAt)))]),
-      ...seatOnto(db, seat, seatRow),
       ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
+      ...seatOnto(db, seat, seatRow),
       ...aliasAsked(db),
     ];
   }
   const department = org.departments.find((d) => d.id === role.departmentId)?.name ?? "";
   // The successor becomes a head, owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([toId]);
+  // The sender's head row ends before the successor's starts: one active head per department (issue #667).
   return (db) => [
-    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
+    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
     ...aliasAsked(db),
   ];
 }

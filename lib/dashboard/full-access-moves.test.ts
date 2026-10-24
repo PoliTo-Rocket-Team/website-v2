@@ -6,10 +6,8 @@ import { describe, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FullAccessMoves, HandOverChoice } from "@/components/dashboard/hand-over-choice";
-import { roles } from "@/db/schema";
 import type { DashboardData } from "./data";
-import { changeRows } from "./access-matrix/test-database";
-import { accountOf, EXTRA, IDS, seedFixture } from "./access-matrix/fixture";
+import { accountOf, EXTRA, IDS, moveSeatOnto, seedFixture } from "./access-matrix/fixture";
 import { signInAs } from "./access-matrix/session";
 import { seatOfHandedRole, type HandedRole } from "./hand-over";
 import { openDashboard } from "./open";
@@ -34,7 +32,7 @@ const TEAM_LEADER = accountOf("team leader").userId;
 /** A freshly seeded database, with `rowId` flagged as `seat` when one is given, and `userId`'s dashboard on it. */
 async function dashboardOf(userId: string, flag: { readonly rowId: number; readonly seat: FlaggedSeat } | null): Promise<DashboardData> {
   await seedFixture();
-  if (flag !== null) await changeRows(roles, { id: flag.rowId }, { fullAccess: FLAG_OF_SEAT[flag.seat] });
+  if (flag !== null) await moveSeatOnto(flag.rowId, FLAG_OF_SEAT[flag.seat]);
   signInAs(userId);
   const opening = await openDashboard();
   assert.equal(opening.kind, "open");
