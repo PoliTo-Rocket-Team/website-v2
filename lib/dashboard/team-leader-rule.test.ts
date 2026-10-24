@@ -14,6 +14,7 @@ import { mayLeaveTeam, membershipsOf, reachesDivision, removalFrom, type Divisio
 import { showsTreeEdit } from "./team-structure";
 import {
   isTeamLeader,
+  ledDivisionIds,
   mayChange,
   seatOf,
   viewerStandingOf,
@@ -179,7 +180,7 @@ test("access: the team leader opens the whole team's Access page and gives Appro
   for (const other of [head, lead, member]) assert.equal(canGiveApproveOrders(seatOf(other.standing)), false);
 });
 
-test("orders: the team leader edits every order and decides; a head their department's; a lead only where a grant names their division", () => {
+test("orders: the team leader edits every order and decides; a head their department's; a lead their own division's by role (issue #590)", () => {
   const units = org.departments.map((d) => ({
     id: d.id,
     name: d.name,
@@ -197,6 +198,7 @@ test("orders: the team leader edits every order and decides; a head their depart
         fullAccess: s.standing.kind === "operations-lead",
         teamLeader: isTeamLeader(s.standing),
         headDepartment: s.standing.kind === "department-head" ? { id: 1, name: "Aerodynamics" } : null,
+        ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: s.roles.map((r) => ({ type: r.type, divisionId: r.divisionId, fullAccess: null })) }),
       },
       rows,
       units,
@@ -207,9 +209,9 @@ test("orders: the team leader edits every order and decides; a head their depart
   assert.deepEqual([MA, OA, DM].map((u) => canEditOrder(leader, orderIn(u))), [true, true, true]);
   const byHead = scopeOf(head)!;
   assert.deepEqual([MA, OA, DM].map((u) => canEditOrder(byHead, orderIn(u))), [true, true, false]);
-  // A lead's Orders access comes from a grant, as before: with one on their division, only there.
-  assert.equal(scopeOf(lead), null);
-  const byLead = scopeOf(lead, [{ scope: "division", target: "orders", level: "edit", divisionId: 1, deptId: null }])!;
+  // A lead edits their own division's orders by role, with no grant, and decides nothing.
+  const byLead = scopeOf(lead)!;
+  assert.equal(byLead.decides, null);
   assert.deepEqual([MA, OA, DM].map((u) => canEditOrder(byLead, orderIn(u))), [true, false, false]);
   assert.equal(scopeOf(member), null);
 });

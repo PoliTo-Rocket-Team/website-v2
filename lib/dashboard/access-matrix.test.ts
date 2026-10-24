@@ -10,7 +10,7 @@ import { overviewAreasOf } from "./division-overview";
 import { opensWholeTeam } from "./members-view";
 import { ordersScopeOf, type OrdersScopeRow } from "./orders";
 import { mayChangePositionIn } from "./position-access";
-import { GRANT_AREAS, isOffTeam, mayChange, readsArea, readsAreaIn } from "./viewer";
+import { GRANT_AREAS, isOffTeam, ledDivisionIds, mayChange, readsArea, readsAreaIn } from "./viewer";
 import { ALL, CHANGE_AREAS, CONTENT, ORG, PAGE_OF_AREA, SCOPES, SIGNED_OUT, TEAM_BASE, UNITS, unitsWhere, VIEWERS, type Unit, type Viewer } from "./access-matrix/matrix";
 import { aliasAttentionFor, answersAliasRequests, managesMember, type AliasRequest } from "./alias-request";
 import { ownAliasOf, planAliasSetUp, showsAliasCard } from "./alias-setup";
@@ -100,7 +100,12 @@ describe("site content, the recruitment switch, Orders and the whole-team Member
       const scope = isOffTeam(viewer.kind)
         ? null
         : ordersScopeOf(
-            { fullAccess: viewer.kind === "operations-lead", teamLeader: viewer.roles.some((r) => r.type === "president"), headDepartment: viewer.headDepartment },
+            {
+              fullAccess: viewer.kind === "operations-lead",
+              teamLeader: viewer.roles.some((r) => r.type === "president"),
+              headDepartment: viewer.headDepartment,
+              ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: viewer.heldRoles }),
+            },
             viewer.rawRows as readonly OrdersScopeRow[],
             ORG,
           );

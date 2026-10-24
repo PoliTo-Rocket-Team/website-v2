@@ -24,6 +24,7 @@ import { filterTeam, NO_TEAM_FILTER } from "./team-members";
 import { membersModelOf, NO_MEMBERS_FILTER, shownMembers } from "./members-view";
 import { readSheet } from "./access-matrix/xlsx";
 import { openDashboard } from "./open";
+import { canEditOrder, type OrdersPage } from "./orders";
 import type { TeamSideOverview } from "./overview";
 import { applicationsModelOf } from "./applications-view";
 import { positionsModelOf } from "./positions-view";
@@ -792,6 +793,87 @@ describe("a lead's Access page covers only the divisions they lead by role (Owne
     signInAs(accountOf(LEAD).userId);
     await answerOf(() => actions.removeAllAccess(IDS.person("MA")));
     assert.deepEqual(recordedWrites(), [], "a grant outside the led division was touched");
+  });
+});
+
+// A lead's Orders, by role ----------------------------------------------------
+
+describe("a division lead with no scope row edits their own division's orders by role (issue #590)", () => {
+  const LEAD = "division lead";
+  const MA: Unit = "MA";
+  const orderFor = (u: Unit) => form({ ...ORDER, division: String(IDS.division(u)) });
+  /** Signs in as the matrix's plain lead of MA, on a freshly seeded database with these scope rows added. */
+  async function openLead(extra: readonly (typeof scopes.$inferInsert)[] = []): Promise<DashboardData> {
+    seedFixture();
+    resetFiles();
+    insertRows(scopes, extra);
+    signInAs(accountOf(LEAD).userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open");
+    return (opening as { data: DashboardData }).data;
+  }
+  const viewRow = (): typeof scopes.$inferInsert => ({ id: 9_100, memberId: accountOf(LEAD).memberId!, scope: "team", target: "orders", accessLevel: "view" });
+
+  test("the lead holds no scope row: the matrix seeds none for them", async () => {
+    await openLead();
+    assert.deepEqual(rowsIn(scopes).filter((r) => r.memberId === accountOf(LEAD).memberId), []);
+  });
+
+  test("Orders opens, editing the led division alone, and deciding nothing", async () => {
+    const page = (await (await openLead()).orders()) as OrdersPage | null;
+    assert.ok(page !== null, "the Orders page opens for the lead");
+    assert.deepEqual(page.scope, { edits: [{ kind: "division", division: { id: IDS.division(MA), name: "Mission Analysis" } }], decides: null });
+    const order = (u: Unit) => page.orders.find((o) => o.id === IDS.order(u))!;
+    assert.equal(canEditOrder(page.scope, order(MA)), true, "an order in MA");
+    assert.equal(canEditOrder(page.scope, order(DM)), false, "an order in DM");
+  });
+
+  test("the Overview Orders figure counts the order waiting in the led division", async () => {
+    const board = (await (await openLead()).overview()) as TeamSideOverview;
+    assert.ok(board.shape === "division", `the lead's Overview: ${board.shape}`);
+    assert.equal(board.stats.find((s) => s.label === "Orders")?.value, "1 waiting");
+  });
+
+  test("New order is taken for the led division and refused for another, and Edit order and Cancel request take the led division's order", async () => {
+    const asLead = (run: () => Promise<unknown>) => attempt(accountOf(LEAD).userId, run);
+    for (const [label, run] of [
+      ["New order in MA", () => actions.placeOrder(orderFor(MA))],
+      ["Edit order in MA", () => actions.editOrder(IDS.order(MA), orderFor(MA))],
+      ["Cancel request in MA", () => actions.cancelOrder(IDS.order(MA))],
+    ] as const) {
+      const { answer, writes } = await asLead(run);
+      assert.ok(!isRefusal(answer), `${label}: ${JSON.stringify(answer)}`);
+      assert.ok(writes.length > 0, `${label}: wrote nothing`);
+    }
+    for (const [label, run] of [
+      ["New order in DM", () => actions.placeOrder(orderFor(DM))],
+      ["Edit order in DM", () => actions.editOrder(IDS.order(DM), orderFor(DM))],
+      ["Cancel request in DM", () => actions.cancelOrder(IDS.order(DM))],
+    ] as const) {
+      const { answer, writes } = await asLead(run);
+      assert.ok(isRefusal(answer), `${label}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, [], `${label}: wrote`);
+    }
+  });
+
+  test("with a whole-team Orders (Can view) row too, the lead still edits and cancels their own division's orders, and edits nothing elsewhere", async () => {
+    const page = (await (await openLead([viewRow()])).orders()) as OrdersPage;
+    assert.deepEqual(page.scope.edits, [{ kind: "division", division: { id: IDS.division(MA), name: "Mission Analysis" } }]);
+    const seeded = async (run: () => Promise<unknown>) => {
+      await openLead([viewRow()]);
+      const answer = await answerOf(run);
+      return { answer, writes: recordedWrites() };
+    };
+    for (const run of [() => actions.editOrder(IDS.order(MA), orderFor(MA)), () => actions.cancelOrder(IDS.order(MA))]) {
+      const { answer, writes } = await seeded(run);
+      assert.ok(!isRefusal(answer), JSON.stringify(answer));
+      assert.ok(writes.length > 0);
+    }
+    for (const run of [() => actions.editOrder(IDS.order(DM), orderFor(DM)), () => actions.cancelOrder(IDS.order(DM)), () => actions.placeOrder(orderFor(DM))]) {
+      const { answer, writes } = await seeded(run);
+      assert.ok(isRefusal(answer), `not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, []);
+    }
   });
 });
 

@@ -744,10 +744,9 @@ and 67m).
   (#270): a member who holds only that grant sees Orders under TEAM in their sidebar, decides
   waiting orders and marks approved ones as ordered, and edits, cancels and requests nothing.
   A person with no Orders access and no "Approve orders" does not see the page.
-  - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
-    Orders access; a lead with no Orders access gets "not found" on the page. Tracked in #160.
 - **Who edits.** A division lead edits the orders of their own division, from any requester in
-  it. A department head edits the orders of their whole department. Full access edits every
+  it, by their role alone: they need no Orders grant, and a grant elsewhere adds only what it
+  gives (#590). A department head edits the orders of their whole department. Full access edits every
   order in the team (#238). A grant of Orders at Can
   edit opens the orders of the division (or the whole department) it was given in. Nobody edits
   outside their scope: those rows show a lock and open read-only. The server checks the scope on
