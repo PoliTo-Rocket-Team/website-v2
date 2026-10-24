@@ -74,10 +74,12 @@ function seatGrantRow(memberId: number, grant: SeatGrant) {
 export const SCOPE_ROWS = rowsOf(scopes, [
   ...GRANTS.map(scopeRow),
   // Every seat holds exactly the grants its row in lib/seeded-accounts.ts
-  // names (issues #595, #607): none for the team leader, the full-access
-  // seats, the head, the lead, the member, the alumnus and the applicant, so
-  // an access check starts from a clean seat; one each for the one-grant
-  // seats and the Approve-orders holder (docs/seed-cases.md, "Test seats").
+  // names (issues #595, #607, #653): none for the team leader, the
+  // full-access seats, the head, the lead, the member, the alumnus and the
+  // applicant, so an access check starts from a clean seat; "Approve orders"
+  // for its holder. A check that needs another grant gives it to a normal
+  // seeded member through the Access page and removes it afterwards
+  // (docs/seed-cases.md, "Test seats").
   ...SEATS.flatMap(({ memberId, grants }) => (memberId === null ? [] : grants.map((grant) => seatGrantRow(memberId, grant)))),
 ]);
 

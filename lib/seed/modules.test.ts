@@ -89,7 +89,7 @@ test("no table is owned by two modules", () => {
   }
 });
 
-test("the people module removes only the testers' sign-in rows, never a developer's own account", () => {
+test("the people module removes only the seed's own sign-in rows, never a developer's own account", () => {
   const people = tableModules.find((s) => s.name === "people");
   assert.ok(people);
   assert.deepEqual(people.owns.map(getTableName).sort(), ["members", "roles", "users"]);

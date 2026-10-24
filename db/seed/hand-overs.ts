@@ -1,9 +1,9 @@
 // The hand-over seed (issue #308): hand-overs sent from My profile (issue
 // #262), one still waiting for the next level up and one confirmed. Hand-overs
 // are private, so both are invented (issue #326). The waiting one is the
-// division-lead tester's in Test Bench, to the member tester there, so the
-// department-head plain seat, the head of Propulsion, answers it from their
-// Overview (board 62c). The confirmed one is the invented division advisor's
+// Test Bench lead's (the division-lead plain seat), to the member plain seat
+// there, so the department-head plain seat, the head of Propulsion, answers
+// it from their Overview (board 62c). The confirmed one is the invented division advisor's
 // Liquid System Architecture lead, handed to its lead today, written the way
 // Confirm writes it (lib/dashboard/database-team.ts): the lead row ended and
 // an Advisor role started in the division on the day it was confirmed, the
@@ -13,12 +13,12 @@
 // (drizzle/0029) leaves the waiting one waiting.
 
 import { handOverRequests } from "@/db/schema";
-import { DIVISION_ADVISOR, LSA_HAND_OVER_DAY, LSA_SUCCESSOR, PROPULSION_HEAD, TESTER_MEMBER } from "./people";
+import { DIVISION_ADVISOR, LSA_HAND_OVER_DAY, LSA_SUCCESSOR, MEMBER_SEAT, PROPULSION_HEAD, TEST_BENCH_LEAD } from "./people";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DIVISION } from "./structure";
 
 /** The Test Bench lead's hand-over to a member of the division, waiting for the head of Propulsion. */
-export const WAITING_HAND_OVER = { from: TESTER_MEMBER["division-lead"], to: TESTER_MEMBER.member } as const;
+export const WAITING_HAND_OVER = { from: TEST_BENCH_LEAD, to: MEMBER_SEAT } as const;
 
 export const HAND_OVER_ROWS = rowsOf(handOverRequests, [
   {

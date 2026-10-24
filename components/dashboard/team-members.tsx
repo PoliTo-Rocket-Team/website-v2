@@ -115,13 +115,11 @@ export function ScopedMembersView({
   const fillDetails = (w: Waiting) => setEditing({ kind: "waiting", waiting: w.waiting, division: w.division });
   const add = writes ? addTarget(page, shownDivision) : null;
   const rowActions = (entry: MemberEntry) => (writes && !entry.self ? entry.actions : null);
-  // The member panel lies over the page, which keeps its width dimmed behind
-  // it (board 94b, issue #564); the form panels still move the page left of
-  // them from xl.
-  const formOpen = editing !== null || adding;
-
+  // The member panel and Edit details lie over the page, which keeps its width
+  // dimmed behind them (boards 94b and 61g, issues #564 and #598); Add member
+  // still moves the page left of it from xl.
   return (
-    <DrawerPage drawerOpen={formOpen}>
+    <DrawerPage drawerOpen={adding}>
       <PageHeader
         title="Members"
         intro={page.intro}

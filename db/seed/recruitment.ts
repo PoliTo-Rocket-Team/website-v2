@@ -10,7 +10,7 @@
 // invented person (issue #326).
 
 import { applicationFiles, applications, applyPositions, interviewSlots, recruitmentSetting } from "@/db/schema";
-import { TESTERS } from "@/lib/dev-tester";
+import { seatOf } from "@/lib/seeded-accounts";
 import { samplePdf } from "@/lib/seed/sample-pdf";
 import { privatePathname } from "@/lib/storage/pathname";
 import { rowsOf, tableSeedModule } from "./rows";
@@ -222,9 +222,12 @@ export const APPLICATION = {
   withdrawn: 11,
   takenByAnotherTeam: 12,
   joined: 23,
-  testerTimesOffered: 24,
-  testerNew: 25,
+  applicantSeatTimesOffered: 24,
+  applicantSeatNew: 25,
 } as const;
+
+/** The applicant plain seat (lib/seeded-accounts.ts): an invented applicant who holds applications 24 and 25. */
+export const APPLICANT_SEAT = seatOf("non-member").id;
 
 const APPLICATIONS: readonly Application[] = [
   application(APPLICATION.ndaArrived, 1, "dddddddd-dddd-dddd-dddd-dddddddddddd", "2026-09-05 16:45:00+02", "accepted", {
@@ -275,16 +278,16 @@ const APPLICATIONS: readonly Application[] = [
     ndaArrivedAt: "2022-10-01 10:00:00+02",
     joinedAt: "2022-10-05 10:00:00+02",
   }),
-  // The local applicant tester (issue #129): times to pick from, and one not opened yet.
+  // The applicant plain seat (issues #129, #653): times to pick from, and one not opened yet.
   {
-    ...application(APPLICATION.testerTimesOffered, 15, TESTERS.applicant.id, "2026-09-20 18:00:00+02", "interview"),
+    ...application(APPLICATION.applicantSeatTimesOffered, 15, APPLICANT_SEAT, "2026-09-20 18:00:00+02", "interview"),
     customAnswers: answersTo(15, [
       "MATLAB and a little GMAT, from a university course on orbital mechanics",
       "I tuned an ascent trajectory with a genetic algorithm for a course project",
     ]),
   },
   {
-    ...application(APPLICATION.testerNew, 2, TESTERS.applicant.id, "2026-10-14 21:00:00+02", "received"),
+    ...application(APPLICATION.applicantSeatNew, 2, APPLICANT_SEAT, "2026-10-14 21:00:00+02", "received"),
     customAnswers: answersTo(2, [
       "Figma and Illustrator for most work, Blender for the occasional render",
       "Only exploded views for a robotics club so far",
@@ -299,7 +302,7 @@ const APPLICATIONS: readonly Application[] = [
 // points both its documents at that row, so the document route streams it from
 // the store like a real file. A file row's pathname is unique, so the
 // applications share the row rather than each holding a copy of it. The row
-// has no owner, so deleting one tester's account never deletes it; the
+// has no owner, so deleting one applicant's account never deletes it; the
 // withdrawn-files cleanup keeps a row another live application still holds.
 
 /** The shared sample document: where the preview build stores it, and its bytes. */
@@ -353,8 +356,8 @@ export const SLOT_ROWS = rowsOf(interviewSlots, [
   slot(4, APPLICATION.booked, "2026-10-23T15:00:00+02:00", "2026-10-09 12:00:00+02", "2026-10-10 08:30:00+02"),
   slot(5, 15, "2026-10-27T18:00:00+01:00", "2026-10-15 09:00:00+02"),
   slot(6, 21, "2026-10-28T18:00:00+01:00", "2026-10-15 09:30:00+02", "2026-10-15 20:00:00+02"),
-  slot(7, APPLICATION.testerTimesOffered, "2026-10-29T17:00:00+01:00", "2026-10-15 11:00:00+02"),
-  slot(8, APPLICATION.testerTimesOffered, "2026-10-30T17:00:00+01:00", "2026-10-15 11:00:00+02"),
+  slot(7, APPLICATION.applicantSeatTimesOffered, "2026-10-29T17:00:00+01:00", "2026-10-15 11:00:00+02"),
+  slot(8, APPLICATION.applicantSeatTimesOffered, "2026-10-30T17:00:00+01:00", "2026-10-15 11:00:00+02"),
 ]);
 
 /** Recruitment is on: the open positions show on /apply. */

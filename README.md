@@ -133,14 +133,16 @@ pnpm dev
 #### Sign in as a tester
 
 On `pnpm dev`, and on a Vercel preview whose database is the shared `preview`
-branch, you can sign in as any seeded seat or admin tester with no Google
-account, and get a real session. On production, on any other Vercel
+branch, you can sign in as any seeded person with no Google account, and get
+a real session. No seeded person is a dedicated tester: each seat is a normal
+member or applicant of the seed, so a check that passes for a seat holds for
+any member built the same way. On production, on any other Vercel
 environment, on a preview pointed at another database and on a local
 `pnpm build` / `pnpm start`, the routes below are not registered and answer
 404. Sign-in there stays Google only. On a preview, use the same paths on the
 preview's own URL; its accounts come from the preview seed.
 
-1. Load the testers into a local database (the seed refuses every Neon
+1. Load the seed into a local database (the seed refuses every Neon
    branch from a laptop; see [Where the seed runs](#where-the-seed-runs)):
 
    ```bash
@@ -149,28 +151,43 @@ preview's own URL; its accounts come from the preview seed.
    ```
 
 2. Start `pnpm dev`.
-3. Open `http://localhost:3000/api/auth/dev-tester` and pick a tester, or go
-   straight to its sign-in link:
+3. Open `http://localhost:3000/api/auth/dev-tester`, which lists how to name
+   a person and links every seat, or go straight to a sign-in link:
 
    ```text
    http://localhost:3000/api/auth/dev-tester/sign-in?tester=<key>&cb=<path>
+   http://localhost:3000/api/auth/dev-tester/sign-in?member=<member id>&cb=<path>
    ```
 
    `cb` is the page to land on (default `/dashboard`). The link sets the same
    Better Auth session cookies a Google sign-in sets, so a browser or a
    Playwright script that opens it is signed in for every later page. To
-   switch tester, open another tester's link. Signing out ends the session.
+   switch person, open another link. Signing out ends the session.
 
-`key` is the key of a seat or an admin tester in
-[`lib/seeded-accounts.ts`](lib/seeded-accounts.ts), for example `member`,
-`division-lead`, `it-lead`, `non-member` (the applicant) or `admin-1`. Each
-seat holds exactly the roles and grants its name says
-([`docs/seed-cases.md`](docs/seed-cases.md#test-seats)). An admin tester has no
-team role and may use View as on a preview or under `next dev`
-([`docs/seed-cases.md`](docs/seed-cases.md#admin-testers)).
+`key` names a person one of two ways:
 
-The accounts' ids, emails and names live in `lib/seeded-accounts.ts`; nothing
-comes from `.env`. The gate is `testerSignInOn()` in `lib/dev-tester.ts`, and
+- a seat or an admin tester in [`lib/seeded-accounts.ts`](lib/seeded-accounts.ts),
+  for example `member`, `division-lead`, `it-lead`, `non-member` (the
+  applicant) or `admin-1`. Each seat is a normal seeded person and holds
+  exactly the roles and grants its name says
+  ([`docs/seed-cases.md`](docs/seed-cases.md#test-seats));
+- a person key: the part of anyone's seeded email before the `@`, for example
+  `beatrice.la.motta`.
+
+`member=<member id>` names the seeded member with that id, for example `119`.
+Only an account the seed made (an email on `example.com`) signs in, so a
+developer's own account never does. On a preview or under `next dev` any
+signed-in account may use View as (issue #648); an admin tester is one with
+no team role ([`docs/seed-cases.md`](docs/seed-cases.md#admin-testers)).
+
+To check a grant, give it to a normal seeded member on the Access page as the
+team leader, check what it opens, then remove it on the Access page again
+([`docs/seed-cases.md`](docs/seed-cases.md#test-seats)). No seat holds an area
+grant of its own.
+
+The seats' and admin testers' ids, emails and names live in
+`lib/seeded-accounts.ts`, and every other person's in the seed; nothing comes
+from `.env`. The gate is `testerSignInOn()` in `lib/dev-tester.ts`, and
 `lib/dev-tester.test.ts` proves it is off everywhere else.
 
 The gate is also off when `VERCEL_ENV` is set in your shell or env files, for

@@ -7,7 +7,8 @@ import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { DRIZZLE_MAPPED_TYPES } from "../../db/seed/connection";
 import { SEED_MODULES } from "../../db/seed/registry";
 import type { TableSeed } from "../../db/seed/rows";
-import { TESTERS } from "../dev-tester";
+import { SIGN_IN_ROWS } from "../../db/seed/people";
+import { seatOf } from "../seeded-accounts";
 import {
   RESEED_LEDGER_TABLE,
   RESEED_RECORD,
@@ -221,11 +222,11 @@ test("after a re-seed the branch holds only the dummy set, even in tables no see
   // What previews leave behind: a grant given through the Access page, its
   // audit row, a team join and a leave, a real person's sign-in with a
   // session, and the summit rows an import migration carried in.
-  const member = TESTERS.member.id;
+  const { id: member, memberId } = seatOf("member");
   await db.exec(`
-    insert into scopes (member_id, scope, target, access_level) values (901, 'org', 'members', 'edit');
+    insert into scopes (member_id, scope, target, access_level) values (${memberId}, 'org', 'members', 'edit');
     insert into logs (schema_name, table_name, operation, record_id, changed_by) values ('public', 'scopes', 'INSERT', '99', '${member}');
-    insert into team_leaves (member_id, reason) values (901, 'test write');
+    insert into team_leaves (member_id, reason) values (${memberId}, 'test write');
     insert into users (id, email) values ('added:test', 'someone@example.com');
     insert into team_joins (user_id, division_id) values ('added:test', 1);
     insert into better_auth."user" (id, name, email, "emailVerified") values ('real-account', 'Someone', 'someone.real@example.com', true);
@@ -247,7 +248,7 @@ test("after a re-seed the branch holds only the dummy set, even in tables no see
   assert.equal(served.rows[0].served, true);
 
   // Ids restart, so the app's next insert takes the id after the seeded ones.
-  const [{ id }] = (await db.query<{ id: number }>("insert into team_leaves (member_id) values (901) returning id")).rows;
+  const [{ id }] = (await db.query<{ id: number }>(`insert into team_leaves (member_id) values (${memberId}) returning id`)).rows;
   assert.equal(id, 1);
 });
 
@@ -266,4 +267,28 @@ test("a second request re-seeds again and keeps the first in the ledger; drizzle
   assert.deepEqual(ledger.rows.map((r) => r.request), ["first", "second"]);
   const journaled = await db.query<{ n: number }>("select count(*)::int as n from drizzle.__drizzle_migrations");
   assert.equal(journaled.rows[0].n, 1);
+});
+
+// The seed's own run (`pnpm db:seed`) on a local database that a developer
+// signed in to (issue #653): the sign-in rows reset removes the seed's rows,
+// a retired tester's row among them, and never an account the seed did not make.
+
+test("a seed run gives every seeded person one sign-in row, removes a retired tester's, and keeps a developer's own account and session", async () => {
+  const db = await migrated();
+  const local = guardSeedTarget(LOCAL);
+  assert.ok(local.ok);
+  await runSeed(local.target, SEED_ON_PGLITE, onPglite(db));
+  await db.exec(`
+    insert into better_auth."user" (id, name, email, "emailVerified") values ('d3v3l0p3r-own-account', 'A Developer', 'a.developer@gmail.com', true);
+    insert into better_auth.session (id, "expiresAt", token, "updatedAt", "userId") values ('own-session', now() + interval '1 day', 'own-token', now(), 'd3v3l0p3r-own-account');
+    insert into better_auth."user" (id, name, email, "emailVerified") values ('7e57e500-0000-4000-8000-000000000002', 'Tester Member', 'member.tester@example.com', true);
+  `);
+
+  await runSeed(local.target, SEED_ON_PGLITE, onPglite(db));
+
+  const accounts = await db.query<{ id: string }>(`select id from better_auth."user"`);
+  const seeded = SIGN_IN_ROWS.rows.map((row) => row.id);
+  assert.deepEqual(accounts.rows.map((r) => r.id).sort(), [...seeded, "d3v3l0p3r-own-account"].sort());
+  const sessions = await db.query<{ id: string }>(`select id from better_auth.session`);
+  assert.deepEqual(sessions.rows.map((r) => r.id), ["own-session"], "the developer is still signed in");
 });
