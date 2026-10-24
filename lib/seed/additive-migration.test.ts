@@ -32,6 +32,26 @@ test("0055_preview_reseeds.sql drops, renames and rewrites nothing", () => {
   assert.match(sql, /CREATE TABLE "preview_reseeds"/);
 });
 
+// The R&D department (issue #627) is data only: it adds one department where
+// the Head of R&D's role sits in no unit, and re-points that one role to it.
+// The re-point is its one statement that changes a row, and it touches only an
+// active, unflagged core role titled "Head of R&D" in no department and no
+// division, so a second run matches nothing.
+test("0056_rd_department_head.sql adds a department and re-points only the Head of R&D's role", () => {
+  const sql = readFileSync(resolve(process.cwd(), "drizzle/0056_rd_department_head.sql"), "utf8");
+  const changed = nonAdditiveStatements(sql);
+  assert.equal(changed.length, 1);
+  const [update] = changed;
+  assert.match(update, /^UPDATE "roles" AS r SET "type" = 'head', "dept_id" = \(SELECT d\."id" FROM "departments"/);
+  for (const guard of [`r."leaved_at" IS NULL`, `r."dept_id" IS NULL`, `r."division_id" IS NULL`, `r."type" = 'core'`, `r."full_access" IS NULL`, `r."title" = 'Head of R&D'`]) {
+    assert.ok(update.includes(guard), guard);
+  }
+  const [set] = update.split(` WHERE r."leaved_at"`);
+  assert.ok(!set.includes(`"title"`) && !set.includes(`"member_id"`) && !set.includes(`"started_at"`), "the title, holder and start date stay");
+  assert.match(sql, /INSERT INTO "departments" \("name", "started_at", "code", "kind"\)/);
+  assert.match(sql, /NOT EXISTS \(SELECT 1 FROM "departments" AS d WHERE d\."closed_at" IS NULL AND d\."name" = 'R&D'\)/);
+});
+
 test("the check catches each statement that is not additive, and no foreign key action", () => {
   const forbidden = [
     "DROP TRIGGER IF EXISTS audit_row_changes ON public.alias_requests",

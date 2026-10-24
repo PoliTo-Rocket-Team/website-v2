@@ -124,9 +124,17 @@ function arcOf(people: readonly TeamPerson[]): BuiltLeader[] {
   });
 }
 
-/** Each open department with a head: its heads by name, and the leads of its divisions in division order, co-leads by name. */
+/**
+ * Each open department with a head and an open division: its heads by name,
+ * and the leads of its divisions in division order, co-leads by name. A
+ * department with no division (R&D, Owner decision of 2026-10-24 on #627) has
+ * no block on the carousel: the dashboard draws it as a department, while
+ * this page shows its head as a core member, where the editor can place them
+ * on the arc, as before it was a department.
+ */
 function departmentsOf(roles: TeamRoles): BuiltDepartment[] {
   return roles.org.departments.flatMap((department): BuiltDepartment[] => {
+    if (!roles.org.divisions.some((d) => d.departmentId === department.id)) return [];
     // A head reads their head role's stored title; a blank one reads "Head of" the department (./team-layer.ts).
     const heads = roles.people
       .flatMap((p) => (p.placement.role === "head" && p.placement.departmentId === department.id ? [{ person: p, title: p.placement.title.trim() }] : []))
@@ -148,7 +156,8 @@ function departmentsOf(roles: TeamRoles): BuiltDepartment[] {
 /**
  * Who the page shows, and where, as the roles alone build it:
  * - who leads: the team leader, then the board seats on the arc;
- * - departments: each open department's head with its division leads;
+ * - departments: the head of each open department with a division, with its
+ *   division leads;
  * - core members: everyone else with an active role, by name, with their
  *   title. Someone the arc or the carousel has no room for is a core member.
  */

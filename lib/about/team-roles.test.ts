@@ -155,11 +155,23 @@ test("photo, LinkedIn and team email come from the member record; none of them i
   assert.deepEqual(Object.keys(irene!).sort(), ["kind", "leads", "name", "role"]);
 });
 
+/** One open division in each department: the carousel draws a department only when it has one. */
+const oneDivisionEach = (departments: readonly { readonly id: number }[]) => departments.map((d, i) => ({ id: 5000 + i, name: `Division ${i}`, departmentId: d.id }));
+
+test("a department with no division has no block on the carousel: its head is a core member, as before it was a department (Owner decision on #627)", () => {
+  const withRd: TeamRoles["org"] = { departments: [...org.departments, { id: 90, name: "R&D", kind: "technical" }], divisions: org.divisions };
+  const rd = person(30, "Marco Dona", head(90), { pageTitle: "Head of R&D" });
+  const page = teamPageFromRoles({ org: withRd, people: [...people, rd] }, team)!;
+  assert.ok(!page.departments.groups.some((g) => g.members.some((m) => m.name === "Marco Dona")), "not on the carousel");
+  assert.ok(!page.orgChart.leaders.some((l) => l.name === "Marco Dona"), "not on the arc by the roles");
+  assert.equal(page.coreMembers.members.find((m) => m.name === "Marco Dona")?.role, "Head of R&D");
+});
+
 test("the arc keeps at most eight leaders; slides hold ten heads each, at most five", () => {
   const seats = Array.from({ length: 10 }, (_, i) => person(100 + i, `Seat ${String(i).padStart(2, "0")}`, seat("chief-engineer")));
   const departments = Array.from({ length: 56 }, (_, i) => ({ id: 1000 + i, name: `Department ${i}`, kind: "technical" as const }));
   const heads = departments.map((d, i) => person(200 + i, `Head ${String(i).padStart(2, "0")}`, head(d.id)));
-  const page = teamPageFromRoles({ org: { departments, divisions: [] }, people: [...people, ...seats, ...heads] }, team)!;
+  const page = teamPageFromRoles({ org: { departments, divisions: oneDivisionEach(departments) }, people: [...people, ...seats, ...heads] }, team)!;
   assert.equal(page.orgChart.leaders.length, 8);
   assert.deepEqual(
     page.departments.groups.map((g) => g.members.length),
@@ -209,7 +221,7 @@ test("a kind with more than ten places fills more slides under the same heading,
     { id: 2000, name: "Operations", kind: "operations" as const },
   ];
   const heads = departments.map((d, i) => person(200 + i, `Head ${String(i).padStart(2, "0")}`, head(d.id)));
-  const page = teamPageFromRoles({ org: { departments, divisions: [] }, people: [...people, ...heads] }, team)!;
+  const page = teamPageFromRoles({ org: { departments, divisions: oneDivisionEach(departments) }, people: [...people, ...heads] }, team)!;
   assert.deepEqual(
     page.departments.groups.map((g) => [g.name, g.members.length]),
     [

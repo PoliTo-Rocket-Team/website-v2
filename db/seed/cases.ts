@@ -791,18 +791,16 @@ export const SEED_CASES: readonly SeedCase[] = [
   },
   {
     area: "people",
-    case: "A Project Manager and a Chief Engineer, the two flagged board seats, then the Head of R&D's team-level seat, so the roles fill every section of the Team page",
+    case: "A Project Manager and a Chief Engineer, the two flagged board seats, so the roles fill every section of the Team page; the Head of R&D heads a department with no divisions, a core member there",
     data: "public",
-    rows: "`roles` in no department or division, members 52 and 53 flagged by `roles.full_access`, member 9",
-    exercisedBy: `${issue(282)}, ${issue(311)}, ${issue(625)}`,
+    rows: "`roles` in no department or division, members 52 and 53 flagged by `roles.full_access`; member 9's head row on department 9",
+    exercisedBy: `${issue(282)}, ${issue(311)}, ${issue(625)}, ${issue(627)}`,
     holds: (data) => {
       const roles = teamRolesOf(data);
       const { build } = teamPageOfSeed(data);
-      const [pm, ce, ...others] = build.arc;
       return (
-        pm?.spot === "arc:project-manager:0" &&
-        ce?.spot === "arc:chief-engineer:0" &&
-        others.map((l) => [l.person.id, l.role].join(" ")).join(",") === "9 Head of R&D" &&
+        build.arc.map((l) => l.spot).join(",") === "arc:project-manager:0,arc:chief-engineer:0" &&
+        build.core.some((m) => m.name === "Marco Dona" && m.role === "Head of R&D") &&
         teamPageFromRoles(roles, teamRecord) !== null
       );
     },

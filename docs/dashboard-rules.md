@@ -263,7 +263,15 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
 - The Team tree's seat row, under the team leader, holds every team-level seat: an active role in
   no department and no division that is not the team leader's, a head's or an advisor's. The
   Project Manager and the Chief Engineer, read from their `roles.full_access` flag, come first;
-  any other seat follows by start date. The Team page's arc lists them in the same order.
+  any other seat follows by start date. The Team page's arc lists them in the same order. Each
+  seat is drawn as a box built like the team leader's, in one row directly under it, on every
+  width (#627).
+- R&D is a department with a head and no divisions (Owner decision, 2026-10-24, #627). The Team
+  tree and Edit team tree draw it as a department box with its head, never on the seat row.
+  Migration 0056 places a Head of R&D role kept in no unit under an R&D department. The public
+  Team page is laid out apart: a department with no division has no block on its departments
+  carousel, so its head shows as a core member, where the Team page editor can place them on
+  the arc, as before.
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.
@@ -508,6 +516,27 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
   alone, with a pencil. For everyone else, full access included, it shows a lock and opens
   nothing (see "Handing over a role" above).
+- The **seat row** (#627) sits directly under the Team Leader box and above the department
+  columns: one box per team-level seat, built like the Team Leader box, with the holder's name
+  and the seat's stored title, in the Team tree's seat order. Everyone who opens the edit view
+  sees the same row. A row too wide for the frame shrinks to fit it, as the department row does.
+  - For the team leader and full access, each seat box has a pencil and opens **Change
+    holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
+    boxes open nothing and there is no Add seat. The server refuses both writes to everyone
+    but the team leader and full access.
+  - **Change holder** picks who holds the seat from the team. As in Change head, someone who
+    already holds a seat, or the holder themself, cannot be picked, and the successor keeps
+    their divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
+    team, their access ends) or Leave the team, with neither picked at first. On save the
+    holder's seat role ends and the successor's starts with the same title and the same
+    `roles.full_access` flag, so the Project Manager's and the Chief Engineer's full access
+    moves with the seat.
+  - A seat box changes who holds the seat, never its title: the title is changed on Members,
+    in Edit details (#626).
+  - **Add seat** takes a title and one person from the team who holds no seat yet. It starts an
+    active role in no department and no division with that title and no full-access flag, so a
+    new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
+    public Team page's arc. Ending a seat with no successor is not offered.
 
 #### Departments
 

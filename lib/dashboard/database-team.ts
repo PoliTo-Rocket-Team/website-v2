@@ -95,6 +95,7 @@ import {
   planDepartmentSave,
 } from "./department-edit";
 import { editableDivisionIds, teamStructure, type TeamStructure } from "./team-structure";
+import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange } from "./team-seats";
 import {
   checkDivisionSave,
   closeRefusal,
@@ -1411,6 +1412,54 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
   return written(null);
 }
 
+// The seat row of Edit team tree (issue #627). `planSeatHolderChange` and
+// `planNewSeat` (./team-seats.ts) decide what may change; each write below
+// runs what they allow in one audited batch.
+
+/**
+ * Change holder on a seat box, in one batch: the holder's seat role ends, the
+ * successor's starts with the same type, title and full-access flag, so the
+ * flag moves with the seat and one active row holds it; then the holder
+ * becomes an advisor to the team, whose access rows go, or leaves the team
+ * (`steppingDownWrites`). The successor keeps every role they hold.
+ */
+async function changeSeatHolder(identity: DashboardIdentity, roleId: number, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkSeatHolderChange(input);
+  if (!checked.ok) return refused(checked.error);
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planSeatHolderChange({ actor, org: snapshot.org, roleId, change: checked.value, team: teamPeopleOf(snapshot) });
+  if (!planned.ok) return refused(planned.error);
+  const { from, to, steppingDown: step } = planned.value;
+  const row = snapshot.roles.find((r) => r.id === roleId && r.leaved_at === null && r.member_id === from);
+  if (row === undefined) return refused("That seat is no longer held.");
+  // A full-access flag on the seat's row moves to the successor's (`seatHandOver`, issue #501).
+  const handed = seatHandOver([{ fullAccess: seatOfFlag(row.full_access) }], [to]);
+  if (!handed.ok) return refused(handed.error);
+  const active = await activeRoles(from);
+  const on = today();
+  await runAuditBatch((db) => [
+    db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
+    ...steppingDownWrites(db, { memberId: from, active }, step, [roleId], on),
+  ]);
+  done();
+  return written(null);
+}
+
+/** Add seat: one active role in no department and no division, with the title given and no full-access flag. */
+async function addSeat(identity: DashboardIdentity, input: unknown): Promise<WriteResult<null>> {
+  const checked = checkNewSeat(input);
+  if (!checked.ok) return refused(checked.error);
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planNewSeat({ actor, org: snapshot.org, add: checked.value, team: teamPeopleOf(snapshot) });
+  if (!planned.ok) return refused(planned.error);
+  const { personId, title } = planned.value;
+  await runAuditBatch((db) => [db.insert(roles).values({ memberId: personId, deptId: null, divisionId: null, title, type: "core", startedAt: today(), fullAccess: null })]);
+  done();
+  return written(null);
+}
+
 /**
  * What Confirm writes beyond the notice (board 62c, issue #262): the
  * successor takes the role, then the sender steps down as they chose
@@ -1521,5 +1570,7 @@ export function databaseTeamWrites(
     saveDepartment: (departmentId, input) => saveDepartment(identity, departmentId, input),
     closeDepartment: (departmentId, input) => closeDepartment(identity, departmentId, input),
     handOverTeamLeader: (input) => handOverTeamLeader(identity, input),
+    changeSeatHolder: (roleId, input) => changeSeatHolder(identity, roleId, input),
+    addSeat: (input) => addSeat(identity, input),
   };
 }

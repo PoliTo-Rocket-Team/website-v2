@@ -1,7 +1,7 @@
 import { closingPeople, mayManageDepartments, type ClosingPerson } from "./department-edit";
 import { mayManageDivisionsIn } from "./division-edit";
 import { divisionMembers, type DivisionMembers, type PersonRecord, type WaitingPerson } from "./division-members";
-import { divisionLabel, roleIn, type DepartmentKind, type Joining, type OrgChart, type TeamActor } from "./team";
+import { boardTitleOf, bySeatOrder, divisionLabel, roleIn, type BoardFlag, type DepartmentKind, type Joining, type OrgChart, type TeamActor } from "./team";
 import { mayHandOverTeamLeader, type HeldSeat } from "./hand-over";
 import type { FullAccessSeat, ViewerStanding } from "./viewer";
 
@@ -62,8 +62,24 @@ export type StructureDepartment = {
  */
 export type StructureLeader = StructurePerson & { readonly handsOver: boolean; readonly yours: boolean };
 
+/**
+ * A box on the seat row under the Team Leader box (issue #627): a team-level
+ * seat, its stored title (`boardTitleOf`), who holds it, and the full-access
+ * seat its row is flagged as, which moves with the seat on Change holder.
+ */
+export type StructureSeat = {
+  readonly roleId: number;
+  readonly title: string;
+  readonly holder: StructurePerson;
+  readonly flag: BoardFlag | null;
+  /** The viewer holds it: its box wears the accent ring and tint (issue #405). */
+  readonly yours: boolean;
+};
+
 export type TeamStructure = {
   readonly leader: StructureLeader | null;
+  /** The team-level seats in seat order (`bySeatOrder`), as the Team tree's seat row draws them. Change holder and Add seat: `departmentsEditable`. */
+  readonly board: readonly StructureSeat[];
   /** The department pencils and Add department (board 77b): the team leader and full access only, never a head (66t-b). */
   readonly departmentsEditable: boolean;
   readonly departments: readonly StructureDepartment[];
@@ -175,6 +191,11 @@ export function teamStructure(input: {
     };
   });
 
+  const board = records
+    .flatMap((r) => r.beyondDivisions.flatMap((b) => (b.kind === "board" ? [{ seat: b.seat, holder: r }] : [])))
+    .sort((a, b) => bySeatOrder(a.seat, b.seat))
+    .map(({ seat, holder }): StructureSeat => ({ roleId: seat.roleId, title: boardTitleOf(seat), holder: person(holder), flag: seat.flag, yours: holder.id === self?.id }));
+
   return {
     leader: leader
       ? {
@@ -183,6 +204,7 @@ export function teamStructure(input: {
           yours: leader.id === self?.id,
         }
       : null,
+    board,
     departmentsEditable: mayManageDepartments(actor),
     departments,
     takenCodes: org.divisions.map((d) => ({ id: d.id, name: d.name, code: d.code ?? null })),

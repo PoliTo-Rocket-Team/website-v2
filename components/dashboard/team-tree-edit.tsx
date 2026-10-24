@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Check, Lock, Pencil, Plus } from "lucide-react";
 import type { DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
 import { divisionLabel, matchesQuery } from "@/lib/dashboard/team";
-import type { StructureDepartment, StructureDivision, StructureLeader, TeamStructure } from "@/lib/dashboard/team-structure";
+import type { StructureDepartment, StructureDivision, StructureLeader, StructureSeat, TeamStructure } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { DepartmentDrawer, type DepartmentDrawerTarget } from "./department-drawers";
 import { SearchField } from "./directory";
@@ -14,6 +14,7 @@ import { DivisionDrawer, type DivisionDrawerTarget } from "./division-drawer";
 import { DrawerPage } from "./drawer";
 import { EditDetailsDrawer, type EditTarget } from "./member-panels";
 import { PRIMARY_PILL } from "./page-header";
+import { SeatDrawer, type SeatDrawerTarget } from "./seat-drawers";
 import { TeamLeaderDrawer } from "./team-leader-drawer";
 
 // The Team tree's edit view (issue #251): the one place structure is edited.
@@ -29,7 +30,10 @@ import { TeamLeaderDrawer } from "./team-leader-drawer";
 // New department (77d). Done returns to the tree. There is no closed-divisions
 // list: a closed division never opens again. The Team Leader box opens "Hand
 // over your role" (77i, issue #253) for the team leader alone; it is locked
-// for everyone else, the operations lead and the IT lead included.
+// for everyone else, the operations lead and the IT lead included. Under it,
+// the seat row (issue #627): a box per team-level seat that opens Change
+// holder, and Add seat at its end, for the team leader and full access; a head
+// sees the same seat boxes, which open nothing.
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const BOX = `relative block w-full rounded-xl border px-3 py-2.5 text-left transition-colors duration-300 ease-out ${FOCUS}`;
@@ -63,6 +67,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
   const [division, setDivision] = useState<DivisionPanel | null>(null);
   const [closing, setClosing] = useState<number | null>(null);
   const [department, setDepartment] = useState<DepartmentDrawerTarget | null>(null);
+  const [seat, setSeat] = useState<SeatDrawerTarget | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);
   // Each opening of "Hand over your role" starts from nothing picked.
   const [handOver, setHandOver] = useState<{ readonly open: boolean; readonly round: number }>({ open: false, round: 0 });
@@ -87,9 +92,9 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
 
   const own = structure.departments.filter((d) => d.divisionsEditable).map((d) => d.name);
   const intro = structure.departmentsEditable
-    ? "Click a box to rename it, change its head or lead, or close it."
-    : `You can edit the divisions of ${own.join(" and ")}. Ask the team leader to change a department.`;
-  const drawerOpen = drawerTarget !== null || department !== null || editing !== null || handOver.open;
+    ? "Click a box to change who holds a seat, rename a unit, change its head or lead, or close it."
+    : `You can edit the divisions of ${own.join(" and ")}. Ask the team leader to change a department or a seat.`;
+  const drawerOpen = drawerTarget !== null || department !== null || seat !== null || editing !== null || handOver.open;
 
   return (
     <DrawerPage drawerOpen={drawerOpen}>
@@ -115,6 +120,8 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         onDivision={(id) => setDivision({ kind: "edit", divisionId: id })}
         onAddDivision={(id) => setDivision({ kind: "new", departmentId: id })}
         onHandOver={() => setHandOver((h) => ({ open: true, round: h.round + 1 }))}
+        onSeat={(roleId) => setSeat({ kind: "change", roleId })}
+        onAddSeat={() => setSeat({ kind: "new" })}
       />
 
       <DivisionDrawer
@@ -139,6 +146,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         }}
       />
       {structure.departmentsEditable && <DepartmentDrawer target={department} structure={structure} onClose={() => setDepartment(null)} onTarget={setDepartment} />}
+      {structure.departmentsEditable && <SeatDrawer target={seat} structure={structure} onClose={() => setSeat(null)} />}
       <EditDetailsDrawer target={editing} onClose={() => setEditing(null)} />
       {structure.leader?.handsOver && (
         <TeamLeaderDrawer key={handOver.round} open={handOver.open} leader={structure.leader} onClose={() => setHandOver((h) => ({ ...h, open: false }))} />
@@ -148,10 +156,10 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
 }
 
 /**
- * The boxes (boards 77b, 66t-b): the team leader on top, then one column per
- * department, its head's box over its divisions' boxes. From md the columns
- * hang from one bus under the leader and scroll sideways when they do not
- * fit; on a phone they stack.
+ * The boxes (boards 77b, 66t-b): the team leader on top, the seat row under
+ * it (issue #627), then one column per department, its head's box over its
+ * divisions' boxes. From md the seats and the columns each hang from a bus,
+ * and a row too wide for the frame shrinks to fit it; on a phone they stack.
  */
 function StructureCanvas({
   structure,
@@ -161,6 +169,8 @@ function StructureCanvas({
   onDivision,
   onAddDivision,
   onHandOver,
+  onSeat,
+  onAddSeat,
 }: {
   structure: TeamStructure;
   query: string;
@@ -169,10 +179,28 @@ function StructureCanvas({
   onDivision: (id: number) => void;
   onAddDivision: (departmentId: number) => void;
   onHandOver: () => void;
+  onSeat: (roleId: number) => void;
+  onAddSeat: () => void;
 }) {
   const frame = useRef<HTMLElement>(null);
   const row = useRef<HTMLDivElement>(null);
   const { leader } = structure;
+  // The seat row (issue #627): a box per team-level seat, built like the Team Leader box, then Add seat where the viewer may add one.
+  const seats: { key: string; node: ReactNode }[] = structure.board.map((s) => ({
+    key: `s${s.roleId}`,
+    node: <SeatBox seat={s} editable={structure.departmentsEditable} found={matches(query, [s.holder.name, s.title])} onOpen={() => onSeat(s.roleId)} />,
+  }));
+  if (structure.departmentsEditable) {
+    seats.push({
+      key: "add-seat",
+      node: (
+        <button type="button" onClick={onAddSeat} className={`${ACCENT_BOX} h-[112px] w-[200px] flex-col bg-accent/[0.04]`}>
+          <Plus aria-hidden className="h-4 w-4" strokeWidth={2} />
+          Add seat
+        </button>
+      ),
+    });
+  }
   const columns: { key: string; node: ReactNode }[] = structure.departments.map((d) => ({
     key: `d${d.id}`,
     node: <DepartmentColumn department={d} editable={structure.departmentsEditable} query={query} onDepartment={onDepartment} onDivision={onDivision} onAddDivision={onAddDivision} />,
@@ -189,7 +217,7 @@ function StructureCanvas({
     });
   }
 
-  // A row wider than the frame shrinks to fit it, so Add department always shows at the end of the row (77b).
+  // A row wider than the frame shrinks to fit it, so Add department and Add seat always show at the end of their rows (77b).
   // A scroller would hide it: a scroll offset does not survive every relayout.
   useLayoutEffect(() => {
     const outer = frame.current;
@@ -206,7 +234,7 @@ function StructureCanvas({
     const observer = new ResizeObserver(fit);
     observer.observe(outer);
     return () => observer.disconnect();
-  }, [columns.length]);
+  }, [columns.length, seats.length]);
 
   // "Find someone" brings the first box it marks into view.
   useEffect(() => {
@@ -224,25 +252,78 @@ function StructureCanvas({
             <span aria-hidden className="hidden h-4 border-l border-border-strong md:block" />
           </div>
         )}
-        <ol className="mt-4 flex flex-col gap-6 md:mt-0 md:flex-row md:gap-2.5">
+        {seats.length > 0 && (
+          <div className="flex flex-col items-center">
+            <ol aria-label="Team-level seats" className="mt-4 flex flex-col items-center gap-3 md:mt-0 md:flex-row md:items-start md:gap-2.5">
+              {seats.map((s, i) => (
+                <li key={s.key} className="relative md:shrink-0 md:pt-4">
+                  {leader && <Bus first={i === 0} last={i === seats.length - 1} />}
+                  {s.node}
+                </li>
+              ))}
+            </ol>
+            {/* The trunk runs on from the seat row down to the departments' bus. */}
+            {columns.length > 0 && <span aria-hidden className="hidden h-4 border-l border-border-strong md:block" />}
+          </div>
+        )}
+        <ol className="mt-4 flex flex-col gap-6 md:mt-0 md:flex-row md:justify-center md:gap-2.5">
           {columns.map((column, i) => (
             <li key={column.key} className="relative md:w-[150px] md:shrink-0 md:pt-4">
               {/* The bus under the leader, and the tick down to this column. */}
-              {leader && (
-                <span aria-hidden className="hidden md:block">
-                  {/* Half the 10px gap on each side, so the bus runs on unbroken from column to column. */}
-                  <span
-                    className={`absolute top-0 border-t border-border-strong ${i === 0 ? "left-1/2" : "-left-[5px]"} ${i === columns.length - 1 ? "right-1/2" : "-right-[5px]"}`}
-                  />
-                  <span className="absolute left-1/2 top-0 h-4 border-l border-border-strong" />
-                </span>
-              )}
+              {leader && <Bus first={i === 0} last={i === columns.length - 1} />}
               {column.node}
             </li>
           ))}
         </ol>
       </div>
     </section>
+  );
+}
+
+/** The bus a row of boxes hangs from, and the tick down to one box, from md (board 77b). */
+function Bus({ first, last }: { first: boolean; last: boolean }) {
+  return (
+    <span aria-hidden className="hidden md:block">
+      {/* Half the 10px gap on each side, so the bus runs on unbroken from box to box. */}
+      <span className={`absolute top-0 border-t border-border-strong ${first ? "left-1/2" : "-left-[5px]"} ${last ? "right-1/2" : "-right-[5px]"}`} />
+      <span className="absolute left-1/2 top-0 h-4 border-l border-border-strong" />
+    </span>
+  );
+}
+
+/**
+ * A seat box on the seat row (issue #627), built like the Team Leader box:
+ * the holder's name and the seat's stored title. For the team leader and full
+ * access a button that opens Change holder, with a pencil; for a head it
+ * opens nothing.
+ */
+function SeatBox({ seat, editable, found, onOpen }: { seat: StructureSeat; editable: boolean; found: boolean; onOpen: () => void }) {
+  const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, seat.yours)}`;
+  const body = (
+    <>
+      <Avatar size="ml" accent />
+      <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{seat.holder.name}</span>
+      <span className="max-w-full truncate text-[12px] text-prt-muted">{seat.title}</span>
+    </>
+  );
+  if (!editable) {
+    return (
+      <div data-found={found || undefined} className={frame}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-found={found || undefined}
+      onClick={onOpen}
+      aria-label={`Change who holds ${seat.title}`}
+      className={`${frame} transition-colors duration-300 ease-out ${seat.yours ? "hover:border-accent" : "hover:border-border-strong"} ${FOCUS}`}
+    >
+      {body}
+      <PencilMark />
+    </button>
   );
 }
 

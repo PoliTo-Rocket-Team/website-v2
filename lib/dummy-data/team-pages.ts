@@ -84,6 +84,7 @@ import {
   type TeamActor,
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, teamStructure } from "@/lib/dashboard/team-structure";
+import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange } from "@/lib/dashboard/team-seats";
 import { kindOfTestViewer, readsArea, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { grantActors, testGrantAreas, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
@@ -356,7 +357,23 @@ export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] =
   });
   return [...joinedTeam, ...added, ...confirmed]
     .filter((e) => edits.movedToAlumni[e.id] === undefined)
-    .map((e) => withSeatTitle(withoutAdvisorAccess(withTeamLeaderSeat(withDepartmentSeat(e, edits), edits), edits), edits));
+    .map((e) => withSeatTitle(withoutAdvisorAccess(withTeamSeat(withTeamLeaderSeat(withDepartmentSeat(e, edits), edits), edits), edits), edits));
+}
+
+/**
+ * The team-level seats Change holder and Add seat changed (issue #627): a
+ * holder whose seat row ended holds that seat no more and keeps every division
+ * they are in; someone a started seat row names holds it, keeping theirs.
+ */
+function withTeamSeat(entry: RosterEntry, edits: TeamEdits): RosterEntry {
+  const { placement } = entry;
+  const { ended, started } = edits.seats;
+  if (placement.role === "board" && ended.includes(placement.seat.roleId)) {
+    return { ...entry, placement: { role: "divisions", memberships: placement.memberships } };
+  }
+  const seat = started.find((s) => s.holder === entry.id && !ended.includes(s.roleId));
+  if (seat === undefined || placement.role !== "divisions") return entry;
+  return { ...entry, placement: { role: "board", seat: { roleId: seat.roleId, title: seat.title, flag: seat.flag, since: seat.since }, memberships: placement.memberships } };
 }
 
 /**
@@ -373,6 +390,11 @@ function withSeatTitle(entry: RosterEntry, edits: TeamEdits): RosterEntry {
   if (placement.role === "head") return { ...entry, placement: { ...placement, title } };
   if (placement.role === "board") return { ...entry, placement: { ...placement, seat: { ...placement.seat, title } } };
   return entry;
+}
+
+/** The role row a new seat row takes: past every row ./team.ts holds and every one already started. */
+function nextSeatRoleId(edits: TeamEdits): number {
+  return Math.max(9_999, ...edits.seats.started.map((s) => s.roleId)) + 1;
 }
 
 /**
@@ -885,6 +907,35 @@ function writesFor(
       if (typeof after === "string") return refused(after);
       // The new team leader is owed an alias request when they have none (issue #543).
       await save(withAutomaticAliasRequests(after, [to], DUMMY_NOW, prtEmailsOf(team, edits)));
+      return written(null);
+    },
+    async changeSeatHolder(roleId, input) {
+      const checked = checkSeatHolderChange(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planSeatHolderChange({ actor, org, roleId, change: checked.value, team: teamPeople(team, edits) });
+      if (!planned.ok) return refused(planned.error);
+      const { seat, from, to, steppingDown: step } = planned.value;
+      // The holder's seat row ends; the successor's starts with its title and full-access flag, as the database writes it.
+      const next: TeamEdits = {
+        ...edits,
+        seats: {
+          ended: [...edits.seats.ended, roleId],
+          started: [...edits.seats.started, { roleId: nextSeatRoleId(edits), holder: to, title: seat.title, flag: seat.flag, since: TODAY }],
+        },
+      };
+      const after = step.kind === "advisor" ? withAdvisor(next, from, step) : leftTeam(next, from);
+      if (typeof after === "string") return refused(after);
+      await save(after);
+      return written(null);
+    },
+    async addSeat(input) {
+      const checked = checkNewSeat(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planNewSeat({ actor, org, add: checked.value, team: teamPeople(team, edits) });
+      if (!planned.ok) return refused(planned.error);
+      const { personId, title } = planned.value;
+      const seat = { roleId: nextSeatRoleId(edits), holder: personId, title, flag: null, since: TODAY };
+      await save({ ...edits, seats: { ...edits.seats, started: [...edits.seats.started, seat] } });
       return written(null);
     },
     async setAlumnusShown(key, shown) {
