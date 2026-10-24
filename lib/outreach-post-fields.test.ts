@@ -2,33 +2,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { editorVersion } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
 import { awardPosts, outreachRecord, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachEditor } from "./outreach-editor";
 import { importedOutreach } from "./outreach-import";
+import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { checkPostFields, draftOfFields, postFieldsOf, removePostGalleryPhoto, type PostFields } from "./outreach-post-fields";
 import { postColumns, postFromColumns } from "./outreach-rows";
 import type { OutreachPost, PostItem } from "./outreach-types";
 
 // The Edit post panel's writes (boards 74c, 74d and 74h, issue #290): the
 // rules both buttons enforce, tags added inline, and what Save draft and
-// Publish leave on the public pages. Run over the dummy-data store, the one
-// previews use, through the outreach editor the server action calls.
+// Publish leave on the public pages. Run over an in-memory store holding the
+// import (./outreach-memory.ts), through the outreach editor the server
+// action calls.
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 
-function editorOverCookie(): { editor: OutreachEditor; shown: () => Promise<ReturnType<typeof publicOutreach>> } {
-  let value: string | undefined;
-  const jar = {
-    get current(): DummyOutreachEdits {
-      return parseOutreachEdits(value);
-    },
-    save: async (next: DummyOutreachEdits) => {
-      value = serializeOutreachEdits(next);
-    },
-  };
-  const store = dummyOutreachStore(jar);
-  const editor = outreachEditor(admin, store, dummyPhotoFiles);
+function editorOverStore(): { editor: OutreachEditor; shown: () => Promise<ReturnType<typeof publicOutreach>> } {
+  const store = memoryOutreachStore();
+  const editor = outreachEditor(admin, store, memoryPhotoFiles);
   const shown = async () => publicOutreach({ ...importedOutreach(), posts: await store.posts.list(), tags: await store.tags() });
   return { editor, shown };
 }
@@ -40,7 +32,7 @@ async function firstPost(editor: OutreachEditor): Promise<PostItem> {
 }
 
 test("Save draft and Publish both refuse a post with no tag, or a channel added with no link", async () => {
-  const { editor } = editorOverCookie();
+  const { editor } = editorOverStore();
   const item = await firstPost(editor);
   const fields = postFieldsOf(editorVersion(item.version));
 
@@ -54,7 +46,7 @@ test("Save draft and Publish both refuse a post with no tag, or a channel added 
 });
 
 test("an original post is optional: a post with no channel, or only another one, publishes and reads back from its row", async () => {
-  const { editor, shown } = editorOverCookie();
+  const { editor, shown } = editorOverStore();
   const item = await firstPost(editor);
   const fields = postFieldsOf(editorVersion(item.version));
   const slug = slugOf(editorVersion(item.version));
@@ -75,7 +67,7 @@ test("an original post is optional: a post with no channel, or only another one,
 });
 
 test("a tag typed inline joins the tag data, another post can pick it, and Award still feeds the award count", async () => {
-  const { editor, shown } = editorOverCookie();
+  const { editor, shown } = editorOverStore();
   const [first, second] = (await editor.posts.list())!;
   const awardsBefore = awardPosts(await shown()).length;
 
@@ -99,7 +91,7 @@ test("a tag typed inline joins the tag data, another post can pick it, and Award
 });
 
 test("Save draft keeps the published post live; Publish replaces it", async () => {
-  const { editor, shown } = editorOverCookie();
+  const { editor, shown } = editorOverStore();
   const item = await firstPost(editor);
   const published = editorVersion(item.version);
   const fields: PostFields = { ...postFieldsOf(published), title: "Renamed in a draft", lead: "A new lead." };

@@ -8,6 +8,8 @@ tags: [previews, seed, dummy-data, database]
 
 # 0016 — Previews read a database branch created from an empty schema and filled with the dummy seed; dummy arrays stay only where no database is configured
 
+> **Current state (2026-10-24):** there is no dummy mode. Every page reads a database, and `lib/dummy-data/` is removed; see the amendments of 2026-10-24 below (issues #609, #612, #613).
+
 **What this decides:** Vercel previews read one Neon database branch named `preview`, which every preview deployment shares. That branch started from an empty schema, never from production data, and the preview build migrates it and then fills it with the dummy seed. Previews read that branch. The typed arrays in `lib/dummy-data/` stay only for runs with no database configured. The seed itself refuses any target that is not a local database or a preview branch it can prove is not production. This supersedes [ADR 0009](0009-previews-and-dev-use-dummy-data.md).
 
 ## Context
@@ -162,6 +164,16 @@ The same Owner decision on epic [#597](https://github.com/PoliTo-Rocket-Team/web
 - **One write rule.** Every write is logged under the session's account, with the acting account beside it in a View as session ([lib/audit-writer.ts](../lib/audit-writer.ts)); there is no separate test developer write gate.
 
 This amendment retires Decision 6 ("The test developer stays"), Decision 7's "never offers the test developer sign-in", the mapping lines for ADR 0009's Decision 3 and its test developer constraint, the binding constraint on a test developer's changes, and the amendment of 2026-10-17; those lines stay as written.
+
+## Amendment, 2026-10-24: the dummy copy of the dashboard is removed
+
+The same Owner decision on epic [#597](https://github.com/PoliTo-Rocket-Team/website-v2/issues/597) wants one implementation of the dashboard's rules, and the epic's approved plan (https://github.com/PoliTo-Rocket-Team/website-v2/issues/597#issuecomment-6383269347) removes `lib/dummy-data/` last. Issue [#613](https://github.com/PoliTo-Rocket-Team/website-v2/issues/613) is that step:
+
+- **No dummy mode.** `lib/dummy-data/` is gone, and with it every in-memory copy of the access, Members, Orders, content and Team page rules. There is no dummy mode anywhere: under `next dev`, on a preview and in production the dashboard reads a database, and the one implementation is [lib/dashboard/database.ts](../lib/dashboard/database.ts).
+- **Tests run the real code.** The rules its tests covered are tested against the real loaders and actions, over the in-memory database of the access tests ([lib/dashboard/access-matrix/](../lib/dashboard/access-matrix/)), or as the domain functions those loaders call. Editor tests hold their store in memory ([lib/content/memory.ts](../lib/content/memory.ts), [lib/outreach-memory.ts](../lib/outreach-memory.ts)); the Team page tests read the seeded team ([db/seed/cases.ts](../db/seed/cases.ts)).
+- **The seed keeps its name.** The rows `pnpm db:seed` loads are still called the dummy set (Decision 3, [docs/seed-cases.md](../docs/seed-cases.md)); that is seed data in a database, not a dummy mode.
+
+This amendment retires the title's and What this decides' "dummy arrays stay only where no database is configured", the binding constraint's "dummy data" gate, and Decision 7's "never shows dummy data", which now has nothing to refer to; those lines stay as written.
 
 ## Records
 

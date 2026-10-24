@@ -19,8 +19,7 @@ import { attentionOf, noticeOf } from "./notices";
 import { membershipsOf, type OrgChart } from "./team";
 
 // Hand over your role from My profile (issue #262): who may send, who answers,
-// and what each answer does. The dummy dashboard runs the same rules end to
-// end (lib/dummy-data/hand-overs.test.ts).
+// and what each answer does.
 
 const org: OrgChart = {
   departments: [

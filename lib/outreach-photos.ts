@@ -8,7 +8,7 @@ import type { OutreachDraft, PhotoSrc, PostItem, PostStore } from "./outreach-ty
 // A post's photos as files (issue #291). The Edit post panel uploads a photo
 // the moment it is picked, through the outreach editor, so only once the
 // site-content gate has admitted the viewer. On the database side the file
-// goes to the public Blob store under `post-photos/`; on previews it is kept
+// goes to the public Blob store under `post-photos/`; in tests it may be kept
 // nowhere. A stored file is deleted once no version of any post uses it, and
 // only a file in this deployment's own public store is ever accepted or deleted.
 // The project editor's photos (issue #299) take the same path, under
@@ -58,7 +58,7 @@ export function checkImageUpload(upload: Upload, maxBytes: number, what: string)
   return written({ bytes: upload.bytes, contentType: type, extension: EXTENSION[type] });
 }
 
-/** Where uploaded photo files go: the public Blob store, or nowhere on a preview. */
+/** Where uploaded photo files go: the public Blob store, or, in tests, nowhere. */
 export interface PhotoFiles {
   /** Stores the file and answers its `src`. */
   put(photo: CheckedPhoto): Promise<PhotoSrc>;
@@ -74,7 +74,7 @@ export type PanelPhotoKind = Extract<PublicFileKind, "post-photo" | "project-pho
 /**
  * The pathname of an uploaded photo of this kind in this deployment's public
  * store, whose files `host` serves; null for anything else: a photo of the
- * site (`/outreach/...`, `/project-photos/...`), a preview's data URL, a file of another kind, or a
+ * site (`/outreach/...`, `/project-photos/...`), a data URL kept nowhere, a file of another kind, or a
  * file on any other host, another Blob store included. Only this answers
  * which URLs a save may carry and which files may be deleted.
  */

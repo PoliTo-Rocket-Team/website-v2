@@ -12,7 +12,7 @@ Read only the rows that match your change.
 |---|---|---|
 | [drizzle-reads.md](./drizzle-reads.md) | Server-only reads with Drizzle: getDb per call, snake_case selections, cached snapshots filtered by scope | Adding or changing a query in app/actions, or caching a read |
 | [audited-mutations.md](./audited-mutations.md) | Server actions that write through runAuditQuery and invalidate cache tags | Adding or changing any write to an app table |
-| [dashboard-data-interface.md](./dashboard-data-interface.md) | DashboardData: one interface; every page reads the database through a real session, and the dummy side is read only by tests; writes answer WriteResult | Adding a dashboard page, read or write, or anything a preview must show from its seeded database |
+| [dashboard-data-interface.md](./dashboard-data-interface.md) | DashboardData: one interface; one implementation, the database, read through a real session and tested against an in-memory database; writes answer WriteResult | Adding a dashboard page, read or write, or anything a preview must show from its seeded database |
 
 ## Auth and access
 

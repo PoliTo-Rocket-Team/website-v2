@@ -6,7 +6,7 @@ import type { LegacyProjectRecord as ProjectRecord } from "./legacy";
 // The import (./import.ts) is frozen: migration 0037 already carried it into
 // every database, and no migration runs twice. So a later change is a
 // revision: a few values set at paths in one project's record, read the same
-// way by the code (the records without a database, the dummy data, the seed)
+// way by the code (the records without a database, the seed)
 // and by the migration that rewrites the stored versions, which holds exactly
 // what `revisionSql` writes. One list of sets feeds both, so they cannot
 // drift apart.

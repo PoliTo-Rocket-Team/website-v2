@@ -2,31 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { publicVersion } from "@/lib/content/versioned";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
-import { dummyOutreachStore, dummyPhotoFiles, parseOutreachEdits, serializeOutreachEdits, type DummyOutreachEdits } from "@/lib/dummy-data/outreach";
 import { outreachRecord, postBySlug, slugOf } from "./outreach";
 import { outreachEditor, publicOutreach, type OutreachStore } from "./outreach-editor";
 import { filterRows, newestRowsFirst, outreachRow } from "./outreach-list";
+import { memoryOutreachStore, memoryPhotoFiles } from "./outreach-memory";
 import { outreachPostOf } from "./outreach-rows";
 
 // The dashboard's Outreach list (board 74, issue #289): Unpublish and Delete
 // from a row's menu, and what /outreach shows after each. The editor runs
-// over the dummy-data store, the one previews and test developers write to.
+// over an in-memory store holding the import (./outreach-memory.ts).
 
 const admin: ViewerStanding = { kind: "operations-lead", seat: "team-leader", siteContent: false, approveOrders: false };
 const member: ViewerStanding = { kind: "member", grantedAreas: [], siteContent: false, approveOrders: false };
 
-function freshStore(): OutreachStore {
-  const jar = {
-    value: undefined as string | undefined,
-    get current(): DummyOutreachEdits {
-      return parseOutreachEdits(jar.value);
-    },
-    save: async (next: DummyOutreachEdits) => {
-      jar.value = serializeOutreachEdits(next);
-    },
-  };
-  return dummyOutreachStore(jar);
-}
+const freshStore = (): OutreachStore => memoryOutreachStore();
 
 /** What /outreach shows from the store as it is now. */
 async function site(store: OutreachStore) {
@@ -35,7 +24,7 @@ async function site(store: OutreachStore) {
 
 test("Unpublish keeps the post in the list as a draft and takes it off /outreach and its page; Delete removes it from both", async () => {
   const store = freshStore();
-  const editor = outreachEditor(admin, store, dummyPhotoFiles);
+  const editor = outreachEditor(admin, store, memoryPhotoFiles);
   const items = (await editor.posts.list())!;
   const [first, second] = items;
   const firstSlug = slugOf(publicVersion(first.version)!);
@@ -67,8 +56,8 @@ test("Unpublish keeps the post in the list as a draft and takes it off /outreach
 
 test("only the site-content gate's viewers unpublish or delete", async () => {
   const store = freshStore();
-  const id = (await outreachEditor(admin, store, dummyPhotoFiles).posts.list())![0].id;
-  const refused = outreachEditor(member, store, dummyPhotoFiles);
+  const id = (await outreachEditor(admin, store, memoryPhotoFiles).posts.list())![0].id;
+  const refused = outreachEditor(member, store, memoryPhotoFiles);
   assert.equal((await refused.posts.unpublish(id)).ok, false);
   assert.equal((await refused.posts.remove(id)).ok, false);
   assert.equal((await site(store)).posts.length, outreachRecord.posts.length);
@@ -76,7 +65,7 @@ test("only the site-content gate's viewers unpublish or delete", async () => {
 
 test("the list is newest first, and the Status filter reads a post with draft changes as Draft, as its pill does", async () => {
   const store = freshStore();
-  const editor = outreachEditor(admin, store, dummyPhotoFiles);
+  const editor = outreachEditor(admin, store, memoryPhotoFiles);
   const [newest] = (await editor.posts.list())!;
   assert.ok((await editor.posts.save(newest.id, "save-draft", async (current) => ({ ok: true, value: { ...outreachPostOf(current)!, lead: "Changed" } }))).ok);
   const rows = newestRowsFirst((await editor.posts.list())!.map((item) => outreachRow(item, String(item.id))));

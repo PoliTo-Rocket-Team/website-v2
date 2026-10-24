@@ -24,8 +24,8 @@ session cookie; server code reads the user id from that cookie, then turns the m
    [lib/dashboard/open.ts](../lib/dashboard/open.ts) returns a `DashboardOpening`
    ([lib/dashboard/opening.ts](../lib/dashboard/opening.ts)). It is `open` with the viewer and
    their data: the database rows ([lib/dashboard/database.ts](../lib/dashboard/database.ts)) of
-   the signed-in account, or of the person a View as session views as (issue #609: no page reads
-   the dummy arrays in `lib/dummy-data/`). With no session
+   the signed-in account, or of the person a View as session views as (issues #609, #613: the
+   database is the one implementation). With no session
    token it is `signed-out`, and the page sends the visitor to `/login`. With a token but no
    account it is `account-unresolved`, and the shell shows a sign-out screen: `/login` would send
    a token holder back to `/dashboard`, so a redirect there would loop. The viewer's kind and

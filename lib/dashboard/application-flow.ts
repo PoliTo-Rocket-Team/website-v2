@@ -1,7 +1,7 @@
 // Where an application stands, and the moves that change it (Dashboard v2
 // boards 58 to 58i, issue #171). This module alone decides which move is
-// legal from which stage; the pages, the server actions and both data
-// sources (lib/dummy-data/, ./database.ts) ask it and never restate it.
+// legal from which stage; the pages, the server actions and the database side
+// (./database.ts) ask it and never restate it.
 //
 // The order is: New, opened into In review, Interview (times offered, then
 // one booked by the applicant), Accepted (waiting for the signed NDA), Joined.

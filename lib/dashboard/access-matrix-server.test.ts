@@ -12,7 +12,9 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { betterAuthUsers, logs, members, orders, roles, scopes } from "@/db/schema";
+import { betterAuthUsers, logs, members, orders, projects, projectVersions, roles, scopes } from "@/db/schema";
+import { importedProjects } from "@/lib/project-content/import";
+import { newRowContent } from "@/lib/project-content/row";
 import { readProjectStamps } from "./database-projects";
 import { readViewAsAccount, recordViewAs, viewAsRefusal } from "./database-view-as";
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
@@ -1282,6 +1284,50 @@ describe("a write made while viewing as someone records both people, from the se
       { userId: teamLeader.userId, actingAccountId: null },
       { userId: teamLeader.userId, actingAccountId: null },
     ]);
+  });
+});
+
+// The Projects board ---------------------------------------------------------
+
+describe("moving a project card on the Projects page is not an edit (issue #297, #613)", () => {
+  test("projects.setSiteOrder writes the site order on projects and no project_versions row, so no card's edited-by line changes", async () => {
+    const data = await open("team leader");
+    keepWrites();
+    const items = importedProjects();
+    insertRows(projects, items.map((item) => ({ id: item.id, siteOrder: item.siteOrder })));
+    insertRows(
+      projectVersions,
+      items.map((item) => {
+        const record = item.version.state === "published" ? item.version.published : item.version.draft;
+        return { id: item.id, projectId: item.id, version: "published", content: newRowContent(record), page: record };
+      }),
+    );
+    // One earlier edit, as the audit trigger logs it, so a card has a line to keep.
+    insertRows(logs, [
+      {
+        schemaName: "public",
+        tableName: "project_versions",
+        operation: "UPDATE",
+        recordId: "1",
+        newData: { project_id: 1 },
+        changedBy: accountOf("team leader").userId,
+        changedAt: "2026-10-20T09:00:00.000Z",
+      },
+    ]);
+    const linesBefore = (await data.projects.board())?.edited;
+    assert.ok(linesBefore?.[1], "the edited card has a line before the move");
+    const stampsBefore = await readProjectStamps();
+    const ids = items.map((item) => item.id).reverse();
+
+    assert.ok((await data.projects.setSiteOrder(ids)).ok, "a site-content editor moves the cards");
+
+    const written = recordedWrites();
+    assert.ok(written.some((w) => w.table === "projects"), `the move writes the site order: ${JSON.stringify(written)}`);
+    assert.ok(!written.some((w) => w.table === "project_versions"), `the move writes no project version: ${JSON.stringify(written)}`);
+    const order = rowsIn(projects).sort((a, b) => Number(a.siteOrder) - Number(b.siteOrder)).map((p) => p.id);
+    assert.deepEqual(order, ids, "the cards stand in the new order");
+    assert.deepEqual(await readProjectStamps(), stampsBefore, "the audit log holds no new edit");
+    assert.deepEqual((await data.projects.board())?.edited, linesBefore, "every card's edited-by line reads as before");
   });
 });
 

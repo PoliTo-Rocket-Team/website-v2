@@ -5,7 +5,7 @@ import { maySiteContent } from "@/lib/content/gate";
 import {
   FULL_ACCESS_SEATS,
   GRANT_AREAS,
-  testDeveloperStanding as kindOnly,
+  plainSeatStanding as kindOnly,
   type FullAccessSeat,
   type GrantArea,
   type ViewerKind,

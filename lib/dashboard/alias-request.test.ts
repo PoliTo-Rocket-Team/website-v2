@@ -16,7 +16,7 @@ import {
 import type { TeamPerson } from "./division-edit";
 import { attentionOf, noticeOf } from "./notices";
 import { membershipsOf, type OrgChart } from "./team";
-import { testDeveloperStanding, type ViewerStanding } from "./viewer";
+import { plainSeatStanding, type ViewerStanding } from "./viewer";
 
 // Team email alias requests (epic #538, issue #541): who may ask, who may
 // answer, one open request per member, the prefill and the address check, and
@@ -135,17 +135,17 @@ test("the address check: the team domain, firstname.lastname, or one word for a 
 test("only the team leader, the operations lead and the IT lead answer", () => {
   const open = request(1, DAVIDE, MARCO);
   const answer = (viewer: ViewerStanding) => planAliasAnswer({ viewer, request: open, answer: { kind: "decline" } }).ok;
-  assert.ok(answer(testDeveloperStanding("team-leader")));
-  assert.ok(answer(testDeveloperStanding("operations-lead")));
+  assert.ok(answer(plainSeatStanding("team-leader")));
+  assert.ok(answer(plainSeatStanding("operations-lead")));
   assert.ok(answer({ kind: "operations-lead", seat: "it-lead", siteContent: false, approveOrders: false }));
   for (const seat of ["project-manager", "chief-engineer", null] as const) {
     assert.equal(answer({ kind: "operations-lead", seat, siteContent: false, approveOrders: false }), false, `seat ${seat}`);
   }
-  for (const kind of ["department-head", "division-lead", "member", "alumni", "non-member"] as const) assert.equal(answer(testDeveloperStanding(kind)), false, kind);
+  for (const kind of ["department-head", "division-lead", "member", "alumni", "non-member"] as const) assert.equal(answer(plainSeatStanding(kind)), false, kind);
 });
 
 test("Mark created checks the address on the server and saves it lower-cased", () => {
-  const viewer = testDeveloperStanding("team-leader");
+  const viewer = plainSeatStanding("team-leader");
   const open = request(1, DAVIDE, MARCO);
   assert.deepEqual(planAliasAnswer({ viewer, request: open, answer: { kind: "created", address: "Davide.Russo@politorocketteam.it" } }), {
     ok: true,
@@ -180,7 +180,7 @@ test("the notices read as attention rows", () => {
 test("the approver's rows (board 94c): one per open request, oldest first, the automatic one as its own row", () => {
   const now = new Date("2026-10-22T12:00:00+02:00");
   const open = [request(2, MARCO, null, "2026-10-22T10:00:00+02:00"), request(1, DAVIDE, MARCO, "2026-10-21T10:00:00+02:00")];
-  const rows = aliasAttentionFor(testDeveloperStanding("team-leader"), open, team, org, now);
+  const rows = aliasAttentionFor(plainSeatStanding("team-leader"), open, team, org, now);
   assert.deepEqual(
     rows.map((r) => [r.kind, r.title, r.detail]),
     [
@@ -189,8 +189,8 @@ test("the approver's rows (board 94c): one per open request, oldest first, the a
     ],
   );
   assert.deepEqual(rows[0].action, { answerAlias: 1, member: "Davide Russo", prefill: "davide.russo@politorocketteam.it" });
-  assert.deepEqual(aliasAttentionFor(testDeveloperStanding("department-head"), open, team, org, now), []);
-  assert.deepEqual(aliasAttentionFor(testDeveloperStanding("team-leader"), [request(3, 999, null)], team, org, now), [], "someone off the team");
+  assert.deepEqual(aliasAttentionFor(plainSeatStanding("department-head"), open, team, org, now), []);
+  assert.deepEqual(aliasAttentionFor(plainSeatStanding("team-leader"), [request(3, 999, null)], team, org, now), [], "someone off the team");
 });
 
 test("the member drawer's alias: set, requested, or none with Request alias only for who may ask", () => {
@@ -222,6 +222,6 @@ test("a request sent while viewing as the requester names the acting seat, to th
     const aliases = memberAliasesFor({ viewerId, memberIds: [LENA], team, org, addresses: new Map(), open: [viewedAs], now });
     assert.equal((aliases[LENA] as { line: string }).line, "by IT lead as Chiara Rinaldi · 22 Oct", `as ${viewerId}`);
   }
-  const [row] = aliasAttentionFor(testDeveloperStanding("team-leader"), [viewedAs], team, org, now);
+  const [row] = aliasAttentionFor(plainSeatStanding("team-leader"), [viewedAs], team, org, now);
   assert.equal(row.title, "IT lead as Chiara Rinaldi asks for an email alias for Lena Fischer");
 });
