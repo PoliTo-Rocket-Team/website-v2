@@ -78,7 +78,8 @@ An admin column comes later. **Planned**, no issue yet.
     for changes. The other full-access seats decide only with "Approve orders" (see
     "4. Orders").
   - **Exception 2, the Activity log:** only the IT lead reaches it. The reach rule is in place;
-    the page itself is **Planned**, so no sidebar lists it yet.
+    the page itself is **Planned**
+    ([#642](https://github.com/PoliTo-Rocket-Team/website-v2/issues/642)), so no sidebar lists it yet.
 - **The team leader's own pages** (boards 72 to 73c, #252). The team leader has full access like
   the operations lead and the IT lead, but some of their pages differ. The operations lead and the
   IT lead keep boards 40 and 46.
