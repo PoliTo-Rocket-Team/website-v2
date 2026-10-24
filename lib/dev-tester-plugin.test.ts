@@ -65,7 +65,7 @@ test("with the gate off, getAuth keeps Google alone and the tester routes are 40
 
     assert.deepEqual(Object.keys(auth.options.socialProviders ?? {}), ["google"], label);
     assert.equal("emailAndPassword" in auth.options, false, label);
-    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session"], label);
+    assert.deepEqual(auth.options.plugins.map((plugin) => plugin.id), ["custom-session", "admin", "view-as"], label);
 
     for (const path of ["/dev-tester", "/dev-tester/sign-in?tester=applicant"]) {
       const response = await auth.handler(new Request(BASE + path));
@@ -80,7 +80,7 @@ test("on next dev, signing in as a tester sets a cookie cache getCurrentUserId r
   const auth = await authWithTesters();
   assert.deepEqual(
     auth.options.plugins.map((plugin) => plugin.id),
-    ["custom-session", "dev-tester"],
+    ["custom-session", "admin", "view-as", "dev-tester"],
   );
   assert.deepEqual(Object.keys(auth.options.socialProviders ?? {}), ["google"]);
 

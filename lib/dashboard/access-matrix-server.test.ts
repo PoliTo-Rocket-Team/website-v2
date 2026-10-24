@@ -12,7 +12,9 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { members, scopes } from "@/db/schema";
+import { betterAuthUsers, logs, members, roles, scopes } from "@/db/schema";
+import { readViewAsAccount, recordViewAs, viewAsRefusal } from "./database-view-as";
+import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
@@ -1007,6 +1009,93 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
     assert.equal(cells.get(lead.name), address, "the DM lead's PRT email is the alias");
     cells.delete(lead.name);
     assert.deepEqual([...cells.values()].filter((v) => v !== ""), [], "every other member's PRT email cell is empty");
+  });
+});
+
+// View as ---------------------------------------------------------------------
+
+describe("View as: on production only the IT lead seat starts it, on a preview and under next dev a seeded admin tester too (issue #604)", () => {
+  const LIVE: ViewAsSite = "live";
+  const PREVIEW = viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "preview" });
+  const NEXT_DEV = viewAsSiteOf({ NODE_ENV: "development" });
+  const itLead = accountOf("IT lead");
+  const member = accountOf("member");
+  /** A plain member of MA, the person viewed as. */
+  const person = "person-ma";
+
+  /** The fixture, with a Better Auth account for every matrix viewer and the person: `admins` store the admin role, everyone else the plugin's default. */
+  function seedAccounts(admins: readonly string[] = []): void {
+    seedFixture();
+    const ids = [...VIEWERS.map(({ name }) => accountOf(name).userId), person];
+    insertRows(
+      betterAuthUsers,
+      ids.map((id) => ({ id, name: id, email: `${id}@auth.test`, emailVerified: true, role: admins.includes(id) ? "admin" : "user" })),
+    );
+  }
+
+  const start = (actingAccountId: string, personId = person, viewingAs = false) => ({ actingAccountId, viewingAs, personId });
+
+  test("production, previews and next dev are told apart by the environment, and anything unproven reads as production", () => {
+    assert.equal(viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "production" }), "live");
+    assert.equal(PREVIEW, "test");
+    assert.equal(NEXT_DEV, "test");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "development", VERCEL_ENV: "production" }), "live");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "production" }), "live");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "test" }), "live");
+  });
+
+  test("on production the IT lead starts View as, and every other matrix viewer is refused, the team leader and a stored admin included", async () => {
+    seedAccounts([member.userId, accountOf("team leader").userId]);
+    for (const { name } of VIEWERS) {
+      assert.equal(await viewAsRefusal(start(accountOf(name).userId), LIVE), name === "IT lead" ? null : "not-allowed", name);
+    }
+    assert.deepEqual(recordedWrites(), [], "deciding writes nothing");
+  });
+
+  test("after an IT lead hand-over the new seat holder starts View as and the previous one is refused, with no stored flag", async () => {
+    seedAccounts();
+    // The hand-over: the IT lead leaves the seat's role, and the member takes a role flagged as the seat.
+    updateRows(roles, { memberId: itLead.memberId }, { leavedAt: "2026-10-20" });
+    insertRows(roles, [{ id: 9_000, memberId: member.memberId, title: "IT Lead", startedAt: "2026-10-20", type: "core", fullAccess: "it_lead" }]);
+    assert.equal(await viewAsRefusal(start(member.userId), LIVE), null, "the new seat holder");
+    assert.equal(await viewAsRefusal(start(itLead.userId), LIVE), "not-allowed", "the previous seat holder");
+    // Nothing per person decides it: both still store the plugin's default role.
+    assert.equal((await readViewAsAccount(member.userId))?.storedRole, "user");
+    assert.equal((await readViewAsAccount(itLead.userId))?.storedRole, "user");
+  });
+
+  test("on a preview and under next dev a seeded admin tester starts View as, and a plain member is refused", async () => {
+    const adminTester = accountOf("non-member").userId;
+    seedAccounts([adminTester]);
+    for (const [label, site] of [["preview", PREVIEW], ["next dev", NEXT_DEV]] as const) {
+      assert.equal(await viewAsRefusal(start(adminTester), site), null, `${label}: the admin tester`);
+      assert.equal(await viewAsRefusal(start(itLead.userId), site), null, `${label}: the IT lead`);
+      assert.equal(await viewAsRefusal(start(member.userId), site), "not-allowed", `${label}: a plain member`);
+    }
+    assert.equal(await viewAsRefusal(start(adminTester), LIVE), "not-allowed", "the same admin tester on production");
+  });
+
+  test("nobody views as themselves, as someone who may use View as, as an unknown account, or from inside a View as session", async () => {
+    const adminTester = accountOf("non-member").userId;
+    seedAccounts([adminTester]);
+    assert.equal(await viewAsRefusal(start(itLead.userId, itLead.userId), LIVE), "same-person");
+    assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), "person-may-view-as", "an admin tester on a preview");
+    assert.equal(await viewAsRefusal(start(adminTester, itLead.userId), PREVIEW), "person-may-view-as", "the IT lead");
+    assert.equal(await viewAsRefusal(start(itLead.userId, "nobody"), LIVE), "no-such-person");
+    assert.equal(await viewAsRefusal(start(itLead.userId, person, true), LIVE), "already-viewing-as");
+  });
+
+  test("starting and stopping View as each write one Activity log entry, under the acting account, naming both people", async () => {
+    seedAccounts();
+    keepWrites();
+    await recordViewAs({ event: "start", sessionId: "view-as-session", personId: person, actingAccountId: itLead.userId });
+    await recordViewAs({ event: "stop", sessionId: "view-as-session", personId: person, actingAccountId: itLead.userId });
+    const entries = rowsIn(logs).map(({ schemaName, tableName, operation, recordId, newData, changedBy }) => ({ schemaName, tableName, operation, recordId, newData, changedBy }));
+    const both = { personId: person, actingAccountId: itLead.userId };
+    assert.deepEqual(entries, [
+      { schemaName: "better_auth", tableName: "session", operation: "VIEW_AS_START", recordId: "view-as-session", newData: both, changedBy: itLead.userId },
+      { schemaName: "better_auth", tableName: "session", operation: "VIEW_AS_STOP", recordId: "view-as-session", newData: both, changedBy: itLead.userId },
+    ]);
   });
 });
 
