@@ -743,8 +743,10 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - The delegation limit still holds: no area above the viewer's own level, and no lead's or head's
   role access changes here. Every other grant can be given to, listed for and removed from leads
   and heads (#591): a head's role covers the unit areas in their department and its divisions, so
-  Content, Alumni or an area elsewhere on the team is a grant. Full-access seats stay locked:
-  nothing is given to them.
+  Content, Alumni or an area elsewhere on the team is a grant. Full-access seats take no other
+  grant, since their role holds every area, but the team leader can give them "Approve orders"
+  and remove it (#635): Give access lists them for the team leader only, and only with that
+  checkbox.
 
 ## 4. Orders
 

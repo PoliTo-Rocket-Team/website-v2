@@ -888,22 +888,104 @@ describe("leads and heads hold grants beyond their role, and their role access s
     assert.deepEqual(recordedWrites(), []);
   });
 
-  test("full-access seats stay locked: none is offered in Give access, and no Save to one is accepted", async () => {
+  test("full-access seats stay locked but for Approve orders: Give access offers them to the team leader alone, and no area Save to one is accepted", async () => {
     seedKeeping();
     const page = await pageAs("team leader");
-    const seats = page.people.filter((p) => p.role.kind === "full");
-    assert.ok(seats.some((p) => p.id === accountOf(FULL).memberId), "the operations lead is on the page");
-    assert.deepEqual(grantablePeople(page).filter((p) => p.role.kind === "full"), []);
-    for (const save of [
-      { personId: accountOf(FULL).memberId, where: "team", areas: { content: "edit" } },
-      { personId: accountOf(FULL).memberId, where: "team", areas: {}, approveOrders: true },
-    ]) {
-      seedKeeping();
-      signInAs(accountOf("team leader").userId);
-      const answer = await answerOf(() => actions.saveAccess(save));
-      assert.ok(isRefusal(answer), `${JSON.stringify(save)}: ${JSON.stringify(answer)}`);
-      assert.deepEqual(recordedWrites(), []);
+    const seats = page.people.filter((p) => p.role.kind === "full").map((p) => p.id);
+    for (const name of [FULL, "IT lead"]) assert.ok(seats.includes(accountOf(name).memberId!), `the ${name} is on the page`);
+    // Only the team leader gives Approve orders, so only their Give access lists a full-access seat (issue #635).
+    const listedSeats = grantablePeople(page).filter((p) => p.role.kind === "full").map((p) => p.id);
+    for (const name of [FULL, "IT lead"]) assert.ok(listedSeats.includes(accountOf(name).memberId!), `the team leader's Give access lists the ${name}`);
+    for (const name of [FULL, "IT lead", "department head", "division lead"]) {
+      const theirs = await pageAs(name);
+      assert.deepEqual(grantablePeople(theirs).filter((p) => p.role.kind === "full"), [], `${name}'s Give access lists a full-access seat`);
     }
+  });
+
+  // Approve orders to a full-access seat (issue #635) ----------------------------
+
+  const SEAT = () => accountOf(FULL).memberId!;
+  const IT = () => accountOf("IT lead").memberId!;
+  const approveRow = (memberId: number) => ({ id: 9_300 + memberId, memberId, scope: "team", target: "approve_orders", accessLevel: "edit" });
+  const holderIds = (page: AccessPage) => page.approveOrders.holders.map((h) => h.person.id);
+
+  test("the team leader gives the operations lead Approve orders with no area, and the write lands", async () => {
+    seedKeeping();
+    signInAs(accountOf("team leader").userId);
+    const answer = await answerOf(() => actions.saveAccess({ personId: SEAT(), where: "team", areas: {}, approveOrders: true }));
+    assert.ok(!isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(scopeRowsOf(SEAT()).map((r) => `${r.scope} ${r.target}`), ["team approve_orders"]);
+    assert.ok(holderIds(await pageAs("team leader")).includes(SEAT()), "the next read lists them as a holder");
+  });
+
+  test("the team leader removes the operations lead's Approve orders, by Edit access and by Remove all access; the next read no longer lists them", async () => {
+    const removals: [string, () => Promise<unknown>][] = [
+      ["Edit access", () => actions.saveAccess({ personId: SEAT(), where: "team", areas: {}, approveOrders: false })],
+      ["Remove all access", () => actions.removeAllAccess(SEAT())],
+    ];
+    for (const [label, run] of removals) {
+      seedKeeping([approveRow(SEAT())]);
+      assert.ok(holderIds(await pageAs("team leader")).includes(SEAT()), `${label}: a holder before`);
+      const answer = await answerOf(run);
+      assert.ok(!isRefusal(answer), `${label}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(scopeRowsOf(SEAT()), [], `${label}: the row stays`);
+      assert.ok(!holderIds(await pageAs("team leader")).includes(SEAT()), `${label}: still listed as a holder`);
+    }
+  });
+
+  test("nobody but the team leader gives or removes Approve orders for a full-access seat, and a refusal writes nothing", async () => {
+    const cases: [string, readonly Record<string, unknown>[], () => Promise<unknown>][] = [];
+    for (const [name, target] of [
+      ["IT lead", SEAT],
+      [FULL, IT],
+      ["department head", SEAT],
+      ["division lead", SEAT],
+    ] as const) {
+      cases.push([name, [], () => actions.saveAccess({ personId: target(), where: "team", areas: {}, approveOrders: true })]);
+      cases.push([name, [approveRow(target())], () => actions.saveAccess({ personId: target(), where: "team", areas: {}, approveOrders: false })]);
+      cases.push([name, [approveRow(target())], () => actions.removeAllAccess(target())]);
+    }
+    for (const [name, rows, run] of cases) {
+      seedKeeping(rows);
+      signInAs(accountOf(name).userId);
+      const before = rowsIn(scopes).length;
+      const answer = await answerOf(run);
+      assert.ok(isRefusal(answer), `${name}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(recordedWrites(), [], `${name}: wrote`);
+      assert.equal(rowsIn(scopes).length, before, `${name}: the scope rows changed`);
+    }
+  });
+
+  test("every other grant to a full-access seat is still refused and writes nothing, an area beside Approve orders included", async () => {
+    const saves: [string, Record<string, unknown>][] = [
+      ["team leader", { personId: SEAT(), where: "team", areas: { content: "edit" } }],
+      ["team leader", { personId: SEAT(), where: "team", areas: { content: "edit" }, approveOrders: true }],
+      ["team leader", { personId: SEAT(), where: "team", areas: { orders: "view" }, approveOrders: true }],
+      ["team leader", { personId: IT(), where: `department-${IDS.department("MA")}`, areas: { members: "view" } }],
+      ["team leader", { personId: IT(), where: IDS.division("MA"), areas: { positions: "edit" }, approveOrders: true }],
+      ["team leader", { personId: SEAT(), where: "team", areas: {} }],
+      [FULL, { personId: IT(), where: "team", areas: { alumni: "view" } }],
+    ];
+    for (const [name, save] of saves) {
+      seedKeeping();
+      signInAs(accountOf(name).userId);
+      const answer = await answerOf(() => actions.saveAccess(save as Parameters<typeof actions.saveAccess>[0]));
+      assert.ok(isRefusal(answer), `${name} ${JSON.stringify(save)}: not refused: ${JSON.stringify(answer)}`);
+      assert.deepEqual(recordedWrites(), [], `${name} ${JSON.stringify(save)}: wrote`);
+    }
+  });
+
+  test("an operations lead who holds Approve orders decides orders with it", async () => {
+    seedKeeping();
+    signInAs(accountOf(FULL).userId);
+    const without = (await ((await openDashboard()) as { data: DashboardData }).data.orders()) as OrdersPage | null;
+    assert.equal(without?.scope.decides, null, "deciding before the grant");
+    signInAs(accountOf("team leader").userId);
+    assert.ok(!isRefusal(await actions.saveAccess({ personId: SEAT(), where: "team", areas: {}, approveOrders: true })));
+    signInAs(accountOf(FULL).userId);
+    // The Orders scope's `decides` is `decideRightOf` over the viewer's stored rows.
+    const page = (await ((await openDashboard()) as { data: DashboardData }).data.orders()) as OrdersPage | null;
+    assert.equal(page?.scope.decides, "approve-orders");
   });
 
   test("Give access lists the leads and heads in reach, never the viewer", async () => {
