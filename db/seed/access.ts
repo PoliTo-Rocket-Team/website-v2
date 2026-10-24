@@ -12,7 +12,8 @@ import {
   type AccessPlace,
   type AccessTarget,
 } from "@/lib/dashboard/division-access";
-import { PROPULSION_HEAD, TEAM_LEADER, TESTER_MEMBER, TWO_DIVISION_MEMBER } from "./people";
+import { SEATS, seatOf, type SeatGrant } from "@/lib/seeded-accounts";
+import { PROPULSION_HEAD, TEAM_LEADER, TWO_DIVISION_MEMBER } from "./people";
 import { publicMember } from "./public-team";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DEPARTMENT, DIVISION, DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
@@ -60,15 +61,23 @@ export const GRANTS: readonly Grant[] = [
   { memberId: ALUMNI_EDITOR, givenBy: TEAM_LEADER, place: WHOLE_TEAM_PLACE, target: "alumni", level: "edit" },
 ];
 
+if (seatOf("approve-orders").memberId !== APPROVE_ORDERS_ONLY) throw new Error("the Approve-orders seat is not the member who holds it alone");
+
+/** A seat's grant, given by the team leader across the whole team. */
+function seatGrantRow(memberId: number, grant: SeatGrant) {
+  // "Approve orders" is a `team` row on `approve_orders`, always at edit (./database-division.ts).
+  const where = grant.area === "approve_orders" ? ({ scope: "team", target: "approve_orders" } as const) : grantRowOf(WHOLE_TEAM_PLACE, grant.area);
+  return { memberId, givenBy: TEAM_LEADER, accessLevel: grant.level, ...where };
+}
+
 export const SCOPE_ROWS = rowsOf(scopes, [
   ...GRANTS.map(scopeRow),
-  // "Approve orders" is a `team` row on `approve_orders`, always at edit (./database-division.ts).
-  { memberId: APPROVE_ORDERS_ONLY, givenBy: TEAM_LEADER, scope: "team", target: "approve_orders", accessLevel: "edit" },
-  // The local testers' rows (issue #129): the division-lead tester edits all
-  // of Test Bench; the operations-lead tester edits positions team-wide, the
-  // access the recruitment switch checks.
-  { memberId: TESTER_MEMBER["division-lead"], scope: "division", target: "all", accessLevel: "edit", divisionId: DIVISION.testBench },
-  { memberId: TESTER_MEMBER["operations-lead"], scope: "org", target: "positions", accessLevel: "edit" },
+  // Every seat holds exactly the grants its row in lib/seeded-accounts.ts
+  // names (issues #595, #607): none for the team leader, the full-access
+  // seats, the head, the lead, the member, the alumnus and the applicant, so
+  // an access check starts from a clean seat; one each for the one-grant
+  // seats and the Approve-orders holder (docs/seed-cases.md, "Test seats").
+  ...SEATS.flatMap(({ memberId, grants }) => (memberId === null ? [] : grants.map((grant) => seatGrantRow(memberId, grant)))),
 ]);
 
 export const access = tableSeedModule({

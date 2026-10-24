@@ -1,15 +1,19 @@
 // The preview build's database step (issue #307, ADR 0016). Every preview
 // deployment reads one shared Neon branch named `preview`. Before
 // `next build`, a Vercel preview build migrates the database it is given and
-// seeds it only when it is still empty; it never resets it, so what testers
-// make on a preview lasts across preview builds (issue #465, ADR 0016
-// amendment of 2026-10-21). Production and development builds, and a preview
-// given no database, never touch a database here. The steps run against a
-// target the seed guard approved, one build at a time: they hold one lock
-// across the migration, the emptiness read and the seed, and the seed itself
-// is one transaction, so a second build that runs anyway cannot leave the
-// branch half-seeded.
+// seeds it only when it is still empty; an ordinary build never resets it, so
+// what testers make on a preview lasts across preview builds (issue #465, ADR
+// 0016 amendment of 2026-10-21). The one exception is a re-seed the owner
+// asked for with `PREVIEW_RESEED_REQUEST` (issue #595, ./reseed.ts): the
+// first build that sees a value the branch has not served yet empties the
+// branch and seeds it again, and records the value so no later build repeats
+// it. Production and development builds, and a preview given no database,
+// never touch a database here. The steps run against a target the seed guard
+// approved, one build at a time: they hold one lock across the migration, the
+// reads and the seed, and each seed is one transaction, so a second build
+// that runs anyway cannot leave the branch half-seeded.
 
+import { RESEED_REQUEST_VARIABLE, ReseedRequest, reseedVerdictOf } from "./reseed";
 import type { SeedReport } from "./runner";
 import { parseTarget, type ApprovedSeedTarget, type GuardVerdict } from "./target";
 
@@ -20,13 +24,15 @@ export type PreviewBuildEnv = {
   readonly DATABASE_URL?: string;
   /** The direct connection string to the same database. The lock, the migration and the seed all run on it (ADR 0016). */
   readonly DATABASE_URL_UNPOOLED?: string;
+  /** A new value asks for one re-seed of the `preview` branch (./reseed.ts); unset or a served value asks for none. */
+  readonly PREVIEW_RESEED_REQUEST?: string;
 };
 
 /** What this build does with its database, decided from the environment alone. */
 export type PreviewBuildPlan =
   | { readonly kind: "skip"; readonly why: string }
   | { readonly kind: "refuse"; readonly why: string }
-  | { readonly kind: "prepare"; readonly connectionString: string };
+  | { readonly kind: "prepare"; readonly connectionString: string; readonly reseed: ReseedRequest | null };
 
 /** The database a connection string names: the Neon endpoint, or the host. */
 function databaseOf(connectionString: string): string {
@@ -62,7 +68,9 @@ export function previewBuildPlan(env: PreviewBuildEnv): PreviewBuildPlan {
   if (databaseOf(direct) !== databaseOf(pooled)) {
     return { kind: "refuse", why: "DATABASE_URL and DATABASE_URL_UNPOOLED name different databases" };
   }
-  return { kind: "prepare", connectionString: direct };
+  const reseed = ReseedRequest.read(env.PREVIEW_RESEED_REQUEST);
+  if (reseed.kind === "invalid") return { kind: "refuse", why: reseed.why };
+  return { kind: "prepare", connectionString: direct, reseed: reseed.kind === "requested" ? reseed.request : null };
 }
 
 /** The real work, behind seams the unit test replaces. */
@@ -75,6 +83,10 @@ export type PreviewBuildSteps = {
   /** Reads, and never writes, whether `target` holds no seeded rows yet. */
   contents(target: ApprovedSeedTarget): Promise<PreviewDatabaseContents>;
   seed(target: ApprovedSeedTarget): Promise<SeedReport>;
+  /** Reads, and never writes, whether `target` already served `request`. */
+  served(target: ApprovedSeedTarget, request: ReseedRequest): Promise<boolean>;
+  /** Empties `target`, seeds it and records `request`, in one transaction (./reseed.ts). */
+  reseed(target: ApprovedSeedTarget, request: ReseedRequest): Promise<SeedReport>;
 };
 
 /** What the emptiness read found: a database the seed never filled, or one that holds rows. */
@@ -85,14 +97,21 @@ export type PreviewBuildOutcome =
   | { readonly kind: "refused"; readonly why: string }
   /** The database was empty: it was migrated, then seeded. */
   | { readonly kind: "migrated-and-seeded"; readonly report: SeedReport }
-  /** The database already held rows: it was migrated and its rows were left as they were. */
-  | { readonly kind: "migrated"; readonly target: ApprovedSeedTarget };
+  /** The owner asked for a re-seed the branch had not served: it was migrated, emptied and seeded. */
+  | { readonly kind: "migrated-and-reseeded"; readonly report: SeedReport; readonly request: ReseedRequest }
+  /**
+   * The database already held rows: it was migrated and its rows were left
+   * as they were. `servedRequest` is the re-seed request this build carried
+   * and an earlier build already served, or null when it carried none.
+   */
+  | { readonly kind: "migrated"; readonly target: ApprovedSeedTarget; readonly servedRequest: ReseedRequest | null };
 
 /**
- * Migrates the preview's database, then seeds it only when it is empty. It
- * never resets it. Nothing runs unless the plan says prepare and the guard
- * approves the exact target; the migration, the emptiness read and the seed
- * run under one lock, in that order.
+ * Migrates the preview's database, then re-seeds it when the owner asked for
+ * a re-seed it has not served, else seeds it only when it is empty. Nothing
+ * runs unless the plan says prepare and the guard approves the exact target;
+ * a re-seed also needs that target to be the `preview` branch. The
+ * migration, the reads and the seed run under one lock, in that order.
  */
 export async function preparePreviewDatabase(env: PreviewBuildEnv, steps: PreviewBuildSteps): Promise<PreviewBuildOutcome> {
   const plan = previewBuildPlan(env);
@@ -102,10 +121,18 @@ export async function preparePreviewDatabase(env: PreviewBuildEnv, steps: Previe
   if (!verdict.ok) {
     return { kind: "refused", why: `the seed guard refused (${verdict.refusal.reason}): ${verdict.refusal.detail}` };
   }
+  const { reseed } = plan;
+  if (reseed !== null) {
+    const allowed = reseedVerdictOf(verdict);
+    if (!allowed.ok) return { kind: "refused", why: `${RESEED_REQUEST_VARIABLE} is set, but ${allowed.why}` };
+  }
   const { target } = verdict;
   return steps.exclusive(target, async (): Promise<PreviewBuildOutcome> => {
     await steps.migrate(target);
-    if ((await steps.contents(target)) === "has-data") return { kind: "migrated", target };
+    if (reseed !== null && !(await steps.served(target, reseed))) {
+      return { kind: "migrated-and-reseeded", report: await steps.reseed(target, reseed), request: reseed };
+    }
+    if ((await steps.contents(target)) === "has-data") return { kind: "migrated", target, servedRequest: reseed };
     return { kind: "migrated-and-seeded", report: await steps.seed(target) };
   });
 }

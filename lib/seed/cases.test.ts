@@ -6,7 +6,19 @@ import { publicItems, versionRows, type ContentItem } from "../content/versioned
 import { ANONYMIZED_EMAIL, CLEARED_MEMBER } from "../dashboard/anonymize";
 import { APPLICATION_STAGES } from "../dashboard/application-flow";
 import { TEST_VIEWERS } from "../dashboard/viewer";
+import { ACCESS_LEVEL_LABELS, ACCESS_TARGET_LABELS, ACCESS_TARGETS } from "../dashboard/division-access";
 import { TESTERS } from "../dev-tester";
+import {
+  ADMIN_TESTERS,
+  SEATS,
+  SEEDED_ACCOUNTS,
+  seatOf,
+  type AdminTester,
+  type Seat,
+  type SeatGrant,
+  type SeatGrantArea,
+  type SeatRole,
+} from "../seeded-accounts";
 import { checkFaqFields, fieldsOf as faqFields } from "../faq/faq";
 import { checkPartnerFields, fieldsOf as partnerFields } from "../partners-fields";
 import { checkProjectFields, fieldsOf as projectFields } from "../project-content/fields";
@@ -490,4 +502,125 @@ test("each seeded advisor is one the Advisors panel would keep as it is", () => 
     const { place: _, ...advisor } = item.version.published;
     assert.deepEqual(advisorOfFields(advisorFields(advisor)), advisor, item.version.published.name);
   }
+});
+
+// The plain seats and the admin testers (issues #595, #607): every seat in
+// lib/seeded-accounts.ts holds exactly the roles and grants its row names and
+// nothing else, so an access check on a re-seeded preview starts from a clean
+// seat; every admin tester is stored as an admin and holds no team role and
+// no grant.
+
+type SeedRole = (typeof data.roles)[number];
+type SeedScope = (typeof data.scopes)[number];
+
+function unitName(role: SeedRole): string {
+  if (role.divisionId != null) return data.divisions.find((d) => d.id === role.divisionId)!.name!;
+  if (role.deptId != null) return data.departments.find((d) => d.id === role.deptId)!.name!;
+  return "the team";
+}
+
+/** A seeded role, read as a seat names it. */
+function seatRoleOf(r: SeedRole): SeatRole {
+  const unit = r.divisionId != null ? "division" : r.deptId != null ? "department" : "team";
+  return { type: r.type as SeatRole["type"], unit, fullAccess: (r.fullAccess ?? null) as SeatRole["fullAccess"] };
+}
+
+/** A seeded `scopes` row, read as a seat's grant and where it holds. */
+function seatGrantOf(s: SeedScope): SeatGrant & { readonly across: string } {
+  const across = s.scope === "department" ? `department ${s.deptId}` : s.scope === "division" ? `division ${s.divisionId}` : "team";
+  const area: SeatGrantArea =
+    s.scope === "website" ? (s.target === "content" ? "content" : "alumni") : (s.target as SeatGrantArea);
+  return { area, level: s.accessLevel!, across };
+}
+
+const byJson = <T,>(values: readonly T[]) => values.map((v) => JSON.stringify(v)).sort();
+
+function seatHoldings(seat: Seat) {
+  const theirs = seat.memberId === null ? [] : data.roles.filter((r) => r.memberId === seat.memberId);
+  const scopes = seat.memberId === null ? [] : data.scopes.filter((s) => s.memberId === seat.memberId);
+  return { active: theirs.filter(isActive), ended: theirs.filter((r) => !isActive(r)), scopes };
+}
+
+test("each seat holds exactly the roles and grants its name says, and nothing else", () => {
+  for (const seat of SEATS) {
+    const { active, ended, scopes } = seatHoldings(seat);
+    assert.equal(memberOfUser(data, seat.id), seat.memberId, `${seat.key} is member ${seat.memberId}`);
+    assert.deepEqual(byJson(active.map(seatRoleOf)), byJson(seat.roles), `${seat.key} roles`);
+    assert.equal(ended.length > 0, seat.former, `${seat.key} ${seat.former ? "held" : "held no"} ended roles`);
+    assert.deepEqual(byJson(scopes.map(seatGrantOf)), byJson(seat.grants.map((g) => ({ ...g, across: "team" }))), `${seat.key} grants`);
+  }
+  assert.equal(seatOf("non-member").memberId, null, "the applicant is no member");
+  assert.ok(data.alumniEntries.some((e) => e.memberId === seatOf("alumni").memberId), "the alumnus keeps an Alumni entry");
+});
+
+test("the seats cover every kind the seed names: one per single grant and an Approve-orders holder among them", () => {
+  const oneGrant = SEATS.filter((s) => s.grants.length === 1 && s.grants[0].area !== "approve_orders").map((s) => s.grants[0].area);
+  assert.deepEqual([...oneGrant].sort(), [...ACCESS_TARGETS].sort());
+  assert.deepEqual(seatOf("approve-orders").grants, [{ area: "approve_orders", level: "edit" }]);
+  for (const viewer of TEST_VIEWERS) assert.equal(TEST_VIEWER_PEOPLE[viewer], seatOf(viewer).id, `${viewer} views as its seat`);
+});
+
+test("the seeded admin testers are stored as admins and hold no team role and no grant", () => {
+  assert.ok(ADMIN_TESTERS.length >= 1);
+  for (const admin of ADMIN_TESTERS) {
+    const user = data.users.find((u) => u.id === admin.id);
+    assert.ok(user, `${admin.key} has a users row`);
+    assert.equal(user.member ?? null, null, `${admin.key} has no member row, so no role and no grant`);
+    const signIn = TESTER_AUTH_ROWS.rows.filter((row) => row.id === admin.id);
+    assert.deepEqual(signIn.map((row) => [row.email, row.role]), [[admin.email, "admin"]], admin.key);
+  }
+  const admins = TESTER_AUTH_ROWS.rows.filter((row) => row.role === "admin").map((row) => row.id);
+  assert.deepEqual(admins, ADMIN_TESTERS.map((a) => a.id), "nobody else is stored as an admin");
+});
+
+test("every seat and admin tester has one stable id and email, seeded on its users row and its sign-in row", () => {
+  unique(SEEDED_ACCOUNTS.map((a) => a.key), "account key");
+  unique(SEEDED_ACCOUNTS.map((a) => a.id), "account id");
+  unique(SEEDED_ACCOUNTS.map((a) => a.email), "account email");
+  for (const account of SEEDED_ACCOUNTS) {
+    const user = data.users.find((u) => u.id === account.id);
+    assert.ok(user, `${account.key} has a users row`);
+    assert.equal(user.email, account.email, `${account.key} email`);
+    assert.equal(`${user.firstName} ${user.lastName}`, account.name, `${account.key} name`);
+    const signIn = TESTER_AUTH_ROWS.rows.filter((row) => row.id === account.id);
+    assert.deepEqual(signIn.map((row) => row.email), [account.email], `${account.key} has one sign-in row`);
+  }
+});
+
+/** One row of docs/seed-cases.md's "Test seats" table, read off the seed. */
+function seatDocRow(seat: Seat): string {
+  const { active, ended, scopes } = seatHoldings(seat);
+  const person = `${seat.name}: ${seat.memberId === null ? "no member row" : `member ${seat.memberId}`}, user \`${seat.id}\`, \`${seat.email}\``;
+  const role = (r: SeedRole) => `${r.title} (\`${r.type}\`${r.fullAccess ? `, full access \`${r.fullAccess}\`` : ""}) in ${unitName(r)}`;
+  const roles =
+    active.length > 0 ? active.map(role).join("; ") : ended.length > 0 ? `none now; ended: ${ended.map(role).join("; ")}` : "none";
+  const grant = (s: SeedScope) => {
+    const { area, level } = seatGrantOf(s);
+    return area === "approve_orders" ? `"Approve orders" (\`approve_orders\`)` : `${ACCESS_TARGET_LABELS[area]} at ${ACCESS_LEVEL_LABELS[level]} across the whole team`;
+  };
+  const grants = scopes.length > 0 ? scopes.map(grant).join("; ") : "none: no `scopes` row";
+  return `| ${seat.label} | ${person} | ${roles} | ${grants} | ${seat.sees} |`;
+}
+
+/** One row of docs/seed-cases.md's "Admin testers" table. */
+function adminDocRow(admin: AdminTester): string {
+  return `| ${admin.label} | ${admin.name}: no member row, user \`${admin.id}\`, \`${admin.email}\` | \`${admin.storedRole}\` | ${admin.sees} |`;
+}
+
+function docSection(heading: string): string[] {
+  const doc = readFileSync(resolve(process.cwd(), "docs/seed-cases.md"), "utf8");
+  const start = doc.indexOf(`## ${heading}`);
+  assert.ok(start >= 0, `docs/seed-cases.md has a ${heading} section`);
+  const end = doc.indexOf("\n## ", start + 1);
+  return doc.slice(start, end < 0 ? undefined : end).split("\n");
+}
+
+test("docs/seed-cases.md lists each seat with its seeded person, roles, grants and what it sees, as the seed holds them", () => {
+  const rows = docSection("Test seats").filter((line) => SEATS.some((s) => line.startsWith(`| ${s.label} |`)));
+  assert.deepEqual(rows, SEATS.map(seatDocRow));
+});
+
+test("docs/seed-cases.md lists each admin tester with its account, stored role and what it sees", () => {
+  const rows = docSection("Admin testers").filter((line) => ADMIN_TESTERS.some((a) => line.startsWith(`| ${a.label} |`)));
+  assert.deepEqual(rows, ADMIN_TESTERS.map(adminDocRow));
 });

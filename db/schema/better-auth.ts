@@ -30,7 +30,7 @@ export const betterAuthUsers = betterAuthSchema.table(
     })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
-    // Better Auth's admin plugin (issue #604, drizzle/0055). `role` is
+    // Better Auth's admin plugin (issue #604, drizzle/0056). `role` is
     // "admin" only for a seeded admin tester, who may use View as on a
     // preview or under `next dev`; production reads the IT lead seat from
     // the roles instead (lib/dashboard/view-as.ts).
@@ -109,7 +109,7 @@ export const betterAuthSessions = betterAuthSchema.table(
     userId: text("userId")
       .notNull()
       .references(() => betterAuthUsers.id, { onDelete: "cascade" }),
-    // The acting account behind a View as session (issue #604, drizzle/0055);
+    // The acting account behind a View as session (issue #604, drizzle/0056);
     // null for a plain session. `userId` is the person viewed as.
     impersonatedBy: text("impersonatedBy"),
   },

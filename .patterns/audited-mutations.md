@@ -14,7 +14,7 @@ made stale. Client components import the action functions directly.
    [0003](../drizzle/0003_logs_changed_by_user_fk.sql)) reads that setting into `logs.changed_by`.
    The same setup sets `request.acting_account` to the account behind a View as session, read from
    the session (`auditWriterFor` in [lib/audit-writer.ts](../lib/audit-writer.ts)), and empty
-   otherwise; since [0056](../drizzle/0056_impersonated_write_attribution.sql) the trigger stores it
+   otherwise; since [0057](../drizzle/0057_impersonated_write_attribution.sql) the trigger stores it
    in `logs.changed_by_acting_account` (issue #605). A write that names its author in a member-id
    "by" column (`given_by`, `reviewed_by`, ...) also sets that column's `..._acting_account`
    companion from `identity.actingAccountId`, and a read shows it with `attributedName`
