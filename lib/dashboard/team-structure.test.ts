@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NO_MEMBER_DETAILS } from "./details";
+import { NO_NAME } from "./person-name";
 import type { PersonRecord } from "./division-members";
 import { membershipsOf, type OrgChart, type RoleBeyondDivisions, type TeamActor } from "./team";
 import { editableDivisionIds, editViewIntro, showsTreeEdit, teamStructure } from "./team-structure";
@@ -25,6 +26,7 @@ function record(id: number, name: string, list: [number, "lead" | "member"][], b
   return {
     id,
     name,
+    storedName: NO_NAME,
     signInEmail: `${id}@prt.it`,
     photoUrl: null,
     since: 2024,

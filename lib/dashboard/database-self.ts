@@ -33,10 +33,10 @@ import { readHandOverOffer } from "./database-hand-over";
 import { memberLeftNoticesFor } from "./database-notices";
 import {
   columnsFromDetails,
+  detailsEditorOf,
   detailsFromColumns,
   firstDetailError,
   parseDetailsChange,
-  type DetailsEditor,
   type YourDetails,
 } from "./details";
 import {
@@ -68,6 +68,7 @@ import {
   type MyProfile,
 } from "./self";
 import { refreshAfter } from "@/lib/cache-tags";
+import { namesThemselves } from "./person-name";
 import { isOffTeam } from "./viewer";
 import { refused, written, type Upload, type WriteResult } from "./write";
 
@@ -112,6 +113,7 @@ async function readProfile(identity: DashboardIdentity): Promise<MyProfile | nul
   const linkedin = identity.linkedin === null ? null : normalizeLinkedin(identity.linkedin);
   return {
     name: identity.name,
+    detailsEditor: namesThemselves(identity.kind) ? "lead" : "member",
     // Every division they are in, not only the one a single-division page names (issue #185).
     roles: profileRolesOf(identity.role, identity.roles),
     teamEmail: member?.prt_email ?? null,
@@ -233,13 +235,13 @@ async function readAccount(identity: DashboardIdentity): Promise<MyAccount | nul
   };
 }
 
-/** Someone off the team edits every field on My account; anyone on the team edits only My profile's. */
-function detailsEditorOf(identity: DashboardIdentity): DetailsEditor {
-  return isOffTeam(identity.kind) ? "applicant" : "member";
-}
-
+/**
+ * Someone off the team edits every field on My account; anyone on the team
+ * only My profile's, their own name only when they rename themselves
+ * (`detailsEditorOf`, issue #668): a member's name sent here is dropped.
+ */
 async function saveDetails(identity: DashboardIdentity, input: unknown): Promise<WriteResult<YourDetails>> {
-  const parsed = parseDetailsChange(input, detailsEditorOf(identity));
+  const parsed = parseDetailsChange(input, detailsEditorOf(identity.kind));
   if (!parsed.ok) return refused(firstDetailError(parsed.errors));
   await runAuditQuery((db) =>
     db
@@ -247,6 +249,8 @@ async function saveDetails(identity: DashboardIdentity, input: unknown): Promise
       .set({ ...columnsFromDetails(parsed.value), updatedAt: sql`now()` })
       .where(eq(users.id, identity.userId)),
   );
+  // A team member's name is on the Team page and every roster, which read the cached team.
+  if (!isOffTeam(identity.kind) && parsed.value.firstName !== undefined) refreshAfter("team", updateTag);
   return written(await readDetails(identity.userId));
 }
 

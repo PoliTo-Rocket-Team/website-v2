@@ -29,6 +29,7 @@ import {
   type WaitingPerson,
 } from "@/lib/dashboard/division-members";
 import type { EditPerson, MemberActions } from "@/lib/dashboard/members-view";
+import { MAX_NAME, type PersonName } from "@/lib/dashboard/person-name";
 import { divisionLabel, type DivisionRole } from "@/lib/dashboard/team";
 import { shortDate } from "@/lib/dashboard/write";
 import { Avatar } from "./avatar";
@@ -496,12 +497,19 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
   const [leads, setLeads] = useState<Readonly<Record<number, DivisionRole>>>(() =>
     Object.fromEntries((position?.leads ?? []).map((l) => [l.divisionId, l.role])),
   );
+  // Their first and last name, for someone on the team (issue #668); someone waiting keeps the name they were added with.
+  const [names, setNames] = useState<PersonName | null>(position?.name ?? null);
   const [asking, setAsking] = useState<Asking | null>(null);
   const [pending, setPending] = useState(false);
 
+  const setName = (key: keyof PersonName, value: string) => {
+    setNames((n) => (n === null ? n : { ...n, [key]: value }));
+    setErrors((errs) => ({ ...errs, [key]: undefined }));
+  };
+
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const input = { title: draft.title, details: detailsOf(draft) };
+    const input = { title: draft.title, details: detailsOf(draft), ...names };
     const checked = checkMemberEdit(input, title?.kind === "seat" ? "required" : "optional");
     if (!checked.ok) return setErrors(checked.errors);
     setPending(true);
@@ -525,7 +533,7 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
           return;
         }
       }
-      toast.success(`Saved ${name}`);
+      toast.success(`Saved ${checked.value.name === null ? name : `${checked.value.name.firstName} ${checked.value.name.lastName}`}`);
       onClose();
     } finally {
       setPending(false);
@@ -547,6 +555,43 @@ function EditForm({ open, target, onClose }: { open: boolean; target: EditTarget
         {person && (
           <Section title="Photo">
             <PhotoField person={person} />
+          </Section>
+        )}
+
+        {names !== null && (
+          <Section title="Name">
+            <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
+              <Field label="First name" error={errors.firstName}>
+                {(id, describedBy) => (
+                  <input
+                    id={id}
+                    value={names.firstName}
+                    maxLength={MAX_NAME}
+                    autoComplete="off"
+                    aria-required
+                    aria-describedby={describedBy}
+                    aria-invalid={errors.firstName !== undefined}
+                    onChange={(e) => setName("firstName", e.target.value)}
+                    className={inputClass(errors.firstName)}
+                  />
+                )}
+              </Field>
+              <Field label="Last name" error={errors.lastName}>
+                {(id, describedBy) => (
+                  <input
+                    id={id}
+                    value={names.lastName}
+                    maxLength={MAX_NAME}
+                    autoComplete="off"
+                    aria-required
+                    aria-describedby={describedBy}
+                    aria-invalid={errors.lastName !== undefined}
+                    onChange={(e) => setName("lastName", e.target.value)}
+                    className={inputClass(errors.lastName)}
+                  />
+                )}
+              </Field>
+            </div>
           </Section>
         )}
 

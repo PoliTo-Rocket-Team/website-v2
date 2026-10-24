@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, roles, scopes, teamLeaves } from "@/db/schema";
+import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, roles, scopes, teamLeaves, users } from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
 import { importedProjects } from "@/lib/project-content/import";
@@ -1657,6 +1657,220 @@ describe("Edit details sets a seat's title: the team leader and full access only
       );
       assert.deepEqual(answer, { ok: false, error: SEAT_TITLE_REQUIRED });
       assert.deepEqual(writes, []);
+    }
+  });
+});
+
+describe("a rename sets a member's first and last name: leads, heads, the team leader and full access, by Edit details' reach (Owner decision, 2026-10-24, issue #668)", () => {
+  const NEW_NAME = { firstName: "Giulia", lastName: "Ferraro" };
+  /** The first and last name on `memberId`'s users row, as stored. */
+  const storedNameOf = async (memberId: number) => {
+    const row = (await tableRows(users)).find((u) => u.member === memberId);
+    return { firstName: row?.firstName, lastName: row?.lastName };
+  };
+  /** A Members grant at `level` in `u`, for the plain member viewer. */
+  const membersGrant = (u: Unit, level: "view" | "edit"): typeof scopes.$inferInsert => ({
+    id: 9_300,
+    memberId: accountOf("member").memberId!,
+    scope: "division",
+    target: "members",
+    accessLevel: level,
+    divisionId: IDS.division(u),
+  });
+
+  /** Renames `personId` as `viewer` through Edit details, on a freshly seeded database: the answer, the writes, and the name stored before and after. */
+  async function renameAs(viewer: string, personId: number, divisionId: number | null, name: unknown = NEW_NAME, setup = async () => {}) {
+    await seedFixture();
+    resetFiles();
+    await setup();
+    const before = await storedNameOf(personId);
+    signInAs(userIdOf(viewer));
+    const answer = await answerOf(() =>
+      teamActions.saveMemberDetails({ kind: "person", id: personId }, divisionId, { title: "Engineer", details: MEMBER_DETAILS, ...(name as object) }),
+    );
+    return { answer, writes: await databaseWrites(), before, after: await storedNameOf(personId) };
+  }
+
+  test("a division lead renames a member of their own division: the person's users row holds the new names, trimmed", async () => {
+    const { answer, after } = await renameAs("division lead", IDS.person("MA"), IDS.division("MA"), { firstName: "  Giulia ", lastName: " Ferraro" });
+    assert.deepEqual(answer, { ok: true });
+    assert.deepEqual(after, NEW_NAME);
+  });
+
+  test("a division lead's rename of someone outside their division is refused and writes nothing", async () => {
+    for (const [personId, divisionId] of [
+      [IDS.person(DM), IDS.division(DM)],
+      [IDS.person("OA"), IDS.division("OA")],
+      [IDS.person(DM), IDS.division("MA")],
+    ] as const) {
+      const { answer, writes, before, after } = await renameAs("division lead", personId, divisionId);
+      assert.ok(isRefusal(answer), `${personId}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, []);
+      assert.deepEqual(after, before);
+    }
+  });
+
+  test("a department head renames their department's people and is refused outside it", async () => {
+    for (const u of ["MA", "OA"] as const) {
+      const { answer, after } = await renameAs("department head", IDS.person(u), IDS.division(u));
+      assert.deepEqual(answer, { ok: true }, u);
+      assert.deepEqual(after, NEW_NAME, u);
+    }
+    const outside = await renameAs("department head", IDS.person(DM), IDS.division(DM));
+    assert.ok(isRefusal(outside.answer));
+    assert.deepEqual(outside.writes, []);
+    assert.deepEqual(outside.after, outside.before);
+  });
+
+  test("the team leader and every full-access seat rename anyone on the team, a seat with no division included", async () => {
+    for (const viewer of ["team leader", "operations lead", "IT lead", "Project Manager", "Chief Engineer"]) {
+      for (const [personId, divisionId] of [
+        [IDS.person(DM), IDS.division(DM)],
+        [IDS.person("MA"), IDS.division("MA")],
+        [EXTRA.head, null],
+      ] as const) {
+        const { answer, after } = await renameAs(viewer, personId, divisionId);
+        assert.deepEqual(answer, { ok: true }, `${viewer} on ${personId}`);
+        assert.deepEqual(after, NEW_NAME, `${viewer} on ${personId}`);
+      }
+    }
+  });
+
+  test("a plain member is refused a rename of anyone, and writes nothing", async () => {
+    for (const [personId, divisionId] of [
+      [IDS.person("MA"), IDS.division("MA")],
+      [IDS.person(DM), IDS.division(DM)],
+      [EXTRA.head, null],
+    ] as const) {
+      const { answer, writes, before, after } = await renameAs("member", personId, divisionId);
+      assert.ok(isRefusal(answer), `${personId}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, []);
+      assert.deepEqual(after, before);
+    }
+  });
+
+  test("a member with only a Members grant follows its level: Can edit renames in the granted division alone, Can view renames nobody", async () => {
+    const granted = await renameAs("member", IDS.person("MA"), IDS.division("MA"), NEW_NAME, () => addRows(scopes, [membersGrant("MA", "edit")]));
+    assert.deepEqual(granted.answer, { ok: true });
+    assert.deepEqual(granted.after, NEW_NAME);
+    const elsewhere = await renameAs("member", IDS.person(DM), IDS.division(DM), NEW_NAME, () => addRows(scopes, [membersGrant("MA", "edit")]));
+    assert.ok(isRefusal(elsewhere.answer));
+    assert.deepEqual(elsewhere.writes, []);
+    const viewing = await renameAs("member", IDS.person("MA"), IDS.division("MA"), NEW_NAME, () => addRows(scopes, [membersGrant("MA", "view")]));
+    assert.ok(isRefusal(viewing.answer));
+    assert.deepEqual(viewing.writes, []);
+    assert.deepEqual(viewing.after, viewing.before);
+  });
+
+  test("nobody renames themselves through Edit details: the self refusal holds for a name change", async () => {
+    for (const [viewer, divisionId] of [
+      ["division lead", IDS.division("MA")],
+      ["department head", null],
+      ["team leader", null],
+      ["operations lead", null],
+    ] as const) {
+      const { answer, writes, before, after } = await renameAs(viewer, accountOf(viewer).memberId!, divisionId);
+      assert.ok(isRefusal(answer), `${viewer}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, [], viewer);
+      assert.deepEqual(after, before, viewer);
+    }
+  });
+
+  test("a blank first or last name, one over 100 characters, or only one of the two is refused with the field's error, and writes nothing", async () => {
+    for (const [name, error] of [
+      [{ firstName: "", lastName: "Ferraro" }, "Enter their first name."],
+      [{ firstName: "Giulia", lastName: "   " }, "Enter their last name."],
+      [{ firstName: "G".repeat(101), lastName: "Ferraro" }, "Too long."],
+      [{ firstName: "Giulia", lastName: "F".repeat(101) }, "Too long."],
+      [{ firstName: "Giulia" }, "Enter their last name."],
+    ] as const) {
+      const { answer, writes, before, after } = await renameAs("team leader", IDS.person(DM), IDS.division(DM), name);
+      assert.deepEqual(answer, { ok: false, error }, JSON.stringify(name));
+      assert.deepEqual(writes, []);
+      assert.deepEqual(after, before);
+    }
+  });
+
+  test("someone waiting for their NDA is not renamed through Fill details", async () => {
+    await seedFixture();
+    signInAs(accountOf("team leader").userId);
+    const answer = await answerOf(() =>
+      teamActions.saveMemberDetails({ kind: "waiting", joinId: IDS.join(DM) }, IDS.division(DM), { title: "", details: MEMBER_DETAILS, ...NEW_NAME }),
+    );
+    assert.ok(isRefusal(answer), JSON.stringify(answer));
+    assert.deepEqual(await databaseWrites(), []);
+  });
+
+  test("Edit details starts at the stored names, and after a rename the public Team page shows the new name", async () => {
+    const leader = await open("team leader");
+    const roster = await leader.members(null);
+    const position = roster.scope === "whole-team" ? roster.positions.find((p) => p.id === IDS.person(DM)) : undefined;
+    assert.deepEqual(position?.name, { firstName: "Person", lastName: DM });
+    const { answer } = await renameAs("team leader", IDS.person(DM), IDS.division(DM));
+    assert.deepEqual(answer, { ok: true });
+    const shown = (await databaseTeamRoles()).people.find((p) => p.id === IDS.person(DM));
+    assert.equal(shown?.name, "Giulia Ferraro");
+  });
+});
+
+describe("My profile: leads, heads, the team leader and full access rename themselves; a member's name stays their lead's (Owner decision, 2026-10-24, issue #668)", () => {
+  /** The first and last name on the account's users row, as stored. */
+  const ownNameOf = async (userId: string) => {
+    const row = (await tableRows(users)).find((u) => u.id === userId);
+    return { firstName: row?.firstName, lastName: row?.lastName };
+  };
+  const OWN = { ...DETAILS, firstName: "Marco", lastName: "Bianchi" };
+
+  /** Saves "Your details" as `viewer` on a freshly seeded database: the answer, and their stored name before and after. */
+  async function saveOwn(viewer: string, input: unknown) {
+    await seedFixture();
+    resetFiles();
+    const userId = userIdOf(viewer);
+    const before = await ownNameOf(userId);
+    signInAs(userId);
+    const answer = await answerOf(() => actions.saveDetails(input));
+    return { answer, before, after: await ownNameOf(userId) };
+  }
+
+  test("a division lead, a department head, the team leader and full-access seats save their own first and last name", async () => {
+    for (const viewer of ["division lead", "department head", "team leader", "operations lead", "IT lead", "org-wide editor"]) {
+      const { answer, after } = await saveOwn(viewer, OWN);
+      assert.equal(isRefusal(answer), false, `${viewer}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(after, { firstName: "Marco", lastName: "Bianchi" }, viewer);
+      const opening = await openDashboard();
+      assert.equal(opening.kind, "open");
+      assert.equal((await (opening as { data: DashboardData }).data.myProfile())?.name, "Marco Bianchi", `${viewer}: My profile reads the new name`);
+    }
+  });
+
+  test("My profile offers the name in Your details to those who rename themselves, and keeps it locked for every member", async () => {
+    for (const viewer of ["division lead", "department head", "team leader", "Project Manager"]) {
+      assert.equal((await (await open(viewer)).myProfile())?.detailsEditor, "lead", viewer);
+    }
+    for (const viewer of ["member", "member with a Positions grant (Can view) in MA", "member with a Content grant", "member with Approve orders"]) {
+      assert.equal((await (await open(viewer)).myProfile())?.detailsEditor, "member", viewer);
+    }
+  });
+
+  test("a plain member and a member whose only access is a grant send a name change, and their stored name stays", async () => {
+    for (const viewer of ["member", "member with a Positions grant (Can view) in MA", "member with an Applications grant (Can edit) in MA and (Can view) in DM"]) {
+      const { answer, before, after } = await saveOwn(viewer, OWN);
+      assert.equal(isRefusal(answer), false, `${viewer}: the other fields still save`);
+      assert.deepEqual(after, before, viewer);
+    }
+    const granted = await saveOwn("person-dm", OWN);
+    assert.deepEqual(granted.after, granted.before, "a member with a Members grant");
+  });
+
+  test("a lead's own blank or too-long name is refused and nothing changes", async () => {
+    for (const [name, error] of [
+      [{ firstName: " ", lastName: "Bianchi" }, "Enter your first name."],
+      [{ firstName: "Marco", lastName: "" }, "Enter your last name."],
+      [{ firstName: "M".repeat(101), lastName: "Bianchi" }, "Too long."],
+    ] as const) {
+      const { answer, before, after } = await saveOwn("division lead", { ...DETAILS, ...name });
+      assert.deepEqual(answer, { ok: false, error }, JSON.stringify(name));
+      assert.deepEqual(after, before);
     }
   });
 });

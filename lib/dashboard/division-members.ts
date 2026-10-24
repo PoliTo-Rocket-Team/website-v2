@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NO_MEMBER_DETAILS, parseMemberDetails, type MemberDetailErrors, type MemberDetails } from "./details";
+import { nameRule, NO_NAME, type PersonName } from "./person-name";
 import {
   beyondTitle,
   divisionLabel,
@@ -124,6 +125,8 @@ export type PositionTitle =
 
 /** What the viewer may change about someone's place on the team from Edit details. */
 export type MemberPosition = {
+  /** Their first and last name as stored, which Edit details renames them by (issue #668): anyone who may edit them may. */
+  readonly name: PersonName;
   readonly title: PositionTitle;
   readonly leads: readonly LeadChoice[];
   /** Every division of theirs the viewer reaches; the panel and the ⋯ menu show those offered or locked. */
@@ -154,6 +157,7 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
   const short = (divisionId: number) => divisionLabel(org.divisions.find((d) => d.id === divisionId)?.name ?? "");
   const titled = reached.find((m) => m.divisionId === titleIn) ?? reached[0];
   return {
+    name: record.storedName,
     title:
       titled === undefined
         ? seatTitleOf(record, org)
@@ -226,7 +230,10 @@ export type DivisionMembers = {
 /** One person as a data source holds them. */
 export type PersonRecord = {
   readonly id: number;
+  /** Their name as the pages show it: the stored names, or their email when both are empty. */
   readonly name: string;
+  /** Their first and last name as stored; "" for one never given. */
+  readonly storedName: PersonName;
   readonly signInEmail: string;
   readonly photoUrl: string | null;
   readonly since: number;
@@ -515,6 +522,7 @@ export function lookupForAdd(
     const record: PersonRecord = {
       id: c.id,
       name: c.name,
+      storedName: NO_NAME,
       signInEmail: c.emails[0] ?? "",
       photoUrl: c.photoUrl,
       since: 0,
@@ -548,11 +556,19 @@ export function lookupForAdd(
 
 // Edit details and Fill details (board 61g)
 
-/** What Edit details saves: the title in the editor's own division, and the details. */
+/**
+ * What Edit details saves: the title in the editor's own division, the
+ * details, and for someone on the team their first and last name (issue
+ * #668). `name` is null when the form sent none, as Fill details does for
+ * someone waiting: nothing renames them.
+ */
 export type MemberEditDetails = {
   readonly title: string | null;
   readonly details: MemberDetails;
+  readonly name: PersonName | null;
 };
+
+const renameSchema = z.object({ firstName: nameRule("Enter their first name."), lastName: nameRule("Enter their last name.") });
 
 /** Who Edit details is about: someone in the division, or someone waiting for their NDA (Fill details). */
 export type DetailsTarget = { readonly kind: "person"; readonly id: number } | { readonly kind: "waiting"; readonly joinId: number };
@@ -582,7 +598,15 @@ export function checkMemberEdit(
   if (titled === "required" && t.data === null) return { ok: false, errors: { title: SEAT_TITLE_REQUIRED } };
   const details = parseMemberDetails(sent.details);
   if (!details.ok) return { ok: false, errors: details.errors };
-  return { ok: true, value: { title: t.data, details: details.value } };
+  if (sent.firstName === undefined && sent.lastName === undefined) return { ok: true, value: { title: t.data, details: details.value, name: null } };
+  // A rename sends both names, each trimmed and never blank, so the Team page never shows a nameless person.
+  const name = renameSchema.safeParse({ firstName: sent.firstName ?? "", lastName: sent.lastName ?? "" });
+  if (!name.success) {
+    const errors: AddMemberErrors = {};
+    for (const issue of name.error.issues) errors[issue.path[0] as "firstName" | "lastName"] ??= issue.message;
+    return { ok: false, errors };
+  }
+  return { ok: true, value: { title: t.data, details: details.value, name: name.data } };
 }
 
 /** A member photo set from Edit details (board 61g): a square JPEG under 500 KB, as the crop dialog makes it. */

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NO_MEMBER_DETAILS, type MemberDetails } from "./details";
+import { NO_NAME } from "./person-name";
 import type { PersonRecord } from "./division-members";
 import { membershipsOf, type DivisionRole, type OrgChart, type RoleBeyondDivisions } from "./team";
 import {
@@ -39,6 +40,7 @@ function record(
   return {
     id,
     name,
+    storedName: NO_NAME,
     signInEmail: `${name.toLowerCase().replace(/\s+/g, ".")}@gmail.com`,
     photoUrl: null,
     since: 2024,
