@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import type { ScopeInfo } from "@/app/actions/get-member-scopes";
 import { canSwitchRecruitment } from "@/lib/apply/recruitment-switch";
 import { maySiteContent } from "@/lib/content/gate";
 import { canReach, DASHBOARD_PAGES, NAV_GROUPS, sidebarFor, type DashboardPageKey } from "./access";
@@ -21,21 +20,6 @@ import { membershipsOf, type OrgChart } from "./team";
 // rules. The matrix itself is data in ./access-matrix/matrix.ts; the server
 // side, every loader, action and file route called for real as each viewer,
 // is ./access-matrix-server.test.ts.
-
-/** What the recruitment switch reads: the viewer's `positions` rows as a ScopeInfo (`getScopeInfoForMember`). */
-function scopeInfoOf(v: Viewer): ScopeInfo {
-  const rows = v.rawRows.filter((r) => r.target === "positions" || r.target === "all");
-  return {
-    hasAdminAccess: rows.some((r) => r.scope === "admin"),
-    hasOrgAccess: rows.some((r) => r.scope === "org"),
-    hasAdminEdit: rows.some((r) => r.scope === "admin" && r.level === "edit"),
-    hasOrgEdit: rows.some((r) => r.scope === "org" && r.level === "edit"),
-    departmentIds: new Set(),
-    divisionIds: new Set(),
-    editableDepartmentIds: new Set(),
-    editableDivisionIds: new Set(),
-  };
-}
 
 const PAGE_KEYS = DASHBOARD_PAGES.map((p) => p.key);
 
@@ -96,7 +80,7 @@ describe("site content, the recruitment switch, Orders and the whole-team Member
   for (const { name, viewer, expect } of VIEWERS) {
     test(name, () => {
       assert.equal(maySiteContent(viewer), expect.siteContent, `${name}: site content`);
-      assert.equal(canSwitchRecruitment(viewer, scopeInfoOf(viewer)), expect.switchesRecruitment, `${name}: recruitment switch`);
+      assert.equal(canSwitchRecruitment(viewer), expect.switchesRecruitment, `${name}: recruitment switch`);
       const scope = isOffTeam(viewer.kind)
         ? null
         : ordersScopeOf(

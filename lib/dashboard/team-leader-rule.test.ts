@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ScopeInfo } from "@/app/actions/get-member-scopes";
 import { canSwitchRecruitment } from "@/lib/apply/recruitment-switch";
 import { maySiteContent } from "@/lib/content/gate";
 import { canReach, type DashboardPageKey } from "./access";
@@ -70,17 +69,6 @@ const member = seat([{ type: "core", divisionId: 1, departmentId: 1 }], [], []);
 const reader = (s: Seat): RecruitmentReader => ({ ...s.standing, roles: s.roles, grants: [] });
 const changes = (s: Seat, area: ChangeArea, unit: DivisionUnit) => mayChange({ kind: s.standing.kind, roles: s.roles, grants: [] }, area, unit);
 
-const noScope: ScopeInfo = {
-  hasAdminAccess: false,
-  hasOrgAccess: false,
-  hasAdminEdit: false,
-  hasOrgEdit: false,
-  departmentIds: new Set(),
-  divisionIds: new Set(),
-  editableDepartmentIds: new Set(),
-  editableDivisionIds: new Set(),
-};
-
 test("the team leader is recognised by their seat alone, with no scope row", () => {
   assert.equal(isTeamLeader(teamLeader.standing), true);
   assert.equal(seatOf(teamLeader.standing), "team-leader");
@@ -104,8 +92,8 @@ test("pages: the team leader reaches every dashboard page a team member can, hea
 });
 
 test("positions: the team leader switches recruitment and changes positions anywhere; a head in their department, a lead in their division", () => {
-  assert.equal(canSwitchRecruitment(teamLeader.standing, noScope), true);
-  for (const other of [head, lead, member]) assert.equal(canSwitchRecruitment(other.standing, noScope), false);
+  assert.equal(canSwitchRecruitment(teamLeader.standing), true);
+  for (const other of [head, lead, member]) assert.equal(canSwitchRecruitment(other.standing), false);
   for (const unit of [MA, OA, DM]) assert.equal(changes(teamLeader, "positions", unit), true);
   assert.deepEqual([MA, OA, DM].map((u) => changes(head, "positions", u)), [true, true, false]);
   assert.deepEqual([MA, OA, DM].map((u) => changes(lead, "positions", u)), [true, false, false]);

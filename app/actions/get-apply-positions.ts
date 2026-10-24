@@ -3,7 +3,6 @@ import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ApplyPosition } from "./types";
-import { getScopeInfoForMember } from "./get-member-scopes";
 import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import { PUBLIC_POSITIONS_CACHE_TAG } from "@/lib/cache-tags";
@@ -142,17 +141,13 @@ function toApplyPosition(position: PositionSnapshotRow): ApplyPosition {
 /**
  * The dashboard's recruitment switch: its stored state, read fresh, and
  * whether this member may change it. Everyone else sees it read-only. The
- * member is the one the caller has already resolved (the dashboard's
- * identity, issue #397), so the session is not read again; their standing
- * carries the team leader's seat (issue #444), their scope rows the rest.
+ * standing is the one the caller has already resolved (the dashboard's
+ * identity, issue #397), so the session is not read again; it alone decides
+ * (`canSwitchRecruitment`, issue #621).
  */
-export async function getRecruitmentControlFor(memberId: number | null, viewer: ViewerStanding): Promise<RecruitmentControl> {
-  const [scopeInfo, recruitment] = await Promise.all([
-    getScopeInfoForMember(memberId, "positions"),
-    queryRecruitment(),
-  ]);
-
-  return { recruitment, canSwitch: canSwitchRecruitment(viewer, scopeInfo) };
+export async function getRecruitmentControlFor(viewer: ViewerStanding): Promise<RecruitmentControl> {
+  const recruitment = await queryRecruitment();
+  return { recruitment, canSwitch: canSwitchRecruitment(viewer) };
 }
 
 export type PublicPositions =
