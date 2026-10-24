@@ -15,6 +15,7 @@ import {
   ORDER_STATUSES,
   orderActions,
   orderBreakdown,
+  orderEditControls,
   orderFormFields,
   orderingDivisions,
   orderPage,
@@ -211,6 +212,47 @@ test("\"Approve orders\" alone is Orders access: the page opens, the holder deci
   assert.deepEqual(orderActions(scope, order(approved)), { ...NOTHING, markOrdered: true });
   for (const status of ORDER_STATUSES) assert.equal(orderActions(scope, order(STATES[status])).edit, null, status);
   assert.deepEqual(orderingDivisions(scope, org), []);
+});
+
+/** A holder of "Approve orders" who also heads Aerodynamics. */
+const headHolderScope: OrdersScope = { edits: [{ kind: "department", department: aerodynamics }], decides: "approve-orders" };
+/** Every viewer who may edit an order in Mission Analysis, with whether they also decide it. */
+const EDITORS: readonly (readonly [string, OrdersScope])[] = [
+  ["the team leader", teamLeaderScope],
+  ["an Approve orders holder with an edit scope", headHolderScope],
+  ["full access", operationsLeadScope],
+  ["a department head", head],
+  ["a division lead", lead],
+];
+
+test("every viewer who may edit a waiting order gets Edit order and Cancel request, whether they decide it or not (issue #675)", () => {
+  const waiting = order({ status: "waiting" });
+  for (const [who, scope] of EDITORS) {
+    assert.deepEqual(
+      orderEditControls(orderActions(scope, waiting)).buttons,
+      [
+        { kind: "cancel", label: "Cancel request" },
+        { kind: "edit", label: "Edit order" },
+      ],
+      who,
+    );
+  }
+  // Beside the decide buttons they sit at the panel's head (board 70b); with no decide buttons, in the footer.
+  assert.equal(orderEditControls(orderActions(teamLeaderScope, waiting)).place, "head");
+  assert.equal(orderEditControls(orderActions(headHolderScope, waiting)).place, "head");
+  assert.equal(orderEditControls(orderActions(head, waiting)).place, "footer");
+  assert.equal(orderEditControls(orderActions(lead, waiting)).place, "footer");
+});
+
+test("a sent-back request offers Edit and send again alone, an order outside scope offers nothing, and no edit control reads only Edit", () => {
+  for (const [who, scope] of EDITORS) {
+    assert.deepEqual(orderEditControls(orderActions(scope, order(sentBack))).buttons, [{ kind: "edit", label: "Edit and send again" }], who);
+    for (const status of ["approved", "ordered", "rejected"] as const) {
+      assert.deepEqual(orderEditControls(orderActions(scope, order(STATES[status]))).buttons, [], `${who}, ${status}`);
+    }
+  }
+  assert.deepEqual(orderEditControls(orderActions(lead, order({ status: "waiting" }, "2026-10-01", inHardware))).buttons, []);
+  assert.deepEqual(orderEditControls(orderActions(holderScope, order({ status: "waiting" }))).buttons, []);
 });
 
 test("a member with no \"Approve orders\" and no Orders access gets no Orders page (issue #270)", () => {

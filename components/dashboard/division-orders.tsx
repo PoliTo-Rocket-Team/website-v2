@@ -42,6 +42,7 @@ import {
   ORDER_STATUSES,
   orderActions,
   orderBreakdown,
+  orderEditControls,
   orderFormFields,
   orderingDivisions,
   orderPage,
@@ -55,6 +56,7 @@ import {
   type Order,
   type OrderDecision,
   type OrderDivision,
+  type OrderEditButton,
   type OrderFilters,
   type OrdersPage,
   type OrdersScope,
@@ -676,8 +678,9 @@ type Asking =
  * (orderActions): an order outside their scope, or one already answered, opens
  * read-only for editing; the team leader and holders of "Approve orders"
  * decide a waiting one (Reject, Ask for changes, Approve) and mark an approved
- * one as ordered. While they decide, Edit moves to the panel's head (board
- * 70b). Every action asks "are you sure" first.
+ * one as ordered. Everyone who may edit it gets the same edit buttons
+ * (orderEditControls); while the footer decides, they move to the panel's head
+ * (board 70b). Every action but Edit asks "are you sure" first.
  */
 function OrderPanel({
   order,
@@ -724,6 +727,10 @@ function OrderPanel({
       ? [divisionShort(current.unit.division.name), current.unit.department?.name, formatEuro(total)]
       : [current.reason, formatEuro(total)];
   const writingNote = actions.decide && deciding !== "choose";
+  // The same edit buttons, with the same labels, for everyone who may edit this order (issue #675).
+  const edits = orderEditControls(actions);
+  /** Cancel request asks "are you sure" first; Edit opens the form. */
+  const press = (button: OrderEditButton) => (button.kind === "cancel" ? setAsking({ kind: "cancel" }) : onEdit(current));
 
   const startNote = (kind: Exclude<Deciding, "choose">) => {
     setDeciding(kind);
@@ -800,19 +807,17 @@ function OrderPanel({
     <button type="button" onClick={() => setAsking({ kind: "mark-ordered" })} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
       Mark as ordered
     </button>
-  ) : actions.cancel || actions.edit ? (
-    <>
-      {actions.cancel && (
-        <button type="button" onClick={() => setAsking({ kind: "cancel" })} className={`${PANEL_DANGER_BUTTON} flex-1`}>
-          Cancel request
-        </button>
-      )}
-      {actions.edit && (
-        <button type="button" onClick={() => onEdit(current)} className={`${PANEL_PRIMARY_BUTTON} flex-1`}>
-          {actions.edit === "edit-and-resend" ? "Edit and send again" : "Edit order"}
-        </button>
-      )}
-    </>
+  ) : edits.place === "footer" && edits.buttons.length > 0 ? (
+    edits.buttons.map((button) => (
+      <button
+        key={button.kind}
+        type="button"
+        onClick={() => press(button)}
+        className={`${button.kind === "cancel" ? PANEL_DANGER_BUTTON : PANEL_PRIMARY_BUTTON} flex-1`}
+      >
+        {button.label}
+      </button>
+    ))
   ) : undefined;
 
   return (
@@ -821,16 +826,21 @@ function OrderPanel({
       onOpenChange={(next) => !next && onClose()}
       title={current.item}
       detail={detail.filter(Boolean).join(" · ")}
-      // The footer is deciding, so Edit sits at the head (board 70b).
+      // The footer is deciding, so the edit buttons sit at the head (board 70b).
       action={
-        actions.edit && (actions.decide || actions.markOrdered) ? (
-          <button
-            type="button"
-            onClick={() => onEdit(current)}
-            className={`rounded-md px-1.5 text-[13px] text-text-2 transition-colors duration-300 ease-out hover:text-prt-text ${FOCUS}`}
-          >
-            Edit
-          </button>
+        edits.place === "head" && edits.buttons.length > 0 ? (
+          <div className="flex shrink-0 items-center gap-1">
+            {edits.buttons.map((button) => (
+              <button
+                key={button.kind}
+                type="button"
+                onClick={() => press(button)}
+                className={`whitespace-nowrap rounded-md px-1.5 text-[13px] transition-colors duration-300 ease-out ${button.kind === "cancel" ? "text-danger hover:text-prt-text" : "text-text-2 hover:text-prt-text"} ${FOCUS}`}
+              >
+                {button.label}
+              </button>
+            ))}
+          </div>
         ) : undefined
       }
       footer={footer}

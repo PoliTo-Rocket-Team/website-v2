@@ -886,7 +886,9 @@ and 67m).
   with the count of orders waiting for a decision, linking to Orders (#593). The team leader
   decides by their seat, which is no grant, so they get the rows and no line.
 - **Deciding on the page** (#247, boards 70 to 70e). A waiting order opened by someone who decides
-  shows Reject, Ask for changes and Approve; Edit moves to the panel's head. While a panel is open
+  shows Reject, Ask for changes and Approve; if they may also edit it, "Edit order" and "Cancel
+  request" move to the panel's head. Everyone who may edit a waiting order gets those same two
+  buttons with those same labels, whether they decide it or not (#675). While a panel is open
   the Department column is hidden. Ask for changes opens a "What should change" note, which is
   required; the requester sees it and can edit and send the request again. Reject opens a "Why
   (optional)" note; the requester sees the reason, and a rejected request can never be edited or
