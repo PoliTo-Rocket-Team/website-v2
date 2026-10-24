@@ -1006,3 +1006,18 @@ export const logs = pgTable("logs", {
     .defaultNow()
     .notNull(),
 });
+
+// The re-seed requests the shared `preview` branch has served (issue #595,
+// ADR 0016 amendment of 2026-10-24). A preview build re-seeds the branch only
+// for a `PREVIEW_RESEED_REQUEST` value this table does not hold yet, and
+// records it in the same transaction, so one request runs once. It is the one
+// table the re-seed keeps; no page reads or writes it.
+export const previewReseeds = pgTable("preview_reseeds", {
+  request: text("request").primaryKey(),
+  reseededAt: timestamp("reseeded_at", {
+    withTimezone: true,
+    mode: "string",
+  })
+    .defaultNow()
+    .notNull(),
+});

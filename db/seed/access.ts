@@ -12,7 +12,7 @@ import {
   type AccessPlace,
   type AccessTarget,
 } from "@/lib/dashboard/division-access";
-import { PROPULSION_HEAD, TEAM_LEADER, TESTER_MEMBER, TWO_DIVISION_MEMBER } from "./people";
+import { PROPULSION_HEAD, TEAM_LEADER, TWO_DIVISION_MEMBER } from "./people";
 import { publicMember } from "./public-team";
 import { rowsOf, tableSeedModule } from "./rows";
 import { DEPARTMENT, DIVISION, DEPARTMENT_ROWS, DIVISION_ROWS } from "./structure";
@@ -64,11 +64,10 @@ export const SCOPE_ROWS = rowsOf(scopes, [
   ...GRANTS.map(scopeRow),
   // "Approve orders" is a `team` row on `approve_orders`, always at edit (./database-division.ts).
   { memberId: APPROVE_ORDERS_ONLY, givenBy: TEAM_LEADER, scope: "team", target: "approve_orders", accessLevel: "edit" },
-  // The local testers' rows (issue #129): the division-lead tester edits all
-  // of Test Bench; the operations-lead tester edits positions team-wide, the
-  // access the recruitment switch checks.
-  { memberId: TESTER_MEMBER["division-lead"], scope: "division", target: "all", accessLevel: "edit", divisionId: DIVISION.testBench },
-  { memberId: TESTER_MEMBER["operations-lead"], scope: "org", target: "positions", accessLevel: "edit" },
+  // No seat a check views as holds a row here (issue #595): the team leader,
+  // the operations lead, the department head, the division lead, the member,
+  // the alumnus and the applicant each hold only what their roles give, so
+  // an access check starts from a clean seat (docs/seed-cases.md, "Test seats").
 ]);
 
 export const access = tableSeedModule({

@@ -63,7 +63,7 @@ export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
     id: "7e57e500-0000-4000-8000-000000000003",
     email: "division-lead.tester@example.com",
     name: "Tester Division Lead",
-    sees: "Leads Test Bench. Edits that division's positions and applications.",
+    sees: "Leads Test Bench. Edits that division's positions and applications by the lead role alone.",
   },
   "department-head": {
     key: "department-head",
@@ -77,7 +77,7 @@ export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
     id: "7e57e500-0000-4000-8000-000000000004",
     email: "operations-lead.tester@example.com",
     name: "Tester Operations Lead",
-    sees: "In Operations, with org-wide edit on positions (the recruitment switch).",
+    sees: "Holds the operations lead's full-access seat, by the role alone.",
   },
 };
 
