@@ -4,6 +4,8 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { getCookieCache } from "better-auth/cookies";
 import type { ViewAsEntry, ViewAsRefusal } from "./dashboard/view-as";
 import { TESTERS } from "./dev-tester";
+import { seededMemoryDb } from "./dev-tester-fixture";
+import { ADMIN_TESTERS } from "./seeded-accounts";
 import { accountUserOf, impersonatorOf } from "./session-user";
 import type { ViewAsGate } from "./view-as-plugin";
 
@@ -36,7 +38,7 @@ afterEach(() => {
 const ACTING = TESTERS["operations-lead"];
 const PERSON = TESTERS.member;
 /** A stored admin the stand-in gate refuses, as production refuses one. */
-const STORED_ADMIN = TESTERS["department-head"];
+const STORED_ADMIN = ADMIN_TESTERS[0];
 
 /** The stand-in gate: only ACTING may start, never from inside a View as session; it keeps what it was asked and what it logged. */
 function standInGate() {
@@ -58,20 +60,8 @@ function standInGate() {
 async function setUp() {
   Object.assign(process.env, TEST_ENV, { NODE_ENV: "development" });
   delete process.env.VERCEL_ENV;
-  const now = new Date();
-  const db: Record<string, Record<string, unknown>[]> = { user: [], session: [], account: [], verification: [] };
-  for (const tester of Object.values(TESTERS)) {
-    db.user.push({
-      id: tester.id,
-      name: tester.name,
-      email: tester.email,
-      emailVerified: true,
-      image: null,
-      createdAt: now,
-      updatedAt: now,
-      role: tester.id === STORED_ADMIN.id ? "admin" : null,
-    });
-  }
+  // Every seeded account, the admin testers stored as admins (issue #608).
+  const db = seededMemoryDb();
   const stand = standInGate();
   const { createAuth } = await import("./auth");
   return { auth: createAuth(memoryAdapter(db), stand.gate), db, ...stand };
@@ -98,7 +88,7 @@ class Jar {
   }
 }
 
-async function signIn(auth: Auth, tester: (typeof TESTERS)[keyof typeof TESTERS]): Promise<Jar> {
+async function signIn(auth: Auth, tester: { readonly key: string }): Promise<Jar> {
   const jar = new Jar();
   const response = await auth.handler(new Request(`${BASE}/dev-tester/sign-in?tester=${tester.key}`));
   assert.equal(response.status, 302, `${tester.key} signs in`);
