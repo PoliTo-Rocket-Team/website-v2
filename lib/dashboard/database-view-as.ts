@@ -19,13 +19,13 @@ import { SEAT_OF_FLAG } from "./viewer";
 
 /**
  * The account as View as reads it, or null when no Better Auth account has
- * this id: its stored role, and the full-access seat of each role it holds
- * now (a role it left is not read, so a hand-over takes effect at once).
+ * this id: the full-access seat of each role it holds now (a role it left is
+ * not read, so a hand-over takes effect at once).
  */
 export async function readViewAsAccount(userId: string): Promise<ViewAsAccount | null> {
   const db = getDb();
   const [[account], seatRows] = await Promise.all([
-    db.select({ role: betterAuthUsers.role }).from(betterAuthUsers).where(eq(betterAuthUsers.id, userId)).limit(1),
+    db.select({ id: betterAuthUsers.id }).from(betterAuthUsers).where(eq(betterAuthUsers.id, userId)).limit(1),
     db
       .select({ fullAccess: roles.fullAccess })
       .from(roles)
@@ -34,7 +34,6 @@ export async function readViewAsAccount(userId: string): Promise<ViewAsAccount |
   ]);
   if (!account) return null;
   return {
-    storedRole: account.role ?? null,
     activeRoles: seatRows.map((r) => ({ fullAccess: r.fullAccess === null ? null : SEAT_OF_FLAG[r.fullAccess] })),
   };
 }

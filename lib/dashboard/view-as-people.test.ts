@@ -3,30 +3,32 @@ import { test } from "node:test";
 import { VIEW_AS_SHOWN, viewAsLineOf, viewAsPeopleOf, type ViewAsCandidate, type ViewAsRole } from "./view-as";
 
 // The View as dialog (issue #610) offers only people a start would go ahead
-// for: never the acting account, never anyone who could use View as on this
-// site. A row the gate would refuse is a dead end in the dialog.
+// for: never the acting account, and on the live site never anyone who could
+// use View as. On a test site everyone could (issue #648), so everyone but
+// the acting account is offered. A row the gate would refuse is a dead end in
+// the dialog.
 
 const role = (over: Partial<ViewAsRole>): ViewAsRole => ({ type: "core", seat: null, startedAt: "2024-10-01", unitName: "Mission Analysis", ...over });
 
 function candidate(id: string, over: Partial<ViewAsCandidate> = {}): ViewAsCandidate {
-  return { id, name: id, photoUrl: null, storedRole: "user", roles: [role({})], alumnus: null, ...over };
+  return { id, name: id, photoUrl: null, roles: [role({})], alumnus: null, ...over };
 }
 
 const ACTING = "acting";
 const itLead = candidate("it-lead", { roles: [role({ seat: "it-lead" })] });
-const adminTester = candidate("admin-tester", { storedRole: "admin", roles: [] });
+const adminTester = candidate("admin-tester", { roles: [] });
 const member = candidate("member");
 
-test("the acting account and the IT lead seat are never offered, on any site", () => {
+test("the acting account is never offered, on any site", () => {
   for (const site of ["live", "test"] as const) {
-    const ids = viewAsPeopleOf([candidate(ACTING), itLead, member], ACTING, site).map((p) => p.id);
+    const ids = viewAsPeopleOf([candidate(ACTING), member], ACTING, site).map((p) => p.id);
     assert.deepEqual(ids, ["member"], site);
   }
 });
 
-test("an admin tester is offered on the live site, where they cannot use View as, and not on a test site", () => {
-  assert.deepEqual(viewAsPeopleOf([adminTester], ACTING, "live").map((p) => p.id), ["admin-tester"]);
-  assert.deepEqual(viewAsPeopleOf([adminTester], ACTING, "test"), []);
+test("the IT lead seat is not offered on the live site, where it may use View as; on a test site everyone else is offered", () => {
+  assert.deepEqual(viewAsPeopleOf([itLead, adminTester, member], ACTING, "live").map((p) => p.id), ["admin-tester", "member"]);
+  assert.deepEqual(viewAsPeopleOf([itLead, adminTester, member], ACTING, "test").map((p) => p.id), ["it-lead", "admin-tester", "member"]);
 });
 
 test("one search shows at most VIEW_AS_SHOWN people, in the order read", () => {

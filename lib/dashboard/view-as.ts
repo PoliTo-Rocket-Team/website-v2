@@ -2,44 +2,33 @@
 // session as another person, through Better Auth's admin plugin. Owner
 // decisions on #597 (2026-10-24): on production only the person who holds
 // the IT lead seat now, read from their active roles, so the right follows
-// the seat through a hand-over and no per-person flag is stored; on a
-// preview and under `next dev`, also any seeded admin tester (a stored
-// `user.role` of "admin"). The plugin's own role table is not the authority:
+// the seat through a hand-over and no per-person flag is stored. Owner
+// decision on #648 (2026-10-24): on a test site (a preview of the shared
+// preview database, or `next dev`) any signed-in account may, however it
+// signed in. The plugin's own role table is not the authority:
 // lib/view-as-plugin.ts asks this rule before every start.
 
+import { testerSignInOn, type GateEnv } from "../dev-tester";
 import { SEAT_LABELS } from "./division-access";
 import type { RoleType } from "./team";
 import { VIEWER_KIND_LABELS, type ActiveRoleRef, type FlaggedSeat } from "./viewer";
 
 /**
- * Where the request runs. `live` is production and anything not proven to be
- * a test site; `test` is a Vercel preview, or `next dev` off Vercel. A
- * stored admin role counts only on `test`.
+ * Where the request runs. `test` is where tester sign-in is on
+ * (`testerSignInOn`): `next dev` off Vercel, or a Vercel preview on the
+ * shared preview database. `live` is everywhere else, production and any
+ * preview on another database included.
  */
 export type ViewAsSite = "live" | "test";
 
-/** The two variables the site is read from. */
-export type ViewAsSiteEnv = {
-  readonly NODE_ENV?: string;
-  readonly VERCEL_ENV?: string;
-};
-
-function processSiteEnv(): ViewAsSiteEnv {
-  return { NODE_ENV: process.env.NODE_ENV, VERCEL_ENV: process.env.VERCEL_ENV };
+/** The site this request runs on, read now from the variables tester sign-in reads. */
+export function viewAsSiteOf(env?: GateEnv): ViewAsSite {
+  return testerSignInOn(env) ? "test" : "live";
 }
 
-/** A preview deploy, or `next dev` with no Vercel deploy, is a test site; everything else reads as live. */
-export function viewAsSiteOf(env: ViewAsSiteEnv = processSiteEnv()): ViewAsSite {
-  if (env.VERCEL_ENV === "preview") return "test";
-  if (!env.VERCEL_ENV && env.NODE_ENV === "development") return "test";
-  return "live";
-}
-
-/** What decides whether an account may use View as: their active roles, and the role Better Auth stores for them. */
+/** What decides whether an account may use View as on the live site: their active roles. No stored role or per-person flag counts. */
 export type ViewAsAccount = {
   readonly activeRoles: readonly Pick<ActiveRoleRef, "fullAccess">[];
-  /** `better_auth.user.role`, as stored (a comma-separated list); null when none is. */
-  readonly storedRole: string | null;
 };
 
 /** Whether one of their active roles is the IT lead seat. A role they left is not active, so a hand-over moves this at once. */
@@ -47,14 +36,14 @@ export function holdsItLeadSeat(account: ViewAsAccount): boolean {
   return account.activeRoles.some((r) => r.fullAccess === "it-lead");
 }
 
-/** Whether Better Auth stores them as an admin: what a seeded admin tester is. */
-export function isAdminTester(account: ViewAsAccount): boolean {
-  return (account.storedRole ?? "").split(",").some((role) => role.trim() === "admin");
+/** Whether the account may start View as on this site: any signed-in account on a test site, only the IT lead seat on the live one. */
+export function mayUseViewAs(account: ViewAsAccount, site: ViewAsSite): boolean {
+  return site === "test" || holdsItLeadSeat(account);
 }
 
-/** Whether the account may start View as on this site: the IT lead seat anywhere, an admin tester on a test site only. */
-export function mayUseViewAs(account: ViewAsAccount, site: ViewAsSite): boolean {
-  return holdsItLeadSeat(account) || (site === "test" && isAdminTester(account));
+/** Whether the person may be viewed as on this site: anyone on a test site; on the live one, nobody who could use View as themselves. */
+function mayBeViewedAs(person: ViewAsAccount, site: ViewAsSite): boolean {
+  return site === "test" || !mayUseViewAs(person, site);
 }
 
 /** Why a View as start is refused. */
@@ -83,9 +72,10 @@ export type ViewAsStart = {
 
 /**
  * Why the start is refused, or null when it may go ahead. Nobody views as
- * from inside a View as session, and nobody is viewed as who could use View
- * as themselves on this site, so one acting account never chains into
- * another's rights.
+ * from inside a View as session, so one acting account never chains into
+ * another's rights. On the live site nobody is viewed as who could use View
+ * as themselves; on a test site everyone could, so that rule would refuse
+ * every person and is not asked there.
  */
 export function viewAsRefusalOf(start: ViewAsStart, site: ViewAsSite): ViewAsRefusal | null {
   if (start.acting === null) return "signed-out";
@@ -93,7 +83,7 @@ export function viewAsRefusalOf(start: ViewAsStart, site: ViewAsSite): ViewAsRef
   if (!mayUseViewAs(start.acting, site)) return "not-allowed";
   if (start.personId === start.actingAccountId) return "same-person";
   if (start.person === null) return "no-such-person";
-  if (mayUseViewAs(start.person, site)) return "person-may-view-as";
+  if (!mayBeViewedAs(start.person, site)) return "person-may-view-as";
   return null;
 }
 
@@ -169,7 +159,6 @@ export type ViewAsCandidate = {
   readonly id: string;
   readonly name: string;
   readonly photoUrl: string | null;
-  readonly storedRole: string | null;
   readonly roles: readonly ViewAsRole[];
   /** Null when the Alumni record does not know them; else the last year they were on the team, when it is set. */
   readonly alumnus: { readonly teamTo: number | null } | null;
@@ -230,13 +219,13 @@ export function viewAsLineOf(candidate: Pick<ViewAsCandidate, "roles" | "alumnus
 
 /**
  * The rows the dialog shows, in the order given: never the acting account,
- * never anyone who could use View as on this site (`viewAsRefusalOf` refuses
- * them), and at most `VIEW_AS_SHOWN`.
+ * never anyone `viewAsRefusalOf` refuses to be viewed as on this site (on the
+ * live site, anyone who could use View as), and at most `VIEW_AS_SHOWN`.
  */
 export function viewAsPeopleOf(candidates: readonly ViewAsCandidate[], actingAccountId: string, site: ViewAsSite): ViewAsPerson[] {
   return candidates
     .filter((c) => c.id !== actingAccountId)
-    .filter((c) => !mayUseViewAs({ storedRole: c.storedRole, activeRoles: c.roles.map((r) => ({ fullAccess: r.seat })) }, site))
+    .filter((c) => mayBeViewedAs({ activeRoles: c.roles.map((r) => ({ fullAccess: r.seat })) }, site))
     .slice(0, VIEW_AS_SHOWN)
     .map((c) => ({ id: c.id, name: c.name, line: viewAsLineOf(c), photoUrl: c.photoUrl }));
 }
