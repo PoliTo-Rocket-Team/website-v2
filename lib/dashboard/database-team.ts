@@ -96,7 +96,7 @@ import {
   planDepartmentSave,
 } from "./department-edit";
 import { editableDivisionIds, editsStructure, teamStructure, type TeamStructure } from "./team-structure";
-import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange } from "./team-seats";
+import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange, planSeatRemoval, stayingOnTeam } from "./team-seats";
 import {
   checkDivisionSave,
   closeRefusal,
@@ -1466,6 +1466,33 @@ async function addSeat(identity: DashboardIdentity, input: unknown): Promise<Wri
 }
 
 /**
+ * Remove seat (issue #643), in one batch: the holder's seat role ends and no
+ * successor's starts, so a full-access flag on it ends with the row. The
+ * holder stays on the team (`stayingOnTeam`): they keep every other role and
+ * every access row, and when the seat was their only role they become an
+ * advisor to the team, so they stay on the roster and never move to Alumni.
+ */
+async function removeSeat(identity: DashboardIdentity, roleId: number): Promise<WriteResult<null>> {
+  const snapshot = await readTeamSnapshot();
+  const actor = await readActor(identity, snapshot.org);
+  const planned = planSeatRemoval({ actor, roleId, team: teamPeopleOf(snapshot) });
+  if (!planned.ok) return refused(planned.error);
+  const { holder } = planned.value;
+  const active = await activeRoles(holder);
+  if (!active.some((r) => r.id === roleId)) return refused("That seat is no longer held.");
+  const staying = stayingOnTeam(active.filter((r) => r.id !== roleId).length);
+  const on = today();
+  await runAuditBatch((db) => [
+    db.update(roles).set({ leavedAt: on }).where(and(eq(roles.id, roleId), isNull(roles.leavedAt))),
+    ...(staying === "advisor-to-the-team"
+      ? [db.insert(roles).values({ memberId: holder, ...advisorUnit({ kind: "team" }), title: ADVISOR_TITLE, type: "advisor", startedAt: on })]
+      : []),
+  ]);
+  done();
+  return written(null);
+}
+
+/**
  * What Confirm writes beyond the notice (board 62c, issue #262): the
  * successor takes the role, then the sender steps down as they chose
  * (`steppingDownWrites`). A lead's successor leads the division (their rows in
@@ -1585,5 +1612,6 @@ export function databaseTeamWrites(
     handOverTeamLeader: (input) => handOverTeamLeader(identity, input),
     changeSeatHolder: (roleId, input) => changeSeatHolder(identity, roleId, input),
     addSeat: (input) => addSeat(identity, input),
+    removeSeat: (roleId) => removeSeat(identity, roleId),
   };
 }

@@ -445,6 +445,13 @@ export interface TeamWrites {
    * The team leader and full access only.
    */
   addSeat(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Remove seat (issue #643): the seat row `roleId` ends and no successor's
+   * starts, so its full access ends with it; the holder stays on the team,
+   * checked by `planSeatRemoval` (./team-seats.ts). The team leader and full
+   * access only.
+   */
+  removeSeat(roleId: number): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */
