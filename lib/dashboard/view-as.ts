@@ -9,8 +9,7 @@
 // lib/view-as-plugin.ts asks this rule before every start.
 
 import { testerSignInOn, type GateEnv } from "../dev-tester";
-import { SEAT_LABELS } from "./division-access";
-import type { RoleType } from "./team";
+import { primaryRoleOf, roleLabelOf, type LabelledRole } from "./role-label";
 import { VIEWER_KIND_LABELS, type ActiveRoleRef, type FlaggedSeat } from "./viewer";
 
 /**
@@ -145,11 +144,9 @@ export const VIEW_AS_SHOWN = 8;
 export type ViewAsOpening = { readonly actingTitle: string };
 
 /** One of a person's active roles, as the line under their name reads it. */
-export type ViewAsRole = {
-  readonly type: RoleType;
+export type ViewAsRole = LabelledRole & {
   /** The full-access seat the role is flagged as; null for every other role. */
   readonly seat: FlaggedSeat | null;
-  readonly startedAt: string;
   /** The division it is in, else the department; null for a role in neither. */
   readonly unitName: string | null;
 };
@@ -175,39 +172,16 @@ export type ViewAsPerson = {
 /** What a search answers: the people, or why the dialog is refused. */
 export type ViewAsSearch = { readonly kind: "people"; readonly people: readonly ViewAsPerson[] } | { readonly kind: "refused"; readonly message: string };
 
-const RANK: Readonly<Record<NonNullable<RoleType>, number>> = { president: 0, head: 1, lead: 2, core: 3, advisor: 3 };
-
-function rankOf(role: ViewAsRole): number {
-  if (role.seat !== null) return 0;
-  return role.type === null ? 4 : RANK[role.type];
-}
-
-/** What a role makes its holder, as the line names it: the seat, else the role's kind. */
-function roleLabelOf(role: ViewAsRole): string {
-  if (role.seat !== null) return SEAT_LABELS[role.seat];
-  switch (role.type) {
-    case "president":
-      return SEAT_LABELS["team-leader"];
-    case "head":
-      return VIEWER_KIND_LABELS["department-head"];
-    case "lead":
-      return VIEWER_KIND_LABELS["division-lead"];
-    case "advisor":
-      return "Advisor";
-    default:
-      return VIEWER_KIND_LABELS.member;
-  }
-}
-
 /**
- * The line under a name (board 96): their highest role, the oldest of those,
- * with its unit ("Division lead · Ground Station"); a seat names no unit, as
- * it spans the team. Off the team: "Alumni · 2024", else "Non-member".
+ * The line under a name (board 96): their role label, the one the banner
+ * shows once View as starts (`roleLabelOf`), with its role's unit
+ * ("Desktop App Developer · Information Technology"); a seat names no unit,
+ * as it spans the team. Off the team: "Alumni · 2024", else "Non-member".
  */
 export function viewAsLineOf(candidate: Pick<ViewAsCandidate, "roles" | "alumnus">): string {
-  const [top] = [...candidate.roles].sort((a, b) => rankOf(a) - rankOf(b) || a.startedAt.localeCompare(b.startedAt));
-  if (top !== undefined) {
-    const label = roleLabelOf(top);
+  const top = primaryRoleOf(candidate.roles);
+  if (top !== null) {
+    const label = roleLabelOf(candidate.roles);
     const isSeat = top.seat !== null || top.type === "president";
     return isSeat || top.unitName === null ? label : `${label} · ${top.unitName}`;
   }

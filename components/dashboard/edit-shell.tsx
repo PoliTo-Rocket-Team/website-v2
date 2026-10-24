@@ -228,83 +228,91 @@ export function EditShell<Id extends string, Section extends string, Page extend
   const checklistPinned = !ready && !panel;
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-ground text-prt-text">
-      {/* Three columns: the middle one is centred while the right group fits
-          its half, and moves left when that group grows (Desktop | Phone and
-          "Changes show on the page as you type" beside the page switch), so
-          the controls never overlap. */}
-      <header className="relative grid h-[60px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-hairline bg-panel px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] md:px-6">
-        <div className="flex min-w-0 items-center gap-2.5 text-[13px]">
-          {/* One step back, to the dashboard page that lists the item (Owner
-              decision, 2026-10-21): "← Outreach / Editing …". */}
-          <Link
-            href={section.href}
-            aria-label={`Back to ${section.label}`}
-            className={`group inline-flex shrink-0 items-center gap-2.5 rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
-          >
-            <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
-            <span className="hidden sm:inline">{section.label}</span>
-          </Link>
-          <span aria-hidden className="hidden text-dim sm:inline">
-            /
-          </span>
-          <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
-          <StatePill status={status} folds={actions !== undefined} />
-          {tag !== undefined && <span className="hidden shrink-0 sm:contents">{tag}</span>}
-        </div>
-
-        <div className="hidden md:block">
-          {switcher === null ? devices : <PageSwitcher {...switcher} />}
-        </div>
-
-        <div className="flex items-center justify-end gap-2.5">
-          {switcher !== null && <div className="mr-0.5 hidden md:block">{devices}</div>}
-          {saved !== undefined && <p className="hidden whitespace-nowrap text-[12px] text-prt-muted lg:block">{saved}</p>}
-          {actions}
-          <BarButton onClick={onSaveDraft}>Save draft</BarButton>
-          {/* Publish stays focusable while the checklist is not done, so a
-              keyboard reaches it and hears what is missing. */}
-          <div className="group/publish">
-            <button
-              type="button"
-              disabled={onPublish === null}
-              aria-disabled={ready ? undefined : true}
-              aria-describedby={ready ? undefined : checklistId}
-              onClick={() => {
-                if (ready) onPublish?.();
-              }}
-              className={`${BAR_BUTTON} bg-prt-text text-ground transition-opacity duration-300 ease-out ${ready ? "hover:opacity-90" : "cursor-not-allowed opacity-50"}`}
+      {/* The bar and every strip under it: the phone page switch, the View as
+          banner and the notice. The publish checklist hangs from this stack's
+          foot, and the room and panel below are clipped to their own row, so
+          no overlay of the shell ever covers a strip, "Stop viewing" included
+          (issue #650). */}
+      <div className="relative shrink-0">
+        {/* Three columns: the middle one is centred while the right group fits
+            its half, and moves left when that group grows (Desktop | Phone and
+            "Changes show on the page as you type" beside the page switch), so
+            the controls never overlap. */}
+        <header className="grid h-[60px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-hairline bg-panel px-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] md:px-6">
+          <div className="flex min-w-0 items-center gap-2.5 text-[13px]">
+            {/* One step back, to the dashboard page that lists the item (Owner
+                decision, 2026-10-21): "← Outreach / Editing …". */}
+            <Link
+              href={section.href}
+              aria-label={`Back to ${section.label}`}
+              className={`group inline-flex shrink-0 items-center gap-2.5 rounded-md text-prt-muted transition-colors duration-300 ease-out hover:text-prt-text ${CONTENT_FOCUS}`}
             >
-              Publish
-            </button>
-            {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={checklistPinned} />}
+              <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={1.75} />
+              <span className="hidden sm:inline">{section.label}</span>
+            </Link>
+            <span aria-hidden className="hidden text-dim sm:inline">
+              /
+            </span>
+            <h1 className="min-w-0 truncate font-semibold">{heading}</h1>
+            <StatePill status={status} folds={actions !== undefined} />
+            {tag !== undefined && <span className="hidden shrink-0 sm:contents">{tag}</span>}
           </div>
-        </div>
-      </header>
 
-      {/* Below md the bar has no room for the page switch, so it takes a row
-          of its own under the bar: the only way to the other pages, and on a
-          held Publish to their checks (Owner decision, 2026-10-22). Desktop |
-          Phone stays off there: the window is a phone already. */}
-      {switcher !== null && (
-        <div className="flex shrink-0 overflow-x-auto border-b border-hairline bg-panel px-4 py-2 md:hidden">
-          <PageSwitcher {...switcher} />
-        </div>
-      )}
+          <div className="hidden md:block">
+            {switcher === null ? devices : <PageSwitcher {...switcher} />}
+          </div>
 
-      {/* The editor lies over the page's View as banner, so it draws its own (issue #611). */}
-      <ViewAsBanner placement="editor" />
+          <div className="flex items-center justify-end gap-2.5">
+            {switcher !== null && <div className="mr-0.5 hidden md:block">{devices}</div>}
+            {saved !== undefined && <p className="hidden whitespace-nowrap text-[12px] text-prt-muted lg:block">{saved}</p>}
+            {actions}
+            <BarButton onClick={onSaveDraft}>Save draft</BarButton>
+            {/* Publish stays focusable while the checklist is not done, so a
+                keyboard reaches it and hears what is missing. */}
+            <div className="group/publish">
+              <button
+                type="button"
+                disabled={onPublish === null}
+                aria-disabled={ready ? undefined : true}
+                aria-describedby={ready ? undefined : checklistId}
+                onClick={() => {
+                  if (ready) onPublish?.();
+                }}
+                className={`${BAR_BUTTON} bg-prt-text text-ground transition-opacity duration-300 ease-out ${ready ? "hover:opacity-90" : "cursor-not-allowed opacity-50"}`}
+              >
+                Publish
+              </button>
+              {!ready && <PublishChecklist id={checklistId} checks={publishChecklist} pinned={checklistPinned} />}
+            </div>
+          </div>
+        </header>
 
-      {notice !== undefined && (
-        <p role="status" className="flex shrink-0 items-center gap-2.5 border-b border-warning/20 bg-warning-soft px-4 py-3 text-[13px] text-warning md:px-6">
-          <TriangleAlert aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-          {notice}
-        </p>
-      )}
+        {/* Below md the bar has no room for the page switch, so it takes a row
+            of its own under the bar: the only way to the other pages, and on a
+            held Publish to their checks (Owner decision, 2026-10-22). Desktop |
+            Phone stays off there: the window is a phone already. */}
+        {switcher !== null && (
+          <div className="flex overflow-x-auto border-b border-hairline bg-panel px-4 py-2 md:hidden">
+            <PageSwitcher {...switcher} />
+          </div>
+        )}
+
+        {/* The editor lies over the page's View as banner, so it draws its own (issue #611). */}
+        <ViewAsBanner placement="editor" />
+
+        {notice !== undefined && (
+          <p role="status" className="flex items-center gap-2.5 border-b border-warning/20 bg-warning-soft px-4 py-3 text-[13px] text-warning md:px-6">
+            <TriangleAlert aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+            {notice}
+          </p>
+        )}
+      </div>
 
       {/* One frame for both devices: switching only resizes it, so the page
           keeps its state and scroll. Below md there is no Phone mode: the
-          window is a phone already. */}
-      <div className="flex min-h-0 flex-1">
+          window is a phone already. The row clips what floats in it, so the
+          page check bar and the phone panel stay below the strips above. */}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* The room and what floats over its foot, which stays put while the page scrolls. */}
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <div
@@ -330,7 +338,9 @@ export function EditShell<Id extends string, Section extends string, Page extend
           </div>
           {pageCheck !== undefined && <PageCheckBar {...pageCheck} />}
         </div>
-        {panel}
+        {/* The panel's slot: beside the page from md; below md it covers this
+            row alone, so the bar and the strips under it stay in view. */}
+        {panel ? <div className="max-md:absolute max-md:inset-0 max-md:z-50 md:flex md:shrink-0">{panel}</div> : null}
       </div>
     </div>
   );

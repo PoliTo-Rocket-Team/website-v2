@@ -70,7 +70,9 @@ async function chromeOf(): Promise<DashboardChrome> {
   if (opening.kind !== "open") return { kind: opening.kind };
   const { data } = opening;
   const [counts, hasShownApplications, user] = await Promise.all([data.navCounts(), data.hasShownApplications(), getCurrentUser()]);
-  // The banner names the person as their user card does (`userCardRole`).
+  // The banner names the person as their user card does (`userCardRole`): on
+  // the team, their role label (`roleLabelOf`, lib/dashboard/role-label.ts),
+  // the one the View as dialog's row opens with.
   const person = { name: data.viewer.name, role: userCardRole(data.viewer, hasShownApplications) };
   const [viewAs, viewingAs] = await Promise.all([readViewAsOpening(user), readViewAsBanner(user, person)]);
   return openChrome(data.viewer, { counts, hasShownApplications }, viewAs, viewingAs);
