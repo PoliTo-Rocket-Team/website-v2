@@ -3,20 +3,21 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { Armchair, Plus, Repeat, Undo2 } from "lucide-react";
 import { toast } from "sonner";
-import { addSeat, changeSeatHolder } from "@/app/dashboard/team-actions";
+import { addSeat, changeSeatHolder, removeSeat } from "@/app/dashboard/team-actions";
 import type { TeamPick } from "@/lib/dashboard/division-edit";
 import { fullAccessMovesLine, steppingDown, steppingDownLine, type HandOverOutcome } from "@/lib/dashboard/hand-over";
-import { seatTitleError, storedSeatTitle } from "@/lib/dashboard/team-seats";
+import { seatRemovalLines, seatTitleError, storedSeatTitle } from "@/lib/dashboard/team-seats";
 import type { StructureSeat, TeamStructure } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { ConfirmDialog } from "./confirm-dialog";
 import { PeoplePicker } from "./division-drawer";
-import { PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
+import { PANEL_DANGER_BUTTON, PANEL_GHOST_BUTTON, PANEL_PRIMARY_BUTTON, PanelBody, SidePanel } from "./drawer";
 import { inputClass } from "./field";
 import { HandOverChoice } from "./hand-over-choice";
 
 // The seat row's panels on Edit team tree (issue #627): Change holder, opened
-// from a seat box, and Add seat, opened from the box at the end of the row.
+// from a seat box, with Remove seat in its footer (issue #643), and Add seat,
+// opened from the box at the end of the row.
 // They are built like Change head in Edit department (board 77e). Only the
 // team leader and full access open them; each save asks "are you sure" first,
 // and the server checks every rule again (lib/dashboard/team-seats.ts). A seat
@@ -76,8 +77,21 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
   const [outcome, setOutcome] = useState<HandOverOutcome | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [pending, startTransition] = useTransition();
   const { holder } = seat;
+
+  const remove = () =>
+    startTransition(async () => {
+      const result = await removeSeat(seat.roleId);
+      if (!result.ok) {
+        toast.error("Could not remove the seat", { description: result.error });
+        return;
+      }
+      toast.success(`${seat.title} is removed`);
+      setRemoving(false);
+      onClose();
+    });
 
   const error = next === null ? "Pick who takes the seat." : outcome === null ? `Choose what happens to ${holder.name}: Become an advisor or Leave the team.` : null;
 
@@ -123,8 +137,8 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
       detail={`Held by ${holder.name}`}
       footer={
         <>
-          <button type="button" onClick={onClose} className={PANEL_GHOST_BUTTON}>
-            Cancel
+          <button type="button" onClick={() => setRemoving(true)} disabled={pending} className={PANEL_DANGER_BUTTON}>
+            Remove seat
           </button>
           <button type="submit" form={`seat-${seat.roleId}-form`} disabled={pending} className={PANEL_PRIMARY_BUTTON}>
             Save changes
@@ -212,6 +226,24 @@ function ChangeHolder({ open, seat, onClose }: { open: boolean; seat: StructureS
         confirmLabel="Save changes"
         pending={pending}
         onConfirm={confirm}
+      />
+      <ConfirmDialog
+        open={removing}
+        onOpenChange={setRemoving}
+        icon={<Armchair className="h-5 w-5" strokeWidth={1.75} />}
+        danger
+        title={`Remove ${seat.title}?`}
+        description={
+          <ul className="flex list-disc flex-col gap-1.5 pl-5">
+            {seatRemovalLines(seat, holder.name).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        }
+        cancelLabel="Back"
+        confirmLabel="Remove seat"
+        pending={pending}
+        onConfirm={remove}
       />
     </SidePanel>
   );

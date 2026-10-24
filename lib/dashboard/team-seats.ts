@@ -2,10 +2,10 @@ import { z } from "zod";
 import { mayManageDepartments, type Checked } from "./department-edit";
 import type { TeamPerson } from "./division-edit";
 import { HAND_OVER_OUTCOMES, steppingDown, type HandOverOutcome, type SteppingDown } from "./hand-over";
-import { beyondTitle, type BoardRole, type OrgChart, type TeamActor } from "./team";
+import { beyondTitle, type BoardFlag, type BoardRole, type OrgChart, type TeamActor } from "./team";
 
 // The seat row of Edit team tree (issue #627): who holds a team-level seat,
-// and a new seat. Only the team leader and full access change them, as they
+// a new seat, and removing one (issue #643). Only the team leader and full access change them, as they
 // manage departments (`mayManageDepartments`). A seat box changes who holds
 // the seat; its title is changed on Members (Edit details, issue #626). Both
 // sides of the data interface run these checks: the panel runs them first,
@@ -108,6 +108,45 @@ export function planSeatHolderChange(input: {
   if (refusal !== null || next === undefined) return no(refusal ?? "They are not on the team.");
   if (change.outcome === null) return no(`Choose what happens to ${held.holder.name}: Become an advisor or Leave the team.`);
   return { ok: true, value: { seat: held.seat, from: held.holder.id, to: next.id, steppingDown: steppingDown({ kind: "team-seat" }, change.outcome) } };
+}
+
+/**
+ * What keeps a removed seat's holder on the team (issue #643; Owner
+ * decision: they stay on the team): the other roles they hold, or, when the
+ * seat was their only one, an Advisor role on the whole team, as "Become an
+ * advisor" gives a seat's holder. Either way they keep every access row.
+ */
+export type StayingOnTeam = "keeps-other-roles" | "advisor-to-the-team";
+
+/** How the holder stays on the team, from how many active roles they hold beside the seat. */
+export function stayingOnTeam(otherActiveRoles: number): StayingOnTeam {
+  return otherActiveRoles > 0 ? "keeps-other-roles" : "advisor-to-the-team";
+}
+
+/** A checked Remove seat: the seat's row and who holds it. */
+export type SeatRemovalPlan = { readonly seat: BoardRole; readonly holder: number };
+
+/**
+ * Remove seat as the rules allow it, or the first reason it is refused: only
+ * the team leader or full access; an active team-level seat, the Project
+ * Manager's and the Chief Engineer's included (Owner decision). Its row ends
+ * and no successor's starts, so a seat's full access ends with it.
+ */
+export function planSeatRemoval(input: { readonly actor: TeamActor | null; readonly roleId: number; readonly team: readonly TeamPerson[] }): Checked<SeatRemovalPlan> {
+  const { actor, roleId, team } = input;
+  if (!mayManageDepartments(actor)) return no(ONLY_TEAM_SEATS);
+  const held = heldTeamSeat(team, roleId);
+  if (held === null) return no("That seat is no longer held.");
+  return { ok: true, value: { seat: held.seat, holder: held.holder.id } };
+}
+
+/** What the Remove seat confirm says: the seat's title and its holder by name, and what happens to them. */
+export function seatRemovalLines(seat: { readonly title: string; readonly flag: BoardFlag | null }, holder: string): readonly string[] {
+  return [
+    `${holder} no longer holds ${seat.title}. The seat leaves the Team tree and the Team page.`,
+    ...(seat.flag === null ? [] : [`${holder} loses the full access ${seat.title} gives.`]),
+    `${holder} stays on the team and keeps their other roles and access. With no other role, they become an advisor to the team.`,
+  ];
 }
 
 /** A checked Add seat: who holds the new seat, and its title as stored. */

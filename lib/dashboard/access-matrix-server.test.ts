@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, roles, scopes } from "@/db/schema";
+import { betterAuthUsers, divisions, logs, members, orders, projects, projectVersions, roles, scopes, teamLeaves } from "@/db/schema";
 import { databaseTeamRoles } from "@/lib/about/team-data";
 import { teamBuildOf } from "@/lib/about/team-roles";
 import { importedProjects } from "@/lib/project-content/import";
@@ -539,6 +539,8 @@ const ACTION_CASES: readonly ActionCase[] = [
     control: by("team leader"),
   },
   { action: "team-actions.addSeat", run: () => teamActions.addSeat({ personId: EXTRA.mover, title: "Safety Officer" }), may: fullAccess, control: by("team leader") },
+  // Remove seat (issue #643): the same viewers as the rest of the seat row.
+  { action: "team-actions.removeSeat", run: async () => teamActions.removeSeat(await seatRowOf("Project Manager")), may: fullAccess, control: by("team leader") },
 
   // The Alumni page: site content under the Content grant (issue #589). The
   // control is a member holding Content at Can edit, so each write is proven
@@ -2401,6 +2403,109 @@ describe("Edit team tree's seat row: Change holder and Add seat (issue #627)", (
       assert.deepEqual(writes, [], JSON.stringify(add));
     }
   });
+
+  // Remove seat (issue #643): the holder's seat role ends with no successor,
+  // and the seat leaves both tree rows and the public Team page; the holder
+  // stays on the team, as an advisor to the team when the seat was their only role.
+
+  /** Whether the seat row `roleId` is on the Team tree, Edit team tree's seat row and the public Team page's arc. */
+  async function seatShown(roleId: number, holder: number) {
+    const leader = await openAs("team leader");
+    const tree = (await leader.teamTree()).board.some((b) => b.person.id === holder);
+    const row = ((await leader.teamStructure())?.board ?? []).some((s) => s.roleId === roleId);
+    const arc = teamBuildOf(await databaseTeamRoles()).arc.some((l) => l.person.id === holder);
+    return { tree, row, arc };
+  }
+
+  test("Remove seat ends the holder's only role, starts no successor's, and keeps them on the team as an advisor with their grants", async () => {
+    const pm = accountOf("Project Manager").memberId;
+    await seedFixture();
+    const seatId = await seatRowOf("Project Manager");
+    await addRows(scopes, [{ id: 9_401, memberId: pm, scope: "division", target: "members", accessLevel: "view", divisionId: IDS.division(DM) }]);
+    assert.deepEqual(await seatShown(seatId, pm!), { tree: true, row: true, arc: true });
+
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.removeSeat(seatId), { ok: true });
+
+    assert.ok((await tableRows(roles)).find((r) => r.id === seatId)?.leavedAt != null, "the seat row ended");
+    assert.ok(!(await tableRows(roles)).some((r) => r.leavedAt == null && r.fullAccess === "project_manager"), "no successor holds the seat");
+    assert.deepEqual(
+      (await active(pm)).map((r) => [r.type, r.deptId ?? null, r.divisionId ?? null, r.fullAccess ?? null]),
+      [["advisor", null, null, null]],
+      "they stay on the team as an advisor to the team",
+    );
+    assert.ok((await tableRows(scopes)).some((s) => s.id === 9_401), "their grant is kept");
+    assert.ok(!(await tableRows(teamLeaves)).some((l) => l.memberId === pm), "no leave is recorded");
+    assert.deepEqual(await seatShown(seatId, pm!), { tree: false, row: false, arc: false }, "the seat is gone from both trees and the Team page");
+
+    const leader = await openAs("team leader");
+    const roster = await leader.members(null);
+    assert.ok(roster.scope === "whole-team" && roster.people.some((p) => p.id === pm), "they are on the roster");
+    assert.ok(!(await leader.alumni()).rows.some((r) => r.key === `m${pm}`), "they are not on Alumni");
+    assert.notEqual((await openAs("Project Manager")).viewer.kind, "operations-lead", "the seat's full access ended with it");
+  });
+
+  test("Remove seat on a full-access seat keeps every other role the holder holds and starts no Advisor role", async () => {
+    const ce = accountOf("Chief Engineer").memberId;
+    await seedFixture();
+    await addRows(roles, [{ id: 9_402, memberId: ce, divisionId: IDS.division(DM), title: "Member", startedAt: "2025-10-01", type: "core" }]);
+    const seatId = await seatRowOf("Chief Engineer");
+    assert.equal((await openAs("Chief Engineer")).viewer.kind, "operations-lead", "the seat gives full access");
+
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.removeSeat(seatId), { ok: true });
+
+    assert.deepEqual((await active(ce)).map((r) => r.id), [9_402], "only their division role is left");
+    assert.ok(!(await tableRows(roles)).some((r) => r.leavedAt == null && r.fullAccess === "chief_engineer"), "no successor holds the seat");
+    assert.notEqual((await openAs("Chief Engineer")).viewer.kind, "operations-lead", "the seat's full access ended with it");
+    assert.deepEqual(await seatShown(seatId, ce!), { tree: false, row: false, arc: false });
+  });
+
+  test("Remove seat on an added seat keeps the holder's divisions", async () => {
+    await seedFixture();
+    await addRows(roles, [{ id: 9_403, memberId: EXTRA.mover, title: "Safety Officer", startedAt: "2025-10-01", type: "core" }]);
+    signInAs(accountOf("team leader").userId);
+    assert.deepEqual(await teamActions.removeSeat(9_403), { ok: true });
+    assert.deepEqual((await active(EXTRA.mover)).map((r) => r.id).sort(), [6_001, 6_002]);
+    assert.deepEqual(await seatShown(9_403, EXTRA.mover), { tree: false, row: false, arc: false });
+  });
+
+  test("Remove seat refuses a seat no longer held and a row that is no team-level seat, and writes nothing", async () => {
+    const cases: readonly [string, () => Promise<unknown>][] = [
+      [
+        "an ended seat",
+        async () => {
+          const seatId = await seatRowOf("Project Manager");
+          await changeRows(roles, { id: seatId }, { leavedAt: "2026-10-01" });
+          return teamActions.removeSeat(seatId);
+        },
+      ],
+      ["a division role", () => teamActions.removeSeat(6_001)],
+      ["a head's role", () => teamActions.removeSeat(6_000)],
+      ["no such row", () => teamActions.removeSeat(999_999)],
+    ];
+    for (const [what, run] of cases) {
+      const { answer, writes } = await attempt(accountOf("team leader").userId, run);
+      assert.ok(isRefusal(answer), `${what}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, [], `${what}: wrote`);
+    }
+  });
+
+  for (const name of SEAT_VIEWERS) {
+    test(`${name} may remove a seat`, async () => {
+      const removal = await attempt(accountOf(name).userId, async () => teamActions.removeSeat(await seatRowOf("Chief Engineer")));
+      assert.deepEqual(removal.answer, { ok: true }, `${name}: Remove seat`);
+      assert.ok(removal.writes.length > 0);
+    });
+  }
+
+  for (const name of REFUSED_VIEWERS) {
+    test(`${name} is refused Remove seat, and writes nothing`, async () => {
+      const { answer, writes } = await attempt(accountOf(name).userId, async () => teamActions.removeSeat(await seatRowOf("Project Manager")));
+      assert.ok(isRefusal(answer), `${name}: ${JSON.stringify(answer)}`);
+      assert.deepEqual(writes, [], `${name}: wrote`);
+    });
+  }
 
   for (const name of SEAT_VIEWERS) {
     test(`${name} may change a seat's holder and add a seat`, async () => {
