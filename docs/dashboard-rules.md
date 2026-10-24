@@ -911,7 +911,7 @@ and 67m).
   made there are kept across preview builds.
   Every page reads a database under `next dev` (the Neon `development` branch) and on a preview
   (the `preview` branch); a run there with no database stops with a message naming the one it
-  needs (#609). Both offer the tester sign-in, and a seeded admin tester uses View as to see the
+  needs (#609). Both offer the tester sign-in, and any signed-in account uses View as to see the
   dashboard as a plain seat: team leader, operations lead, department head, division lead,
   member, alumni and non-member, among others (#608, #610, #612). The alumni seat is a former member with three years of ended roles, an Alumni entry, one
   application decided within the last month and one decided before it (#317). The operations

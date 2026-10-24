@@ -123,7 +123,7 @@ The plain seats a check views as, one per kind ([lib/seeded-accounts.ts](../lib/
 
 ## Admin testers
 
-The seeded admin testers ([lib/seeded-accounts.ts](../lib/seeded-accounts.ts), issue [#607](https://github.com/PoliTo-Rocket-Team/website-v2/issues/607)). Better Auth stores each with the role `admin` (`better_auth.user.role`), which lets them use View as on a preview and under `next dev` only; on production only the IT lead seat may use View as ([lib/dashboard/view-as.ts](../lib/dashboard/view-as.ts)). They have no member row, so they hold no team role and no grant. Nobody else is stored as an admin. A unit test in [lib/seed/cases.test.ts](../lib/seed/cases.test.ts) reads this table back from the seed.
+The seeded admin testers ([lib/seeded-accounts.ts](../lib/seeded-accounts.ts), issue [#607](https://github.com/PoliTo-Rocket-Team/website-v2/issues/607)). Better Auth stores each with the role `admin` (`better_auth.user.role`). The role no longer gates View as: on a preview and under `next dev` any signed-in account may use View as, and on production only the IT lead seat may ([lib/dashboard/view-as.ts](../lib/dashboard/view-as.ts), issue [#648](https://github.com/PoliTo-Rocket-Team/website-v2/issues/648)). They have no member row, so they hold no team role and no grant. Nobody else is stored as an admin. A unit test in [lib/seed/cases.test.ts](../lib/seed/cases.test.ts) reads this table back from the seed.
 
 | Admin tester | Account | Stored role | Sees |
 |---|---|---|---|

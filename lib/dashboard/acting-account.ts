@@ -7,15 +7,15 @@
 import { SEAT_LABELS } from "./division-access";
 import type { FlaggedSeat } from "./viewer";
 
-/** The title an acting account that never held the IT lead seat shows under: a seeded admin tester, on a preview or under `next dev`. */
+/** The title an acting account that never held the IT lead seat shows under: any signed-in account using View as on a preview or under `next dev` (#648). */
 export const ADMIN_TESTER_TITLE = "Admin tester";
 
 /**
  * The title an acting account's writes show under, from every seat it holds
  * or held. On the live site only the IT lead seat can use View as, so an
  * account that ever held it shows as the IT lead, and a hand-over does not
- * relabel the writes it made then. Any other acting account can only be a
- * seeded admin tester.
+ * relabel the writes it made then. Any other acting account is using View as
+ * on a preview or under `next dev`, where every signed-in account may (#648).
  */
 export function actingTitleOf(seatsHeld: readonly (FlaggedSeat | null)[]): string {
   return seatsHeld.includes("it-lead") ? SEAT_LABELS["it-lead"] : ADMIN_TESTER_TITLE;
