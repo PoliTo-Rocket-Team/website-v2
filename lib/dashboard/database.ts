@@ -90,6 +90,7 @@ import { primaryRoleOf, roleLabelOf } from "./role-label";
 // positions left out.
 
 type ActiveRole = {
+  id: number;
   title: string;
   type: RoleType;
   startedAt: string;
@@ -167,6 +168,7 @@ async function readIdentity({ id: userId, actingAccountId }: Pick<CurrentUser, "
       .where(eq(users.id, userId)),
     db
       .select({
+        id: roles.id,
         title: roles.title,
         type: roles.type,
         startedAt: roles.startedAt,

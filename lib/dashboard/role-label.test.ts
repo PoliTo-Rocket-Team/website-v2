@@ -14,9 +14,9 @@ function bannerRoleOf(roles: readonly ViewAsRole[]): string {
 }
 
 test("the dialog's row starts with the label the banner shows, for a seat holder and a division member with a stored title", () => {
-  const itLead: ViewAsRole[] = [{ type: "lead", title: "IT Lead", seat: "it-lead", startedAt: "2024-10-01", unitName: "Information Technology" }];
+  const itLead: ViewAsRole[] = [{ id: 1, type: "lead", title: "IT Lead", seat: "it-lead", startedAt: "2024-10-01", unitName: "Information Technology" }];
   const developer: ViewAsRole[] = [
-    { type: "core", title: "Desktop App Developer", seat: null, startedAt: "2024-10-01", unitName: "Information Technology" },
+    { id: 2, type: "core", title: "Desktop App Developer", seat: null, startedAt: "2024-10-01", unitName: "Information Technology" },
   ];
   for (const [roles, label] of [
     [itLead, "IT Lead"],
@@ -25,4 +25,14 @@ test("the dialog's row starts with the label the banner shows, for a seat holder
     assert.equal(bannerRoleOf(roles), label);
     assert.ok(viewAsLineOf({ roles, alumnus: null }).startsWith(label), label);
   }
+});
+
+test("two member roles started on one day give the dialog and the banner one label, whichever order each reads them in", () => {
+  const developer: ViewAsRole = { id: 7, type: "core", title: "Desktop App Developer", seat: null, startedAt: "2024-10-01", unitName: "Information Technology" };
+  const analyst: ViewAsRole = { id: 9, type: "advisor", title: "Trajectory Analyst", seat: null, startedAt: "2024-10-01", unitName: "Mission Analysis" };
+  const banner = bannerRoleOf([analyst, developer]);
+  const line = viewAsLineOf({ roles: [developer, analyst], alumnus: null });
+  assert.equal(banner, "Desktop App Developer");
+  assert.ok(line.startsWith(banner), line);
+  assert.equal(viewAsLineOf({ roles: [analyst, developer], alumnus: null }), line);
 });

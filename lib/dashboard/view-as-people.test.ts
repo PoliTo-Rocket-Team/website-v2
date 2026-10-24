@@ -9,6 +9,7 @@ import { VIEW_AS_SHOWN, viewAsLineOf, viewAsPeopleOf, type ViewAsCandidate, type
 // the dialog.
 
 const role = (over: Partial<ViewAsRole>): ViewAsRole => ({
+  id: 1,
   type: "core",
   title: "Trajectory Analyst",
   seat: null,
