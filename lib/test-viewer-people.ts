@@ -6,7 +6,7 @@
 // the seed rows, so the app reads it without loading the seed.
 
 import type { TestViewer } from "@/lib/dashboard/viewer";
-import { TESTERS } from "@/lib/dev-tester";
+import { seatOf } from "@/lib/seeded-accounts";
 
 /** A user id made for the seed: `5eed0000-…-0000000000NN`, NN the member id. */
 export function seedUserId(memberId: number): string {
@@ -21,17 +21,18 @@ export const SEEDED_DEPARTMENT_HEAD = 2;
 export const SEEDED_RENAMED_ALUMNUS = 50;
 
 /**
- * The seeded person each test viewer is, by user id: the team leader, the
- * head of Propulsion, who answers the waiting hand-over (issue #326), the
- * alumnus whose name was fixed for the Alumni page (every role ended, an
- * Alumni entry kept; issue #317), and the local tester of each other kind.
+ * The seeded person each test viewer is, by user id: the plain seat of that
+ * kind (lib/seeded-accounts.ts). The team leader, the head of Propulsion, who
+ * answers the waiting hand-over (issue #326), the alumnus whose name was
+ * fixed for the Alumni page (every role ended, an Alumni entry kept; issue
+ * #317), and the local tester of each other kind.
  */
 export const TEST_VIEWER_PEOPLE: Readonly<Record<TestViewer, string>> = {
-  "team-leader": seedUserId(SEEDED_TEAM_LEADER),
-  "operations-lead": TESTERS["operations-lead"].id,
-  "department-head": seedUserId(SEEDED_DEPARTMENT_HEAD),
-  "division-lead": TESTERS["division-lead"].id,
-  member: TESTERS.member.id,
-  alumni: seedUserId(SEEDED_RENAMED_ALUMNUS),
-  "non-member": TESTERS.applicant.id,
+  "team-leader": seatOf("team-leader").id,
+  "operations-lead": seatOf("operations-lead").id,
+  "department-head": seatOf("department-head").id,
+  "division-lead": seatOf("division-lead").id,
+  member: seatOf("member").id,
+  alumni: seatOf("alumni").id,
+  "non-member": seatOf("non-member").id,
 };

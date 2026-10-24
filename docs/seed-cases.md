@@ -104,17 +104,34 @@ The five local testers of issue #129 are seeded by the `people` module, with the
 
 ## Test seats
 
-The seven seats a check views as: the test developer's viewers on a preview ([lib/test-viewer-people.ts](../lib/test-viewer-people.ts)), four of them also the local testers of [lib/dev-tester.ts](../lib/dev-tester.ts). Each holds only what its roles give and no `scopes` row, so an access check on a freshly seeded branch starts from a clean seat; a case that needs a grant gives it to another seeded person ([db/seed/access.ts](../db/seed/access.ts)). A unit test in [lib/seed/cases.test.ts](../lib/seed/cases.test.ts) reads this table back from the seed.
+The plain seats a check views as, one per kind ([lib/seeded-accounts.ts](../lib/seeded-accounts.ts), issue [#607](https://github.com/PoliTo-Rocket-Team/website-v2/issues/607)). Each holds exactly the roles and grants its name says and nothing else, so an access check on a freshly seeded or re-seeded branch starts from a clean seat; a case that needs another grant gives it to another seeded person ([db/seed/access.ts](../db/seed/access.ts)). Every seat has a stable user id and email and a sign-in row, so View as can open a session as it. The test developer's viewers on a preview are seven of these seats ([lib/test-viewer-people.ts](../lib/test-viewer-people.ts)), and four are also local testers of [lib/dev-tester.ts](../lib/dev-tester.ts). A grant given by hand during a check stays until the next re-seed ([Re-seed the preview branch](#re-seed-the-preview-branch)). A unit test in [lib/seed/cases.test.ts](../lib/seed/cases.test.ts) reads this table back from the seed.
 
-| Seat | Seeded person | Roles | Grants |
+| Seat | Seeded person | Roles | Grants | Sees |
+|---|---|---|---|---|
+| Team leader | Andrea Pantano: member 1, user `5eed0000-0000-4000-8000-000000000001`, `andrea.pantano@example.com` | Team Leader (`president`) in the team | none: no `scopes` row | Every dashboard page, with every tool, by the Team Leader role alone. |
+| Operations lead | Tester Operations Lead: member 903, user `7e57e500-0000-4000-8000-000000000004`, `operations-lead.tester@example.com` | Operations Lead (`lead`, full access `operations_lead`) in Operations | none: no `scopes` row | Every dashboard page, by the operations lead's full-access seat alone. |
+| IT lead | Huseyin Gulec: member 11, user `5eed0000-0000-4000-8000-000000000011`, `huseyin.gulec@example.com` | Information Technology Lead (`lead`, full access `it_lead`) in Information Technology | none: no `scopes` row | Every dashboard page, by the IT lead's full-access seat alone; the one seat that may use View as on production. |
+| Department head | Marco Delogu: member 2, user `5eed0000-0000-4000-8000-000000000002`, `marco.delogu@example.com` | Head of Propulsion (`head`) in Propulsion | none: no `scopes` row | Every unit area of Propulsion at Can edit by the head role alone, and the waiting hand-over on the Overview. |
+| Division lead | Tester Division Lead: member 902, user `7e57e500-0000-4000-8000-000000000003`, `division-lead.tester@example.com` | Test Bench Lead (`lead`) in Test Bench | none: no `scopes` row | Leads Test Bench: edits that division's positions and applications by the lead role alone. |
+| Member | Tester Member: member 901, user `7e57e500-0000-4000-8000-000000000002`, `member.tester@example.com` | Test Bench Engineer (`core`) in Test Bench | none: no `scopes` row | A member of Test Bench with no grant: reaches /dashboard with no edit rights. |
+| Positions grant | Tester Positions Grant: member 905, user `7e57e500-0000-4000-8000-000000000011`, `positions-grant.tester@example.com` | Test Bench Engineer (`core`) in Test Bench | Positions at Can edit across the whole team | A member of Test Bench whose one grant is Positions at Can edit across the whole team. |
+| Applications grant | Tester Applications Grant: member 906, user `7e57e500-0000-4000-8000-000000000012`, `applications-grant.tester@example.com` | Test Bench Engineer (`core`) in Test Bench | Applications at Can edit across the whole team | A member of Test Bench whose one grant is Applications at Can edit across the whole team. |
+| Members grant | Tester Members Grant: member 907, user `7e57e500-0000-4000-8000-000000000013`, `members-grant.tester@example.com` | Test Bench Engineer (`core`) in Test Bench | Members at Can edit across the whole team | A member of Test Bench whose one grant is Members at Can edit across the whole team. |
+| Alumni grant | Tester Alumni Grant: member 908, user `7e57e500-0000-4000-8000-000000000014`, `alumni-grant.tester@example.com` | Test Bench Engineer (`core`) in Test Bench | Alumni at Can edit across the whole team | A member of Test Bench whose one grant is Alumni at Can edit across the whole team. |
+| Content grant | Tester Content Grant: member 909, user `7e57e500-0000-4000-8000-000000000015`, `content-grant.tester@example.com` | Test Bench Engineer (`core`) in Test Bench | Content at Can edit across the whole team | A member of Test Bench whose one grant is Content at Can edit across the whole team. |
+| Orders grant | Tester Orders Grant: member 910, user `7e57e500-0000-4000-8000-000000000016`, `orders-grant.tester@example.com` | Test Bench Engineer (`core`) in Test Bench | Orders at Can edit across the whole team | A member of Test Bench whose one grant is Orders at Can edit across the whole team. |
+| Approve-orders holder | Claudia Sanna: member 124, user `5eed0000-0000-4000-8000-000000000124`, `claudia.sanna@example.com` | Desktop App Developer (`core`) in Information Technology | "Approve orders" (`approve_orders`) | A member of Information Technology who holds "Approve orders" and no other grant: approves or rejects orders. |
+| Alumnus | Giada Ferraris: member 50, user `5eed0000-0000-4000-8000-000000000050`, `giada.ferraris@example.com` | none now; ended: Procurement Coordinator (`core`) in Logistics | none: no `scopes` row | A former member: every role ended, an Alumni entry kept. |
+| Applicant | Tester Applicant: no member row, user `7e57e500-0000-4000-8000-000000000001`, `applicant.tester@example.com` | none | none: no `scopes` row | Not a member: sees the application form on an open /apply/<slug>. |
+
+## Admin testers
+
+The seeded admin testers ([lib/seeded-accounts.ts](../lib/seeded-accounts.ts), issue [#607](https://github.com/PoliTo-Rocket-Team/website-v2/issues/607)). Better Auth stores each with the role `admin` (`better_auth.user.role`), which lets them use View as on a preview and under `next dev` only; on production only the IT lead seat may use View as ([lib/dashboard/view-as.ts](../lib/dashboard/view-as.ts)). They have no member row, so they hold no team role and no grant. Nobody else is stored as an admin. A unit test in [lib/seed/cases.test.ts](../lib/seed/cases.test.ts) reads this table back from the seed.
+
+| Admin tester | Account | Stored role | Sees |
 |---|---|---|---|
-| Team leader | Andrea Pantano: member 1, user `5eed0000-0000-4000-8000-000000000001` | Team Leader (`president`) in the team | none: no `scopes` row |
-| Operations lead | Tester Operations Lead: member 903, user `7e57e500-0000-4000-8000-000000000004` | Operations Lead (`lead`, full access `operations_lead`) in Operations | none: no `scopes` row |
-| Department head | Marco Delogu: member 2, user `5eed0000-0000-4000-8000-000000000002` | Head of Propulsion (`head`) in Propulsion | none: no `scopes` row |
-| Division lead | Tester Division Lead: member 902, user `7e57e500-0000-4000-8000-000000000003` | Test Bench Lead (`lead`) in Test Bench | none: no `scopes` row |
-| Member | Tester Member: member 901, user `7e57e500-0000-4000-8000-000000000002` | Test Bench Engineer (`core`) in Test Bench | none: no `scopes` row |
-| Alumnus | Giada Ferraris: member 50, user `5eed0000-0000-4000-8000-000000000050` | none now; ended: Procurement Coordinator (`core`) in Logistics | none: no `scopes` row |
-| Applicant | Tester Applicant: no member row, user `7e57e500-0000-4000-8000-000000000001` | none | none: no `scopes` row |
+| Admin tester 1 | Tester Admin One: no member row, user `7e57e500-0000-4000-8000-000000000021`, `admin-1.tester@example.com` | `admin` | No team role and no grant: on a preview or under next dev, uses View as to see the site as any seeded person. |
+| Admin tester 2 | Tester Admin Two: no member row, user `7e57e500-0000-4000-8000-000000000022`, `admin-2.tester@example.com` | `admin` | The same as admin tester 1, so two checks can each view as someone at once. |
 
 ## Public and invented data
 
