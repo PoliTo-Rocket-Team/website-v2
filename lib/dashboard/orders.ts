@@ -206,6 +206,8 @@ export type OrdersViewer = {
   readonly teamLeader: boolean;
   /** The department a head's role holds at Can edit (board 65); null for anyone else. */
   readonly headDepartment: OrderDepartment | null;
+  /** The divisions the viewer leads by role (`ledDivisionIds`, ./viewer.ts); empty for anyone who leads none. */
+  readonly ledDivisionIds: readonly number[];
 };
 
 /**
@@ -213,10 +215,12 @@ export type OrdersViewer = {
  * Orders access anywhere. Full access edits every order in the team (issue
  * #238). A `division` or `department` row on `orders` (or on `all`) is access
  * there, at its level; a head's role is Can edit across their department
- * (board 65), and a `team` row on `orders` is access across the whole team
+ * (board 65), a lead's role is Can edit in each open division they lead
+ * (issue #590), and a `team` row on `orders` is access across the whole team
  * (issue #247). Deciding comes from being the team leader, or from the `team`
  * row on `approve_orders`, which is Orders access on its own (issue #270): it
- * opens the page with no edits. Full access alone does not decide.
+ * opens the page with no edits. Full access alone does not decide, and
+ * neither does leading a division.
  */
 export function ordersScopeOf(
   viewer: OrdersViewer,
@@ -238,6 +242,11 @@ export function ordersScopeOf(
     if (!edits.some((e) => key(e) === key(unit))) edits.push(unit);
   };
   if (viewer.headDepartment !== null) add({ kind: "department", department: viewer.headDepartment });
+  // A division the viewer leads, unless their head's department already covers it.
+  for (const department of org) {
+    if (department.id === viewer.headDepartment?.id) continue;
+    for (const division of department.divisions) if (viewer.ledDivisionIds.includes(division.id)) add({ kind: "division", division });
+  }
   for (const r of ordersRows) {
     if (r.level !== "edit") continue;
     if (r.scope === "department") {
@@ -248,7 +257,7 @@ export function ordersScopeOf(
       if (division) add({ kind: "division", division });
     }
   }
-  if (viewer.headDepartment === null && ordersRows.length === 0 && teamOrders.length === 0 && decides === null) return null;
+  if (edits.length === 0 && ordersRows.length === 0 && teamOrders.length === 0 && decides === null) return null;
   return { edits, decides };
 }
 

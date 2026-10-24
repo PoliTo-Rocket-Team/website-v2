@@ -226,14 +226,21 @@ export const VIEWERS: readonly MatrixRow[] = [
   {
     name: "division lead",
     viewer: viewerOf([role("lead", 1, 1)]),
-    // The Orders loader answers no page to a lead with no Orders row (`ordersScopeOf`): narrower than the sidebar, not a leak.
-    expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING], reads: everywhere(["MA"]), changes: changing(["MA"]) },
+    // A lead's role opens Orders with no Orders row, editing their own division's orders (`ordersScopeOf`, issue #590).
+    expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING], reads: everywhere(["MA"]), changes: changing(["MA"]), ordersPage: true },
   },
   // The leak #477 fixes: a lead's Positions grant elsewhere opened every area there, CVs included.
   {
     name: "division lead with a Positions grant (Can view) in DM",
     viewer: viewerOf([role("lead", 1, 1)], [row("division", "positions", "view", { divisionId: 3 })]),
-    expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING], reads: { ...everywhere(["MA"]), positions: ["MA", "DM"] }, changes: changing(["MA"]) },
+    expect: {
+      ...PLAIN_MEMBER,
+      aliases: { requests: ["MA"], answers: false },
+      pages: [...TEAM_BASE, ...LEADING],
+      reads: { ...everywhere(["MA"]), positions: ["MA", "DM"] },
+      changes: changing(["MA"]),
+      ordersPage: true,
+    },
   },
   // A lead's grant where they do not lead gives what it gives a member there, and no Access there (Owner decision, #478; #488).
   {
@@ -245,6 +252,7 @@ export const VIEWERS: readonly MatrixRow[] = [
       pages: [...TEAM_BASE, ...LEADING],
       reads: { ...everywhere(["MA"]), positions: ["MA", "DM"] },
       changes: { ...changing(["MA"]), positions: ["MA", "DM"] },
+      ordersPage: true,
     },
   },
   { name: "member", viewer: viewerOf([MEMBER_ROLE]), expect: PLAIN_MEMBER },
@@ -296,7 +304,7 @@ export const VIEWERS: readonly MatrixRow[] = [
   {
     name: "division lead with a Content grant",
     viewer: viewerOf([role("lead", 1, 1)], [row("website", "content", "edit")]),
-    expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING, ...CONTENT], reads: everywhere(["MA"]), changes: changing(["MA"]), siteContent: true },
+    expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING, ...CONTENT], reads: everywhere(["MA"]), changes: changing(["MA"]), siteContent: true, ordersPage: true },
   },
   {
     name: "member with Approve orders",
