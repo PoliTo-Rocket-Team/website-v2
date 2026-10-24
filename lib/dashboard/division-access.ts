@@ -236,10 +236,10 @@ export const ROLE_HELD_ACCESS: readonly HeldAccess[] = UNIT_TARGETS.map((target)
 
 /**
  * The areas a division lead's role gives in each division they lead, at Can
- * edit: the "Whole division · Can edit" role row (#596 finding 2). The role
- * also edits the division's orders (#590), but Access treats Orders as a grant (#632).
+ * edit: the "Whole division · Can edit" role row (#596 finding 2). Orders is
+ * among them, since the role edits the division's orders (#590, #632).
  */
-export const LEAD_ROLE_TARGETS = ["positions", "applications", "members"] as const satisfies readonly UnitTarget[];
+export const LEAD_ROLE_TARGETS = ["positions", "applications", "members", "orders"] as const satisfies readonly UnitTarget[];
 
 /** What a lead's role holds in each division they lead (`LEAD_ROLE_TARGETS`). */
 export const LEAD_ROLE_HELD_ACCESS: readonly HeldAccess[] = LEAD_ROLE_TARGETS.map((target) => ({ target, level: "edit" }));

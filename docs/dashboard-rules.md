@@ -685,14 +685,18 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
 - Delegation limit: a lead gives only an area they hold, and only up to their own level in it.
   They cannot change or remove access held above their level, or another lead's role access. The
   server checks every change, not only the drawer.
-- A division lead's role gives Positions, Applications and Members at Can edit in each division
-  they lead (#591). "Your access" counts them with no grant, so a lead with no grants still has
-  Give access. Grants the lead also holds there are added on top. The role also lets the lead
-  edit their own division's orders (#590), but Access still treats Orders as a grant (#632).
+- A division lead's role gives Positions, Applications, Members and Orders at Can edit in each
+  division they lead (#591, #590, #632). "Your access" counts them with no grant, so a lead with
+  no grants still has Give access. Grants the lead also holds there are added on top. Since the
+  role holds Orders, a lead with no Orders grant can give Orders (Can view or Can edit) to people
+  in their own division, by the same delegation limit as the other areas (#632).
 - **Role access is locked; every other grant is a normal grant** (#591). The access a lead's or
   head's role gives (their "With the role" row) is never given, changed or removed on Access, and
-  the server refuses any change that would touch it. Any other grant (Content, Orders, or
-  an area in a place their role does not cover) can be given to a lead or head, is listed in a row
+  the server refuses any change that would touch it. A stored row for an area the role already
+  gives there is not listed as a grant and is left in place by "Remove all access"; once the
+  person no longer holds that role, the row shows again as an ordinary grant (#632). Any other
+  grant (Content, or an area in a place their role does not cover, such as Orders in another
+  division, across a department or across the whole team) can be given to a lead or head, is listed in a row
   of its own beside their role row, and can be changed or removed, within the usual delegation
   limit. Give access lists the leads and heads in reach, never the viewer, and only when the viewer
   can give them something their role does not already give. Full-access seats hold every area, so
@@ -725,8 +729,8 @@ These rules come from #230 (boards 65, 65b, 65c and 65m).
   a "Whole department" tag. A person holds each area at one level per place.
 - The delegation limit is the lead's: a head gives only what they hold, at no higher level, and
   only inside their department. A lead's role access cannot be changed or removed, but a head
-  gives the division leads of their department other grants, such as Orders in their division or
-  an area across the whole department, and changes or removes them (#591). The server checks
+  gives the division leads of their department other grants, such as an area across the whole
+  department, and changes or removes them (#591). The server checks
   every change.
 - Edit access (board 65c) locks the person ("can't be changed") and keeps "Where" editable. It
   opens on the first place the person holds access in; changing "Where" shows their areas in

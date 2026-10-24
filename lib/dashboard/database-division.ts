@@ -105,7 +105,7 @@ async function leadDivisions(identity: DashboardIdentity): Promise<Extract<Acces
     .orderBy(asc(divisions.name));
   const first = identity.role?.divisionId ?? null;
   const ordered = [...rows.filter((r) => r.id === first), ...rows.filter((r) => r.id !== first)];
-  // The role gives Positions, Applications and Members at Can edit in each division led (issue #591); grants there add to it.
+  // The role gives Positions, Applications, Members and Orders at Can edit in each division led (issues #591, #632); grants there add to it.
   const led = await Promise.all(ordered.map(async (division) => ({ division, held: mergeHeld(LEAD_ROLE_HELD_ACCESS, await readHeld(memberId, division.id)) })));
   const [head, ...rest] = led;
   return head === undefined ? null : { kind: "division", divisions: [head, ...rest] };
