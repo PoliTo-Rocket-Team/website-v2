@@ -67,7 +67,6 @@ async function readCandidates(actingAccountId: string, text: string): Promise<Vi
     .select({
       id: betterAuthUsers.id,
       name,
-      storedRole: betterAuthUsers.role,
       memberId: users.member,
       picture: members.picture,
       teamTo: members.teamTo,
@@ -107,7 +106,6 @@ async function readCandidates(actingAccountId: string, text: string): Promise<Vi
       id: a.id,
       name: a.name,
       photoUrl: a.picture,
-      storedRole: a.storedRole,
       roles: held,
       alumnus: held.length === 0 && a.alumniEntry !== null ? { teamTo: a.teamTo } : null,
     };

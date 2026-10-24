@@ -18,7 +18,10 @@ import { teamBuildOf } from "@/lib/about/team-roles";
 import { importedProjects } from "@/lib/project-content/import";
 import { newRowContent } from "@/lib/project-content/row";
 import { readProjectStamps } from "./database-projects";
-import { readViewAsAccount, recordViewAs, viewAsRefusal } from "./database-view-as";
+import { GATE_OFF, GATE_ON, OTHER_DB, PREVIEW_DB } from "@/lib/dev-tester-fixture";
+import { ADMIN_TESTER_TITLE } from "./acting-account";
+import { recordViewAs, viewAsRefusal } from "./database-view-as";
+import { readViewAsOpening } from "./database-view-as-dialog";
 import { viewAsSiteOf, type ViewAsSite } from "./view-as";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
@@ -1809,10 +1812,12 @@ describe("the Members export gives a file to full access alone (issue #539)", ()
 
 // View as ---------------------------------------------------------------------
 
-describe("View as: on production only the IT lead seat starts it, on a preview and under next dev a seeded admin tester too (issue #604)", () => {
+describe("View as: on production only the IT lead seat starts it, on a preview of the shared database and under next dev any account (issues #604, #648)", () => {
   const LIVE: ViewAsSite = "live";
-  const PREVIEW = viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "preview" });
+  const PREVIEW = viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "preview", DATABASE_URL: PREVIEW_DB });
   const NEXT_DEV = viewAsSiteOf({ NODE_ENV: "development" });
+  /** Production, even pointed at the shared preview database. */
+  const PRODUCTION = viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "production", DATABASE_URL: PREVIEW_DB });
   const itLead = accountOf("IT lead");
   const member = accountOf("member");
   /** A plain member of MA, the person viewed as. */
@@ -1830,13 +1835,37 @@ describe("View as: on production only the IT lead seat starts it, on a preview a
 
   const start = (actingAccountId: string, personId = person, viewingAs = false) => ({ actingAccountId, viewingAs, personId });
 
-  test("production, previews and next dev are told apart by the environment, and anything unproven reads as production", () => {
-    assert.equal(viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "production" }), "live");
+  test("the test site is exactly where tester sign-in is on, read at each request; anything else reads as production", () => {
+    for (const env of GATE_ON) assert.equal(viewAsSiteOf(env), "test", JSON.stringify(env));
+    for (const env of GATE_OFF) assert.equal(viewAsSiteOf(env), "live", JSON.stringify(env));
     assert.equal(PREVIEW, "test");
     assert.equal(NEXT_DEV, "test");
-    assert.equal(viewAsSiteOf({ NODE_ENV: "development", VERCEL_ENV: "production" }), "live");
-    assert.equal(viewAsSiteOf({ NODE_ENV: "production" }), "live");
-    assert.equal(viewAsSiteOf({ NODE_ENV: "test" }), "live");
+    assert.equal(PRODUCTION, "live");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "production", VERCEL_ENV: "preview", DATABASE_URL: OTHER_DB }), "live", "a preview on another database");
+    assert.equal(viewAsSiteOf({ NODE_ENV: "test" }), "live", "the test runner");
+
+    const saved = { NODE_ENV: process.env.NODE_ENV, VERCEL_ENV: process.env.VERCEL_ENV, DATABASE_URL: process.env.DATABASE_URL };
+    const env = process.env as Record<string, string | undefined>;
+    try {
+      Object.assign(env, { NODE_ENV: "production", VERCEL_ENV: "preview", DATABASE_URL: PREVIEW_DB });
+      assert.equal(viewAsSiteOf(), "test", "read from this request's environment");
+      env.VERCEL_ENV = "production";
+      assert.equal(viewAsSiteOf(), "live", "read again, not kept from the last request");
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete env[key];
+        else env[key] = value;
+      }
+    }
+  });
+
+  test("on production a member, a department head and a seeded admin tester are refused, and the IT lead seat is allowed", async () => {
+    const adminTester = accountOf("non-member").userId;
+    seedAccounts([adminTester]);
+    assert.equal(await viewAsRefusal(start(member.userId), PRODUCTION), "not-allowed", "a member");
+    assert.equal(await viewAsRefusal(start(accountOf("department head").userId), PRODUCTION), "not-allowed", "a department head");
+    assert.equal(await viewAsRefusal(start(adminTester), PRODUCTION), "not-allowed", "a seeded admin tester");
+    assert.equal(await viewAsRefusal(start(itLead.userId), PRODUCTION), null, "the IT lead seat");
   });
 
   test("on production the IT lead starts View as, and every other matrix viewer is refused, the team leader and a stored admin included", async () => {
@@ -1855,29 +1884,48 @@ describe("View as: on production only the IT lead seat starts it, on a preview a
     assert.equal(await viewAsRefusal(start(member.userId), LIVE), null, "the new seat holder");
     assert.equal(await viewAsRefusal(start(itLead.userId), LIVE), "not-allowed", "the previous seat holder");
     // Nothing per person decides it: both still store the plugin's default role.
-    assert.equal((await readViewAsAccount(member.userId))?.storedRole, "user");
-    assert.equal((await readViewAsAccount(itLead.userId))?.storedRole, "user");
+    const storedRoleOf = (id: string) => rowsIn(betterAuthUsers).find((u) => u.id === id)?.role;
+    assert.deepEqual([storedRoleOf(member.userId), storedRoleOf(itLead.userId)], ["user", "user"]);
   });
 
-  test("on a preview and under next dev a seeded admin tester starts View as, and a plain member is refused", async () => {
+  test("on a preview and under next dev any account starts View as, with no seat and no stored admin role", async () => {
     const adminTester = accountOf("non-member").userId;
     seedAccounts([adminTester]);
     for (const [label, site] of [["preview", PREVIEW], ["next dev", NEXT_DEV]] as const) {
-      assert.equal(await viewAsRefusal(start(adminTester), site), null, `${label}: the admin tester`);
-      assert.equal(await viewAsRefusal(start(itLead.userId), site), null, `${label}: the IT lead`);
-      assert.equal(await viewAsRefusal(start(member.userId), site), "not-allowed", `${label}: a plain member`);
+      for (const { name } of VIEWERS) {
+        assert.equal(await viewAsRefusal(start(accountOf(name).userId), site), null, `${label}: ${name}`);
+      }
+      assert.equal(await viewAsRefusal(start(member.userId), site), null, `${label}: a plain member`);
     }
-    assert.equal(await viewAsRefusal(start(adminTester), LIVE), "not-allowed", "the same admin tester on production");
+    assert.equal(await viewAsRefusal(start(member.userId), LIVE), "not-allowed", "the same plain member on production");
   });
 
-  test("nobody views as themselves, as someone who may use View as, as an unknown account, or from inside a View as session", async () => {
+  test("nobody views as themselves, as an unknown account, or from inside a View as session; on production nobody views as someone who may use View as", async () => {
     const adminTester = accountOf("non-member").userId;
     seedAccounts([adminTester]);
-    assert.equal(await viewAsRefusal(start(itLead.userId, itLead.userId), LIVE), "same-person");
-    assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), "person-may-view-as", "an admin tester on a preview");
-    assert.equal(await viewAsRefusal(start(adminTester, itLead.userId), PREVIEW), "person-may-view-as", "the IT lead");
-    assert.equal(await viewAsRefusal(start(itLead.userId, "nobody"), LIVE), "no-such-person");
-    assert.equal(await viewAsRefusal(start(itLead.userId, person, true), LIVE), "already-viewing-as");
+    for (const site of [LIVE, PREVIEW]) {
+      assert.equal(await viewAsRefusal(start(itLead.userId, itLead.userId), site), "same-person", site);
+      assert.equal(await viewAsRefusal(start(itLead.userId, "nobody"), site), "no-such-person", site);
+      assert.equal(await viewAsRefusal(start(itLead.userId, person, true), site), "already-viewing-as", site);
+    }
+    assert.equal(await viewAsRefusal(start(member.userId, person, true), PREVIEW), "already-viewing-as", "a plain member on a preview, from inside View as");
+    // On a test site every account may use View as, so who could is no reason to refuse.
+    assert.equal(await viewAsRefusal(start(itLead.userId, adminTester), PREVIEW), null, "an admin tester on a preview");
+    assert.equal(await viewAsRefusal(start(member.userId, itLead.userId), PREVIEW), null, "the IT lead on a preview");
+    // On production a second IT lead seat holder may use View as, so nobody views as them.
+    insertRows(roles, [{ id: 9_001, memberId: member.memberId, title: "IT Lead", startedAt: "2026-10-20", type: "core", fullAccess: "it_lead" }]);
+    assert.equal(await viewAsRefusal(start(itLead.userId, member.userId), LIVE), "person-may-view-as", "another IT lead seat on production");
+    assert.equal(await viewAsRefusal(start(itLead.userId, member.userId), PREVIEW), null, "the same person on a preview");
+  });
+
+  test("the user menu offers View as to a plain member on a test site and not on production (readViewAsOpening)", async () => {
+    seedAccounts();
+    const plainMember = { id: member.userId, name: "Plain member", actingAccountId: null };
+    assert.deepEqual(await readViewAsOpening(plainMember, PREVIEW), { actingTitle: ADMIN_TESTER_TITLE }, "a preview");
+    assert.deepEqual(await readViewAsOpening(plainMember, NEXT_DEV), { actingTitle: ADMIN_TESTER_TITLE }, "next dev");
+    assert.equal(await readViewAsOpening(plainMember, PRODUCTION), null, "production");
+    assert.equal(await readViewAsOpening({ ...plainMember, actingAccountId: itLead.userId }, PREVIEW), null, "not from inside a View as session");
+    assert.deepEqual(await readViewAsOpening({ id: itLead.userId, name: "IT lead", actingAccountId: null }, PRODUCTION), { actingTitle: "IT lead" }, "the IT lead seat on production");
   });
 
   test("starting and stopping View as each write one Activity log entry, under the acting account, naming both people", async () => {
