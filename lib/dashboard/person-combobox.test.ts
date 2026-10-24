@@ -39,9 +39,9 @@ for (const [name, value] of Object.entries(globals)) {
 }
 
 const TEAM = [
-  { id: 1, name: "Ada Lovelace" },
-  { id: 2, name: "Grace Hopper" },
-  { id: 3, name: "Alan Turing" },
+  { id: 1, name: "Ada Lovelace", photoUrl: null },
+  { id: 2, name: "Grace Hopper", photoUrl: null },
+  { id: 3, name: "Alan Turing", photoUrl: null },
 ];
 
 type Field = typeof import("@/components/dashboard/person-combobox");

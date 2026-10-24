@@ -42,6 +42,7 @@ import {
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
 import type { OwnAlias } from "@/lib/dashboard/alias-setup";
+import type { Pictured } from "@/lib/dashboard/stored-photo";
 import { AliasReadyCard } from "./alias-setup";
 import { Avatar } from "./avatar";
 import { AnswerAlias } from "./answer-alias";
@@ -112,7 +113,7 @@ function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCa
   return (
     <>
       <section className={PERSON_FRAME}>
-        <PersonLines name={person.name} line={person.line} since={person.since} photoUrl={person.photoUrl} />
+        <PersonLines person={person} since={person.since} />
         {person.edit && (
           <Link
             href={person.edit.href}
@@ -223,7 +224,8 @@ function ScopeBoardView({
             <Panel title="Recent activity" className={`${left ? "" : "lg:col-start-2"} ${compact ? "max-md:hidden" : ""}`}>
               {activity.map((item) => (
                 <li key={`${item.text}-${item.when}`} className="flex items-start gap-3 px-5 py-3.5">
-                  <Avatar size="sm" accent={item.self} />
+                  {/* An activity item carries no person to read a photo off, so the row keeps the PRT mark it always drew. */}
+                  <Avatar size="sm" accent={item.self} person={null} />
                   <span className="min-w-0">
                     <span className="block text-[13px]">{item.text}</span>
                     <span className="block text-[12px] text-prt-muted">{item.when}</span>
@@ -524,7 +526,7 @@ function RosterPanel({ roster }: { roster: Roster }) {
           key={p.name}
           className={`flex items-center gap-3 px-4 py-2.5 md:px-5 ${p.self ? "max-md:rounded-b-xl max-md:bg-accent/[0.08]" : ""}`}
         >
-          <Avatar size="sm" accent={p.lead} photoUrl={p.photoUrl} />
+          <Avatar size="sm" accent={p.lead} person={p} />
           <span className="min-w-0 flex-1">
             <span className="block text-[13px] font-medium">{p.name}</span>
             <span className="block text-[12px] text-prt-muted">
@@ -549,15 +551,15 @@ function RosterPanel({ roster }: { roster: Roster }) {
 const PERSON_FRAME =
   "flex flex-col gap-4 sm:flex-row sm:items-center md:rounded-xl md:border md:border-hairline md:bg-panel/60 md:px-6 md:py-6";
 
-// The circle shows their stored photo, else the PRT mark (issue #599). Only
-// a team seat's header passes one; the applicant and alumni ones draw the mark.
-function PersonLines({ name, line, since, photoUrl = null }: { name: string; line: string; since: string | null; photoUrl?: string | null }) {
+// The circle shows their stored photo, else the PRT mark (issues #599 and
+// #656), on every Overview: a team seat's, an applicant's and an alumnus's.
+function PersonLines({ person, since }: { person: Pictured & { readonly name: string; readonly line: string }; since: string | null }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-5">
-      <Avatar size="person" photoUrl={photoUrl} />
+      <Avatar size="person" person={person} />
       <div className="min-w-0">
-        <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] md:text-[24px]">{name}</h1>
-        <p className="mt-1 break-words text-[14px] text-text-2">{line}</p>
+        <h1 className="text-[20px] font-bold leading-tight tracking-[-0.01em] md:text-[24px]">{person.name}</h1>
+        <p className="mt-1 break-words text-[14px] text-text-2">{person.line}</p>
         {since && <p className="mt-0.5 text-[12px] text-prt-muted">{since}</p>}
       </div>
     </div>
@@ -578,7 +580,7 @@ function ApplicantView({ overview }: { overview: ApplicantOverview }) {
   return (
     <>
       <section className={PERSON_FRAME}>
-        <PersonLines name={person.name} line={person.line} since={null} />
+        <PersonLines person={person} since={null} />
       </section>
       <div className={STACK}>
         {nextStep && <NextStepCard step={nextStep} />}
@@ -604,7 +606,7 @@ function AlumniView({ overview }: { overview: AlumniOverview }) {
   return (
     <>
       <section className={PERSON_FRAME}>
-        <PersonLines name={person.name} line={person.line} since={null} />
+        <PersonLines person={person} since={null} />
       </section>
       <div className={STACK}>
         <AlumniCardPanel card={card} />

@@ -383,6 +383,8 @@ export type Joining = {
   /** The accepted application: what Confirm join acts on. */
   readonly applicationId: number;
   readonly name: string;
+  /** Their stored photo, on their card (issue #656); null for the PRT mark, as for anyone with no member record yet. */
+  readonly photoUrl: string | null;
   /** The position they were accepted for: "Mission Analyst". */
   readonly position: string;
   /** "The signed NDA arrived" is ticked on the application: Confirm join waits for it. */

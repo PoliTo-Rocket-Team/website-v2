@@ -78,7 +78,7 @@ test("an added email is kept as the sign-in account will carry it, so their firs
 });
 
 test("Add member's field finds a member by name or by either email, and says when an email is new or already waiting", () => {
-  const team = records.map((r) => ({ id: r.id, name: r.name, emails: [r.signInEmail, `${r.name[0].toLowerCase()}.x@politorocketteam.it`], memberships: r.memberships }));
+  const team = records.map((r) => ({ id: r.id, name: r.name, emails: [r.signInEmail, `${r.name[0].toLowerCase()}.x@politorocketteam.it`], photoUrl: r.photoUrl, memberships: r.memberships }));
   const byName = lookupForAdd("paolo", team, [], 1, org);
   assert.ok(byName.kind === "people" && byName.people.length === 1 && byName.people[0].here === false);
   const byEmail = lookupForAdd("DAVIDE@gmail.com", team, [], 1, org);

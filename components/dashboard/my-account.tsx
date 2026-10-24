@@ -22,7 +22,7 @@ export function MyAccountView({ account, ...actions }: { account: MyAccount } & 
     <>
       <PageHeader title="My account" intro="Your sign-in and the details we keep for your applications." />
       <div className="mt-6 flex flex-col gap-5">
-        <SignInCard name={account.name} signIn={account.signIn} />
+        <SignInCard account={account} />
         <YourDetailsCard details={account.details} editor="applicant" saveDetails={actions.saveDetails} />
         <DangerBox>
           <DangerRow title="Delete account" text={DELETE_ACCOUNT_COPY}>

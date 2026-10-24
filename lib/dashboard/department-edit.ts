@@ -257,12 +257,14 @@ export function stepsDown(standing: ClosingStanding): standing is "head" | "lead
 export type ClosingPerson = {
   readonly id: number;
   readonly name: string;
+  /** Their stored photo, on their card (issue #656); null for the PRT mark. */
+  readonly photoUrl: string | null;
   /** Units outside the closing department where they already hold a role: they cannot be moved there. */
   readonly holds: readonly Unit[];
 } & ({ readonly standing: "head"; readonly title: string } | { readonly standing: Exclude<ClosingStanding, "head"> });
 
 /** A person as `closingPeople` reads them: both data sources build these records (./division-members.ts). */
-export type ClosingRecord = Pick<PersonRecord, "id" | "name" | "memberships" | "beyondDivisions" | "advising">;
+export type ClosingRecord = Pick<PersonRecord, "id" | "name" | "photoUrl" | "memberships" | "beyondDivisions" | "advising">;
 
 const STANDING_ORDER: Readonly<Record<ClosingStanding, number>> = { head: 0, lead: 1, advisor: 2, member: 3 };
 
@@ -288,9 +290,9 @@ export function closingPeople(records: readonly ClosingRecord[], org: OrgChart, 
           : [],
       ),
     ];
-    if (heads !== undefined) return [{ id: r.id, name: r.name, holds, standing: "head", title: beyondTitle(heads, org) }];
+    if (heads !== undefined) return [{ id: r.id, name: r.name, photoUrl: r.photoUrl, holds, standing: "head", title: beyondTitle(heads, org) }];
     const standing = here.some((m) => m.role === "lead") ? "lead" : advises ? "advisor" : "member";
-    return [{ id: r.id, name: r.name, holds, standing }];
+    return [{ id: r.id, name: r.name, photoUrl: r.photoUrl, holds, standing }];
   });
   return people.sort((a, b) => STANDING_ORDER[a.standing] - STANDING_ORDER[b.standing] || a.name.localeCompare(b.name));
 }

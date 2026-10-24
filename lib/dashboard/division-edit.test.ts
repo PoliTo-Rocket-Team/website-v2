@@ -13,6 +13,7 @@ import {
   type DivisionRow,
   type DivisionSave,
   type DivisionSubject,
+  type FoundPerson,
   type TeamPerson,
 } from "./division-edit";
 import { membershipsOf, type DivisionRole, type OrgChart, type TeamActor } from "./team";
@@ -31,17 +32,18 @@ const org: OrgChart = {
   ],
 };
 
-function person(id: number, name: string, list: readonly (readonly [number, DivisionRole])[], beyond: TeamPerson["beyond"] = []): TeamPerson {
+function person(id: number, name: string, list: readonly (readonly [number, DivisionRole])[], beyond: TeamPerson["beyond"] = []): FoundPerson {
   return {
     id,
     name,
+    photoUrl: null,
     emails: [`${name.split(" ")[0].toLowerCase()}@prt.it`],
     memberships: membershipsOf(list.map(([divisionId, role]) => ({ divisionId, role, since: "2024-10-01" }))),
     beyond,
   };
 }
 
-const team: TeamPerson[] = [
+const team: FoundPerson[] = [
   person(1, "Marco Bianchi", [[1, "lead"]]),
   person(2, "Pietro Ricci", [[1, "lead"], [2, "member"]]),
   person(3, "Sara Conti", [[1, "member"]]),

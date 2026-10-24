@@ -76,6 +76,8 @@ export type MyProfile = {
 
 export type MyAccount = {
   readonly name: string;
+  /** Their stored photo, the one the sidebar shows (`DashboardViewer.photoUrl`, issue #656); null shows the PRT mark. */
+  readonly photoUrl: string | null;
   readonly signIn: SignIn;
   readonly details: YourDetails;
   /** Applications still in progress: what "Also withdraw my open applications" would withdraw. */

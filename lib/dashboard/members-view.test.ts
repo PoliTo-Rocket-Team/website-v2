@@ -51,8 +51,8 @@ const records = [
 ];
 
 const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS };
-const giulia: Joining = { applicationId: 41, name: "Giulia Rossi", position: "Mission Analyst", ndaArrived: true, canConfirm: true };
-const paolo: Joining = { applicationId: 42, name: "Paolo Neri", position: "CAD Engineer", ndaArrived: true, canConfirm: false };
+const giulia: Joining = { applicationId: 41, name: "Giulia Rossi", photoUrl: null, position: "Mission Analyst", ndaArrived: true, canConfirm: true };
+const paolo: Joining = { applicationId: 42, name: "Paolo Neri", photoUrl: null, position: "CAD Engineer", ndaArrived: true, canConfirm: false };
 
 /** Every division's queue on the whole team: Elena waits for Design & Manufacturing, Giulia joins Mission Analysis, Paolo Design & Manufacturing. */
 const queues: readonly DivisionQueue[] = [

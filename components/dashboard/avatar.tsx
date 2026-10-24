@@ -1,4 +1,5 @@
 import { MarkFallback } from "@/components/mark-fallback";
+import { storedPhotoOf, type Pictured } from "@/lib/dashboard/stored-photo";
 
 const SIZES = {
   xs: "h-5 w-5",
@@ -17,24 +18,27 @@ const SIZES = {
 
 export type AvatarSize = keyof typeof SIZES;
 
-// A person's circle (boards 40 and 40m): their photo, else the PRT mark
-// (issue #366). The accent fill marks the viewer in a list, or a lead;
-// everyone else is on white-10.
+// A person's circle (boards 40 and 40m): their stored photo, else the PRT
+// mark (issues #366 and #656). It takes the person and reads the photo off
+// them (`storedPhotoOf`), so a circle that shows someone always shows their
+// photo when they stored one. The accent fill marks the viewer in a list, or
+// a lead; everyone else is on white-10.
 export function Avatar({
+  person,
   size = "md",
   accent = false,
-  photoUrl = null,
 }: {
+  /** Who the circle shows; null for a circle that shows nobody, such as one drawn while the viewer loads. */
+  person: Pictured | null;
   size?: AvatarSize;
   accent?: boolean;
-  /** The person's photo, shown in place of the mark (board 61g). */
-  photoUrl?: string | null;
 }) {
-  if (photoUrl !== null) {
+  const photo = person === null ? null : storedPhotoOf(person);
+  if (photo !== null) {
     return (
       // A Blob store URL; next/image would need every store host configured.
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={photoUrl} alt="" aria-hidden="true" className={`shrink-0 rounded-full object-cover ${SIZES[size]}`} />
+      <img src={photo} alt="" aria-hidden="true" className={`shrink-0 rounded-full object-cover ${SIZES[size]}`} />
     );
   }
   return (
