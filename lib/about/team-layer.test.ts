@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { inDivisions, NO_MEMBERSHIPS, type BoardSeat, type Placement } from "@/lib/dashboard/team";
+import { BOARD_FLAG_TITLES, BOARD_FLAGS, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type Placement } from "@/lib/dashboard/team";
 import {
   addLeader,
   applyLayer,
@@ -30,8 +30,12 @@ function person(id: number, name: string, placement: Placement, over: Partial<Te
 }
 
 const leader = (): Placement => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });
-const seat = (s: BoardSeat): Placement => ({ role: "board", seat: s, memberships: NO_MEMBERSHIPS });
-const head = (departmentId: number): Placement => ({ role: "head", departmentId, memberships: NO_MEMBERSHIPS });
+const seat = (s: BoardFlag): Placement => ({
+  role: "board",
+  seat: { roleId: BOARD_FLAGS.indexOf(s) + 1, title: BOARD_FLAG_TITLES[s], flag: s, since },
+  memberships: NO_MEMBERSHIPS,
+});
+const head = (departmentId: number): Placement => ({ role: "head", departmentId, title: "", memberships: NO_MEMBERSHIPS });
 const lead = (divisionId: number) => inDivisions([{ divisionId, role: "lead", since }]);
 const member = (divisionId: number) => inDivisions([{ divisionId, role: "member", since }]);
 

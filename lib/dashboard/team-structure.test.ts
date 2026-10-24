@@ -39,7 +39,7 @@ function record(id: number, name: string, list: [number, "lead" | "member"][], b
 
 const records = [
   record(1, "Matteo Rinaldi", [], [{ kind: "team-leader" }]),
-  record(2, "Chiara Ferri", [[1, "member"]], [{ kind: "head", departmentId: 1 }]),
+  record(2, "Chiara Ferri", [[1, "member"]], [{ kind: "head", departmentId: 1, title: "" }]),
   record(3, "Marco Bianchi", [[1, "lead"]]),
   record(4, "Sara Conti", [[1, "member"], [3, "member"]]),
   record(5, "Paolo Conti", [[2, "lead"]]),

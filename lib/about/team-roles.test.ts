@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { inDivisions, NO_MEMBERSHIPS, type BoardSeat, type Placement } from "@/lib/dashboard/team";
+import { BOARD_FLAG_TITLES, inDivisions, NO_MEMBERSHIPS, type BoardFlag, type Placement } from "@/lib/dashboard/team";
 import { team } from "./team";
 import { teamPageFromRoles, type TeamPerson, type TeamRoles } from "./team-roles";
 
@@ -13,10 +13,17 @@ function person(id: number, name: string, placement: Placement, over: Partial<Te
 }
 
 const leader = (): Placement => ({ role: "team-leader", memberships: NO_MEMBERSHIPS });
-const seat = (s: BoardSeat): Placement => ({ role: "board", seat: s, memberships: NO_MEMBERSHIPS });
-const head = (departmentId: number, led: readonly number[] = []): Placement => ({
+let roleIds = 0;
+/** A team-level seat's placement: flagged as `flag`, or a further seat (null), titled `title` as stored. */
+const seat = (flag: BoardFlag | null, title = flag === null ? "" : BOARD_FLAG_TITLES[flag], started = since): Placement => ({
+  role: "board",
+  seat: { roleId: ++roleIds, title, flag, since: started },
+  memberships: NO_MEMBERSHIPS,
+});
+const head = (departmentId: number, led: readonly number[] = [], title = ""): Placement => ({
   role: "head",
   departmentId,
+  title,
   memberships: inDivisions(led.map((divisionId) => ({ divisionId, role: "lead" as const, since }))).memberships,
 });
 const lead = (divisionId: number) => inDivisions([{ divisionId, role: "lead", since }]);
@@ -67,6 +74,48 @@ test("who leads: the team leader, then the board seats on the arc in the Team tr
     [
       ["Lorenzo Gallo", "Project Manager"],
       ["Federica Moretti", "Chief Engineer"],
+    ],
+  );
+});
+
+test("a renamed Project Manager or Chief Engineer keeps their place on the arc, under the stored title (issue #625)", () => {
+  const renamed = people.map((p) =>
+    p.id === 2
+      ? { ...p, placement: seat("chief-engineer", "Chief of Propulsion"), pageTitle: "Chief of Propulsion" }
+      : p.id === 3
+        ? { ...p, placement: seat("project-manager", "Programme Lead"), pageTitle: "Programme Lead" }
+        : p,
+  );
+  assert.deepEqual(
+    built(renamed)!.orgChart.leaders.map((l) => [l.name, l.role]),
+    [
+      ["Lorenzo Gallo", "Programme Lead"],
+      ["Federica Moretti", "Chief of Propulsion"],
+    ],
+  );
+});
+
+test("a further team-level seat follows the flagged seats on the arc, oldest first (issue #625)", () => {
+  const more = [...people, person(30, "Marco Dona", seat(null, "Head of R&D", "2025-10-01")), person(31, "Ada Ferri", seat(null, "Safety Officer", "2023-10-01"))];
+  assert.deepEqual(
+    built(more)!.orgChart.leaders.map((l) => [l.name, l.role]),
+    [
+      ["Lorenzo Gallo", "Project Manager"],
+      ["Federica Moretti", "Chief Engineer"],
+      ["Ada Ferri", "Safety Officer"],
+      ["Marco Dona", "Head of R&D"],
+    ],
+  );
+});
+
+test("a head shows their head role's stored title; a blank one reads Head of the department (issue #625)", () => {
+  const renamed = people.map((p) => (p.id === 4 ? { ...p, placement: head(1, [11], "Chief of Aerodynamics") } : p));
+  const [slide] = built(renamed)!.departments.groups;
+  assert.deepEqual(
+    slide.members.map((m) => [m.name, m.kind === "head" ? m.role : null]),
+    [
+      ["Chiara Rinaldi", "Chief of Aerodynamics"],
+      ["Irene Galli", "Head of Recovery"],
     ],
   );
 });

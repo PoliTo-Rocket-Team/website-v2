@@ -198,7 +198,7 @@ function aliasPersonOf(viewer: Viewer): TeamPerson {
     ),
   );
   const beyond = viewer.roles.flatMap((r): TeamPerson["beyond"] =>
-    r.type === "president" ? [{ kind: "team-leader" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId }] : [],
+    r.type === "president" ? [{ kind: "team-leader" }] : r.type === "head" ? [{ kind: "head", departmentId: r.departmentId, title: "Head" }] : [],
   );
   return { id: VIEWER_ID, name: "Viewer", emails: [], memberships, beyond };
 }

@@ -46,6 +46,7 @@ import {
   type WaitingPerson,
 } from "./division-members";
 import {
+  defaultHeadTitle,
   headDepartmentOf,
   isDivisionRole,
   mayChangeDivision,
@@ -545,7 +546,7 @@ function seatOnto(db: Tx, seat: SeatMove | null, rowId: number | undefined): Bat
 }
 
 function roleSeat(r: ActiveRole): RoleSeat {
-  return { type: r.type, divisionId: r.division_id, since: r.started_at, departmentId: r.dept_id, title: r.title };
+  return { id: r.id, type: r.type, divisionId: r.division_id, since: r.started_at, departmentId: r.dept_id, title: r.title, fullAccess: r.fullAccess };
 }
 
 /** The person's lead and member rows in `divisionId` (`isDivisionRole`): never a seat kept on its row. */
@@ -1188,9 +1189,6 @@ function closeDivisionWrites(tx: Tx, divisionId: number, on: string): [BatchItem
 // `planDepartmentClose` (./department-edit.ts) decide what may change; each
 // write below runs what they allow in one audited batch.
 
-/** The title a head's role carries, as every head row holds it: "Head of Aerodynamics". */
-const headTitle = (department: string) => `Head of ${department}`;
-
 /** New department (board 77d): the department and its head's role, in one batch. The head keeps every role they hold. */
 async function createDepartment(identity: DashboardIdentity, input: unknown): Promise<WriteResult<number>> {
   const checked = checkDepartmentCreate(input);
@@ -1207,14 +1205,18 @@ async function createDepartment(identity: DashboardIdentity, input: unknown): Pr
   const aliasAsked = await automaticAliasRequests([headId]);
   await runAuditBatch((db) => [
     db.insert(departments).values({ id: departmentId, name, code, kind }),
-    db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: today() }),
+    db.insert(roles).values({ memberId: headId, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: today() }),
     ...aliasAsked(db),
   ]);
   done();
   return written(departmentId);
 }
 
-/** Edit department's Save changes (board 77e): the name, the code and the kind; a new name reaches the head's title too. */
+/**
+ * Edit department's Save changes (board 77e): the name, the code and the
+ * kind. A new name reaches each head title still at the old default ("Head
+ * of <old name>"); a head title renamed by hand is kept (issue #625).
+ */
 async function saveDepartment(identity: DashboardIdentity, departmentId: number, input: unknown): Promise<WriteResult<null>> {
   const checked = checkDepartmentSave(input);
   if (!checked.ok) return refused(checked.error);
@@ -1225,6 +1227,7 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
   const planned = planDepartmentSave({ actor, org: snapshot.org, departmentId, save: checked.value, team: teamPeopleOf(snapshot), headIds });
   if (!planned.ok) return refused(planned.error);
   const { name, code, kind, nameChanged, head } = planned.value;
+  const oldName = snapshot.org.departments.find((d) => d.id === departmentId)?.name ?? null;
   const on = today();
   const stepping = head?.steppingDown ?? null;
   const replaced = head === null || stepping === null ? [] : await Promise.all(head.from.map(async (memberId) => ({ memberId, active: await activeRoles(memberId) })));
@@ -1239,19 +1242,19 @@ async function saveDepartment(identity: DashboardIdentity, departmentId: number,
       .update(departments)
       .set({ name, code, kind })
       .where(and(eq(departments.id, departmentId), isNull(departments.closedAt))),
-    ...(nameChanged
+    ...(nameChanged && oldName !== null
       ? [
           db
             .update(roles)
-            .set({ title: headTitle(name) })
-            .where(and(eq(roles.deptId, departmentId), eq(roles.type, "head"), isNull(roles.leavedAt))),
+            .set({ title: defaultHeadTitle(name) })
+            .where(and(eq(roles.deptId, departmentId), eq(roles.type, "head"), eq(roles.title, defaultHeadTitle(oldName)), isNull(roles.leavedAt))),
         ]
       : []),
     // Change head (issue #253): the head they replace steps down as the editor picked, then the new head's role starts.
     ...(stepping === null ? [] : replaced.flatMap((person) => steppingDownWrites(db, person, stepping, person.active.filter(isHeadRow).map((r) => r.id), on))),
     ...(head === null
       ? []
-      : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: headTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
+      : [db.insert(roles).values({ memberId: head.to, deptId: departmentId, divisionId: null, title: defaultHeadTitle(name), type: "head", startedAt: on, ...seatFor(seat, head.to) })]),
     ...aliasAsked(db),
   ]);
   done();
@@ -1434,7 +1437,7 @@ async function confirmedHandOverWrites(
   // The successor becomes a head, owed an alias request when they have none (issue #543).
   const aliasAsked = await automaticAliasRequests([toId]);
   return (db) => [
-    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: headTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
+    db.insert(roles).values({ memberId: toId, deptId: role.departmentId, divisionId: null, title: defaultHeadTitle(department), type: "head", startedAt: on, ...seatFor(seat, toId) }),
     ...steppingDownWrites(db, { memberId: fromId, active }, step, endingIds, on),
     ...aliasAsked(db),
   ];

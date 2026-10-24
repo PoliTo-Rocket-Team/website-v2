@@ -10,7 +10,7 @@ import {
   type AlumnusKey,
   type RecordRole,
 } from "@/lib/about/alumni-record";
-import { BOARD_SEAT_TITLES, type OrgChart, type OrgDivision, type Placement, type RosterEntry } from "@/lib/dashboard/team";
+import { boardTitleOf, headTitleOf, type OrgChart, type OrgDivision, type Placement, type RosterEntry } from "@/lib/dashboard/team";
 import type { DummyAlumniEdits } from "./edits";
 import { DUMMY_NOW, formerMember, type DummyAlumnus } from "./team";
 
@@ -38,9 +38,16 @@ function placementRoles(memberId: number, placement: Placement, org: OrgChart, s
     placement.role === "team-leader"
       ? [{ ...base, type: "president", title: "Team Leader" }]
       : placement.role === "board"
-        ? [{ ...base, type: null, title: BOARD_SEAT_TITLES[placement.seat] }]
+        ? [{ ...base, type: null, title: boardTitleOf(placement.seat) }]
         : placement.role === "head"
-          ? [{ ...base, type: "head", title: `Head of ${org.departments.find((d) => d.id === placement.departmentId)?.name ?? "Department"}`, departmentId: placement.departmentId }]
+          ? [
+              {
+                ...base,
+                type: "head",
+                title: headTitleOf(placement.title, org.departments.find((d) => d.id === placement.departmentId)?.name ?? "Department"),
+                departmentId: placement.departmentId,
+              },
+            ]
           : [];
   const inDivisions = placement.memberships.map(
     (m): RecordRole => ({

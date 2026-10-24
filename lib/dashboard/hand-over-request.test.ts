@@ -58,8 +58,8 @@ const team: TeamPerson[] = [
   person(PIETRO, "Pietro Ricci", { memberships: lead(1) }),
   person(SARA, "Sara Conti", { memberships: member(1) }),
   person(PAOLO, "Paolo Conti", { memberships: lead(2) }),
-  person(CHIARA, "Chiara Rinaldi", { beyond: [{ kind: "head", departmentId: 1 }] }),
-  person(DAVIDE, "Davide Russo", { beyond: [{ kind: "head", departmentId: 2 }] }),
+  person(CHIARA, "Chiara Rinaldi", { beyond: [{ kind: "head", departmentId: 1, title: "" }] }),
+  person(DAVIDE, "Davide Russo", { beyond: [{ kind: "head", departmentId: 2, title: "" }] }),
   person(ALESSANDRO, "Alessandro Greco", { beyond: [{ kind: "team-leader" }] }),
   person(RICCARDO, "Riccardo Moretti", { memberships: member(3) }),
 ];
@@ -75,7 +75,7 @@ test("My profile offers a lead their division and a head their department; a mem
   assert.equal(offer(SARA), null, "a member with no role keeps Leave the team");
   assert.equal(offer(ALESSANDRO), null, "the team leader hands over from the Team Leader box (board 77i)");
   // A head who also leads a division hands over the department.
-  assert.deepEqual(roleToHandOver(person(30, "Both", { memberships: lead(1), beyond: [{ kind: "head", departmentId: 1 }] })), { kind: "head", departmentId: 1 });
+  assert.deepEqual(roleToHandOver(person(30, "Both", { memberships: lead(1), beyond: [{ kind: "head", departmentId: 1, title: "" }] })), { kind: "head", departmentId: 1 });
 });
 
 test("the offer names the role, who may take over from the unit, and who confirms", () => {
@@ -119,7 +119,7 @@ test("only the next level up answers: a head of the lead's department, the team 
   }
   assert.ok(planHandOverAnswer({ viewerId: ALESSANDRO, request: headRequest, answer: "confirm", team, org }).ok);
   // Nobody answers their own request, even one who heads the department too.
-  const both = [...team, person(30, "Both", { memberships: lead(2), beyond: [{ kind: "head", departmentId: 1 }] })];
+  const both = [...team, person(30, "Both", { memberships: lead(2), beyond: [{ kind: "head", departmentId: 1, title: "" }] })];
   assert.deepEqual(approverIdsOf({ kind: "lead", divisionId: 2 }, 30, both, org), [CHIARA]);
 });
 
@@ -186,7 +186,7 @@ test("a request whose sender's roles changed lapses: nobody answers it, it block
   assert.ok(hasLapsed(leadRequest, removed), "removed as lead");
   assert.ok(!hasLapsed(leadRequest, team));
   // Made head of Structures while he still leads: My profile now offers the department, so the lead request lapsed.
-  const madeHead = team.map((p) => (p.id === MARCO ? { ...p, beyond: [{ kind: "head" as const, departmentId: 2 }] } : p));
+  const madeHead = team.map((p) => (p.id === MARCO ? { ...p, beyond: [{ kind: "head" as const, departmentId: 2, title: "" }] } : p));
   assert.ok(hasLapsed(leadRequest, madeHead));
   assert.equal(planHandOverAnswer({ viewerId: CHIARA, request: leadRequest, answer: "decline", team: madeHead, org }).ok, false, "nobody answers it");
   const headSend = { role: { kind: "head", departmentId: 2 }, to: RICCARDO, outcome: "leave" } as const;

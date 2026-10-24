@@ -12,7 +12,7 @@ import * as teamActions from "@/app/dashboard/team-actions";
 import { GET as documentGET } from "@/app/dashboard/applications/[id]/[document]/route";
 import { GET as legacyGET } from "@/app/(legacy)/docs/applications/[r2key]/[filename]/route";
 import { GET as membersExportGET } from "@/app/dashboard/members/export/route";
-import { members, scopes } from "@/db/schema";
+import { members, roles, scopes } from "@/db/schema";
 import { SITE_CONTENT_REFUSAL } from "@/lib/content/gate";
 import { DashboardRefused, type DashboardData } from "./data";
 import { placeKey, placesOf, type AccessPage } from "./division-access";
@@ -1041,4 +1041,185 @@ describe("the CV and letter routes open a file only where the viewer reads Appli
       assert.equal((await status(`applicant-${u.toLowerCase()}`, legacyRoute(u))).status, 200, "the applicant");
     });
   }
+});
+
+// Stored role titles (issue #625) -------------------------------------------
+//
+// A role title is stored and can be renamed. A rename never moves a seat, a
+// headship or any access: seats are read from `roles.full_access` and from
+// where a role sits, never from its title.
+
+describe("a renamed role title changes no access, no seat and no headship (issue #625)", () => {
+  const RENAMED = "Chief of Propulsion";
+  /** Retitles every active role the matrix viewer holds, as a rename would store it. */
+  const rename = (name: string, title = RENAMED) => updateRows(roles, { memberId: accountOf(name).memberId }, { title });
+
+  /** Signs in as `name` on a freshly seeded database whose rows `before` laid over, and opens their dashboard. */
+  async function openAfter(name: string, before: () => void = () => {}): Promise<DashboardData> {
+    seedFixture();
+    before();
+    signInAs(accountOf(name).userId);
+    const opening = await openDashboard();
+    assert.equal(opening.kind, "open", `${name}: the dashboard opens`);
+    return (opening as { data: DashboardData }).data;
+  }
+
+  /** Every read the sweep above calls, as one text, with what it leaked. */
+  async function readEverything(data: DashboardData, expect: Expect): Promise<{ seen: string; leaks: string[] }> {
+    let seen = "";
+    const leaks: string[] = [];
+    for (const [, call] of readCalls()) {
+      const answer = await answerOf(() => call(data));
+      leaks.push(...leaked(answer, expect));
+      seen += JSON.stringify(answer ?? null).toLowerCase();
+    }
+    return { seen, leaks };
+  }
+
+  const standing = ({ role: _role, ...rest }: DashboardData["viewer"]) => rest;
+  const SAVE = { title: "Engineer", details: MEMBER_DETAILS };
+
+  for (const name of ["operations lead", "IT lead", "Project Manager", "Chief Engineer"]) {
+    test(`${name}: full access is the same after their title is renamed`, async () => {
+      const { expect } = VIEWERS.find((v) => v.name === name)!;
+      const before = await openAfter(name);
+      const after = await openAfter(name, () => rename(name));
+      assert.deepEqual(standing(after.viewer), standing(before.viewer), "the same standing, seat and grants");
+      assert.equal(after.viewer.kind, "operations-lead", "full access by the seat");
+      assert.equal(after.viewer.role, RENAMED, "the user card reads the stored title");
+      const { seen, leaks } = await readEverything(after, expect);
+      assert.deepEqual(leaks, [], "no read answers more than before");
+      assert.deepEqual(expectedMarkers(expect).filter((m) => !seen.includes(m)), [], "every read still answers what it did");
+      // A whole-team change still lands.
+      seedFixture();
+      rename(name);
+      signInAs(accountOf(name).userId);
+      assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE), { ok: true });
+      assert.ok(recordedWrites().length > 0);
+    });
+  }
+
+  test("the Project Manager and the Chief Engineer stay on the seat row of the Team tree, in the same place, after a rename", async () => {
+    const seats = async (renamed: boolean) => {
+      const data = await openAfter("team leader", () => {
+        if (renamed) {
+          rename("Project Manager", "Programme Lead");
+          rename("Chief Engineer", RENAMED);
+        }
+      });
+      return (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+    };
+    const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
+    const before = await seats(false);
+    const after = await seats(true);
+    assert.deepEqual(
+      after.filter(([id]) => id === pm || id === ce),
+      [
+        [pm, "Programme Lead"],
+        [ce, RENAMED],
+      ],
+    );
+    assert.deepEqual(
+      after.map(([id]) => id),
+      before.map(([id]) => id),
+      "every seat keeps its place on the row",
+    );
+  });
+
+  test("a role in no department and no division, not a head's, an advisor's or the team leader's, sits on the seat row after the flagged seats", async () => {
+    const data = await openAfter("team leader", () =>
+      insertRows(roles, [{ id: 7_000, memberId: IDS.person("MA"), title: "Head of R&D", startedAt: "2020-10-01", type: "core" }]),
+    );
+    const board = (await data.teamTree()).board.map((b) => [b.person.id, b.title]);
+    const [pm, ce] = [accountOf("Project Manager").memberId, accountOf("Chief Engineer").memberId];
+    // The flagged seats first, whatever the further seat's start date.
+    assert.deepEqual(board.slice(0, 2), [
+      [pm, "Project Manager"],
+      [ce, "Chief Engineer"],
+    ]);
+    assert.ok(
+      board.slice(2).some(([id, title]) => id === IDS.person("MA") && title === "Head of R&D"),
+      JSON.stringify(board),
+    );
+  });
+
+  test("a renamed head is still their department's head on the roster, the Team tree and every access check, and no grant changes", async () => {
+    const name = "department head";
+    const head = accountOf(name).memberId!;
+    const { expect } = VIEWERS.find((v) => v.name === name)!;
+    const before = await openAfter(name);
+    const grants = rowsIn(scopes);
+    const after = await openAfter(name, () => rename(name, "Chief of Aerodynamics"));
+    assert.deepEqual(rowsIn(scopes), grants, "no grant changes");
+    assert.deepEqual(standing(after.viewer), standing(before.viewer), "the same standing and grants");
+    const { seen, leaks } = await readEverything(after, expect);
+    assert.deepEqual(leaks, []);
+    assert.deepEqual(expectedMarkers(expect).filter((m) => !seen.includes(m)), []);
+    // Their department's change still lands; another department's is still refused.
+    seedFixture();
+    rename(name, "Chief of Aerodynamics");
+    signInAs(accountOf(name).userId);
+    assert.deepEqual(await teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE), { ok: true });
+    assert.ok(isRefusal(await answerOf(() => teamActions.saveMemberDetails({ kind: "person", id: IDS.person(DM) }, IDS.division(DM), SAVE))));
+    // The team leader's roster and Team tree read them as Aerodynamics' head, under the stored title.
+    const leader = await openAfter("team leader", () => rename(name, "Chief of Aerodynamics"));
+    const roster = await leader.members(null);
+    assert.equal(roster.scope, "whole-team");
+    const row = roster.scope === "whole-team" ? roster.people.find((p) => p.id === head) : undefined;
+    assert.deepEqual([row?.role, row?.roleLabel, row?.departmentIds], ["head", "Chief of Aerodynamics", [IDS.department("MA")]]);
+    const aerodynamics = (await leader.teamTree()).departments.find((d) => d.id === IDS.department("MA"));
+    assert.deepEqual([aerodynamics?.head?.id, aerodynamics?.head?.title], [head, "Chief of Aerodynamics"]);
+  });
+
+  test("the Access page's line under a renamed head and a renamed Chief Engineer, and Close department's head label, read the stored title", async () => {
+    const [head, ce] = [accountOf("department head").memberId, accountOf("Chief Engineer").memberId];
+    const lines = async (titles?: { readonly head: string; readonly ce: string }) => {
+      const data = await openAfter("team leader", () => {
+        if (titles !== undefined) {
+          rename("department head", titles.head);
+          rename("Chief Engineer", titles.ce);
+        }
+      });
+      const access = await data.divisionAccess();
+      const titleOf = (id: number | null) => {
+        const role = access?.roleAccess.find((r) => r.person.id === id);
+        return role !== undefined && "title" in role ? role.title : null;
+      };
+      const aerodynamics = (await data.teamStructure())?.departments.find((d) => d.id === IDS.department("MA"));
+      const closing = aerodynamics?.closing.find((p) => p.id === head);
+      return { head: titleOf(head), ce: titleOf(ce), close: closing?.standing === "head" ? closing.title : null, department: aerodynamics?.name };
+    };
+    // The fixture stores the head's title as "Head" and the Chief Engineer's as "Chief Engineer": each reads as stored.
+    const seeded = await lines();
+    assert.deepEqual([seeded.head, seeded.ce, seeded.close], ["Head", "Chief Engineer", "Head"]);
+    const renamed = await lines({ head: "Chief of Aerodynamics", ce: RENAMED });
+    assert.deepEqual([renamed.head, renamed.ce, renamed.close], ["Chief of Aerodynamics", RENAMED, "Chief of Aerodynamics"]);
+    // A blank title reads the default.
+    const blank = await lines({ head: "", ce: "" });
+    assert.deepEqual([blank.head, blank.ce, blank.close], [`Head of ${blank.department}`, "Chief Engineer", `Head of ${blank.department}`]);
+  });
+
+  test("a department rename rewrites a head title still at the old default and keeps a renamed one", async () => {
+    const renameStructures = async (headTitle: string) => {
+      seedFixture();
+      updateRows(roles, { id: 6_000 }, { title: headTitle });
+      keepWrites();
+      signInAs(accountOf("team leader").userId);
+      const answer = await teamActions.saveDepartment(IDS.department(DM), { name: "Frames", code: "FRM", kind: "technical", head: null });
+      assert.deepEqual(answer, { ok: true });
+      return rowsIn(roles).find((r) => r.id === 6_000)?.title;
+    };
+    assert.equal(await renameStructures("Head of Structures"), "Head of Frames", "the default follows the new name");
+    assert.equal(await renameStructures("Chief of Structures"), "Chief of Structures", "a renamed title is kept");
+  });
+
+  test("a new head row gets the default title", async () => {
+    seedFixture();
+    keepWrites();
+    signInAs(accountOf("team leader").userId);
+    const created = await teamActions.createDepartment({ name: "Avionics", code: "AVI", kind: "technical", heads: [EXTRA.mover] });
+    assert.ok(created.ok, JSON.stringify(created));
+    const row = rowsIn(roles).find((r) => r.memberId === EXTRA.mover && r.type === "head");
+    assert.equal(row?.title, "Head of Avionics");
+  });
 });

@@ -16,6 +16,7 @@ import {
   checkSaveAccess,
   grantRowOf,
   NO_APPROVE_ORDERS,
+  seatLine,
   UNIT_TARGETS,
   WHOLE_TEAM_PLACE,
   type AccessDepartment,
@@ -34,6 +35,7 @@ import {
   type RoleAccess,
   type UnitTarget,
 } from "./division-access";
+import { headTitleOf } from "./team";
 import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, ledDivisionIds, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
@@ -239,6 +241,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .select({
         member_id: roles.memberId,
         type: roles.type,
+        title: roles.title,
         full_access: roles.fullAccess,
         division_id: roles.divisionId,
         dept_id: roles.deptId,
@@ -286,12 +289,12 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
 
   // One person per member: a lead in any of their roles stands as a lead, placed in that role's division.
   const byMember = new Map<number, AccessPerson>();
-  // The department each head of the unit heads, which their role's access covers.
-  const headOf = new Map<number, AccessDepartment>();
+  // The department each head of the unit heads, which their role's access covers, and that head role's title as stored.
+  const headOf = new Map<number, { readonly department: AccessDepartment; readonly title: string }>();
   for (const t of team) {
     if (t.member_id === null) continue;
     const headed = t.type === "head" && t.division_id === null ? departmentById(t.dept_id) : null;
-    if (headed !== null && !headOf.has(t.member_id)) headOf.set(t.member_id, headed);
+    if (headed !== null && !headOf.has(t.member_id)) headOf.set(t.member_id, { department: headed, title: headTitleOf(t.title, headed.name) });
     const lead = isLeadRole(t.type) || seatByMember.has(t.member_id);
     const division = unitDivisions.find((d) => d.id === t.division_id) ?? null;
     const known = byMember.get(t.member_id);
@@ -305,10 +308,14 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
     .flatMap((person): RoleAccess[] => {
       if (person.id === me || person.standing !== "lead") return [];
       const seat = seatByMember.get(person.id);
-      if (seat !== undefined) return [{ person, place: WHOLE_TEAM_PLACE, seat }];
+      if (seat !== undefined) {
+        // The title stored on the row the seat's flag is on (issue #625).
+        const flagged = team.find((t) => t.member_id === person.id && t.full_access !== null && SEAT_OF_FLAG[t.full_access] === seat);
+        return [{ person, place: WHOLE_TEAM_PLACE, seat, title: seatLine(seat, flagged?.title ?? "") }];
+      }
       if (person.division !== null) return [{ person, place: { kind: "division", division: person.division } }];
       const headed = headOf.get(person.id);
-      return headed === undefined ? [] : [{ person, place: { kind: "department", department: headed } }];
+      return headed === undefined ? [] : [{ person, place: { kind: "department", department: headed.department }, title: headed.title }];
     })
     // Full access first (board 71), then the heads and the leads.
     .sort((a, b) => Number(b.place.kind === "team") - Number(a.place.kind === "team"));

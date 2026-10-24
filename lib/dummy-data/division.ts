@@ -7,6 +7,7 @@ import {
   NO_APPROVE_ORDERS,
   placesOf,
   samePlace,
+  seatLine,
   UNIT_TARGETS,
   WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
@@ -25,7 +26,7 @@ import {
 } from "@/lib/dashboard/division-access";
 import type { HeldSeat } from "@/lib/dashboard/hand-over";
 import type { FlaggedSeat, FullAccessSeat } from "@/lib/dashboard/viewer";
-import { homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type Placement, type RosterEntry } from "@/lib/dashboard/team";
+import { headTitleOf, homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type Placement, type RosterEntry } from "@/lib/dashboard/team";
 import type { ApproveOrdersChange } from "@/lib/dashboard/orders";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { TeamEdits } from "./edits";
@@ -312,10 +313,11 @@ export function dummyAccessPage(
     const person = onTeam.get(e.id)!;
     // A full-access seat covers the whole team on a team page (board 71); it is read off the role they hold now (issue #501).
     const seat = unit.kind === "team" ? seatOfPlacement(e.placement) : null;
-    if (seat !== null) return [{ person, place: WHOLE_TEAM_PLACE, seat }];
-    // A head's role covers their department on a team page.
+    if (seat !== null) return [{ person, place: WHOLE_TEAM_PLACE, seat, title: seatLine(seat, e.placement.role === "head" ? e.placement.title : "") }];
+    // A head's role covers their department on a team page, named by its title as stored (issue #625).
     if (unit.kind === "team" && e.placement.role === "head") {
-      return [{ person, place: { kind: "department", department: departmentUnit(e.placement.departmentId).department } }];
+      const department = departmentUnit(e.placement.departmentId).department;
+      return [{ person, place: { kind: "department", department }, title: headTitleOf(e.placement.title, department.name) }];
     }
     return membershipsInUnit(e, unit)
       .filter((m) => m.role === "lead")

@@ -13,12 +13,11 @@ import type { HeldSeat } from "./hand-over";
 import { normalizeLinkedin } from "./self";
 import { SEAT_OF_FLAG, type SeatFlag } from "./viewer";
 import {
-  boardSeatOf,
   headDepartmentOf,
+  isTeamSeat,
   membershipsIn,
   membershipsOfRoles,
   roleBeyondDivisions,
-  type BoardSeat,
   type OrgChart,
   type Placement,
   type RoleHeld,
@@ -37,6 +36,7 @@ import {
 export { TEAM_ROSTER_CACHE_TAG };
 
 type RoleRow = {
+  id: number;
   member_id: number;
   type: RoleType;
   title: string;
@@ -98,6 +98,7 @@ async function queryTeamSnapshot(): Promise<TeamSnapshot> {
       .orderBy(asc(divisions.id)),
     db
       .select({
+        id: roles.id,
         member_id: roles.memberId,
         type: roles.type,
         title: roles.title,
@@ -160,26 +161,23 @@ export async function readTeamSnapshot(): Promise<TeamSnapshot> {
 const ROLE_RANK = { president: 0, head: 2, lead: 3, core: 4, advisor: 4 } as const;
 
 /**
- * A board seat (Project Manager, Chief Engineer) has no role type of its own:
- * it is a role in no department or division whose title names the seat.
+ * A team-level seat (the Project Manager, the Chief Engineer, any other) has
+ * no role type of its own: it is read from where the row sits
+ * (`roleBeyondDivisions`), never from its title, and ranks under the team
+ * leader only.
  */
-function boardSeatOfRole(role: RoleRow): BoardSeat | null {
-  if (role.type === "president" || role.dept_id !== null || role.division_id !== null) return null;
-  return boardSeatOf(role.title);
-}
-
 function rank(role: RoleRow): number {
-  if (boardSeatOfRole(role) !== null) return 1;
+  if (isTeamSeat(roleSeat(role))) return 1;
   return role.type === null ? 5 : ROLE_RANK[role.type];
 }
 
 /**
  * Where someone's active roles put them, highest first: the team leader, a
- * board seat or a head by their top role; anyone else in every open division
- * they hold a role in, each with its own role (issue #229). A seat or a head
- * also keeps each division role they hold beside it, since anyone can lead a
- * division (Owner decision, 2026-10-11, on #232); a head row kept on a
- * division is the seat, not a role in it. A role in a closed or missing
+ * team-level seat or a head by their top role; anyone else in every open
+ * division they hold a role in, each with its own role (issue #229). A seat
+ * or a head also keeps each division role they hold beside it, since anyone
+ * can lead a division (Owner decision, 2026-10-11, on #232); a head row kept
+ * on a division is the seat, not a role in it. A role in a closed or missing
  * division places them nowhere, so someone with only such roles is on the
  * roster and not yet placed.
  */
@@ -187,12 +185,12 @@ function placementOf(active: readonly RoleRow[], org: OrgChart): Placement {
   const [top] = active;
   const open = active.filter((role) => org.divisions.some((d) => d.id === role.division_id));
   const beside = () => membershipsOfRoles(open.filter((role) => roleBeyondDivisions(roleSeat(role), org) === null).map(roleHeld));
-  if (top.type === "president") return { role: "team-leader", memberships: beside() };
-  const seat = boardSeatOfRole(top);
-  if (seat !== null) return { role: "board", seat, memberships: beside() };
-  if (top.type === "head") {
-    const departmentId = headDepartmentOf(roleSeat(top), org);
-    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, memberships: beside() };
+  const seat = roleBeyondDivisions(roleSeat(top), org);
+  if (seat?.kind === "team-leader") return { role: "team-leader", memberships: beside() };
+  if (seat?.kind === "board") return { role: "board", seat: seat.seat, memberships: beside() };
+  if (seat?.kind === "head") {
+    const { departmentId, title } = seat;
+    if (departmentId !== null && org.departments.some((d) => d.id === departmentId)) return { role: "head", departmentId, title, memberships: beside() };
   }
   return { role: "divisions", memberships: membershipsOfRoles(open.map(roleHeld)) };
 }
@@ -202,7 +200,13 @@ function roleHeld(role: RoleRow): RoleHeld {
 }
 
 function roleSeat(role: RoleRow): RoleSeat {
-  return { ...roleHeld(role), departmentId: role.dept_id, title: role.title };
+  return {
+    ...roleHeld(role),
+    id: role.id,
+    departmentId: role.dept_id,
+    title: role.title,
+    fullAccess: role.full_access === null ? null : SEAT_OF_FLAG[role.full_access],
+  };
 }
 
 const TARGET_LABELS: Readonly<Record<string, string>> = {

@@ -10,7 +10,7 @@ import {
 export type { ColumnOption } from "./column-filters";
 import { levelLabel, type MemberDetails } from "./details";
 import { matchesPerson, type DivisionChip, type DivisionHeader, type PersonDivision, type PersonRecord, type SignedNda } from "./division-members";
-import { beyondTitle, BOARD_SEAT_TITLES, divisionLabel, homeFirst, leadsChangedBy, type OrgChart, type TeamRole } from "./team";
+import { beyondTitle, BOARD_SEAT_FALLBACK, divisionLabel, homeFirst, leadsChangedBy, type OrgChart, type TeamRole } from "./team";
 
 // The team leader's Members page (boards 73 to 73c, issue #252): the whole
 // team in one list, heads and leads first, narrowed by a department select, a
@@ -30,7 +30,7 @@ export type TeamMember = {
   readonly since: number;
   /** Where they rank: team leader, board seat, head, division lead, then member. */
   readonly role: TeamRole;
-  /** The Role column: "Head of Department", "Division Lead", their title, or "Member". */
+  /** The Role column: a seat's or a head's stored title ("Head of Aerodynamics"), "Division Lead", their title, or "Member". */
   readonly roleLabel: string;
   /** Every department they are in or head: what the department select matches. */
   readonly departmentIds: readonly number[];
@@ -80,12 +80,12 @@ function roleLabelOf(record: PersonRecord, role: TeamRole, org: OrgChart): strin
   switch (role) {
     case "team-leader":
       return "Team Leader";
-    case "board": {
-      const seat = record.beyondDivisions.find((b) => b.kind === "board");
-      return seat?.kind === "board" ? BOARD_SEAT_TITLES[seat.seat] : "Board";
+    // A seat or a head shows its role's stored title (issue #625).
+    case "board":
+    case "head": {
+      const seat = record.beyondDivisions.find((b) => b.kind === role);
+      return seat === undefined ? (role === "board" ? BOARD_SEAT_FALLBACK : "Head") : beyondTitle(seat, org);
     }
-    case "head":
-      return "Head of Department";
     case "division-lead":
       return "Division Lead";
     case "member": {

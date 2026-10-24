@@ -63,7 +63,7 @@ test("the Departments panel counts each department's heads, divisions and people
   const person = (name: string, divisions: readonly number[], headOf: number | null = null) => ({
     name,
     memberships: membershipsOf(divisions.map((divisionId) => ({ divisionId, role: "member" as const, since: "2025-10-01" }))),
-    beyondDivisions: headOf === null ? [] : [{ kind: "head" as const, departmentId: headOf }],
+    beyondDivisions: headOf === null ? [] : [{ kind: "head" as const, departmentId: headOf, title: "" }],
   });
   const summaries = departmentSummaries(
     [person("Chiara", [], 1), person("Anna", [10, 11]), person("Matteo", [20, 11]), person("Luca", [10])],
