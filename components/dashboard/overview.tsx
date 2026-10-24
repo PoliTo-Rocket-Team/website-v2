@@ -102,7 +102,8 @@ function boardParts(overview: TeamSideOverview) {
 // alias is set up. The seat's board follows (boards 40, 56, 62, 72): its
 // figures, then what needs attention beside the recent activity. Board 52's
 // own panels come after it: their page on the site beside one roster per
-// division they are in, then "Your access" listing each grant, the access
+// division they are in (the rosters on their own once every step of the page
+// is done, issue #641), then "Your access" listing each grant, the access
 // hint for a member who reads no area, or nothing for a seat that reads its
 // areas by role and holds no grant. Board 52m: the person sits on the page
 // with no frame and no edit button (My profile is in the user menu), each
@@ -141,16 +142,18 @@ function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCa
         phone={parts.phone}
       />
 
-      <div className={rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
-        <ChecklistPanel checklist={checklist} />
-        {rosters.length > 0 && (
-          <div className="flex min-w-0 flex-col gap-4">
-            {rosters.map((roster) => (
-              <RosterPanel key={roster.title} roster={roster} />
-            ))}
-          </div>
-        )}
-      </div>
+      {(checklist !== null || rosters.length > 0) && (
+        <div className={checklist !== null && rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
+          {checklist !== null && <ChecklistPanel checklist={checklist} />}
+          {rosters.length > 0 && (
+            <div className="flex min-w-0 flex-col gap-4">
+              {rosters.map((roster) => (
+                <RosterPanel key={roster.title} roster={roster} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {access.kind === "lines" && <AccessPanel access={access.lines} />}
       {access.kind === "hint" && (
