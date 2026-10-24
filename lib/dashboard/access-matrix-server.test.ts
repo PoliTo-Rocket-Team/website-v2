@@ -1328,6 +1328,82 @@ describe("a division lead with no scope row edits their own division's orders by
   });
 });
 
+// One edit action set on Orders ----------------------------------------------
+
+describe("whoever may edit a waiting order may also cancel it, the team leader in every division (issue #675)", () => {
+  const TEAM_LEADER = "team leader";
+  const orderFor = (u: Unit) => form({ ...ORDER, division: String(IDS.division(u)) });
+  const storedOrder = async (u: Unit) => (await tableRows(orders)).find((r) => r.id === IDS.order(u))!;
+  type StoredStatus = (typeof orders.$inferSelect)["status"];
+  /** Seeds the database, lays `status` over the unit's order, signs in as `who` and runs `run`. */
+  async function attemptAt(who: string, u: Unit, status: StoredStatus, run: () => Promise<unknown>) {
+    await seedFixture();
+    resetFiles();
+    await changeRows(orders, { id: IDS.order(u) }, { status });
+    signInAs(accountOf(who).userId);
+    const answer = await answerOf(run);
+    return { answer, writes: await databaseWrites() };
+  }
+
+  test("the team leader cancels and edits a waiting order in every division, and each write is stored", async () => {
+    const asTeamLeader = (run: () => Promise<unknown>) => attempt(accountOf(TEAM_LEADER).userId, run);
+    for (const u of ALL) {
+      const cancelled = await asTeamLeader(() => actions.cancelOrder(IDS.order(u)));
+      assert.ok(!isRefusal(cancelled.answer), `Cancel request in ${u}: ${JSON.stringify(cancelled.answer)}`);
+      assert.equal((await storedOrder(u)).status, "cancelled", `Cancel request in ${u}`);
+
+      const edited = await asTeamLeader(() => actions.editOrder(IDS.order(u), orderFor(u)));
+      assert.ok(!isRefusal(edited.answer), `Edit order in ${u}: ${JSON.stringify(edited.answer)}`);
+      const row = await storedOrder(u);
+      assert.equal(row.name, ORDER.item, `Edit order in ${u}`);
+      assert.equal(row.status, "pending", `Edit order in ${u}`);
+    }
+  });
+
+  test("every matrix viewer whose Orders page may edit a waiting order may cancel it too, and one who may not is refused both with nothing written", async () => {
+    const seen = { editors: 0, refused: 0 };
+    for (const { name, expect } of VIEWERS) {
+      const page = expect.ordersPage ? ((await (await open(name)).orders()) as OrdersPage | null) : null;
+      for (const u of ALL) {
+        const shown = page?.orders.find((o) => o.id === IDS.order(u));
+        const may = page !== null && shown !== undefined && canEditOrder(page.scope, shown);
+        seen[may ? "editors" : "refused"]++;
+        for (const [label, run] of [
+          ["Cancel request", () => actions.cancelOrder(IDS.order(u))],
+          ["Edit order", () => actions.editOrder(IDS.order(u), orderFor(u))],
+        ] as const) {
+          const { answer, writes } = await attempt(accountOf(name).userId, run);
+          if (may) {
+            assert.ok(!isRefusal(answer), `${name}, ${label} in ${u}: ${JSON.stringify(answer)}`);
+            assert.ok(writes.length > 0, `${name}, ${label} in ${u}: wrote nothing`);
+          } else {
+            assert.ok(isRefusal(answer), `${name}, ${label} in ${u}: not refused: ${JSON.stringify(answer)}`);
+            assert.deepEqual(writes, [], `${name}, ${label} in ${u}: wrote`);
+          }
+        }
+      }
+    }
+    assert.ok(seen.editors > 0 && seen.refused > 0, `both sides are exercised: ${JSON.stringify(seen)}`);
+  });
+
+  test("even for the team leader, a request is cancelled only while waiting and edited only while waiting or sent back", async () => {
+    for (const status of ["changes_requested", "accepted", "ordered", "rejected"] as const) {
+      const cancel = await attemptAt(TEAM_LEADER, DM, status, () => actions.cancelOrder(IDS.order(DM)));
+      assert.ok(isRefusal(cancel.answer), `Cancel request on ${status}: not refused: ${JSON.stringify(cancel.answer)}`);
+      assert.deepEqual(cancel.writes, [], `Cancel request on ${status}: wrote`);
+
+      const edit = await attemptAt(TEAM_LEADER, DM, status, () => actions.editOrder(IDS.order(DM), orderFor(DM)));
+      if (status === "changes_requested") {
+        assert.ok(!isRefusal(edit.answer), `Edit and send again: ${JSON.stringify(edit.answer)}`);
+        assert.equal((await storedOrder(DM)).status, "pending", "an edit sends it back to waiting");
+      } else {
+        assert.ok(isRefusal(edit.answer), `Edit order on ${status}: not refused: ${JSON.stringify(edit.answer)}`);
+        assert.deepEqual(edit.writes, [], `Edit order on ${status}: wrote`);
+      }
+    }
+  });
+});
+
 // A lead's own division, in the Team tree ------------------------------------
 
 describe("a division lead with no scope row edits their own division in the Team tree (issue #594)", () => {

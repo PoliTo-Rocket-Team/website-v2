@@ -417,6 +417,35 @@ export function orderActions(scope: OrdersScope, order: Pick<Order, "status" | "
   return { ...edits, decide: decides && order.status === "waiting", markOrdered: decides && order.status === "approved" };
 }
 
+/** One edit button in the order drawer, with the one label every viewer reads (issue #675). */
+export type OrderEditButton =
+  | { readonly kind: "cancel"; readonly label: "Cancel request" }
+  | { readonly kind: "edit"; readonly label: "Edit order" | "Edit and send again" };
+
+/**
+ * The order drawer's edit buttons, and where they sit (issue #675). Everyone
+ * who may edit an order gets the same buttons with the same labels, whatever
+ * else they may do with it. While the footer holds the decide buttons (board
+ * 70b) or Mark as ordered (70c), they sit at the panel's head instead.
+ */
+export type OrderEditControls = {
+  readonly place: "footer" | "head";
+  readonly buttons: readonly OrderEditButton[];
+};
+
+const EDIT_LABELS: Readonly<Record<NonNullable<OrderActions["edit"]>, Extract<OrderEditButton, { kind: "edit" }>["label"]>> = {
+  edit: "Edit order",
+  "edit-and-resend": "Edit and send again",
+};
+
+/** The drawer's edit buttons for what the viewer may do with an order (`orderActions`). */
+export function orderEditControls(actions: OrderActions): OrderEditControls {
+  const buttons: OrderEditButton[] = [];
+  if (actions.cancel) buttons.push({ kind: "cancel", label: "Cancel request" });
+  if (actions.edit !== null) buttons.push({ kind: "edit", label: EDIT_LABELS[actions.edit] });
+  return { place: actions.decide || actions.markOrdered ? "head" : "footer", buttons };
+}
+
 /** The state an edited request is in afterwards: an edit always goes back to the team leader. */
 export function stateAfterEdit(status: OrderStatus): OrderState | null {
   return editsFor(status).edit === null ? null : { status: "waiting" };
