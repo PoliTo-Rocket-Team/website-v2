@@ -243,3 +243,10 @@ export async function addSeat(input: unknown): Promise<TeamActionResult> {
   if (!writes) return REFUSED;
   return answered(await writes.addSeat(input));
 }
+
+/** Remove seat (issue #643): the seat `roleId` ends with no successor; its holder stays on the team. */
+export async function removeSeat(roleId: number): Promise<TeamActionResult> {
+  const writes = await writesOn("team-tree");
+  if (!writes || !isId(roleId)) return REFUSED;
+  return answered(await writes.removeSeat(roleId));
+}
