@@ -586,11 +586,13 @@ export function placesFor(unit: AccessUnit, person: AccessPerson): AccessPlace[]
 /**
  * The people Give access lists (issue #591): everyone in the unit but the
  * viewer, leads and heads included, to whom the viewer can give some area in
- * some place. A full-access seat, whose role holds every area, is never
- * listed, nor a co-lead whose role already holds all the viewer could give.
+ * some place. A full-access seat, whose role holds every area, is listed
+ * only to the team leader, who can give them "Approve orders" (issue #635);
+ * a co-lead whose role already holds all the viewer could give is never listed.
  */
-export function grantablePeople(access: Pick<AccessPage, "unit" | "people">): AccessPerson[] {
+export function grantablePeople(access: Pick<AccessPage, "unit" | "people" | "approveOrders">): AccessPerson[] {
   return access.people.filter((person) =>
+    (person.role.kind === "full" && access.approveOrders.canGive) ||
     placesFor(access.unit, person).some((place) => {
       const held = heldIn(access.unit, place);
       return targetsAt(place).some((t) => heldLevel(held, t) !== null && !roleCovers(person, place, t));
@@ -726,7 +728,8 @@ function checkApproveOrders(access: AccessFacts, personId: number, holds: boolea
  * whole team, only at Can edit and only from someone who
  * holds it (full access, or a Content grant: `heldIn`), and access a
  * person's role gives is never touched (`roleCovers`). A full-access seat
- * takes no Save at all: their role holds every area. "Approve orders" changes
+ * takes no area, since their role holds every area, but the team leader gives
+ * and removes their "Approve orders" (`checkFullAccessSave`). "Approve orders" changes
  * only from the team leader. The Activity log is no area, so it is never
  * given. Every rule runs on the server: the drawer's own limits are a
  * convenience, not the check.
@@ -735,21 +738,35 @@ export function checkSaveAccess(access: AccessFacts, input: unknown): Checked<Ac
   const parsed = saveAccessSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the form." };
   const { personId, where } = parsed.data;
-  if (access.people.find((p) => p.id === personId)?.role.kind === "full") return { ok: false, error: "Full access already holds every area." };
-  const place = placeOfSave(access, personId, where);
-  if (place === undefined) return { ok: false, error: `You can give access only inside your ${access.unit.kind}.` };
-  if (!inPersonDivision(access, personId, place)) return { ok: false, error: "You can give access only in the division of the person you edit." };
   const areas: Partial<Record<AccessTarget, AccessLevel>> = {};
   for (const target of ACCESS_TARGETS) {
     const chosen = parsed.data.areas[target];
     if (chosen !== undefined) areas[target] = chosen;
   }
+  if (access.people.find((p) => p.id === personId)?.role.kind === "full") return checkFullAccessSave(access, personId, areas, parsed.data.approveOrders);
+  const place = placeOfSave(access, personId, where);
+  if (place === undefined) return { ok: false, error: `You can give access only inside your ${access.unit.kind}.` };
+  if (!inPersonDivision(access, personId, place)) return { ok: false, error: "You can give access only in the division of the person you edit." };
   const approve = checkApproveOrders(access, personId, parsed.data.approveOrders);
   if (!approve.ok) return approve;
   const approves = parsed.data.approveOrders ?? holdsApproveOrders(access, personId);
   if (Object.keys(areas).length === 0 && !approves) return { ok: false, error: "Choose at least one area." };
   const checked = checkChanges(access, personId, place, areas);
   return checked.ok ? { ok: true, value: { ...checked.value, approveOrders: approve.value } } : checked;
+}
+
+/**
+ * A Save for a full-access seat (issue #635): their role holds every area, so
+ * it carries no area, and its one change is "Approve orders", given or
+ * removed by the team leader alone (`checkApproveOrders`). The write touches
+ * no area, so its place is the unit's home place.
+ */
+function checkFullAccessSave(access: AccessFacts, personId: number, areas: AreaLevels, holds: boolean | undefined): Checked<AccessWrite> {
+  if (Object.keys(areas).length > 0 || holds === undefined) return { ok: false, error: "Full access already holds every area." };
+  const approve = checkApproveOrders(access, personId, holds);
+  if (!approve.ok) return approve;
+  if (approve.value === null) return { ok: false, error: holds ? "They already hold Approve orders." : "They do not hold Approve orders." };
+  return { ok: true, value: { personId, place: homePlace(access.unit), changes: [], approveOrders: approve.value } };
 }
 
 /** The place a Save names: `where` in the unit; left out, the person's division on a lead's page, else the unit's first place. */
