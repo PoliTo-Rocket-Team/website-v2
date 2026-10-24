@@ -740,6 +740,8 @@ async function personalPanelsOf(identity: Identity, teamOrders: Promise<Order[]>
       line: [role?.title ?? "Member", role?.divisionName, role?.departmentName].filter(Boolean).join(" · "),
       since: role ? `In the team since ${monthYear.format(new Date(`${role.startedAt}T00:00:00Z`))}` : null,
       edit: { label: "Edit profile", href: "/dashboard/profile" },
+      // The photo the sidebar shows, `DashboardViewer.photoUrl` (issue #599).
+      photoUrl: identity.picture,
     },
     checklist: {
       title: "Your page on the site",
@@ -766,9 +768,11 @@ async function readRosters(identity: Identity): Promise<Roster[]> {
       first_name: users.firstName,
       last_name: users.lastName,
       email: users.email,
+      picture: members.picture,
     })
     .from(roles)
     .innerJoin(users, eq(users.member, roles.memberId))
+    .leftJoin(members, eq(members.memberId, roles.memberId))
     .where(and(inArray(roles.divisionId, divisionsHeld.map((r) => r.divisionId!)), isNull(roles.leavedAt)));
   return divisionsHeld.map((held) =>
     divisionRoster(
@@ -776,7 +780,7 @@ async function readRosters(identity: Identity): Promise<Roster[]> {
       rows.flatMap((r) =>
         r.member_id === null || r.division_id !== held.divisionId
           ? []
-          : [{ memberId: r.member_id, type: r.type, name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email }],
+          : [{ memberId: r.member_id, type: r.type, name: [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email, photoUrl: r.picture }],
       ),
       identity.memberId,
     ),
