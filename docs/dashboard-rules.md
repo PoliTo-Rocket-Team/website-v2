@@ -817,8 +817,9 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - The delegation limit still holds: no area above the viewer's own level, and no lead's or head's
   role access changes here. Every other grant can be given to, listed for and removed from leads
   and heads (#591): a head's role covers the unit areas in their department and its divisions, so
-  Content or an area elsewhere on the team is a grant. Full-access seats stay locked:
-  nothing is given to them.
+  Content or an area elsewhere on the team is a grant. Full-access seats take no other grant,
+  since their role holds every area, but the team leader can give them "Approve orders" and
+  remove it (#635): Give access lists them for the team leader only, and only with that checkbox.
 
 ## 4. Orders
 
@@ -853,6 +854,13 @@ and 67m).
   can give **"Approve orders"** to any number of people, from their Access page; there is no
   limit on how many hold it. Only the team leader gives or removes it. The server refuses a
   decision from anyone else, and a decision on a request that is not waiting.
+- **What waits on the Overview** (#592). Everyone who decides orders, the team leader and every
+  holder of "Approve orders" (a member, a lead, a head or a full-access seat), sees the team
+  leader's two rows under "Needs your attention" on their Overview, whatever its shape: "N orders
+  wait for your decision" and "N approved orders are not ordered yet", both counted across the
+  whole team and both linking to Orders. Nobody else gets either row. A member who holds
+  "Approve orders" also sees an "Approve orders" line under "Your access", with the count of
+  orders waiting for a decision, linking to Orders, in place of the access hint.
 - **Deciding on the page** (#247, boards 70 to 70e). A waiting order opened by someone who decides
   shows Reject, Ask for changes and Approve; Edit moves to the panel's head. While a panel is open
   the Department column is hidden. Ask for changes opens a "What should change" note, which is

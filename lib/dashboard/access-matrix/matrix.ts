@@ -128,6 +128,12 @@ export type Expect = {
    * leader, the operations lead and the IT lead answer.
    */
   readonly aliases: { readonly requests: readonly Unit[]; readonly answers: boolean };
+  /**
+   * Whether they decide orders (`decideRightOf`): the team leader, and anyone
+   * holding "Approve orders". Deciding is team-wide, and their Overview says
+   * what waits for a decision, whatever its shape (issue #592).
+   */
+  readonly decidesOrders: boolean;
 };
 
 const NO_ALIASES = { requests: NONE, answers: false } as const;
@@ -144,6 +150,7 @@ const FULL_ACCESS: Omit<Expect, "switchesRecruitment"> = {
   ordersPage: true,
   wholeTeamMembers: true,
   aliases: NO_ALIASES,
+  decidesOrders: false,
 };
 
 export const PLAIN_MEMBER: Expect = {
@@ -155,6 +162,7 @@ export const PLAIN_MEMBER: Expect = {
   ordersPage: false,
   wholeTeamMembers: false,
   aliases: NO_ALIASES,
+  decidesOrders: false,
 };
 
 /** A member holding one area grant at Can edit over `units`: that area's page and units alone. */
@@ -178,9 +186,15 @@ export type MatrixRow = { readonly name: string; readonly viewer: Viewer; readon
 
 export const VIEWERS: readonly MatrixRow[] = [
   // Full access: the seats by role alone (issues #238, #485), or an org scope row.
-  { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: { ...FULL_ACCESS, switchesRecruitment: true, aliases: { requests: ALL, answers: true } } },
+  { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: { ...FULL_ACCESS, switchesRecruitment: true, aliases: { requests: ALL, answers: true }, decidesOrders: true } },
   // Open owner question (see the PR): the database switch needs an org or admin row beside the seat.
   { name: "operations lead", viewer: viewerOf([role("core", null, null, "operations-lead")]), expect: { ...FULL_ACCESS, switchesRecruitment: false, aliases: { requests: NONE, answers: true } } },
+  // A full-access seat that is not the team leader decides orders only with Approve orders (issue #592).
+  {
+    name: "operations lead with Approve orders",
+    viewer: viewerOf([role("core", null, null, "operations-lead")], [row("team", "approve_orders", "edit")]),
+    expect: { ...FULL_ACCESS, switchesRecruitment: false, aliases: { requests: NONE, answers: true }, decidesOrders: true },
+  },
   {
     name: "IT lead",
     viewer: viewerOf([role("core", null, null, "it-lead")]),
@@ -195,6 +209,20 @@ export const VIEWERS: readonly MatrixRow[] = [
     name: "department head",
     viewer: viewerOf([role("head", null, 1)]),
     expect: { ...PLAIN_MEMBER, aliases: { requests: AERODYNAMICS, answers: false }, pages: [...TEAM_BASE, ...LEADING], reads: everywhere(AERODYNAMICS), changes: changing(AERODYNAMICS), ordersPage: true },
+  },
+  // Approve orders adds deciding across the team to a head's role, and nothing else (issue #592).
+  {
+    name: "department head with Approve orders",
+    viewer: viewerOf([role("head", null, 1)], [row("team", "approve_orders", "edit")]),
+    expect: {
+      ...PLAIN_MEMBER,
+      aliases: { requests: AERODYNAMICS, answers: false },
+      pages: [...TEAM_BASE, ...LEADING],
+      reads: everywhere(AERODYNAMICS),
+      changes: changing(AERODYNAMICS),
+      ordersPage: true,
+      decidesOrders: true,
+    },
   },
   // A head's grant adds its own area in its own unit, and nothing else (issue #477).
   {
@@ -228,6 +256,20 @@ export const VIEWERS: readonly MatrixRow[] = [
     viewer: viewerOf([role("lead", 1, 1)]),
     // A lead's role opens Orders with no Orders row, editing their own division's orders (`ordersScopeOf`, issue #590).
     expect: { ...PLAIN_MEMBER, aliases: { requests: ["MA"], answers: false }, pages: [...TEAM_BASE, ...LEADING], reads: everywhere(["MA"]), changes: changing(["MA"]), ordersPage: true },
+  },
+  // The same for a lead (issue #592).
+  {
+    name: "division lead with Approve orders",
+    viewer: viewerOf([role("lead", 1, 1)], [row("team", "approve_orders", "edit")]),
+    expect: {
+      ...PLAIN_MEMBER,
+      aliases: { requests: ["MA"], answers: false },
+      pages: [...TEAM_BASE, ...LEADING],
+      reads: everywhere(["MA"]),
+      changes: changing(["MA"]),
+      ordersPage: true,
+      decidesOrders: true,
+    },
   },
   // The leak #477 fixes: a lead's Positions grant elsewhere opened every area there, CVs included.
   {
@@ -321,7 +363,7 @@ export const VIEWERS: readonly MatrixRow[] = [
   {
     name: "member with Approve orders",
     viewer: viewerOf([MEMBER_ROLE], [row("team", "approve_orders", "edit")]),
-    expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, "orders"], ordersPage: true },
+    expect: { ...PLAIN_MEMBER, pages: [...TEAM_BASE, "orders"], ordersPage: true, decidesOrders: true },
   },
   // Off the team, every scope row that outlived the roles reaches nothing (issues #201, #477).
   {
