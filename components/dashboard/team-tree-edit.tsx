@@ -89,7 +89,7 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
 
   const intro = editViewIntro(structure);
   // Close division is a head's or the team's: a lead's Edit division offers none (issue #594).
-  const closes = division?.kind === "edit" && structure.departments.some((d) => d.divisionsEditable && d.divisions.some((v) => v.id === division.divisionId));
+  const mayClose = (tab: DivisionMembers) => structure.departments.some((d) => d.divisionsEditable && d.divisions.some((v) => v.id === tab.division.id));
   const drawerOpen = drawerTarget !== null || department !== null || editing !== null || handOver.open;
 
   return (
@@ -125,14 +125,11 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         editable
         onClose={() => setDivision(null)}
         onFill={fill}
-        onCloseDivision={
-          closes
-            ? (tab) => {
-                setDivision(null);
-                setClosing(tab.division.id);
-              }
-            : null
-        }
+        mayClose={mayClose}
+        onCloseDivision={(tab) => {
+          setDivision(null);
+          setClosing(tab.division.id);
+        }}
       />
       <CloseDivisionDialog
         tab={closingTab}
