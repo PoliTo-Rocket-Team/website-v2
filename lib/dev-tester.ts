@@ -70,7 +70,7 @@ export const TESTERS: Readonly<Record<TesterKey, Tester>> = {
     id: "7e57e500-0000-4000-8000-000000000005",
     email: "department-head.tester@example.com",
     name: "Tester Department Head",
-    sees: "Heads Research and Development, whose one division has nobody yet (issue #230).",
+    sees: "Heads Payload, a test department whose one division has nobody yet (issue #230).",
   },
   "operations-lead": {
     key: "operations-lead",

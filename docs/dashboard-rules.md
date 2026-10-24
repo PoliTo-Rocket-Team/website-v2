@@ -268,7 +268,9 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   width (#627).
 - R&D is a department with a head and no divisions (Owner decision, 2026-10-24, #627). The Team
   tree and Edit team tree draw it as a department box with its head, never on the seat row.
-  Migration 0056 places a Head of R&D role kept in no unit under an R&D department. The public
+  Migration 0058 makes a Head of R&D role kept in no unit the head of the R&D department
+  (coded RND, or named R&D or Research and Development), only while that department has no
+  head, and adds the department only when none is open (Owner decision, 2026-10-24, #600). The public
   Team page is laid out apart: a department with no division has no block on its departments
   carousel, so its head shows as a core member, where the Team page editor can place them on
   the arc, as before.

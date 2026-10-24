@@ -8,8 +8,8 @@
 // Engineer, and the head of R&D, whose department has no divisions, after
 // them. The other edits are invented,
 // since the public data holds no editor's changes: a head's role text
-// changed, a division lead hidden, a division lead added to Research and
-// Development, whose one division has nobody in it, and the intro text and
+// changed, a division lead hidden, a division lead added to Payload, a test
+// department whose one division has nobody in it, and the intro text and
 // the group photo's caption changed. The team leader is left as the roles
 // build draws him, with his own photo: a stand-in photo there showed a plain
 // orange disc in his circle on every preview (issue #390). Every edit is
@@ -45,8 +45,8 @@ const ARC_HEAD_OF_OPERATIONS = "Rocco Bellon";
 const ARC_HEAD_OF_RESEARCH = "Marco Dona";
 export const ADDED_LEADER_PERSON = publicMember(ARC_HEAD_OF_OPERATIONS);
 export const ADDED_LAST_LEADER_PERSON = publicMember(ARC_HEAD_OF_RESEARCH);
-/** The department the layer adds a division lead to: Research and Development, whose division has nobody yet. */
-export const ADDED_LEAD_DEPARTMENT = DEPARTMENT.research;
+/** The department the layer adds a division lead to: Payload, a test department whose division has nobody yet. */
+export const ADDED_LEAD_DEPARTMENT = DEPARTMENT.payload;
 /** The member shown as that division's lead: an engineer in Hardware, who leads nothing. */
 export const ADDED_LEAD_PERSON = publicMember("Paul Teo Devis");
 
