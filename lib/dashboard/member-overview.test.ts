@@ -75,8 +75,15 @@ test("Your access lists each grant the seat holds, a lead's and a head's include
   assert.deepEqual(await lines("member with a Content grant"), ["content"]);
   assert.deepEqual(await lines("member with Approve orders"), ["approve-orders"]);
   assert.deepEqual(await lines("division lead with a Content grant"), ["content"]);
+  assert.deepEqual(await lines("division lead with Approve orders"), ["approve-orders"]);
   assert.deepEqual(await lines("department head with Approve orders"), ["approve-orders"]);
   assert.deepEqual(await lines("department head with a Positions grant in DM"), ["positions"]);
+});
+
+test("a Content grant has no figure card and still shows under Your access", async () => {
+  const content = await overviewOf("member with a Content grant");
+  assert.deepEqual(content.stats, []);
+  assert.deepEqual(content.access.kind === "lines" ? content.access.lines.map((l) => l.area) : content.access.kind, ["content"]);
 });
 
 test("a lead's grant line counts the grant's own units, not the division they lead", async () => {
