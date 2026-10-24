@@ -240,6 +240,15 @@ export function grantedAreasOf(scopes: readonly ScopeRef[]): GrantArea[] {
   return GRANT_AREAS.filter((area) => targets.includes("all") || targets.includes(area));
 }
 
+/**
+ * The areas the viewer holds an area grant on, in `GRANT_AREAS` order: a
+ * grant on one of them, or on `all` for every one (issue #593). Unlike
+ * `readsArea`, a seat that reads an area by its role holds no grant on it.
+ */
+export function areasGrantedBy(grants: readonly AreaGrant[]): GrantArea[] {
+  return GRANT_AREAS.filter((area) => grants.some((g) => g.target === area || g.target === "all"));
+}
+
 /** The full-access seat the viewer holds; null for anyone else, and for full access from a scope row alone. */
 export function seatOf(viewer: ViewerStanding): FullAccessSeat | null {
   return viewer.kind === "operations-lead" ? viewer.seat : null;

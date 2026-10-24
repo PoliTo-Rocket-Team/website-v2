@@ -117,6 +117,24 @@ An admin column comes later. **Planned**, no issue yet.
   50e-m, #211) or says there are none (board 50f); a withdrawn application is never a row there,
   and stays under Past on My applications (Owner decision, #227). Neither a non-member's nor an
   alumnus's Overview lists open positions (Owner decision, #317).
+- **One Overview for the whole team** (Owner decision, 2026-10-24, #593, in place of #480's
+  separate member Overview). Every team seat, the plain member, a member with grants, a division
+  lead, a department head, the operations lead and the team leader, gets the same Overview. Only
+  the figures, rows and panels its scope reads, and the actions it allows, differ:
+  - **Personal panels (board 52), for every seat:** the profile header with Edit profile, "Your
+    page on the site", and a roster for each division they are in. A seat whose roles name no
+    division (a head, the team leader) has no roster.
+  - **The scope's board (boards 40, 56, 62, 72)** under the profile: the figures, "Needs your
+    attention" and the panels of the seat's scope. A member gets board 56 with only the areas they
+    are granted, at the grant's scope, so a plain member gets no figure. Their own notices and the
+    rows for whoever decides orders (#592) show whatever the seat.
+  - **"Your access"** under the personal panels lists each grant the viewer holds, whatever their
+    seat: each area grant, counted in the units the grant names only, then "Approve orders", then
+    Content. A grant with no figure card still shows here. A plain member with no grant sees the
+    access hint in its place; a seat that reads its areas by role and holds no grant sees neither.
+  - **The Members figure names the scope it counts:** "My division" for the viewer's own division,
+    "Division" for another one, "Department" for a whole department, "Team" for the whole team,
+    and "Divisions" for any other set.
 - **An alumnus's Overview** (board 56, #317) reads "Former member · {last unit} · {years}" from
   their ended roles, then a card that says whether the Alumni page lists them, with "Open My
   alumni". Their shown applications follow it.
@@ -176,8 +194,8 @@ An admin column comes later. **Planned**, no issue yet.
     `website` scope row on `content`, given to the whole team only and at Can edit only; a
     `website` row at Can view is no grant (#589). It opens those six editors and their actions
     and nothing else, and no other grant opens them. Only a viewer with full access or a Content
-    grant gives, changes or removes it. A member holding it sees the Content group with those six
-    pages, and a "Content" line under "Your access" on their Overview.
+    grant gives, changes or removes it. Anyone holding it sees the Content group with those six
+    pages, and a "Content" line under "Your access" on their Overview (#593).
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -359,7 +377,7 @@ These rules come from the Owner decisions of 2026-10-16 on #253 (boards 77i, 77e
   - **Decline** changes no role. The sender may send a new request.
   - **Both answers notify the sender:** a notice under "Needs your attention" on their Overview
     ("<approver> confirmed your hand-over" or "declined"). A sender who is now an advisor reads it
-    on their member Overview, above board 52's panels.
+    on their Overview, as every seat does.
   - **Gap:** a sender who chose Leave the team is off the team once it is confirmed. Their notice
     is stored, but the applicant's pages show no notices.
 
@@ -863,9 +881,10 @@ and 67m).
   holder of "Approve orders" (a member, a lead, a head or a full-access seat), sees the team
   leader's two rows under "Needs your attention" on their Overview, whatever its shape: "N orders
   wait for your decision" and "N approved orders are not ordered yet", both counted across the
-  whole team and both linking to Orders. Nobody else gets either row. A member who holds
-  "Approve orders" also sees an "Approve orders" line under "Your access", with the count of
-  orders waiting for a decision, linking to Orders, in place of the access hint.
+  whole team and both linking to Orders. Nobody else gets either row. Anyone who holds
+  "Approve orders", whatever their seat, also sees an "Approve orders" line under "Your access",
+  with the count of orders waiting for a decision, linking to Orders (#593). The team leader
+  decides by their seat, which is no grant, so they get the rows and no line.
 - **Deciding on the page** (#247, boards 70 to 70e). A waiting order opened by someone who decides
   shows Reject, Ask for changes and Approve; Edit moves to the panel's head. While a panel is open
   the Department column is hidden. Ask for changes opens a "What should change" note, which is

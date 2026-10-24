@@ -1,18 +1,22 @@
-// What the Overview page shows. The operations lead sees the team shape
+// What the Overview page shows. Every team seat gets one Overview (issue
+// #593): the personal panels of board 52 (who they are, their page on the
+// site, their division's roster, and "Your access" for what they are
+// granted), with the figures, attention rows and panels their scope reads.
+// The shape names that scope. The operations lead reads the team shape
 // (board 40: figures, what needs attention, recent activity); the team leader
-// sees the leader shape (board 72, issue #252: the same across the team, with
-// what waits for their decision and a Departments panel); a division lead
-// sees the division shape (board 56: the same, scoped to their division, plus
-// upcoming interviews); a department head sees the department shape (board
-// 62, issue #230: the same across their department, plus a Divisions panel);
-// a member sees the personal shape (board 52: who they
-// are and what is theirs), with a grant or without one (issue #480). A non-member sees the applicant shape (boards 50e
-// and 50f, ./applicant-overview.ts) and an alumnus the alumni shape (issue
-// #317's board 56, not the division lead's board 56 above; ./my-alumni.ts),
-// which the page builds from My applications and My alumni. The components
-// in components/dashboard/ render these and fetch nothing.
+// the leader shape (board 72, issue #252: the same across the team, with what
+// waits for their decision and a Departments panel); a division lead the
+// division shape (board 56: the same, scoped to their division, plus upcoming
+// interviews); a department head the department shape (board 62, issue #230:
+// the same across their department, plus a Divisions panel); and a member the
+// division shape too, with only the areas they are granted (issue #471), so
+// none for a member who holds no grant. A non-member sees the applicant shape
+// (boards 50e and 50f, ./applicant-overview.ts) and an alumnus the alumni
+// shape (issue #317's board 56, not the division lead's board 56 above;
+// ./my-alumni.ts), which the page builds from My applications and My alumni.
+// The components in components/dashboard/ render these and fetch nothing.
 
-import type { AccessSummary } from "./access-summary";
+import type { AccessSection } from "./access-summary";
 import type { ApplicantOverview } from "./applicant-overview";
 import type { AlumniOverview } from "./my-alumni";
 
@@ -286,31 +290,26 @@ export function divisionRoster(
   };
 }
 
-export type PersonalOverview = {
-  readonly shape: "personal";
-  /**
-   * The member's stored notices (./notices.ts), when they have any: the
-   * answer to a hand-over they sent (issue #262) reaches a sender who is now
-   * an advisor here.
-   */
-  readonly attention: readonly AttentionItem[];
+/**
+ * Board 52's panels, on every team seat's Overview (issue #593): who the
+ * viewer is, their page on the site, one roster per division they are in
+ * (none for a seat whose roles name no division), and "Your access".
+ */
+export type PersonalPanels = {
   readonly person: PersonHeader;
-  readonly checklist: Checklist | null;
-  readonly roster: Roster | null;
-  /**
-   * "Your access" (issue #480): one summary per area the member is granted,
-   * in `GRANT_AREAS` order, at the grant's scope; none when they hold no
-   * grant, and then the access hint (`ACCESS_HINT`) shows in its place. A
-   * grant adds these lines and nothing else: no attention row and no panel.
-   */
-  readonly access: readonly AccessSummary[];
+  readonly checklist: Checklist;
+  readonly rosters: readonly Roster[];
+  readonly access: AccessSection;
 };
 
-/** The one-line strip under a member's panels when they hold no grant (board 40m). */
+/** The one-line strip under a member's panels when they hold no grant and read no area (board 40m). */
 export const ACCESS_HINT = "Need to work on recruitment or site content? Ask your division lead or the admin team for access.";
 
-/** What the dashboard data interface answers: the team's own Overviews. */
-export type TeamSideOverview = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview | PersonalOverview;
+/** The figures, rows and panels a seat's scope reads: the board its shape names. */
+export type ScopeBoard = TeamOverview | TeamLeaderOverview | DepartmentOverview | DivisionOverview;
+
+/** What the dashboard data interface answers: the one team Overview, the same for every seat but the scope it reads (issue #593). */
+export type TeamSideOverview = ScopeBoard & PersonalPanels;
 
 /** Someone off the team: a non-member (boards 50e, 50f) or an alumnus (board 56, issue #317), built by the page. */
 export type Overview = TeamSideOverview | ApplicantOverview | AlumniOverview;

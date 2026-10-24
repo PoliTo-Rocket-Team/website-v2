@@ -36,8 +36,8 @@ import {
   type AttentionKind,
   type Checklist,
   type Overview,
-  type PersonalOverview,
   type Roster,
+  type TeamSideOverview,
   type Stat,
   type UpcomingInterview,
 } from "@/lib/dashboard/overview";
@@ -50,61 +50,19 @@ import { DismissNotice } from "./dismiss-notice";
 import { departmentLabel } from "@/lib/dashboard/recruitment";
 import { PANEL, Panel, RowAction } from "./panel";
 
-// The Overview page: board 40 for the operations lead, 72 for the team
-// leader, 62 for a department head, 56 for a division lead, 52 for a member,
-// 50e and 50f for a non-member, and issue #317's board 56 for an alumnus.
-// Props in, nothing fetched: the page hands over what the dashboard data
-// interface answered.
+// The Overview page: one view for every team seat (issue #593), the personal
+// panels of board 52 around the board the seat's scope reads (40 for the
+// operations lead, 72 for the team leader, 62 for a department head, 56 for a
+// division lead, and 56 over their grants for a member); 50e and 50f for a
+// non-member, and issue #317's board 56 for an alumnus. Props in, nothing
+// fetched: the page hands over what the dashboard data interface answered.
 export function OverviewView({ overview, aliasCard = null }: { overview: Overview; aliasCard?: OwnAlias | null }) {
   switch (overview.shape) {
     case "team":
-      return (
-        <LeadView
-          aliasCard={aliasCard}
-          stats={overview.stats}
-          attention={overview.attention}
-          interviews={[]}
-          activity={overview.activity}
-          phone="full"
-        />
-      );
     case "leader":
-      return (
-        <LeadView
-          aliasCard={aliasCard}
-          stats={overview.stats}
-          attention={overview.attention}
-          departments={{ list: overview.departments, people: overview.people }}
-          interviews={[]}
-          activity={overview.activity}
-          phone="full"
-        />
-      );
     case "department":
-      return (
-        <LeadView
-          aliasCard={aliasCard}
-          phone="board-56m"
-          stats={overview.stats}
-          attention={overview.attention}
-          divisions={overview.divisions}
-          interviews={overview.interviews}
-          activity={overview.activity}
-        />
-      );
     case "division":
-      return (
-        <LeadView
-          aliasCard={aliasCard}
-          phone="board-56m"
-          stats={overview.stats}
-          attention={overview.attention}
-          interviews={overview.interviews}
-          activity={overview.activity}
-        />
-      );
-    case "personal":
-      return <PersonalView overview={overview} aliasCard={aliasCard} />;
+      return <TeamView overview={overview} aliasCard={aliasCard} />;
     case "applicant":
       return <ApplicantView overview={overview} />;
     case "alumni":
@@ -124,27 +82,106 @@ const STACK = "mt-6 flex min-w-0 flex-col gap-4";
  */
 type LeadPhoneForm = "full" | "board-56m";
 
+/** The scope board's own parts, and the phone form it reads in: board 56m's for a division or department board, 40m's otherwise. */
+function boardParts(overview: TeamSideOverview) {
+  switch (overview.shape) {
+    case "team":
+      return { divisions: null, departments: null, interviews: [], phone: "full" as const };
+    case "leader":
+      return { divisions: null, departments: { list: overview.departments, people: overview.people }, interviews: [], phone: "full" as const };
+    case "department":
+      return { divisions: overview.divisions, departments: null, interviews: overview.interviews, phone: "board-56m" as const };
+    case "division":
+      return { divisions: null, departments: null, interviews: overview.interviews, phone: "board-56m" as const };
+  }
+}
+
+// One Overview for every team seat (issue #593). Board 52's person leads it,
+// with Edit profile from md, and board 94f's alias card under it until the
+// alias is set up. The seat's board follows (boards 40, 56, 62, 72): its
+// figures, then what needs attention beside the recent activity. Board 52's
+// own panels come after it: their page on the site beside one roster per
+// division they are in, then "Your access" listing each grant, the access
+// hint for a member who reads no area, or nothing for a seat that reads its
+// areas by role and holds no grant. Board 52m: the person sits on the page
+// with no frame and no edit button (My profile is in the user menu), each
+// panel's count moves beside its title, and the hint is left out.
+function TeamView({ overview, aliasCard }: { overview: TeamSideOverview; aliasCard: OwnAlias | null }) {
+  const { person, checklist, rosters, access } = overview;
+  const parts = boardParts(overview);
+  return (
+    <>
+      <section className={PERSON_FRAME}>
+        <PersonLines name={person.name} line={person.line} since={person.since} />
+        {person.edit && (
+          <Link
+            href={person.edit.href}
+            className="hidden h-9 items-center gap-2 self-start rounded-full md:inline-flex bg-prt-text px-4 text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:self-center"
+          >
+            <Pencil aria-hidden className="h-4 w-4" strokeWidth={2} />
+            {person.edit.label}
+          </Link>
+        )}
+      </section>
+
+      {aliasCard && (
+        <div className="mt-5 md:mt-6">
+          <AliasReadyCard alias={aliasCard} />
+        </div>
+      )}
+
+      <ScopeBoardView
+        stats={overview.stats}
+        attention={overview.attention}
+        divisions={parts.divisions}
+        departments={parts.departments}
+        interviews={parts.interviews}
+        activity={overview.activity}
+        phone={parts.phone}
+      />
+
+      <div className={rosters.length > 0 ? GRID : "mt-5 md:mt-6"}>
+        <ChecklistPanel checklist={checklist} />
+        {rosters.length > 0 && (
+          <div className="flex min-w-0 flex-col gap-4">
+            {rosters.map((roster) => (
+              <RosterPanel key={roster.title} roster={roster} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {access.kind === "lines" && <AccessPanel access={access.lines} />}
+      {access.kind === "hint" && (
+        <p className={`${PANEL} mt-6 items-start gap-2.5 px-4 py-2.5 text-[13px] text-text-2 max-md:hidden md:flex`}>
+          <Info aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
+          {ACCESS_HINT}
+        </p>
+      )}
+    </>
+  );
+}
+
 // Boards 40 and 56: four figures, then what needs the lead's attention (and,
 // on 56, the upcoming interviews under it) beside the recent activity. Board
 // 62 (a department head, issue #230) puts the Divisions panel under the
 // attention rows; its phone board 62m keeps the interviews and drops the
 // activity, as 56m does, while board 62 shows no interviews. Board 72 (the
-// team leader, issue #252) puts the Departments panel there instead.
-function LeadView({
-  aliasCard,
+// team leader, issue #252) puts the Departments panel there instead. A board
+// with no figure (a member who holds no area grant) shows no figure row.
+function ScopeBoardView({
   stats,
   attention,
-  divisions = null,
-  departments = null,
+  divisions,
+  departments,
   interviews,
   activity,
   phone,
 }: {
-  aliasCard: OwnAlias | null;
   stats: readonly Stat[];
   attention: readonly AttentionItem[];
-  divisions?: readonly DivisionSummary[] | null;
-  departments?: { readonly list: readonly DepartmentSummary[]; readonly people: number } | null;
+  divisions: readonly DivisionSummary[] | null;
+  departments: { readonly list: readonly DepartmentSummary[]; readonly people: number } | null;
   interviews: readonly UpcomingInterview[];
   activity: readonly ActivityItem[];
   phone: LeadPhoneForm;
@@ -157,18 +194,13 @@ function LeadView({
     (departments !== null && departments.list.length > 0);
   return (
     <>
-      <h1 className="sr-only">Overview</h1>
-      {/* The viewer's own alias card (board 94f) leads every Overview it shows on, a lead's as a member's. */}
-      {aliasCard && (
-        <div className="mb-5 md:mb-6">
-          <AliasReadyCard alias={aliasCard} />
+      {stats.length > 0 && (
+        <div className="mt-5 grid grid-cols-2 gap-3 md:mt-6 md:gap-4 xl:grid-cols-4">
+          {stats.map((stat, index) => (
+            <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
+          ))}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
-        {stats.map((stat, index) => (
-          <StatCard key={stat.label} stat={stat} compact={compact} hiddenOnPhone={compact && index >= 2} />
-        ))}
-      </div>
       {(left || activity.length > 0) && (
         // With no recent activity the panels take the whole width, so no
         // empty column is left on the right (Owner decision, 2026-10-21).
@@ -441,67 +473,8 @@ function StatCard({ stat, compact, hiddenOnPhone }: { stat: Stat; compact: boole
   );
 }
 
-// Boards 40m and 52: who the viewer is, then their own panels (their page on
-// the site and their division), then the access hint, or "Your access" when
-// they hold a grant (issue #480).
-// Board 52m: the person sits on the page with no frame and no edit button
-// (My profile is in the user menu), each panel's count moves beside its title,
-// and the hint is left out.
-// Board 52. A member's stored notices, when they have any (the answer to a
-// hand-over they sent, issue #262), sit above it as the leads' "Needs your
-// attention" panel, so board 52 itself is unchanged when there are none.
-// Board 94f (issue #542): the "Your email alias is ready" card sits under the
-// person until they set the alias up.
-function PersonalView({ overview, aliasCard }: { overview: PersonalOverview; aliasCard: OwnAlias | null }) {
-  const { attention, person, checklist, roster, access } = overview;
-  const main = checklist ? <ChecklistPanel checklist={checklist} /> : null;
-  return (
-    <>
-      {attention.length > 0 && (
-        <div className="mb-5 md:mb-6">
-          <AttentionPanel attention={attention} compact />
-        </div>
-      )}
-      <section className={PERSON_FRAME}>
-        <PersonLines name={person.name} line={person.line} since={person.since} />
-        {person.edit && (
-          <Link
-            href={person.edit.href}
-            className="hidden h-9 items-center gap-2 self-start rounded-full md:inline-flex bg-prt-text px-4 text-[14px] font-semibold text-ground transition-opacity duration-300 ease-out hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:self-center"
-          >
-            <Pencil aria-hidden className="h-4 w-4" strokeWidth={2} />
-            {person.edit.label}
-          </Link>
-        )}
-      </section>
-
-      {aliasCard && (
-        <div className="mt-5 md:mt-6">
-          <AliasReadyCard alias={aliasCard} />
-        </div>
-      )}
-
-      {(main || roster) && (
-        <div className={roster ? GRID : "mt-5 md:mt-6"}>
-          {main}
-          {roster && <RosterPanel roster={roster} />}
-        </div>
-      )}
-
-      {access.length > 0 ? (
-        <AccessPanel access={access} />
-      ) : (
-        <p className={`${PANEL} mt-6 items-start gap-2.5 px-4 py-2.5 text-[13px] text-text-2 max-md:hidden md:flex`}>
-          <Info aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-prt-muted" strokeWidth={1.75} />
-          {ACCESS_HINT}
-        </p>
-      )}
-    </>
-  );
-}
-
-// Issue #480: a granted member's areas, one linked row each, in place of the
-// access hint. Counts only; the names stay on each area's own page.
+// Issues #480 and #593: each grant the viewer holds, one linked row each, in
+// place of the access hint. Counts only; the names stay on each area's own page.
 function AccessPanel({ access }: { access: readonly AccessSummary[] }) {
   return (
     <Panel title="Your access" className="mt-5 md:mt-6">
