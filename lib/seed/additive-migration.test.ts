@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
 import { nonAdditiveStatements } from "./journal";
 
 // Every preview build applies pending migrations to the shared preview
@@ -194,6 +196,50 @@ test("the journal is ordered by when, each entry later than the one before", () 
     assert.ok(entry.tag.startsWith(String(i).padStart(4, "0")), `${entry.tag} is numbered ${i}`);
     if (i > 0) assert.ok(entry.when > journal.entries[i - 1].when, `${entry.tag} is later than ${journal.entries[i - 1].tag}`);
   });
+});
+
+// Earlier builds of the epic branch journaled the View as migrations as 0055
+// (1793640000000) and 0056 (1793726400000), before the trunk's 0055 took that
+// number. The shared preview database recorded the trunk's 0055 first, so the
+// old epic 0055 was skipped, and then the old epic 0056 (the write attribution)
+// applied: its newest recorded entry is 1793726400000. Drizzle's own migrator
+// applies only entries later than that, so both renumbered entries must be
+// later, or the admin plugin columns never reach that database.
+const OLD_EPIC_ATTRIBUTION_WHEN = 1793726400000;
+
+test("the migrator applies 0056 and 0057 over a database that recorded the old epic entries", async () => {
+  const journal = JSON.parse(readFileSync(resolve(process.cwd(), "drizzle/meta/_journal.json"), "utf8")) as {
+    entries: { when: number; tag: string }[];
+  };
+  const { db } = await databaseBefore(VIEW_AS_TAG);
+  const attribution = readFileSync(resolve(process.cwd(), `drizzle/${ATTRIBUTION_TAG}.sql`), "utf8");
+  for (const statement of attribution.split("--> statement-breakpoint")) if (statement.trim()) await db.exec(statement);
+  const recorded = journal.entries.slice(0, journal.entries.findIndex((e) => e.tag === VIEW_AS_TAG)).map((e) => e.when);
+  await db.exec(`
+    create schema drizzle;
+    create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint);
+    insert into drizzle.__drizzle_migrations (hash, created_at) values
+      ${[...recorded, OLD_EPIC_ATTRIBUTION_WHEN].map((when) => `('recorded', ${when})`).join(", ")};
+  `);
+
+  await migrate(drizzle(db), { migrationsFolder: resolve(process.cwd(), "drizzle") });
+
+  const columns = await db.query<{ column: string }>(`
+    select table_name || '.' || column_name as column from information_schema.columns
+    where table_schema = 'better_auth' and column_name in ('role', 'banned', 'banReason', 'banExpires', 'impersonatedBy')
+    order by 1
+  `);
+  assert.deepEqual(
+    columns.rows.map((r) => r.column),
+    ["session.impersonatedBy", "user.banExpires", "user.banReason", "user.banned", "user.role"],
+    "the admin plugin columns reached the database",
+  );
+  const newest = await db.query<{ created_at: string }>(`select created_at from drizzle.__drizzle_migrations order by created_at desc limit 1`);
+  assert.equal(Number(newest.rows[0].created_at), journal.entries.at(-1)?.when, "the newest recorded entry is the journal's last");
+  const constraints = await db.query<{ count: number }>(
+    `select count(*)::int as count from pg_constraint where conname like '%acting_account_users_id_fk'`,
+  );
+  assert.equal(constraints.rows[0].count, 8, "each acting-account foreign key exists once");
 });
 
 test("the check catches each statement that is not additive, and no foreign key action", () => {
