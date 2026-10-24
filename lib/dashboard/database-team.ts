@@ -1436,6 +1436,39 @@ async function handOverTeamLeader(identity: DashboardIdentity, input: unknown): 
 // `planNewSeat` (./team-seats.ts) decide what may change; each write below
 // runs what they allow in one audited batch.
 
+const SEAT_NO_LONGER_HELD = "That seat is no longer held.";
+
+/**
+ * Ends the seat row, and fails the whole batch unless that ended exactly one
+ * row (issue #666). The batch cannot read one write's result in the next, so
+ * the check lives in this one statement: two overlapping writes on one seat
+ * both pass their "still held" read, and the second one's update waits for
+ * the first's row lock, then ends nothing, so its batch rolls back and none
+ * of the writes after this one land.
+ */
+function endSeatRow(db: Tx, roleId: number, on: string): BatchItem<"pg"> {
+  const ended = db.$with("ended").as(db.update(roles).set({ leavedAt: on }).where(and(eq(roles.id, roleId), isNull(roles.leavedAt))).returning({ id: roles.id }));
+  // Division by zero is how one plain statement fails its transaction.
+  return db.with(ended).select({ ended: sql<number>`1 / (count(*) = 1)::int` }).from(ended);
+}
+
+/**
+ * Runs one seat write: `endSeatRow` first, then `after`, in one audited
+ * batch. When the batch fails because the seat row was already ended, the
+ * write is refused as no longer held; any other failure is thrown.
+ */
+async function writeSeat(roleId: number, on: string, after: (db: Tx) => BatchItem<"pg">[]): Promise<WriteResult<null>> {
+  try {
+    await runAuditBatch((db) => [endSeatRow(db, roleId, on), ...after(db)]);
+  } catch (error) {
+    const [held] = await getDb().select({ id: roles.id }).from(roles).where(and(eq(roles.id, roleId), isNull(roles.leavedAt)));
+    if (held === undefined) return refused(SEAT_NO_LONGER_HELD);
+    throw error;
+  }
+  done();
+  return written(null);
+}
+
 /**
  * Change holder on a seat box, in one batch: the holder's seat role ends, the
  * successor's starts with the same type, title and full-access flag, so the
@@ -1452,19 +1485,18 @@ async function changeSeatHolder(identity: DashboardIdentity, roleId: number, inp
   if (!planned.ok) return refused(planned.error);
   const { from, to, steppingDown: step } = planned.value;
   const row = snapshot.roles.find((r) => r.id === roleId && r.leaved_at === null && r.member_id === from);
-  if (row === undefined) return refused("That seat is no longer held.");
+  if (row === undefined) return refused(SEAT_NO_LONGER_HELD);
   // A full-access flag on the seat's row moves to the successor's (`seatHandOver`, issue #501).
   const handed = seatHandOver([{ fullAccess: seatOfFlag(row.full_access) }], [to]);
   if (!handed.ok) return refused(handed.error);
   const active = await activeRoles(from);
   const on = today();
   // The holder's row ends before the successor's starts: the database keeps one active holder per seat (issue #667).
-  await runAuditBatch((db) => [
-    ...steppingDownWrites(db, { memberId: from, active }, step, [roleId], on),
+  // It ends in `writeSeat`'s first statement, so the stepping-down writes end no row of it again.
+  return writeSeat(roleId, on, (db) => [
+    ...steppingDownWrites(db, { memberId: from, active }, step, [], on),
     db.insert(roles).values({ memberId: to, deptId: null, divisionId: null, title: row.title, type: row.type, startedAt: on, ...seatFor(handed.value, to) }),
   ]);
-  done();
-  return written(null);
 }
 
 /** Add seat: one active role in no department and no division, with the title given and no full-access flag. */
@@ -1495,17 +1527,14 @@ async function removeSeat(identity: DashboardIdentity, roleId: number): Promise<
   if (!planned.ok) return refused(planned.error);
   const { holder } = planned.value;
   const active = await activeRoles(holder);
-  if (!active.some((r) => r.id === roleId)) return refused("That seat is no longer held.");
+  if (!active.some((r) => r.id === roleId)) return refused(SEAT_NO_LONGER_HELD);
   const staying = stayingOnTeam(active.filter((r) => r.id !== roleId).length);
   const on = today();
-  await runAuditBatch((db) => [
-    db.update(roles).set({ leavedAt: on }).where(and(eq(roles.id, roleId), isNull(roles.leavedAt))),
-    ...(staying === "advisor-to-the-team"
+  return writeSeat(roleId, on, (db) =>
+    staying === "advisor-to-the-team"
       ? [db.insert(roles).values({ memberId: holder, ...advisorUnit({ kind: "team" }), title: ADVISOR_TITLE, type: "advisor", startedAt: on })]
-      : []),
-  ]);
-  done();
-  return written(null);
+      : [],
+  );
 }
 
 /**
