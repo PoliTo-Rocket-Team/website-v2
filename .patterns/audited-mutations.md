@@ -108,7 +108,7 @@ store passed in, so [submit.test.ts](../lib/apply/submit.test.ts) tests them wit
 recruitment switch does the same: its rule lives in
 [lib/apply/recruitment-switch.ts](../lib/apply/recruitment-switch.ts) with the permission, the write
 and the cache refresh passed in, and [recruitment-switch.test.ts](../lib/apply/recruitment-switch.test.ts)
-tests each scope case. Its action reaches the write through the dashboard data interface
+tests each standing. Its action reaches the write through the dashboard data interface
 (`setRecruitment` in [lib/dashboard/data.ts](../lib/dashboard/data.ts)): the database side upserts
 through `runAuditQuery`, and the server-side access tests
 ([lib/dashboard/access-matrix-server.test.ts](../lib/dashboard/access-matrix-server.test.ts)) call it

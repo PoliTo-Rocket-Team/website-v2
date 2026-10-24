@@ -142,11 +142,13 @@ const nothing = { positions: NONE, applications: NONE, members: NONE, orders: NO
 const everywhere = (units: readonly Unit[]) => ({ positions: units, applications: units, members: units, orders: units });
 const changing = (units: readonly Unit[]) => ({ positions: units, applications: units, members: units });
 
-const FULL_ACCESS: Omit<Expect, "switchesRecruitment"> = {
+/** Full access, by any seat or an org or admin row: it includes the recruitment switch (Owner decision, issue #621). */
+const FULL_ACCESS: Expect = {
   pages: FULL,
   reads: everywhere(ALL),
   changes: changing(ALL),
   siteContent: true,
+  switchesRecruitment: true,
   ordersPage: true,
   wholeTeamMembers: true,
   aliases: NO_ALIASES,
@@ -186,24 +188,23 @@ export type MatrixRow = { readonly name: string; readonly viewer: Viewer; readon
 
 export const VIEWERS: readonly MatrixRow[] = [
   // Full access: the seats by role alone (issues #238, #485), or an org scope row.
-  { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: { ...FULL_ACCESS, switchesRecruitment: true, aliases: { requests: ALL, answers: true }, decidesOrders: true } },
-  // Open owner question (see the PR): the database switch needs an org or admin row beside the seat.
-  { name: "operations lead", viewer: viewerOf([role("core", null, null, "operations-lead")]), expect: { ...FULL_ACCESS, switchesRecruitment: false, aliases: { requests: NONE, answers: true } } },
+  { name: "team leader", viewer: viewerOf([role("president", null, null)]), expect: { ...FULL_ACCESS, aliases: { requests: ALL, answers: true }, decidesOrders: true } },
+  { name: "operations lead", viewer: viewerOf([role("core", null, null, "operations-lead")]), expect: { ...FULL_ACCESS, aliases: { requests: NONE, answers: true } } },
   // A full-access seat that is not the team leader decides orders only with Approve orders (issue #592).
   {
     name: "operations lead with Approve orders",
     viewer: viewerOf([role("core", null, null, "operations-lead")], [row("team", "approve_orders", "edit")]),
-    expect: { ...FULL_ACCESS, switchesRecruitment: false, aliases: { requests: NONE, answers: true }, decidesOrders: true },
+    expect: { ...FULL_ACCESS, aliases: { requests: NONE, answers: true }, decidesOrders: true },
   },
   {
     name: "IT lead",
     viewer: viewerOf([role("core", null, null, "it-lead")]),
-    expect: { ...FULL_ACCESS, pages: [...FULL, "activity-log"], switchesRecruitment: false, aliases: { requests: NONE, answers: true } },
+    expect: { ...FULL_ACCESS, pages: [...FULL, "activity-log"], aliases: { requests: NONE, answers: true } },
   },
   // The board seats (issue #485): a flagged role in no unit, the operations lead's expectations.
-  { name: "Project Manager", viewer: viewerOf([role(null, null, null, "project-manager")]), expect: { ...FULL_ACCESS, switchesRecruitment: false } },
-  { name: "Chief Engineer", viewer: viewerOf([role(null, null, null, "chief-engineer")]), expect: { ...FULL_ACCESS, switchesRecruitment: false } },
-  { name: "org-wide editor", viewer: viewerOf([MEMBER_ROLE], [row("org", "all", "edit")]), expect: { ...FULL_ACCESS, switchesRecruitment: true } },
+  { name: "Project Manager", viewer: viewerOf([role(null, null, null, "project-manager")]), expect: FULL_ACCESS },
+  { name: "Chief Engineer", viewer: viewerOf([role(null, null, null, "chief-engineer")]), expect: FULL_ACCESS },
+  { name: "org-wide editor", viewer: viewerOf([MEMBER_ROLE], [row("org", "all", "edit")]), expect: FULL_ACCESS },
   // A department head: every area in their department, by the role.
   {
     name: "department head",

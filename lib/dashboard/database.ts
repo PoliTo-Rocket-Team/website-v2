@@ -4,7 +4,6 @@ import { and, asc, count, eq, inArray, isNull, max, min, notInArray, or, sql } f
 import { alias } from "drizzle-orm/pg-core";
 import { cacheLife, cacheTag, updateTag } from "next/cache";
 import { getRecruitmentControlFor } from "@/app/actions/get-apply-positions";
-import { getScopeInfoForMember } from "@/app/actions/get-member-scopes";
 import { cachedReadTags, refreshAfter } from "@/lib/cache-tags";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import {
@@ -959,11 +958,11 @@ export async function openDatabaseDashboard(): Promise<DashboardData | null> {
     myAlias: () => readOwnAlias(identity),
     confirmAliasSetUp: () => confirmAliasSetUp(identity),
     // The member this request already resolved, never the session a second time (issue #397).
-    recruitment: () => getRecruitmentControlFor(identity.memberId, identity),
+    recruitment: () => getRecruitmentControlFor(identity),
     setRecruitment: (next) =>
       switchRecruitment(next, {
-        // Read on the server, from the caller's seat and positions scope rows: the same rule the page shows.
-        maySwitch: async () => canSwitchRecruitment(identity, await getScopeInfoForMember(identity.memberId, "positions")),
+        // Read on the server, from the caller's standing: the same rule the page shows.
+        maySwitch: async () => canSwitchRecruitment(identity),
         save: saveRecruitment,
         refresh: () => refreshAfter("positions", updateTag),
       }),

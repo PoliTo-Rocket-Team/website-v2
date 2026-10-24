@@ -1,24 +1,23 @@
-import type { ScopeInfo } from "@/app/actions/get-member-scopes";
-import { isOffTeam, isTeamLeader, type ViewerStanding } from "@/lib/dashboard/viewer";
+import type { ViewerStanding } from "@/lib/dashboard/viewer";
 import type { Recruitment } from "./positions";
 
-// The site-wide recruitment switch on the dashboard (issue #121). The team
-// leader may flip it from their seat alone, by the rule that gives them full
-// access everywhere else (`isTeamLeader`, issue #444); otherwise only an
-// org-wide positions editor, or an admin, may: a lead's edit rights on one
-// department or division do not reach the whole site. The permission, the
-// store and the cache are passed in, so the rule is tested without them
-// (recruitment-switch.test.ts). The dashboard data interface supplies them
-// from the caller's standing and scope rows.
+// The site-wide recruitment switch on the dashboard (issue #121). Full access
+// includes it (Owner decision, issue #621): every full-access seat (the team
+// leader, the operations lead, the IT lead, the Project Manager and the Chief
+// Engineer) and full access from an org or admin scope row may flip it, from
+// the standing alone, with no positions grant. Nobody else may: a lead's or a
+// head's rights, or an area grant, on one department or division do not reach
+// the whole site. The permission, the store and the cache are passed in, so
+// the rule is tested without them (recruitment-switch.test.ts). The dashboard
+// data interface supplies them from the caller's standing.
 
 /**
- * Whether a member with this standing and positions scope may flip the
- * switch. Someone off the team never may, whatever scope rows outlived their
- * roles (issues #201, #477): those rows reach nothing.
+ * Whether a member with this standing may flip the switch: full access, the
+ * `operations-lead` kind, and no one else. Someone off the team never may,
+ * whatever scope rows outlived their roles (issues #201, #477).
  */
-export function canSwitchRecruitment(viewer: ViewerStanding, scope: ScopeInfo): boolean {
-  if (isOffTeam(viewer.kind)) return false;
-  return isTeamLeader(viewer) || scope.hasOrgEdit || scope.hasAdminEdit;
+export function canSwitchRecruitment(viewer: ViewerStanding): boolean {
+  return viewer.kind === "operations-lead";
 }
 
 /** What the dashboard shows: the switch's state and whether this member may change it. */
