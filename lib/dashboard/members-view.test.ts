@@ -46,8 +46,8 @@ const records = [
   record(3, "Davide Russo", [[1, "member"], [3, "member"]]),
   record(4, "Laura Greco", [[2, "lead"]]),
   record(5, "Federica Leone", [[3, "lead"]]),
-  record(6, "Chiara Ferri", [], [{ kind: "head", departmentId: 1 }]),
-  record(7, "Alessandro Greco", [], [{ kind: "team-leader" }]),
+  record(6, "Chiara Ferri", [], [{ kind: "head", departmentId: 1, title: "" }]),
+  record(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
 ];
 
 const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS };
@@ -203,13 +203,35 @@ test("a division lead's panel reaches only their divisions, a head's only their 
   assert.deepEqual(positionsOf(records, org, null, null), [], "no actor, no panel");
 });
 
-test("a seat on the whole team opens the same panel, its seat title locked, with no division to change (#584)", () => {
+test("a seat on the whole team opens the same panel, its seat title editable, with no division to change (#584, #626)", () => {
   const head = positionIn(leaderPage(), "Chiara Ferri")!;
-  assert.deepEqual(head.title, { kind: "seat", label: "Head of Aerodynamics" });
+  assert.deepEqual(head.title, { kind: "seat", value: "Head of Aerodynamics" }, "a blank head title reads its default");
   assert.deepEqual([head.leads, head.removals], [[], []]);
   assert.deepEqual(head.leave, { allowed: true });
   assert.deepEqual(positionIn(leaderPage(), "Lena Fischer")?.title, { kind: "division", divisionId: 1, short: "Mission Analysis", value: null });
   assert.equal(positionIn(headPage(), "Chiara Ferri"), null, "a head's page does not list their own seat");
+});
+
+test("every team-level seat's title is an editable value as stored; only a role with no seat title stays fixed (#626)", () => {
+  const seat = (roleId: number, title: string, flag: "project-manager" | "chief-engineer" | null): RoleBeyondDivisions => ({
+    kind: "board",
+    seat: { roleId, title, flag, since: "2024-10-01" },
+  });
+  const seats = [
+    record(20, "Paola Marino", [], [seat(1, "", "project-manager")]),
+    record(21, "Carlo Conti", [], [seat(2, "Chief of Propulsion", "chief-engineer")]),
+    record(22, "Irene Gallo", [], [seat(3, "Head of R&D", null)]),
+    record(23, "Bruno Sala", [], [{ kind: "head", departmentId: 2, title: "Chief of Structures" }]),
+    record(24, "Ugo Fabbri", [], [{ kind: "advisor", departmentId: 1 }]),
+  ];
+  const titles = positionsOf(seats, org, { kind: "team" }, 7).map((p) => [p.id, p.title]);
+  assert.deepEqual(titles, [
+    [20, { kind: "seat", value: "Project Manager" }],
+    [21, { kind: "seat", value: "Chief of Propulsion" }],
+    [22, { kind: "seat", value: "Head of R&D" }],
+    [23, { kind: "seat", value: "Chief of Structures" }],
+    [24, { kind: "fixed", label: "Advisor" }],
+  ]);
 });
 
 test("the whole team lists every division's people waiting for their NDA and joining, and the selects narrow them (Owner decision, 2026-10-22, #584)", () => {

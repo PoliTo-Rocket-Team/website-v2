@@ -1,5 +1,5 @@
 import { textLength } from "@/lib/content/text";
-import { BOARD_SEATS, type BoardSeat, type DepartmentKind } from "@/lib/dashboard/team";
+import { BOARD_FLAGS, type BoardFlag, type BoardRole, type DepartmentKind } from "@/lib/dashboard/team";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import { personOf, type TeamPerson } from "./team-person";
 import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person, PersonPhoto } from "./types";
@@ -18,8 +18,20 @@ import type { DepartmentHead, DivisionLead, HeaderStats, Leader, Member, Person,
 /** The arc holds up to eight leaders. */
 export const ARC_LEADERS = 8;
 
-/** A place on the arc the roles fill: a board seat, and which of its holders by name (0 is the first). */
-export type ArcSpot = `arc:${BoardSeat}:${number}`;
+/**
+ * The seat an arc spot names: a flagged seat by its flag ("project-manager",
+ * the key stored layers already hold), any other team-level seat by its role
+ * row ("role-27"). Never its title, so a rename keeps the spot's edits.
+ */
+export type ArcSeat = BoardFlag | `role-${number}`;
+
+/** The arc key of a team-level seat (`ArcSeat`). */
+export function arcSeatOf(seat: BoardRole): ArcSeat {
+  return seat.flag ?? `role-${seat.roleId}`;
+}
+
+/** A place on the arc the roles fill: a team-level seat, and which of its holders by name (0 is the first). */
+export type ArcSpot = `arc:${ArcSeat}:${number}`;
 /** A head block: a department by id, and which of its heads by name. */
 export type HeadSpot = `head:${number}:${number}`;
 /** A division lead row: a division by id, and which of its leads by name. */
@@ -212,19 +224,24 @@ function insertAt(slots: readonly { readonly ref: ArcRef }[], place: ArcPlace): 
  * added leader at its place. A hidden leader keeps their place while the
  * added ones are placed, so "after" a hidden neighbour still means where they
  * stood. An added leader whose neighbour is gone from the page goes at the
- * end; one who has left the team is skipped.
+ * end; one who has left the team is skipped. A person shows on the arc once:
+ * when the roles come to seat someone the editor already added (a role that
+ * became a team-level seat, issue #600), the editor's entry stays where they
+ * put it and the roles' spot is left off, as if hidden.
  */
 function arcOf(build: TeamBuild, layer: TeamPageLayer): Shown<ArcRef, Leader>[] {
-  const slots: { ref: ArcRef; leader: Leader | null }[] = build.arc.map((built) => {
-    const edit = layer.spots[built.spot];
-    return {
-      ref: built.spot,
-      leader: edit?.hidden ? null : { ...shownPerson(build, built.person, edit), role: edit?.role ?? built.role },
-    };
-  });
   let pending = layer.addedLeaders.flatMap((added) => {
     const person = shownAdded(build, added);
     return person === null ? [] : [{ added, leader: { ...person, role: added.role } }];
+  });
+  const addedPeople = new Set(pending.map(({ added }) => added.person));
+  const slots: { ref: ArcRef; leader: Leader | null }[] = build.arc.map((built) => {
+    const edit = layer.spots[built.spot];
+    const shownId = memberOf(build, edit?.person)?.id ?? built.person.id;
+    return {
+      ref: built.spot,
+      leader: edit?.hidden || addedPeople.has(shownId) ? null : { ...shownPerson(build, built.person, edit), role: edit?.role ?? built.role },
+    };
   });
   for (let placed = true; placed && pending.length > 0; ) {
     placed = false;
@@ -428,7 +445,7 @@ export function isSpot(value: unknown): value is Spot {
   if (typeof value !== "string") return false;
   const [kind, a, b, ...rest] = value.split(":");
   if (rest.length > 0 || b === undefined || !isIndex(b)) return false;
-  if (kind === "arc") return (BOARD_SEATS as readonly string[]).includes(a);
+  if (kind === "arc") return (BOARD_FLAGS as readonly string[]).includes(a) || (a.startsWith("role-") && isIdText(a.slice("role-".length)));
   return (kind === "head" || kind === "lead") && isIdText(a);
 }
 

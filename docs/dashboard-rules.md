@@ -254,6 +254,32 @@ These rules come from the Owner decisions of 2026-10-11 on #229, recorded in
   reads "Also in another division · shown once" (board 54e).
 - The division a person is drawn under, and the one a page names when it shows only one, is
   their home division: the oldest division they lead, else their oldest membership.
+- A role title is stored (`roles.title`) and every page that names a head or a team-level seat by
+  its role shows it as stored (#625): Members, the Team tree, the Team page, the line under a name
+  on Access and Close department's head label. A hand-over's full-access line names the seat that
+  moves ("becomes Operations lead"), not the role's title. A head row is
+  written with "Head of {department}"; a department rename rewrites only head titles still at
+  the old default. The default shows only for a blank title. No page decides a seat or a
+  headship by a title's text, so a rename never moves anyone or changes any access.
+- The Team tree's seat row, under the team leader, holds every team-level seat: an active role in
+  no department and no division that is not the team leader's, a head's or an advisor's. The
+  Project Manager and the Chief Engineer, read from their `roles.full_access` flag, come first;
+  any other seat follows by start date. The Team page's arc lists them in the same order. Each
+  seat is drawn as a box built like the team leader's, in one row directly under it, on every
+  width (#627).
+- R&D is a department with a head and no divisions (Owner decision, 2026-10-24, #627). The Team
+  tree and Edit team tree draw it as a department box with its head, never on the seat row.
+  Department 8, Research and Development (code RND), is the real R&D department: its only head
+  is the Head of R&D, and it has no divisions (Owner decision, 2026-10-24, #600). The seed keeps
+  its department-head tester and the Payload Integration test division in a separate test
+  department, Payload (code PAY), so R&D stays as it is in reality.
+  Migration 0059 makes a Head of R&D role kept in no unit the head of the R&D department
+  (coded RND, or named R&D or Research and Development), only while that department has no
+  head, and adds the department only when none is open, so there is never a second R&D
+  department and no department gets two heads (Owner decision, 2026-10-24, #600). The public
+  Team page is laid out apart: a department with no division has no block on its departments
+  carousel, so its head shows as a core member, where the Team page editor can place them on
+  the arc, as before.
 - **Superseded:** rule 7 of [0011](../.decisions/0011-applicant-journey-received-to-joining.md),
   "one person, one division", no longer holds. [0014](../.decisions/0014-several-divisions-one-nda.md)
   replaces it, and also amends 0011's Confirm join rule for someone already on the team.
@@ -376,9 +402,17 @@ These rules come from the Owner decisions of 2026-10-11 on #231 (boards 61e to 6
   - Details (board 61g): photo, contact, studies and personal details, with the same field checks.
   - Role: the person's title in one division, shown on the Team page: the division the page lists
     them under, else their first division the editor reaches. Titles in their other divisions
-    show on the member panel, not in the form. A seat with no division the editor reaches (the
-    team leader, a board seat, a department head) shows their seat's title locked: it is set on
-    the Team tree, and Save never changes it.
+    show on the member panel, not in the form. Someone in no division the editor reaches who holds
+    a seat (the team leader, a department head, the Project Manager, the Chief Engineer or another
+    team-level seat) shows their seat's stored title as an editable Role, and only the team
+    leader and full access reach them (issue #626). A blank stored title shows as the seat's
+    default name ("Team Leader", "Head of Aerodynamics"). It may not be blank. Save writes that
+    seat row's title and nothing else: never its type, department, division or full access, so
+    the seat, the headship and every access stay. A save with the Role left as shown writes the
+    title back unchanged. The team leader's title is the one on the public Team page; the
+    Members Role column names that seat "Team Leader" whatever it stores.
+    Someone with no such seat (an Advisor role, a role kept on a department) shows their role
+    locked.
   - Lead or member: one choice per division of the person where the editor may change who leads
     it, as Edit division allows: the department's head, the team leader, full access, and a lead
     of that division by role (#594). A Members grant never shows it, and the server refuses its
@@ -498,6 +532,27 @@ These rules come from the Owner decisions of 2026-10-16 on #251 (boards 77 to 77
 - The **Team Leader box** on top opens "Hand over your role" (board 77i, #253) for the team leader
   alone, with a pencil. For everyone else, full access included, it shows a lock and opens
   nothing (see "Handing over a role" above).
+- The **seat row** (#627) sits directly under the Team Leader box and above the department
+  columns: one box per team-level seat, built like the Team Leader box, with the holder's name
+  and the seat's stored title, in the Team tree's seat order. Everyone who opens the edit view
+  sees the same row. A row too wide for the frame shrinks to fit it, as the department row does.
+  - For the team leader and full access, each seat box has a pencil and opens **Change
+    holder**, and the row ends in **+ Add seat**, in the Add department style. For a head the
+    boxes open nothing and there is no Add seat. The server refuses both writes to everyone
+    but the team leader and full access.
+  - **Change holder** picks who holds the seat from the team. As in Change head, someone who
+    already holds a seat, or the holder themself, cannot be picked, and the successor keeps
+    their divisions. The holder gets "What happens to {name}?": Become an advisor (on the whole
+    team, their access ends) or Leave the team, with neither picked at first. On save the
+    holder's seat role ends and the successor's starts with the same title and the same
+    `roles.full_access` flag, so the Project Manager's and the Chief Engineer's full access
+    moves with the seat.
+  - A seat box changes who holds the seat, never its title: the title is changed on Members,
+    in Edit details (#626).
+  - **Add seat** takes a title and one person from the team who holds no seat yet. It starts an
+    active role in no department and no division with that title and no full-access flag, so a
+    new seat gives no access of its own. It shows on the Team tree's seat row, this row and the
+    public Team page's arc. Ending a seat with no successor is not offered.
 
 #### Departments
 

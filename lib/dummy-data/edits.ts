@@ -8,7 +8,7 @@ import { parseAlumnusKey, type EntryChange, type RoleFix } from "@/lib/about/alu
 import { MAX_ALUMNI_NAME, MAX_ALUMNI_ROLE, type NewAdvisor } from "@/lib/dashboard/alumni";
 import { parseMemberDetails, type MemberDetails } from "@/lib/dashboard/details";
 import type { AdvisorPlace, SteppingDown } from "@/lib/dashboard/hand-over";
-import { DEPARTMENT_KINDS, LEAVE_REASONS, type DepartmentKind, type Departure, type DivisionRole } from "@/lib/dashboard/team";
+import { BOARD_FLAGS, DEPARTMENT_KINDS, LEAVE_REASONS, type BoardFlag, type DepartmentKind, type Departure, type DivisionRole } from "@/lib/dashboard/team";
 import { isHandOverOutcome } from "@/lib/dashboard/hand-over";
 import type { RequestedRole } from "@/lib/dashboard/hand-over-request";
 import { ALIAS_OUTCOMES, type AliasOutcome } from "@/lib/dashboard/alias-request";
@@ -30,6 +30,8 @@ export type MemberChange = {
   readonly roles: Readonly<Record<number, DivisionRole>>;
   /** Division id to the title Edit details set there. */
   readonly titles?: Readonly<Record<number, string | null>>;
+  /** The title Edit details set on their seat, a head's or a team-level seat's (issue #626); never blank. */
+  readonly seatTitle?: string;
   /** Division id to the day Add member put them in it. */
   readonly joined?: Readonly<Record<number, string>>;
   /** Divisions Remove from <division> took them out of. */
@@ -80,6 +82,14 @@ export type DummyDepartmentEdit = {
  * head's) or stayed (a former team leader's), as `steppingDown` says.
  */
 export type DummyAdvisor = Omit<Extract<SteppingDown, { kind: "advisor" }>, "kind">;
+
+/** A team-level seat role Change holder or Add seat started (issue #627): its row, who holds it, its title and full-access flag, and the day it started. */
+export type DummySeat = { readonly roleId: number; readonly holder: number; readonly title: string; readonly flag: BoardFlag | null; readonly since: string };
+
+/** The seat rows Change holder ended, and the ones it and Add seat started (issue #627), as the database ends and inserts them. */
+export type DummySeatEdits = { readonly ended: readonly number[]; readonly started: readonly DummySeat[] };
+
+export const NO_SEAT_EDITS: DummySeatEdits = { ended: [], started: [] };
 
 /** Confirm NDA on someone waiting: the day, and the member who confirmed it. */
 export type DummyConfirmation = { readonly on: string; readonly by: number };
@@ -149,6 +159,8 @@ export type TeamEdits = {
   readonly aliasRequests: readonly DummyAliasRequest[];
   /** Who pressed "I've set it up" on their own alias (issue #542), by person id, with when. */
   readonly aliasesSetUp: Readonly<Record<number, string>>;
+  /** Team-level seats Change holder and Add seat changed (issue #627). */
+  readonly seats: DummySeatEdits;
 };
 
 export const NO_EDITS: TeamEdits = {
@@ -169,6 +181,7 @@ export const NO_EDITS: TeamEdits = {
   handOvers: [],
   aliasRequests: [],
   aliasesSetUp: {},
+  seats: NO_SEAT_EDITS,
 };
 
 /** The key `details` keeps a person's or a waiting add's details under. */
@@ -234,12 +247,14 @@ function readTitles(value: unknown): Record<number, string | null> {
 
 function readMemberChange(value: unknown): MemberChange | null {
   if (!isRecord(value)) return null;
-  const { roles, pageTitle, titles, joined, left } = value;
+  const { roles, pageTitle, titles, seatTitle, joined, left } = value;
   if (pageTitle !== null && typeof pageTitle !== "string") return null;
+  const seat = typeof seatTitle === "string" ? cleanTitle(seatTitle) : null;
   return {
     pageTitle: cleanTitle(pageTitle),
     roles: entriesOf(roles, (r) => (r === "lead" || r === "member" ? r : null)),
     titles: readTitles(titles),
+    ...(seat !== null && { seatTitle: seat }),
     joined: entriesOf(joined, (d) => (isDay(d) ? d : null)),
     left: Array.isArray(left) ? left.filter((id): id is number => Number.isInteger(id) && id > 0) : [],
   };
@@ -457,7 +472,26 @@ export function parseEdits(cookie: string | null | undefined): TeamEdits {
       ? raw.aliasRequests.flatMap((r) => readAliasRequest(r) ?? []).slice(-MAX_ALIAS_REQUESTS)
       : [],
     aliasesSetUp: readAliasesSetUp(raw.aliasesSetUp),
+    seats: readSeats(raw.seats),
   };
+}
+
+const MAX_SEATS = 12;
+
+function readSeat(value: unknown): DummySeat | null {
+  if (!isRecord(value)) return null;
+  const { roleId, holder, title, flag, since } = value;
+  if (!Number.isInteger(roleId) || !Number.isInteger(holder) || typeof title !== "string" || typeof since !== "string") return null;
+  const flagged = BOARD_FLAGS.find((f) => f === flag) ?? null;
+  if (flag !== null && flagged === null) return null;
+  return { roleId: roleId as number, holder: holder as number, title: title.trim().slice(0, MAX_TITLE), flag: flagged, since: since.slice(0, 10) };
+}
+
+function readSeats(value: unknown): DummySeatEdits {
+  if (!isRecord(value)) return NO_SEAT_EDITS;
+  const ended = Array.isArray(value.ended) ? value.ended.filter((id): id is number => Number.isInteger(id) && id > 0).slice(-MAX_ENTRIES) : [];
+  const started = Array.isArray(value.started) ? value.started.flatMap((s) => readSeat(s) ?? []).slice(-MAX_SEATS) : [];
+  return { ended, started };
 }
 
 export function serializeEdits(edits: TeamEdits): string {

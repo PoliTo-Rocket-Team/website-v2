@@ -38,8 +38,8 @@ function record(id: number, name: string, list: [number, "lead" | "member"][], b
 }
 
 const records = [
-  record(1, "Matteo Rinaldi", [], [{ kind: "team-leader" }]),
-  record(2, "Chiara Ferri", [[1, "member"]], [{ kind: "head", departmentId: 1 }]),
+  record(1, "Matteo Rinaldi", [], [{ kind: "team-leader", title: "" }]),
+  record(2, "Chiara Ferri", [[1, "member"]], [{ kind: "head", departmentId: 1, title: "" }]),
   record(3, "Marco Bianchi", [[1, "lead"]]),
   record(4, "Sara Conti", [[1, "member"], [3, "member"]]),
   record(5, "Paolo Conti", [[2, "lead"]]),
@@ -102,8 +102,8 @@ test("who gets the Team tree's Edit button: full access, a head and a division l
 });
 
 test("the intro line says what the viewer may change: the whole tree, a head's departments", () => {
-  assert.equal(editViewIntro(build({ kind: "team" })!), "Click a box to rename it, change its head or lead, or close it.");
-  assert.equal(editViewIntro(build({ kind: "head", departmentIds: [1] })!), "You can edit the divisions of Aerodynamics. Ask the team leader to change a department.");
+  assert.equal(editViewIntro(build({ kind: "team" })!), "Click a box to change who holds a seat, rename a unit, change its head or lead, or close it.");
+  assert.equal(editViewIntro(build({ kind: "head", departmentIds: [1] })!), "You can edit the divisions of Aerodynamics. Ask the team leader to change a department or a seat.");
 });
 
 test("only the viewer's own boxes are marked theirs: the leader's for the leader, a head's department, a lead's division (#405)", () => {

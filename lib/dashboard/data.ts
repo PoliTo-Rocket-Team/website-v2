@@ -437,6 +437,20 @@ export interface TeamWrites {
    * current team leader; everyone else is refused.
    */
   handOverTeamLeader(input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Change holder on a seat box of Edit team tree (issue #627): the holder's
+   * seat role ends and the successor's starts with the same title and the
+   * same full-access flag; the holder becomes an advisor to the team or
+   * leaves the team, checked by `planSeatHolderChange` (./team-seats.ts). The
+   * team leader and full access only.
+   */
+  changeSeatHolder(roleId: number, input: unknown): Promise<WriteResult<null>>;
+  /**
+   * Add seat (issue #627): an active role in no department and no division,
+   * with the title given and no full-access flag, checked by `planNewSeat`.
+   * The team leader and full access only.
+   */
+  addSeat(input: unknown): Promise<WriteResult<null>>;
 }
 
 /** A read or write the viewer does not reach. */

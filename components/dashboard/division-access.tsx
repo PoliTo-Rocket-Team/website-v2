@@ -49,7 +49,6 @@ import {
   placesOf,
   removalOf,
   samePlace,
-  SEAT_LABELS,
   shortUnitName,
   shownAreas,
   standingOf,
@@ -140,13 +139,9 @@ function standingLine(row: Row, unit: AccessUnit): string {
   return showDivision ? `${label} · ${shortUnitName(division.name)}` : label;
 }
 
-/** The line under a name: a role row names its seat or the department it heads (board 71), anyone else their standing. */
+/** The line under a name: a head's or a seat's role row its title (board 71, issue #625), anyone else their standing. */
 function personLine(row: Row, unit: AccessUnit): string {
-  if (row.kind === "role") {
-    const role = row.role;
-    if (role.place.kind === "team" && "seat" in role) return SEAT_LABELS[role.seat];
-    if (role.place.kind === "department") return `Head of ${role.place.department.name}`;
-  }
+  if (row.kind === "role" && "title" in row.role) return row.role.title;
   return standingLine(row, unit);
 }
 

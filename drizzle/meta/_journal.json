@@ -400,6 +400,13 @@
       "when": 1793985600000,
       "tag": "0058_alumni_grants_to_content",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794072000000,
+      "tag": "0059_rd_department_head",
+      "breakpoints": true
     }
   ]
 }

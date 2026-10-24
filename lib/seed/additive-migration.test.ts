@@ -32,6 +32,23 @@ test("0055_preview_reseeds.sql drops, renames and rewrites nothing", () => {
   assert.match(sql, /CREATE TABLE "preview_reseeds"/);
 });
 
+// The R&D move (issues #627 and #600) is data only. Its one statement that
+// changes a row is the guarded UPDATE the Owner decision on #600 allows
+// (https://github.com/PoliTo-Rocket-Team/website-v2/issues/600#issuecomment-6385783494):
+// it attaches only the oldest active, unflagged core role titled "Head of R&D"
+// in no unit to the R&D department, only while that department has no head,
+// so a second run matches nothing and no department gets two heads. What it
+// does on each database shape is run in ./rd-department-head.test.ts.
+test("0059_rd_department_head.sql changes one row kind only: the Head of R&D role's type and department", () => {
+  const sql = readFileSync(resolve(process.cwd(), "drizzle/0059_rd_department_head.sql"), "utf8");
+  const changed = nonAdditiveStatements(sql);
+  assert.equal(changed.length, 1);
+  const [update] = changed;
+  assert.match(update, /^UPDATE "roles" AS r SET "type" = 'head', "dept_id" = \(/);
+  const [set] = update.split(` WHERE r."leaved_at"`);
+  assert.ok(!set.includes(`"title"`) && !set.includes(`"member_id"`) && !set.includes(`"started_at"`), "the title, holder and start date stay");
+});
+
 test("the check catches each statement that is not additive, and no foreign key action", () => {
   const forbidden = [
     "DROP TRIGGER IF EXISTS audit_row_changes ON public.alias_requests",

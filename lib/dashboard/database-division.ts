@@ -21,6 +21,7 @@ import {
   NO_ROLE,
   roleAccessOf,
   roleCovers,
+  seatLine,
   UNIT_TARGETS,
   WHOLE_TEAM_PLACE,
   type AccessDepartmentUnit,
@@ -38,6 +39,7 @@ import {
   type PersonRole,
   type UnitTarget,
 } from "./division-access";
+import { headTitleOf } from "./team";
 import { fullAccessSeatOf, headDivisionsOf, isOffTeam, isTeamLeader, ledDivisionIds, SEAT_OF_FLAG, seatOf, type FullAccessSeat } from "./viewer";
 import {
   canEditOrder,
@@ -245,6 +247,7 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
       .select({
         member_id: roles.memberId,
         type: roles.type,
+        title: roles.title,
         full_access: roles.fullAccess,
         division_id: roles.divisionId,
         dept_id: roles.deptId,
@@ -292,27 +295,34 @@ async function readAccessPage(identity: DashboardIdentity): Promise<AccessPage |
 
   // One person per member, with what their role gives them in the unit (issue #591): a full-access seat, the
   // department they head, else each division of the unit they lead. They are placed in the first division they
-  // lead, else the first they are in.
-  const placements = new Map<number, { name: string; led: AccessDivision[]; in: AccessDivision[]; headed: AccessDepartmentUnit | null }>();
+  // lead, else the first they are in. A head carries their head role's title as stored (issue #625).
+  type Headed = { readonly department: AccessDepartmentUnit; readonly title: string };
+  const placements = new Map<number, { name: string; led: AccessDivision[]; in: AccessDivision[]; headed: Headed | null }>();
   for (const t of team) {
     if (t.member_id === null) continue;
     const seen = placements.get(t.member_id) ?? { name: nameOf(t), led: [], in: [], headed: null };
     placements.set(t.member_id, seen);
-    if (t.type === "head" && t.division_id === null) seen.headed ??= unitDepartments.find((d) => d.department.id === t.dept_id) ?? null;
+    if (t.type === "head" && t.division_id === null && seen.headed === null) {
+      const department = unitDepartments.find((d) => d.department.id === t.dept_id);
+      if (department !== undefined) seen.headed = { department, title: headTitleOf(t.title, department.department.name) };
+    }
     const division = unitDivisions.find((d) => d.id === t.division_id);
     if (division === undefined) continue;
     if (!seen.in.some((d) => d.id === division.id)) seen.in.push(division);
     if (isLeadRole(t.type) && !seen.led.some((d) => d.id === division.id)) seen.led.push(division);
   }
+  // The line under a seat holder's name: the title stored on the row the seat's flag is on (issue #625).
+  const seatTitleOf = (id: number, seat: FullAccessSeat) =>
+    seatLine(seat, team.find((t) => t.member_id === id && t.full_access !== null && SEAT_OF_FLAG[t.full_access] === seat)?.title ?? "");
   const byMember = new Map<number, AccessPerson>();
   for (const [id, seen] of placements) {
     const seat = seatByMember.get(id);
     const [firstLed, ...moreLed] = seen.led;
     const role: PersonRole =
       seat !== undefined
-        ? { kind: "full", seat }
+        ? { kind: "full", seat, title: seatTitleOf(id, seat) }
         : seen.headed !== null
-          ? { kind: "head", department: seen.headed }
+          ? { kind: "head", department: seen.headed.department, title: seen.headed.title }
           : firstLed !== undefined
             ? { kind: "lead", divisions: [firstLed, ...moreLed] }
             : NO_ROLE;

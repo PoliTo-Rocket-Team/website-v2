@@ -40,6 +40,7 @@ import {
   editsPerson,
   lookupForAdd,
   positionsOf,
+  SEAT_TITLE_REQUIRED,
   signInEmailOf,
   type AddStanding,
   type PersonRecord,
@@ -51,6 +52,7 @@ import { alumniDirectory, alumnusRow, checkAdvisor, checkAlumnusFix } from "@/li
 import { checkPhoto } from "@/lib/dashboard/self";
 import {
   buildTeamTree,
+  defaultHeadTitle,
   DIVISION_ROLE_OF,
   homeDivision,
   homeDivisionOf,
@@ -69,6 +71,7 @@ import {
   removalFrom,
   roleIn,
   standingOfPlacement,
+  titledSeatOf,
   withJoined,
   withoutDivision,
   type DivisionRole,
@@ -82,6 +85,7 @@ import {
   type TeamActor,
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, editsStructure, teamStructure } from "@/lib/dashboard/team-structure";
+import { checkNewSeat, checkSeatHolderChange, planNewSeat, planSeatHolderChange } from "@/lib/dashboard/team-seats";
 import { kindOfTestViewer, readsArea, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
 import { grantActors, testGrantAreas, withTestGrant, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
@@ -354,7 +358,44 @@ export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] =
   });
   return [...joinedTeam, ...added, ...confirmed]
     .filter((e) => edits.movedToAlumni[e.id] === undefined)
-    .map((e) => withoutAdvisorAccess(withTeamLeaderSeat(withDepartmentSeat(e, edits), edits), edits));
+    .map((e) => withSeatTitle(withoutAdvisorAccess(withTeamSeat(withTeamLeaderSeat(withDepartmentSeat(e, edits), edits), edits), edits), edits));
+}
+
+/**
+ * The team-level seats Change holder and Add seat changed (issue #627): a
+ * holder whose seat row ended holds that seat no more and keeps every division
+ * they are in; someone a started seat row names holds it, keeping theirs.
+ */
+function withTeamSeat(entry: RosterEntry, edits: TeamEdits): RosterEntry {
+  const { placement } = entry;
+  const { ended, started } = edits.seats;
+  if (placement.role === "board" && ended.includes(placement.seat.roleId)) {
+    return { ...entry, placement: { role: "divisions", memberships: placement.memberships } };
+  }
+  const seat = started.find((s) => s.holder === entry.id && !ended.includes(s.roleId));
+  if (seat === undefined || placement.role !== "divisions") return entry;
+  return { ...entry, placement: { role: "board", seat: { roleId: seat.roleId, title: seat.title, flag: seat.flag, since: seat.since }, memberships: placement.memberships } };
+}
+
+/**
+ * The title Edit details set on someone's seat (issue #626), laid over the
+ * head's or the team-level seat's stored title as the database writes it on
+ * that row. The dashboard names the team leader's seat "Team Leader"
+ * whatever it stores, so its title is laid over the seat Edit details reads
+ * (`beyondOf`) and nothing is laid over the placement here.
+ */
+function withSeatTitle(entry: RosterEntry, edits: TeamEdits): RosterEntry {
+  const title = edits.members[entry.id]?.seatTitle;
+  if (title === undefined) return entry;
+  const { placement } = entry;
+  if (placement.role === "head") return { ...entry, placement: { ...placement, title } };
+  if (placement.role === "board") return { ...entry, placement: { ...placement, seat: { ...placement.seat, title } } };
+  return entry;
+}
+
+/** The role row a new seat row takes: past every row ./team.ts holds and every one already started. */
+function nextSeatRoleId(edits: TeamEdits): number {
+  return Math.max(9_999, ...edits.seats.started.map((s) => s.roleId)) + 1;
 }
 
 /**
@@ -393,10 +434,19 @@ function entryWithChanges(entry: RosterEntry, change: MemberChange | undefined):
 function withDepartmentSeat(entry: RosterEntry, edits: TeamEdits): RosterEntry {
   const { placement } = entry;
   const headed = Object.entries(edits.departments).find(([, d]) => d.headId === entry.id && d.closedOn === null);
-  if (headed && placement.role === "divisions") return { ...entry, placement: { role: "head", departmentId: Number(headed[0]), memberships: placement.memberships } };
+  if (headed && placement.role === "divisions") {
+    // A new head's role is written with the default title, as every head write does (`defaultHeadTitle`).
+    const [id, department] = headed;
+    return { ...entry, placement: { role: "head", departmentId: Number(id), title: defaultHeadTitle(department.name), memberships: placement.memberships } };
+  }
   const department = placement.role === "head" ? edits.departments[placement.departmentId] : undefined;
   if (department && (department.closedOn !== null || (department.headId !== null && department.headId !== entry.id))) {
     return { ...entry, placement: { role: "divisions", memberships: placement.memberships } };
+  }
+  // A rename reaches a head title still at the old default; one renamed by hand is kept (issue #625).
+  const was = placement.role === "head" ? departments.find((d) => d.id === placement.departmentId)?.name : undefined;
+  if (department && placement.role === "head" && was !== undefined && placement.title === defaultHeadTitle(was)) {
+    return { ...entry, placement: { ...placement, title: defaultHeadTitle(department.name) } };
   }
   return entry;
 }
@@ -409,7 +459,9 @@ function advisorBeyond(place: AdvisorPlace): RoleBeyondDivisions | null {
 
 /** Every role someone holds in no division: their seat, and an Advisor role on a department or on the whole team. */
 function beyondOf(entry: RosterEntry, edits: TeamEdits): readonly RoleBeyondDivisions[] {
-  const { beyond } = standingOfPlacement(entry.placement);
+  const seatTitle = edits.members[entry.id]?.seatTitle;
+  // The team leader row's title Edit details set (issue #626), which a placement does not keep.
+  const beyond = standingOfPlacement(entry.placement).beyond.map((r) => (r.kind === "team-leader" && seatTitle !== undefined ? { ...r, title: seatTitle } : r));
   const advisor = edits.advisors[entry.id];
   const role = advisor ? advisorBeyond(advisor.place) : null;
   return role === null ? beyond : [...beyond, role];
@@ -861,6 +913,35 @@ function writesFor(
       await save(withAutomaticAliasRequests(after, [to], DUMMY_NOW, prtEmailsOf(team, edits)));
       return written(null);
     },
+    async changeSeatHolder(roleId, input) {
+      const checked = checkSeatHolderChange(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planSeatHolderChange({ actor, org, roleId, change: checked.value, team: teamPeople(team, edits) });
+      if (!planned.ok) return refused(planned.error);
+      const { seat, from, to, steppingDown: step } = planned.value;
+      // The holder's seat row ends; the successor's starts with its title and full-access flag, as the database writes it.
+      const next: TeamEdits = {
+        ...edits,
+        seats: {
+          ended: [...edits.seats.ended, roleId],
+          started: [...edits.seats.started, { roleId: nextSeatRoleId(edits), holder: to, title: seat.title, flag: seat.flag, since: TODAY }],
+        },
+      };
+      const after = step.kind === "advisor" ? withAdvisor(next, from, step) : leftTeam(next, from);
+      if (typeof after === "string") return refused(after);
+      await save(after);
+      return written(null);
+    },
+    async addSeat(input) {
+      const checked = checkNewSeat(input);
+      if (!checked.ok) return refused(checked.error);
+      const planned = planNewSeat({ actor, org, add: checked.value, team: teamPeople(team, edits) });
+      if (!planned.ok) return refused(planned.error);
+      const { personId, title } = planned.value;
+      const seat = { roleId: nextSeatRoleId(edits), holder: personId, title, flag: null, since: TODAY };
+      await save({ ...edits, seats: { ...edits.seats, started: [...edits.seats.started, seat] } });
+      return written(null);
+    },
     async setAlumnusShown(key, shown) {
       if (alumnus(key) === null) return false;
       await saveAlumniEntry(key, { shown });
@@ -1007,11 +1088,19 @@ function writesFor(
         });
         return written(null);
       }
-      // Anyone the viewer may edit; the title only in a division they reach and the person is in, none for a seat.
+      // Anyone the viewer may edit; the title in a division they reach and the person is in, or, for the team only, their seat's.
       const entry = editable(target.id);
-      if (!entry || (divisionId !== null && !inReach(target.id, divisionId))) return refused(NOT_IN_SCOPE);
+      if (!entry || actor === null || (divisionId !== null && !inReach(target.id, divisionId))) return refused(NOT_IN_SCOPE);
       const change = changeOf(entry.id);
-      const titled = divisionId === null ? edits : withChange(entry.id, { ...change, titles: { ...change.titles, [divisionId]: title } });
+      let titled: TeamEdits;
+      if (divisionId === null) {
+        if (actor.kind !== "team") return refused(NOT_IN_SCOPE);
+        const seat = titledSeatOf(beyondOf(entry, edits), (role) => role);
+        if (seat !== null && title === null) return refused(SEAT_TITLE_REQUIRED);
+        titled = seat === null || title === null ? edits : withChange(entry.id, { ...change, seatTitle: title });
+      } else {
+        titled = withChange(entry.id, { ...change, titles: { ...change.titles, [divisionId]: title } });
+      }
       await save({ ...titled, details: { ...edits.details, [detailsKey(target)]: details } });
       return written(null);
     },

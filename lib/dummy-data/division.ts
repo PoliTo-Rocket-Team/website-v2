@@ -12,6 +12,7 @@ import {
   roleAccessOf,
   roleCovers,
   samePlace,
+  seatLine,
   UNIT_TARGETS,
   type AccessDepartmentUnit,
   type AccessDivision,
@@ -29,7 +30,7 @@ import {
 } from "@/lib/dashboard/division-access";
 import type { HeldSeat } from "@/lib/dashboard/hand-over";
 import type { FlaggedSeat, FullAccessSeat } from "@/lib/dashboard/viewer";
-import { homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type Placement, type RosterEntry } from "@/lib/dashboard/team";
+import { headTitleOf, homeFirst, ledDivisionsOf, membershipsIn, type DivisionMembership, type Placement, type RosterEntry } from "@/lib/dashboard/team";
 import type { ApproveOrdersChange } from "@/lib/dashboard/orders";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
 import type { TeamEdits } from "./edits";
@@ -264,11 +265,13 @@ function accessPerson(entry: RosterEntry, unit: AccessUnit): AccessPerson {
   const seat = unit.kind === "team" ? seatOfPlacement(entry.placement) : null;
   const placement = entry.placement;
   const headed = unit.kind === "team" && placement.role === "head" ? unit.departments.find((d) => d.department.id === placement.departmentId) : undefined;
+  // A head's and a seat's line under the name is their role's title as stored (issue #625).
+  const headTitle = placement.role === "head" ? placement.title : "";
   const role: PersonRole =
     seat !== null
-      ? { kind: "full", seat }
+      ? { kind: "full", seat, title: seatLine(seat, headTitle) }
       : headed !== undefined
-        ? { kind: "head", department: headed }
+        ? { kind: "head", department: headed, title: headTitleOf(headTitle, headed.department.name) }
         : firstLed !== undefined
           ? { kind: "lead", divisions: [firstLed, ...moreLed] }
           : NO_ROLE;
