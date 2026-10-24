@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Check, Lock, Pencil, Plus } from "lucide-react";
 import type { DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
 import { divisionLabel, matchesQuery } from "@/lib/dashboard/team";
-import type { StructureDepartment, StructureDivision, StructureLeader, TeamStructure } from "@/lib/dashboard/team-structure";
+import { editViewIntro, type StructureDepartment, type StructureDivision, type StructureLeader, type TeamStructure } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { DepartmentDrawer, type DepartmentDrawerTarget } from "./department-drawers";
 import { SearchField } from "./directory";
@@ -22,8 +22,10 @@ import { TeamLeaderDrawer } from "./team-leader-drawer";
 // department column and + Add department at the end of the row. A department
 // head gets board 66t-b: only their own department's divisions have pencils
 // and Add division; every other department is dimmed and read-only, and no
-// department has a pencil. A box opens its panel: Edit division (77g, 68b),
-// with Close division (68c) in its footer; Add division opens New division
+// department has a pencil. A division lead gets pencils only on the divisions
+// they lead, and no Add division (issue #594). A box opens its panel: Edit
+// division (77g, 68b), with Close division (68c) in its footer for a head or
+// the team; Add division opens New division
 // (77c, 69d) in that column's department; the department boxes open Edit
 // department (77e) and its Close department step (77f); Add department opens
 // New department (77d). Done returns to the tree. There is no closed-divisions
@@ -85,10 +87,9 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
     setEditing({ kind: "waiting", waiting: w, division: tab.division });
   };
 
-  const own = structure.departments.filter((d) => d.divisionsEditable).map((d) => d.name);
-  const intro = structure.departmentsEditable
-    ? "Click a box to rename it, change its head or lead, or close it."
-    : `You can edit the divisions of ${own.join(" and ")}. Ask the team leader to change a department.`;
+  const intro = editViewIntro(structure);
+  // Close division is a head's or the team's: a lead's Edit division offers none (issue #594).
+  const closes = division?.kind === "edit" && structure.departments.some((d) => d.divisionsEditable && d.divisions.some((v) => v.id === division.divisionId));
   const drawerOpen = drawerTarget !== null || department !== null || editing !== null || handOver.open;
 
   return (
@@ -124,10 +125,14 @@ export function TeamTreeEditView({ structure }: { structure: TeamStructure }) {
         editable
         onClose={() => setDivision(null)}
         onFill={fill}
-        onCloseDivision={(tab) => {
-          setDivision(null);
-          setClosing(tab.division.id);
-        }}
+        onCloseDivision={
+          closes
+            ? (tab) => {
+                setDivision(null);
+                setClosing(tab.division.id);
+              }
+            : null
+        }
       />
       <CloseDivisionDialog
         tab={closingTab}
@@ -299,7 +304,8 @@ function DepartmentColumn({
   onAddDivision: (departmentId: number) => void;
 }) {
   // A head's view (66t-b): their own department reads normally, every other one is dimmed and read-only.
-  const dimmed = !editable && !department.divisionsEditable;
+  // A lead's: the department holding a division they lead reads normally (issue #594).
+  const dimmed = !editable && !department.divisionsEditable && department.divisions.every((d) => d.page === null);
   const found = matches(query, [department.name, department.head?.name]);
   const box = (
     <>

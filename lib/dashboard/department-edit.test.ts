@@ -40,7 +40,7 @@ const team: TeamPerson[] = [
 
 const fullAccess: TeamActor = { kind: "team" };
 const head: TeamActor = { kind: "head", departmentIds: [1] };
-const lead: TeamActor = { kind: "lead", divisionIds: [1] };
+const lead: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
 const propulsion: DepartmentCreate = { name: "Propulsion", code: "PR", heads: [1], kind: "technical" };
 
 const create = (save: Partial<DepartmentCreate>, actor: TeamActor | null = fullAccess) => planDepartmentCreate({ actor, org, save: { ...propulsion, ...save }, team });

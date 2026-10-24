@@ -9,7 +9,7 @@ import {
   type ScopeUnitRow,
   type ScopedRole,
 } from "@/lib/dashboard/viewer";
-import type { OrgChart, TeamActor } from "@/lib/dashboard/team";
+import { leadActor, type OrgChart, type TeamActor } from "@/lib/dashboard/team";
 
 // A grant the member test viewer can hold, so a preview shows a page as a
 // grant holder sees it: Members (issue #351), or Content (issue #504). The
@@ -66,6 +66,7 @@ export function grantActors(grant: TestGrant, org: OrgChart): { readonly viewing
     const division = org.divisions.find((d) => d.id === divisionId);
     return division !== undefined && mayChange(authority, "members", { divisionId, departmentId: division.departmentId });
   });
-  const lead = (divisionIds: number[]): TeamActor | null => (divisionIds.length === 0 ? null : { kind: "lead", divisionIds });
+  // A grant leads no division: it opens no Edit division (issue #594).
+  const lead = (divisionIds: number[]): TeamActor | null => leadActor(divisionIds, []);
   return { viewing: lead(covered.filter((id) => org.divisions.some((d) => d.id === id))), changing: lead(changes) };
 }

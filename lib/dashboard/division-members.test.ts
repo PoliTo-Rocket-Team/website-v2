@@ -45,7 +45,7 @@ const records = [
 ];
 
 test("a division's page lists its people with this division first, a code chip inside the department and the department's name outside it", () => {
-  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1] }, selfId: 2, reach: [1], waiting: [], joining: [] })!;
+  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }, selfId: 2, reach: [1], waiting: [], joining: [] })!;
   assert.deepEqual(page.people.map((p) => p.name), ["Marco Bianchi", "Davide Russo"], "leads first, and nobody from outside the division");
   const davide = page.people[1];
   assert.equal(davide.title, "Mission Analyst");
@@ -55,7 +55,9 @@ test("a division's page lists its people with this division first, a code chip i
   ]);
   assert.deepEqual(davide.chips.map((c) => [c.label, c.code]), [["MA", true], ["Structures", false]]);
   assert.equal(page.people[0].self, true);
-  assert.equal(page.division.leadsHint, "Leads are changed by the Head of Aerodynamics");
+  assert.equal(page.division.leadsHint, null, "its own lead changes its leads (#594)");
+  const granted = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1], ledDivisionIds: [] }, selfId: null, reach: [1], waiting: [], joining: [] })!;
+  assert.equal(granted.division.leadsHint, "Leads are changed by the Head of Aerodynamics", "a Members grant does not");
   assert.equal(headcountLine({ people: page.people, waiting: [{ joinId: 1, email: "e@x.it", name: null, title: null, details: NO_MEMBER_DETAILS }] }), "1 lead, 3 members");
 });
 
@@ -88,7 +90,7 @@ test("Add member's field finds a member by name or by either email, and says whe
 
 // Issue #351: the page offers a change only where the viewer may make it.
 test("a viewer who changes nobody in the division sees its people with no action on any row", () => {
-  for (const actor of [null, { kind: "lead" as const, divisionIds: [2] }]) {
+  for (const actor of [null, { kind: "lead" as const, divisionIds: [2], ledDivisionIds: [2] }]) {
     const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
     assert.equal(page.editable, false);
     assert.deepEqual(page.people.map((p) => p.name), ["Marco Bianchi", "Davide Russo"], "viewing is unchanged");
@@ -97,7 +99,7 @@ test("a viewer who changes nobody in the division sees its people with no action
 });
 
 test("a viewer who may change the division gets the row actions their actor allows", () => {
-  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2] }, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
+  const page = divisionMembers({ records, org, divisionId: 1, actor: { kind: "lead", divisionIds: [1, 2], ledDivisionIds: [1, 2] }, selfId: null, reach: [1, 2], waiting: [], joining: [] })!;
   assert.equal(page.editable, true);
   assert.equal(page.people.find((p) => p.name === "Davide Russo")!.removal.kind, "offered");
 });

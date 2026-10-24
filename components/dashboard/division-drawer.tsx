@@ -105,8 +105,8 @@ export function DivisionDrawer({
   onClose: () => void;
   /** Fill details on someone waiting for their NDA: the page's Edit details drawer. */
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
-  /** Close division in Edit division's footer (boards 77g, 68b): the page's Close division dialog. */
-  onCloseDivision: (division: DivisionMembers) => void;
+  /** Close division in Edit division's footer (boards 77g, 68b): the page's Close division dialog; null where the viewer may not close it, a lead's own division (issue #594). */
+  onCloseDivision: ((division: DivisionMembers) => void) | null;
 }) {
   // The last target stays while the panel closes, so its content does not vanish mid-close.
   const [shown, setShown] = useState(target);
@@ -145,7 +145,7 @@ function DrawerForm({
   editable: boolean;
   onClose: () => void;
   onFill: (waiting: WaitingPerson, division: DivisionMembers) => void;
-  onCloseDivision: (division: DivisionMembers) => void;
+  onCloseDivision: ((division: DivisionMembers) => void) | null;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(target));
   const [picking, setPicking] = useState<{ readonly replaces: number | null } | null>(null);
@@ -251,7 +251,7 @@ function DrawerForm({
       detail={detail}
       footer={
         <>
-          {tab ? (
+          {tab && onCloseDivision ? (
             <button type="button" onClick={() => onCloseDivision(tab)} className={PANEL_DANGER_BUTTON}>
               Close division
             </button>

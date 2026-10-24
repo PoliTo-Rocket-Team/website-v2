@@ -20,7 +20,8 @@ import {
 
 // A department head creates, edits and closes the divisions of their
 // department (issue #232, boards 68b to 68c and 69d), from the Team tree's
-// edit view (issue #251). A closed division never opens again (Owner
+// edit view (issue #251); a division lead edits the divisions they lead
+// (Owner decision, 2026-10-24, issue #594). A closed division never opens again (Owner
 // decision, 2026-10-16): no save here clears its `closed_at`. Both sides of
 // the data interface run these checks, so the drawer's rules and the
 // server's are one: the drawer runs them first, and the server runs them
@@ -177,8 +178,10 @@ function no(error: string): Planned {
 }
 
 /**
- * Whether the actor may create, edit or close a division of the department:
- * its head, or the team leader and full access (Owner decision, 2026-10-11).
+ * Whether the actor may create or close a division of the department, and
+ * edit every division in it: its head, or the team leader and full access
+ * (Owner decision, 2026-10-11). A division lead edits only the divisions they
+ * lead (`mayChangeDivision`, issue #594), and creates and closes none.
  */
 export function mayManageDivisionsIn(actor: TeamActor, departmentId: number): boolean {
   return actor.kind === "team" || (actor.kind === "head" && actor.departmentIds.includes(departmentId));
@@ -203,7 +206,8 @@ function pickError(person: TeamPerson | undefined): string | null {
 /**
  * The save as the rules allow it (Owner decisions, 2026-10-11 on #232), or
  * the first reason it is refused:
- * - only the department's head or the team leader may make it;
+ * - only the department's head or the team leader may create a division, and
+ *   they or a lead of the division by role may edit it (issue #594);
  * - a name, and a code of 2 or 3 letters no other open division uses;
  * - leads are picked from the whole team and keep their other divisions;
  * - an open division always has at least one lead, so a create or an edit
@@ -326,7 +330,8 @@ export function planDivisionSave(input: {
 
 /**
  * Why the division cannot close, or null (Owner decision, 2026-10-11): only
- * its department's head or the team leader closes it, and never while anyone
+ * its department's head or the team leader closes it, never its lead (issue
+ * #594), and never while anyone
  * is in it, people waiting for their NDA included. An advisor in it is not
  * counted: they stay in the department (`divisionClosing`, issue #441).
  * Closing also closes its open positions and removes the access given in it.
@@ -339,8 +344,9 @@ export function closeRefusal(
 ): string | null {
   const division = org.divisions.find((d) => d.id === divisionId);
   if (!division) return "That division is already closed.";
-  const may = mayChangeDivision(actor, divisionId, org);
-  if (!may.allowed) return may.reason;
+  // Its own lead edits it (issue #594) and still never closes it: closing is a head's or the team's, as creating is.
+  const refusal = managePermission(actor, division.departmentId, org);
+  if (refusal !== null) return refusal;
   const count = inIt.people + inIt.waiting;
   if (count === 0) return null;
   return `${count} ${count === 1 ? "person is" : "people are"} still in ${division.name}. Remove them or add them to another division first.`;

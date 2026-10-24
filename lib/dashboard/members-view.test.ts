@@ -81,7 +81,7 @@ function headPage(): MembersModel {
   return membersModelOf({ scope: "department", ...page })!;
 }
 
-function leadPage(actor: TeamActor | null = { kind: "lead", divisionIds: [1] }): MembersModel {
+function leadPage(actor: TeamActor | null = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] }): MembersModel {
   const page = divisionMembers({ records, org, divisionId: 1, actor, selfId: 1, reach: [1], waiting: [elena], joining: [] })!;
   return membersModelOf({ scope: "division", ...page })!;
 }
@@ -187,7 +187,8 @@ test("the lead or member control shows only where the viewer may change who lead
   assert.deepEqual(leads(leaderPage(), "Lena Fischer"), [["Mission Analysis", "member"], ["Optimization and Analysis", "member"]]);
   assert.deepEqual(leads(leaderPage(), "Marco Bianchi"), [["Mission Analysis", "lead"]]);
   assert.deepEqual(leads(headPage(), "Davide Russo"), [["Mission Analysis", "member"]], "Design & Manufacturing is not the head's");
-  assert.deepEqual(leads(leadPage(), "Lena Fischer"), [], "a division lead never changes leads (#231)");
+  assert.deepEqual(leads(leadPage(), "Lena Fischer"), [["Mission Analysis", "member"]], "a division's own lead changes its leads (#594)");
+  assert.deepEqual(leads(leadPage({ kind: "lead", divisionIds: [1], ledDivisionIds: [] }), "Lena Fischer"), [], "a Members grant never does");
 });
 
 test("a division lead's panel reaches only their divisions, a head's only their department, the whole team everyone (#584)", () => {
@@ -197,7 +198,7 @@ test("a division lead's panel reaches only their divisions, a head's only their 
   assert.deepEqual(removals(leaderPage(), "Davide Russo"), ["Mission Analysis", "Design & Manufacturing"]);
   assert.deepEqual(positionIn(leadPage(), "Davide Russo")?.leave, { allowed: false, reason: "Also in Design & Manufacturing, so only the team leader can do this" });
   assert.deepEqual(positionIn(leaderPage(), "Davide Russo")?.leave, { allowed: true });
-  const lead: TeamActor = { kind: "lead", divisionIds: [1] };
+  const lead: TeamActor = { kind: "lead", divisionIds: [1], ledDivisionIds: [1] };
   assert.deepEqual(positionsOf(records, org, lead, 1).map((p) => p.id), [2, 3], "only people in Mission Analysis, never the lead");
   assert.deepEqual(positionsOf(records, org, null, null), [], "no actor, no panel");
 });

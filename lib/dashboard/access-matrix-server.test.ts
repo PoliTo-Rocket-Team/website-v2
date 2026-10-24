@@ -924,7 +924,8 @@ describe("a division lead with no scope row edits their own division in the Team
     const result = await asLead(run, extra);
     assert.ok(isRefusal(result.answer), `${label}: not refused: ${JSON.stringify(result.answer)}`);
     assert.deepEqual(result.writes, [], `${label}: wrote`);
-    return result.answer as { error?: string } | false;
+    /** The reason given, where the action answers one. */
+    return typeof result.answer === "object" && result.answer !== null ? String((result.answer as { error?: string }).error ?? "") : "";
   };
 
   test("the lead holds no scope row: the matrix seeds none for them", async () => {
@@ -956,17 +957,21 @@ describe("a division lead with no scope row edits their own division in the Team
 
   test("every rule of Edit division still holds for the lead's save", async () => {
     const out = (personId: number, outcome: string) => ({ personId, via: "removed", outcome });
-    const both = [out(self(), "member"), out(IDS.lead(MA), "member")];
-    assert.equal((await refuses("remove both leads", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: both }))))!.error, "A division needs at least one lead.");
+    // Every lead of MA as seeded: the matrix's leads of it, MA's own lead among them.
+    seedFixture();
+    const every = rowsIn(roles)
+      .filter((r) => r.type === "lead" && r.divisionId === IDS.division(MA) && r.leavedAt === null)
+      .map((r) => out(Number(r.memberId), "member"));
+    assert.ok(every.length >= 2);
+    assert.equal(await refuses("remove every lead", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: every }))), "A division needs at least one lead.");
     const leaves = await refuses("take MA's other lead out of their only division", () =>
       teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-division")] })),
     );
-    assert.match(leaves ? (leaves.error ?? "") : "", /only division/);
+    assert.match(leaves, /only division/);
     const alsoInDM = { roles: [extraRole(9_300, IDS.lead(MA), "DM", "core")] };
     await refuses("move MA's other lead, who is also in DM, to alumni", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-team")] })), alsoInDM);
     await writes("move MA's other lead, in MA alone, to alumni", () => teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [out(IDS.lead(MA), "leave-team")] })));
-    const taken = await refuses("take OA's code", () => teamActions.saveDivision(IDS.division(MA), save(MA, { code: "OPT" })));
-    assert.equal(taken ? taken.error : null, "Optimization already uses OPT.");
+    assert.equal(await refuses("take OA's code", () => teamActions.saveDivision(IDS.division(MA), save(MA, { code: "OPT" }))), "Optimization already uses OPT.");
     await refuses("replace a lead with no new lead", () =>
       teamActions.saveDivision(IDS.division(MA), save(MA, { oldLeads: [{ personId: IDS.lead(MA), via: "replaced", outcome: "advisor" }] })),
     );
@@ -1027,7 +1032,7 @@ describe("a division lead with no scope row edits their own division in the Team
 
   test("New division and Close division stay refused for the lead, in their own department and on their own division", async () => {
     const closing = await refuses("close MA", () => teamActions.closeDivision(IDS.division(MA)));
-    assert.doesNotMatch(closing ? (closing.error ?? "") : "", /still in/, "refused by who may close, not by who is in it");
+    assert.equal(closing, "Only the Head of Aerodynamics or the team leader can do this.", "refused by who may close, not by who is in it");
     await refuses("create a division in Aerodynamics", () => teamActions.createDivision(IDS.department(MA), { name: "Avionics", code: "AVI", newLeads: [self()], oldLeads: [], members: [], emails: [] }));
   });
 });
@@ -1086,7 +1091,7 @@ describe("one Edit details panel: whoever may edit a member in scope saves their
     assert.ok(lead.writes.length > 0);
   });
 
-  test("a head edits their department's people only, and a division lead never changes who leads", async () => {
+  test("a head edits their department's people only, and a division lead changes who leads their own division alone (#594)", async () => {
     const head = accountOf("department head").userId;
     assert.deepEqual((await attempt(head, () => teamActions.saveMemberDetails({ kind: "person", id: IDS.person("MA") }, IDS.division("MA"), SAVE))).answer, { ok: true });
     for (const run of [
@@ -1099,8 +1104,11 @@ describe("one Edit details panel: whoever may edit a member in scope saves their
       assert.deepEqual(writes, []);
     }
     const lead = await attempt(accountOf("division lead").userId, () => teamActions.saveMember(IDS.person("MA"), IDS.division("MA"), "division-lead"));
-    assert.ok(isRefusal(lead.answer));
-    assert.deepEqual(lead.writes, []);
+    assert.deepEqual(lead.answer, { ok: true }, "a new lead of the division they lead");
+    assert.ok(lead.writes.length > 0);
+    const elsewhere = await attempt(accountOf("division lead").userId, () => teamActions.saveMember(IDS.person(DM), IDS.division(DM), "division-lead"));
+    assert.ok(isRefusal(elsewhere.answer), "never in a division they do not lead");
+    assert.deepEqual(elsewhere.writes, []);
   });
 });
 
