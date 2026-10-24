@@ -1,26 +1,18 @@
 import "server-only";
 
 import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
 import { getDb, isDatabaseConfigured } from "@/db/client";
 import { members, users } from "@/db/schema";
 import { getCurrentUser, type CurrentUser } from "@/lib/current-user";
-import { dummyNavViewer } from "@/lib/dummy-data";
-import { dummyDataOn } from "@/lib/dummy-data/mode";
 import type { NavViewer } from "@/lib/nav-viewer-shape";
-import { TEST_DEVELOPER_COOKIE, testDeveloperViewer } from "@/lib/test-developer";
 
 /**
- * Who the navbar shows as signed in (issues #157, #261): a test developer
- * (previews and `next dev` only, lib/test-developer.ts) where the pages read
- * the dummy arrays, else the signed-in person, an account or the seeded
- * person a test developer is read as (issue #307), else nobody. Read at
- * request time by GET /api/viewer, never by a page, so the pages that carry
- * the navbar stay prerendered.
+ * Who the navbar shows as signed in (issues #157, #261): the signed-in
+ * person, an account or the seeded person a test developer is read as
+ * (issue #307), else nobody. Read at request time by GET /api/viewer, never
+ * by a page, so the pages that carry the navbar stay prerendered.
  */
 export async function navViewer(): Promise<NavViewer | null> {
-  const kind = testDeveloperViewer((await cookies()).get(TEST_DEVELOPER_COOKIE)?.value);
-  if (kind !== null && dummyDataOn()) return dummyNavViewer(kind);
   const user = await getCurrentUser();
   return user === null ? null : personNavViewer(user);
 }

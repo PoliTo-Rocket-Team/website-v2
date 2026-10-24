@@ -1,32 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ApplyData } from "@/lib/apply/data";
-import { pickApplyData, type ApplySides } from "@/lib/apply/pick";
 import { applyListing, isPublic, positionCode, positionIdFromSlug, positionSlug } from "@/lib/apply/positions";
 import type { TestViewer } from "@/lib/dashboard/viewer";
 import { dummyApplyData, SentApplications } from "./apply";
 import { dummyDashboardData } from "./index";
-import type { DummyModeEnv } from "./mode";
 import { DEFAULT_DUMMY_RECRUITMENT } from "./recruitment";
-import { EMPTY_DUMMY_STATE, serializeDummyState, type DummyState } from "./state";
+import { EMPTY_DUMMY_STATE, parseDummyState, serializeDummyState, type DummyState } from "./state";
 import { positions } from "./team";
 
 // Issue #463: in dummy mode, a position the test developer posts, opens or
 // closes on the dashboard is kept in the state cookie, and /apply and the
 // position page read that same cookie. Each test writes through the dummy
-// dashboard, takes the cookie value it saved, and reads /apply the way a
-// request carrying that cookie does (lib/apply/pick.ts, as lib/apply/open.ts
-// wires it).
+// dashboard, takes the cookie value it saved, and reads the dummy /apply
+// over that cookie read back.
 
-const PREVIEW: DummyModeEnv = { NODE_ENV: "production", VERCEL_ENV: "preview" };
-
-const sides: ApplySides = {
-  database: () => {
-    throw new Error("a preview with no database reads the dummy side");
-  },
-  dummy: (viewer, openSelector, recruitment, own, ownStart, dashboard) =>
-    dummyApplyData(viewer, openSelector, recruitment, new SentApplications(), own, ownStart, dashboard),
-};
 
 /** The dummy dashboard of one test developer, keeping what a write saves as the state cookie does. */
 function dashboard(viewer: TestViewer, state: DummyState = EMPTY_DUMMY_STATE) {
@@ -41,7 +29,7 @@ function dashboard(viewer: TestViewer, state: DummyState = EMPTY_DUMMY_STATE) {
 
 /** /apply's data for a request carrying this state cookie. */
 function applyWith(stateCookie: string | null): ApplyData {
-  return pickApplyData({ env: PREVIEW, viewerCookie: "team-leader", openSelector: null, stateCookie }, sides);
+  return dummyApplyData("team-leader", null, DEFAULT_DUMMY_RECRUITMENT, new SentApplications(), undefined, undefined, parseDummyState(stateCookie));
 }
 
 const NEW_ROLE = {

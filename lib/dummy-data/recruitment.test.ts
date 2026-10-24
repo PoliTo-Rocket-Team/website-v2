@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isPublic, type Recruitment } from "@/lib/apply/positions";
-import { pickApplyData } from "@/lib/apply/pick";
 import { VIEWER_KINDS } from "@/lib/dashboard/viewer";
 import { dummyApplyData } from "./apply";
 import { dummyDashboardData } from "./index";
@@ -42,13 +41,8 @@ test("the cookie reads back what was saved, and anything else reads as recruitme
   for (const other of [undefined, null, "", "false", "OPEN"]) assert.deepEqual(dummyRecruitmentOf(other), { isOpen: true });
 });
 
-test("on a preview, /apply and every position page follow the cookie; in production it is never read", async () => {
-  const preview = { NODE_ENV: "production", VERCEL_ENV: "preview" };
-  const read = (cookie: string, env = preview) =>
-    pickApplyData(
-      { env, viewerCookie: null, openSelector: null, recruitmentCookie: cookie },
-      { database: () => "database" as never, dummy: (v, o, r, own) => dummyApplyData(v, o, r, undefined, own) },
-    );
+test("the dummy /apply and every dummy position page follow the cookie", async () => {
+  const read = (cookie: string) => dummyApplyData(null, null, dummyRecruitmentOf(cookie));
 
   const closed = read("closed");
   assert.deepEqual(await closed.publicPositions(), []);
@@ -57,6 +51,4 @@ test("on a preview, /apply and every position page follow the cookie; in product
     assert.equal(isPublic(page.position, page.recruitment), false, `position ${id}`);
   }
   assert.ok((await read("open").publicPositions()).length >= 5);
-
-  assert.equal(read("closed", { NODE_ENV: "production", VERCEL_ENV: "production" }), "database");
 });

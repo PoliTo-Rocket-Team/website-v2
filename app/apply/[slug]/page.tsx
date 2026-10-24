@@ -17,7 +17,7 @@ import { LandingNavbar } from "@/components/landing/navbar";
 import { PageSky } from "@/components/landing/page-sky";
 import type { ApplyPosition } from "@/db/types";
 import type { ApplyData } from "@/lib/apply/data";
-import { openApplyData } from "@/lib/apply/open";
+import { databaseApplyData } from "@/lib/apply/database";
 import { isPublic, positionCode, positionIdFromSlug, positionSlug } from "@/lib/apply/positions";
 import { sendApplication } from "./actions";
 
@@ -85,7 +85,7 @@ async function LivePosition({ params }: { params: Promise<{ slug: string }> }) {
   const id = positionIdFromSlug(slug);
   if (id === null) notFound();
 
-  const data = await openApplyData();
+  const data = databaseApplyData;
   // The position (cached) and the viewer's reads run side by side (issue #395).
   const [read, viewer] = await Promise.all([data.shownPosition(id), viewerOf(data, id)]);
   if (read === null) notFound();
