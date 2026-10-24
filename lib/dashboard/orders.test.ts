@@ -197,8 +197,8 @@ test("by default only the team leader decides; Approve orders lets someone else 
   assert.equal(decideRightOf({ teamLeader: false, approveOrders: false }), null);
 });
 
-/** A member: no full access, not the team leader, no department to head. */
-const memberViewer: OrdersViewer = { fullAccess: false, teamLeader: false, headDepartment: null };
+/** A member: no full access, not the team leader, no department to head, no division to lead. */
+const memberViewer: OrdersViewer = { fullAccess: false, teamLeader: false, headDepartment: null, ledDivisionIds: [] };
 const approveOrdersRow: OrdersScopeRow = { scope: "team", target: "approve_orders", level: "edit", divisionId: null, deptId: null };
 
 test("\"Approve orders\" alone is Orders access: the page opens, the holder decides, and edits nothing (issue #270)", () => {
@@ -231,6 +231,28 @@ test("Orders access from scope rows, a head's role and full access keeps its edi
   assert.deepEqual(ordersScopeOf({ ...memberViewer, fullAccess: true }, [], org), operationsLeadScope);
   assert.deepEqual(ordersScopeOf({ ...memberViewer, fullAccess: true, teamLeader: true }, [], org), teamLeaderScope);
   assert.deepEqual(ordersScopeOf(memberViewer, [divisionView, approveOrdersRow], org), holderScope);
+});
+
+test("a lead's role edits each open division they lead, with no scope row, and decides nothing (issue #590)", () => {
+  const leadOf = (...ledDivisionIds: number[]): OrdersViewer => ({ ...memberViewer, ledDivisionIds });
+  assert.deepEqual(ordersScopeOf(leadOf(missionAnalysis.id), [], org), lead);
+  // Two led divisions, in two departments: each one, in the team's order. A closed division (not in `org`) adds nothing.
+  assert.deepEqual(ordersScopeOf(leadOf(hardware.id, missionAnalysis.id, 42), [], org), {
+    edits: [
+      { kind: "division", division: missionAnalysis },
+      { kind: "division", division: hardware },
+    ],
+    decides: null,
+  });
+  assert.equal(ordersScopeOf(leadOf(42), [], org), null);
+  // A grant elsewhere adds only what it gives: a whole-team Can view row keeps the lead's own division and edits nothing more.
+  const teamView: OrdersScopeRow = { scope: "team", target: "orders", level: "view", divisionId: null, deptId: null };
+  assert.deepEqual(ordersScopeOf(leadOf(missionAnalysis.id), [teamView], org), lead);
+  // Deciding still comes only from the team leader's role or "Approve orders".
+  assert.deepEqual(ordersScopeOf(leadOf(missionAnalysis.id), [approveOrdersRow], org), { ...lead, decides: "approve-orders" });
+  assert.deepEqual(ordersScopeOf({ ...leadOf(missionAnalysis.id), teamLeader: true }, [], org), { ...lead, decides: "team-leader" });
+  // A head who also holds a role in a division of their own department edits the department, once.
+  assert.deepEqual(ordersScopeOf({ ...leadOf(missionAnalysis.id), headDepartment: aerodynamics }, [], org), head);
 });
 
 test("a decision is refused to anyone without the right, and on a request that is not waiting", () => {

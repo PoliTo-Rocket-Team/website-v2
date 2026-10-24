@@ -478,7 +478,11 @@ async function readOrgUnits(): Promise<OrgDepartmentUnits[]> {
   return orgUnitsOf(deps, divs);
 }
 
-/** The viewer's Orders scope, read from their scope rows (`ordersScopeOf`, ./orders.ts); null for someone off the team. */
+/**
+ * The viewer's Orders scope (`ordersScopeOf`, ./orders.ts), read from their
+ * scope rows, a head's department and the divisions they lead by role
+ * (`ledDivisionIds`, issue #590); null for someone off the team.
+ */
 async function readOrdersScope(
   identity: DashboardIdentity,
   org: readonly OrgDepartmentUnits[] | Promise<readonly OrgDepartmentUnits[]>,
@@ -497,6 +501,7 @@ async function readOrdersScope(
       fullAccess: identity.kind === "operations-lead",
       teamLeader: isTeamLeader(identity),
       headDepartment: headDepartment === null ? null : { id: headDepartment.id, name: headDepartment.name },
+      ledDivisionIds: ledDivisionIds({ scopes: [], activeRoles: identity.roles }),
     },
     rows,
     units,

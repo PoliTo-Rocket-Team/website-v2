@@ -669,8 +669,8 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
   server checks every change, not only the drawer.
 - A division lead's role gives Positions, Applications and Members at Can edit in each division
   they lead (#591). "Your access" counts them with no grant, so a lead with no grants still has
-  Give access. Grants the lead also holds there are added on top. Whether the role also gives
-  Orders is #590's question; until then Orders is a grant.
+  Give access. Grants the lead also holds there are added on top. The role also lets the lead
+  edit their own division's orders (#590), but Access still treats Orders as a grant (#632).
 - **Role access is locked; every other grant is a normal grant** (#591). The access a lead's or
   head's role gives (their "With the role" row) is never given, changed or removed on Access, and
   the server refuses any change that would touch it. Any other grant (Content, Alumni, Orders, or
@@ -762,10 +762,9 @@ and 67m).
   (#270): a member who holds only that grant sees Orders under TEAM in their sidebar, decides
   waiting orders and marks approved ones as ordered, and edits, cancels and requests nothing.
   A person with no Orders access and no "Approve orders" does not see the page.
-  - **Gap:** the sidebar still lists Orders for every division lead, whether or not they hold
-    Orders access; a lead with no Orders access gets "not found" on the page. Tracked in #160.
 - **Who edits.** A division lead edits the orders of their own division, from any requester in
-  it. A department head edits the orders of their whole department. Full access edits every
+  it, by their role alone: they need no Orders grant, and a grant elsewhere adds only what it
+  gives (#590). A department head edits the orders of their whole department. Full access edits every
   order in the team (#238). A grant of Orders at Can
   edit opens the orders of the division (or the whole department) it was given in. Nobody edits
   outside their scope: those rows show a lock and open read-only. The server checks the scope on
