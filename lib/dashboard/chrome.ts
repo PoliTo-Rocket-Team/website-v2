@@ -1,5 +1,6 @@
 import { sidebarFor, userMenuPageFor, type MenuPage, type NavSection, type SidebarFacts } from "./access";
 import type { DashboardOpening } from "./opening";
+import type { ViewAsOpening } from "./view-as";
 import { userCardRole, type DashboardViewer } from "./viewer";
 
 /**
@@ -17,15 +18,18 @@ export type DashboardChrome =
       readonly viewer: DashboardViewer;
       readonly sections: readonly NavSection[];
       readonly menuPage: MenuPage | null;
+      /** The View as dialog's opening (issue #610): only an account the View as gate allows has one, and only it sees "View as…". */
+      readonly viewAs: ViewAsOpening | null;
     }
   | { readonly kind: Exclude<DashboardOpening["kind"], "open"> };
 
-/** The chrome of an open dashboard, from its viewer and what the sidebar knows about them. */
-export function openChrome(viewer: DashboardViewer, facts: SidebarFacts): DashboardChrome {
+/** The chrome of an open dashboard, from its viewer, what the sidebar knows about them and their View as opening. */
+export function openChrome(viewer: DashboardViewer, facts: SidebarFacts, viewAs: ViewAsOpening | null): DashboardChrome {
   return {
     kind: "open",
     viewer: { ...viewer, role: userCardRole(viewer, facts.hasShownApplications) },
     sections: sidebarFor(viewer, facts),
     menuPage: userMenuPageFor(viewer.kind),
+    viewAs,
   };
 }

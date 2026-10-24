@@ -7,7 +7,9 @@
 // `user.role` of "admin"). The plugin's own role table is not the authority:
 // lib/view-as-plugin.ts asks this rule before every start.
 
-import type { ActiveRoleRef } from "./viewer";
+import { SEAT_LABELS } from "./division-access";
+import type { RoleType } from "./team";
+import { VIEWER_KIND_LABELS, type ActiveRoleRef, type FlaggedSeat } from "./viewer";
 
 /**
  * Where the request runs. `live` is production and anything not proven to be
@@ -108,3 +110,103 @@ export const VIEW_AS_OPERATIONS: Readonly<Record<ViewAsEntry["event"], string>> 
   start: "VIEW_AS_START",
   stop: "VIEW_AS_STOP",
 };
+
+// The View as dialog (issue #610, board 96): the people it offers and the line
+// under each name. It offers only people a start would not refuse, so the
+// list never shows a row the server then turns down.
+
+/** The address parameter that opens the dialog over any dashboard page. */
+export const VIEW_AS_PARAM = "view-as";
+
+/** How many people one search shows. */
+export const VIEW_AS_SHOWN = 8;
+
+/** What the dialog needs to open: the title the acting account's changes show under ("IT lead as Sara Conti"). */
+export type ViewAsOpening = { readonly actingTitle: string };
+
+/** One of a person's active roles, as the line under their name reads it. */
+export type ViewAsRole = {
+  readonly type: RoleType;
+  /** The full-access seat the role is flagged as; null for every other role. */
+  readonly seat: FlaggedSeat | null;
+  readonly startedAt: string;
+  /** The division it is in, else the department; null for a role in neither. */
+  readonly unitName: string | null;
+};
+
+/** Someone with an account, as the search reads them. */
+export type ViewAsCandidate = {
+  readonly id: string;
+  readonly name: string;
+  readonly photoUrl: string | null;
+  readonly storedRole: string | null;
+  readonly roles: readonly ViewAsRole[];
+  /** Null when the Alumni record does not know them; else the last year they were on the team, when it is set. */
+  readonly alumnus: { readonly teamTo: number | null } | null;
+};
+
+/** One row of the dialog: the account to start View as on, its name and the line under it. */
+export type ViewAsPerson = {
+  readonly id: string;
+  readonly name: string;
+  readonly line: string;
+  readonly photoUrl: string | null;
+};
+
+/** What a search answers: the people, or why the dialog is refused. */
+export type ViewAsSearch = { readonly kind: "people"; readonly people: readonly ViewAsPerson[] } | { readonly kind: "refused"; readonly message: string };
+
+const RANK: Readonly<Record<NonNullable<RoleType>, number>> = { president: 0, head: 1, lead: 2, core: 3, advisor: 3 };
+
+function rankOf(role: ViewAsRole): number {
+  if (role.seat !== null) return 0;
+  return role.type === null ? 4 : RANK[role.type];
+}
+
+/** What a role makes its holder, as the line names it: the seat, else the role's kind. */
+function roleLabelOf(role: ViewAsRole): string {
+  if (role.seat !== null) return SEAT_LABELS[role.seat];
+  switch (role.type) {
+    case "president":
+      return SEAT_LABELS["team-leader"];
+    case "head":
+      return VIEWER_KIND_LABELS["department-head"];
+    case "lead":
+      return VIEWER_KIND_LABELS["division-lead"];
+    case "advisor":
+      return "Advisor";
+    default:
+      return VIEWER_KIND_LABELS.member;
+  }
+}
+
+/**
+ * The line under a name (board 96): their highest role, the oldest of those,
+ * with its unit ("Division lead · Ground Station"); a seat names no unit, as
+ * it spans the team. Off the team: "Alumni · 2024", else "Non-member".
+ */
+export function viewAsLineOf(candidate: Pick<ViewAsCandidate, "roles" | "alumnus">): string {
+  const [top] = [...candidate.roles].sort((a, b) => rankOf(a) - rankOf(b) || a.startedAt.localeCompare(b.startedAt));
+  if (top !== undefined) {
+    const label = roleLabelOf(top);
+    const isSeat = top.seat !== null || top.type === "president";
+    return isSeat || top.unitName === null ? label : `${label} · ${top.unitName}`;
+  }
+  if (candidate.alumnus !== null) {
+    return candidate.alumnus.teamTo === null ? VIEWER_KIND_LABELS.alumni : `${VIEWER_KIND_LABELS.alumni} · ${candidate.alumnus.teamTo}`;
+  }
+  return VIEWER_KIND_LABELS["non-member"];
+}
+
+/**
+ * The rows the dialog shows, in the order given: never the acting account,
+ * never anyone who could use View as on this site (`viewAsRefusalOf` refuses
+ * them), and at most `VIEW_AS_SHOWN`.
+ */
+export function viewAsPeopleOf(candidates: readonly ViewAsCandidate[], actingAccountId: string, site: ViewAsSite): ViewAsPerson[] {
+  return candidates
+    .filter((c) => c.id !== actingAccountId)
+    .filter((c) => !mayUseViewAs({ storedRole: c.storedRole, activeRoles: c.roles.map((r) => ({ fullAccess: r.seat })) }, site))
+    .slice(0, VIEW_AS_SHOWN)
+    .map((c) => ({ id: c.id, name: c.name, line: viewAsLineOf(c), photoUrl: c.photoUrl }));
+}

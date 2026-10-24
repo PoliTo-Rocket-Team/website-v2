@@ -113,9 +113,9 @@ function PageTitle() {
 export function TopBarAccount({ chrome }: { chrome: Promise<DashboardChrome> }) {
   const resolved = use(chrome);
   if (resolved.kind !== "open") return null;
-  const { viewer, menuPage } = resolved;
+  const { viewer, menuPage, viewAs } = resolved;
   return (
-    <UserSheet viewer={viewer} menuPage={menuPage}>
+    <UserSheet viewer={viewer} menuPage={menuPage} viewAs={viewAs !== null}>
       <button
         type="button"
         aria-label={`${viewer.name}, ${viewer.role}. Open account menu`}
