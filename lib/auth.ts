@@ -90,8 +90,9 @@ export function createAuth(database: BetterAuthOptions["database"], viewAs: View
         impersonationSessionDuration: VIEW_AS_SESSION_SECONDS,
       }),
       viewAsPlugin(viewAs),
-      // Local-only tester sign-in (issue #129): registered on `next dev`
-      // only, so previews and production keep the plugins above alone.
+      // Tester sign-in (issues #129, #608): registered under `next dev` and
+      // on a preview of the shared `preview` database only, so production
+      // and every other environment keep the plugins above alone.
       ...(testerSignInOn() ? [devTesterPlugin()] : []),
     ],
   });
