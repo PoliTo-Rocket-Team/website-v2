@@ -48,7 +48,7 @@ const team: TeamPerson[] = [
   person(4, "Laura Greco", [[2, "lead"]]),
   person(5, "Davide Russo", [[1, "member"], [3, "member"]]),
   person(6, "Chiara Rinaldi", [], [{ kind: "head", departmentId: 1, title: "Head of Aerodynamics" }]),
-  person(7, "Alessandro Greco", [], [{ kind: "team-leader" }]),
+  person(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
   person(8, "Federica Moretti", [[3, "member"]], [{ kind: "board", seat: { roleId: 28, title: "Chief Engineer", flag: "chief-engineer", since: "2025-10-01" } }]),
 ];
 

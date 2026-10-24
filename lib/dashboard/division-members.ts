@@ -11,6 +11,7 @@ import {
   reachesDivision,
   removalFrom,
   roleIn,
+  seatTitleValue,
   titledSeatOf,
   type DivisionRole,
   type Joining,
@@ -166,10 +167,10 @@ export function positionOf(record: PersonRecord, org: OrgChart, actor: TeamActor
   };
 }
 
-/** The title of someone in no division the viewer reaches: their seat's, as it reads (a blank one by its default name), or their role, fixed. */
+/** The title of someone in no division the viewer reaches: their seat's, as stored (`seatTitleValue`), or their role, fixed. */
 function seatTitleOf(record: PersonRecord, org: OrgChart): PositionTitle {
   const titled = titledSeatOf(record.beyondDivisions, (role) => role);
-  if (titled !== null) return { kind: "seat", value: beyondTitle(titled.seat, org) };
+  if (titled !== null) return { kind: "seat", value: seatTitleValue(titled.seat, org) };
   const other = record.beyondDivisions[0];
   return { kind: "fixed", label: other === undefined ? "Member" : beyondTitle(other, org) };
 }

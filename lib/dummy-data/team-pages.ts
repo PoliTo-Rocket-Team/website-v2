@@ -362,8 +362,9 @@ export function editedRoster(edits: TeamEdits, joiners: readonly DummyJoiner[] =
 /**
  * The title Edit details set on someone's seat (issue #626), laid over the
  * head's or the team-level seat's stored title as the database writes it on
- * that row. The team leader's seat reads "Team Leader" on the dashboard
- * whatever it stores, so nothing is laid over it here.
+ * that row. The dashboard names the team leader's seat "Team Leader"
+ * whatever it stores, so its title is laid over the seat Edit details reads
+ * (`beyondOf`) and nothing is laid over the placement here.
  */
 function withSeatTitle(entry: RosterEntry, edits: TeamEdits): RosterEntry {
   const title = edits.members[entry.id]?.seatTitle;
@@ -435,7 +436,9 @@ function advisorBeyond(place: AdvisorPlace): RoleBeyondDivisions | null {
 
 /** Every role someone holds in no division: their seat, and an Advisor role on a department or on the whole team. */
 function beyondOf(entry: RosterEntry, edits: TeamEdits): readonly RoleBeyondDivisions[] {
-  const { beyond } = standingOfPlacement(entry.placement);
+  const seatTitle = edits.members[entry.id]?.seatTitle;
+  // The team leader row's title Edit details set (issue #626), which a placement does not keep.
+  const beyond = standingOfPlacement(entry.placement).beyond.map((r) => (r.kind === "team-leader" && seatTitle !== undefined ? { ...r, title: seatTitle } : r));
   const advisor = edits.advisors[entry.id];
   const role = advisor ? advisorBeyond(advisor.place) : null;
   return role === null ? beyond : [...beyond, role];

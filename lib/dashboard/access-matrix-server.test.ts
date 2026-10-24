@@ -910,6 +910,30 @@ describe("Edit details sets a seat's title: the team leader and full access only
     }
   });
 
+  test("the team leader's Role starts at their row's stored title, so a full-access details save with it left as shown keeps that title", async () => {
+    const CUSTOM = "President of the Team";
+    const leaderId = accountOf("team leader").memberId!;
+    seedFixture();
+    updateRows(roles, { memberId: leaderId, type: "president" }, { title: CUSTOM });
+    const before = rowsIn(roles);
+    keepWrites();
+    signInAs(accountOf("operations lead").userId);
+    for (const round of [1, 2]) {
+      const opening = await openDashboard();
+      assert.equal(opening.kind, "open");
+      const roster = await (opening as { data: DashboardData }).data.members(null);
+      const title = roster.scope === "whole-team" ? roster.positions.find((p) => p.id === leaderId)?.title : undefined;
+      assert.deepEqual(title, { kind: "seat", value: CUSTOM }, `round ${round}: the Role input starts at the stored title`);
+      // The Role left as shown: the value the panel starts at.
+      const shown = title?.kind === "seat" ? title.value : "";
+      const answer = await answerOf(() =>
+        teamActions.saveMemberDetails({ kind: "person", id: leaderId }, null, { title: shown, details: { ...MEMBER_DETAILS, phone: `+39 333 000 000${round}` } }),
+      );
+      assert.deepEqual(answer, { ok: true }, `round ${round}`);
+      assert.deepEqual(rowsIn(roles), before, `round ${round}: every role row, the custom title included, as it was`);
+    }
+  });
+
   test("a head, a division lead and a member are refused a seat's title, and write nothing", async () => {
     for (const viewer of ["department head", "division lead", "member"]) {
       for (const personId of [EXTRA.head, accountOf("Chief Engineer").memberId!]) {

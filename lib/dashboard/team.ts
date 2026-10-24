@@ -512,7 +512,8 @@ function divisionName(org: OrgChart, divisionId: number): string {
  * division lead or department head reaches them.
  */
 export type RoleBeyondDivisions =
-  | { readonly kind: "team-leader" }
+  /** `title` as stored on the team leader row, which the public Team page shows; blank where none is read (`seatTitleValue`). */
+  | { readonly kind: "team-leader"; readonly title: string }
   | { readonly kind: "board"; readonly seat: BoardRole }
   /** Null department when the row names none on the chart (`headDepartmentOf`); `title` as stored. */
   | { readonly kind: "head"; readonly departmentId: number | null; readonly title: string }
@@ -548,7 +549,7 @@ export function headDepartmentOf(role: Pick<RoleSeat, "departmentId" | "division
  * where it sits, never from its title. Null for any other role in a division.
  */
 export function roleBeyondDivisions(role: RoleSeat, org: OrgChart): RoleBeyondDivisions | null {
-  if (role.type === "president") return { kind: "team-leader" };
+  if (role.type === "president") return { kind: "team-leader", title: role.title.trim() };
   if (role.type === "head") return { kind: "head", departmentId: headDepartmentOf(role, org), title: role.title.trim() };
   if (role.divisionId !== null) return null;
   if (role.type === "advisor") return { kind: "advisor", departmentId: role.departmentId };
@@ -591,7 +592,8 @@ export function standingOfPlacement(placement: Placement): TeamStanding {
   const { memberships } = placement;
   switch (placement.role) {
     case "team-leader":
-      return { memberships, beyond: [{ kind: "team-leader" }] };
+      // A placement keeps no title of the team leader row: blank, read by its default name.
+      return { memberships, beyond: [{ kind: "team-leader", title: "" }] };
     case "board":
       return { memberships, beyond: [{ kind: "board", seat: placement.seat }] };
     case "head":
@@ -646,6 +648,17 @@ export function titledSeatOf<T>(roles: readonly T[], beyondOf: (role: T) => Role
   const order = (a: TitledSeat, b: TitledSeat) =>
     TITLED_SEAT_RANK[a.kind] - TITLED_SEAT_RANK[b.kind] || (a.kind === "board" && b.kind === "board" ? bySeatOrder(a.seat, b.seat) : 0);
   return [...seats].sort((a, b) => order(a.seat, b.seat))[0] ?? null;
+}
+
+/**
+ * The title Edit details starts a seat's Role at, and so what a save with the
+ * Role left as shown writes back: the seat row's stored title, a blank one by
+ * its default name. The team leader's is their row's own title, never the
+ * "Team Leader" the dashboard names the seat by (`beyondTitle`), so a details
+ * save keeps the title the public Team page shows (issue #626).
+ */
+export function seatTitleValue(seat: TitledSeat, org: OrgChart): string {
+  return seat.kind === "team-leader" ? seat.title || "Team Leader" : beyondTitle(seat, org);
 }
 
 /** "the team leader", "Project Manager", "Head of Aerodynamics", "in Aerodynamics": what the lock reason says they also are. */

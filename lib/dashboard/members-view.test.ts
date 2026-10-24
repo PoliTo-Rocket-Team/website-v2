@@ -47,7 +47,7 @@ const records = [
   record(4, "Laura Greco", [[2, "lead"]]),
   record(5, "Federica Leone", [[3, "lead"]]),
   record(6, "Chiara Ferri", [], [{ kind: "head", departmentId: 1, title: "" }]),
-  record(7, "Alessandro Greco", [], [{ kind: "team-leader" }]),
+  record(7, "Alessandro Greco", [], [{ kind: "team-leader", title: "" }]),
 ];
 
 const elena: WaitingPerson = { joinId: 9, email: "elena@x.it", name: null, title: null, details: NO_MEMBER_DETAILS };

@@ -91,8 +91,11 @@ test("the whole team's Edit details saves a seat's details and title, never the 
   assert.deepEqual(await writes.setMemberPhoto(14, null), { ok: true, value: null });
   assert.equal(await writes.saveMember(15, { divisionId: MISSION_ANALYSIS, role: "member" }), false, "a head is no member of a division here");
   const edits = reread(ops.saved[0]);
-  const leader = wholeTeam(await pages("operations-lead", edits).view.members()).find((p) => p.id === 14);
+  const after = await pages("operations-lead", edits).view.members();
+  const leader = wholeTeam(after).find((p) => p.id === 14);
   assert.equal(leader?.role, "team-leader");
+  assert.ok(after.scope === "whole-team");
+  assert.deepEqual(after.positions.find((p) => p.id === 14)?.title, { kind: "seat", value: "President" }, "Edit details starts at the title it saved");
   assert.equal(leader?.details.discord, "alessandro.g");
   assert.equal(editedRoster(edits).find((e) => e.id === 14)?.pageTitle, editedRoster(NO_EDITS).find((e) => e.id === 14)?.pageTitle);
 });

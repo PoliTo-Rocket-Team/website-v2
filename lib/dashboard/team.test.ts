@@ -278,7 +278,7 @@ test("the seat whose title Edit details sets: the team leader's, else a head's, 
   const board = (roleId: number, flag: "chief-engineer" | null, since: string): RoleBeyondDivisions => ({ kind: "board", seat: { roleId, title: "", flag, since } });
   const head: RoleBeyondDivisions = { kind: "head", departmentId: 1, title: "" };
   const pick = (roles: readonly RoleBeyondDivisions[]) => titledSeatOf(roles, (r) => r)?.seat ?? null;
-  assert.deepEqual(pick([board(1, null, "2020-10-01"), head, { kind: "team-leader" }]), { kind: "team-leader" });
+  assert.deepEqual(pick([board(1, null, "2020-10-01"), head, { kind: "team-leader", title: "" }]), { kind: "team-leader", title: "" });
   assert.deepEqual(pick([board(1, null, "2020-10-01"), head]), head);
   assert.deepEqual(pick([board(1, null, "2020-10-01"), board(2, "chief-engineer", "2024-10-01")]), board(2, "chief-engineer", "2024-10-01"), "a flagged seat first");
   assert.equal(pick([{ kind: "advisor", departmentId: 1 }, { kind: "department", departmentId: 1 }]), null);
