@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { actingTitleOf } from "./acting-account";
 import type { FoundPerson, TeamPerson } from "./division-edit";
 import {
   answerNoticeOf,
@@ -149,6 +150,21 @@ test("Confirm hands the role over as the sender chose; Decline changes no role; 
     detail: "Mission Analysis lead to Sara Conti · 16 Oct · you keep the role",
     action: { label: "Dismiss", dismissNotice: 9 },
   });
+});
+
+test("an answer made while viewing as the approver names the acting account too; one made outside View as names the approver alone (issue #628)", () => {
+  const read = (answer: "confirm" | "decline", actingTitle: string | null) => {
+    const planned = planHandOverAnswer({ viewerId: CHIARA, request: leadRequest, answer, team, org });
+    assert.ok(planned.ok);
+    const { notice } = answerNoticeOf(planned.value, team, org);
+    const row = noticeOf({ id: 9, kind: notice.kind, subject: "Sara Conti", createdAt: "2026-10-16T09:00:00Z", actingTitle, data: notice.data });
+    assert.ok(row);
+    return attentionOf(row, now).title;
+  };
+  assert.equal(read("confirm", actingTitleOf(["it-lead"])), "IT lead as Sara Conti confirmed your hand-over");
+  assert.equal(read("decline", actingTitleOf(["it-lead"])), "IT lead as Sara Conti declined your hand-over");
+  assert.equal(read("confirm", null), "Sara Conti confirmed your hand-over");
+  assert.equal(read("decline", null), "Sara Conti declined your hand-over");
 });
 
 test("Confirm is refused once the successor left the unit", () => {

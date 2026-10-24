@@ -13,6 +13,7 @@ import {
   planAliasRequest,
   type AliasRequest,
 } from "./alias-request";
+import { actingTitleOf } from "./acting-account";
 import type { TeamPerson } from "./division-edit";
 import { attentionOf, noticeOf } from "./notices";
 import { membershipsOf, type OrgChart } from "./team";
@@ -175,6 +176,21 @@ test("the notices read as attention rows", () => {
   assert.equal(read("alias-declined", { by: "Alessandro Greco" }).title, "Alessandro Greco declined the email alias for Davide Russo");
   assert.equal(noticeOf({ id: 1, kind: "alias-created", subject: "x", createdAt: "2026-10-22T10:00:00Z", data: {} }), null);
   assert.equal(noticeOf({ id: 1, kind: "alias-ready", subject: "x", createdAt: "2026-10-22T10:00:00Z", data: { address: "x@politorocketteam.it" } }), null, "an older alias-ready row is not shown");
+});
+
+test("a Decline made while viewing as the approver names the acting account too; one made outside View as names the approver alone (issue #628)", () => {
+  const now = new Date("2026-10-22T12:00:00Z");
+  const [declined] = aliasAnswerNotices({ kind: "decline", request: request(1, DAVIDE, MARCO) }, "Sara Conti");
+  assert.ok(declined);
+  const read = (actingTitle: string | null) =>
+    attentionOf(noticeOf({ id: 1, kind: declined.notice.kind, subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", actingTitle, data: declined.notice.data })!, now)
+      .title;
+  assert.equal(read(actingTitleOf(["it-lead"])), "IT lead as Sara Conti declined the email alias for Davide Russo");
+  assert.equal(read(actingTitleOf([null])), "Admin tester as Sara Conti declined the email alias for Davide Russo");
+  assert.equal(read(null), "Sara Conti declined the email alias for Davide Russo");
+  const created = aliasAnswerNotices({ kind: "created", request: request(1, DAVIDE, MARCO), address: "davide.russo@politorocketteam.it" }, "Sara Conti");
+  const ready = noticeOf({ id: 2, kind: "alias-created", subject: "Davide Russo", createdAt: "2026-10-22T10:00:00Z", actingTitle: "IT lead", data: created[0]!.notice.data });
+  assert.equal(attentionOf(ready!, now).title, "Davide Russo's email alias is ready", "Mark created names no one who acted");
 });
 
 test("the approver's rows (board 94c): one per open request, oldest first, the automatic one as its own row", () => {
