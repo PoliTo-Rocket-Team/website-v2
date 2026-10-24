@@ -39,7 +39,7 @@ An admin column comes later. **Planned**, no issue yet.
 | Members | No | No | No | Their divisions | Their divisions | The whole team; the team leader's has a List and a Table view |
 | Projects | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it first under Content |
 | Partners | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
-| Alumni | No | No | Only with Alumni | Only with Alumni | Only with Alumni | Yes; the team leader's sidebar shows it under Content |
+| Alumni | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | FAQ | No | No | Only with Content | Only with Content | Only with Content | Yes; the team leader's sidebar shows it under Content |
 | Access | No | No | No | Their divisions | Their department, under division tabs | The whole team, under department tabs |
 | Orders | No | No | Only with "Approve orders": every order in the team, under Team; decides, edits nothing | Every order in the team; edits their divisions' | Every order in the team; edits their department's | Every order in the team; edits every order |
@@ -156,26 +156,27 @@ An admin column comes later. **Planned**, no issue yet.
     page. It adds no Access page there, and the lead cannot give or remove access there (Owner
     decision, #478; #488).
   - A department head's Members page holds every division of their department (#235).
-- **Alumni** is where the team checks the public site's alumni content. By default the full
-  admins see it: the operations lead, the team leader and the IT lead. Anyone else sees it only
-  with an **Alumni** grant, which the full admins can give to anyone. A division lead or
-  department head gets nothing from their role here (Owner decision, #234). The sidebar item and
-  the page read one rule, and the page answers "not found" to everyone else.
-  - The Alumni grant is the **Alumni** area of the full admins' Access page (#247). It is a
-    `website` scope row on `all`, given to the whole team only, at Can view or Can edit. Either
-    level opens the Alumni page and its actions, and nothing else (Owner decision, 2026-10-21,
-    #504). It opens no content editor.
+- **Alumni** is where the team checks the public site's alumni content. It is site content, so
+  it follows the site-content rule: the full admins (the operations lead, the team leader and the
+  IT lead) and anyone with a **Content** grant. A division lead or department head gets nothing
+  from their role here (Owner decision, #234). The sidebar item, the page and every Alumni write
+  read one rule, and the page answers "not found" to everyone else.
+  - Owner decision (2026-10-22, #589), in place of the 2026-10-21 rule of #504 that kept Alumni
+    a separate grant: there is no Alumni grant and no Alumni area on the Access page. A Content
+    grant opens the Alumni page and its actions with the other content editors. The old Alumni
+    rows (a `website` scope row on `all`, at either level) open nothing and nothing reads them;
+    each holder of one was given a Content grant, so nobody lost access (`drizzle/0058`).
 - **Content** is the team leader's sidebar group of the pages that change the public site:
   Projects, Outreach, Partners, Alumni, FAQ, then Team page (boards 72, 74, 75, 76, 79 and 80).
-  Projects, Outreach, Partners, FAQ and Team page follow the site-content rule: the full admins,
-  and anyone with a **Content** grant. Whoever may edit may also publish. The server checks the
-  same rule on every write (`maySiteContent`, `lib/content/gate.ts`). See "6. Site content".
+  All six follow the site-content rule: the full admins, and anyone with a **Content** grant.
+  Whoever may edit may also publish. The server checks the same rule on every write
+  (`maySiteContent`, `lib/content/gate.ts`). See "6. Site content".
   - The Content grant is its own Access area (Owner decision, 2026-10-21, #504). It is a
-    `website` scope row on `content`, given to the whole team only and at Can edit only. It opens
-    those five editors and their actions and nothing else, and no other grant opens them. Only a
-    viewer with full access or a Content grant gives, changes or removes it. A member holding it
-    sees the Content group with those five pages, and a "Content" line under "Your access" on
-    their Overview.
+    `website` scope row on `content`, given to the whole team only and at Can edit only; a
+    `website` row at Can view is no grant (#589). It opens those six editors and their actions
+    and nothing else, and no other grant opens them. Only a viewer with full access or a Content
+    grant gives, changes or removes it. A member holding it sees the Content group with those six
+    pages, and a "Content" line under "Your access" on their Overview.
 - **My account** (non-member and alumni) and **My profile** (member and up) open from the user menu only,
   never from the sidebar.
 - **Sign out** is in the user menu only. It is never in the sidebar or on the account pages.
@@ -690,7 +691,7 @@ These rules come from #213 (boards 60, 60b, 60c and 60m).
   edit their own division's orders (#590), but Access still treats Orders as a grant (#632).
 - **Role access is locked; every other grant is a normal grant** (#591). The access a lead's or
   head's role gives (their "With the role" row) is never given, changed or removed on Access, and
-  the server refuses any change that would touch it. Any other grant (Content, Alumni, Orders, or
+  the server refuses any change that would touch it. Any other grant (Content, Orders, or
   an area in a place their role does not cover) can be given to a lead or head, is listed in a row
   of its own beside their role row, and can be changed or removed, within the usual delegation
   limit. Give access lists the leads and heads in reach, never the viewer, and only when the viewer
@@ -739,7 +740,7 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - The full-access seats are the team leader, the operations lead, the IT lead, the Project
   Manager and the Chief Engineer (#485). On the Full access tab each shows under its label:
   "Team leader", "Operations lead", "IT lead", "Project Manager", "Chief Engineer".
-- Full access holds every area at Can edit across the whole team, Alumni and Content included: "YOUR ACCESS ·
+- Full access holds every area at Can edit across the whole team, Content included: "YOUR ACCESS ·
   Full access, whole team", with one "Every area · Can edit" chip, and "Approve orders" for the
   team leader.
 - Above the table: Everyone, Full access and Approve orders tabs, each with its count, and an "All
@@ -747,10 +748,11 @@ These rules come from #238 and #247 (boards 71 and 71b).
   the role", locked), then the heads and division leads with their role's access, locked.
 - Give access picks a person from the whole team and a Where: the whole team (a `team` scope row
   in no unit, which covers every department and any added later), one department, or one division.
-  The areas are Positions, Applications, Members, Alumni, Content and Orders, each at Can view or
-  Can edit but Content. Alumni is the Alumni page only. Content (#504) has no level toggle: it is
-  given at Can edit only. Alumni and Content are given to the whole team only, and the server
-  refuses either in a department or a division, and Content at Can view.
+  The areas are Positions, Applications, Members, Content and Orders, each at Can view or Can
+  edit but Content. There is no Alumni area: the Alumni page comes with Content (Owner decision,
+  2026-10-22, #589). Content (#504) has no level toggle: it is given at Can edit only. Content is
+  given to the whole team only, and the server refuses it in a department or a division, refuses
+  it at Can view, and refuses an Alumni area from anyone.
 - A division lead or department head who holds a Content grant also gives Content: their Where
   adds the whole team, last, where they give Content alone. Nobody else is offered Content, and
   the server refuses it from them.
@@ -760,7 +762,7 @@ These rules come from #238 and #247 (boards 71 and 71b).
 - The delegation limit still holds: no area above the viewer's own level, and no lead's or head's
   role access changes here. Every other grant can be given to, listed for and removed from leads
   and heads (#591): a head's role covers the unit areas in their department and its divisions, so
-  Content, Alumni or an area elsewhere on the team is a grant. Full-access seats stay locked:
+  Content or an area elsewhere on the team is a grant. Full-access seats stay locked:
   nothing is given to them.
 
 ## 4. Orders

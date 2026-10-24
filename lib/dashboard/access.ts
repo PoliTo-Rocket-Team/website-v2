@@ -4,9 +4,8 @@ import { seatOf, type FullAccessSeat, type GrantArea, type ViewerKind, type View
 // v2 boards 51b, 52, 56 and 72). One row per page: a new page adds one row. A
 // viewer whose kind is missing from a row's `reach` does not reach the page,
 // unless the row names a `grantArea` and they are a member granted that area
-// (issues #160, #471), `siteContent` and they hold a Content grant, `alumni`
-// and they hold an Alumni grant (issue #504), or `approveOrders` and they
-// hold "Approve orders". A row that names a `seat` is
+// (issues #160, #471), `siteContent` and they hold a Content grant (issues
+// #504, #589), or `approveOrders` and they hold "Approve orders". A row that names a `seat` is
 // reached by that full-access seat alone (issue #238). The `operations-lead`
 // kind is full access: the team leader, the operations lead and the IT lead,
 // or an admin or org scope row (./viewer.ts), so it reaches every page of the
@@ -54,8 +53,6 @@ type PageRow = {
   readonly grantArea?: GrantArea;
   /** A viewer whose kind does not reach the page reaches it with a Content grant (issue #504). */
   readonly siteContent?: true;
-  /** A viewer whose kind does not reach the page reaches it with an Alumni grant (issue #504). */
-  readonly alumni?: true;
   /** A viewer whose kind does not reach the page reaches it with "Approve orders". */
   readonly approveOrders?: true;
   /** The viewers whose sidebar lists the page only when a fact holds; the rest always see it. */
@@ -169,13 +166,14 @@ export const DASHBOARD_PAGES = [
     key: "alumni",
     label: "Alumni",
     href: "/dashboard/alumni",
-    // Owner decision on #234: full access (issue #238) and anyone given an
-    // Alumni grant; a Content grant does not open it (Owner decision,
-    // 2026-10-21, issue #504). A division lead or department head gets
-    // nothing from their role here. It sits under Content (board 72, issue #252).
+    // The site-content rule (maySiteContent, lib/content/gate.ts): full
+    // access and a Content grant (Owner decision, 2026-10-22, issue #589,
+    // which replaced the separate Alumni grant of #504). A division lead or
+    // department head gets nothing from their role here. It sits under
+    // Content (board 72, issue #252).
     place: "content",
     reach: ["operations-lead"],
-    alumni: true,
+    siteContent: true,
   },
   {
     key: "faq",
@@ -286,7 +284,6 @@ function reaches(page: PageRow, viewer: ViewerStanding): boolean {
     page.reach.includes(viewer.kind) ||
     (viewer.kind === "member" && page.grantArea !== undefined && viewer.grantedAreas.includes(page.grantArea)) ||
     (viewer.siteContent && page.siteContent === true) ||
-    (viewer.alumniGrant === true && page.alumni === true) ||
     (viewer.approveOrders && page.approveOrders === true)
   );
 }

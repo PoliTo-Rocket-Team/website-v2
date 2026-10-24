@@ -83,7 +83,7 @@ import {
 } from "@/lib/dashboard/team";
 import { editableDivisionIds, editsStructure, teamStructure } from "@/lib/dashboard/team-structure";
 import { kindOfTestViewer, readsArea, seatOf, testDeveloperStanding, type TestViewer } from "@/lib/dashboard/viewer";
-import { grantActors, testGrantAreas, type TestGrant } from "./test-grant";
+import { grantActors, testGrantAreas, withTestGrant, type TestGrant } from "./test-grant";
 import { wholeTeamMembers } from "@/lib/dashboard/team-members";
 import { opensWholeTeam } from "@/lib/dashboard/members-view";
 import { refused, written, type WriteResult } from "@/lib/dashboard/write";
@@ -609,6 +609,8 @@ function writesFor(
   const find = (id: number) => team.find((e) => e.id === id);
   const thisYear = new Date().getUTCFullYear();
   const actor = actorOf(kind, org, grant);
+  // The Alumni page follows the Content grant (issue #589), so a test grant can open it.
+  const reachesAlumni = canReach(withTestGrant(testDeveloperStanding(kind), grant), "alumni");
   const changeOf = (id: number): MemberChange => edits.members[id] ?? { pageTitle: find(id)?.pageTitle ?? null, roles: {} };
   const withChange = (id: number, change: MemberChange): TeamEdits => ({ ...edits, members: { ...edits.members, [id]: change } });
   /**
@@ -629,7 +631,7 @@ function writesFor(
   };
   /** Someone the Alumni page lists, for a viewer who reaches it (#257); never someone who asked to be removed. */
   const alumnus = (key: AlumnusKey) => {
-    if (!canReach(testDeveloperStanding(kind), "alumni")) return null;
+    if (!reachesAlumni) return null;
     return dummyAlumni(editedAlumniRecord(edits, joiners)).find((a) => a.key === key && !a.removed) ?? null;
   };
   const saveAlumniEntry = (key: AlumnusKey, change: Omit<EntryChange, "photo">) =>
@@ -879,7 +881,7 @@ function writesFor(
       return error === null ? written(null) : refused(error);
     },
     async addAdvisor(input, photo) {
-      if (!canReach(testDeveloperStanding(kind), "alumni")) return refused("You cannot edit the Alumni page.");
+      if (!reachesAlumni) return refused("You cannot edit the Alumni page.");
       const advisor = checkAdvisor(input, DUMMY_ALUMNI_YEAR);
       if (!advisor.ok) return advisor;
       const error = photo === null ? null : checkPhoto({ type: photo.contentType, size: photo.bytes.byteLength });
@@ -1120,7 +1122,7 @@ export function dummyTeamPages(
     },
     alumni: async () =>
       alumniDirectory(
-        canReach(testDeveloperStanding(kind), "alumni") ? dummyAlumni(editedAlumniRecord(edits, joiners)) : [],
+        canReach(withTestGrant(testDeveloperStanding(kind), grant), "alumni") ? dummyAlumni(editedAlumniRecord(edits, joiners)) : [],
         DUMMY_ALUMNI_YEAR,
       ),
     teamTree: async () =>

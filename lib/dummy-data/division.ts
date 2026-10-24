@@ -88,8 +88,9 @@ export const accessGrants = [
   { id: 6, personId: 32, place: { divisionId: 2 }, target: "positions", level: "view", givenById: 20, givenOn: "2026-09-28" },
   { id: 7, personId: 32, place: { divisionId: 2 }, target: "applications", level: "edit", givenById: 20, givenOn: "2026-09-28" },
   { id: 8, personId: 13, place: { departmentId: 1 }, target: "members", level: "view", givenById: 15, givenOn: "2026-10-02" },
-  // Board 71: Alumni across the whole team, which only full access gives.
-  { id: 9, personId: 3, place: { wholeTeam: true }, target: "alumni", level: "edit", givenById: 1, givenOn: "2026-10-03" },
+  // Board 71: once Alumni across the whole team, a Content grant since the
+  // Alumni area folded into Content (issue #589).
+  { id: 9, personId: 3, place: { wholeTeam: true }, target: "content", level: "edit", givenById: 1, givenOn: "2026-10-03" },
   // Content across the whole team, at Can edit, which only full access or a Content holder gives (issue #504).
   { id: 10, personId: 4, place: { wholeTeam: true }, target: "content", level: "edit", givenById: 1, givenOn: "2026-10-21" },
 ] as const satisfies readonly DummyGrant[];

@@ -33,13 +33,12 @@ test("the member holding a Members test grant is granted Members, so their sideb
   }
 });
 
-test("the member holding the Content test grant holds Content alone: the Content group without Alumni, and no grant page (issue #504)", () => {
+test("the member holding the Content test grant holds Content alone: the Content group with Alumni, and no grant page (issues #504, #589)", () => {
   const viewer = dummyViewer("member", [], "content");
   assert.ok(viewer.kind === "member" && viewer.siteContent && viewer.grantedAreas.length === 0);
-  assert.equal(viewer.alumniGrant, undefined);
   const content = sidebarFor(viewer, { counts: {}, hasShownApplications: false }).find((s) => s.group === "content");
-  assert.deepEqual(content?.items.map((item) => item.label), ["Projects", "Outreach", "Partners", "FAQ", "Team page"]);
-  for (const key of ["positions", "applications", "members", "division-access", "orders", "alumni"] as const) assert.equal(canReach(viewer, key), false, key);
+  assert.deepEqual(content?.items.map((item) => item.label), ["Projects", "Outreach", "Partners", "Alumni", "FAQ", "Team page"]);
+  for (const key of ["positions", "applications", "members", "division-access", "orders"] as const) assert.equal(canReach(viewer, key), false, key);
 });
 
 test("a member with Members at Can view sees their division's people and no action", async () => {
