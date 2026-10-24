@@ -13,7 +13,8 @@ import type { FullAccessSeat, ViewerStanding } from "./viewer";
 // only the divisions they lead (issue #594). Both sides of the data interface
 // build it here from their own records.
 
-export type StructurePerson = { readonly id: number; readonly name: string };
+/** A person a box names, with their stored photo (issue #622); null for the PRT mark. */
+export type StructurePerson = { readonly id: number; readonly name: string; readonly photoUrl: string | null };
 
 export type StructureDivision = {
   readonly id: number;
@@ -168,7 +169,7 @@ export function teamStructure(input: {
 }): TeamStructure | null {
   const { records, org, actor } = input;
   if (!editsStructure(actor, org)) return null;
-  const person = (r: PersonRecord): StructurePerson => ({ id: r.id, name: r.name });
+  const person = (r: PersonRecord): StructurePerson => ({ id: r.id, name: r.name, photoUrl: r.photoUrl });
   const leader = records.find((r) => r.beyondDivisions.some((b) => b.kind === "team-leader"));
   // The viewer's own record: their box is the one the edit view marks (issue #405).
   const self = input.selfId === null ? undefined : records.find((r) => r.id === input.selfId);

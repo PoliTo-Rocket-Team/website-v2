@@ -277,6 +277,8 @@ export type RosterEntry = {
   readonly id: number;
   readonly name: string;
   readonly email: string;
+  /** Their stored profile photo (`members.picture`); null when none is stored, and the PRT mark is drawn. */
+  readonly photoUrl: string | null;
   readonly placement: Placement;
   /** The title under their name on the public Team page, when one is set. */
   readonly pageTitle: string | null;
@@ -899,6 +901,8 @@ export function pagerItems(current: number, last: number): (number | null)[] {
 export type TreePerson = {
   readonly id: number;
   readonly name: string;
+  /** Their stored photo, drawn in every place they are on the tree (issue #622); null for the PRT mark. */
+  readonly photoUrl: string | null;
   /** The viewer: marked "YOU" and on the highlighted path. */
   readonly self: boolean;
   /**
@@ -972,6 +976,7 @@ export function buildTeamTree(
   const node = (entry: RosterEntry, divisionId: number | null): TreePerson => ({
     id: entry.id,
     name: entry.name,
+    photoUrl: entry.photoUrl,
     self: entry.id === selfId,
     first: firstDivision(entry) === divisionId,
   });

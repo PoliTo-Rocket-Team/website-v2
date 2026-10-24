@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Check, Lock, Pencil, Plus } from "lucide-react";
 import type { DivisionMembers, WaitingPerson } from "@/lib/dashboard/division-members";
 import { divisionLabel, matchesQuery } from "@/lib/dashboard/team";
-import { editViewIntro, type StructureDepartment, type StructureDivision, type StructureLeader, type StructureSeat, type TeamStructure } from "@/lib/dashboard/team-structure";
+import { editViewIntro, type StructureDepartment, type StructureDivision, type StructureLeader, type StructurePerson, type StructureSeat, type TeamStructure } from "@/lib/dashboard/team-structure";
 import { Avatar } from "./avatar";
 import { DepartmentDrawer, type DepartmentDrawerTarget } from "./department-drawers";
 import { SearchField } from "./directory";
@@ -304,7 +304,7 @@ function SeatBox({ seat, editable, found, onOpen }: { seat: StructureSeat; edita
   const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, seat.yours)}`;
   const body = (
     <>
-      <Avatar size="ml" accent />
+      <Avatar size="ml" accent photoUrl={seat.holder.photoUrl} />
       <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{seat.holder.name}</span>
       <span className="max-w-full truncate text-[12px] text-prt-muted">{seat.title}</span>
     </>
@@ -339,7 +339,7 @@ function LeaderBox({ leader, found, onHandOver }: { leader: StructureLeader; fou
   const frame = `relative flex h-[112px] w-[200px] flex-col items-center justify-center rounded-xl border px-3 text-center ${boxMark(found, leader.yours)}`;
   const body = (
     <>
-      <Avatar size="ml" accent />
+      <Avatar size="ml" accent photoUrl={leader.photoUrl} />
       <span className="mt-2 max-w-full truncate text-[14px] font-semibold text-prt-text">{leader.name}</span>
       <span className="text-[12px] text-prt-muted">Team Leader</span>
     </>
@@ -389,8 +389,11 @@ function DepartmentColumn({
   const box = (
     <>
       <span className={`block truncate pr-5 font-mono text-[10px] uppercase tracking-[0.2em] ${dimmed ? "text-dim" : "text-prt-muted"}`}>{department.name}</span>
-      <span className="mt-1 block truncate text-[13px] font-semibold leading-tight text-prt-text">{department.head?.name ?? "No head"}</span>
-      <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{department.head ? `Head · ${peopleLine(department.size)}` : peopleLine(department.size)}</span>
+      <BoxPerson
+        person={department.head}
+        name={department.head?.name ?? "No head"}
+        line={department.head ? `Head · ${peopleLine(department.size)}` : peopleLine(department.size)}
+      />
     </>
   );
   const frame = `${BOX} ${boxMark(found, department.yours)}`;
@@ -425,6 +428,23 @@ function DepartmentColumn({
   );
 }
 
+/**
+ * The person a department or division box names (issue #622): their photo,
+ * else the PRT mark, beside their name and the count line, set the way the
+ * Team tree's cards set it. A box with no head or lead draws no avatar.
+ */
+function BoxPerson({ person, name, line }: { person: StructurePerson | null; name: string; line: string }) {
+  return (
+    <span className="mt-1 flex items-center gap-2.5">
+      {person && <Avatar size="sm" accent photoUrl={person.photoUrl} />}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-semibold leading-tight text-prt-text">{name}</span>
+        <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{line}</span>
+      </span>
+    </span>
+  );
+}
+
 /** A box under the one above it, joined to it by a short line on the left (boards 77b, 66t-b). */
 function Linked({ children }: { children: ReactNode }) {
   return (
@@ -444,8 +464,11 @@ function DivisionBox({ division, found, onOpen }: { division: StructureDivision;
   const body = (
     <>
       <span className="block truncate pr-5 font-mono text-[10px] uppercase tracking-[0.2em] text-prt-muted">{divisionLabel(division.name)}</span>
-      <span className="mt-1 block truncate text-[13px] font-semibold leading-tight text-prt-text">{division.lead?.name ?? "No lead"}</span>
-      <span className="mt-0.5 block truncate text-[12px] text-prt-muted">{division.lead ? `Lead · ${peopleLine(division.size)}` : peopleLine(division.size)}</span>
+      <BoxPerson
+        person={division.lead}
+        name={division.lead?.name ?? "No lead"}
+        line={division.lead ? `Lead · ${peopleLine(division.size)}` : peopleLine(division.size)}
+      />
     </>
   );
   const frame = `${BOX} ${boxMark(found, division.yours)}`;
