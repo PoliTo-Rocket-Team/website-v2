@@ -216,7 +216,12 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
       )}
       {/* Bleeds to the screen edge on phones, so the next group peeks in
           from the edge; from lg the groups sit far apart in the content
-          column, so only a slice of a neighbour shows at its edges. */}
+          column, so only a slice of a neighbour shows at its edges. It
+          scrolls sideways only: `overflow-x: auto` alone makes the other axis
+          `auto` too, so anything hanging past the slides gave it an up and
+          down scroll that trapped the page's wheel (issue #619). It stays as
+          tall as its slides, and whatever is drawn round them keeps room
+          inside them. */}
       <div
         ref={scroller}
         role="region"
@@ -224,7 +229,7 @@ function Carousel({ groups, label, frames }: { groups: readonly DepartmentGroup[
         aria-label={label}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:pl-[var(--pad-start)] lg:pr-[var(--pad-end)] lg:[clip-path:var(--clip)] lg:[scroll-padding-inline:0] lg:motion-safe:[transition:clip-path_300ms_ease-out] [&::-webkit-scrollbar]:hidden"
+        className="relative -mx-5 flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden px-5 [scroll-padding-inline:20px] [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-prt-text/60 md:-mx-16 md:px-16 md:[scroll-padding-inline:64px] lg:mx-0 lg:pl-[var(--pad-start)] lg:pr-[var(--pad-end)] lg:[clip-path:var(--clip)] lg:[scroll-padding-inline:0] lg:motion-safe:[transition:clip-path_300ms_ease-out] [&::-webkit-scrollbar]:hidden"
       >
         {groups.map((g, i) => (
           <div

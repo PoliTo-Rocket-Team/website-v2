@@ -331,9 +331,12 @@ export function TeamPageEdit({
         const at = carouselSpots[index];
         if (at === undefined || at === null) return node;
         return (
-          // The departments' swipe row clips what hangs below it, so a head
-          // keeps room under them for the outline's foot.
-          <EditableBlock id={at} className="mb-3 md:mb-[22px]">
+          // The departments' swipe row clips what hangs below it (issue
+          // #619), so a head keeps room under them for all of it: the
+          // outline's foot and the "+ Add division lead" pill centred on it,
+          // 12px + 12px below md and 22px + 12px from md. What hangs above a
+          // head sits over its group's heading, inside the row.
+          <EditableBlock id={at} className="mb-6 md:mb-[34px]">
             {node}
             {adding && <AddLeadButton onClick={() => openHead(at, true)} />}
           </EditableBlock>
